@@ -115,20 +115,31 @@ export function volumeCheck(candles: readonly Candle[], config: StrategyConfig, 
   return { ratio, confirmed, adverseWarning: current.volume >= breakout.volume * config.adverseVolumeRatio && adverse, pullbackVolume: current.volume, breakoutVolume: breakout.volume, averageVolume: average };
 }
 
-export function patienceCandle(previous: Candle | undefined, candle: Candle | undefined, direction: Direction, config: StrategyConfig): { status: PatienceStatus; detail: string } {
+export function patienceCandle(
+  previous: Candle | undefined,
+  candle: Candle | undefined,
+  direction: Direction,
+  config: StrategyConfig,
+  trend: TrendDirection = direction === "long" ? "bullish" : "bearish",
+): { status: PatienceStatus; detail: string } {
   if (!previous || !candle) return { status: "waiting", detail: "Waiting for two completed candles." };
   if (!candle.isComplete) return { status: "forming", detail: "Patience candle is still forming." };
-  if (candle.high > previous.high + config.patienceContainmentTolerance || candle.low < previous.low - config.patienceContainmentTolerance) return { status: "invalid", detail: "Close is not contained within the previous candle range." };
+  if (trend !== (direction === "long" ? "bullish" : "bearish")) return { status: "invalid", detail: `Patience trend mismatch: ${direction} patience requires a ${direction === "long" ? "bullish" : "bearish"} 15-minute trend.` };
+  if (direction === "long" ? candle.high > previous.high : candle.low < previous.low) {
+    return { status: "invalid", detail: direction === "long"
+      ? "Opposing patience shape: candidate high exceeded the preceding completed high."
+      : "Opposing patience shape: candidate low broke below the preceding completed low." };
+  }
   const range = candle.high - candle.low;
   if (range <= 0) return { status: "invalid", detail: "Zero-range candle." };
   const body = Math.abs(candle.close - candle.open) / range;
   const favorable = direction === "long" ? candle.close >= candle.low + range * .66 : candle.close <= candle.high - range * .66;
-  if (body < config.dojiBodyRatio) return { status: "waiting", detail: "Contained candle has insufficient directional intent." };
-  return favorable ? { status: "ready", detail: "Contained close rejects the level with directional intent." } : { status: "invalid", detail: "Contained close is adverse to the trend." };
+  if (body < config.dojiBodyRatio) return { status: "waiting", detail: "Patience candle has insufficient directional intent." };
+  return favorable ? { status: "ready", detail: "Trend-aligned patience candle holds the facing extreme using exact wick highs/lows." } : { status: "invalid", detail: "Patience candle close is adverse to the trend." };
 }
 
 export function patience(candle: Candle, direction: Direction): { status: PatienceStatus; detail: string } {
-  return patienceCandle({ ...candle, high: candle.high + 1, low: candle.low - 1 }, candle, direction, { ...({} as StrategyConfig), patienceContainmentTolerance: 0, dojiBodyRatio: .1 });
+  return patienceCandle(candle, candle, direction, { ...({} as StrategyConfig), dojiBodyRatio: .1 });
 }
 
 export function candleAlert(candle: Candle, direction: Direction, config?: Pick<StrategyConfig, "dojiBodyRatio">): CandleAlert {
@@ -168,7 +179,7 @@ export function fullDecision(candles: readonly Candle[], levels: SessionLevels, 
   const breakoutIndex = candles.findIndex(c => levels.orb ? (direction === "long" ? c.close > levels.orb.high : c.close < levels.orb.low) : false);
   const pullback = last && breakoutIndex >= 0 && breakoutIndex < candles.length - 1 ? pullbackConfluence(last, levels.orb, levels.levels, direction, config.levelTolerance) : false;
   const volume = volumeCheck(candles, config, direction, breakoutIndex >= 0 ? breakoutIndex : Math.max(0, candles.length - 2));
-  const patienceResult = patienceCandle(candles.at(-2), last, direction, config);
+  const patienceResult = patienceCandle(candles.at(-2), last, direction, config, trend.direction);
   const outsideNtz = !!levels.ntz && !!last && (direction === "long" ? last.close > levels.ntz.high : last.close < levels.ntz.low);
   const rules: RuleEvidence[] = [
     { key: "trend", label: "15-minute trend identified", passed: trend.direction === (direction === "long" ? "bullish" : "bearish"), detail: trend.evidence.join(", ") || "No trend evidence" },

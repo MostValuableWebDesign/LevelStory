@@ -189,10 +189,20 @@ export const GetMarketSnapshotResponse = zod.object({
   "detail": zod.string()
 }),
   "patience": zod.object({
-  "state": zod.enum(['WAITING FOR PATIENCE CANDLE', 'PATIENCE CANDLE FORMING', 'VALID PATIENCE CANDLE', 'TRIGGER CANDLE ACTIVE', 'ENTRY TRIGGERED', 'INVALIDATED', 'EXPIRED', 'AMBIGUOUS']),
+  "state": zod.enum(['WAITING_FOR_VALID_CONTEXT', 'WAITING_FOR_LEVEL', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_FORMING', 'PATIENCE_CANDLE_VALID', 'PATIENCE_TREND_MISMATCH', 'TRIGGER_CANDLE_ACTIVE', 'BREAK_DETECTED_WAITING_FOR_BUFFER', 'ENTRY_BUFFER_REACHED', 'ENTRY_TRIGGERED', 'OPPOSITE_SIDE_INVALIDATION', 'PATIENCE_CANDLE_EXPIRED', 'AMBIGUOUS_EVENT_ORDER', 'RISK_REJECTED']),
   "eligible": zod.boolean(),
   "eligibilityReason": zod.union([zod.literal('pullback'),zod.literal('consolidation'),zod.literal('ntz consolidation'),zod.literal(null)]).nullable(),
   "eligibilityTime": zod.string().nullable(),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "previousCandle": zod.union([zod.object({
+  "openTime": zod.string(),
+  "closeTime": zod.string(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "isComplete": zod.boolean()
+}),zod.null()]),
   "patienceCandle": zod.union([zod.object({
   "openTime": zod.string(),
   "closeTime": zod.string(),
@@ -211,6 +221,10 @@ export const GetMarketSnapshotResponse = zod.object({
   "close": zod.number(),
   "isComplete": zod.boolean()
 }),zod.null()]),
+  "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "entryBufferPrice": zod.number().nullable(),
+  "stopBufferTicks": zod.number(),
+  "strategyStopPrice": zod.number().nullable(),
   "triggerPrice": zod.number().nullable(),
   "stateTime": zod.string().nullable(),
   "detail": zod.string()

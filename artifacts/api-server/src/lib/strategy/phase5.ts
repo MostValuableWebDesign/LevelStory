@@ -1,16 +1,22 @@
 import type { PullbackAnalysis } from "./phase4.js";
 import type { NtzEvent, NtzRange } from "./levels.js";
-import type { Candle, Direction } from "./types.js";
+import type { Candle, Direction, TrendDirection } from "./types.js";
 
 export type PatienceState =
-  | "WAITING FOR PATIENCE CANDLE"
-  | "PATIENCE CANDLE FORMING"
-  | "VALID PATIENCE CANDLE"
-  | "TRIGGER CANDLE ACTIVE"
-  | "ENTRY TRIGGERED"
-  | "INVALIDATED"
-  | "EXPIRED"
-  | "AMBIGUOUS";
+  | "WAITING_FOR_VALID_CONTEXT"
+  | "WAITING_FOR_LEVEL"
+  | "WAITING_FOR_PATIENCE_CANDLE"
+  | "PATIENCE_CANDLE_FORMING"
+  | "PATIENCE_CANDLE_VALID"
+  | "PATIENCE_TREND_MISMATCH"
+  | "TRIGGER_CANDLE_ACTIVE"
+  | "BREAK_DETECTED_WAITING_FOR_BUFFER"
+  | "ENTRY_BUFFER_REACHED"
+  | "ENTRY_TRIGGERED"
+  | "OPPOSITE_SIDE_INVALIDATION"
+  | "PATIENCE_CANDLE_EXPIRED"
+  | "AMBIGUOUS_EVENT_ORDER"
+  | "RISK_REJECTED";
 
 export type PatienceEligibilityReason = "pullback" | "consolidation" | "ntz consolidation";
 export type PatienceEligibilityEvent = { time: number; reason: PatienceEligibilityReason; detail?: string };
@@ -32,8 +38,14 @@ export type PatienceAnalysis = {
   eligible: boolean;
   eligibilityReason: PatienceEligibilityReason | null;
   eligibilityTime: number | null;
+  trend: TrendDirection;
+  previousCandle: PatienceCandleSnapshot | null;
   patienceCandle: PatienceCandleSnapshot | null;
   triggerCandle: PatienceCandleSnapshot | null;
+  entryBufferTicks: number;
+  entryBufferPrice: number | null;
+  stopBufferTicks: number;
+  strategyStopPrice: number | null;
   triggerPrice: number | null;
   stateTime: number | null;
   detail: string;
@@ -42,17 +54,28 @@ export type PatienceAnalysis = {
 export type PatienceEngineOptions = {
   eligibilityEvents?: readonly PatienceEligibilityEvent[];
   intrabarEvidence?: readonly IntrabarEvidence[];
+  trend?: TrendDirection;
+  tickSize?: number;
+  entryBufferTicks?: number;
+  stopBufferTicks?: number;
+  validContext?: boolean;
 };
 
 const PATIENCE_STATES: readonly PatienceState[] = [
-  "WAITING FOR PATIENCE CANDLE",
-  "PATIENCE CANDLE FORMING",
-  "VALID PATIENCE CANDLE",
-  "TRIGGER CANDLE ACTIVE",
-  "ENTRY TRIGGERED",
-  "INVALIDATED",
-  "EXPIRED",
-  "AMBIGUOUS",
+  "WAITING_FOR_VALID_CONTEXT",
+  "WAITING_FOR_LEVEL",
+  "WAITING_FOR_PATIENCE_CANDLE",
+  "PATIENCE_CANDLE_FORMING",
+  "PATIENCE_CANDLE_VALID",
+  "PATIENCE_TREND_MISMATCH",
+  "TRIGGER_CANDLE_ACTIVE",
+  "BREAK_DETECTED_WAITING_FOR_BUFFER",
+  "ENTRY_BUFFER_REACHED",
+  "ENTRY_TRIGGERED",
+  "OPPOSITE_SIDE_INVALIDATION",
+  "PATIENCE_CANDLE_EXPIRED",
+  "AMBIGUOUS_EVENT_ORDER",
+  "RISK_REJECTED",
 ];
 
 export function patienceCandleEngine(
@@ -63,74 +86,93 @@ export function patienceCandleEngine(
   const sorted = [...candles].sort((first, second) => first.openTime - second.openTime);
   const completed = sorted.filter((candle) => candle.isComplete);
   const eligibility = [...(options.eligibilityEvents ?? [])].sort((first, second) => first.time - second.time);
-  if (!eligibility.length) return waiting("No qualifying pullback or consolidation has opened a patience-candle window.");
-
-  const candidates = completed
-    .map((candle, index) => ({ candle, index }))
-    .filter(({ candle, index }) => {
-      const previous = completed[index - 1];
-      return previous !== undefined
-        && eligibility.some((event) => event.time <= candle.openTime)
-        && contained(candle, previous);
-    });
-  const candidate = candidates.at(-1);
+  const trend = options.trend ?? (direction === "long" ? "bullish" : "bearish");
+  const tickSize = options.tickSize ?? 0.25;
+  const entryBufferTicks = options.entryBufferTicks ?? 4;
+  const stopBufferTicks = options.stopBufferTicks ?? 1;
+  validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
+  const validContext = options.validContext ?? eligibility.length > 0;
+  if (!validContext) return waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks);
+  if (!eligibility.length) return waiting("WAITING_FOR_LEVEL", "Valid pullback/consolidation context exists; waiting for a qualifying level interaction.", trend, entryBufferTicks, stopBufferTicks);
+  if (trend === "neutral") return waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1));
+  const latestEligibility = eligibility.at(-1)!;
+  const candidateIndexes = completed
+    .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
+    .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
+  const candidate = candidateIndexes.at(-1);
   if (candidate) {
-    const event = latestEligibilityBefore(eligibility, candidate.candle.openTime)!;
-    const patience = snapshot(candidate.candle);
+    const previous = completed[candidate.index - 1];
+    if (!previous) return waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event);
+    const event = candidate.event!;
+    const shapeValid = patienceShape(candidate.candle, previous, direction);
+    const trendValid = directionTrendMatches(direction, trend);
+    if (!trendValid || !shapeValid) {
+      return {
+        ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
+        patienceCandle: snapshot(candidate.candle),
+        stateTime: candidate.candle.closeTime,
+        detail: !trendValid
+          ? `${direction === "long" ? "Bullish" : "Bearish"} patience requires the established ${direction === "long" ? "bullish" : "bearish"} 15-minute trend; current trend is ${trend}.`
+          : `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
+      };
+    }
     const next = sorted.find((candle) => candle.openTime > candidate.candle.openTime);
+    const patience = snapshot(candidate.candle);
+    const entryBufferPrice = direction === "long"
+      ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
+      : roundPrice(candidate.candle.low - entryBufferTicks * tickSize, tickSize);
+    const strategyStopPrice = direction === "long"
+      ? roundPrice(candidate.candle.low - stopBufferTicks * tickSize, tickSize)
+      : roundPrice(candidate.candle.high + stopBufferTicks * tickSize, tickSize);
     if (!next) {
       return {
-        state: "VALID PATIENCE CANDLE",
-        eligible: true,
-        eligibilityReason: event.reason,
-        eligibilityTime: event.time,
+        ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
         patienceCandle: patience,
-        triggerCandle: null,
-        triggerPrice: null,
+        entryBufferPrice,
+        strategyStopPrice,
         stateTime: candidate.candle.closeTime,
-        detail: "Patience candle closed inside the previous completed candle range; only the immediate next candle may trigger.",
+        detail: `Completed ${direction === "long" ? "bullish" : "bearish"} patience candle accepted from exact wick highs/lows; entry waits for a ${entryBufferTicks}-tick confirmation buffer on the immediate next candle.`,
       };
     }
-
-    const immediate = next.openTime === candidate.candle.closeTime;
-    if (!immediate) {
+    if (next.openTime !== candidate.candle.closeTime) {
       return {
-        state: "EXPIRED",
-        eligible: true,
-        eligibilityReason: event.reason,
-        eligibilityTime: event.time,
+        ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
         patienceCandle: patience,
         triggerCandle: snapshot(next),
-        triggerPrice: null,
+        entryBufferPrice,
+        strategyStopPrice,
         stateTime: next.openTime,
-        detail: "The immediate next five-minute candle was not available; this setup is expired and requires a new patience pattern.",
+        detail: "The immediate next five-minute candle is missing; later candles cannot reuse this patience pattern.",
       };
     }
-    return evaluateTrigger(candidate.candle, next, direction, event, options.intrabarEvidence ?? []);
+    return evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
   }
 
   const forming = sorted.at(-1);
-  if (forming && !forming.isComplete && completed.length) {
-    const event = latestEligibilityBefore(eligibility, forming.openTime);
-    if (event) {
-      return {
-        state: "PATIENCE CANDLE FORMING",
-        eligible: true,
-        eligibilityReason: event.reason,
-        eligibilityTime: event.time,
-        patienceCandle: snapshot(forming),
-        triggerCandle: null,
-        triggerPrice: null,
-        stateTime: forming.openTime,
-        detail: "A patience candle is forming; wait for its complete close before validating containment.",
-      };
-    }
+  const event = forming ? latestEligibilityBefore(eligibility, forming.openTime) : latestEligibility;
+  const latestCompleted = completed.at(-1);
+  const latestPrevious = completed.at(-2);
+  if (latestCompleted && latestPrevious && event && !patienceShape(latestCompleted, latestPrevious, direction)) {
+    return {
+      ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
+      previousCandle: snapshot(latestPrevious),
+      patienceCandle: snapshot(latestCompleted),
+      stateTime: latestCompleted.closeTime,
+      detail: `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
+    };
   }
-
-  const event = eligibility.at(-1);
-  return event
-    ? waiting("A qualifying location was observed; waiting for a completely closed contained candle.", event)
-    : waiting("No qualifying pullback or consolidation has opened a patience-candle window.");
+  if (forming && !forming.isComplete && completed.length && event) {
+    return {
+      ...baseAnalysis("PATIENCE_CANDLE_FORMING", true, event, trend, entryBufferTicks, stopBufferTicks),
+      patienceCandle: snapshot(forming),
+      stateTime: forming.openTime,
+      detail: "A patience candle is forming; wait for its completed close before checking exact wick highs/lows and trend alignment.",
+    };
+  }
+  return waiting("WAITING_FOR_PATIENCE_CANDLE", "A qualifying level is recorded; waiting for a completed trend-aligned patience candle.", trend, entryBufferTicks, stopBufferTicks, latestEligibility);
 }
 
 export function phase5PatienceAnalysis(
@@ -140,6 +182,10 @@ export function phase5PatienceAnalysis(
   ntz: NtzRange | null,
   ntzEvents: readonly NtzEvent[] = [],
   minimumEligibilityTime?: number | null,
+  trend: TrendDirection = "neutral",
+  tickSize = 0.25,
+  entryBufferTicks = 4,
+  stopBufferTicks = 1,
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const eligibilityEvents: PatienceEligibilityEvent[] = [
@@ -168,7 +214,14 @@ export function phase5PatienceAnalysis(
       }
     }
   }
-  return patienceCandleEngine(candles, direction, { eligibilityEvents });
+  return patienceCandleEngine(candles, direction, {
+    eligibilityEvents,
+    trend,
+    tickSize,
+    entryBufferTicks,
+    stopBufferTicks,
+    validContext: pullback.status === "observed" || (ntz?.complete === true),
+  });
 }
 
 export function patienceStateLabels(): readonly PatienceState[] {
@@ -177,49 +230,97 @@ export function patienceStateLabels(): readonly PatienceState[] {
 
 function evaluateTrigger(
   patience: Candle,
+  previous: Candle,
   trigger: Candle,
   direction: Direction,
   eligibility: PatienceEligibilityEvent,
+  trend: TrendDirection,
+  tickSize: number,
+  entryBufferTicks: number,
+  stopBufferTicks: number,
   evidence: readonly IntrabarEvidence[],
 ): PatienceAnalysis {
   const intendedPrice = direction === "long" ? patience.high : patience.low;
   const oppositePrice = direction === "long" ? patience.low : patience.high;
-  const intendedTouched = direction === "long" ? trigger.high > intendedPrice : trigger.low < intendedPrice;
-  const oppositeTouched = direction === "long" ? trigger.low < oppositePrice : trigger.high > oppositePrice;
-  const gapIntended = direction === "long" ? trigger.open > intendedPrice : trigger.open < intendedPrice;
-  const gapOpposite = direction === "long" ? trigger.open < oppositePrice : trigger.open > oppositePrice;
+  const entryBufferPrice = direction === "long"
+    ? roundPrice(intendedPrice + entryBufferTicks * tickSize, tickSize)
+    : roundPrice(intendedPrice - entryBufferTicks * tickSize, tickSize);
+  const strategyStopPrice = direction === "long"
+    ? roundPrice(oppositePrice - stopBufferTicks * tickSize, tickSize)
+    : roundPrice(oppositePrice + stopBufferTicks * tickSize, tickSize);
+  const intendedTouched = direction === "long" ? trigger.high >= intendedPrice : trigger.low <= intendedPrice;
+  const bufferReached = direction === "long" ? trigger.high >= entryBufferPrice : trigger.low <= entryBufferPrice;
+  const oppositeTouched = direction === "long" ? trigger.low <= oppositePrice : trigger.high >= oppositePrice;
+  const gapBuffer = direction === "long" ? trigger.open >= entryBufferPrice : trigger.open <= entryBufferPrice;
+  const gapOpposite = direction === "long" ? trigger.open <= oppositePrice : trigger.open >= oppositePrice;
   const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
     eligible: true,
     eligibilityReason: eligibility.reason,
     eligibilityTime: eligibility.time,
+    trend,
+    previousCandle: snapshot(previous),
     patienceCandle: snapshot(patience),
     triggerCandle: snapshot(trigger),
+    entryBufferTicks,
+    entryBufferPrice,
+    stopBufferTicks,
+    strategyStopPrice,
     stateTime: trigger.openTime,
   };
-  if (gapOpposite || sequence === "opposite-first") {
-    return { ...base, state: "INVALIDATED", triggerPrice: oppositePrice, detail: "The immediate trigger candle broke the opposite side first; the patience setup cannot recover." };
+  if ((bufferReached && oppositeTouched) || (gapBuffer && gapOpposite) || (intendedTouched && oppositeTouched)) {
+    if (sequence === "opposite-first") {
+      return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate trigger candle broke the opposite patience extreme first; the confirmation buffer cannot restore this setup." };
+    }
+    if (!(sequence === "intended-first" && bufferReached)) {
+      return { ...base, state: "AMBIGUOUS_EVENT_ORDER", triggerPrice: null, detail: "The immediate trigger candle reached both the confirmation buffer and the opposite patience extreme, but available candle data cannot prove which occurred first; the setup is rejected." };
+    }
   }
-  if (gapIntended || sequence === "intended-first") {
-    return { ...base, state: "ENTRY TRIGGERED", triggerPrice: intendedPrice, detail: "The immediate next candle triggered intrabar in the intended direction; no candle close was required and no order was created." };
+  if (gapOpposite || (oppositeTouched && !bufferReached) || sequence === "opposite-first") {
+    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate trigger candle crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
   }
-  if (intendedTouched && oppositeTouched) {
-    return { ...base, state: "AMBIGUOUS", triggerPrice: null, detail: "Both patience-candle boundaries were touched, but available five-minute data cannot prove which occurred first; the setup is rejected." };
-  }
-  if (oppositeTouched) {
-    return { ...base, state: "INVALIDATED", triggerPrice: oppositePrice, detail: "The immediate trigger candle broke the opposite side; a later intended-side cross cannot restore this setup." };
+  if (bufferReached || gapBuffer) {
+    return {
+      ...base,
+      state: trigger.isComplete ? "ENTRY_TRIGGERED" : "ENTRY_BUFFER_REACHED",
+      triggerPrice: entryBufferPrice,
+      detail: trigger.isComplete
+        ? `The immediate next candle reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is triggered at ${entryBufferPrice}.`
+        : `The immediate next candle reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is pending the completed-candle record.`,
+    };
   }
   if (intendedTouched) {
-    return { ...base, state: "ENTRY TRIGGERED", triggerPrice: intendedPrice, detail: "The immediate next candle crossed the intended patience-candle boundary intrabar; no order was created." };
+    return {
+      ...base,
+      state: trigger.isComplete ? "PATIENCE_CANDLE_EXPIRED" : "BREAK_DETECTED_WAITING_FOR_BUFFER",
+      triggerPrice: null,
+      detail: trigger.isComplete
+        ? `The immediate next candle crossed the patience extreme but closed before reaching the full ${entryBufferTicks}-tick confirmation buffer; the setup expired.`
+        : `BREAK DETECTED — WAITING FOR CONFIRMATION BUFFER. The raw patience extreme was crossed, but the full ${entryBufferTicks}-tick buffer is not reached.`,
+    };
   }
   if (!trigger.isComplete) {
-    return { ...base, state: "TRIGGER CANDLE ACTIVE", triggerPrice: null, detail: "The immediate five-minute trigger candle is still active and has not crossed either boundary." };
+    return { ...base, state: "TRIGGER_CANDLE_ACTIVE", triggerPrice: null, detail: "The immediate five-minute trigger candle is active and has not crossed the patience extreme or opposite invalidation." };
   }
-  return { ...base, state: "EXPIRED", triggerPrice: null, detail: "The immediate next candle closed without breaking the intended patience-candle boundary; a new patience pattern is required." };
+  return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "The immediate next candle closed without reaching the patience confirmation buffer; later candles cannot reuse this pattern." };
 }
 
-function contained(candle: Candle, previous: Candle): boolean {
-  return candle.high <= previous.high && candle.low >= previous.low;
+function patienceShape(candle: Candle, previous: Candle, direction: Direction): boolean {
+  return direction === "long" ? candle.high <= previous.high : candle.low >= previous.low;
+}
+
+function directionTrendMatches(direction: Direction, trend: TrendDirection): boolean {
+  return direction === "long" ? trend === "bullish" : trend === "bearish";
+}
+
+function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
+  if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
+  if (!Number.isInteger(entryBufferTicks) || ![3, 4].includes(entryBufferTicks)) throw new Error("Patience entry confirmation buffer must be three or four ticks.");
+  if (!Number.isInteger(stopBufferTicks) || stopBufferTicks < 1) throw new Error("Patience stop buffer must be at least one tick.");
+}
+
+function roundPrice(price: number, tickSize: number): number {
+  return Number((Math.round(price / tickSize) * tickSize).toFixed(10));
 }
 
 function latestEligibilityBefore(events: readonly PatienceEligibilityEvent[], time: number): PatienceEligibilityEvent | undefined {
@@ -238,15 +339,45 @@ function snapshot(candle: Candle): PatienceCandleSnapshot {
   };
 }
 
-function waiting(detail: string, event?: PatienceEligibilityEvent): PatienceAnalysis {
+function baseAnalysis(
+  state: PatienceState,
+  eligible: boolean,
+  event: PatienceEligibilityEvent,
+  trend: TrendDirection,
+  entryBufferTicks: number,
+  stopBufferTicks: number,
+): PatienceAnalysis {
   return {
-    state: "WAITING FOR PATIENCE CANDLE",
-    eligible: event !== undefined,
-    eligibilityReason: event?.reason ?? null,
-    eligibilityTime: event?.time ?? null,
+    state,
+    eligible,
+    eligibilityReason: event.reason,
+    eligibilityTime: event.time,
+    trend,
+    previousCandle: null,
     patienceCandle: null,
     triggerCandle: null,
+    entryBufferTicks,
+    entryBufferPrice: null,
+    stopBufferTicks,
+    strategyStopPrice: null,
     triggerPrice: null,
+    stateTime: null,
+    detail: "",
+  };
+}
+
+function waiting(
+  state: PatienceState,
+  detail: string,
+  trend: TrendDirection,
+  entryBufferTicks: number,
+  stopBufferTicks: number,
+  event?: PatienceEligibilityEvent,
+): PatienceAnalysis {
+  return {
+    ...baseAnalysis(state, event !== undefined, event ?? { time: 0, reason: "pullback" }, trend, entryBufferTicks, stopBufferTicks),
+    eligibilityReason: event?.reason ?? null,
+    eligibilityTime: event?.time ?? null,
     stateTime: event?.time ?? null,
     detail,
   };

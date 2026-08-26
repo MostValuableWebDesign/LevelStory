@@ -26,7 +26,8 @@ export type StrategyConfig = {
   stopBuffer: number;
   runnerTriggerR: number;
   levelTolerance: number;
-  patienceContainmentTolerance: number;
+  patienceEntryBufferTicks: 3 | 4;
+  patienceStopBufferTicks: number;
   dojiBodyRatio: number;
   equivalentBodyTolerance: number;
   trendCandleCount: number;
@@ -92,7 +93,8 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,
   levelTolerance: 0.05,
-  patienceContainmentTolerance: 0,
+  patienceEntryBufferTicks: 4,
+  patienceStopBufferTicks: 1,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
   trendCandleCount: 8, // assumption: eight completed 15m candles
@@ -170,6 +172,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["maxPositionValue", config.maxPositionValue],
     ["maxRiskTrades", config.maxRiskTrades],
     ["runnerTriggerR", config.runnerTriggerR],
+    ["patienceStopBufferTicks", config.patienceStopBufferTicks],
     ["trendCandleCount", config.trendCandleCount],
     ["historicalLookbackTradingDays", config.historicalLookbackTradingDays],
     ["majorLevelMinReactions", config.majorLevelMinReactions],
@@ -210,7 +213,6 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["profitBuffer", config.profitBuffer],
     ["stopBuffer", config.stopBuffer],
     ["levelTolerance", config.levelTolerance],
-    ["patienceContainmentTolerance", config.patienceContainmentTolerance],
     ["dojiBodyRatio", config.dojiBodyRatio],
     ["equivalentBodyTolerance", config.equivalentBodyTolerance],
     ["trendEmaFlatThreshold", config.trendEmaFlatThreshold],
@@ -233,6 +235,12 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.phase7RunnerRetracementRatio !== 0.4) {
     throw new Error("Invalid strategy configuration: Phase 7 runner retracement must be 40%.");
+  }
+  if (!Number.isInteger(config.patienceEntryBufferTicks) || ![3, 4].includes(config.patienceEntryBufferTicks)) {
+    throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be three or four ticks.");
+  }
+  if (!Number.isInteger(config.patienceStopBufferTicks) || config.patienceStopBufferTicks < 1) {
+    throw new Error("Invalid strategy configuration: patienceStopBufferTicks must be at least one tick.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

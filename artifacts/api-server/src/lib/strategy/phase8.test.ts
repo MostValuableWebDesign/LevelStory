@@ -154,7 +154,7 @@ test("Phase 8 timeline is chronological and includes failed setup outcome", () =
     pullback: { status: "pending", events: [], evaluatedCandles: 0, maxCandles: 6, maxDurationMinutes: 30, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: 0, detail: "Waiting." },
     fibonacci: { direction: null, impulseLow: null, impulseHigh: null, breakoutTime: null, frozen: false, frozenAt: null, manualCorrection: false, levels: [], retracementPercent: null, classification: "unavailable", detail: "Unavailable." },
     volume: { baselineCandleCount: 6, recentSixAverage: null, breakoutVolume: null, breakoutRatio: null, supportingBreakoutVolume: false, averageImpulseVolume: null, pullbackAverageVolume: null, pullbackToBreakoutRatio: null, pullbackToImpulseRatio: null, pullbackToRecentRatio: null, opposingPullbackVolume: null, reversalWarning: null },
-    patience: { state: "AMBIGUOUS", eligible: false, eligibilityReason: null, eligibilityTime: null, patienceCandle: null, triggerCandle: null, triggerPrice: null, stateTime: null, detail: "Ambiguous." },
+    patience: { state: "AMBIGUOUS_EVENT_ORDER", eligible: false, eligibilityReason: null, eligibilityTime: null, trend: "neutral", previousCandle: null, patienceCandle: null, triggerCandle: null, entryBufferTicks: 4, entryBufferPrice: null, stopBufferTicks: 1, strategyStopPrice: null, triggerPrice: null, stateTime: null, detail: "Ambiguous." },
     evaluation,
     riskPlan: riskPlan({ allowed: false }),
     direction: "long",

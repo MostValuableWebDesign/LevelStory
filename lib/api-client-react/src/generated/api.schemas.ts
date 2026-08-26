@@ -602,14 +602,20 @@ export type PatienceAnalysisState = typeof PatienceAnalysisState[keyof typeof Pa
 
 
 export const PatienceAnalysisState = {
-  WAITING_FOR_PATIENCE_CANDLE: 'WAITING FOR PATIENCE CANDLE',
-  PATIENCE_CANDLE_FORMING: 'PATIENCE CANDLE FORMING',
-  VALID_PATIENCE_CANDLE: 'VALID PATIENCE CANDLE',
-  TRIGGER_CANDLE_ACTIVE: 'TRIGGER CANDLE ACTIVE',
-  ENTRY_TRIGGERED: 'ENTRY TRIGGERED',
-  INVALIDATED: 'INVALIDATED',
-  EXPIRED: 'EXPIRED',
-  AMBIGUOUS: 'AMBIGUOUS',
+  WAITING_FOR_VALID_CONTEXT: 'WAITING_FOR_VALID_CONTEXT',
+  WAITING_FOR_LEVEL: 'WAITING_FOR_LEVEL',
+  WAITING_FOR_PATIENCE_CANDLE: 'WAITING_FOR_PATIENCE_CANDLE',
+  PATIENCE_CANDLE_FORMING: 'PATIENCE_CANDLE_FORMING',
+  PATIENCE_CANDLE_VALID: 'PATIENCE_CANDLE_VALID',
+  PATIENCE_TREND_MISMATCH: 'PATIENCE_TREND_MISMATCH',
+  TRIGGER_CANDLE_ACTIVE: 'TRIGGER_CANDLE_ACTIVE',
+  BREAK_DETECTED_WAITING_FOR_BUFFER: 'BREAK_DETECTED_WAITING_FOR_BUFFER',
+  ENTRY_BUFFER_REACHED: 'ENTRY_BUFFER_REACHED',
+  ENTRY_TRIGGERED: 'ENTRY_TRIGGERED',
+  OPPOSITE_SIDE_INVALIDATION: 'OPPOSITE_SIDE_INVALIDATION',
+  PATIENCE_CANDLE_EXPIRED: 'PATIENCE_CANDLE_EXPIRED',
+  AMBIGUOUS_EVENT_ORDER: 'AMBIGUOUS_EVENT_ORDER',
+  RISK_REJECTED: 'RISK_REJECTED',
 } as const;
 
 /**
@@ -624,6 +630,23 @@ export const PatienceAnalysisEligibilityReason = {
   ntz_consolidation: 'ntz consolidation',
 } as const;
 
+export type PatienceAnalysisTrend = typeof PatienceAnalysisTrend[keyof typeof PatienceAnalysisTrend];
+
+
+export const PatienceAnalysisTrend = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+export type PatienceAnalysisEntryBufferTicks = typeof PatienceAnalysisEntryBufferTicks[keyof typeof PatienceAnalysisEntryBufferTicks];
+
+
+export const PatienceAnalysisEntryBufferTicks = {
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
 export interface PatienceAnalysis {
   state: PatienceAnalysisState;
   eligible: boolean;
@@ -631,8 +654,16 @@ export interface PatienceAnalysis {
   eligibilityReason: PatienceAnalysisEligibilityReason;
   /** @nullable */
   eligibilityTime: string | null;
+  trend: PatienceAnalysisTrend;
+  previousCandle: PatienceCandle | null;
   patienceCandle: PatienceCandle | null;
   triggerCandle: PatienceCandle | null;
+  entryBufferTicks: PatienceAnalysisEntryBufferTicks;
+  /** @nullable */
+  entryBufferPrice: number | null;
+  stopBufferTicks: number;
+  /** @nullable */
+  strategyStopPrice: number | null;
   /** @nullable */
   triggerPrice: number | null;
   /** @nullable */

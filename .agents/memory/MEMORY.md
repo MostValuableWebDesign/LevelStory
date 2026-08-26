@@ -2,3 +2,4 @@
 - [TypeScript test execution](typescript-test-execution.md) — source files use .js ESM specifiers, so direct Node test execution cannot resolve them; run tests through the workspace TypeScript runner.
 - [OpenAPI regeneration restart](openapi-regeneration-restart.md) — restart Vite after Orval regeneration if HMR retains missing generated-file errors.
 - [Journal schema preservation](journal-schema-preservation.md) — adding uniqueness to populated journal tables may prompt destructive truncation; preserve history with non-destructive DDL.
+- [Patience buffer semantics](patience-buffer-semantics.md) — raw wick breaks never bypass the configured confirmation buffer; only a fully buffered immediate candle can trigger.

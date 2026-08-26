@@ -43,14 +43,20 @@ function major(price = 10): MajorLevel {
   };
 }
 
-function patience(state: "ENTRY TRIGGERED" | "VALID PATIENCE CANDLE" | "EXPIRED" | "AMBIGUOUS" = "ENTRY TRIGGERED") {
+function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED") {
   return {
     state,
     eligible: true,
     eligibilityReason: "pullback" as const,
     eligibilityTime: 1,
+    trend: "bullish" as const,
+    previousCandle: { openTime: 1, closeTime: 2, open: 10, high: 10.4, low: 9.6, close: 10.1, isComplete: true },
     patienceCandle: { openTime: 2, closeTime: 3, open: 10, high: 10.2, low: 9.8, close: 10.15, isComplete: true },
     triggerCandle: { openTime: 3, closeTime: 4, open: 10.15, high: 10.3, low: 10.1, close: 10.25, isComplete: true },
+    entryBufferTicks: 4,
+    entryBufferPrice: 11.2,
+    stopBufferTicks: 1,
+    strategyStopPrice: 9.55,
     triggerPrice: 10.2,
     stateTime: 3,
     detail: `Patience state ${state}.`,
@@ -138,8 +144,8 @@ function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
       opposingPullbackVolume: 50,
       reversalWarning: null,
     },
-    patience: patience(),
-    reversalPatience: patience("VALID PATIENCE CANDLE"),
+     patience: patience(),
+     reversalPatience: patience("PATIENCE_CANDLE_VALID"),
     trend: { direction: "bullish", structure: "higher highs / higher lows" },
     riskApproved: true,
     config,
@@ -163,8 +169,8 @@ test("ORB continuation never qualifies when any mandatory gate fails", () => {
     ["pullback", { pullback: { ...baseContext().pullback, events: [] } }],
     ["volume", { volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" } }],
     ["context", { fibonacci: { ...baseContext().fibonacci, frozen: false, levels: [] } }],
-    ["patience", { patience: patience("VALID PATIENCE CANDLE") }],
-    ["immediate trigger", { patience: patience("EXPIRED") }],
+     ["patience", { patience: patience("PATIENCE_CANDLE_VALID") }],
+     ["immediate trigger", { patience: patience("PATIENCE_CANDLE_EXPIRED") }],
     ["risk", { riskApproved: false }],
   ];
   for (const [name, overrides] of gates) {
@@ -210,7 +216,7 @@ test("extended consolidation qualifies with a breakout and NTZ-eligible patience
   const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
   const result = evaluateExtendedNtzConsolidationBreakout(baseContext({
     candles,
-    patience: { ...patience(), eligibilityReason: "ntz consolidation" },
+     patience: { ...patience(), eligibilityReason: "ntz consolidation" },
   }));
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);
@@ -239,7 +245,7 @@ test("bonus reversal exposes independent evidence and remains alert-only", () =>
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     trend: { direction: "bullish", structure: "higher highs / higher lows" },
-    reversalPatience: patience("VALID PATIENCE CANDLE"),
+     reversalPatience: patience("PATIENCE_CANDLE_VALID"),
   });
   const evidence = detectReversalEvidence(context);
   assert.equal(evidence.alert, true);
@@ -268,7 +274,7 @@ test("bonus reversal can qualify only as an alert-only descriptive setup", () =>
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     trend: { direction: "bearish", structure: "lower highs / lower lows" },
     breakout: { ...baseContext().breakout, direction: "long" },
-    reversalPatience: patience("ENTRY TRIGGERED"),
+     reversalPatience: patience("ENTRY_TRIGGERED"),
   });
   const result = evaluateBonusReversal(context);
   assert.equal(result.decision, "SETUP QUALIFIED");
@@ -279,7 +285,7 @@ test("bonus reversal can qualify only as an alert-only descriptive setup", () =>
 test("reversal requires directional confirmation, patience, immediate trigger, and risk", () => {
   const result = evaluateBonusReversal(baseContext({
     candles: [candle(0, 10, 10.04, 9.96, 10.005)],
-    reversalPatience: patience("EXPIRED"),
+     reversalPatience: patience("PATIENCE_CANDLE_EXPIRED"),
     riskApproved: false,
     trend: { direction: "neutral", structure: "mixed structure" },
   }));
@@ -289,9 +295,9 @@ test("reversal requires directional confirmation, patience, immediate trigger, a
 });
 
 test("Phase 5 expiration and ambiguity propagate to setup decisions", () => {
-  const expired = phase6Analysis(baseContext({ patience: patience("EXPIRED") }));
+  const expired = phase6Analysis(baseContext({ patience: patience("PATIENCE_CANDLE_EXPIRED") }));
   assert.equal(expired.evaluations[0].decision, "EXPIRED");
-  const ambiguous = phase6Analysis(baseContext({ patience: patience("AMBIGUOUS") }));
+  const ambiguous = phase6Analysis(baseContext({ patience: patience("AMBIGUOUS_EVENT_ORDER") }));
   assert.equal(ambiguous.evaluations[0].decision, "AMBIGUOUS");
   assert.ok(["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "EXPIRED", "AMBIGUOUS"].includes(ambiguous.decision));
 });

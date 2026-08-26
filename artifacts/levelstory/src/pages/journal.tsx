@@ -194,6 +194,10 @@ function JournalCard({ entry, selected, onSelect, onDelete }: { entry: JournalEn
 
 function JournalDetail({ entry }: { entry: JournalEntry }) {
   const rules = [...(entry.passedRules ?? []), ...(entry.failedRules ?? [])];
+  const patienceState = evidenceText(entry.patience, "state") ?? "—";
+  const entryBuffer = evidenceNumber(entry.patience, "entryBufferPrice");
+  const thesisStop = evidenceNumber(entry.patience, "strategyStopPrice");
+  const patienceDetail = evidenceText(entry.patience, "detail") ?? "No patience evidence attached.";
   return <div data-testid="journal-detail">
     <PanelTitle eyebrow="Selected record / shadow only" title={`${entry.symbol} · ${entry.setup}`} right={<span className="rounded-sm bg-secondary px-2 py-1 text-[10px] font-bold uppercase">{entry.outcome ?? "manual review"}</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-6">
@@ -203,6 +207,12 @@ function JournalDetail({ entry }: { entry: JournalEntry }) {
       <Metric label="Target" value={entry.profitTarget?.toFixed(2) ?? "—"} />
       <Metric label="MFE / MAE" value={`${entry.maximumFavorableExcursion?.toFixed(2) ?? "—"} / ${entry.maximumAdverseExcursion?.toFixed(2) ?? "—"}`} />
       <Metric label="Net result" value={entry.netPnl == null ? "No fill" : `$${entry.netPnl.toFixed(2)}`} />
+    </div>
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+      <Metric label="Patience state" value={patienceState.replaceAll("_", " ")} />
+      <Metric label="Buffered entry" value={entryBuffer == null ? "—" : entryBuffer.toFixed(2)} />
+      <Metric label="Buffered thesis stop" value={thesisStop == null ? "—" : thesisStop.toFixed(2)} />
+      <Metric label="Timing evidence" value={patienceDetail} />
     </div>
     <div className="grid gap-5 border-t border-border p-5 lg:grid-cols-[1.2fr_.8fr] sm:p-6">
       <div>
@@ -233,4 +243,12 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 function FilterField({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">{label}</span>{children}</label>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">{label}</span>{children}</label>; }
 function money(value: number | null) { return value == null ? "—" : `$${value.toFixed(2)}`; }
+function evidenceText(value: { [key: string]: unknown } | null, key: string): string | null {
+  const candidate = value?.[key];
+  return typeof candidate === "string" ? candidate : null;
+}
+function evidenceNumber(value: { [key: string]: unknown } | null, key: string): number | null {
+  const candidate = value?.[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+}
 function EmptyJournal() { return <div className="flex min-h-[420px] flex-col items-center justify-center px-8 text-center" data-testid="empty-journal"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20 text-foreground"><BookOpen size={24} /></div><h3 className="display text-xl font-bold">No setup records match.</h3><p className="mt-2 max-w-xs text-sm leading-6 text-muted-foreground">Adjust the filters or create a manual shadow review to give the record room something real to learn from.</p></div>; }

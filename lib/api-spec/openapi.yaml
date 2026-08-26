@@ -880,14 +880,20 @@ components:
         state:
           type: string
           enum:
-            - WAITING FOR PATIENCE CANDLE
-            - PATIENCE CANDLE FORMING
-            - VALID PATIENCE CANDLE
-            - TRIGGER CANDLE ACTIVE
-            - ENTRY TRIGGERED
-            - INVALIDATED
-            - EXPIRED
-            - AMBIGUOUS
+            - WAITING_FOR_VALID_CONTEXT
+            - WAITING_FOR_LEVEL
+            - WAITING_FOR_PATIENCE_CANDLE
+            - PATIENCE_CANDLE_FORMING
+            - PATIENCE_CANDLE_VALID
+            - PATIENCE_TREND_MISMATCH
+            - TRIGGER_CANDLE_ACTIVE
+            - BREAK_DETECTED_WAITING_FOR_BUFFER
+            - ENTRY_BUFFER_REACHED
+            - ENTRY_TRIGGERED
+            - OPPOSITE_SIDE_INVALIDATION
+            - PATIENCE_CANDLE_EXPIRED
+            - AMBIGUOUS_EVENT_ORDER
+            - RISK_REJECTED
         eligible:
           type: boolean
         eligibilityReason:
@@ -895,6 +901,13 @@ components:
           enum: [pullback, consolidation, "ntz consolidation", null]
         eligibilityTime:
           type: ["string", "null"]
+        trend:
+          type: string
+          enum: [bullish, bearish, neutral]
+        previousCandle:
+          oneOf:
+            - $ref: "#/components/schemas/PatienceCandle"
+            - type: "null"
         patienceCandle:
           oneOf:
             - $ref: "#/components/schemas/PatienceCandle"
@@ -903,13 +916,22 @@ components:
           oneOf:
             - $ref: "#/components/schemas/PatienceCandle"
             - type: "null"
+        entryBufferTicks:
+          type: number
+          enum: [3, 4]
+        entryBufferPrice:
+          type: ["number", "null"]
+        stopBufferTicks:
+          type: number
+        strategyStopPrice:
+          type: ["number", "null"]
         triggerPrice:
           type: ["number", "null"]
         stateTime:
           type: ["string", "null"]
         detail:
           type: string
-      required: [state, eligible, eligibilityReason, eligibilityTime, patienceCandle, triggerCandle, triggerPrice, stateTime, detail]
+      required: [state, eligible, eligibilityReason, eligibilityTime, trend, previousCandle, patienceCandle, triggerCandle, entryBufferTicks, entryBufferPrice, stopBufferTicks, strategyStopPrice, triggerPrice, stateTime, detail]
     SetupRule:
       type: object
       properties:

@@ -153,8 +153,14 @@ export type MarketSnapshot = {
     eligible: boolean;
     eligibilityReason: PatienceEligibilityReason | null;
     eligibilityTime: string | null;
+    trend: "bullish" | "bearish" | "neutral";
+    previousCandle: PatienceCandleSummary | null;
     patienceCandle: PatienceCandleSummary | null;
     triggerCandle: PatienceCandleSummary | null;
+    entryBufferTicks: number;
+    entryBufferPrice: number | null;
+    stopBufferTicks: number;
+    strategyStopPrice: number | null;
     triggerPrice: number | null;
     stateTime: string | null;
     detail: string;
@@ -415,9 +421,12 @@ export function createMarketSnapshot(
     levels.ntz,
     levels.ntzEvents,
     breakout.detected ? breakout.time : Number.POSITIVE_INFINITY,
+    trend.direction,
+    specification.tickSize,
+    config.patienceEntryBufferTicks,
+    config.patienceStopBufferTicks,
   );
-  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
-  const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification, {
+  const plan = buildRiskPlan(price, direction, levels, patience, riskInput, config, specification, {
     ...phase7Input,
     observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
     liquidity: current?.volume,
@@ -425,8 +434,12 @@ export function createMarketSnapshot(
   });
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
   const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
+  const evaluatedPatience: PatienceAnalysis = !riskGateAllowed && patience.entryBufferPrice !== null
+    ? { ...patience, state: "RISK_REJECTED", detail: `${patience.detail} Risk controls rejected the buffered plan; no shadow entry is permitted.` }
+    : patience;
+  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, evaluatedPatience.state);
   const reversalDirection: Direction = patienceDirection === "long" ? "short" : "long";
-  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents);
+  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents, undefined, trend.direction, specification.tickSize, config.patienceEntryBufferTicks, config.patienceStopBufferTicks);
   const setupAnalysis = phase6Analysis({
     candles: regular,
     levels,
@@ -434,7 +447,7 @@ export function createMarketSnapshot(
     pullback,
     fibonacci,
     volume: volumeAnalysis,
-    patience,
+    patience: evaluatedPatience,
     reversalPatience,
     trend,
     riskApproved: riskGateAllowed,
@@ -451,7 +464,7 @@ export function createMarketSnapshot(
     pullback,
     fibonacci,
     volume: volumeAnalysis,
-    patience,
+    patience: evaluatedPatience,
     evaluation: selectedEvaluation,
     riskPlan: plan,
     direction: selectedEvaluation.direction ?? direction,
@@ -579,7 +592,7 @@ export function createMarketSnapshot(
        qualifyingLevelCount: pullback.qualifyingLevelCount,
        detail: pullback.detail,
      },
-      patience: toApiPatience(patience),
+      patience: toApiPatience(evaluatedPatience),
      fibonacci: {
        direction: fibonacci.direction,
        impulseLow: fibonacci.impulseLow,
@@ -636,17 +649,18 @@ export function createMarketSnapshot(
 }
 
 function buildRiskPlan(
-  entry: number,
+  currentPrice: number,
   direction: Direction,
   levels: ReturnType<typeof sessionLevels>,
+  patience: PatienceAnalysis,
   input: RiskInput | undefined,
   config: StrategyConfig,
   specification: FuturesContractSpecification,
   phase7Input?: Phase7Input,
 ) {
   const risk = input ?? { accountSize: 25_000, riskPercent: 0.5, maxDailyLoss: 500, dailyLossUsed: 0, isLocked: false };
-  const edge = direction === "long" ? levels.orb?.high : levels.orb?.low;
-  const thesisStop = edge === undefined ? null : roundToTick(direction === "long" ? edge - config.stopBuffer : edge + config.stopBuffer, specification);
+  const entry = patience.entryBufferPrice ?? currentPrice;
+  const thesisStop = patience.strategyStopPrice;
   if (thesisStop === null) {
     return buildPhase7RiskPlan(
       entry,
@@ -657,7 +671,8 @@ function buildRiskPlan(
       specification,
     );
   }
-  const catastropheStop = roundToTick(direction === "long" ? thesisStop - 0.5 : thesisStop + 0.5, specification);
+  const catastropheOffset = Math.max(config.stopBuffer, specification.tickSize);
+  const catastropheStop = roundToTick(direction === "long" ? thesisStop - catastropheOffset : thesisStop + catastropheOffset, specification);
   return buildPhase7RiskPlan(
     entry,
     direction,
@@ -760,8 +775,14 @@ function toApiPatience(analysis: PatienceAnalysis): MarketSnapshot["patience"] {
     eligible: analysis.eligible,
     eligibilityReason: analysis.eligibilityReason,
     eligibilityTime: analysis.eligibilityTime === null ? null : new Date(analysis.eligibilityTime).toISOString(),
+    trend: analysis.trend,
+    previousCandle: toApiPatienceCandle(analysis.previousCandle),
     patienceCandle: toApiPatienceCandle(analysis.patienceCandle),
     triggerCandle: toApiPatienceCandle(analysis.triggerCandle),
+    entryBufferTicks: analysis.entryBufferTicks,
+    entryBufferPrice: analysis.entryBufferPrice,
+    stopBufferTicks: analysis.stopBufferTicks,
+    strategyStopPrice: analysis.strategyStopPrice,
     triggerPrice: analysis.triggerPrice,
     stateTime: analysis.stateTime === null ? null : new Date(analysis.stateTime).toISOString(),
     detail: analysis.detail,

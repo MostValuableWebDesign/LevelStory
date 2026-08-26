@@ -254,20 +254,27 @@ function PatiencePanel({ snapshot }: { snapshot: MarketSnapshot }) {
   const patience = snapshot.patience;
   const candle = patience.patienceCandle;
   const trigger = patience.triggerCandle;
-  const active = patience.state === "ENTRY TRIGGERED" || patience.state === "TRIGGER CANDLE ACTIVE";
-  const warning = patience.state === "INVALIDATED" || patience.state === "EXPIRED" || patience.state === "AMBIGUOUS";
+  const active = patience.state === "ENTRY_TRIGGERED" || patience.state === "ENTRY_BUFFER_REACHED" || patience.state === "TRIGGER_CANDLE_ACTIVE";
+  const warning = ["PATIENCE_TREND_MISMATCH", "BREAK_DETECTED_WAITING_FOR_BUFFER", "OPPOSITE_SIDE_INVALIDATION", "PATIENCE_CANDLE_EXPIRED", "AMBIGUOUS_EVENT_ORDER", "RISK_REJECTED"].includes(patience.state);
   return <Panel className={active ? "border-[hsl(var(--positive)/.3)]" : warning ? "border-destructive/30" : ""}>
-    <PanelTitle eyebrow="Phase 5 / exact timing" title="Patience-candle engine" right={<span className={`text-[10px] font-bold uppercase ${active ? "status-positive" : warning ? "status-negative" : "text-muted-foreground"}`} data-testid="patience-state">{patience.state}</span>} />
+    <PanelTitle eyebrow="Phase 5 / exact timing" title="Patience-candle engine" right={<span className={`text-[10px] font-bold uppercase ${active ? "status-positive" : warning ? "status-negative" : "text-muted-foreground"}`} data-testid="patience-state">{formatPatienceState(patience.state)}</span>} />
     <div className="border-t border-border p-5 sm:p-6">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Eligibility</div><div className="mt-1 text-xs font-semibold uppercase">{patience.eligibilityReason ?? "Not opened"}</div><div className="mt-1 text-[10px] text-muted-foreground">{patience.eligibilityTime ? new Date(patience.eligibilityTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
-        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Patience range</div><div className="mono mt-1 text-sm">{candle ? `${candle.low.toFixed(2)} – ${candle.high.toFixed(2)}` : "—"}</div><div className="mt-1 text-[10px] text-muted-foreground">{candle?.isComplete ? "Closed and contained" : "Still forming"}</div></div>
-        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Trigger price</div><div className="mono mt-1 text-sm">{formatPrice(patience.triggerPrice)}</div><div className="mt-1 text-[10px] text-muted-foreground">{trigger ? "Immediate next candle" : "No trigger candle"}</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">15m trend</div><div className="mt-1 text-xs font-semibold uppercase">{patience.trend === "neutral" ? "WAITING — TREND UNCLEAR" : patience.trend}</div><div className="mt-1 text-[10px] text-muted-foreground">Trend-aligned only</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Preceding range</div><div className="mono mt-1 text-sm">{patience.previousCandle ? `${patience.previousCandle.low.toFixed(2)} – ${patience.previousCandle.high.toFixed(2)}` : "—"}</div><div className="mt-1 text-[10px] text-muted-foreground">Exact wick bounds</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Patience range</div><div className="mono mt-1 text-sm">{candle ? `${candle.low.toFixed(2)} – ${candle.high.toFixed(2)}` : "—"}</div><div className="mt-1 text-[10px] text-muted-foreground">{candle?.isComplete ? "Closed · facing extreme held" : "Still forming"}</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Entry buffer</div><div className="mono mt-1 text-sm">{formatPrice(patience.entryBufferPrice)}</div><div className="mt-1 text-[10px] text-muted-foreground">{patience.entryBufferTicks} ticks · immediate candle</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Thesis stop</div><div className="mono mt-1 text-sm">{formatPrice(patience.strategyStopPrice)}</div><div className="mt-1 text-[10px] text-muted-foreground">{patience.stopBufferTicks} tick beyond opposite extreme</div></div>
       </div>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">{patience.detail}</p>
-      <LockedNote>Timing state is descriptive shadow analysis only. `ENTRY TRIGGERED` never creates a live or paper order.</LockedNote>
+      <LockedNote>Timing state is descriptive shadow analysis only. ENTRY TRIGGERED never creates a live or paper order.</LockedNote>
     </div>
   </Panel>;
+}
+
+function formatPatienceState(state: string): string {
+  return state.replaceAll("_", " ");
 }
 
 function SetupEnginesPanel({ snapshot }: { snapshot: MarketSnapshot }) {

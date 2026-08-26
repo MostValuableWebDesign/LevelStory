@@ -119,7 +119,7 @@ The normal setup must follow this sequence:
 
 No single signal, level touch, Fibonacci touch, or checklist can skip a required step.
 
-The ORB quality lifecycle must not treat every movement beyond the range as a breakout. Completed five-minute candles are classified through the exact states `ORB_FORMING`, `INSIDE_ORB`, `ORB_PROBE_WAIT`, `WEAK_BREAK_WAIT`, `BREAKOUT_CANDIDATE`, `WAITING_FOR_CONTINUATION`, `QUALIFIED_BREAKOUT`, `WAITING_FOR_PULLBACK`, `PULLBACK_IN_PROGRESS`, `WAITING_FOR_PATIENCE_CANDLE`, `PATIENCE_CANDLE_VALID`, `TRIGGER_CANDLE_ACTIVE`, `ENTRY_TRIGGERED`, `BREAKOUT_FAILED`, and `SETUP_EXPIRED`.
+The ORB quality lifecycle must not treat every movement beyond the range as a breakout. Completed five-minute candles are classified through the exact states `ORB_FORMING`, `INSIDE_ORB`, `ORB_PROBE_WAIT`, `WEAK_BREAK_WAIT`, `BREAKOUT_CANDIDATE`, `WAITING_FOR_CONTINUATION`, `QUALIFIED_BREAKOUT`, `WAITING_FOR_PULLBACK`, `PULLBACK_IN_PROGRESS`, `WAITING_FOR_PATIENCE_CANDLE`, `PATIENCE_CANDLE_VALID`, `TRIGGER_CANDLE_ACTIVE`, `BREAK_DETECTED_WAITING_FOR_BUFFER`, `ENTRY_BUFFER_REACHED`, `ENTRY_TRIGGERED`, `BREAKOUT_FAILED`, and `SETUP_EXPIRED`.
 
 - A probe or weak break never starts pullback, Fibonacci, patience, or entry evaluation; later strong pushes may qualify in either direction.
 - Initial quality defaults are configurable assumptions: meaningful distance is the greater of two futures ticks and 0.10 ATR, breakout volume is at least 1.25 times the previous six completed candles, directional body is at least 60% of range, and the close is in the outer 25% of the candle.
@@ -168,22 +168,34 @@ The product must support a future/manual swing-point correction flow. Manual hig
 
 ## 11. Patience candle
 
-The patience-candle evaluator must use completed candles and expose states such as:
+The patience-candle evaluator must use completed candles and expose the exact states:
 
-- waiting;
-- forming;
-- ready/valid;
-- invalid.
+- `WAITING_FOR_VALID_CONTEXT`;
+- `WAITING_FOR_LEVEL`;
+- `WAITING_FOR_PATIENCE_CANDLE`;
+- `PATIENCE_CANDLE_FORMING`;
+- `PATIENCE_CANDLE_VALID`;
+- `PATIENCE_TREND_MISMATCH`;
+- `TRIGGER_CANDLE_ACTIVE`;
+- `BREAK_DETECTED_WAITING_FOR_BUFFER`;
+- `ENTRY_BUFFER_REACHED`;
+- `ENTRY_TRIGGERED`;
+- `OPPOSITE_SIDE_INVALIDATION`;
+- `PATIENCE_CANDLE_EXPIRED`;
+- `AMBIGUOUS_EVENT_ORDER`;
+- `RISK_REJECTED`.
 
 A valid patience candle must:
 
-- occur after the required pullback/confluence event;
-- be checked against the previous candle’s range using the configured containment tolerance;
-- show directional rejection/intent consistent with the candidate trend;
-- pass the configured body/doji rule;
+- be completed and occur after valid pullback/consolidation context near a qualifying level;
+- require an established bullish 15-minute trend for bullish patience and a bearish 15-minute trend for bearish patience;
+- use exact completed-candle wick highs and lows: bullish candidate high `<=` preceding completed high, with no lower-low restriction; bearish candidate low `>=` preceding completed low, with no higher-high restriction;
+- show directional rejection/intent consistent with the candidate trend and pass the configured body/doji rule;
 - be closed before it can pass.
 
-The chart must make the previous and patience candles identifiable.
+Neutral trend must display `WAITING — TREND UNCLEAR`. An opposing shape is trend-mismatch/reversal evidence, not ordinary continuation patience. The chart must make the preceding and patience candles identifiable.
+
+The immediate next candle alone may trigger. Entry is the patience extreme plus a validated three- or four-tick confirmation buffer (default four ticks) for the futures contract. A raw extreme cross before the full buffer is `BREAK_DETECTED_WAITING_FOR_BUFFER`; if the buffer is not reached before that candle closes, the setup expires. A later candle cannot reuse the pattern. The thesis stop is one validated tick beyond the opposite patience extreme; the catastrophe stop remains active. Risk uses the buffered entry-to-buffered thesis-stop distance plus slippage and round-trip fees, floors whole contracts, and rejects the setup when one contract exceeds allowed risk.
 
 ## 12. Level Story
 
@@ -262,9 +274,9 @@ The risk model must support validated, editable assumptions for:
 Quantity is derived from risk, not chosen arbitrarily:
 
 ```text
-dollar risk = account size × risk percentage
-share/contract quantity =
-  floor(dollar risk / absolute(entry - catastrophe stop))
+  dollar risk = account size × risk percentage
+  share/contract quantity =
+   floor(dollar risk / buffered entry-to-buffered thesis-stop risk)
 ```
 
 The evaluator must block zero/negative/undefined stop distance and any plan that violates account, daily loss, trade-count, position-size, liquidity, spread, stale-data, duplicate, averaging-down, or kill-switch rules.
@@ -278,7 +290,7 @@ Every qualified plan must identify:
 - completed-close invalidation behavior;
 - stop distance and dollar risk.
 
-The catastrophe stop is the sizing boundary. A thesis stop invalidates the setup thesis. These must not be silently conflated.
+The buffered thesis stop invalidates the setup thesis and is the sizing boundary for this patience strategy. The catastrophe stop remains a separate always-active hard safety boundary. These must not be silently conflated.
 
 ### 15.4 Profit buffer, partial, and runner
 

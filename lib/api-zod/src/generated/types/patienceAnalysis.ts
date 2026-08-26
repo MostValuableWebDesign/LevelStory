@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PatienceAnalysisEligibilityReason } from './patienceAnalysisEligibilityReason';
+import type { PatienceAnalysisEntryBufferTicks } from './patienceAnalysisEntryBufferTicks';
 import type { PatienceAnalysisState } from './patienceAnalysisState';
+import type { PatienceAnalysisTrend } from './patienceAnalysisTrend';
 import type { PatienceCandle } from './patienceCandle';
 
 export interface PatienceAnalysis {
@@ -16,8 +18,16 @@ export interface PatienceAnalysis {
   eligibilityReason: PatienceAnalysisEligibilityReason;
   /** @nullable */
   eligibilityTime: string | null;
+  trend: PatienceAnalysisTrend;
+  previousCandle: PatienceCandle | null;
   patienceCandle: PatienceCandle | null;
   triggerCandle: PatienceCandle | null;
+  entryBufferTicks: PatienceAnalysisEntryBufferTicks;
+  /** @nullable */
+  entryBufferPrice: number | null;
+  stopBufferTicks: number;
+  /** @nullable */
+  strategyStopPrice: number | null;
   /** @nullable */
   triggerPrice: number | null;
   /** @nullable */

@@ -383,10 +383,10 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
   if (context.volume.reversalWarning) event(events, volumeTime, "Volume warning", context.volume.reversalWarning, "warning");
   else event(events, volumeTime, "Volume warning", context.breakout.volumeSupported ? "Breakout volume supports the move; pullback volume passed." : "Volume support is not confirmed.", context.breakout.volumeSupported ? "passed" : "warning");
   if (context.patience.patienceCandle) {
-    event(events, context.patience.patienceCandle.closeTime, "Patience candle", context.patience.detail, context.patience.state === "VALID PATIENCE CANDLE" || context.patience.state === "ENTRY TRIGGERED" ? "passed" : "observed");
+    event(events, context.patience.patienceCandle.closeTime, "Patience candle", context.patience.detail, context.patience.state === "PATIENCE_CANDLE_VALID" || context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "observed");
   }
   if (context.patience.triggerCandle) {
-    event(events, context.patience.triggerCandle.closeTime, "Immediate trigger", context.patience.detail, context.patience.state === "ENTRY TRIGGERED" ? "passed" : "warning");
+    event(events, context.patience.triggerCandle.closeTime, "Immediate trigger", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
   }
 
   const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed

@@ -52,19 +52,19 @@ test("Phase 7 target choices use ceiling ticks and preserve direction", () => {
 
 test("Phase 7 sizing includes both slippage legs and round-trip fees", () => {
   const plan = buildPhase7RiskPlan(6800, "long", 6799.75, 6799.5, config({ riskDollars: 10 }), specification);
-  assert.equal(plan.stopTicks, 2);
+  assert.equal(plan.stopTicks, 1);
   assert.equal(plan.costBreakdown.entrySlippage, 1.25);
   assert.equal(plan.costBreakdown.exitSlippage, 1.25);
   assert.equal(plan.costBreakdown.roundTripFees, 1.6);
   assert.equal(plan.costBreakdown.exchange, 0.24);
   assert.equal(plan.costBreakdown.regulatory, 0.12);
-  assert.equal(plan.riskPerContract, 6.6);
+  assert.equal(plan.riskPerContract, 5.35);
   assert.equal(plan.contracts, 1);
-  assert.equal(plan.dollarRisk, 6.6);
+  assert.equal(plan.dollarRisk, 5.35);
 });
 
 test("whole-contract floor rounding blocks when one contract cannot fit", () => {
-  const plan = buildPhase7RiskPlan(6800, "long", 6799.75, 6799.5, config({ riskDollars: 6.59 }), specification);
+  const plan = buildPhase7RiskPlan(6800, "long", 6799.75, 6799.5, config({ riskDollars: 5.34 }), specification);
   assert.equal(plan.contracts, 0);
   assert.equal(plan.allowed, false);
   assert.match(plan.reasons.join(" "), /zero contracts/i);

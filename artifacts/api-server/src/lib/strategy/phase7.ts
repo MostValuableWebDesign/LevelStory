@@ -396,15 +396,17 @@ export function buildPhase7RiskPlan(
     base.reasons.push("No catastrophe stop is defined; plan blocked.");
     return base;
   }
+  const riskStop = thesisStop ?? catastropheStop;
   let stopTicks: number;
   try {
-    stopTicks = ticksBetween(entry, catastropheStop, specification);
+    stopTicks = ticksBetween(entry, riskStop, specification);
   } catch {
     base.reasons.push("Catastrophe stop is not aligned to contract ticks.");
     return base;
   }
-  if (stopTicks <= 0) {
-    base.reasons.push("Catastrophe stop must be beyond entry.");
+  const riskStopOnCorrectSide = direction === "long" ? riskStop < entry : riskStop > entry;
+  if (stopTicks <= 0 || !riskStopOnCorrectSide) {
+    base.reasons.push("Buffered strategy stop must be beyond the planned entry.");
     return base;
   }
   const slips = slippageTicks(

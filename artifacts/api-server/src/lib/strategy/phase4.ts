@@ -504,13 +504,16 @@ export function advanceOrbBreakoutState(
   patienceState?: string,
 ): BreakoutEvent {
   if (!breakout.detected) return breakout;
-  const state: OrbBreakoutState = patienceState === "ENTRY TRIGGERED"
+  const state: OrbBreakoutState = patienceState === "ENTRY_TRIGGERED"
     ? "ENTRY_TRIGGERED"
-    : patienceState === "TRIGGER CANDLE ACTIVE"
+    : patienceState === "TRIGGER_CANDLE_ACTIVE" || patienceState === "BREAK_DETECTED_WAITING_FOR_BUFFER" || patienceState === "ENTRY_BUFFER_REACHED"
       ? "TRIGGER_CANDLE_ACTIVE"
-      : patienceState === "VALID PATIENCE CANDLE"
+      : patienceState === "PATIENCE_CANDLE_VALID"
         ? "PATIENCE_CANDLE_VALID"
-        : patienceState === "EXPIRED" || patienceState === "INVALIDATED" || patienceState === "AMBIGUOUS"
+        : patienceState === "PATIENCE_CANDLE_EXPIRED"
+          || patienceState === "OPPOSITE_SIDE_INVALIDATION"
+          || patienceState === "AMBIGUOUS_EVENT_ORDER"
+          || patienceState === "PATIENCE_TREND_MISMATCH"
           ? "SETUP_EXPIRED"
           : pullback.events.length
             ? "PULLBACK_IN_PROGRESS"

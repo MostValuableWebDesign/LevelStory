@@ -228,5 +228,5 @@ test("Fibonacci anchors begin at the later strong push and pre-qualification pat
     detail: "Pre-qualification.",
   }, null, [], breakout.time);
   assert.equal(patience.patienceCandle, null);
-  assert.equal(patience.state, "WAITING FOR PATIENCE CANDLE");
+  assert.equal(patience.state, "WAITING_FOR_LEVEL");
 });
