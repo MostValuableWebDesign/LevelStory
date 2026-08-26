@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ListJournalEntriesDirection } from './listJournalEntriesDirection';
+import type { ListJournalEntriesOutcome } from './listJournalEntriesOutcome';
 
 export type ListJournalEntriesParams = {
 /**
@@ -12,4 +14,12 @@ export type ListJournalEntriesParams = {
  * @maximum 50
  */
 limit?: number;
+symbol?: string;
+setupType?: string;
+direction?: ListJournalEntriesDirection;
+outcome?: ListJournalEntriesOutcome;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+tradingDate?: string;
 };

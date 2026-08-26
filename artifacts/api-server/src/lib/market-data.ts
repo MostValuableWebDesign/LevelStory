@@ -1,8 +1,6 @@
 import {
   candleAlert,
   fullDecision,
-  levelStory,
-  positionSize,
   sessionLevels,
   strategyConfig,
   trendEvidence,
@@ -24,9 +22,11 @@ import {
   type Direction,
   type StrategyConfig,
   buildPhase7RiskPlan,
-  evaluateRunner,
   type Phase7RiskConfig,
   type Phase7RiskPlan,
+  buildPhase8EvaluationRecord,
+  type Phase8Execution,
+  type Phase8TimelineEvent,
 } from "./strategy/index.js";
 import {
   getFuturesContractSpecification,
@@ -247,7 +247,8 @@ export type MarketSnapshot = {
     runner: Phase7RiskPlan["runner"];
     locks: Record<string, boolean>;
   };
-  levelStory: Array<{ time: string; level: string; interaction: string; detail: string }>;
+  levelStory: Array<{ time: string; level: string; interaction: string; detail: string; eventType: string; status: string }>;
+  shadowExecution: Phase8Execution | null;
   reversal: { doji: boolean; equivalentCandles: boolean; warning: string | null };
   setupAnalysis: {
     decision: Phase6Decision;
@@ -398,12 +399,33 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     config,
   });
   const evaluation = fullDecision(regular, levels, config, direction, riskGateAllowed);
-  const story = regular.slice(-10).flatMap(c => levelStory(c, levels.levels, config.levelTolerance).interactions.map(item => ({
-    time: new Date(c.closeTime).toISOString(),
-    level: item.name,
-    interaction: item.interaction,
-    detail: `${item.interaction} at ${item.name} (${item.price.toFixed(2)})`,
-  })));
+  const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
+    ?? setupAnalysis.evaluations[0];
+  const phase8Record = buildPhase8EvaluationRecord({
+    candles: regular,
+    ntz: levels.ntz,
+    ntzEvents: levels.ntzEvents,
+    breakout,
+    pullback,
+    fibonacci,
+    volume: volumeAnalysis,
+    patience,
+    evaluation: selectedEvaluation,
+    riskPlan: plan,
+    direction: selectedEvaluation.direction ?? direction,
+    trend: trend.direction,
+    specification,
+    slippageMode: plan.slippageMode,
+    now: currentCursor,
+  });
+  const story = phase8Record.timeline.map((item: Phase8TimelineEvent) => ({
+    time: new Date(item.time).toISOString(),
+    level: item.label,
+    interaction: item.eventType,
+    detail: item.detail,
+    eventType: item.eventType,
+    status: item.status,
+  }));
   const alert = current ? candleAlert(current, direction, config) : { doji: false, reversal: false, detail: "" };
   const indicators = {
     rsi: finiteOrNull(levels.rsi),
@@ -532,6 +554,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     },
      riskPlan: plan,
     levelStory: story,
+      shadowExecution: phase8Record.execution,
     reversal: {
       doji: alert.doji,
       equivalentCandles: detectEquivalentCandles(regular, config),

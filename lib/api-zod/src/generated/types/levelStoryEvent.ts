@@ -5,10 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LevelStoryEventStatus } from './levelStoryEventStatus';
 
 export interface LevelStoryEvent {
   time: string;
   level: string;
   interaction: string;
   detail: string;
+  eventType: string;
+  status: LevelStoryEventStatus;
 }

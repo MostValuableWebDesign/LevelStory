@@ -535,6 +535,83 @@ export const useCreateJournalEntry = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCreateJournalEntryMutationOptions(options));
     }
 
+export const getGetJournalEntryUrl = (id: number,) => {
+
+
+
+
+  return `/api/journal/${id}`
+}
+
+/**
+ * @summary Get one shadow journal entry
+ */
+export const getJournalEntry = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<JournalEntry> => {
+
+  return customFetch<JournalEntry>(getGetJournalEntryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJournalEntryQueryKey = (id: number,) => {
+    return [
+    `/api/journal/${id}`
+    ] as const;
+    }
+
+
+export const getGetJournalEntryQueryOptions = <TData = Awaited<ReturnType<typeof getJournalEntry>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJournalEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJournalEntryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJournalEntry>>> = ({ signal }) => getJournalEntry(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJournalEntry>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJournalEntryQueryResult = NonNullable<Awaited<ReturnType<typeof getJournalEntry>>>
+export type GetJournalEntryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get one shadow journal entry
+ */
+
+export function useGetJournalEntry<TData = Awaited<ReturnType<typeof getJournalEntry>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJournalEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJournalEntryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getDeleteJournalEntryUrl = (id: number,) => {
 
 

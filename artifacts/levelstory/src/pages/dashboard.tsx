@@ -118,9 +118,10 @@ export default function Dashboard() {
              </Panel>
              <Panel>
                <PanelTitle eyebrow="Chronological evidence" title="Level Story" right={<span className="text-[10px] uppercase text-muted-foreground">{snapshot.levelStory.length} interactions</span>} />
-               <div className="max-h-[260px] overflow-y-auto border-t border-border">{snapshot.levelStory.length ? snapshot.levelStory.map((event, index) => <div key={`${event.time}-${event.level}-${index}`} className="border-b border-border px-5 py-3 last:border-0"><div className="flex items-center justify-between gap-3"><span className="text-xs font-semibold">{event.level}</span><span className="mono text-[10px] text-muted-foreground">{new Date(event.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{event.detail}</p></div>) : <div className="p-6 text-sm text-muted-foreground">No mapped level interactions yet.</div>}</div>
+                <div className="max-h-[260px] overflow-y-auto border-t border-border">{snapshot.levelStory.length ? snapshot.levelStory.map((event, index) => <div key={`${event.time}-${event.level}-${index}`} className="border-b border-border px-5 py-3 last:border-0"><div className="flex items-center justify-between gap-3"><span className="text-xs font-semibold">{event.level}</span><span className="mono text-[10px] text-muted-foreground">{new Date(event.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div><div className="mt-1 flex items-center gap-2"><span className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{event.eventType}</span><span className="text-[10px] text-border">·</span><span className={`text-[10px] font-bold uppercase ${event.status === "passed" || event.status === "simulated" ? "status-positive" : event.status === "warning" || event.status === "blocked" ? "status-negative" : "text-muted-foreground"}`}>{event.status}</span></div><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{event.detail}</p></div>) : <div className="p-6 text-sm text-muted-foreground">No mapped level interactions yet.</div>}</div>
              </Panel>
            </div>
+            <ShadowExecutionPanel execution={snapshot.shadowExecution} />
            <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
              <Panel>
                <PanelTitle eyebrow="Trend evidence" title={`${snapshot.trend.direction} 15-minute trend`} right={<span className="mono text-xs">{snapshot.trend.candleCount}/8 candles · score {snapshot.trend.score}</span>} />
@@ -149,6 +150,22 @@ function DecisionPanel({ snapshot, confirmedCount, signalCount }: { snapshot: Ma
       <div className="mt-6 space-y-3 border-t border-border pt-4"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Rules passed</span><span className="mono">{snapshot.decision.passedRules.length}/{snapshot.decision.passedRules.length + snapshot.decision.failedRules.length}</span></div><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Confirmed signals</span><span className="mono">{confirmedCount}/{signalCount || 0}</span></div></div>
       <div className="mt-5"><LockedNote>No live orders. This is a decision rehearsal, not an execution terminal.</LockedNote></div>
     </div>
+  </Panel>;
+}
+
+function ShadowExecutionPanel({ execution }: { execution: MarketSnapshot["shadowExecution"] }) {
+  return <Panel className={execution ? "border-[hsl(var(--positive)/.3)]" : ""}>
+    <PanelTitle eyebrow="Phase 8 / broker-free model" title="Shadow execution" right={<span className="text-[10px] font-bold uppercase text-muted-foreground">{execution ? "Simulated fills" : "No simulated fill"}</span>} />
+    {!execution ? <div className="border-t border-border p-5 text-xs leading-5 text-muted-foreground">A fill is only modeled after a setup qualifies and passes the risk gate. Rejected, expired, ambiguous, and blocked evaluations remain journal evidence without an order.</div> : <div className="border-t border-border">
+      <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">{[
+        ["Entry", `${execution.entryReferencePrice.toFixed(2)} → ${execution.entryFillPrice.toFixed(2)} (${execution.entryQuoteSide})`],
+        ["Exit", `${execution.exitReferencePrice?.toFixed(2) ?? "—"} → ${execution.exitFillPrice?.toFixed(2) ?? "—"} (${execution.exitQuoteSide ?? "—"})`],
+        ["Legs", `${execution.targetContracts} target · ${execution.runnerContracts} runner`],
+        ["Result", execution.exitReason],
+      ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mono mt-1 break-words text-xs font-medium">{value}</div></div>)}</div>
+      <div className="flex flex-wrap gap-x-5 gap-y-2 px-5 py-4 text-[11px] text-muted-foreground sm:px-6"><span>Gross <strong className="mono text-foreground">${execution.accounting.grossPnl.toFixed(2)}</strong></span><span>Slippage <strong className="mono text-foreground">${execution.accounting.slippage.toFixed(2)}</strong></span><span>Fees <strong className="mono text-foreground">${execution.accounting.fees.toFixed(2)}</strong></span><span>Net <strong className={`mono ${execution.accounting.netPnl >= 0 ? "status-positive" : "status-negative"}`}>${execution.accounting.netPnl.toFixed(2)}</strong></span><span>{execution.runnerExited ? "Runner exited at retracement" : execution.runnerActivated ? "Runner active" : "No runner exit"}</span></div>
+      <LockedNote>All fills use simulated bid/ask sides and modeled slippage. This is not a paper or live order.</LockedNote>
+    </div>}
   </Panel>;
 }
 

@@ -1,3 +1,4 @@
 - [OpenAPI numeric validation](openapi-numeric-validation.md) — this workspace's generated Zod runtime does not support OpenAPI integer schemas; use numeric boundaries at the contract edge when needed.
 - [TypeScript test execution](typescript-test-execution.md) — source files use .js ESM specifiers, so direct Node test execution cannot resolve them; run tests through the workspace TypeScript runner.
 - [OpenAPI regeneration restart](openapi-regeneration-restart.md) — restart Vite after Orval regeneration if HMR retains missing generated-file errors.
+- [Journal schema preservation](journal-schema-preservation.md) — adding uniqueness to populated journal tables may prompt destructive truncation; preserve history with non-destructive DDL.

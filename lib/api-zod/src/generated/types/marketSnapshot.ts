@@ -18,6 +18,7 @@ import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
 import type { MarketSnapshotMode } from './marketSnapshotMode';
 import type { NtzState } from './ntzState';
 import type { PatienceAnalysis } from './patienceAnalysis';
+import type { Phase8Execution } from './phase8Execution';
 import type { PullbackAnalysis } from './pullbackAnalysis';
 import type { ReplayMetadata } from './replayMetadata';
 import type { ReversalState } from './reversalState';
@@ -57,6 +58,7 @@ export interface MarketSnapshot {
   decision: StrategyDecision;
   riskPlan: RiskPlan;
   levelStory: LevelStoryEvent[];
+  shadowExecution: Phase8Execution | null;
   reversal: ReversalState;
   assumptions: string[];
 }

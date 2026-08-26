@@ -3,14 +3,11 @@ import { GetDashboardOverviewResponse, GetMarketSnapshotQueryParams, GetMarketSn
 import { db, journalEntriesTable, riskSettingsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import { createMarketSnapshot } from "../lib/market-data";
+import { recordSnapshotEvaluations, toApiJournalEntry } from "../lib/phase8-journal";
 import { listFuturesContractSpecifications } from "../lib/futures/contracts";
 import type { SetupType } from "../lib/strategy/phase6";
 
 const router: IRouter = Router();
-
-function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect) {
-  return { ...entry, createdAt: entry.createdAt.toISOString() };
-}
 
 router.get("/market/snapshot", async (req, res): Promise<void> => {
   const parsed = GetMarketSnapshotQueryParams.safeParse(req.query);
@@ -30,13 +27,15 @@ router.get("/market/snapshot", async (req, res): Promise<void> => {
     const manualFibAnchors = hasManualHigh && hasManualLow
       ? { high: parsed.data.fibHigh!, low: parsed.data.fibLow! }
       : undefined;
-     res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(
+     const snapshot = createMarketSnapshot(
        parsed.data.symbol,
        parsed.data.session,
        risk,
        manualFibAnchors,
        { targetDollars: parsed.data.targetDollars, slippageMode: parsed.data.slippageMode },
-     )));
+      );
+      await recordSnapshotEvaluations(snapshot);
+      res.json(GetMarketSnapshotResponse.parse(snapshot));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid futures contract.";
     req.log.warn({ error: message }, "Rejected market snapshot request");

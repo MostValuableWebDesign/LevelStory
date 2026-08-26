@@ -1,18 +1,49 @@
-import { boolean, integer, numeric, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 export const journalEntriesTable = pgTable("levelstory_journal_entries", {
   id: serial("id").primaryKey(),
+  evaluationKey: text("evaluation_key"),
   symbol: text("symbol").notNull(),
+  contractMonth: text("contract_month"),
   side: text("side").notNull(),
   setup: text("setup").notNull(),
+  setupType: text("setup_type"),
+  outcome: text("outcome"),
+  tradingDate: text("trading_date"),
+  trend: text("trend"),
   entryPrice: numeric("entry_price", { precision: 12, scale: 4, mode: "number" }).notNull(),
   exitPrice: numeric("exit_price", { precision: 12, scale: 4, mode: "number" }),
   quantity: integer("quantity").notNull(),
+  contracts: integer("contracts"),
   pnl: numeric("pnl", { precision: 12, scale: 2, mode: "number" }),
+  grossPnl: numeric("gross_pnl", { precision: 12, scale: 2, mode: "number" }),
+  netPnl: numeric("net_pnl", { precision: 12, scale: 2, mode: "number" }),
+  fees: numeric("fees", { precision: 12, scale: 2, mode: "number" }),
+  slippage: numeric("slippage", { precision: 12, scale: 2, mode: "number" }),
+  profitTarget: numeric("profit_target", { precision: 12, scale: 4, mode: "number" }),
+  maximumFavorableExcursion: numeric("maximum_favorable_excursion", { precision: 12, scale: 2, mode: "number" }),
+  maximumAdverseExcursion: numeric("maximum_adverse_excursion", { precision: 12, scale: 2, mode: "number" }),
+  exitReason: text("exit_reason"),
+  levels: jsonb("levels"),
+  confluences: jsonb("confluences"),
+  ntz: jsonb("ntz"),
+  breakout: jsonb("breakout"),
+  pullback: jsonb("pullback"),
+  fibonacci: jsonb("fibonacci"),
+  volume: jsonb("volume"),
+  patience: jsonb("patience"),
+  stops: jsonb("stops"),
+  runner: jsonb("runner"),
+  passedRules: jsonb("passed_rules"),
+  failedRules: jsonb("failed_rules"),
+  timeline: jsonb("timeline"),
+  execution: jsonb("execution"),
   notes: text("notes").notNull(),
   checklistPassed: boolean("checklist_passed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  evaluationKeyUnique: unique("levelstory_journal_evaluation_key_unique").on(table.evaluationKey),
+}));
 
 export const riskSettingsTable = pgTable("levelstory_risk_settings", {
   id: serial("id").primaryKey(),

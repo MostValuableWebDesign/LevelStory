@@ -136,6 +136,34 @@ paths:
             minimum: 1
             maximum: 50
             default: 20
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: setupType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [long, short]
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [qualified, rejected, expired, ambiguous]
+        - name: tradingDate
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
       responses:
         "200":
           description: Journal entries
@@ -170,6 +198,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /journal/{id}:
+    get:
+      operationId: getJournalEntry
+      tags: [journal]
+      summary: Get one shadow journal entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Shadow journal entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntry"
+        "404":
+          description: Journal entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteJournalEntry
       tags: [journal]
@@ -740,7 +791,12 @@ components:
           type: string
         detail:
           type: string
-      required: [time, level, interaction, detail]
+        eventType:
+          type: string
+        status:
+          type: string
+          enum: [observed, passed, warning, blocked, simulated]
+      required: [time, level, interaction, detail, eventType, status]
     ReversalState:
       type: object
       properties:
@@ -1014,13 +1070,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LevelStoryEvent"
+        shadowExecution:
+          allOf:
+            - $ref: "#/components/schemas/Phase8Execution"
+          nullable: true
         reversal:
           $ref: "#/components/schemas/ReversalState"
         assumptions:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, shadowExecution, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:
@@ -1067,33 +1127,233 @@ components:
         netPnl:
           type: number
       required: [setupType, reviewCount, closedCount, wins, losses, winRate, netPnl]
+    Phase8TimelineEvent:
+      type: object
+      properties:
+        time:
+          type: string
+        eventType:
+          type: string
+          enum: ["NTZ completion", "Breakout", "Pullback", "Level touch or proximity", "Consolidation", "Fibonacci depth", "Volume warning", "Patience candle", "Immediate trigger", "Shadow entry", "Partial profit", "Runner activation", "Runner exit", "Stop", "Failed setup"]
+        label:
+          type: string
+        detail:
+          type: string
+        status:
+          type: string
+          enum: [observed, passed, warning, blocked, simulated]
+      required: [time, eventType, label, detail, status]
+    Phase8FillLeg:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [target, runner, full]
+        contracts:
+          type: number
+        quoteSide:
+          type: string
+          enum: [bid, ask]
+        referencePrice:
+          type: number
+        fillPrice:
+          type: number
+        modeledSlippageTicks:
+          type: number
+        grossPnl:
+          type: number
+        fees:
+          type: number
+        slippage:
+          type: number
+        netPnl:
+          type: number
+      required: [kind, contracts, quoteSide, referencePrice, fillPrice, modeledSlippageTicks, grossPnl, fees, slippage, netPnl]
+    Phase8Execution:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [shadow]
+        entryQuoteSide:
+          type: string
+          enum: [ask, bid]
+        exitQuoteSide:
+          type: ["string", "null"]
+          enum: [bid, ask, null]
+        entryReferencePrice:
+          type: number
+        entryFillPrice:
+          type: number
+        exitReferencePrice:
+          type: ["number", "null"]
+        exitFillPrice:
+          type: ["number", "null"]
+        entrySlippageTicks:
+          type: number
+        exitSlippageTicks:
+          type: ["number", "null"]
+        contracts:
+          type: number
+        targetContracts:
+          type: number
+        runnerContracts:
+          type: number
+        targetHit:
+          type: boolean
+        runnerActivated:
+          type: boolean
+        runnerExited:
+          type: boolean
+        stop:
+          type: ["string", "null"]
+          enum: [strategy, catastrophe, null]
+        exitReason:
+          type: string
+          enum: [target, runner, "strategy stop", "catastrophe stop", manual, "not filled"]
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Phase8FillLeg"
+        accounting:
+          $ref: "#/components/schemas/Phase7Accounting"
+      required: [mode, entryQuoteSide, exitQuoteSide, entryReferencePrice, entryFillPrice, exitReferencePrice, exitFillPrice, entrySlippageTicks, exitSlippageTicks, contracts, targetContracts, runnerContracts, targetHit, runnerActivated, runnerExited, stop, exitReason, legs, accounting]
+    Phase8Excursions:
+      type: object
+      properties:
+        maximumFavorableExcursion:
+          type: number
+        maximumAdverseExcursion:
+          type: number
+        favorablePrice:
+          type: ["number", "null"]
+        adversePrice:
+          type: ["number", "null"]
+      required: [maximumFavorableExcursion, maximumAdverseExcursion, favorablePrice, adversePrice]
+    Phase7Accounting:
+      type: object
+      properties:
+        grossPnl:
+          type: number
+        slippage:
+          type: number
+        fees:
+          type: number
+        netPnl:
+          type: number
+      required: [grossPnl, slippage, fees, netPnl]
+    JournalEvidence:
+      type: ["object", "null"]
+      additionalProperties: true
+    JournalRule:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        passed:
+          type: boolean
+        mandatory:
+          type: boolean
+        detail:
+          type: string
+      required: [key, label, passed, mandatory, detail]
     JournalEntry:
       type: object
       properties:
         id:
           type: number
+        evaluationKey:
+          type: ["string", "null"]
         symbol:
           type: string
+        contractMonth:
+          type: ["string", "null"]
         side:
           type: string
           enum: [long, short]
         setup:
           type: string
+        setupType:
+          type: ["string", "null"]
+        outcome:
+          type: ["string", "null"]
+          enum: [qualified, rejected, expired, ambiguous, null]
+        tradingDate:
+          type: ["string", "null"]
+        trend:
+          type: ["string", "null"]
+          enum: [bullish, bearish, neutral, null]
         entryPrice:
           type: number
         exitPrice:
           type: ["number", "null"]
         quantity:
           type: number
+        contracts:
+          type: ["number", "null"]
         pnl:
           type: ["number", "null"]
+        grossPnl:
+          type: ["number", "null"]
+        netPnl:
+          type: ["number", "null"]
+        fees:
+          type: ["number", "null"]
+        slippage:
+          type: ["number", "null"]
+        profitTarget:
+          type: ["number", "null"]
+        maximumFavorableExcursion:
+          type: ["number", "null"]
+        maximumAdverseExcursion:
+          type: ["number", "null"]
+        exitReason:
+          type: ["string", "null"]
+        levels:
+          $ref: "#/components/schemas/JournalEvidence"
+        confluences:
+          $ref: "#/components/schemas/JournalEvidence"
+        ntz:
+          $ref: "#/components/schemas/JournalEvidence"
+        breakout:
+          $ref: "#/components/schemas/JournalEvidence"
+        pullback:
+          $ref: "#/components/schemas/JournalEvidence"
+        fibonacci:
+          $ref: "#/components/schemas/JournalEvidence"
+        volume:
+          $ref: "#/components/schemas/JournalEvidence"
+        patience:
+          $ref: "#/components/schemas/JournalEvidence"
+        stops:
+          $ref: "#/components/schemas/JournalEvidence"
+        runner:
+          $ref: "#/components/schemas/JournalEvidence"
+        passedRules:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/JournalRule"
+        failedRules:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/JournalRule"
+        timeline:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/Phase8TimelineEvent"
+        execution:
+          allOf:
+            - $ref: "#/components/schemas/Phase8Execution"
+          nullable: true
         notes:
           type: string
         checklistPassed:
           type: boolean
         createdAt:
           type: string
-      required: [id, symbol, side, setup, entryPrice, exitPrice, quantity, pnl, notes, checklistPassed, createdAt]
+      required: [id, evaluationKey, symbol, contractMonth, side, setup, setupType, outcome, tradingDate, trend, entryPrice, exitPrice, quantity, contracts, pnl, grossPnl, netPnl, fees, slippage, profitTarget, maximumFavorableExcursion, maximumAdverseExcursion, exitReason, levels, confluences, ntz, breakout, pullback, fibonacci, volume, patience, stops, runner, passedRules, failedRules, timeline, execution, notes, checklistPassed, createdAt]
     JournalEntryInput:
       type: object
       properties:
@@ -1124,6 +1384,72 @@ components:
           maxLength: 2000
         checklistPassed:
           type: boolean
+        evaluationKey:
+          type: string
+        contractMonth:
+          type: string
+        setupType:
+          type: string
+        outcome:
+          type: string
+          enum: [qualified, rejected, expired, ambiguous]
+        tradingDate:
+          type: string
+        trend:
+          type: string
+          enum: [bullish, bearish, neutral]
+        contracts:
+          type: number
+        grossPnl:
+          type: ["number", "null"]
+        netPnl:
+          type: ["number", "null"]
+        fees:
+          type: ["number", "null"]
+        slippage:
+          type: ["number", "null"]
+        profitTarget:
+          type: ["number", "null"]
+        maximumFavorableExcursion:
+          type: ["number", "null"]
+        maximumAdverseExcursion:
+          type: ["number", "null"]
+        exitReason:
+          type: string
+        levels:
+          $ref: "#/components/schemas/JournalEvidence"
+        confluences:
+          $ref: "#/components/schemas/JournalEvidence"
+        ntz:
+          $ref: "#/components/schemas/JournalEvidence"
+        breakout:
+          $ref: "#/components/schemas/JournalEvidence"
+        pullback:
+          $ref: "#/components/schemas/JournalEvidence"
+        fibonacci:
+          $ref: "#/components/schemas/JournalEvidence"
+        volume:
+          $ref: "#/components/schemas/JournalEvidence"
+        patience:
+          $ref: "#/components/schemas/JournalEvidence"
+        stops:
+          $ref: "#/components/schemas/JournalEvidence"
+        runner:
+          $ref: "#/components/schemas/JournalEvidence"
+        passedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/JournalRule"
+        failedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/JournalRule"
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/Phase8TimelineEvent"
+        execution:
+          $ref: "#/components/schemas/Phase8Execution"
       required: [symbol, side, setup, entryPrice, quantity, notes, checklistPassed]
     RiskSettings:
       type: object

@@ -510,11 +510,24 @@ export interface RiskPlan {
   locks: RiskPlanLocks;
 }
 
+export type LevelStoryEventStatus = typeof LevelStoryEventStatus[keyof typeof LevelStoryEventStatus];
+
+
+export const LevelStoryEventStatus = {
+  observed: 'observed',
+  passed: 'passed',
+  warning: 'warning',
+  blocked: 'blocked',
+  simulated: 'simulated',
+} as const;
+
 export interface LevelStoryEvent {
   time: string;
   level: string;
   interaction: string;
   detail: string;
+  eventType: string;
+  status: LevelStoryEventStatus;
 }
 
 export interface ReversalState {
@@ -762,6 +775,119 @@ export type MarketSnapshotIndicators = {
   vwapSessionDate: string;
 };
 
+export type Phase8ExecutionMode = typeof Phase8ExecutionMode[keyof typeof Phase8ExecutionMode];
+
+
+export const Phase8ExecutionMode = {
+  shadow: 'shadow',
+} as const;
+
+export type Phase8ExecutionEntryQuoteSide = typeof Phase8ExecutionEntryQuoteSide[keyof typeof Phase8ExecutionEntryQuoteSide];
+
+
+export const Phase8ExecutionEntryQuoteSide = {
+  ask: 'ask',
+  bid: 'bid',
+} as const;
+
+/**
+ * @nullable
+ */
+export type Phase8ExecutionExitQuoteSide = typeof Phase8ExecutionExitQuoteSide[keyof typeof Phase8ExecutionExitQuoteSide] | null;
+
+
+export const Phase8ExecutionExitQuoteSide = {
+  bid: 'bid',
+  ask: 'ask',
+} as const;
+
+/**
+ * @nullable
+ */
+export type Phase8ExecutionStop = typeof Phase8ExecutionStop[keyof typeof Phase8ExecutionStop] | null;
+
+
+export const Phase8ExecutionStop = {
+  strategy: 'strategy',
+  catastrophe: 'catastrophe',
+} as const;
+
+export type Phase8ExecutionExitReason = typeof Phase8ExecutionExitReason[keyof typeof Phase8ExecutionExitReason];
+
+
+export const Phase8ExecutionExitReason = {
+  target: 'target',
+  runner: 'runner',
+  strategy_stop: 'strategy stop',
+  catastrophe_stop: 'catastrophe stop',
+  manual: 'manual',
+  not_filled: 'not filled',
+} as const;
+
+export type Phase8FillLegKind = typeof Phase8FillLegKind[keyof typeof Phase8FillLegKind];
+
+
+export const Phase8FillLegKind = {
+  target: 'target',
+  runner: 'runner',
+  full: 'full',
+} as const;
+
+export type Phase8FillLegQuoteSide = typeof Phase8FillLegQuoteSide[keyof typeof Phase8FillLegQuoteSide];
+
+
+export const Phase8FillLegQuoteSide = {
+  bid: 'bid',
+  ask: 'ask',
+} as const;
+
+export interface Phase8FillLeg {
+  kind: Phase8FillLegKind;
+  contracts: number;
+  quoteSide: Phase8FillLegQuoteSide;
+  referencePrice: number;
+  fillPrice: number;
+  modeledSlippageTicks: number;
+  grossPnl: number;
+  fees: number;
+  slippage: number;
+  netPnl: number;
+}
+
+export interface Phase7Accounting {
+  grossPnl: number;
+  slippage: number;
+  fees: number;
+  netPnl: number;
+}
+
+export interface Phase8Execution {
+  mode: Phase8ExecutionMode;
+  entryQuoteSide: Phase8ExecutionEntryQuoteSide;
+  /** @nullable */
+  exitQuoteSide: Phase8ExecutionExitQuoteSide;
+  entryReferencePrice: number;
+  entryFillPrice: number;
+  /** @nullable */
+  exitReferencePrice: number | null;
+  /** @nullable */
+  exitFillPrice: number | null;
+  entrySlippageTicks: number;
+  /** @nullable */
+  exitSlippageTicks: number | null;
+  contracts: number;
+  targetContracts: number;
+  runnerContracts: number;
+  targetHit: boolean;
+  runnerActivated: boolean;
+  runnerExited: boolean;
+  /** @nullable */
+  stop: Phase8ExecutionStop;
+  exitReason: Phase8ExecutionExitReason;
+  legs: Phase8FillLeg[];
+  accounting: Phase7Accounting;
+}
+
 export interface MarketSnapshot {
   mode: MarketSnapshotMode;
   symbol: string;
@@ -791,6 +917,7 @@ export interface MarketSnapshot {
   decision: StrategyDecision;
   riskPlan: RiskPlan;
   levelStory: LevelStoryEvent[];
+  shadowExecution: Phase8Execution | null;
   reversal: ReversalState;
   assumptions: string[];
 }
@@ -813,17 +940,142 @@ export const JournalEntrySide = {
   short: 'short',
 } as const;
 
+/**
+ * @nullable
+ */
+export type JournalEntryOutcome = typeof JournalEntryOutcome[keyof typeof JournalEntryOutcome] | null;
+
+
+export const JournalEntryOutcome = {
+  qualified: 'qualified',
+  rejected: 'rejected',
+  expired: 'expired',
+  ambiguous: 'ambiguous',
+} as const;
+
+/**
+ * @nullable
+ */
+export type JournalEntryTrend = typeof JournalEntryTrend[keyof typeof JournalEntryTrend] | null;
+
+
+export const JournalEntryTrend = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+/**
+ * @nullable
+ */
+export type JournalEvidence = { [key: string]: unknown } | null;
+
+export interface JournalRule {
+  key: string;
+  label: string;
+  passed: boolean;
+  mandatory: boolean;
+  detail: string;
+}
+
+export type Phase8TimelineEventEventType = typeof Phase8TimelineEventEventType[keyof typeof Phase8TimelineEventEventType];
+
+
+export const Phase8TimelineEventEventType = {
+  NTZ_completion: 'NTZ completion',
+  Breakout: 'Breakout',
+  Pullback: 'Pullback',
+  Level_touch_or_proximity: 'Level touch or proximity',
+  Consolidation: 'Consolidation',
+  Fibonacci_depth: 'Fibonacci depth',
+  Volume_warning: 'Volume warning',
+  Patience_candle: 'Patience candle',
+  Immediate_trigger: 'Immediate trigger',
+  Shadow_entry: 'Shadow entry',
+  Partial_profit: 'Partial profit',
+  Runner_activation: 'Runner activation',
+  Runner_exit: 'Runner exit',
+  Stop: 'Stop',
+  Failed_setup: 'Failed setup',
+} as const;
+
+export type Phase8TimelineEventStatus = typeof Phase8TimelineEventStatus[keyof typeof Phase8TimelineEventStatus];
+
+
+export const Phase8TimelineEventStatus = {
+  observed: 'observed',
+  passed: 'passed',
+  warning: 'warning',
+  blocked: 'blocked',
+  simulated: 'simulated',
+} as const;
+
+export interface Phase8TimelineEvent {
+  time: string;
+  eventType: Phase8TimelineEventEventType;
+  label: string;
+  detail: string;
+  status: Phase8TimelineEventStatus;
+}
+
 export interface JournalEntry {
   id: number;
+  /** @nullable */
+  evaluationKey: string | null;
   symbol: string;
+  /** @nullable */
+  contractMonth: string | null;
   side: JournalEntrySide;
   setup: string;
+  /** @nullable */
+  setupType: string | null;
+  /** @nullable */
+  outcome: JournalEntryOutcome;
+  /** @nullable */
+  tradingDate: string | null;
+  /** @nullable */
+  trend: JournalEntryTrend;
   entryPrice: number;
   /** @nullable */
   exitPrice: number | null;
   quantity: number;
   /** @nullable */
+  contracts: number | null;
+  /** @nullable */
   pnl: number | null;
+  /** @nullable */
+  grossPnl: number | null;
+  /** @nullable */
+  netPnl: number | null;
+  /** @nullable */
+  fees: number | null;
+  /** @nullable */
+  slippage: number | null;
+  /** @nullable */
+  profitTarget: number | null;
+  /** @nullable */
+  maximumFavorableExcursion: number | null;
+  /** @nullable */
+  maximumAdverseExcursion: number | null;
+  /** @nullable */
+  exitReason: string | null;
+  levels: JournalEvidence | null;
+  confluences: JournalEvidence | null;
+  ntz: JournalEvidence | null;
+  breakout: JournalEvidence | null;
+  pullback: JournalEvidence | null;
+  fibonacci: JournalEvidence | null;
+  volume: JournalEvidence | null;
+  patience: JournalEvidence | null;
+  stops: JournalEvidence | null;
+  runner: JournalEvidence | null;
+  /** @nullable */
+  passedRules: JournalRule[] | null;
+  /** @nullable */
+  failedRules: JournalRule[] | null;
+  /** @nullable */
+  timeline: Phase8TimelineEvent[] | null;
+  execution: Phase8Execution | null;
   notes: string;
   checklistPassed: boolean;
   createdAt: string;
@@ -842,12 +1094,40 @@ export interface DashboardOverview {
   recentEntries: JournalEntry[];
 }
 
+export interface Phase8Excursions {
+  maximumFavorableExcursion: number;
+  maximumAdverseExcursion: number;
+  /** @nullable */
+  favorablePrice: number | null;
+  /** @nullable */
+  adversePrice: number | null;
+}
+
 export type JournalEntryInputSide = typeof JournalEntryInputSide[keyof typeof JournalEntryInputSide];
 
 
 export const JournalEntryInputSide = {
   long: 'long',
   short: 'short',
+} as const;
+
+export type JournalEntryInputOutcome = typeof JournalEntryInputOutcome[keyof typeof JournalEntryInputOutcome];
+
+
+export const JournalEntryInputOutcome = {
+  qualified: 'qualified',
+  rejected: 'rejected',
+  expired: 'expired',
+  ambiguous: 'ambiguous',
+} as const;
+
+export type JournalEntryInputTrend = typeof JournalEntryInputTrend[keyof typeof JournalEntryInputTrend];
+
+
+export const JournalEntryInputTrend = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
 } as const;
 
 export interface JournalEntryInput {
@@ -876,6 +1156,42 @@ export interface JournalEntryInput {
   /** @maxLength 2000 */
   notes: string;
   checklistPassed: boolean;
+  evaluationKey?: string;
+  contractMonth?: string;
+  setupType?: string;
+  outcome?: JournalEntryInputOutcome;
+  tradingDate?: string;
+  trend?: JournalEntryInputTrend;
+  contracts?: number;
+  /** @nullable */
+  grossPnl?: number | null;
+  /** @nullable */
+  netPnl?: number | null;
+  /** @nullable */
+  fees?: number | null;
+  /** @nullable */
+  slippage?: number | null;
+  /** @nullable */
+  profitTarget?: number | null;
+  /** @nullable */
+  maximumFavorableExcursion?: number | null;
+  /** @nullable */
+  maximumAdverseExcursion?: number | null;
+  exitReason?: string;
+  levels?: JournalEvidence | null;
+  confluences?: JournalEvidence | null;
+  ntz?: JournalEvidence | null;
+  breakout?: JournalEvidence | null;
+  pullback?: JournalEvidence | null;
+  fibonacci?: JournalEvidence | null;
+  volume?: JournalEvidence | null;
+  patience?: JournalEvidence | null;
+  stops?: JournalEvidence | null;
+  runner?: JournalEvidence | null;
+  passedRules?: JournalRule[];
+  failedRules?: JournalRule[];
+  timeline?: Phase8TimelineEvent[];
+  execution?: Phase8Execution;
 }
 
 export interface RiskSettings {
@@ -948,5 +1264,31 @@ export type ListJournalEntriesParams = {
  * @maximum 50
  */
 limit?: number;
+symbol?: string;
+setupType?: string;
+direction?: ListJournalEntriesDirection;
+outcome?: ListJournalEntriesOutcome;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+tradingDate?: string;
 };
+
+export type ListJournalEntriesDirection = typeof ListJournalEntriesDirection[keyof typeof ListJournalEntriesDirection];
+
+
+export const ListJournalEntriesDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type ListJournalEntriesOutcome = typeof ListJournalEntriesOutcome[keyof typeof ListJournalEntriesOutcome];
+
+
+export const ListJournalEntriesOutcome = {
+  qualified: 'qualified',
+  rejected: 'rejected',
+  expired: 'expired',
+  ambiguous: 'ambiguous',
+} as const;
 

@@ -5,19 +5,72 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JournalEntryOutcome } from './journalEntryOutcome';
 import type { JournalEntrySide } from './journalEntrySide';
+import type { JournalEntryTrend } from './journalEntryTrend';
+import type { JournalEvidence } from './journalEvidence';
+import type { JournalRule } from './journalRule';
+import type { Phase8Execution } from './phase8Execution';
+import type { Phase8TimelineEvent } from './phase8TimelineEvent';
 
 export interface JournalEntry {
   id: number;
+  /** @nullable */
+  evaluationKey: string | null;
   symbol: string;
+  /** @nullable */
+  contractMonth: string | null;
   side: JournalEntrySide;
   setup: string;
+  /** @nullable */
+  setupType: string | null;
+  /** @nullable */
+  outcome: JournalEntryOutcome;
+  /** @nullable */
+  tradingDate: string | null;
+  /** @nullable */
+  trend: JournalEntryTrend;
   entryPrice: number;
   /** @nullable */
   exitPrice: number | null;
   quantity: number;
   /** @nullable */
+  contracts: number | null;
+  /** @nullable */
   pnl: number | null;
+  /** @nullable */
+  grossPnl: number | null;
+  /** @nullable */
+  netPnl: number | null;
+  /** @nullable */
+  fees: number | null;
+  /** @nullable */
+  slippage: number | null;
+  /** @nullable */
+  profitTarget: number | null;
+  /** @nullable */
+  maximumFavorableExcursion: number | null;
+  /** @nullable */
+  maximumAdverseExcursion: number | null;
+  /** @nullable */
+  exitReason: string | null;
+  levels: JournalEvidence | null;
+  confluences: JournalEvidence | null;
+  ntz: JournalEvidence | null;
+  breakout: JournalEvidence | null;
+  pullback: JournalEvidence | null;
+  fibonacci: JournalEvidence | null;
+  volume: JournalEvidence | null;
+  patience: JournalEvidence | null;
+  stops: JournalEvidence | null;
+  runner: JournalEvidence | null;
+  /** @nullable */
+  passedRules: JournalRule[] | null;
+  /** @nullable */
+  failedRules: JournalRule[] | null;
+  /** @nullable */
+  timeline: Phase8TimelineEvent[] | null;
+  execution: Phase8Execution | null;
   notes: string;
   checklistPassed: boolean;
   createdAt: string;

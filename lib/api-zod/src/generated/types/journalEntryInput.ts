@@ -5,7 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JournalEntryInputOutcome } from './journalEntryInputOutcome';
 import type { JournalEntryInputSide } from './journalEntryInputSide';
+import type { JournalEntryInputTrend } from './journalEntryInputTrend';
+import type { JournalEvidence } from './journalEvidence';
+import type { JournalRule } from './journalRule';
+import type { Phase8Execution } from './phase8Execution';
+import type { Phase8TimelineEvent } from './phase8TimelineEvent';
 
 export interface JournalEntryInput {
   /**
@@ -33,4 +39,40 @@ export interface JournalEntryInput {
   /** @maxLength 2000 */
   notes: string;
   checklistPassed: boolean;
+  evaluationKey?: string;
+  contractMonth?: string;
+  setupType?: string;
+  outcome?: JournalEntryInputOutcome;
+  tradingDate?: string;
+  trend?: JournalEntryInputTrend;
+  contracts?: number;
+  /** @nullable */
+  grossPnl?: number | null;
+  /** @nullable */
+  netPnl?: number | null;
+  /** @nullable */
+  fees?: number | null;
+  /** @nullable */
+  slippage?: number | null;
+  /** @nullable */
+  profitTarget?: number | null;
+  /** @nullable */
+  maximumFavorableExcursion?: number | null;
+  /** @nullable */
+  maximumAdverseExcursion?: number | null;
+  exitReason?: string;
+  levels?: JournalEvidence | null;
+  confluences?: JournalEvidence | null;
+  ntz?: JournalEvidence | null;
+  breakout?: JournalEvidence | null;
+  pullback?: JournalEvidence | null;
+  fibonacci?: JournalEvidence | null;
+  volume?: JournalEvidence | null;
+  patience?: JournalEvidence | null;
+  stops?: JournalEvidence | null;
+  runner?: JournalEvidence | null;
+  passedRules?: JournalRule[];
+  failedRules?: JournalRule[];
+  timeline?: Phase8TimelineEvent[];
+  execution?: Phase8Execution;
 }
