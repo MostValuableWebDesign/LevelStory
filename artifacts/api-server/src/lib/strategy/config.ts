@@ -1,5 +1,10 @@
 /** Every default is deliberately explicit: these are strategy assumptions, not facts. */
 export type StrategyConfig = {
+  defaultContractSymbol: string;
+  simulationSeed: number;
+  simulationDays: number;
+  barIntervalMinutes: 5;
+  sessionTimeZone: string;
   sessionStartMinutes: number;
   premarketStartMinutes: number;
   orbMinutes: number;
@@ -26,6 +31,11 @@ export type StrategyConfig = {
 };
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
+  defaultContractSymbol: "MES",
+  simulationSeed: 17,
+  simulationDays: 3,
+  barIntervalMinutes: 5,
+  sessionTimeZone: "UTC",
   sessionStartMinutes: 570, // assumption: 09:30 exchange-local minutes
   premarketStartMinutes: 240, // assumption: 04:00
   orbMinutes: 15, // assumption: first completed 15m candle
@@ -52,5 +62,61 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
-  return { ...DEFAULT_STRATEGY_CONFIG, ...overrides };
+  return validateStrategyConfig({ ...DEFAULT_STRATEGY_CONFIG, ...overrides });
+}
+
+export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
+  if (!/^[A-Z]{1,5}$/.test(config.defaultContractSymbol)) {
+    throw new Error("Invalid strategy configuration: defaultContractSymbol must be an uppercase futures root.");
+  }
+  if (!Number.isInteger(config.simulationSeed)) {
+    throw new Error("Invalid strategy configuration: simulationSeed must be an integer.");
+  }
+  if (!Number.isInteger(config.simulationDays) || config.simulationDays < 1) {
+    throw new Error("Invalid strategy configuration: simulationDays must be a positive integer.");
+  }
+  if (config.barIntervalMinutes !== 5) {
+    throw new Error("Invalid strategy configuration: barIntervalMinutes must be 5 for the Phase 1 feed.");
+  }
+  if (!config.sessionTimeZone.trim()) {
+    throw new Error("Invalid strategy configuration: sessionTimeZone is required.");
+  }
+  const positiveNumbers: Array<[string, number]> = [
+    ["sessionStartMinutes", config.sessionStartMinutes],
+    ["premarketStartMinutes", config.premarketStartMinutes],
+    ["orbMinutes", config.orbMinutes],
+    ["ntzMinutes", config.ntzMinutes],
+    ["emaPeriod", config.emaPeriod],
+    ["rsiPeriod", config.rsiPeriod],
+    ["volumeLookback", config.volumeLookback],
+    ["volumeExpansionRatio", config.volumeExpansionRatio],
+    ["adverseVolumeRatio", config.adverseVolumeRatio],
+    ["riskPerTrade", config.riskPerTrade],
+    ["dailyLossLimit", config.dailyLossLimit],
+    ["maxPositionValue", config.maxPositionValue],
+    ["maxRiskTrades", config.maxRiskTrades],
+    ["runnerTriggerR", config.runnerTriggerR],
+  ];
+  for (const [name, value] of positiveNumbers) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`Invalid strategy configuration: ${name} must be finite and positive.`);
+    }
+  }
+  const nonNegativeNumbers: Array<[string, number]> = [
+    ["spread", config.spread],
+    ["slippage", config.slippage],
+    ["feePerShare", config.feePerShare],
+    ["profitBuffer", config.profitBuffer],
+    ["stopBuffer", config.stopBuffer],
+    ["levelTolerance", config.levelTolerance],
+    ["patienceContainmentTolerance", config.patienceContainmentTolerance],
+    ["dojiBodyRatio", config.dojiBodyRatio],
+    ["equivalentBodyTolerance", config.equivalentBodyTolerance],
+  ];
+  for (const [name, value] of nonNegativeNumbers) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid strategy configuration: ${name} must be finite and non-negative.`);
+    }
+  }
+  return { ...config };
 }
