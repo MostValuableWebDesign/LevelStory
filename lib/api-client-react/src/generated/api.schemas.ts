@@ -105,6 +105,7 @@ export const ReplayMetadataBarIntervalMinutes = {
 } as const;
 
 export interface ReplayMetadata {
+  tradingDate: string;
   cursor: string;
   visibleCandleCount: number;
   timeZone: string;
@@ -1012,8 +1013,10 @@ export interface SetupPerformance {
   setupType: string;
   reviewCount: number;
   closedCount: number;
+  triggeredCount: number;
   wins: number;
   losses: number;
+  breakeven: number;
   winRate: number;
   netPnl: number;
 }
@@ -1173,7 +1176,15 @@ export interface DashboardOverview {
   sessionPnlPercent: number;
   maxDailyLoss: number;
   dailyLossUsed: number;
+  /** Backward-compatible alias for triggeredTradeCount. */
   tradeCount: number;
+  reviewCount: number;
+  triggeredTradeCount: number;
+  openTradeCount: number;
+  closedTradeCount: number;
+  winCount: number;
+  lossCount: number;
+  breakevenCount: number;
   winRate: number;
   setupPerformance: SetupPerformance[];
   checklistCompleted: number;
@@ -1604,6 +1615,18 @@ export type GetMarketSnapshotParams = {
 symbol?: string;
 session?: GetMarketSnapshotSession;
 /**
+ * New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.
+ */
+tradingDate?: string;
+/**
+ * Replay cursor as a Unix timestamp in milliseconds. When supplied, only candles completed by this instant are visible.
+ */
+cursor?: number;
+/**
+ * Whether premarket candles are available for this replay.
+ */
+premarketAvailable?: boolean;
+/**
  * Optional manual Fibonacci high anchor for descriptive replay analysis.
  */
 fibHigh?: number;
@@ -1639,6 +1662,13 @@ export const GetMarketSnapshotSlippageMode = {
   fast: 'fast',
   abnormal_spread: 'abnormal_spread',
 } as const;
+
+export type GetDashboardOverviewParams = {
+/**
+ * New York trading date to summarize. Defaults to the latest trading date in the session calendar.
+ */
+tradingDate?: string;
+};
 
 export type ListJournalEntriesParams = {
 /**

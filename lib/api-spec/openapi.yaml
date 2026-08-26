@@ -54,6 +54,24 @@ paths:
             type: string
             enum: [premarket, regular]
             default: regular
+        - name: tradingDate
+          in: query
+          required: false
+          description: New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: Replay cursor as a Unix timestamp in milliseconds. When supplied, only candles completed by this instant are visible.
+          schema:
+            type: number
+        - name: premarketAvailable
+          in: query
+          required: false
+          description: Whether premarket candles are available for this replay.
+          schema:
+            type: boolean
         - name: fibHigh
           in: query
           required: false
@@ -116,7 +134,14 @@ paths:
       operationId: getDashboardOverview
       tags: [market]
       summary: Get dashboard overview
-      description: Returns the current shadow session summary and recent journal activity.
+      description: Returns the selected New York trading-date shadow session summary and recent journal activity.
+      parameters:
+        - name: tradingDate
+          in: query
+          required: false
+          description: New York trading date to summarize. Defaults to the latest trading date in the session calendar.
+          schema:
+            type: string
       responses:
         "200":
           description: Dashboard overview
@@ -442,6 +467,8 @@ components:
     ReplayMetadata:
       type: object
       properties:
+        tradingDate:
+          type: string
         cursor:
           type: string
         visibleCandleCount:
@@ -451,7 +478,7 @@ components:
         barIntervalMinutes:
           type: number
           enum: [5]
-      required: [cursor, visibleCandleCount, timeZone, barIntervalMinutes]
+      required: [tradingDate, cursor, visibleCandleCount, timeZone, barIntervalMinutes]
     CriticalLevel:
       type: object
       properties:
@@ -1165,6 +1192,21 @@ components:
           type: number
         tradeCount:
           type: number
+          description: Backward-compatible alias for triggeredTradeCount.
+        reviewCount:
+          type: number
+        triggeredTradeCount:
+          type: number
+        openTradeCount:
+          type: number
+        closedTradeCount:
+          type: number
+        winCount:
+          type: number
+        lossCount:
+          type: number
+        breakevenCount:
+          type: number
         winRate:
           type: number
         setupPerformance:
@@ -1179,7 +1221,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/JournalEntry"
-      required: [sessionPnl, sessionPnlPercent, maxDailyLoss, dailyLossUsed, tradeCount, winRate, setupPerformance, checklistCompleted, checklistTotal, recentEntries]
+      required: [sessionPnl, sessionPnlPercent, maxDailyLoss, dailyLossUsed, tradeCount, reviewCount, triggeredTradeCount, openTradeCount, closedTradeCount, winCount, lossCount, breakevenCount, winRate, setupPerformance, checklistCompleted, checklistTotal, recentEntries]
     SetupPerformance:
       type: object
       properties:
@@ -1189,15 +1231,19 @@ components:
           type: number
         closedCount:
           type: number
+        triggeredCount:
+          type: number
         wins:
           type: number
         losses:
+          type: number
+        breakeven:
           type: number
         winRate:
           type: number
         netPnl:
           type: number
-      required: [setupType, reviewCount, closedCount, wins, losses, winRate, netPnl]
+      required: [setupType, reviewCount, triggeredCount, closedCount, wins, losses, breakeven, winRate, netPnl]
     Phase8TimelineEvent:
       type: object
       properties:

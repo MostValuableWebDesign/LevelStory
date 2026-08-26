@@ -543,7 +543,7 @@ export function runCausalBacktest(
         cursor: candle.closeTime,
         allCandles: dataset.candles,
         historicalFeed: dataset.candles,
-        premarketAvailable: true,
+        premarketAvailable: request.premarketAvailable !== false,
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations;

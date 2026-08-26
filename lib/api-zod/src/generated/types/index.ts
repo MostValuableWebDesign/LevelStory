@@ -47,6 +47,7 @@ export * from './fibonacciLevel';
 export * from './futuresContractSpecification';
 export * from './futuresSessionCalendar';
 export * from './futuresSessionCalendarEarlyCloses';
+export * from './getDashboardOverviewParams';
 export * from './getMarketSnapshotParams';
 export * from './getMarketSnapshotSession';
 export * from './getMarketSnapshotSlippageMode';

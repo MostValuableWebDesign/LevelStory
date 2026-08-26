@@ -13,7 +13,15 @@ export interface DashboardOverview {
   sessionPnlPercent: number;
   maxDailyLoss: number;
   dailyLossUsed: number;
+  /** Backward-compatible alias for triggeredTradeCount. */
   tradeCount: number;
+  reviewCount: number;
+  triggeredTradeCount: number;
+  openTradeCount: number;
+  closedTradeCount: number;
+  winCount: number;
+  lossCount: number;
+  breakevenCount: number;
   winRate: number;
   setupPerformance: SetupPerformance[];
   checklistCompleted: number;

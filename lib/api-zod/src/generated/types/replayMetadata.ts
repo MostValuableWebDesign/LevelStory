@@ -8,6 +8,7 @@
 import type { ReplayMetadataBarIntervalMinutes } from './replayMetadataBarIntervalMinutes';
 
 export interface ReplayMetadata {
+  tradingDate: string;
   cursor: string;
   visibleCandleCount: number;
   timeZone: string;

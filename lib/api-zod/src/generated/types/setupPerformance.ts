@@ -10,8 +10,10 @@ export interface SetupPerformance {
   setupType: string;
   reviewCount: number;
   closedCount: number;
+  triggeredCount: number;
   wins: number;
   losses: number;
+  breakeven: number;
   winRate: number;
   netPnl: number;
 }

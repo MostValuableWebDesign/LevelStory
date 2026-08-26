@@ -10,6 +10,7 @@ import { buildPhase7RiskPlan } from "./phase7.js";
 import { assertDashboardInvariants, validateDashboardInvariants } from "./invariants.js";
 import { createMarketSnapshot, selectExecutableDirection } from "../market-data.js";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
+import { timestampForTradingDate } from "../futures/session-calendar.js";
 import type { Phase6Analysis } from "./phase6.js";
 
 const candle = (n: number, close = 10, complete = true) => ({
@@ -55,7 +56,8 @@ test("snapshot replay is causal and session bounded", () => {
   const premarket = createMarketSnapshot("MES", "premarket");
   assert.equal(premarket.ntz.complete, false);
   assert.equal(premarket.candles.every(candle => candle.closeTime <= premarket.replay.cursor), true);
-  assert.equal(premarket.candles.some(candle => candle.openTime.startsWith("2026-08-25T13:30:")), false);
+  const currentRegularOpen = timestampForTradingDate(premarket.replay.tradingDate, "09:30");
+  assert.equal(premarket.candles.some(candle => Date.parse(candle.openTime) >= currentRegularOpen), false);
   assert.equal(premarket.candles.every(candle => candle.contractSymbol === "MESU26"), true);
   assert.equal(premarket.breakout.detected, false);
   assert.equal(premarket.riskPlan.direction, null);
@@ -66,6 +68,59 @@ test("snapshot replay is causal and session bounded", () => {
   assert.equal(regular.ntz.complete, true);
   assert.equal(regular.levels.openingRangeHigh !== null, true);
   assert.equal(regular.candles.every(candle => candle.closeTime <= regular.replay.cursor), true);
+});
+
+test("snapshot metadata follows each effective replay trading date", () => {
+  const summer = createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
+    tradingDate: "2026-08-25",
+    cursor: timestampForTradingDate("2026-08-25", "10:00"),
+  });
+  const winter = createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
+    tradingDate: "2026-01-05",
+    cursor: timestampForTradingDate("2026-01-05", "10:00"),
+  });
+  assert.equal(summer.sessionCalendar.tradingDate, "2026-08-25");
+  assert.equal(summer.replay.tradingDate, "2026-08-25");
+  assert.equal(summer.indicators.vwapSessionDate, "2026-08-25");
+  assert.equal(winter.sessionCalendar.tradingDate, "2026-01-05");
+  assert.equal(winter.replay.tradingDate, "2026-01-05");
+  assert.equal(winter.indicators.vwapSessionDate, "2026-01-05");
+  assert.notEqual(summer.replay.cursor, winter.replay.cursor);
+});
+
+test("snapshot honors unavailable premarket data and cursor-derived market status", () => {
+  const noPremarket = createMarketSnapshot("MES", "premarket", undefined, undefined, undefined, {
+    tradingDate: "2026-03-09",
+    cursor: timestampForTradingDate("2026-03-09", "09:50"),
+    premarketAvailable: false,
+  });
+  assert.equal(noPremarket.sessionCalendar.premarketAvailable, false);
+  assert.equal(noPremarket.levels.premarketHigh, null);
+  assert.equal(noPremarket.levels.premarketLow, null);
+  assert.equal(noPremarket.marketStatus, "open");
+
+  const beforeOpen = createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
+    tradingDate: "2026-03-09",
+    cursor: timestampForTradingDate("2026-03-09", "09:20"),
+  });
+  const afterClose = createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
+    tradingDate: "2026-03-09",
+    cursor: timestampForTradingDate("2026-03-09", "16:00"),
+  });
+  assert.equal(beforeOpen.marketStatus, "premarket");
+  assert.equal(afterClose.marketStatus, "closed");
+  assert.equal(new Date(beforeOpen.replay.cursor).toISOString(), "2026-03-09T13:20:00.000Z");
+  assert.equal(new Date(afterClose.replay.cursor).toISOString(), "2026-03-09T20:00:00.000Z");
+});
+
+test("a replay cursor cannot silently cross its selected trading date", () => {
+  assert.throws(
+    () => createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
+      tradingDate: "2026-08-25",
+      cursor: timestampForTradingDate("2026-08-26", "10:00"),
+    }),
+    /outside trading date/,
+  );
 });
 
 test("snapshot decision honors server-side emergency lockout", () => {

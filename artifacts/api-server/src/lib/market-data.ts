@@ -36,6 +36,8 @@ import {
 } from "./futures/contracts.js";
 import {
   classifyFuturesSession,
+  isTradingDate,
+  previousTradingDate,
   sessionCalendarForContract,
   timestampForTradingDate,
   tradingDateForTimestamp,
@@ -69,7 +71,7 @@ export type MarketSnapshot = {
   marketStatus: "premarket" | "open" | "closed";
   session: string;
   updatedAt: string;
-  replay: { cursor: string; visibleCandleCount: number; timeZone: string; barIntervalMinutes: 5 };
+  replay: { tradingDate: string; cursor: string; visibleCandleCount: number; timeZone: string; barIntervalMinutes: 5 };
   candles: Array<{
     time: string;
     timestamp: string;
@@ -313,8 +315,6 @@ const companies: Record<string, string> = {
   NQ: "E-mini Nasdaq-100 Futures",
 };
 
-const CURRENT_TRADING_DATE = "2026-08-25";
-
 type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
 type Phase7Input = {
   targetDollars?: number;
@@ -346,6 +346,12 @@ export type ReplaySnapshotOptions = {
   premarketAvailable?: boolean;
 };
 
+function latestTradingDate(calendar: ReturnType<typeof sessionCalendarForContract>): string {
+  let date = tradingDateForTimestamp(Date.now(), calendar);
+  while (!isTradingDate(date, calendar)) date = previousTradingDate(date, calendar);
+  return date;
+}
+
 export function createMarketSnapshot(
   symbol: string,
   session: string,
@@ -358,7 +364,12 @@ export function createMarketSnapshot(
   const normalized = specification.rootSymbol;
   const config = strategyConfig();
   const calendar = sessionCalendarForContract(specification);
-  const tradingDate = replayOptions?.tradingDate ?? CURRENT_TRADING_DATE;
+  const requestedCursor = replayOptions?.cursor;
+  const tradingDate = replayOptions?.tradingDate
+    ?? (requestedCursor === undefined ? latestTradingDate(calendar) : tradingDateForTimestamp(requestedCursor, calendar));
+  if (requestedCursor !== undefined && tradingDateForTimestamp(requestedCursor, calendar) !== tradingDate) {
+    throw new Error(`Replay cursor ${new Date(requestedCursor).toISOString()} is outside trading date ${tradingDate}.`);
+  }
   const premarketAvailable = replayOptions?.premarketAvailable !== false;
   const allCandles = replayOptions?.allCandles
     ? [...replayOptions.allCandles]
@@ -381,6 +392,12 @@ export function createMarketSnapshot(
   const currentCursor = replayOptions?.cursor ?? (session === "premarket"
     ? timestampForTradingDate(tradingDate, "09:20", calendar)
     : timestampForTradingDate(tradingDate, "13:00", calendar));
+  const currentSession = classifyFuturesSession(currentCursor, calendar);
+  const marketStatus = currentSession === "premarket"
+    ? "premarket"
+    : currentSession === "regular"
+      ? "open"
+      : "closed";
   const visible = completedSimulatedCandles(allCandles, currentCursor);
   const historicalHourly = completedSimulatedHourlyCandles(
     completedSimulatedCandles(historicalFeed, currentCursor),
@@ -516,7 +533,7 @@ export function createMarketSnapshot(
     fib786: finiteOrNull(levels.fibonacci.find(l => l.name === "Fib 0.786")?.price),
     volumeRatio: finiteOrNull(levels.volumeRatio),
     emaSlopeWindow: config.emaSlopeWindow,
-    vwapSessionDate: CURRENT_TRADING_DATE,
+     vwapSessionDate: tradingDate,
   };
   const currentLevels = Object.fromEntries(levels.levels.map(level => [level.name, level.price]));
   const ntzStatus = levels.ntzPhase !== "completed"
@@ -544,18 +561,18 @@ export function createMarketSnapshot(
     contract: specification,
     sessionCalendar: {
       ...calendar,
-      tradingDate: CURRENT_TRADING_DATE,
-      premarketAvailable: true,
+      tradingDate,
+      premarketAvailable,
       holidays: [...calendar.holidays],
       earlyCloses: { ...calendar.earlyCloses },
     },
     price,
     change: Number((price - previousClose).toFixed(2)),
     changePercent: Number((((price - previousClose) / previousClose) * 100).toFixed(2)),
-    marketStatus: session === "premarket" ? "premarket" : "open",
-    session: session === "premarket" ? "Premarket" : "Regular session / replay",
+     marketStatus,
+     session: currentSession === "premarket" ? "Premarket" : currentSession === "regular" ? "Regular session / replay" : "Market closed",
     updatedAt: new Date(currentCursor).toISOString(),
-     replay: { cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "America/New_York", barIntervalMinutes: config.barIntervalMinutes },
+     replay: { tradingDate, cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "America/New_York", barIntervalMinutes: config.barIntervalMinutes },
     candles: visible.map(toApiCandle),
     levels: {
       premarketHigh: finiteOrNull(currentLevels["Premarket high"]),

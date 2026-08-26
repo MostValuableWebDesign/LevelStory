@@ -34,6 +34,9 @@ export const getMarketSnapshotQuerySlippageModeDefault = `normal`;
 export const GetMarketSnapshotQueryParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getMarketSnapshotQuerySymbolMax).default(getMarketSnapshotQuerySymbolDefault),
   "session": zod.enum(['premarket', 'regular']).default(getMarketSnapshotQuerySessionDefault),
+  "tradingDate": zod.coerce.string().optional().describe('New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.'),
+  "cursor": zod.coerce.number().optional().describe('Replay cursor as a Unix timestamp in milliseconds. When supplied, only candles completed by this instant are visible.'),
+  "premarketAvailable": zod.coerce.boolean().optional().describe('Whether premarket candles are available for this replay.'),
   "fibHigh": zod.coerce.number().optional().describe('Optional manual Fibonacci high anchor for descriptive replay analysis.'),
   "fibLow": zod.coerce.number().optional().describe('Optional manual Fibonacci low anchor for descriptive replay analysis.'),
   "targetDollars": zod.coerce.number().min(getMarketSnapshotQueryTargetDollarsMin).max(getMarketSnapshotQueryTargetDollarsMax).default(getMarketSnapshotQueryTargetDollarsDefault).describe('Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.'),
@@ -93,6 +96,7 @@ export const GetMarketSnapshotResponse = zod.object({
   "session": zod.string(),
   "updatedAt": zod.string(),
   "replay": zod.object({
+  "tradingDate": zod.string(),
   "cursor": zod.string(),
   "visibleCandleCount": zod.number(),
   "timeZone": zod.string(),
@@ -498,22 +502,35 @@ export const ListFuturesContractSpecificationsResponse = zod.array(ListFuturesCo
 
 
 /**
- * Returns the current shadow session summary and recent journal activity.
+ * Returns the selected New York trading-date shadow session summary and recent journal activity.
  * @summary Get dashboard overview
  */
+export const GetDashboardOverviewQueryParams = zod.object({
+  "tradingDate": zod.coerce.string().optional().describe('New York trading date to summarize. Defaults to the latest trading date in the session calendar.')
+})
+
 export const GetDashboardOverviewResponse = zod.object({
   "sessionPnl": zod.number(),
   "sessionPnlPercent": zod.number(),
   "maxDailyLoss": zod.number(),
   "dailyLossUsed": zod.number(),
-  "tradeCount": zod.number(),
+  "tradeCount": zod.number().describe('Backward-compatible alias for triggeredTradeCount.'),
+  "reviewCount": zod.number(),
+  "triggeredTradeCount": zod.number(),
+  "openTradeCount": zod.number(),
+  "closedTradeCount": zod.number(),
+  "winCount": zod.number(),
+  "lossCount": zod.number(),
+  "breakevenCount": zod.number(),
   "winRate": zod.number(),
   "setupPerformance": zod.array(zod.object({
   "setupType": zod.string(),
   "reviewCount": zod.number(),
   "closedCount": zod.number(),
+  "triggeredCount": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),
+  "breakeven": zod.number(),
   "winRate": zod.number(),
   "netPnl": zod.number()
 })),

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketSnapshot, useGetRiskSettings } from "@workspace/api-client-react";
+import { getGetDashboardOverviewQueryKey, getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketSnapshot, useGetRiskSettings } from "@workspace/api-client-react";
 import type { MarketSnapshot, Signal } from "@workspace/api-client-react";
 import { ArrowUpRight, Check, Clock3, Crosshair, RefreshCw, ShieldAlert, Target } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
@@ -23,9 +23,13 @@ export default function Dashboard() {
   const targetDollars = targetSelection === "custom" ? Number(customTarget) || 75 : Number(targetSelection);
   const marketParams = { symbol, session, targetDollars, slippageMode, ...appliedFib };
   const market = useGetMarketSnapshot(marketParams);
-  const overview = useGetDashboardOverview();
   const risk = useGetRiskSettings();
   const snapshot = market.data;
+  const overviewParams = snapshot ? { tradingDate: snapshot.sessionCalendar.tradingDate } : undefined;
+  const overview = useGetDashboardOverview(
+    overviewParams,
+    { query: { enabled: Boolean(snapshot), queryKey: getGetDashboardOverviewQueryKey(overviewParams) } },
+  );
   const overviewData = overview.data;
   const riskData = risk.data;
   const activeSignals = snapshot?.signals ?? [];
@@ -58,7 +62,16 @@ export default function Dashboard() {
          <SessionStatusRail snapshot={snapshot} isLoading={market.isLoading} isError={market.isError} preview={preview} />
 
         <Panel className="mb-5">
-           {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[0, 1, 2, 3].map((item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[["Session P&L", `${overviewData.sessionPnl >= 0 ? "+" : ""}$${overviewData.sessionPnl.toFixed(2)}`, overviewData.sessionPnl >= 0 ? "status-positive" : "status-negative"], ["Reviews logged", String(overviewData.tradeCount), ""], ["Win rate", `${overviewData.winRate.toFixed(1)}%`, ""], ["Plan completion", `${overviewData.checklistCompleted}/${overviewData.checklistTotal}`, ""]].map(([label, value, tone]) => <div key={label} className="metric-cell px-5 py-4 sm:px-6"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
+            {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 xl:grid-cols-8">{Array.from({ length: 8 }, (_, item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 xl:grid-cols-8">{[
+              ["Session P&L", `${overviewData.sessionPnl >= 0 ? "+" : ""}$${overviewData.sessionPnl.toFixed(2)}`, overviewData.sessionPnl >= 0 ? "status-positive" : "status-negative"],
+              ["Reviews", String(overviewData.reviewCount), ""],
+              ["Triggered", String(overviewData.triggeredTradeCount), ""],
+              ["Open shadow", String(overviewData.openTradeCount), ""],
+              ["Closed", String(overviewData.closedTradeCount), ""],
+              ["Wins", String(overviewData.winCount), "status-positive"],
+              ["Losses", String(overviewData.lossCount), "status-negative"],
+              ["Breakeven", String(overviewData.breakevenCount), ""],
+            ].map(([label, value, tone]) => <div key={label} className="metric-cell px-4 py-4 sm:px-5"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
         </Panel>
 
         {market.isLoading ? <Panel><QuerySkeleton rows={5} /></Panel> : market.isError || !snapshot ? <Panel><QueryError onRetry={() => market.refetch()} message="Simulated market feed unavailable." /></Panel> : <div className="space-y-5 appear">
@@ -109,7 +122,7 @@ export default function Dashboard() {
 
           <Panel>
             <PanelTitle eyebrow="Shadow review history" title="Performance by setup" right={<span className="text-[10px] uppercase text-muted-foreground">Never blended</span>} />
-            {overview.isLoading ? <QuerySkeleton rows={3} /> : overview.isError || !overviewData ? <QueryError onRetry={() => overview.refetch()} /> : <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">{overviewData.setupPerformance.map((item) => <div key={item.setupType} className="bg-card p-5" data-testid={`setup-performance-${item.setupType}`}><div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{formatSetupName(item.setupType)}</div><div className="mono mt-3 text-xl font-medium">{item.netPnl >= 0 ? "+" : ""}${item.netPnl.toFixed(2)}</div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{item.reviewCount} reviews · {item.closedCount} closed</span><span>{item.closedCount ? `${item.winRate.toFixed(1)}% win` : "No closed reviews"}</span></div></div>)}</div>}
+             {overview.isLoading ? <QuerySkeleton rows={3} /> : overview.isError || !overviewData ? <QueryError onRetry={() => overview.refetch()} /> : <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">{overviewData.setupPerformance.map((item) => <div key={item.setupType} className="bg-card p-5" data-testid={`setup-performance-${item.setupType}`}><div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{formatSetupName(item.setupType)}</div><div className="mono mt-3 text-xl font-medium">{item.netPnl >= 0 ? "+" : ""}${item.netPnl.toFixed(2)}</div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{item.reviewCount} reviews · {item.triggeredCount} triggered · {item.closedCount} closed</span><span>{item.closedCount ? `${item.winRate.toFixed(1)}% win · ${item.breakeven} BE` : "No closed trades"}</span></div></div>)}</div>}
           </Panel>
 
           <Panel>
