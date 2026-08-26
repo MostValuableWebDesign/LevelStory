@@ -1,4 +1,10 @@
 import type { Candle, Level } from "./types.js";
+import {
+  classifyFuturesSession,
+  DEFAULT_FUTURES_SESSION_CALENDAR,
+  tradingDateForTimestamp,
+  type FuturesSessionCalendar,
+} from "../futures/session-calendar.js";
 
 export function ema(values: readonly number[], period: number): number[] {
   if (period <= 0) throw new Error("EMA period must be positive");
@@ -7,6 +13,24 @@ export function ema(values: readonly number[], period: number): number[] {
   const result = [values[0]];
   for (let i = 1; i < values.length; i++) result.push(values[i] * alpha + result[i - 1] * (1 - alpha));
   return result;
+}
+
+export function completedEma(candles: readonly Candle[], period: number): number[] {
+  const completed = candles
+    .filter((candle) => candle.isComplete)
+    .sort((first, second) => first.closeTime - second.closeTime);
+  return ema(completed.map((candle) => candle.close), period);
+}
+
+export function emaSlope(
+  candles: readonly Candle[],
+  period: number,
+  window: number,
+): number {
+  if (!Number.isInteger(window) || window <= 0) throw new Error("EMA slope window must be a positive integer");
+  const series = completedEma(candles, period);
+  if (series.length <= window) return NaN;
+  return series.at(-1)! - series.at(-(window + 1))!;
 }
 
 export function rsi(values: readonly number[], period = 14): number[] {
@@ -31,6 +55,24 @@ export function vwap(candles: readonly Candle[]): number {
   let pv = 0, volume = 0;
   for (const c of candles) { const typical = (c.high + c.low + c.close) / 3; pv += typical * c.volume; volume += c.volume; }
   return volume ? pv / volume : NaN;
+}
+
+export function regularSessionVwap(
+  candles: readonly Candle[],
+  calendar: FuturesSessionCalendar = DEFAULT_FUTURES_SESSION_CALENDAR,
+  tradingDate?: string,
+): number {
+  const completedRegular = candles
+    .filter((candle) => candle.isComplete && classifyFuturesSession(candle.openTime, calendar) === "regular")
+    .sort((first, second) => first.closeTime - second.closeTime);
+  const date = tradingDate ?? (
+    completedRegular.length
+      ? tradingDateForTimestamp(completedRegular.at(-1)!.openTime, calendar)
+      : undefined
+  );
+  return vwap(completedRegular.filter((candle) =>
+    date === undefined || tradingDateForTimestamp(candle.openTime, calendar) === date,
+  ));
 }
 
 export function volumeRatio(candles: readonly Candle[], lookback = 20): number {

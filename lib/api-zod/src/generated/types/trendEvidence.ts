@@ -6,10 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TrendEvidenceDirection } from './trendEvidenceDirection';
+import type { TrendEvidenceEvidenceItemsItem } from './trendEvidenceEvidenceItemsItem';
 
 export interface TrendEvidence {
   direction: TrendEvidenceDirection;
   score: number;
   evidence: string[];
   structure: string;
+  candleCount: number;
+  evidenceItems: TrendEvidenceEvidenceItemsItem[];
 }

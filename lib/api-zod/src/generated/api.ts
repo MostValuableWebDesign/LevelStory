@@ -146,13 +146,37 @@ export const GetMarketSnapshotResponse = zod.object({
   "fib5": zod.number().nullable(),
   "fib618": zod.number().nullable(),
   "fib786": zod.number().nullable(),
-  "volumeRatio": zod.number().nullable()
+  "volumeRatio": zod.number().nullable(),
+  "emaSlopeWindow": zod.number(),
+  "vwapSessionDate": zod.string()
 }),
+  "majorLevels": zod.array(zod.object({
+  "name": zod.string(),
+  "kind": zod.enum(['support', 'resistance']),
+  "price": zod.number(),
+  "zoneLow": zod.number(),
+  "zoneHigh": zod.number(),
+  "reactionCount": zod.number(),
+  "strength": zod.number(),
+  "recencyScore": zod.number(),
+  "reactionMagnitude": zod.number(),
+  "volumeScore": zod.number(),
+  "components": zod.array(zod.string()),
+  "componentCount": zod.number(),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite'])
+})),
   "trend": zod.object({
   "direction": zod.enum(['bullish', 'bearish', 'neutral']),
   "score": zod.number(),
   "evidence": zod.array(zod.string()),
-  "structure": zod.string()
+  "structure": zod.string(),
+  "candleCount": zod.number(),
+  "evidenceItems": zod.array(zod.object({
+  "key": zod.enum(['structure', 'vwap', 'ema', 'emaSlope']),
+  "label": zod.string(),
+  "status": zod.enum(['positive', 'negative', 'neutral']),
+  "detail": zod.string()
+}))
 }),
   "signals": zod.array(zod.object({
   "key": zod.enum(['orb', 'pullback', 'patience', 'volume']),

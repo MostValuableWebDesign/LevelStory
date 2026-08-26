@@ -10,6 +10,7 @@ export type StrategyConfig = {
   orbMinutes: number;
   ntzMinutes: number;
   emaPeriod: number;
+  emaSlopeWindow: number;
   rsiPeriod: number;
   volumeLookback: number;
   volumeExpansionRatio: number;
@@ -28,6 +29,15 @@ export type StrategyConfig = {
   patienceContainmentTolerance: number;
   dojiBodyRatio: number;
   equivalentBodyTolerance: number;
+  trendCandleCount: number;
+  trendEmaFlatThreshold: number;
+  historicalLookbackTradingDays: number;
+  majorLevelMinReactions: number;
+  majorLevelProximityTicks: number;
+  majorLevelProximityPercent: number;
+  majorLevelProximityAtrFactor: number;
+  majorLevelConfluenceToleranceTicks: number;
+  majorLevelRecencyHalfLifeDays: number;
 };
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
@@ -41,6 +51,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   orbMinutes: 15, // assumption: exact 9:30–9:45 ET opening range
   ntzMinutes: 15, // assumption: exact first three completed 5m candles
   emaPeriod: 200,
+  emaSlopeWindow: 5, // assumption: compare with the value five completed candles ago
   rsiPeriod: 14,
   volumeLookback: 20,
   volumeExpansionRatio: 1.5,
@@ -59,6 +70,15 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   patienceContainmentTolerance: 0,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
+  trendCandleCount: 8, // assumption: eight completed 15m candles
+  trendEmaFlatThreshold: 0.01,
+  historicalLookbackTradingDays: 252, // assumption: approximately one trading year
+  majorLevelMinReactions: 3,
+  majorLevelProximityTicks: 2,
+  majorLevelProximityPercent: 0.0015,
+  majorLevelProximityAtrFactor: 0.25,
+  majorLevelConfluenceToleranceTicks: 2,
+  majorLevelRecencyHalfLifeDays: 60,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -90,6 +110,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["orbMinutes", config.orbMinutes],
     ["ntzMinutes", config.ntzMinutes],
     ["emaPeriod", config.emaPeriod],
+    ["emaSlopeWindow", config.emaSlopeWindow],
     ["rsiPeriod", config.rsiPeriod],
     ["volumeLookback", config.volumeLookback],
     ["volumeExpansionRatio", config.volumeExpansionRatio],
@@ -99,6 +120,12 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["maxPositionValue", config.maxPositionValue],
     ["maxRiskTrades", config.maxRiskTrades],
     ["runnerTriggerR", config.runnerTriggerR],
+    ["trendCandleCount", config.trendCandleCount],
+    ["historicalLookbackTradingDays", config.historicalLookbackTradingDays],
+    ["majorLevelMinReactions", config.majorLevelMinReactions],
+    ["majorLevelProximityTicks", config.majorLevelProximityTicks],
+    ["majorLevelConfluenceToleranceTicks", config.majorLevelConfluenceToleranceTicks],
+    ["majorLevelRecencyHalfLifeDays", config.majorLevelRecencyHalfLifeDays],
   ];
   for (const [name, value] of positiveNumbers) {
     if (!Number.isFinite(value) || value <= 0) {
@@ -115,6 +142,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["patienceContainmentTolerance", config.patienceContainmentTolerance],
     ["dojiBodyRatio", config.dojiBodyRatio],
     ["equivalentBodyTolerance", config.equivalentBodyTolerance],
+    ["trendEmaFlatThreshold", config.trendEmaFlatThreshold],
+    ["majorLevelProximityPercent", config.majorLevelProximityPercent],
+    ["majorLevelProximityAtrFactor", config.majorLevelProximityAtrFactor],
   ];
   for (const [name, value] of nonNegativeNumbers) {
     if (!Number.isFinite(value) || value < 0) {

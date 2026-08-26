@@ -1,6 +1,9 @@
 import type { Candle, Level } from "./types.js";
-import { ema, fibonacci, rsi, volumeRatio, vwap } from "./indicators.js";
+import { completedEma, emaSlope, fibonacci, regularSessionVwap, rsi, volumeRatio } from "./indicators.js";
 import type { StrategyConfig } from "./config.js";
+import { FUTURES_CONTRACT_SPECS, type FuturesContractSpecification } from "../futures/contracts.js";
+import type { SimulatedHourlyCandle } from "../futures/simulated-feed.js";
+import { majorLevels as detectMajorLevels, type MajorLevel } from "./major-levels.js";
 import {
   classifyFuturesSession,
   DEFAULT_FUTURES_SESSION_CALENDAR,
@@ -15,6 +18,7 @@ export type SessionWindows = {
   tradingDate?: string;
   replayCursor?: number;
   premarketAvailable?: boolean;
+  historicalHourly?: readonly SimulatedHourlyCandle[];
 };
 
 export type NtzEventType =
@@ -50,6 +54,8 @@ export type SessionLevels = {
   rsi: number;
   volumeRatio: number;
   fibonacci: Level[];
+  emaSlope: number;
+  majorLevels: MajorLevel[];
   previousDayClose: number | null;
 };
 
@@ -60,6 +66,7 @@ export function sessionLevels(
   windows: SessionWindows,
   config: StrategyConfig,
   calendar: FuturesSessionCalendar = DEFAULT_FUTURES_SESSION_CALENDAR,
+  specification: FuturesContractSpecification = FUTURES_CONTRACT_SPECS.MES,
 ): SessionLevels {
   const regular = [...windows.regular].sort((first, second) => first.openTime - second.openTime);
   const currentTradingDate = windows.tradingDate
@@ -117,7 +124,22 @@ export function sessionLevels(
   if (ntz) levels.push({ name: "NTZ high", price: ntz.high }, { name: "NTZ low", price: ntz.low });
 
   const indicatorCandles = [...previousDay, ...regular];
-  const emaValues = ema(indicatorCandles.map((candle) => candle.close), config.emaPeriod);
+  const emaValues = completedEma(candles, config.emaPeriod);
+  const currentEma = emaValues.at(-1) ?? NaN;
+  const currentVwap = regularSessionVwap(candles, calendar, currentDate);
+  const fibonacciLevels = fibonacci(regular);
+  const referenceComponents = [
+    ...levels,
+    { name: "VWAP", price: currentVwap },
+    { name: "EMA 200", price: currentEma },
+    ...fibonacciLevels,
+  ];
+  const detectedMajorLevels = detectMajorLevels(
+    windows.historicalHourly ?? [],
+    specification,
+    config,
+    referenceComponents,
+  );
   const position = ntz && orbComplete && regular.length
     ? regular.at(-1)!.close >= ntz.low && regular.at(-1)!.close <= ntz.high ? "inside" : "outside"
     : "unknown";
@@ -130,11 +152,13 @@ export function sessionLevels(
     ntzPosition: position,
     ntzEvents,
     previousDayClose: previousDay.at(-1)?.close ?? null,
-    vwap: vwap(regular),
-    ema: emaValues.at(-1) ?? NaN,
+    vwap: currentVwap,
+    ema: currentEma,
+    emaSlope: emaSlope(candles, config.emaPeriod, config.emaSlopeWindow),
     rsi: rsi(indicatorCandles.map((candle) => candle.close), config.rsiPeriod).at(-1) ?? 50,
     volumeRatio: volumeRatio(regular, config.volumeLookback),
-    fibonacci: fibonacci(regular),
+    fibonacci: fibonacciLevels,
+    majorLevels: detectedMajorLevels,
   };
 }
 

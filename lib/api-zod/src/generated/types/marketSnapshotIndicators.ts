@@ -27,4 +27,6 @@ export type MarketSnapshotIndicators = {
   fib786: number | null;
   /** @nullable */
   volumeRatio: number | null;
+  emaSlopeWindow: number;
+  vwapSessionDate: string;
 };

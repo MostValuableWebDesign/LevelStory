@@ -24,6 +24,17 @@ export type SimulatedFuturesCandle = {
   isComplete: boolean;
 };
 
+export type SimulatedHourlyCandle = {
+  openTime: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  isComplete: boolean;
+};
+
 export type SimulatedFeedOptions = {
   startDate?: string | number;
   days?: number;
@@ -115,6 +126,50 @@ export function completedSimulatedCandles(
     .filter((candle) => candle.isComplete && candle.closeTime <= cursor)
     .sort((first, second) => first.closeTime - second.closeTime)
     .map((candle) => ({ ...candle }));
+}
+
+export function completedSimulatedHourlyCandles(
+  candles: readonly SimulatedFuturesCandle[],
+  calendar: FuturesSessionCalendar,
+): SimulatedHourlyCandle[] {
+  const groups = new Map<string, SimulatedFuturesCandle[]>();
+  const dateCache = new Map<number, string>();
+  const windowCache = new Map<string, ReturnType<typeof sessionWindow>>();
+  for (const candle of candles) {
+    if (!candle.isComplete) continue;
+    const utcDateKey = Math.floor(candle.openTime / (24 * 60 * MINUTE));
+    const tradingDate = dateCache.get(utcDateKey) ?? tradingDateForTimestamp(candle.openTime, calendar);
+    dateCache.set(utcDateKey, tradingDate);
+    let regularWindow = windowCache.get(tradingDate);
+    if (regularWindow === undefined) {
+      regularWindow = sessionWindow(tradingDate, "regular", calendar);
+      windowCache.set(tradingDate, regularWindow);
+    }
+    if (!regularWindow) continue;
+    if (candle.openTime < regularWindow.openTime || candle.openTime >= regularWindow.closeTime) continue;
+    const hourIndex = Math.floor((candle.openTime - regularWindow.openTime) / (60 * MINUTE));
+    const key = `${tradingDate}:${hourIndex}`;
+    const group = groups.get(key) ?? [];
+    group.push(candle);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .filter((group) => group.length === 12)
+    .map((group) => {
+      const sorted = [...group].sort((first, second) => first.openTime - second.openTime);
+      return {
+        openTime: sorted[0].openTime,
+        closeTime: sorted.at(-1)!.closeTime,
+        open: sorted[0].open,
+        high: Math.max(...sorted.map((candle) => candle.high)),
+        low: Math.min(...sorted.map((candle) => candle.low)),
+        close: sorted.at(-1)!.close,
+        volume: sorted.reduce((sum, candle) => sum + candle.volume, 0),
+        isComplete: sorted.every((candle) => candle.isComplete),
+      };
+    })
+    .sort((first, second) => first.openTime - second.openTime);
 }
 
 export function feedSession(

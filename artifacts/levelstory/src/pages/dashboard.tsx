@@ -57,11 +57,12 @@ export default function Dashboard() {
             </Panel>
             <Panel>
               <PanelTitle eyebrow="Read, don't predict" title="Indicators" right={<Target size={16} className="text-muted-foreground" />} />
-               <div className="divide-y divide-border border-t border-border">{[["RSI", snapshot.indicators.rsi == null ? "—" : snapshot.indicators.rsi.toFixed(1), snapshot.indicators.rsi == null ? "Pending" : snapshot.indicators.rsi > 70 ? "Extended" : snapshot.indicators.rsi < 30 ? "Oversold" : "Balanced"], ["EMA 200", formatPrice(snapshot.indicators.ema200), "Calculated"], ["EMA slope", formatSigned(snapshot.indicators.emaSlope), "Recent direction"], ["VWAP", formatPrice(snapshot.indicators.vwap), "Session reference"], ["Fib 23.6", formatPrice(snapshot.indicators.fib236), "Confluence"], ["Fib 38.2", formatPrice(snapshot.indicators.fib382), "Confluence"], ["Fib 50", formatPrice(snapshot.indicators.fib5), "Confluence"], ["Fib 61.8", formatPrice(snapshot.indicators.fib618), "Confluence"], ["Fib 78.6", formatPrice(snapshot.indicators.fib786), "Confluence"], ["Volume ratio", snapshot.indicators.volumeRatio == null ? "—" : `${snapshot.indicators.volumeRatio.toFixed(2)}×`, snapshot.indicators.volumeRatio == null ? "Pending" : snapshot.indicators.volumeRatio > 1 ? "Elevated" : "Quiet"]].map(([label, value, detail]) => <div key={label} className="flex items-center justify-between px-5 py-3 text-xs"><span className="text-muted-foreground">{label}</span><span className="mono font-medium">{value}</span><span className="hidden w-20 text-right text-[10px] text-muted-foreground sm:block">{detail}</span></div>)}</div>
+               <div className="divide-y divide-border border-t border-border">{[["RSI", snapshot.indicators.rsi == null ? "—" : snapshot.indicators.rsi.toFixed(1), snapshot.indicators.rsi == null ? "Pending" : snapshot.indicators.rsi > 70 ? "Extended" : snapshot.indicators.rsi < 30 ? "Oversold" : "Balanced"], ["EMA 200", formatPrice(snapshot.indicators.ema200), "Completed 5m"], [`EMA slope (${snapshot.indicators.emaSlopeWindow}c)`, formatSigned(snapshot.indicators.emaSlope), "Completed EMA"], ["VWAP", formatPrice(snapshot.indicators.vwap), `Reset ${snapshot.indicators.vwapSessionDate} 09:30 ET`], ["Fib 23.6", formatPrice(snapshot.indicators.fib236), "Confluence"], ["Fib 38.2", formatPrice(snapshot.indicators.fib382), "Confluence"], ["Fib 50", formatPrice(snapshot.indicators.fib5), "Confluence"], ["Fib 61.8", formatPrice(snapshot.indicators.fib618), "Confluence"], ["Fib 78.6", formatPrice(snapshot.indicators.fib786), "Confluence"], ["Volume ratio", snapshot.indicators.volumeRatio == null ? "—" : `${snapshot.indicators.volumeRatio.toFixed(2)}×`, snapshot.indicators.volumeRatio == null ? "Pending" : snapshot.indicators.volumeRatio > 1 ? "Elevated" : "Quiet"]].map(([label, value, detail]) => <div key={label} className="flex items-center justify-between px-5 py-3 text-xs"><span className="text-muted-foreground">{label}</span><span className="mono font-medium">{value}</span><span className="hidden w-32 text-right text-[10px] text-muted-foreground sm:block">{detail}</span></div>)}</div>
             </Panel>
           </div>
 
            <NtzPanel snapshot={snapshot} />
+           <MajorLevelsPanel snapshot={snapshot} />
 
           <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
             <Panel>
@@ -91,8 +92,8 @@ export default function Dashboard() {
            </div>
            <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
              <Panel>
-               <PanelTitle eyebrow="Trend evidence" title={`${snapshot.trend.direction} 15-minute trend`} right={<span className="mono text-xs">score {snapshot.trend.score}</span>} />
-               <div className="border-t border-border p-5"><p className="text-sm font-semibold">{snapshot.trend.structure}</p><div className="mt-3 flex flex-wrap gap-2">{snapshot.trend.evidence.map(item => <span key={item} className="rounded-sm bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{item}</span>)}</div><div className="mt-5 grid gap-2">{snapshot.assumptions.map(item => <p key={item} className="text-[11px] leading-4 text-muted-foreground">{item}</p>)}</div></div>
+               <PanelTitle eyebrow="Trend evidence" title={`${snapshot.trend.direction} 15-minute trend`} right={<span className="mono text-xs">{snapshot.trend.candleCount}/8 candles · score {snapshot.trend.score}</span>} />
+                <div className="border-t border-border p-5"><p className="text-sm font-semibold">{snapshot.trend.structure}</p><div className="mt-3 grid gap-2">{snapshot.trend.evidenceItems.map(item => <div key={item.key} className="rounded-sm border border-border/80 px-3 py-2" data-testid={`trend-evidence-${item.key}`}><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold uppercase tracking-[.08em]">{item.label}</span><span className={`text-[10px] font-bold uppercase ${item.status === "positive" ? "status-positive" : item.status === "negative" ? "status-negative" : "text-muted-foreground"}`}>{item.status}</span></div><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{item.detail}</p></div>)}</div><div className="mt-5 grid gap-2">{snapshot.assumptions.map(item => <p key={item} className="text-[11px] leading-4 text-muted-foreground">{item}</p>)}</div></div>
              </Panel>
              <Panel className={snapshot.reversal.warning ? "border-destructive/30" : ""}>
                <PanelTitle eyebrow="Bonus reversal / alert only" title="Reversal watch" right={<span className="text-[10px] uppercase text-muted-foreground">{snapshot.reversal.warning ? "Attention" : "Quiet"}</span>} />
@@ -133,6 +134,18 @@ function NtzPanel({ snapshot }: { snapshot: MarketSnapshot }) {
       <div className="max-h-[170px] overflow-y-auto rounded-sm border border-border" data-testid="ntz-event-ledger">
         {snapshot.ntz.events.length ? snapshot.ntz.events.map((event, index) => <div key={`${event.time}-${event.type}-${index}`} className="flex gap-3 border-b border-border px-3 py-2.5 last:border-0"><span className="mono mt-0.5 shrink-0 text-[10px] text-muted-foreground">{new Date(event.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><span><span className="block text-[11px] font-semibold">{event.type}</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{event.detail}</span></span></div>) : <div className="p-4 text-xs text-muted-foreground">No NTZ lifecycle events yet.</div>}
       </div>
+    </div>
+  </Panel>;
+}
+
+function MajorLevelsPanel({ snapshot }: { snapshot: MarketSnapshot }) {
+  return <Panel>
+    <PanelTitle eyebrow="Historical reaction map" title="Major levels" right={<span className="mono text-[10px] uppercase text-muted-foreground">{snapshot.majorLevels.length} zones · 252 sessions</span>} />
+    <div className="border-t border-border">
+      {snapshot.majorLevels.length ? snapshot.majorLevels.slice(0, 8).map((level) => <div key={level.name} className="flex flex-col gap-3 border-b border-border px-5 py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between" data-testid={`major-level-${level.kind}`}>
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{level.kind === "support" ? "Support" : "Resistance"}</span><span className={`rounded-sm px-2 py-1 text-[10px] font-bold uppercase ${level.confluence === "dynamite" ? "bg-accent text-accent-foreground" : level.confluence === "strong" ? "bg-secondary text-foreground" : "bg-muted text-muted-foreground"}`}>{level.confluence}</span></div><p className="mt-1 truncate text-[11px] text-muted-foreground">{level.components.join(" · ")}</p></div>
+        <div className="flex shrink-0 items-center gap-5"><div><div className="mono text-sm font-medium">{level.price.toFixed(2)}</div><div className="text-[10px] text-muted-foreground">zone {level.zoneLow.toFixed(2)}–{level.zoneHigh.toFixed(2)}</div></div><div className="text-right"><div className="mono text-sm font-medium">{level.strength}</div><div className="text-[10px] text-muted-foreground">{level.reactionCount} reactions</div></div></div>
+      </div>) : <div className="p-6 text-sm text-muted-foreground">No three-reaction hourly zones are available yet.</div>}
     </div>
   </Panel>;
 }

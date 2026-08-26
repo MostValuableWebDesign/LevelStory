@@ -24,10 +24,12 @@ import {
 } from "./futures/session-calendar.js";
 import {
   completedSimulatedCandles,
+  completedSimulatedHourlyCandles,
   generateSimulatedFuturesFeed,
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
+import type { MajorLevel } from "./strategy/major-levels.js";
 
 export type MarketSnapshot = {
   mode: typeof SHADOW_MODE_LABEL;
@@ -103,8 +105,23 @@ export type MarketSnapshot = {
     fib618: number | null;
     fib786: number | null;
     volumeRatio: number | null;
+    emaSlopeWindow: number;
+    vwapSessionDate: string;
   };
-  trend: { direction: "bullish" | "bearish" | "neutral"; score: number; evidence: string[]; structure: string };
+  majorLevels: MajorLevel[];
+  trend: {
+    direction: "bullish" | "bearish" | "neutral";
+    score: number;
+    evidence: string[];
+    structure: string;
+    candleCount: number;
+    evidenceItems: Array<{
+      key: "structure" | "vwap" | "ema" | "emaSlope";
+      label: string;
+      status: "positive" | "negative" | "neutral";
+      detail: string;
+    }>;
+  };
   signals: Array<{
     key: "orb" | "pullback" | "patience" | "volume";
     label: string;
@@ -156,23 +173,42 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     includePremarket: true,
     startDate: CURRENT_TRADING_DATE,
   });
+  const historicalFeed = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    days: config.historicalLookbackTradingDays,
+    seed: config.simulationSeed,
+    includePremarket: false,
+    startDate: CURRENT_TRADING_DATE,
+  });
   const currentCursor = session === "premarket"
     ? timestampForTradingDate(CURRENT_TRADING_DATE, "09:20", calendar)
     : timestampForTradingDate(CURRENT_TRADING_DATE, "13:00", calendar);
   const visible = completedSimulatedCandles(allCandles, currentCursor);
+  const historicalHourly = completedSimulatedHourlyCandles(
+    completedSimulatedCandles(historicalFeed, currentCursor),
+    calendar,
+  );
   const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === CURRENT_TRADING_DATE);
   const premarket = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "premarket");
   const regular = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "regular");
   const levels = sessionLevels(
     visible,
-    { premarket, regular, tradingDate: CURRENT_TRADING_DATE, premarketAvailable: true, replayCursor: currentCursor },
+    {
+      premarket,
+      regular,
+      tradingDate: CURRENT_TRADING_DATE,
+      premarketAvailable: true,
+      replayCursor: currentCursor,
+      historicalHourly,
+    },
     config,
     calendar,
+    specification,
   );
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
-  const trend = trendEvidence(regular, levels);
+  const trend = trendEvidence(regular, levels, config);
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
   const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
@@ -188,7 +224,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
   const indicators = {
     rsi: finiteOrNull(levels.rsi),
     ema200: finiteOrNull(levels.ema),
-    emaSlope: calculateEmaSlope(visible.map(c => c.close), config),
+    emaSlope: finiteOrNull(levels.emaSlope),
     vwap: finiteOrNull(levels.vwap),
     fib236: finiteOrNull(levels.fibonacci.find(l => l.name === "Fib 0.236")?.price),
     fib382: finiteOrNull(levels.fibonacci.find(l => l.name === "Fib 0.382")?.price),
@@ -196,6 +232,8 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     fib618: finiteOrNull(levels.fibonacci.find(l => l.name === "Fib 0.618")?.price),
     fib786: finiteOrNull(levels.fibonacci.find(l => l.name === "Fib 0.786")?.price),
     volumeRatio: finiteOrNull(levels.volumeRatio),
+    emaSlopeWindow: config.emaSlopeWindow,
+    vwapSessionDate: CURRENT_TRADING_DATE,
   };
   const currentLevels = Object.fromEntries(levels.levels.map(level => [level.name, level.price]));
   const ntzStatus = levels.ntzPhase !== "completed"
@@ -260,6 +298,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
        })),
      },
     indicators,
+     majorLevels: levels.majorLevels,
     trend,
     signals,
     decision: {
@@ -280,6 +319,9 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       "Premarket is available only when the simulated feed includes 04:00–09:29:59 ET candles.",
       "NTZ/ORB is the exact first three completed five-minute candles from 09:30 through 09:45 ET.",
       `Volume safety uses a ${config.volumeLookback}-candle average and ${config.adverseVolumeRatio.toFixed(2)}x adverse-volume ratio.`,
+      `EMA uses ${config.emaPeriod} completed five-minute candles; slope compares ${config.emaSlopeWindow} completed candles.`,
+      `VWAP resets at 09:30 ET for each regular session; major levels use ${config.historicalLookbackTradingDays} trading days of hourly reactions.`,
+      `Trend classification requires ${config.trendCandleCount} completed 15-minute candles and remains descriptive only.`,
       `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
   };
@@ -324,6 +366,5 @@ function toApiCandle(candle: SimulatedFuturesCandle) {
 }
 
 function finiteOrNull(value: number | undefined) { return value !== undefined && Number.isFinite(value) ? Number(value.toFixed(2)) : null; }
-function calculateEmaSlope(values: readonly number[], config: StrategyConfig) { const short = values.slice(-10); if (short.length < 2) return null; const emaValues = short.map((_, index) => { const all = values.slice(0, values.length - short.length + index + 1); return all.length ? all.reduce((sum, value) => sum + value, 0) / all.length : 0; }); return Number((emaValues.at(-1)! - emaValues[0]).toFixed(2)); }
 function detectEquivalentCandles(candles: readonly StrategyCandle[], config: StrategyConfig) { const first = candles.at(-2), second = candles.at(-1); if (!first || !second) return false; const a = Math.abs(first.close - first.open), b = Math.abs(second.close - second.open); return a > 0 && Math.abs(a - b) / a <= config.equivalentBodyTolerance && (first.close >= first.open) !== (second.close >= second.open); }
 function decisionExplanation(decision: DecisionState, rules: Array<{ label: string; passed: boolean; detail: string }>) { if (decision === "SETUP QUALIFIED") return "Every required market and risk rule passed on completed candles."; if (decision === "RISK LOCKOUT") return rules.find(rule => rule.label === "Risk controls passed")?.detail ?? "Risk controls blocked this setup."; const failed = rules.filter(rule => !rule.passed).map(rule => rule.label); return failed.length ? `${decision}: ${failed.join(", ")}.` : decision; }

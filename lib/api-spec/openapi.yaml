@@ -349,6 +349,40 @@ components:
         kind:
           type: string
       required: [name, price, kind]
+    MajorLevel:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [support, resistance]
+        price:
+          type: number
+        zoneLow:
+          type: number
+        zoneHigh:
+          type: number
+        reactionCount:
+          type: number
+        strength:
+          type: number
+        recencyScore:
+          type: number
+        reactionMagnitude:
+          type: number
+        volumeScore:
+          type: number
+        components:
+          type: array
+          items:
+            type: string
+        componentCount:
+          type: number
+        confluence:
+          type: string
+          enum: [normal, strong, dynamite]
+      required: [name, kind, price, zoneLow, zoneHigh, reactionCount, strength, recencyScore, reactionMagnitude, volumeScore, components, componentCount, confluence]
     NtzState:
       type: object
       properties:
@@ -397,7 +431,25 @@ components:
             type: string
         structure:
           type: string
-      required: [direction, score, evidence, structure]
+        candleCount:
+          type: number
+        evidenceItems:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+                enum: [structure, vwap, ema, emaSlope]
+              label:
+                type: string
+              status:
+                type: string
+                enum: [positive, negative, neutral]
+              detail:
+                type: string
+            required: [key, label, status, detail]
+      required: [direction, score, evidence, structure, candleCount, evidenceItems]
     RuleEvidence:
       type: object
       properties:
@@ -541,7 +593,15 @@ components:
             fib618: { type: ["number", "null"] }
             fib786: { type: ["number", "null"] }
             volumeRatio: { type: ["number", "null"] }
-          required: [rsi, ema200, emaSlope, vwap, fib236, fib382, fib5, fib618, fib786, volumeRatio]
+            emaSlopeWindow:
+              type: number
+            vwapSessionDate:
+              type: string
+          required: [rsi, ema200, emaSlope, vwap, fib236, fib382, fib5, fib618, fib786, volumeRatio, emaSlopeWindow, vwapSessionDate]
+        majorLevels:
+          type: array
+          items:
+            $ref: "#/components/schemas/MajorLevel"
         trend:
           $ref: "#/components/schemas/TrendEvidence"
         signals:
@@ -562,7 +622,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, indicators, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

@@ -114,6 +114,39 @@ export interface CriticalLevel {
   kind: string;
 }
 
+export type MajorLevelKind = typeof MajorLevelKind[keyof typeof MajorLevelKind];
+
+
+export const MajorLevelKind = {
+  support: 'support',
+  resistance: 'resistance',
+} as const;
+
+export type MajorLevelConfluence = typeof MajorLevelConfluence[keyof typeof MajorLevelConfluence];
+
+
+export const MajorLevelConfluence = {
+  normal: 'normal',
+  strong: 'strong',
+  dynamite: 'dynamite',
+} as const;
+
+export interface MajorLevel {
+  name: string;
+  kind: MajorLevelKind;
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  reactionCount: number;
+  strength: number;
+  recencyScore: number;
+  reactionMagnitude: number;
+  volumeScore: number;
+  components: string[];
+  componentCount: number;
+  confluence: MajorLevelConfluence;
+}
+
 export type NtzStateStatus = typeof NtzStateStatus[keyof typeof NtzStateStatus];
 
 
@@ -182,11 +215,39 @@ export const TrendEvidenceDirection = {
   neutral: 'neutral',
 } as const;
 
+export type TrendEvidenceEvidenceItemsItemKey = typeof TrendEvidenceEvidenceItemsItemKey[keyof typeof TrendEvidenceEvidenceItemsItemKey];
+
+
+export const TrendEvidenceEvidenceItemsItemKey = {
+  structure: 'structure',
+  vwap: 'vwap',
+  ema: 'ema',
+  emaSlope: 'emaSlope',
+} as const;
+
+export type TrendEvidenceEvidenceItemsItemStatus = typeof TrendEvidenceEvidenceItemsItemStatus[keyof typeof TrendEvidenceEvidenceItemsItemStatus];
+
+
+export const TrendEvidenceEvidenceItemsItemStatus = {
+  positive: 'positive',
+  negative: 'negative',
+  neutral: 'neutral',
+} as const;
+
+export type TrendEvidenceEvidenceItemsItem = {
+  key: TrendEvidenceEvidenceItemsItemKey;
+  label: string;
+  status: TrendEvidenceEvidenceItemsItemStatus;
+  detail: string;
+};
+
 export interface TrendEvidence {
   direction: TrendEvidenceDirection;
   score: number;
   evidence: string[];
   structure: string;
+  candleCount: number;
+  evidenceItems: TrendEvidenceEvidenceItemsItem[];
 }
 
 export interface RuleEvidence {
@@ -319,6 +380,8 @@ export type MarketSnapshotIndicators = {
   fib786: number | null;
   /** @nullable */
   volumeRatio: number | null;
+  emaSlopeWindow: number;
+  vwapSessionDate: string;
 };
 
 export interface MarketSnapshot {
@@ -338,6 +401,7 @@ export interface MarketSnapshot {
   levels: MarketSnapshotLevels;
   ntz: NtzState;
   indicators: MarketSnapshotIndicators;
+  majorLevels: MajorLevel[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;

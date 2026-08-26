@@ -9,6 +9,7 @@ import type { Candle } from './candle';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
 import type { FuturesSessionCalendar } from './futuresSessionCalendar';
 import type { LevelStoryEvent } from './levelStoryEvent';
+import type { MajorLevel } from './majorLevel';
 import type { MarketSnapshotIndicators } from './marketSnapshotIndicators';
 import type { MarketSnapshotLevels } from './marketSnapshotLevels';
 import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
@@ -38,6 +39,7 @@ export interface MarketSnapshot {
   levels: MarketSnapshotLevels;
   ntz: NtzState;
   indicators: MarketSnapshotIndicators;
+  majorLevels: MajorLevel[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;
