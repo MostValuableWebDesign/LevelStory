@@ -1,0 +1,40 @@
+Audit and strengthen the LevelStory patience-candle engine without changing the following authoritative definition.
+
+AUTHORITATIVE PATIENCE-CANDLE RULES
+
+Context:
+- It forms after a qualified ORB breakout and pullback to or near a critical level, VWAP, EMA, Fibonacci level, or valid consolidation.
+- The trend must agree with the intended trade.
+- A patience candle is not required to be a complete inside candle.
+
+Bullish patience candle:
+- The 15-minute trend must be bullish.
+- The candidate candle’s high must not exceed the previous completed candle’s high.
+- The rest of the candle may extend outside the previous candle.
+
+Bearish patience candle:
+- The 15-minute trend must be bearish.
+- The candidate candle’s low must not go below the previous completed candle’s low.
+- The rest of the candle may extend outside the previous candle.
+
+Trigger:
+- Only the immediate next five-minute candle can trigger the setup.
+- Long entry occurs only after price reaches 3–4 ticks above the bullish patience candle’s high.
+- Short entry occurs only after price reaches 3–4 ticks below the bearish patience candle’s low.
+- Use the configured four-tick default and the contract’s actual tick size.
+- Crossing only the raw high/low without reaching the full buffer is not an entry.
+- If the immediate next candle does not reach the buffer, expire the pattern. Later candles cannot reuse it.
+
+Invalidation and stop:
+- If the immediate next candle crosses the opposite patience extreme first, invalidate the setup.
+- Long strategy stop: below the patience candle’s low plus the configured safety buffer.
+- Short strategy stop: above the patience candle’s high plus the configured safety buffer.
+- A catastrophe stop must remain separate from the strategy stop.
+- If OHLC data shows both sides were crossed and event order cannot be proven, reject as AMBIGUOUS_EVENT_ORDER.
+- Do not assume favorable event order.
+
+Add table-driven tests for bullish, bearish, trend mismatch, partial containment, full inside candles, no-trigger expiration, intended-side trigger, opposite-side invalidation, gaps, and ambiguous same-candle ordering.
+
+Make all UI descriptions and API explanations use this exact definition. Remove any text saying the entire patience candle must be inside the previous candle.
+
+Run typecheck and all tests and provide the results.
