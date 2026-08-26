@@ -479,7 +479,10 @@ export interface StrategyDecision {
   failedRules: RuleEvidence[];
 }
 
-export type RiskPlanDirection = typeof RiskPlanDirection[keyof typeof RiskPlanDirection];
+/**
+ * @nullable
+ */
+export type RiskPlanDirection = typeof RiskPlanDirection[keyof typeof RiskPlanDirection] | null;
 
 
 export const RiskPlanDirection = {
@@ -533,6 +536,7 @@ export interface RunnerState {
 }
 
 export interface RiskPlan {
+  /** @nullable */
   direction: RiskPlanDirection;
   /** @nullable */
   entry: number | null;

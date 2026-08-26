@@ -111,7 +111,7 @@ type TimelineContext = {
   patience: PatienceAnalysis;
   evaluation: SetupEvaluation;
   riskPlan: Phase7RiskPlan;
-  direction: Direction;
+  direction: Direction | null;
   trend: TrendDirection;
   specification: FuturesContractSpecification;
   slippageMode?: SlippageMode;
@@ -389,7 +389,7 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
     event(events, context.patience.triggerCandle.closeTime, "Immediate trigger", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
   }
 
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed
+  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: lastCandle ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
@@ -437,7 +437,7 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
 
 export function buildPhase8EvaluationRecord(context: TimelineContext): Phase8EvaluationRecord {
   const timeline = buildPhase8Timeline(context);
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed
+  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: context.candles.at(-1) ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
@@ -469,7 +469,9 @@ export function buildPhase8EvaluationRecord(context: TimelineContext): Phase8Eva
     outcome: setupOutcome(context.evaluation.decision),
     timeline,
     execution,
-    excursions: calculatePhase8Excursions(context.direction, entry, context.candles, context.specification),
+    excursions: context.direction === null
+      ? { maximumFavorableExcursion: 0, maximumAdverseExcursion: 0, favorablePrice: null, adversePrice: null }
+      : calculatePhase8Excursions(context.direction, entry, context.candles, context.specification),
     passedRules: context.evaluation.rules.filter((rule) => rule.passed),
     failedRules: context.evaluation.rules.filter((rule) => !rule.passed),
   };

@@ -173,16 +173,19 @@ export function levelStory(candle: Candle, levels: readonly Level[], tolerance =
   return { interactions, bias, summary: names ? `${bias} candle; ${names}` : `${bias} candle; no level interaction` };
 }
 
-export function fullDecision(candles: readonly Candle[], levels: SessionLevels, config: StrategyConfig, direction: Direction, riskAllowed = true): { decision: DecisionState; rules: RuleEvidence[]; trend: TrendEvidence; volume: ReturnType<typeof volumeCheck>; patience: ReturnType<typeof patienceCandle> } {
+export function fullDecision(candles: readonly Candle[], levels: SessionLevels, config: StrategyConfig, direction: Direction | null, riskAllowed = true): { decision: DecisionState; rules: RuleEvidence[]; trend: TrendEvidence; volume: ReturnType<typeof volumeCheck>; patience: ReturnType<typeof patienceCandle> } {
   const last = candles.at(-1);
   const trend = trendEvidence(candles, levels, config);
-  const breakoutIndex = candles.findIndex(c => levels.orb ? (direction === "long" ? c.close > levels.orb.high : c.close < levels.orb.low) : false);
-  const pullback = last && breakoutIndex >= 0 && breakoutIndex < candles.length - 1 ? pullbackConfluence(last, levels.orb, levels.levels, direction, config.levelTolerance) : false;
-  const volume = volumeCheck(candles, config, direction, breakoutIndex >= 0 ? breakoutIndex : Math.max(0, candles.length - 2));
-  const patienceResult = patienceCandle(candles.at(-2), last, direction, config, trend.direction);
-  const outsideNtz = !!levels.ntz && !!last && (direction === "long" ? last.close > levels.ntz.high : last.close < levels.ntz.low);
+  const analysisDirection = direction ?? "long";
+  const breakoutIndex = direction === null ? -1 : candles.findIndex(c => levels.orb ? (direction === "long" ? c.close > levels.orb.high : c.close < levels.orb.low) : false);
+  const pullback = direction !== null && last && breakoutIndex >= 0 && breakoutIndex < candles.length - 1 ? pullbackConfluence(last, levels.orb, levels.levels, direction, config.levelTolerance) : false;
+  const volume = volumeCheck(candles, config, analysisDirection, breakoutIndex >= 0 ? breakoutIndex : Math.max(0, candles.length - 2));
+  const patienceResult = direction === null
+    ? { status: "waiting" as const, detail: "No executable direction is available for continuation analysis." }
+    : patienceCandle(candles.at(-2), last, direction, config, trend.direction);
+  const outsideNtz = direction !== null && !!levels.ntz && !!last && (direction === "long" ? last.close > levels.ntz.high : last.close < levels.ntz.low);
   const rules: RuleEvidence[] = [
-    { key: "trend", label: "15-minute trend identified", passed: trend.direction === (direction === "long" ? "bullish" : "bearish"), detail: trend.evidence.join(", ") || "No trend evidence" },
+    { key: "trend", label: "15-minute trend identified", passed: direction !== null && trend.direction === (direction === "long" ? "bullish" : "bearish"), detail: trend.evidence.join(", ") || "No trend evidence" },
     { key: "ntz", label: "Completed candle outside NTZ", passed: outsideNtz, detail: outsideNtz ? "Latest completed close is outside NTZ." : "Normal entries remain blocked inside or before NTZ." },
     { key: "orb", label: "Completed ORB close", passed: breakoutIndex >= 0, detail: breakoutIndex >= 0 ? "A completed candle closed beyond the opening range." : "Waiting for a completed close beyond the opening range." },
     { key: "pullback", label: "Mandatory pullback reached confluence", passed: pullback, detail: pullback ? "Retest touched the ORB edge and another mapped level." : "No qualifying post-breakout pullback/confluence yet." },
@@ -191,7 +194,7 @@ export function fullDecision(candles: readonly Candle[], levels: SessionLevels, 
     { key: "risk", label: "Risk controls passed", passed: riskAllowed, detail: riskAllowed ? "Position size and daily controls passed." : "Risk lockout or sizing rule blocked this setup." },
   ];
   const failed = rules.filter(r => !r.passed);
-  const decision: DecisionState = !riskAllowed ? "RISK LOCKOUT" : failed.length === 0 ? "SETUP QUALIFIED" : failed.some(r => ["ntz", "orb", "pullback", "patience"].includes(r.key)) ? "WAITING" : "NO TRADE";
+  const decision: DecisionState = direction === null ? "NO TRADE" : !riskAllowed ? "RISK LOCKOUT" : failed.length === 0 ? "SETUP QUALIFIED" : failed.some(r => ["ntz", "orb", "pullback", "patience"].includes(r.key)) ? "WAITING" : "NO TRADE";
   return { decision, rules, trend, volume, patience: patienceResult };
 }
 

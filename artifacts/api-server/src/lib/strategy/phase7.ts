@@ -71,7 +71,7 @@ export type Phase7ShadowFill = {
 };
 
 export type Phase7RiskPlan = {
-  direction: Direction;
+  direction: Direction | null;
   entry: number | null;
   thesisStop: number | null;
   catastropheStop: number | null;
@@ -356,19 +356,31 @@ export function simulatePhase7Fill(input: {
 }
 
 export function buildPhase7RiskPlan(
-  entry: number,
-  direction: Direction,
+  entry: number | null,
+  direction: Direction | null,
   thesisStop: number | null,
   catastropheStop: number | null,
   config: Phase7RiskConfig,
   specification: FuturesContractSpecification,
-  runner: RunnerState = evaluateRunner(direction, entry, entry, entry, false),
+  runner?: RunnerState,
 ): Phase7RiskPlan {
   const targetDollars = validateProfitTargetDollars(config.targetDollars);
   const emptyCosts = feeBreakdown(0, specification);
+  const planRunner = runner ?? (direction === null || entry === null
+    ? {
+        active: false,
+        referencePrice: null,
+        impulse: null,
+        mostFavorablePrice: null,
+        adverseRetracement: 0,
+        retracementThreshold: null,
+        exit: false,
+        exitReason: null,
+      }
+    : evaluateRunner(direction, entry, entry, entry, false));
   const base = {
     direction,
-    entry: Number(entry.toFixed(2)),
+    entry: entry === null ? null : Number(entry.toFixed(2)),
     thesisStop: thesisStop === null ? null : Number(thesisStop.toFixed(2)),
     catastropheStop: catastropheStop === null ? null : Number(catastropheStop.toFixed(2)),
     strategyStop: thesisStop === null ? null : Number(thesisStop.toFixed(2)),
@@ -385,13 +397,23 @@ export function buildPhase7RiskPlan(
     slippageMode: config.slippageMode ?? "normal",
     costBreakdown: emptyCosts,
     projectedTargetPnl: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
-    runner,
+    runner: planRunner,
     locks: {},
     reasons: [] as string[],
   };
   const gates = lockReasons(config);
   base.locks = gates.locks;
   base.reasons.push(...gates.reasons);
+  if (direction === null) {
+    base.reasons.push("No executable setup direction was selected; plan blocked.");
+  }
+  if (entry === null) {
+    base.reasons.push("No valid buffered patience entry is available; plan blocked.");
+  }
+  if (thesisStop === null) {
+    base.reasons.push("No valid patience strategy stop is available; plan blocked.");
+  }
+  if (direction === null || entry === null) return base;
   if (catastropheStop === null) {
     base.reasons.push("No catastrophe stop is defined; plan blocked.");
     return base;
@@ -422,11 +444,13 @@ export function buildPhase7RiskPlan(
   const stopLoss = dollarsForTicks(stopTicks, 1, specification);
   const riskPerContract = stopLoss + costs.totalSlippage + costs.roundTripFees;
   const valuePerContract = notionalValue(entry, 1, specification);
-  const contracts = Math.max(0, Math.floor(Math.min(
+  const sizedContracts = Math.max(0, Math.floor(Math.min(
     config.riskDollars / riskPerContract,
     config.maxPositionValue / valuePerContract,
     config.maxContracts,
   )));
+  const allowed = sizedContracts > 0 && Object.values(gates.locks).every((locked) => !locked);
+  const contracts = allowed ? sizedContracts : 0;
   const targetTicks = targetTicksForDollars(targetDollars, specification);
   const target = targetPriceForDollars(direction, entry, targetDollars, specification);
   const targetContracts = contracts > 0 ? 1 : 0;
@@ -463,6 +487,6 @@ export function buildPhase7RiskPlan(
   );
   if (contracts <= 0) base.reasons.push("Whole-contract sizing returned zero contracts; plan blocked.");
   if (!base.reasons.length) base.reasons.push("All risk, market-quality, and safety gates passed; no order is created.");
-  base.allowed = contracts > 0 && Object.values(gates.locks).every((locked) => !locked);
+  base.allowed = allowed;
   return base;
 }

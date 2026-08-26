@@ -177,7 +177,7 @@ export function patienceCandleEngine(
 
 export function phase5PatienceAnalysis(
   candles: readonly Candle[],
-  direction: Direction,
+  direction: Direction | null,
   pullback: PullbackAnalysis,
   ntz: NtzRange | null,
   ntzEvents: readonly NtzEvent[] = [],
@@ -213,6 +213,9 @@ export function phase5PatienceAnalysis(
         eligibilityEvents.push({ time: candle.closeTime, reason: "ntz consolidation", detail: "Extended completed-candle consolidation inside or near NTZ." });
       }
     }
+  }
+  if (direction === null) {
+    return waiting("PATIENCE_TREND_MISMATCH", "No executable direction is available for continuation patience.", trend, entryBufferTicks, stopBufferTicks, eligibilityEvents.at(-1));
   }
   return patienceCandleEngine(candles, direction, {
     eligibilityEvents,

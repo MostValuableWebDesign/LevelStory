@@ -13,6 +13,7 @@ import type { RiskPlanSlippageMode } from './riskPlanSlippageMode';
 import type { RunnerState } from './runnerState';
 
 export interface RiskPlan {
+  /** @nullable */
   direction: RiskPlanDirection;
   /** @nullable */
   entry: number | null;

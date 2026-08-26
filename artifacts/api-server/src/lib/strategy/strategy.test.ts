@@ -6,8 +6,10 @@ import { strategyConfig } from "./config.js";
 import { ema, fibonacci, rsi } from "./indicators.js";
 import { positionSize } from "./risk.js";
 import { patience, volumeCheck } from "./rules.js";
-import { createMarketSnapshot } from "../market-data.js";
+import { buildPhase7RiskPlan } from "./phase7.js";
+import { createMarketSnapshot, selectExecutableDirection } from "../market-data.js";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
+import type { Phase6Analysis } from "./phase6.js";
 
 const candle = (n: number, close = 10, complete = true) => ({
   openTime: n * 60_000, closeTime: (n + 1) * 60_000, open: close - .1, high: close + .2, low: close - .2, close, volume: 100, isComplete: complete,
@@ -54,6 +56,10 @@ test("snapshot replay is causal and session bounded", () => {
   assert.equal(premarket.candles.every(candle => candle.closeTime <= premarket.replay.cursor), true);
   assert.equal(premarket.candles.some(candle => candle.openTime.startsWith("2026-08-25T13:30:")), false);
   assert.equal(premarket.candles.every(candle => candle.contractSymbol === "MESU26"), true);
+  assert.equal(premarket.breakout.detected, false);
+  assert.equal(premarket.riskPlan.direction, null);
+  assert.equal(premarket.riskPlan.contracts, 0);
+  assert.equal(premarket.shadowExecution, null);
 
   const regular = createMarketSnapshot("MES", "regular");
   assert.equal(regular.ntz.complete, true);
@@ -70,8 +76,102 @@ test("snapshot decision honors server-side emergency lockout", () => {
     isLocked: true,
   });
   assert.equal(locked.riskPlan.allowed, false);
+  assert.equal(locked.riskPlan.contracts, 0);
   assert.equal(locked.decision.state, "RISK LOCKOUT");
   assert.match(locked.decision.explanation, /Risk controls|lockout|blocked/i);
+  assert.ok(locked.riskPlan.reasons.every((reason) => locked.decision.explanation.includes(reason)));
+  assert.ok(locked.setupAnalysis.evaluations.every((evaluation) =>
+    evaluation.rules.find((rule) => rule.key === "riskApproval")?.passed === false));
+  assert.equal(locked.shadowExecution, null);
+});
+
+test("denied risk approval cannot qualify a setup or create a shadow entry", () => {
+  const denied = createMarketSnapshot("MES", "regular", {
+    accountSize: 25_000,
+    riskPercent: 0,
+    maxDailyLoss: 500,
+    dailyLossUsed: 0,
+    isLocked: false,
+  });
+  assert.equal(denied.riskPlan.allowed, false);
+  assert.equal(denied.riskPlan.contracts, 0);
+  assert.notEqual(denied.setupAnalysis.decision, "SETUP QUALIFIED");
+  assert.ok(denied.setupAnalysis.evaluations.every((evaluation) => evaluation.decision !== "SETUP QUALIFIED"));
+  assert.equal(denied.shadowExecution, null);
+  assert.ok(denied.riskPlan.reasons.some((reason) => /zero contracts|trade risk/i.test(reason)));
+});
+
+function setupAnalysis(direction: "long" | "short" | null, decision: "SETUP QUALIFIED" | "WAITING" = "SETUP QUALIFIED", alertOnly = false): Pick<Phase6Analysis, "evaluations"> {
+  return { evaluations: [{ setupType: "ORB_BREAK_PULLBACK_CONTINUATION", direction, decision, mandatoryPassed: decision === "SETUP QUALIFIED", alertOnly, rules: [], reversalEvidence: null, consolidation: null, explanation: "" }] };
+}
+
+test("direction precedence feeds consistent bearish and bullish Phase 7 plans", () => {
+  const bearish = selectExecutableDirection(setupAnalysis(null), { detected: true, failed: false, direction: "short" }, null);
+  const bullish = selectExecutableDirection(setupAnalysis(null), { detected: true, failed: false, direction: "long" }, null);
+  assert.equal(bearish, "short");
+  assert.equal(bullish, "long");
+
+  const contract = getFuturesContractSpecification("MES");
+  const basePlanConfig = {
+    riskDollars: 100,
+    dailyLossLimit: 500,
+    dailyLossUsed: 0,
+    tradesToday: 0,
+    maxTradesPerDay: 1,
+    maxContracts: 10,
+    maxPositionValue: 100_000,
+    maximumSpreadTicks: contract.maximumSpreadTicks,
+    minimumLiquidity: contract.minimumLiquidity,
+    staleDataSeconds: 15,
+    dataAgeSeconds: 0,
+    observedSpreadTicks: 1,
+    liquidity: contract.minimumLiquidity,
+    emergencyKillSwitch: false,
+    duplicateEntry: false,
+    averagingDown: false,
+  };
+  const shortPlan = buildPhase7RiskPlan(6800, bearish, 6800.25, 6800.5, basePlanConfig, contract);
+  const longPlan = buildPhase7RiskPlan(6800, bullish, 6799.75, 6799.5, basePlanConfig, contract);
+  assert.equal(shortPlan.direction, "short");
+  assert.ok(shortPlan.target! < shortPlan.entry!);
+  assert.ok(shortPlan.strategyStop! > shortPlan.entry!);
+  assert.equal(longPlan.direction, "long");
+  assert.ok(longPlan.target! > longPlan.entry!);
+  assert.ok(longPlan.strategyStop! < longPlan.entry!);
+});
+
+test("neutral and non-breakout evidence produce no executable direction", () => {
+  assert.equal(selectExecutableDirection(setupAnalysis(null), { detected: false, failed: false, direction: null }, null), null);
+  assert.equal(selectExecutableDirection(setupAnalysis(null, "WAITING"), { detected: false, failed: false, direction: null }, null), null);
+  assert.equal(selectExecutableDirection(setupAnalysis(null), { detected: true, failed: true, direction: "long" }, null), null);
+});
+
+test("setup, breakout, patience, risk direction, stops, and targets cannot contradict", () => {
+  const selected = selectExecutableDirection(setupAnalysis("short"), { detected: true, failed: false, direction: "long" }, "long");
+  assert.equal(selected, "short");
+  const contract = getFuturesContractSpecification("MES");
+  const plan = buildPhase7RiskPlan(6800, selected, 6800.25, 6800.5, {
+    riskDollars: 100,
+    dailyLossLimit: 500,
+    dailyLossUsed: 0,
+    tradesToday: 0,
+    maxTradesPerDay: 1,
+    maxContracts: 1,
+    maxPositionValue: 100_000,
+    maximumSpreadTicks: contract.maximumSpreadTicks,
+    minimumLiquidity: contract.minimumLiquidity,
+    staleDataSeconds: 15,
+    dataAgeSeconds: 0,
+    observedSpreadTicks: 1,
+    liquidity: contract.minimumLiquidity,
+    emergencyKillSwitch: false,
+    duplicateEntry: false,
+    averagingDown: false,
+  }, contract);
+  assert.equal(plan.direction, "short");
+  assert.ok(plan.strategyStop! > plan.entry!);
+  assert.ok(plan.catastropheStop! > plan.strategyStop!);
+  assert.ok(plan.target! < plan.entry!);
 });
 
 test("snapshot conforms to the generated API contract", () => {

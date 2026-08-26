@@ -230,7 +230,7 @@ export type MarketSnapshot = {
     failedRules: Array<{ key: string; label: string; detail: string }>;
   };
   riskPlan: {
-    direction: Direction;
+    direction: Direction | null;
     entry: number | null;
     thesisStop: number | null;
     catastropheStop: number | null;
@@ -329,6 +329,17 @@ type Phase7Input = {
   averagingDown?: boolean;
 };
 
+export function selectExecutableDirection(
+  setupAnalysis: Pick<Phase6Analysis, "evaluations">,
+  breakout: { detected: boolean; failed: boolean; direction: Direction | null },
+  patienceDirection: Direction | null,
+): Direction | null {
+  const qualifiedSetupDirection = setupAnalysis.evaluations.find((item) =>
+    item.decision === "SETUP QUALIFIED" && !item.alertOnly && item.direction !== null)?.direction ?? null;
+  const qualifiedBreakoutDirection = breakout.detected && !breakout.failed ? breakout.direction : null;
+  return qualifiedSetupDirection ?? qualifiedBreakoutDirection ?? patienceDirection;
+}
+
 export type ReplaySnapshotOptions = {
   tradingDate?: string;
   cursor?: number;
@@ -412,8 +423,12 @@ export function createMarketSnapshot(
   const price = current?.close ?? 0;
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
   const trend = trendEvidence(regular, levels, config);
-  const direction: Direction = trend.direction === "bearish" ? "short" : "long";
-  const patienceDirection = breakout.direction ?? direction;
+  const trendDirection: Direction | null = trend.direction === "bullish"
+    ? "long"
+    : trend.direction === "bearish"
+      ? "short"
+      : null;
+  const patienceDirection = breakout.direction ?? trendDirection;
   const patience = phase5PatienceAnalysis(
     regular,
     patienceDirection,
@@ -426,41 +441,58 @@ export function createMarketSnapshot(
     config.patienceEntryBufferTicks,
     config.patienceStopBufferTicks,
   );
-  const plan = buildRiskPlan(price, direction, levels, patience, riskInput, config, specification, {
-    ...phase7Input,
-    observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
-    liquidity: current?.volume,
-    dataAgeSeconds: 0,
-  });
-  const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
-  const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
-  const evaluatedPatience: PatienceAnalysis = !riskGateAllowed && patience.entryBufferPrice !== null
-    ? { ...patience, state: "RISK_REJECTED", detail: `${patience.detail} Risk controls rejected the buffered plan; no shadow entry is permitted.` }
-    : patience;
-  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, evaluatedPatience.state);
-  const reversalDirection: Direction = patienceDirection === "long" ? "short" : "long";
-  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents, undefined, trend.direction, specification.tickSize, config.patienceEntryBufferTicks, config.patienceStopBufferTicks);
-  const setupAnalysis = phase6Analysis({
+  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
+  const preliminarySetupAnalysis = phase6Analysis({
     candles: regular,
     levels,
     breakout: evaluatedBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
+    patience,
+    reversalPatience: patience,
+    trend,
+    riskApproved: true,
+    config,
+  });
+  const direction = selectExecutableDirection(preliminarySetupAnalysis, evaluatedBreakout, patienceDirection);
+  const plan = buildRiskPlan(direction, levels, patience, riskInput, config, specification, {
+    ...phase7Input,
+    observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
+    liquidity: current?.volume,
+    dataAgeSeconds: 0,
+  });
+  const evaluatedPatience: PatienceAnalysis = !plan.allowed && patience.entryBufferPrice !== null
+    ? { ...patience, state: "RISK_REJECTED", detail: `${patience.detail} ${plan.reasons.join(" ")}` }
+    : patience;
+  const finalBreakout = advanceOrbBreakoutState(breakout, pullback, evaluatedPatience.state);
+  const reversalDirection: Direction | null = patienceDirection === null
+    ? null
+    : patienceDirection === "long" ? "short" : "long";
+  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents, undefined, trend.direction, specification.tickSize, config.patienceEntryBufferTicks, config.patienceStopBufferTicks);
+  const setupAnalysis = phase6Analysis({
+    candles: regular,
+    levels,
+    breakout: finalBreakout,
+    pullback,
+    fibonacci,
+    volume: volumeAnalysis,
     patience: evaluatedPatience,
     reversalPatience,
     trend,
-    riskApproved: riskGateAllowed,
+    riskApproved: plan.allowed,
     config,
   });
-  const evaluation = fullDecision(regular, levels, config, direction, riskGateAllowed);
+  const evaluation = fullDecision(regular, levels, config, direction, plan.allowed);
   const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
     ?? setupAnalysis.evaluations[0];
+  const riskExplanation = plan.allowed ? "" : ` Risk plan blocked: ${plan.reasons.join(" ")}`;
+  const gatedSetupAnalysis = { ...setupAnalysis, explanation: `${setupAnalysis.explanation}${riskExplanation}` };
   const phase8Record = buildPhase8EvaluationRecord({
     candles: regular,
     ntz: levels.ntz,
     ntzEvents: levels.ntzEvents,
-    breakout: evaluatedBreakout,
+    breakout: finalBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
@@ -481,7 +513,9 @@ export function createMarketSnapshot(
     eventType: item.eventType,
     status: item.status,
   }));
-  const alert = current ? candleAlert(current, direction, config) : { doji: false, reversal: false, detail: "" };
+  const alert = current && direction
+    ? candleAlert(current, direction, config)
+    : { doji: false, reversal: false, detail: "No executable direction is available for candle alerts." };
   const indicators = {
     rsi: finiteOrNull(levels.rsi),
     ema200: finiteOrNull(levels.ema),
@@ -613,7 +647,7 @@ export function createMarketSnapshot(
     signals,
     decision: {
       state: decision,
-      explanation: decisionExplanation(decision, evaluation.rules),
+      explanation: `${decisionExplanation(decision, evaluation.rules)}${riskExplanation}`,
       passedRules: evaluation.rules.filter(rule => rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
       failedRules: evaluation.rules.filter(rule => !rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
     },
@@ -625,7 +659,7 @@ export function createMarketSnapshot(
       equivalentCandles: detectEquivalentCandles(regular, config),
        warning: volumeAnalysis.reversalWarning ?? (alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null),
     },
-      setupAnalysis: toApiSetupAnalysis(setupAnalysis),
+      setupAnalysis: toApiSetupAnalysis(gatedSetupAnalysis),
     assumptions: [
       "Simulation uses America/New_York trading dates with UTC timestamps for deterministic replay.",
       "Premarket is available only when the simulated feed includes 04:00–09:29:59 ET candles.",
@@ -649,8 +683,7 @@ export function createMarketSnapshot(
 }
 
 function buildRiskPlan(
-  currentPrice: number,
-  direction: Direction,
+  direction: Direction | null,
   levels: ReturnType<typeof sessionLevels>,
   patience: PatienceAnalysis,
   input: RiskInput | undefined,
@@ -659,13 +692,13 @@ function buildRiskPlan(
   phase7Input?: Phase7Input,
 ) {
   const risk = input ?? { accountSize: 25_000, riskPercent: 0.5, maxDailyLoss: 500, dailyLossUsed: 0, isLocked: false };
-  const entry = patience.entryBufferPrice ?? currentPrice;
+  const entry = patience.entryBufferPrice;
   const thesisStop = patience.strategyStopPrice;
-  if (thesisStop === null) {
+  if (direction === null || entry === null || thesisStop === null) {
     return buildPhase7RiskPlan(
       entry,
       direction,
-      null,
+      thesisStop,
       null,
       phase7Config(risk, config, specification, phase7Input),
       specification,

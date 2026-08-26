@@ -366,7 +366,7 @@ export const GetMarketSnapshotResponse = zod.object({
 }))
 }),
   "riskPlan": zod.object({
-  "direction": zod.enum(['long', 'short']),
+  "direction": zod.enum(['long', 'short']).nullable(),
   "entry": zod.number().nullable(),
   "thesisStop": zod.number().nullable(),
   "catastropheStop": zod.number().nullable(),

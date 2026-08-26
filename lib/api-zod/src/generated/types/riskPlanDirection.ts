@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type RiskPlanDirection = typeof RiskPlanDirection[keyof typeof RiskPlanDirection];
+/**
+ * @nullable
+ */
+export type RiskPlanDirection = typeof RiskPlanDirection[keyof typeof RiskPlanDirection] | null;
 
 
 export const RiskPlanDirection = {

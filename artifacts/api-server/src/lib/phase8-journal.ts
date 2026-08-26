@@ -45,7 +45,9 @@ export function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect
 }
 
 function recordForEvaluation(snapshot: MarketSnapshot, evaluation: MarketSnapshot["setupAnalysis"]["evaluations"][number]): JournalEntryInput {
-  const direction = evaluation.direction ?? snapshot.riskPlan.direction;
+  // Journal rows require a side even for non-executable evidence. This
+  // descriptive fallback never reaches shadow execution or risk approval.
+  const direction = evaluation.direction ?? snapshot.riskPlan.direction ?? "long";
   const entryPrice = snapshot.riskPlan.entry ?? snapshot.price;
   const isPrimary = evaluation.setupType === snapshot.setupAnalysis.primarySetup;
   const execution = isPrimary ? snapshot.shadowExecution : null;

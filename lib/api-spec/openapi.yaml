@@ -753,7 +753,7 @@ components:
       type: object
       properties:
         direction:
-          type: string
+          type: ["string", "null"]
           enum: [long, short]
         entry:
           type: ["number", "null"]
