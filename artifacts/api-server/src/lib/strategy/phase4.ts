@@ -8,12 +8,61 @@ export type BreakoutEvent = {
   direction: Direction | null;
   time: number | null;
   candleOpenTime: number | null;
+  state: OrbBreakoutState;
+  candidateTime: number | null;
+  candidateCandleOpenTime: number | null;
   distanceOutside: number | null;
+  meaningfulDistance: number | null;
   breakoutVolume: number | null;
   baselineVolume: number | null;
   volumeRatio: number | null;
   volumeSupported: boolean;
+  bodyRatio: number | null;
+  closeLocationRatio: number | null;
+  candleStructureSupported: boolean;
+  continuationConfirmed: boolean;
+  continuationCondition: BreakoutContinuationCondition | null;
+  failed: boolean;
   detail: string;
+};
+
+export type OrbBreakoutState =
+  | "ORB_FORMING"
+  | "INSIDE_ORB"
+  | "ORB_PROBE_WAIT"
+  | "WEAK_BREAK_WAIT"
+  | "BREAKOUT_CANDIDATE"
+  | "WAITING_FOR_CONTINUATION"
+  | "QUALIFIED_BREAKOUT"
+  | "WAITING_FOR_PULLBACK"
+  | "PULLBACK_IN_PROGRESS"
+  | "WAITING_FOR_PATIENCE_CANDLE"
+  | "PATIENCE_CANDLE_VALID"
+  | "TRIGGER_CANDLE_ACTIVE"
+  | "ENTRY_TRIGGERED"
+  | "BREAKOUT_FAILED"
+  | "SETUP_EXPIRED";
+
+export type BreakoutContinuationCondition =
+  | "IMMEDIATE_DIRECTIONAL_EXTENSION"
+  | "ADDITIONAL_MEANINGFUL_MOVEMENT"
+  | "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
+  | "OUTSIDE_ORB_CONSOLIDATION"
+  | "STRONG_SINGLE_CANDLE_EXCEPTION";
+
+export type BreakoutQualityMetrics = {
+  distanceOutside: number;
+  meaningfulDistance: number;
+  distancePassed: boolean;
+  baselineVolume: number | null;
+  breakoutVolume: number;
+  volumeRatio: number | null;
+  volumePassed: boolean;
+  bodyRatio: number | null;
+  bodyPassed: boolean;
+  closeLocationRatio: number | null;
+  closeLocationPassed: boolean;
+  strongSingleCandle: boolean;
 };
 
 export type PullbackEventType = "touch" | "proximity" | "break and reclaim" | "hold" | "consolidation" | "break through";
@@ -74,28 +123,298 @@ export function detectInitialBreakout(
   candles: readonly Candle[],
   ntz: SessionLevels["ntz"],
   config: StrategyConfig,
+  specification?: FuturesContractSpecification,
 ): BreakoutEvent {
   const completed = completedCandles(candles);
-  if (!ntz?.complete) return pendingBreakout("Waiting for the finalized NTZ/ORB range.");
-  if (completed.length < 4) return pendingBreakout("Waiting for a completed candle after NTZ/ORB completion.");
-  const completionTime = ntz.completedAt ?? completed[2]?.closeTime ?? completed[0].closeTime;
-  const candidate = completed.find((candle) => candle.openTime >= completionTime && (candle.close > ntz.high || candle.close < ntz.low));
-  if (!candidate) return pendingBreakout("No completed five-minute close outside the finalized NTZ/ORB.");
-  const direction: Direction = candidate.close > ntz.high ? "long" : "short";
-  const distanceOutside = direction === "long" ? candidate.close - ntz.high : ntz.low - candidate.close;
-  const baseline = averageVolume(completed.filter((candle) => candle.closeTime <= candidate.openTime).slice(-6));
-  const volumeRatio = baseline ? candidate.volume / baseline : NaN;
+  if (!ntz?.complete) return pendingBreakout("ORB_FORMING: waiting for the finalized NTZ/ORB range.");
+  if (completed.length < 4) return pendingBreakout("ORB_FORMING: waiting for a completed candle after NTZ/ORB completion.");
+  return evaluateOrbBreakoutQuality(completed, ntz, config, specification);
+}
+
+export function evaluateOrbBreakoutQuality(
+  candles: readonly Candle[],
+  ntz: SessionLevels["ntz"],
+  config: StrategyConfig,
+  specification?: FuturesContractSpecification,
+): BreakoutEvent {
+  const completed = completedCandles(candles);
+  if (!ntz?.complete) return pendingBreakout("ORB_FORMING: waiting for the finalized NTZ/ORB range.");
+  const completionTime = ntz.completedAt ?? completed[2]?.closeTime ?? completed[0]?.closeTime;
+  if (completionTime === undefined) return pendingBreakout("ORB_FORMING: waiting for the ORB completion candle.");
+  const afterOrb = completed.filter((candle) => candle.openTime >= completionTime);
+  if (!afterOrb.length) return pendingBreakout("INSIDE_ORB: no completed five-minute candle has tested the finalized ORB.");
+
+  const tickSize = specification?.tickSize ?? 0.25;
+  const firstAttempt = afterOrb.find((candle) => candle.high > ntz.high || candle.low < ntz.low);
+  if (!firstAttempt) return pendingBreakout("INSIDE_ORB: completed candles remain inside the finalized ORB.");
+
+  const attemptDirection = directionForAttempt(firstAttempt, ntz);
+  if (attemptDirection === null) return pendingBreakout("ORB_PROBE_WAIT: a two-sided test is ambiguous; waiting for directional confirmation.");
+  const firstCloseOutside = closesOutside(firstAttempt, ntz, attemptDirection);
+  if (!firstCloseOutside) {
+    const later = findLaterQualityCandidate(afterOrb, firstAttempt, ntz, completed, config, tickSize);
+    if (later) return evaluateCandidateContinuation(later.candle, later.direction, completed, ntz, config, tickSize, later.quality);
+    return probeBreakout(firstAttempt, attemptDirection, ntz, "ORB_PROBE_WAIT: price tested the boundary intrabar but did not close beyond it.");
+  }
+
+  const firstQuality = breakoutQuality(firstAttempt, attemptDirection, completed, ntz, config, tickSize);
+  if (!qualityPassed(firstQuality)) {
+    const later = findLaterQualityCandidate(afterOrb, firstAttempt, ntz, completed, config, tickSize);
+    if (later) return evaluateCandidateContinuation(later.candle, later.direction, completed, ntz, config, tickSize, later.quality);
+    return weakBreak(firstAttempt, attemptDirection, ntz, firstQuality, "WEAK_BREAK_WAIT: the close is outside the ORB but lacks meaningful distance, volume, or candle structure.");
+  }
+
+  return evaluateCandidateContinuation(firstAttempt, attemptDirection, completed, ntz, config, tickSize, firstQuality);
+}
+
+function evaluateCandidateContinuation(
+  candidate: Candle,
+  direction: Direction,
+  completed: readonly Candle[],
+  ntz: NonNullable<SessionLevels["ntz"]>,
+  config: StrategyConfig,
+  tickSize: number,
+  quality: BreakoutQualityMetrics,
+): BreakoutEvent {
+  const candidateIndex = completed.findIndex((candle) => candle.openTime === candidate.openTime);
+  const following = completed.slice(candidateIndex + 1);
+  const exception = config.phase4AllowStrongSingleCandleException && quality.strongSingleCandle;
+  if (exception) {
+    return qualifiedBreakout(candidate, direction, quality, "STRONG_SINGLE_CANDLE_EXCEPTION", "The exceptionally strong breakout candle satisfies continuation without waiting for another close.");
+  }
+  const firstBackInsideIndex = following.findIndex((candle) => closesBackInside(candle, ntz, direction));
+  const next = following[0];
+  const continuationCandles = firstBackInsideIndex >= 0 ? following.slice(0, firstBackInsideIndex) : following;
+  const continuation = continuationCandles.find((candle, index) => {
+    if (closesBackInside(candle, ntz, direction)) return false;
+    const prior = completed[candidateIndex + index];
+    const continuationThreshold = continuationDistance(candidate, completed.slice(0, candidateIndex), config, tickSize);
+    const extended = direction === "long" ? candle.close > candidate.close : candle.close < candidate.close;
+    const additional = direction === "long"
+      ? candle.close >= candidate.close + continuationThreshold
+      : candle.close <= candidate.close - continuationThreshold;
+    const twoCloses = index === 0 && closesOutside(candle, ntz, direction);
+    const consolidated = index === 0 && twoCloses && Math.abs(candle.close - candidate.close) <= continuationThreshold;
+    return extended || additional || twoCloses || consolidated || prior?.close !== undefined && twoCloses;
+  });
+  if (continuation) {
+    const index = following.indexOf(continuation);
+    const prior = completed[candidateIndex + index];
+    const threshold = continuationDistance(candidate, completed.slice(0, candidateIndex), config, tickSize);
+    const condition: BreakoutContinuationCondition =
+      index === 0 && (direction === "long" ? continuation.close > candidate.close : continuation.close < candidate.close)
+        ? "IMMEDIATE_DIRECTIONAL_EXTENSION"
+        : direction === "long"
+          ? continuation.close >= candidate.close + threshold
+            ? "ADDITIONAL_MEANINGFUL_MOVEMENT"
+            : prior && closesOutside(prior, ntz, direction) && closesOutside(continuation, ntz, direction)
+              ? "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
+              : "OUTSIDE_ORB_CONSOLIDATION"
+          : continuation.close <= candidate.close - threshold
+            ? "ADDITIONAL_MEANINGFUL_MOVEMENT"
+            : prior && closesOutside(prior, ntz, direction) && closesOutside(continuation, ntz, direction)
+              ? "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
+              : "OUTSIDE_ORB_CONSOLIDATION";
+    return qualifiedBreakout(candidate, direction, quality, condition, `Continuation confirmed by ${condition}.`);
+  }
+  if (config.phase4FailureReclaimRequired && firstBackInsideIndex >= 0) {
+    return failedBreakout(candidate, direction, quality, "BREAKOUT_FAILED: the qualifying candle was followed by a close back inside the ORB before acceptable continuation.");
+  }
   return {
-    detected: true,
-    direction,
-    time: candidate.closeTime,
-    candleOpenTime: candidate.openTime,
+    ...candidateEvent(candidate, direction, quality),
+    state: next ? "WAITING_FOR_CONTINUATION" : "BREAKOUT_CANDIDATE",
+    detail: next
+      ? "WAITING_FOR_CONTINUATION: breakout quality passed; waiting for directional acceptance outside the ORB."
+      : "BREAKOUT_CANDIDATE: quality passed; the immediately following completed candle is required for continuation.",
+  };
+}
+
+function findLaterQualityCandidate(
+  candles: readonly Candle[],
+  first: Candle,
+  ntz: NonNullable<SessionLevels["ntz"]>,
+  completed: readonly Candle[],
+  config: StrategyConfig,
+  tickSize: number,
+): { candle: Candle; direction: Direction; quality: BreakoutQualityMetrics } | null {
+  for (const candle of candles.slice(candles.indexOf(first) + 1)) {
+    const direction = directionForAttempt(candle, ntz);
+    if (!direction || !closesOutside(candle, ntz, direction)) continue;
+    const quality = breakoutQuality(candle, direction, completed, ntz, config, tickSize);
+    if (qualityPassed(quality)) return { candle, direction, quality };
+  }
+  return null;
+}
+
+function breakoutQuality(
+  candle: Candle,
+  direction: Direction,
+  completed: readonly Candle[],
+  ntz: NonNullable<SessionLevels["ntz"]>,
+  config: StrategyConfig,
+  tickSize: number,
+): BreakoutQualityMetrics {
+  const index = completed.findIndex((item) => item.openTime === candle.openTime);
+  const prior = completed.slice(Math.max(0, index - 6), index);
+  const baseline = averageVolume(prior);
+  const atr = averageTrueRange(completed.slice(0, index), config.phase4AtrPeriod);
+  const meaningfulDistance = Math.max(tickSize * config.phase4BreakoutMeaningfulDistanceTicks, atr * config.phase4BreakoutMeaningfulDistanceAtrFactor);
+  const range = candle.high - candle.low;
+  const bodyRatio = range > 0 ? Math.abs(candle.close - candle.open) / range : 0;
+  const closeLocationRatio = range > 0 ? (candle.close - candle.low) / range : 0.5;
+  const distanceOutside = direction === "long"
+    ? candle.close - ntz.high
+    : ntz.low - candle.close;
+  const volumeRatio = baseline ? candle.volume / baseline : NaN;
+  const closeLocationPassed = direction === "long"
+    ? closeLocationRatio >= 1 - config.phase4BreakoutCloseLocationRatio
+    : closeLocationRatio <= config.phase4BreakoutCloseLocationRatio;
+  const directionalBody = direction === "long" ? candle.close > candle.open : candle.close < candle.open;
+  const strongSingleCandle = directionalBody && Number.isFinite(volumeRatio)
+    && volumeRatio >= config.phase4StrongVolumeRatio
+    && bodyRatio >= config.phase4StrongBodyRatio
+    && closeLocationPassedFor(candle, direction, config.phase4StrongCloseLocationRatio)
+    && distanceOutside >= meaningfulDistance;
+  return {
     distanceOutside: Number(distanceOutside.toFixed(2)),
-    breakoutVolume: candidate.volume,
+    meaningfulDistance,
+    distancePassed: distanceOutside >= meaningfulDistance,
     baselineVolume: finiteOrNull(baseline),
+    breakoutVolume: candle.volume,
     volumeRatio: finiteOrNull(volumeRatio),
-    volumeSupported: Number.isFinite(volumeRatio) && volumeRatio >= config.phase4BreakoutVolumeRatio,
-    detail: `${direction === "long" ? "Bullish" : "Bearish"} breakout closed ${distanceOutside.toFixed(2)} points outside NTZ/ORB.`,
+    volumePassed: Number.isFinite(volumeRatio) && volumeRatio >= config.phase4BreakoutVolumeRatio,
+    bodyRatio: finiteOrNull(bodyRatio),
+    bodyPassed: directionalBody && bodyRatio >= config.phase4BreakoutBodyRatio,
+    closeLocationRatio: finiteOrNull(closeLocationRatio),
+    closeLocationPassed,
+    strongSingleCandle,
+  };
+}
+
+function qualityPassed(quality: BreakoutQualityMetrics): boolean {
+  return quality.distancePassed && quality.volumePassed && quality.bodyPassed && quality.closeLocationPassed;
+}
+
+function directionForAttempt(candle: Candle, ntz: NonNullable<SessionLevels["ntz"]>): Direction | null {
+  if (candle.close > ntz.high) return "long";
+  if (candle.close < ntz.low) return "short";
+  if (candle.high > ntz.high && candle.low <= ntz.low) return null;
+  return candle.high > ntz.high ? "long" : candle.low < ntz.low ? "short" : null;
+}
+
+function closesOutside(candle: Candle, ntz: NonNullable<SessionLevels["ntz"]>, direction: Direction): boolean {
+  return direction === "long" ? candle.close > ntz.high : candle.close < ntz.low;
+}
+
+function closesBackInside(candle: Candle, ntz: NonNullable<SessionLevels["ntz"]>, direction: Direction): boolean {
+  return direction === "long" ? candle.close <= ntz.high : candle.close >= ntz.low;
+}
+
+function closeLocationPassedFor(candle: Candle, direction: Direction, outerRatio: number): boolean {
+  const range = candle.high - candle.low;
+  if (range <= 0) return false;
+  const location = (candle.close - candle.low) / range;
+  return direction === "long" ? location >= 1 - outerRatio : location <= outerRatio;
+}
+
+function continuationDistance(
+  candle: Candle,
+  priorCandles: readonly Candle[],
+  config: StrategyConfig,
+  tickSize: number,
+): number {
+  const atr = averageTrueRange([...priorCandles, candle], config.phase4AtrPeriod);
+  return Math.max(tickSize * config.phase4ContinuationMoveTicks, atr * config.phase4ContinuationAtrFactor);
+}
+
+function candidateEvent(candle: Candle, direction: Direction, quality: BreakoutQualityMetrics): BreakoutEvent {
+  return {
+    detected: false,
+    direction,
+    time: null,
+    candleOpenTime: null,
+    state: "BREAKOUT_CANDIDATE",
+    candidateTime: candle.closeTime,
+    candidateCandleOpenTime: candle.openTime,
+    distanceOutside: Number(quality.distanceOutside.toFixed(2)),
+    meaningfulDistance: Number(quality.meaningfulDistance.toFixed(2)),
+    breakoutVolume: quality.breakoutVolume,
+    baselineVolume: quality.baselineVolume,
+    volumeRatio: quality.volumeRatio,
+    volumeSupported: quality.volumePassed,
+    bodyRatio: quality.bodyRatio,
+    closeLocationRatio: quality.closeLocationRatio,
+    candleStructureSupported: quality.bodyPassed && quality.closeLocationPassed,
+    continuationConfirmed: false,
+    continuationCondition: null,
+    failed: false,
+    detail: "",
+  };
+}
+
+function probeBreakout(
+  candle: Candle,
+  direction: Direction,
+  ntz: NonNullable<SessionLevels["ntz"]>,
+  detail: string,
+): BreakoutEvent {
+  const distanceOutside = direction === "long" ? Math.max(0, candle.high - ntz.high) : Math.max(0, ntz.low - candle.low);
+  return {
+    ...pendingBreakout(detail),
+    direction,
+    state: "ORB_PROBE_WAIT",
+    candidateTime: candle.closeTime,
+    candidateCandleOpenTime: candle.openTime,
+    distanceOutside: Number(distanceOutside.toFixed(2)),
+    detail,
+  };
+}
+
+function weakBreak(
+  candle: Candle,
+  direction: Direction,
+  ntz: NonNullable<SessionLevels["ntz"]>,
+  quality: BreakoutQualityMetrics,
+  detail: string,
+): BreakoutEvent {
+  return {
+    ...candidateEvent(candle, direction, quality),
+    state: "WEAK_BREAK_WAIT",
+    distanceOutside: Number((direction === "long" ? candle.close - ntz.high : ntz.low - candle.close).toFixed(2)),
+    detail: `${detail} Weak breaks remain waiting and cannot start pullback or patience analysis.`,
+  };
+}
+
+function qualifiedBreakout(
+  candle: Candle,
+  direction: Direction,
+  quality: BreakoutQualityMetrics,
+  condition: BreakoutContinuationCondition,
+  detail: string,
+): BreakoutEvent {
+  return {
+    ...candidateEvent(candle, direction, quality),
+    detected: true,
+    state: "QUALIFIED_BREAKOUT",
+    time: candle.closeTime,
+    candleOpenTime: candle.openTime,
+    continuationConfirmed: true,
+    continuationCondition: condition,
+    detail: `QUALIFIED_BREAKOUT: ${detail} The later qualifying candle is the frozen impulse anchor.`,
+  };
+}
+
+function failedBreakout(
+  candle: Candle,
+  direction: Direction,
+  quality: BreakoutQualityMetrics,
+  detail: string,
+): BreakoutEvent {
+  return {
+    ...candidateEvent(candle, direction, quality),
+    state: "BREAKOUT_FAILED",
+    failed: true,
+    detail: `${detail} No continuation entry is permitted; only the separate reversal path may use this evidence.`,
   };
 }
 
@@ -179,6 +498,36 @@ export function analyzePullback(
   };
 }
 
+export function advanceOrbBreakoutState(
+  breakout: BreakoutEvent,
+  pullback: PullbackAnalysis,
+  patienceState?: string,
+): BreakoutEvent {
+  if (!breakout.detected) return breakout;
+  const state: OrbBreakoutState = patienceState === "ENTRY TRIGGERED"
+    ? "ENTRY_TRIGGERED"
+    : patienceState === "TRIGGER CANDLE ACTIVE"
+      ? "TRIGGER_CANDLE_ACTIVE"
+      : patienceState === "VALID PATIENCE CANDLE"
+        ? "PATIENCE_CANDLE_VALID"
+        : patienceState === "EXPIRED" || patienceState === "INVALIDATED" || patienceState === "AMBIGUOUS"
+          ? "SETUP_EXPIRED"
+          : pullback.events.length
+            ? "PULLBACK_IN_PROGRESS"
+            : pullback.evaluatedCandles > 0
+              ? "WAITING_FOR_PULLBACK"
+              : "QUALIFIED_BREAKOUT";
+  return {
+    ...breakout,
+    state,
+    detail: state === "PULLBACK_IN_PROGRESS"
+      ? `${breakout.detail} Pullback analysis is active from the qualifying breakout.`
+      : state === "SETUP_EXPIRED"
+        ? `${breakout.detail} The downstream patience window is no longer eligible.`
+        : breakout.detail,
+  };
+}
+
 export function fibonacciAnalysis(
   candles: readonly Candle[],
   breakout: BreakoutEvent,
@@ -202,7 +551,9 @@ export function fibonacciAnalysis(
   const completed = completedCandles(candles);
   const breakoutIndex = completed.findIndex((candle) => candle.openTime === breakout.candleOpenTime);
   if (breakoutIndex < 0) return fibonacciAnalysis([], { ...breakout, detected: false });
-  const impulse = completed.slice(0, breakoutIndex + 1);
+  // The impulse begins at the qualifying breakout candle. Earlier probes are
+  // evidence of hesitation, not valid Fibonacci anchors.
+  const impulse = completed.slice(breakoutIndex, breakoutIndex + 1);
   const auto = { low: Math.min(...impulse.map((candle) => candle.low)), high: Math.max(...impulse.map((candle) => candle.high)) };
   const anchors = manual ?? auto;
   if (!Number.isFinite(anchors.low) || !Number.isFinite(anchors.high) || anchors.high <= anchors.low) {
@@ -309,7 +660,28 @@ function event(type: PullbackEventType, candle: Candle, level: Level, detail: st
 }
 
 function pendingBreakout(detail: string): BreakoutEvent {
-  return { detected: false, direction: null, time: null, candleOpenTime: null, distanceOutside: null, breakoutVolume: null, baselineVolume: null, volumeRatio: null, volumeSupported: false, detail };
+  return {
+    detected: false,
+    direction: null,
+    time: null,
+    candleOpenTime: null,
+    state: detail.startsWith("ORB_FORMING") ? "ORB_FORMING" : detail.startsWith("INSIDE_ORB") ? "INSIDE_ORB" : "ORB_PROBE_WAIT",
+    candidateTime: null,
+    candidateCandleOpenTime: null,
+    distanceOutside: null,
+    meaningfulDistance: null,
+    breakoutVolume: null,
+    baselineVolume: null,
+    volumeRatio: null,
+    volumeSupported: false,
+    bodyRatio: null,
+    closeLocationRatio: null,
+    candleStructureSupported: false,
+    continuationConfirmed: false,
+    continuationCondition: null,
+    failed: false,
+    detail,
+  };
 }
 
 function emptyVolumeAnalysis(): Phase4VolumeAnalysis {

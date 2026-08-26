@@ -538,11 +538,20 @@ components:
         direction:
           type: ["string", "null"]
           enum: [long, short, null]
+        state:
+          type: string
+          enum: [ORB_FORMING, INSIDE_ORB, ORB_PROBE_WAIT, WEAK_BREAK_WAIT, BREAKOUT_CANDIDATE, WAITING_FOR_CONTINUATION, QUALIFIED_BREAKOUT, WAITING_FOR_PULLBACK, PULLBACK_IN_PROGRESS, WAITING_FOR_PATIENCE_CANDLE, PATIENCE_CANDLE_VALID, TRIGGER_CANDLE_ACTIVE, ENTRY_TRIGGERED, BREAKOUT_FAILED, SETUP_EXPIRED]
         time:
           type: ["string", "null"]
         candleOpenTime:
           type: ["string", "null"]
+        candidateTime:
+          type: ["string", "null"]
+        candidateCandleOpenTime:
+          type: ["string", "null"]
         distanceOutside:
+          type: ["number", "null"]
+        meaningfulDistance:
           type: ["number", "null"]
         breakoutVolume:
           type: ["number", "null"]
@@ -552,9 +561,22 @@ components:
           type: ["number", "null"]
         volumeSupported:
           type: boolean
+        bodyRatio:
+          type: ["number", "null"]
+        closeLocationRatio:
+          type: ["number", "null"]
+        candleStructureSupported:
+          type: boolean
+        continuationConfirmed:
+          type: boolean
+        continuationCondition:
+          type: ["string", "null"]
+          enum: [IMMEDIATE_DIRECTIONAL_EXTENSION, ADDITIONAL_MEANINGFUL_MOVEMENT, TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB, OUTSIDE_ORB_CONSOLIDATION, STRONG_SINGLE_CANDLE_EXCEPTION, null]
+        failed:
+          type: boolean
         detail:
           type: string
-      required: [detected, direction, time, candleOpenTime, distanceOutside, breakoutVolume, baselineVolume, volumeRatio, volumeSupported, detail]
+      required: [detected, direction, state, time, candleOpenTime, candidateTime, candidateCandleOpenTime, distanceOutside, meaningfulDistance, breakoutVolume, baselineVolume, volumeRatio, volumeSupported, bodyRatio, closeLocationRatio, candleStructureSupported, continuationConfirmed, continuationCondition, failed, detail]
     PullbackEvent:
       type: object
       properties:
@@ -1161,7 +1183,7 @@ components:
           type: string
         eventType:
           type: string
-          enum: ["NTZ completion", "Breakout", "Pullback", "Level touch or proximity", "Consolidation", "Fibonacci depth", "Volume warning", "Patience candle", "Immediate trigger", "Shadow entry", "Partial profit", "Runner activation", "Runner exit", "Stop", "Failed setup"]
+          enum: ["NTZ completion", "ORB quality", "Breakout", "Pullback", "Level touch or proximity", "Consolidation", "Fibonacci depth", "Volume warning", "Patience candle", "Immediate trigger", "Shadow entry", "Partial profit", "Runner activation", "Runner exit", "Stop", "Failed setup"]
         label:
           type: string
         detail:
@@ -1577,8 +1599,9 @@ components:
         levelType: { type: string, enum: [NTZ, ORB, "major level", Fibonacci, mixed, unmapped] }
         confluence: { type: string, enum: [normal, strong, dynamite] }
         patienceCharacteristic: { type: string }
+        orbState: { type: string, enum: [ORB_FORMING, INSIDE_ORB, ORB_PROBE_WAIT, WEAK_BREAK_WAIT, BREAKOUT_CANDIDATE, WAITING_FOR_CONTINUATION, QUALIFIED_BREAKOUT, WAITING_FOR_PULLBACK, PULLBACK_IN_PROGRESS, WAITING_FOR_PATIENCE_CANDLE, PATIENCE_CANDLE_VALID, TRIGGER_CANDLE_ACTIVE, ENTRY_TRIGGERED, BREAKOUT_FAILED, SETUP_EXPIRED] }
         marketRegime: { type: string, enum: [trend, range, transition] }
-      required: [contract, contractMonth, setupType, direction, timeOfDay, trend, fibonacciDepth, volumeCondition, levelType, confluence, patienceCharacteristic, marketRegime]
+      required: [contract, contractMonth, setupType, direction, timeOfDay, trend, fibonacciDepth, volumeCondition, levelType, confluence, patienceCharacteristic, orbState, marketRegime]
     BacktestSegment:
       allOf:
         - $ref: "#/components/schemas/BacktestMetricSet"

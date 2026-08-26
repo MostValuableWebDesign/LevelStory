@@ -65,6 +65,7 @@ function trade(netPnl: number, overrides: Partial<BacktestTrade> = {}): Backtest
       levelType: "ORB",
       confluence: "normal",
       patienceCharacteristic: "ENTRY TRIGGERED",
+      orbState: "ENTRY_TRIGGERED",
       marketRegime: "trend",
     },
     ...overrides,

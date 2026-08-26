@@ -8,6 +8,7 @@ import type { Candle, Direction, TrendDirection } from "./types.js";
 
 export type Phase8EventType =
   | "NTZ completion"
+  | "ORB quality"
   | "Breakout"
   | "Pullback"
   | "Level touch or proximity"
@@ -358,6 +359,16 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
   else if (context.ntz?.complete) event(events, context.now, "NTZ completion", "NTZ is complete in the current replay.", "passed");
   if (context.breakout.detected && context.breakout.time !== null) {
     event(events, context.breakout.time, "Breakout", context.breakout.detail, "observed");
+  }
+  if (context.breakout.candidateTime !== null) {
+    event(
+      events,
+      context.breakout.candidateTime,
+      "ORB quality",
+      context.breakout.detail,
+      context.breakout.failed ? "warning" : context.breakout.detected ? "passed" : "observed",
+      `ORB · ${context.breakout.state}`,
+    );
   }
   for (const item of context.pullback.events) {
     const type = item.type === "consolidation" ? "Consolidation" : ["touch", "proximity"].includes(item.type) ? "Level touch or proximity" : "Pullback";

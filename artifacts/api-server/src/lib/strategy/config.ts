@@ -44,6 +44,18 @@ export type StrategyConfig = {
   phase4PullbackMaxCandles: number;
   phase4PullbackMaxMinutes: number;
   phase4BreakoutVolumeRatio: number;
+  phase4BreakoutMeaningfulDistanceTicks: number;
+  phase4BreakoutMeaningfulDistanceAtrFactor: number;
+  phase4BreakoutBodyRatio: number;
+  phase4BreakoutCloseLocationRatio: number;
+  phase4ContinuationMoveTicks: number;
+  phase4ContinuationAtrFactor: number;
+  phase4StrongVolumeRatio: number;
+  phase4StrongBodyRatio: number;
+  phase4StrongCloseLocationRatio: number;
+  phase4AllowStrongSingleCandleException: boolean;
+  phase4FailureReclaimRequired: boolean;
+  phase4FailureOpposingVolumeRatio: number;
   phase6ConsolidationExpansionRatio: number;
   phase7MaxContracts: number;
   phase7StaleDataSeconds: number;
@@ -98,6 +110,18 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4PullbackMaxCandles: 6,
   phase4PullbackMaxMinutes: 30,
   phase4BreakoutVolumeRatio: 1.25,
+  phase4BreakoutMeaningfulDistanceTicks: 2,
+  phase4BreakoutMeaningfulDistanceAtrFactor: 0.1,
+  phase4BreakoutBodyRatio: 0.6,
+  phase4BreakoutCloseLocationRatio: 0.25,
+  phase4ContinuationMoveTicks: 2,
+  phase4ContinuationAtrFactor: 0.1,
+  phase4StrongVolumeRatio: 1.5,
+  phase4StrongBodyRatio: 0.7,
+  phase4StrongCloseLocationRatio: 0.2,
+  phase4AllowStrongSingleCandleException: true,
+  phase4FailureReclaimRequired: true,
+  phase4FailureOpposingVolumeRatio: 1.5,
   phase6ConsolidationExpansionRatio: 1.25,
   phase7MaxContracts: 10,
   phase7StaleDataSeconds: 15,
@@ -157,6 +181,16 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase4PullbackMaxCandles", config.phase4PullbackMaxCandles],
     ["phase4PullbackMaxMinutes", config.phase4PullbackMaxMinutes],
     ["phase4BreakoutVolumeRatio", config.phase4BreakoutVolumeRatio],
+    ["phase4BreakoutMeaningfulDistanceTicks", config.phase4BreakoutMeaningfulDistanceTicks],
+    ["phase4BreakoutMeaningfulDistanceAtrFactor", config.phase4BreakoutMeaningfulDistanceAtrFactor],
+    ["phase4BreakoutBodyRatio", config.phase4BreakoutBodyRatio],
+    ["phase4BreakoutCloseLocationRatio", config.phase4BreakoutCloseLocationRatio],
+    ["phase4ContinuationMoveTicks", config.phase4ContinuationMoveTicks],
+    ["phase4ContinuationAtrFactor", config.phase4ContinuationAtrFactor],
+    ["phase4StrongVolumeRatio", config.phase4StrongVolumeRatio],
+    ["phase4StrongBodyRatio", config.phase4StrongBodyRatio],
+    ["phase4StrongCloseLocationRatio", config.phase4StrongCloseLocationRatio],
+    ["phase4FailureOpposingVolumeRatio", config.phase4FailureOpposingVolumeRatio],
     ["phase6ConsolidationExpansionRatio", config.phase6ConsolidationExpansionRatio],
     ["phase7MaxContracts", config.phase7MaxContracts],
     ["phase7StaleDataSeconds", config.phase7StaleDataSeconds],
@@ -189,6 +223,10 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     if (!Number.isFinite(value) || value < 0) {
       throw new Error(`Invalid strategy configuration: ${name} must be finite and non-negative.`);
     }
+  }
+  if (config.phase4BreakoutBodyRatio > 1 || config.phase4BreakoutCloseLocationRatio > 0.5
+    || config.phase4StrongBodyRatio > 1 || config.phase4StrongCloseLocationRatio > 0.5) {
+    throw new Error("Invalid strategy configuration: breakout body and close-location ratios are out of range.");
   }
   if (config.orbMinutes !== 15 || config.ntzMinutes !== 15) {
     throw new Error("Invalid strategy configuration: Phase 2 opening range and NTZ must be 15 minutes.");

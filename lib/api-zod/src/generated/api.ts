@@ -151,13 +151,23 @@ export const GetMarketSnapshotResponse = zod.object({
   "breakout": zod.object({
   "detected": zod.boolean(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "state": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
   "time": zod.string().nullable(),
   "candleOpenTime": zod.string().nullable(),
+  "candidateTime": zod.string().nullable(),
+  "candidateCandleOpenTime": zod.string().nullable(),
   "distanceOutside": zod.number().nullable(),
+  "meaningfulDistance": zod.number().nullable(),
   "breakoutVolume": zod.number().nullable(),
   "baselineVolume": zod.number().nullable(),
   "volumeRatio": zod.number().nullable(),
   "volumeSupported": zod.boolean(),
+  "bodyRatio": zod.number().nullable(),
+  "closeLocationRatio": zod.number().nullable(),
+  "candleStructureSupported": zod.boolean(),
+  "continuationConfirmed": zod.boolean(),
+  "continuationCondition": zod.union([zod.literal('IMMEDIATE_DIRECTIONAL_EXTENSION'),zod.literal('ADDITIONAL_MEANINGFUL_MOVEMENT'),zod.literal('TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB'),zod.literal('OUTSIDE_ORB_CONSOLIDATION'),zod.literal('STRONG_SINGLE_CANDLE_EXCEPTION'),zod.literal(null)]).nullable(),
+  "failed": zod.boolean(),
   "detail": zod.string()
 }),
   "pullback": zod.object({
@@ -545,7 +555,7 @@ export const GetDashboardOverviewResponse = zod.object({
 })).nullable(),
   "timeline": zod.array(zod.object({
   "time": zod.string(),
-  "eventType": zod.enum(['NTZ completion', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
+  "eventType": zod.enum(['NTZ completion', 'ORB quality', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
   "label": zod.string(),
   "detail": zod.string(),
   "status": zod.enum(['observed', 'passed', 'warning', 'blocked', 'simulated'])
@@ -771,6 +781,7 @@ export const RunBacktestResponse = zod.object({
   "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
   "confluence": zod.enum(['normal', 'strong', 'dynamite']),
   "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
   "marketRegime": zod.enum(['trend', 'range', 'transition'])
 })
 })),
@@ -846,7 +857,7 @@ export const ListJournalEntriesResponseItem = zod.object({
 })).nullable(),
   "timeline": zod.array(zod.object({
   "time": zod.string(),
-  "eventType": zod.enum(['NTZ completion', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
+  "eventType": zod.enum(['NTZ completion', 'ORB quality', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
   "label": zod.string(),
   "detail": zod.string(),
   "status": zod.enum(['observed', 'passed', 'warning', 'blocked', 'simulated'])
@@ -963,7 +974,7 @@ export const CreateJournalEntryBody = zod.object({
 })).optional(),
   "timeline": zod.array(zod.object({
   "time": zod.string(),
-  "eventType": zod.enum(['NTZ completion', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
+  "eventType": zod.enum(['NTZ completion', 'ORB quality', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
   "label": zod.string(),
   "detail": zod.string(),
   "status": zod.enum(['observed', 'passed', 'warning', 'blocked', 'simulated'])
@@ -1057,7 +1068,7 @@ export const CreateJournalEntryResponse = zod.object({
 })).nullable(),
   "timeline": zod.array(zod.object({
   "time": zod.string(),
-  "eventType": zod.enum(['NTZ completion', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
+  "eventType": zod.enum(['NTZ completion', 'ORB quality', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
   "label": zod.string(),
   "detail": zod.string(),
   "status": zod.enum(['observed', 'passed', 'warning', 'blocked', 'simulated'])
@@ -1162,7 +1173,7 @@ export const GetJournalEntryResponse = zod.object({
 })).nullable(),
   "timeline": zod.array(zod.object({
   "time": zod.string(),
-  "eventType": zod.enum(['NTZ completion', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
+  "eventType": zod.enum(['NTZ completion', 'ORB quality', 'Breakout', 'Pullback', 'Level touch or proximity', 'Consolidation', 'Fibonacci depth', 'Volume warning', 'Patience candle', 'Immediate trigger', 'Shadow entry', 'Partial profit', 'Runner activation', 'Runner exit', 'Stop', 'Failed setup']),
   "label": zod.string(),
   "detail": zod.string(),
   "status": zod.enum(['observed', 'passed', 'warning', 'blocked', 'simulated'])

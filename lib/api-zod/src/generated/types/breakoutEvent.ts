@@ -5,18 +5,27 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BreakoutEventContinuationCondition } from './breakoutEventContinuationCondition';
 import type { BreakoutEventDirection } from './breakoutEventDirection';
+import type { BreakoutEventState } from './breakoutEventState';
 
 export interface BreakoutEvent {
   detected: boolean;
   /** @nullable */
   direction: BreakoutEventDirection;
+  state: BreakoutEventState;
   /** @nullable */
   time: string | null;
   /** @nullable */
   candleOpenTime: string | null;
   /** @nullable */
+  candidateTime: string | null;
+  /** @nullable */
+  candidateCandleOpenTime: string | null;
+  /** @nullable */
   distanceOutside: number | null;
+  /** @nullable */
+  meaningfulDistance: number | null;
   /** @nullable */
   breakoutVolume: number | null;
   /** @nullable */
@@ -24,5 +33,14 @@ export interface BreakoutEvent {
   /** @nullable */
   volumeRatio: number | null;
   volumeSupported: boolean;
+  /** @nullable */
+  bodyRatio: number | null;
+  /** @nullable */
+  closeLocationRatio: number | null;
+  candleStructureSupported: boolean;
+  continuationConfirmed: boolean;
+  /** @nullable */
+  continuationCondition: BreakoutEventContinuationCondition;
+  failed: boolean;
   detail: string;
 }

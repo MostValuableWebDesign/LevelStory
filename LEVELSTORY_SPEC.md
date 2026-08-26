@@ -119,6 +119,13 @@ The normal setup must follow this sequence:
 
 No single signal, level touch, Fibonacci touch, or checklist can skip a required step.
 
+The ORB quality lifecycle must not treat every movement beyond the range as a breakout. Completed five-minute candles are classified through the exact states `ORB_FORMING`, `INSIDE_ORB`, `ORB_PROBE_WAIT`, `WEAK_BREAK_WAIT`, `BREAKOUT_CANDIDATE`, `WAITING_FOR_CONTINUATION`, `QUALIFIED_BREAKOUT`, `WAITING_FOR_PULLBACK`, `PULLBACK_IN_PROGRESS`, `WAITING_FOR_PATIENCE_CANDLE`, `PATIENCE_CANDLE_VALID`, `TRIGGER_CANDLE_ACTIVE`, `ENTRY_TRIGGERED`, `BREAKOUT_FAILED`, and `SETUP_EXPIRED`.
+
+- A probe or weak break never starts pullback, Fibonacci, patience, or entry evaluation; later strong pushes may qualify in either direction.
+- Initial quality defaults are configurable assumptions: meaningful distance is the greater of two futures ticks and 0.10 ATR, breakout volume is at least 1.25 times the previous six completed candles, directional body is at least 60% of range, and the close is in the outer 25% of the candle.
+- Continuation requires immediate directional extension, additional meaningful movement, two consecutive closes outside the ORB, or outside-ORB consolidation. An optional single-candle exception requires at least 1.5 times volume, 70% body, outer-20% close location, and meaningful distance.
+- A qualified candidate that closes back inside the ORB before continuation is a failed breakout and cannot create an ordinary continuation entry. Pullback and Fibonacci evidence begin only from the later qualifying breakout; patience evidence formed before qualification is rejected.
+
 ## 8. Confluence
 
 The evaluator must identify the levels touched or held by the pullback. Eligible confluence sources include:

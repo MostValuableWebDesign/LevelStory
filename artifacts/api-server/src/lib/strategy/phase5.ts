@@ -139,9 +139,12 @@ export function phase5PatienceAnalysis(
   pullback: PullbackAnalysis,
   ntz: NtzRange | null,
   ntzEvents: readonly NtzEvent[] = [],
+  minimumEligibilityTime?: number | null,
 ): PatienceAnalysis {
+  const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const eligibilityEvents: PatienceEligibilityEvent[] = [
     ...pullback.events
+      .filter((event) => eligibleAfter === null || event.time >= eligibleAfter)
       .filter((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type))
       .map((event) => ({
         time: event.time,
@@ -149,6 +152,7 @@ export function phase5PatienceAnalysis(
         detail: `${event.type} at ${event.level}`,
       })),
     ...ntzEvents
+      .filter((event) => eligibleAfter === null || event.time >= eligibleAfter)
       .filter((event) => event.type === "Consolidation inside NTZ")
       .map((event) => ({ time: event.time, reason: "ntz consolidation" as const, detail: event.detail })),
   ];
@@ -159,7 +163,7 @@ export function phase5PatienceAnalysis(
     for (const candle of completed) {
       const near = candle.close >= ntz.low - proximity && candle.close <= ntz.high + proximity;
       insideStreak = near ? insideStreak + 1 : 0;
-      if (insideStreak >= 2) {
+       if (insideStreak >= 2 && (eligibleAfter === null || candle.closeTime >= eligibleAfter)) {
         eligibilityEvents.push({ time: candle.closeTime, reason: "ntz consolidation", detail: "Extended completed-candle consolidation inside or near NTZ." });
       }
     }

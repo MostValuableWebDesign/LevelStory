@@ -9,6 +9,7 @@ import type { BacktestSegmentationConfluence } from './backtestSegmentationConfl
 import type { BacktestSegmentationDirection } from './backtestSegmentationDirection';
 import type { BacktestSegmentationLevelType } from './backtestSegmentationLevelType';
 import type { BacktestSegmentationMarketRegime } from './backtestSegmentationMarketRegime';
+import type { BacktestSegmentationOrbState } from './backtestSegmentationOrbState';
 import type { BacktestSegmentationTimeOfDay } from './backtestSegmentationTimeOfDay';
 import type { BacktestSegmentationTrend } from './backtestSegmentationTrend';
 import type { BacktestSegmentationVolumeCondition } from './backtestSegmentationVolumeCondition';
@@ -25,5 +26,6 @@ export interface BacktestSegmentation {
   levelType: BacktestSegmentationLevelType;
   confluence: BacktestSegmentationConfluence;
   patienceCharacteristic: string;
+  orbState: BacktestSegmentationOrbState;
   marketRegime: BacktestSegmentationMarketRegime;
 }

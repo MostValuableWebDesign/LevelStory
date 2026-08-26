@@ -17,6 +17,7 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
+import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
 
 export type ReplayCursor = {
@@ -122,6 +123,7 @@ export type BacktestSegmentation = {
   levelType: "NTZ" | "ORB" | "major level" | "Fibonacci" | "mixed" | "unmapped";
   confluence: "normal" | "strong" | "dynamite";
   patienceCharacteristic: string;
+  orbState: OrbBreakoutState;
   marketRegime: "trend" | "range" | "transition";
 };
 
@@ -430,6 +432,7 @@ function segmentation(snapshot: MarketSnapshot, setupType: string, direction: Di
     levelType: levelType(snapshot),
     confluence,
     patienceCharacteristic: snapshot.patience.state,
+    orbState: snapshot.breakout.state,
     marketRegime: snapshot.trend.direction === "neutral" ? "range" : snapshot.volumeAnalysis.reversalWarning ? "transition" : "trend",
   };
 }
@@ -486,7 +489,7 @@ export function calculateBacktestMetrics(trades: readonly BacktestTrade[], rejec
 function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCount: number): BacktestSegment[] {
   const dimensions: Array<keyof BacktestSegmentation> = [
     "contract", "contractMonth", "setupType", "direction", "timeOfDay", "trend",
-    "fibonacciDepth", "volumeCondition", "levelType", "confluence", "patienceCharacteristic", "marketRegime",
+    "fibonacciDepth", "volumeCondition", "levelType", "confluence", "patienceCharacteristic", "orbState", "marketRegime",
   ];
   return dimensions.flatMap((dimension) => {
     const values = [...new Set(trades.map((trade) => String(trade.segmentation[dimension])))];

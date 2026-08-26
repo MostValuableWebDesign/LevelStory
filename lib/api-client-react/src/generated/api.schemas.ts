@@ -220,16 +220,58 @@ export const BreakoutEventDirection = {
   short: 'short',
 } as const;
 
+export type BreakoutEventState = typeof BreakoutEventState[keyof typeof BreakoutEventState];
+
+
+export const BreakoutEventState = {
+  ORB_FORMING: 'ORB_FORMING',
+  INSIDE_ORB: 'INSIDE_ORB',
+  ORB_PROBE_WAIT: 'ORB_PROBE_WAIT',
+  WEAK_BREAK_WAIT: 'WEAK_BREAK_WAIT',
+  BREAKOUT_CANDIDATE: 'BREAKOUT_CANDIDATE',
+  WAITING_FOR_CONTINUATION: 'WAITING_FOR_CONTINUATION',
+  QUALIFIED_BREAKOUT: 'QUALIFIED_BREAKOUT',
+  WAITING_FOR_PULLBACK: 'WAITING_FOR_PULLBACK',
+  PULLBACK_IN_PROGRESS: 'PULLBACK_IN_PROGRESS',
+  WAITING_FOR_PATIENCE_CANDLE: 'WAITING_FOR_PATIENCE_CANDLE',
+  PATIENCE_CANDLE_VALID: 'PATIENCE_CANDLE_VALID',
+  TRIGGER_CANDLE_ACTIVE: 'TRIGGER_CANDLE_ACTIVE',
+  ENTRY_TRIGGERED: 'ENTRY_TRIGGERED',
+  BREAKOUT_FAILED: 'BREAKOUT_FAILED',
+  SETUP_EXPIRED: 'SETUP_EXPIRED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BreakoutEventContinuationCondition = typeof BreakoutEventContinuationCondition[keyof typeof BreakoutEventContinuationCondition] | null;
+
+
+export const BreakoutEventContinuationCondition = {
+  IMMEDIATE_DIRECTIONAL_EXTENSION: 'IMMEDIATE_DIRECTIONAL_EXTENSION',
+  ADDITIONAL_MEANINGFUL_MOVEMENT: 'ADDITIONAL_MEANINGFUL_MOVEMENT',
+  TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB: 'TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB',
+  OUTSIDE_ORB_CONSOLIDATION: 'OUTSIDE_ORB_CONSOLIDATION',
+  STRONG_SINGLE_CANDLE_EXCEPTION: 'STRONG_SINGLE_CANDLE_EXCEPTION',
+} as const;
+
 export interface BreakoutEvent {
   detected: boolean;
   /** @nullable */
   direction: BreakoutEventDirection;
+  state: BreakoutEventState;
   /** @nullable */
   time: string | null;
   /** @nullable */
   candleOpenTime: string | null;
   /** @nullable */
+  candidateTime: string | null;
+  /** @nullable */
+  candidateCandleOpenTime: string | null;
+  /** @nullable */
   distanceOutside: number | null;
+  /** @nullable */
+  meaningfulDistance: number | null;
   /** @nullable */
   breakoutVolume: number | null;
   /** @nullable */
@@ -237,6 +279,15 @@ export interface BreakoutEvent {
   /** @nullable */
   volumeRatio: number | null;
   volumeSupported: boolean;
+  /** @nullable */
+  bodyRatio: number | null;
+  /** @nullable */
+  closeLocationRatio: number | null;
+  candleStructureSupported: boolean;
+  continuationConfirmed: boolean;
+  /** @nullable */
+  continuationCondition: BreakoutEventContinuationCondition;
+  failed: boolean;
   detail: string;
 }
 
@@ -983,6 +1034,7 @@ export type Phase8TimelineEventEventType = typeof Phase8TimelineEventEventType[k
 
 export const Phase8TimelineEventEventType = {
   NTZ_completion: 'NTZ completion',
+  ORB_quality: 'ORB quality',
   Breakout: 'Breakout',
   Pullback: 'Pullback',
   Level_touch_or_proximity: 'Level touch or proximity',
@@ -1331,6 +1383,27 @@ export const BacktestSegmentationConfluence = {
   dynamite: 'dynamite',
 } as const;
 
+export type BacktestSegmentationOrbState = typeof BacktestSegmentationOrbState[keyof typeof BacktestSegmentationOrbState];
+
+
+export const BacktestSegmentationOrbState = {
+  ORB_FORMING: 'ORB_FORMING',
+  INSIDE_ORB: 'INSIDE_ORB',
+  ORB_PROBE_WAIT: 'ORB_PROBE_WAIT',
+  WEAK_BREAK_WAIT: 'WEAK_BREAK_WAIT',
+  BREAKOUT_CANDIDATE: 'BREAKOUT_CANDIDATE',
+  WAITING_FOR_CONTINUATION: 'WAITING_FOR_CONTINUATION',
+  QUALIFIED_BREAKOUT: 'QUALIFIED_BREAKOUT',
+  WAITING_FOR_PULLBACK: 'WAITING_FOR_PULLBACK',
+  PULLBACK_IN_PROGRESS: 'PULLBACK_IN_PROGRESS',
+  WAITING_FOR_PATIENCE_CANDLE: 'WAITING_FOR_PATIENCE_CANDLE',
+  PATIENCE_CANDLE_VALID: 'PATIENCE_CANDLE_VALID',
+  TRIGGER_CANDLE_ACTIVE: 'TRIGGER_CANDLE_ACTIVE',
+  ENTRY_TRIGGERED: 'ENTRY_TRIGGERED',
+  BREAKOUT_FAILED: 'BREAKOUT_FAILED',
+  SETUP_EXPIRED: 'SETUP_EXPIRED',
+} as const;
+
 export type BacktestSegmentationMarketRegime = typeof BacktestSegmentationMarketRegime[keyof typeof BacktestSegmentationMarketRegime];
 
 
@@ -1352,6 +1425,7 @@ export interface BacktestSegmentation {
   levelType: BacktestSegmentationLevelType;
   confluence: BacktestSegmentationConfluence;
   patienceCharacteristic: string;
+  orbState: BacktestSegmentationOrbState;
   marketRegime: BacktestSegmentationMarketRegime;
 }
 

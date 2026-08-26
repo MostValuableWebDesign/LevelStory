@@ -11,6 +11,7 @@ export type Phase8TimelineEventEventType = typeof Phase8TimelineEventEventType[k
 
 export const Phase8TimelineEventEventType = {
   NTZ_completion: 'NTZ completion',
+  ORB_quality: 'ORB quality',
   Breakout: 'Breakout',
   Pullback: 'Pullback',
   Level_touch_or_proximity: 'Level touch or proximity',

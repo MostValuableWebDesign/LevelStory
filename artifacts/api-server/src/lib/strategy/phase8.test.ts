@@ -150,7 +150,7 @@ test("Phase 8 timeline is chronological and includes failed setup outcome", () =
     candles: [{ openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 1.5, volume: 10, isComplete: true, ...quote }],
     ntz: null,
     ntzEvents: [],
-    breakout: { detected: false, direction: null, time: null, candleOpenTime: null, distanceOutside: null, breakoutVolume: null, baselineVolume: null, volumeRatio: null, volumeSupported: false, detail: "Waiting." },
+    breakout: { detected: false, direction: null, state: "INSIDE_ORB", time: null, candleOpenTime: null, candidateTime: null, candidateCandleOpenTime: null, distanceOutside: null, meaningfulDistance: null, breakoutVolume: null, baselineVolume: null, volumeRatio: null, volumeSupported: false, bodyRatio: null, closeLocationRatio: null, candleStructureSupported: false, continuationConfirmed: false, continuationCondition: null, failed: false, detail: "Waiting." },
     pullback: { status: "pending", events: [], evaluatedCandles: 0, maxCandles: 6, maxDurationMinutes: 30, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: 0, detail: "Waiting." },
     fibonacci: { direction: null, impulseLow: null, impulseHigh: null, breakoutTime: null, frozen: false, frozenAt: null, manualCorrection: false, levels: [], retracementPercent: null, classification: "unavailable", detail: "Unavailable." },
     volume: { baselineCandleCount: 6, recentSixAverage: null, breakoutVolume: null, breakoutRatio: null, supportingBreakoutVolume: false, averageImpulseVolume: null, pullbackAverageVolume: null, pullbackToBreakoutRatio: null, pullbackToImpulseRatio: null, pullbackToRecentRatio: null, opposingPullbackVolume: null, reversalWarning: null },

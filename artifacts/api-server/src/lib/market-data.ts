@@ -5,6 +5,7 @@ import {
   strategyConfig,
   trendEvidence,
   analyzePullback,
+  advanceOrbBreakoutState,
   detectInitialBreakout,
   fibonacciAnalysis,
   phase4Volume,
@@ -21,6 +22,8 @@ import {
   type DecisionState,
   type Direction,
   type StrategyConfig,
+  type OrbBreakoutState,
+  type BreakoutContinuationCondition,
   buildPhase7RiskPlan,
   type Phase7RiskConfig,
   type Phase7RiskPlan,
@@ -114,13 +117,23 @@ export type MarketSnapshot = {
   breakout: {
     detected: boolean;
     direction: Direction | null;
+    state: OrbBreakoutState;
     time: string | null;
     candleOpenTime: string | null;
+    candidateTime: string | null;
+    candidateCandleOpenTime: string | null;
     distanceOutside: number | null;
+    meaningfulDistance: number | null;
     breakoutVolume: number | null;
     baselineVolume: number | null;
     volumeRatio: number | null;
     volumeSupported: boolean;
+    bodyRatio: number | null;
+    closeLocationRatio: number | null;
+    candleStructureSupported: boolean;
+    continuationConfirmed: boolean;
+    continuationCondition: BreakoutContinuationCondition | null;
+    failed: boolean;
     detail: string;
   };
   pullback: {
@@ -375,7 +388,7 @@ export function createMarketSnapshot(
     calendar,
     specification,
   );
-  const breakout = detectInitialBreakout(regular, levels.ntz, config);
+  const breakout = detectInitialBreakout(regular, levels.ntz, config, specification);
   const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors);
   const qualifyingLevels = [
     ...levels.levels,
@@ -395,7 +408,15 @@ export function createMarketSnapshot(
   const trend = trendEvidence(regular, levels, config);
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
   const patienceDirection = breakout.direction ?? direction;
-  const patience = phase5PatienceAnalysis(regular, patienceDirection, pullback, levels.ntz, levels.ntzEvents);
+  const patience = phase5PatienceAnalysis(
+    regular,
+    patienceDirection,
+    pullback,
+    levels.ntz,
+    levels.ntzEvents,
+    breakout.detected ? breakout.time : Number.POSITIVE_INFINITY,
+  );
+  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
   const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification, {
     ...phase7Input,
     observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
@@ -409,7 +430,7 @@ export function createMarketSnapshot(
   const setupAnalysis = phase6Analysis({
     candles: regular,
     levels,
-    breakout,
+    breakout: evaluatedBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
@@ -426,7 +447,7 @@ export function createMarketSnapshot(
     candles: regular,
     ntz: levels.ntz,
     ntzEvents: levels.ntzEvents,
-    breakout,
+    breakout: evaluatedBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
@@ -525,16 +546,26 @@ export function createMarketSnapshot(
        })),
      },
      breakout: {
-       detected: breakout.detected,
-       direction: breakout.direction,
-       time: breakout.time === null ? null : new Date(breakout.time).toISOString(),
-       candleOpenTime: breakout.candleOpenTime === null ? null : new Date(breakout.candleOpenTime).toISOString(),
-       distanceOutside: breakout.distanceOutside,
-       breakoutVolume: breakout.breakoutVolume,
-       baselineVolume: breakout.baselineVolume,
-       volumeRatio: breakout.volumeRatio,
-       volumeSupported: breakout.volumeSupported,
-       detail: breakout.detail,
+        detected: evaluatedBreakout.detected,
+        direction: evaluatedBreakout.direction,
+        state: evaluatedBreakout.state,
+        time: evaluatedBreakout.time === null ? null : new Date(evaluatedBreakout.time).toISOString(),
+        candleOpenTime: evaluatedBreakout.candleOpenTime === null ? null : new Date(evaluatedBreakout.candleOpenTime).toISOString(),
+        candidateTime: evaluatedBreakout.candidateTime === null ? null : new Date(evaluatedBreakout.candidateTime).toISOString(),
+        candidateCandleOpenTime: evaluatedBreakout.candidateCandleOpenTime === null ? null : new Date(evaluatedBreakout.candidateCandleOpenTime).toISOString(),
+        distanceOutside: evaluatedBreakout.distanceOutside,
+        meaningfulDistance: evaluatedBreakout.meaningfulDistance,
+        breakoutVolume: evaluatedBreakout.breakoutVolume,
+        baselineVolume: evaluatedBreakout.baselineVolume,
+        volumeRatio: evaluatedBreakout.volumeRatio,
+        volumeSupported: evaluatedBreakout.volumeSupported,
+        bodyRatio: evaluatedBreakout.bodyRatio,
+        closeLocationRatio: evaluatedBreakout.closeLocationRatio,
+        candleStructureSupported: evaluatedBreakout.candleStructureSupported,
+        continuationConfirmed: evaluatedBreakout.continuationConfirmed,
+        continuationCondition: evaluatedBreakout.continuationCondition,
+        failed: evaluatedBreakout.failed,
+        detail: evaluatedBreakout.detail,
      },
      pullback: {
        status: pullback.status,
@@ -591,6 +622,8 @@ export function createMarketSnapshot(
       `VWAP resets at 09:30 ET for each regular session; major levels use ${config.historicalLookbackTradingDays} trading days of hourly reactions.`,
       `Trend classification requires ${config.trendCandleCount} completed 15-minute candles and remains descriptive only.`,
       `Phase 4 breakout support requires ${config.phase4BreakoutVolumeRatio.toFixed(2)}x the previous six completed five-minute candle volume average.`,
+      `ORB quality uses ${config.phase4BreakoutMeaningfulDistanceTicks} ticks or ${config.phase4BreakoutMeaningfulDistanceAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period ATR for meaningful distance, ${config.phase4BreakoutBodyRatio.toFixed(0)}% body, and the outer ${(1 - config.phase4BreakoutCloseLocationRatio) * 100}% close location.`,
+      `ORB continuation requires immediate extension or a second close outside the ORB; the strong single-candle exception is ${config.phase4AllowStrongSingleCandleException ? "enabled" : "disabled"} and uses ${config.phase4StrongVolumeRatio.toFixed(2)}x volume, ${(config.phase4StrongBodyRatio * 100).toFixed(0)}% body, and the outer ${(1 - config.phase4StrongCloseLocationRatio) * 100}% close location.`,
       `Phase 4 pullback proximity is the greater of ${config.phase4ProximityTicks} ticks and ${config.phase4ProximityAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period five-minute ATR, bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
       "Patience-candle states are descriptive shadow analysis only; a trigger never creates a live or paper order.",
       "Phase 6 setup decisions require every mandatory rule; scores and reversal alerts cannot qualify a setup.",
