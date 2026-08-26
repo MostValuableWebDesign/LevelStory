@@ -1,0 +1,384 @@
+Build a full-stack trading discipline application called “LevelStory.”
+
+PURPOSE
+
+LevelStory should help remove emotion from my trading by enforcing my trading formula as a strict, step-by-step decision system.
+
+This first version must operate in SHADOW MODE only. It may identify setups, generate alerts, calculate position size, and record hypothetical trades, but it must never place real orders.
+
+The app should treat every trade as “NO TRADE” until all required conditions have been confirmed.
+
+CORE TRADING FORMULA
+
+1. MARK IMPORTANT LEVELS
+
+Automatically calculate and display:
+
+- Premarket high
+- Premarket low
+- Yesterday’s high
+- Yesterday’s low
+- Day-before-yesterday high
+- Day-before-yesterday low
+- First 15-minute opening-range high
+- First 15-minute opening-range low
+- VWAP
+- 200-period moving average or EMA
+- Relevant Fibonacci retracement levels
+- Nearby critical support and resistance levels
+
+Every level should have a clear label and its price.
+
+2. DETERMINE THE 15-MINUTE TREND
+
+Use the 15-minute chart as the primary trend timeframe.
+
+Classify the trend as:
+
+- Bullish
+- Bearish
+- Neutral or unclear
+
+Display the evidence used to determine the trend, including:
+
+- Price relative to VWAP
+- Price relative to the 200 MA/EMA
+- Direction and slope of the 200 MA/EMA
+- Recent market structure
+- Higher highs and higher lows
+- Lower highs and lower lows
+
+Do not qualify a trade when the 15-minute trend is unclear unless it is explicitly being evaluated as a bonus reversal.
+
+3. DEFINE THE NTZ
+
+NTZ means Non-Trading Zone.
+
+The default NTZ is the area between the high and low of the first completed 15-minute candle after the regular market opens.
+
+The app must:
+
+- Draw and shade the NTZ on the chart
+- Display its high, low, and width
+- Prevent normal trend entries while price remains inside the NTZ
+- Require a completed candle to close outside the NTZ
+- Clearly display “INSIDE NTZ — NO TRADE” or “OUTSIDE NTZ”
+
+Allow the NTZ definition to be changed in Settings later.
+
+4. DETECT AN OPENING-RANGE BREAK
+
+A valid ORB setup requires:
+
+- The first 15-minute opening range is complete
+- Price breaks outside the opening range in the direction of the 15-minute trend
+- A candle closes outside the opening range
+- Price pulls back after the breakout
+- The pullback reaches a critical level, VWAP, 200 MA/EMA, opening-range boundary, previous-session level, or Fibonacci retracement area
+
+Do not allow chasing a breakout. A pullback is mandatory.
+
+5. EVALUATE THE PULLBACK
+
+A valid entry must pull back to at least one of the following:
+
+- Opening-range high or low
+- Premarket high or low
+- Yesterday’s high or low
+- Day-before-yesterday high or low
+- VWAP
+- 200 MA/EMA
+- Critical support or resistance
+- Fibonacci retracement area
+- Another configured EMA
+
+Display all confluences at the pullback.
+
+Examples:
+
+- ORB high + 38.2% Fibonacci retracement
+- Yesterday’s high + VWAP
+- Premarket low + 200 EMA
+
+The app must always require a pullback to a critical level or EMA before qualifying a normal entry.
+
+6. CHECK PULLBACK VOLUME
+
+Compare pullback volume with:
+
+- Breakout volume
+- Average volume of recent candles
+- Relative volume
+
+A lower-volume pullback should support trend continuation.
+
+A high-volume pullback against the trade direction must create a visible warning:
+
+“HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL”
+
+Make the exact volume thresholds configurable. Do not silently invent permanent thresholds. Begin with clearly labeled default values that can be changed and tested.
+
+7. CALCULATE FIBONACCI RETRACEMENT
+
+For bullish setups, calculate Fibonacci retracement from the relevant swing low to swing high.
+
+For bearish setups, calculate it from the relevant swing high to swing low.
+
+Display:
+
+- 23.6%
+- 38.2%
+- 50%
+- 61.8%
+- 78.6%
+
+Highlight the configured preferred pullback zone.
+
+Require the app to show which swing points were used. Allow me to correct those swing points manually.
+
+Fibonacci should be treated as confluence, not as a standalone entry signal.
+
+8. REQUIRE A PATIENCE CANDLE
+
+I do not trade without seeing a patience candle.
+
+A patience candle is mandatory for every normal entry.
+
+My initial patience-candle definition is:
+
+- Price has already pulled back to a critical level
+- The next completed candle closes within the range of the previous candle
+- Its close supports the direction of the 15-minute trend
+- For a bullish setup, the patience candle should reject the level and close with bullish intent
+- For a bearish setup, the patience candle should reject the level and close with bearish intent
+- The candle must be completely closed before it can qualify
+
+Show the previous candle and patience candle visually on the chart.
+
+Display:
+
+- “WAITING FOR PATIENCE CANDLE”
+- “PATIENCE CANDLE FORMING”
+- “VALID PATIENCE CANDLE”
+- “INVALID PATIENCE CANDLE”
+
+Never qualify an entry from an incomplete candle.
+
+Make the exact patience-candle requirements configurable so this definition can be refined through testing.
+
+9. LET LEVELS TELL THE STORY
+
+At every important level, record how price behaves.
+
+Classify the interaction as:
+
+- Clean break
+- Rejection
+- Hold
+- Failed breakout
+- Retest
+- Consolidation
+- High-volume reversal
+- Doji or indecision
+- Equivalent opposing candles
+
+Show a chronological “Level Story” feed, for example:
+
+- 9:45 AM: Price closed above ORB high
+- 10:00 AM: Low-volume pullback held ORB high
+- 10:15 AM: Bullish patience candle confirmed
+- 10:30 AM: Yesterday’s high rejected price
+
+Do not merely display levels. Explain what price did when it reached them.
+
+10. ENTRY QUALIFICATION
+
+A normal setup can qualify only when:
+
+- Important levels are marked
+- The 15-minute trend is identified
+- Price is outside the NTZ
+- A completed candle broke the opening range
+- A pullback occurred
+- The pullback reached a critical level, VWAP, 200 MA/EMA, Fibonacci area, or configured EMA
+- Pullback volume passed the safety check
+- A valid patience candle completely closed
+- Risk and position size are acceptable
+- Daily safety limits have not been reached
+
+Display one of these decisions:
+
+- NO TRADE
+- WAITING
+- SETUP FORMING
+- SETUP QUALIFIED
+- POSSIBLE REVERSAL
+- RISK LOCKOUT
+
+For every decision, explain exactly which rules passed and which rules failed.
+
+11. STOP MANAGEMENT
+
+Separate two types of stops:
+
+A. Catastrophe stop
+
+- A hard, non-negotiable protective stop
+- Protects against gaps, halts, extreme volatility, or system failure
+- Must always exist in paper or future live trading
+
+B. Strategy or thesis stop
+
+- Based on the invalidation of the setup
+- May require a completed candle to close through the relevant level
+
+For a runner:
+
+- Do not exit the runner only because of a small pullback
+- Track the last level that should hold
+- Wait for that level to break according to the configured runner rule
+- Show exactly which level is protecting the runner
+- Never allow runner logic to override the catastrophe stop
+
+12. PROFIT MANAGEMENT
+
+Do not require price to touch an exact target before taking profit because it may approach the level and reverse.
+
+For each upcoming profit level:
+
+- Display the exact level
+- Create a configurable profit buffer before that level
+- Suggest partial profit inside the buffer
+- Allow the buffer to use cents, percentage, ticks, or ATR
+- Track partial profit and runner size separately
+
+Example:
+
+If the next resistance level is $190.00 and the configured buffer is $0.05, the planned partial-profit price should be $189.95.
+
+13. BONUS REVERSAL SETUPS
+
+Reversals are optional bonus setups and must be kept separate from normal trend-following setups.
+
+Watch for:
+
+- A doji candle at a key level
+- Equivalent red and green candles
+- Strong rejection at a critical level
+- Failed breakout
+- High-volume pullback
+- Momentum divergence when available
+- A break of the reversal structure
+
+Define “equivalent red and green candles” initially as two nearby opposing candles whose body sizes are within a configurable percentage of each other.
+
+A doji or equivalent-candle pattern is only an alert. It must not qualify an entry by itself.
+
+Require level context, confirmation, risk validation, and a patience candle before qualifying a reversal.
+
+14. RISK CONTROLS
+
+Include configurable controls for:
+
+- Account size
+- Maximum risk per trade
+- Maximum daily loss
+- Maximum trades per day
+- Maximum position size
+- Maximum spread
+- Minimum liquidity
+- No averaging down
+- No duplicate orders
+- Stale-data detection
+- Emergency kill switch
+
+Calculate position size using:
+
+Maximum risk in dollars ÷ absolute difference between entry and catastrophe stop
+
+If the calculated position violates a safety rule, block the setup.
+
+15. SHADOW TRADE JOURNAL
+
+Record every evaluated setup, including setups that were rejected.
+
+Store:
+
+- Symbol
+- Date and time
+- Long or short
+- 15-minute trend
+- All marked levels
+- NTZ status
+- ORB status
+- Pullback level
+- Fibonacci confluence
+- VWAP and 200 MA/EMA status
+- Volume analysis
+- Patience-candle status
+- Entry, stop, target, and position size
+- Rules passed
+- Rules failed
+- Screenshots or chart snapshots when available
+- Hypothetical result
+- Maximum favorable excursion
+- Maximum adverse excursion
+- Reason for exit
+- Notes
+
+The journal should help determine which parts of the formula improve or hurt performance.
+
+USER INTERFACE
+
+Create a professional desktop-first trading interface with:
+
+- A large primary chart
+- Clearly labeled levels
+- Shaded NTZ
+- 15-minute trend status
+- Current decision panel
+- Required-rule checklist
+- Level Story timeline
+- Volume warning panel
+- Fibonacci controls
+- Entry, stop, target, and position-size planner
+- Runner management panel
+- Shadow-trade journal
+- Strategy Settings page
+
+Use restrained colors:
+
+- Green for bullish confirmation
+- Red for bearish confirmation or danger
+- Amber for waiting and warnings
+- Gray for neutral information
+
+Avoid a generic admin-dashboard appearance. The chart, decision, checklist, and risk controls should dominate the interface.
+
+Create responsive mobile layouts, but optimize the main experience for desktop trading.
+
+TECHNICAL REQUIREMENTS
+
+- Use simulated market data initially
+- Keep all broker-order functions disabled
+- Clearly label the application “SHADOW MODE”
+- Separate market data, strategy rules, risk management, and UI into different modules
+- Store every configurable rule in a central strategy configuration
+- Do not bury trading thresholds inside UI components
+- Include loading, empty, stale-data, disconnected, error, and market-closed states
+- Add automated tests for every required trading rule
+- Use only completed candles for signals requiring candle confirmation
+- Prevent look-ahead bias in replay and backtesting
+- Include realistic slippage, spread, and fees in simulated results
+- Record why every signal was accepted or rejected
+- Do not add a live broker connection until paper-trading results have been reviewed
+
+IMPORTANT
+
+Do not claim this strategy is profitable.
+
+Do not invent missing trading rules without labeling them as assumptions.
+
+Whenever a rule is subjective, make it configurable and display the current definition in plain language.
+
+Before building, create a structured implementation plan and list every trading term that still needs an exact numerical definition.
