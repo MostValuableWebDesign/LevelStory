@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "LevelStory"
+description = "A secure shadow-mode trading discipline assistant with simulated market data, setup confirmation, risk-based sizing, daily loss controls, and a shadow-trade journal. It does not place real orders."
+version = "1.0.0"
+id = "artifacts/levelstory"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26250
+
+[services.development]
+run = "pnpm --filter @workspace/levelstory run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/levelstory", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/levelstory/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26250"
+BASE_PATH = "/"

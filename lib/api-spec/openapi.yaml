@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: market
+    description: Simulated market intelligence
+  - name: journal
+    description: Shadow trade journal
+  - name: risk
+    description: Risk guardrails
 paths:
   /healthz:
     get:
@@ -24,6 +30,156 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /market/snapshot:
+    get:
+      operationId: getMarketSnapshot
+      tags: [market]
+      summary: Get the simulated market snapshot
+      description: Returns simulated five-minute candles, levels, indicators, and discipline signals. This endpoint never connects to a broker or places orders.
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 12
+            default: NVDA
+        - name: session
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [premarket, regular]
+            default: regular
+      responses:
+        "200":
+          description: Simulated market snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketSnapshot"
+        "400":
+          description: Invalid market query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /dashboard/overview:
+    get:
+      operationId: getDashboardOverview
+      tags: [market]
+      summary: Get dashboard overview
+      description: Returns the current shadow session summary and recent journal activity.
+      responses:
+        "200":
+          description: Dashboard overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOverview"
+  /journal:
+    get:
+      operationId: listJournalEntries
+      tags: [journal]
+      summary: List shadow journal entries
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Journal entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JournalEntry"
+    post:
+      operationId: createJournalEntry
+      tags: [journal]
+      summary: Record a shadow trade
+      description: Records a simulated trade review only. It does not create a broker order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalEntryInput"
+      responses:
+        "201":
+          description: Journal entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntry"
+        "400":
+          description: Invalid journal entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journal/{id}:
+    delete:
+      operationId: deleteJournalEntry
+      tags: [journal]
+      summary: Delete a shadow journal entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Journal entry deleted
+        "404":
+          description: Journal entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /risk/settings:
+    get:
+      operationId: getRiskSettings
+      tags: [risk]
+      summary: Get risk settings
+      responses:
+        "200":
+          description: Risk settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskSettings"
+    patch:
+      operationId: updateRiskSettings
+      tags: [risk]
+      summary: Update risk settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiskSettingsUpdate"
+      responses:
+        "200":
+          description: Updated risk settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskSettings"
+        "400":
+          description: Invalid risk settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +189,200 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    Candle:
+      type: object
+      properties:
+        time:
+          type: string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+      required: [time, open, high, low, close, volume]
+    Signal:
+      type: object
+      properties:
+        key:
+          type: string
+          enum: [orb, pullback, patience, volume]
+        label:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, watching, blocked]
+        detail:
+          type: string
+      required: [key, label, status, detail]
+    MarketSnapshot:
+      type: object
+      properties:
+        symbol:
+          type: string
+        company:
+          type: string
+        price:
+          type: number
+        change:
+          type: number
+        changePercent:
+          type: number
+        marketStatus:
+          type: string
+          enum: [premarket, open, closed]
+        session:
+          type: string
+        updatedAt:
+          type: string
+        candles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Candle"
+        levels:
+          type: object
+          properties:
+            premarketHigh: { type: number }
+            premarketLow: { type: number }
+            previousDayHigh: { type: number }
+            previousDayLow: { type: number }
+            previousDayClose: { type: number }
+            openingRangeHigh: { type: number }
+            openingRangeLow: { type: number }
+          required: [premarketHigh, premarketLow, previousDayHigh, previousDayLow, previousDayClose, openingRangeHigh, openingRangeLow]
+        indicators:
+          type: object
+          properties:
+            rsi: { type: number }
+            ema200: { type: number }
+            fib382: { type: number }
+            fib5: { type: number }
+            fib618: { type: number }
+            volumeRatio: { type: number }
+          required: [rsi, ema200, fib382, fib5, fib618, volumeRatio]
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Signal"
+      required: [symbol, company, price, change, changePercent, marketStatus, session, updatedAt, candles, levels, indicators, signals]
+    DashboardOverview:
+      type: object
+      properties:
+        sessionPnl:
+          type: number
+        sessionPnlPercent:
+          type: number
+        maxDailyLoss:
+          type: number
+        dailyLossUsed:
+          type: number
+        tradeCount:
+          type: number
+        winRate:
+          type: number
+        checklistCompleted:
+          type: number
+        checklistTotal:
+          type: number
+        recentEntries:
+          type: array
+          items:
+            $ref: "#/components/schemas/JournalEntry"
+      required: [sessionPnl, sessionPnlPercent, maxDailyLoss, dailyLossUsed, tradeCount, winRate, checklistCompleted, checklistTotal, recentEntries]
+    JournalEntry:
+      type: object
+      properties:
+        id:
+          type: number
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [long, short]
+        setup:
+          type: string
+        entryPrice:
+          type: number
+        exitPrice:
+          type: ["number", "null"]
+        quantity:
+          type: number
+        pnl:
+          type: ["number", "null"]
+        notes:
+          type: string
+        checklistPassed:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, symbol, side, setup, entryPrice, exitPrice, quantity, pnl, notes, checklistPassed, createdAt]
+    JournalEntryInput:
+      type: object
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+        side:
+          type: string
+          enum: [long, short]
+        setup:
+          type: string
+          minLength: 1
+          maxLength: 80
+        entryPrice:
+          type: number
+          exclusiveMinimum: 0
+        exitPrice:
+          type: ["number", "null"]
+          exclusiveMinimum: 0
+        quantity:
+          type: number
+          minimum: 1
+        pnl:
+          type: ["number", "null"]
+        notes:
+          type: string
+          maxLength: 2000
+        checklistPassed:
+          type: boolean
+      required: [symbol, side, setup, entryPrice, quantity, notes, checklistPassed]
+    RiskSettings:
+      type: object
+      properties:
+        accountSize:
+          type: number
+        riskPercent:
+          type: number
+        maxDailyLoss:
+          type: number
+        dailyLossUsed:
+          type: number
+        isLocked:
+          type: boolean
+      required: [accountSize, riskPercent, maxDailyLoss, dailyLossUsed, isLocked]
+    RiskSettingsUpdate:
+      type: object
+      properties:
+        accountSize:
+          type: number
+          exclusiveMinimum: 0
+        riskPercent:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 100
+        maxDailyLoss:
+          type: number
+          exclusiveMinimum: 0
+      minProperties: 1
 
