@@ -1,0 +1,108 @@
+Phase 3 — EMA, VWAP, major levels and trend
+Use High effort.
+Implement only Phase 3 of LevelStory.
+
+INDICATORS
+
+1. Calculate a 200-period EMA from completed 5-minute candles.
+
+2. Initial EMA slope:
+
+Compare the current completed EMA value with its value five completed candles ago.
+
+Make the slope window configurable.
+
+3. Calculate regular-session VWAP.
+
+4. Reset VWAP at 9:30 a.m. ET every trading day.
+
+5. Never carry regular-session VWAP across sessions.
+
+MAJOR SUPPORT AND RESISTANCE
+
+Analyze approximately one year of completed hourly candles.
+
+A support candidate requires at least three distinct historical upward reactions from approximately the same price area.
+
+A resistance candidate requires at least three distinct historical downward rejections from approximately the same area.
+
+Merge nearby reactions into zones.
+
+Initial proximity tolerance:
+
+Maximum of:
+
+- Two futures ticks
+- 0.15% of instrument price
+- 0.25 of hourly 14-period ATR
+
+Make all thresholds configurable.
+
+Increase level strength based on:
+
+- Number of reactions
+- Recency
+- Reaction magnitude
+- Volume
+- Confluence
+
+CONFLUENCE
+
+Classify:
+
+- One component: normal level
+- Two overlapping components: strong confluence
+- Three or more components: dynamite level
+
+Possible components:
+
+- Hourly support/resistance
+- Premarket high/low
+- Yesterday’s high/low
+- Two-days-ago high/low
+- NTZ/ORB boundary
+- VWAP
+- 200 EMA
+- Fibonacci level
+
+15-MINUTE TREND
+
+Use eight completed 15-minute candles initially.
+
+Bullish evidence:
+
+- Higher highs and higher lows
+- Price above VWAP
+- Price above 5-minute 200 EMA
+- EMA flat-to-rising
+
+Bearish evidence:
+
+- Lower highs and lower lows
+- Price below VWAP
+- Price below 5-minute 200 EMA
+- EMA flat-to-falling
+
+Otherwise classify trend as neutral.
+
+Display the evidence behind every classification.
+
+TESTS
+
+Add tests for:
+
+- EMA values
+- Incomplete-candle exclusion
+- EMA slope
+- VWAP
+- Session reset
+- Support reactions
+- Resistance reactions
+- Level merging
+- Proximity tolerance
+- Confluence classification
+- Bullish trend
+- Bearish trend
+- Neutral trend
+
+Do not implement entries yet.
