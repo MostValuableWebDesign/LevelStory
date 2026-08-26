@@ -25,19 +25,19 @@ export default function Dashboard() {
   const risk = useGetRiskSettings();
   const snapshot = market.data;
   const overviewData = overview.data;
+  const riskData = risk.data;
   const activeSignals = snapshot?.signals ?? [];
   const confirmedCount = activeSignals.filter((signal) => signal.status === "confirmed").length;
   const blockedCount = activeSignals.filter((signal) => signal.status === "blocked").length;
-  const qualified = snapshot?.decision.state === "SETUP QUALIFIED";
 
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
          <PageIntro eyebrow={`Daily cockpit / ${session === "premarket" ? "premarket context" : "regular-session replay"}`} title="Make the plan. Then wait." description="Read the simulated tape, mark the conditions, and decide whether attention is earned today." action={<ShadowBadge />} />
 
-        <div className="mb-5 flex flex-col gap-3 border border-border bg-card/85 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+         <div className="control-ribbon mb-5 flex flex-col gap-3 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
            <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="eyebrow px-1 text-muted-foreground">Watchlist</span><div className="flex flex-wrap gap-1">{symbols.map((item) => <button type="button" key={item} onClick={() => setSymbol(item)} className={`rounded-sm px-3 py-2 text-xs font-bold transition-colors ${symbol === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`} aria-pressed={symbol === item} data-testid={`button-symbol-${item.toLowerCase()}`}>{item}</button>)}</div></div><div className="flex rounded-sm border border-border p-0.5"><button type="button" onClick={() => setSession("premarket")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "premarket" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "premarket"} data-testid="button-session-premarket">Premarket</button><button type="button" onClick={() => setSession("regular")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "regular" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "regular"} data-testid="button-session-regular">Replay</button></div></div>
-             <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                <label className="eyebrow text-muted-foreground" htmlFor="target-dollars">Target</label>
                <select id="target-dollars" value={targetSelection} onChange={(event) => setTargetSelection(event.target.value)} className="field mono h-9 w-24 px-2 text-xs" data-testid="select-target-dollars">
                  <option value="50">$50</option><option value="75">$75</option><option value="100">$100</option><option value="custom">Custom</option>
@@ -46,12 +46,13 @@ export default function Dashboard() {
                <select aria-label="Slippage mode" value={slippageMode} onChange={(event) => setSlippageMode(event.target.value as typeof slippageMode)} className="field h-9 w-32 px-2 text-[10px]" data-testid="select-slippage-mode">
                  <option value="normal">Normal slip</option><option value="fast">Fast tape</option><option value="abnormal_spread">Abnormal spread</option>
                </select>
+                <RiskRail risk={riskData} isLoading={risk.isLoading} isError={risk.isError} onRetry={() => risk.refetch()} />
                <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: getGetMarketSnapshotQueryKey(marketParams) })} disabled={market.isFetching} className="inline-flex items-center justify-center gap-2 rounded-sm border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50" data-testid="button-refresh-market"><RefreshCw size={13} className={market.isFetching ? "animate-spin" : ""} />Refresh simulation</button>
              </div>
         </div>
 
         <Panel className="mb-5">
-          {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[0, 1, 2, 3].map((item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[["Session P&L", `${overviewData.sessionPnl >= 0 ? "+" : ""}$${overviewData.sessionPnl.toFixed(2)}`, overviewData.sessionPnl >= 0 ? "status-positive" : "status-negative"], ["Reviews logged", String(overviewData.tradeCount), ""], ["Win rate", `${overviewData.winRate.toFixed(1)}%`, ""], ["Plan completion", `${overviewData.checklistCompleted}/${overviewData.checklistTotal}`, ""]].map(([label, value, tone]) => <div key={label} className="px-5 py-4 sm:px-6"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
+           {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[0, 1, 2, 3].map((item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[["Session P&L", `${overviewData.sessionPnl >= 0 ? "+" : ""}$${overviewData.sessionPnl.toFixed(2)}`, overviewData.sessionPnl >= 0 ? "status-positive" : "status-negative"], ["Reviews logged", String(overviewData.tradeCount), ""], ["Win rate", `${overviewData.winRate.toFixed(1)}%`, ""], ["Plan completion", `${overviewData.checklistCompleted}/${overviewData.checklistTotal}`, ""]].map(([label, value, tone]) => <div key={label} className="metric-cell px-5 py-4 sm:px-6"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
         </Panel>
 
         {market.isLoading ? <Panel><QuerySkeleton rows={5} /></Panel> : market.isError || !snapshot ? <Panel><QueryError onRetry={() => market.refetch()} message="Simulated market feed unavailable." /></Panel> : <div className="space-y-5 appear">
@@ -61,7 +62,7 @@ export default function Dashboard() {
                  <div><div className="mb-3 flex items-center gap-2"><span className="eyebrow text-muted-foreground">Selected futures contract</span><span className="border border-border bg-secondary px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground" data-testid="status-market-session">{snapshot.marketStatus}</span></div><div className="flex flex-wrap items-end gap-x-4 gap-y-1"><span className="display text-5xl font-bold tracking-[-.08em]" data-testid="text-market-symbol">{snapshot.contract.fullContractSymbol}</span><span className="pb-1 text-sm text-muted-foreground" data-testid="text-market-company">{snapshot.company}</span></div><div className="mt-3 text-[10px] text-muted-foreground" data-testid="text-contract-metadata">{snapshot.contract.exchange} · {snapshot.contract.contractMonth} · {snapshot.contract.tickSize.toFixed(2)} tick · {snapshot.contract.verificationNote}</div></div>
                 <div className="sm:text-right"><div className="mono text-3xl font-medium tracking-[-.05em]" data-testid="text-market-price">${snapshot.price.toFixed(2)}</div><PriceChange value={snapshot.change} percent={snapshot.changePercent} /><div className="mt-2 text-[10px] text-muted-foreground">Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
               </div>
-               <div className="terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={snapshot.levels.critical} /></div>
+                <div className="chart-frame terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={snapshot.levels.critical} /></div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min · {snapshot.replay.timeZone} · {snapshot.sessionCalendar.tradingDate}</span></div>
             </Panel>
 
@@ -151,6 +152,23 @@ function DecisionPanel({ snapshot, confirmedCount, signalCount }: { snapshot: Ma
       <div className="mt-5"><LockedNote>No live orders. This is a decision rehearsal, not an execution terminal.</LockedNote></div>
     </div>
   </Panel>;
+}
+
+function RiskRail({ risk, isLoading, isError, onRetry }: {
+  risk?: { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  if (isLoading) return <span className="eyebrow px-2 text-muted-foreground">Guardrail loading</span>;
+  if (isError) return <button type="button" onClick={onRetry} className="eyebrow border border-destructive/25 px-2 py-2 text-destructive hover:bg-destructive/10" data-testid="button-retry-risk-rail">Risk unavailable · retry</button>;
+  if (!risk) return <span className="eyebrow px-2 text-muted-foreground">Guardrail pending</span>;
+  const used = risk.maxDailyLoss > 0 ? Math.min(Math.max(risk.dailyLossUsed / risk.maxDailyLoss, 0), 1) : 0;
+  return <div className={`flex items-center gap-2 border px-2.5 py-1.5 ${risk.isLocked ? "border-destructive/35 bg-destructive/10" : "border-border bg-background/50"}`} data-testid="status-risk-rail">
+    <span className={`h-1.5 w-1.5 rounded-full ${risk.isLocked ? "bg-destructive" : "bg-[hsl(var(--positive))]"}`} />
+    <span className="eyebrow text-muted-foreground">Risk rail</span>
+    <span className={`mono text-[10px] font-medium ${risk.isLocked ? "status-negative" : "text-foreground"}`}>{risk.isLocked ? "LOCKED" : `${(used * 100).toFixed(0)}% used`}</span>
+  </div>;
 }
 
 function ShadowExecutionPanel({ execution }: { execution: MarketSnapshot["shadowExecution"] }) {

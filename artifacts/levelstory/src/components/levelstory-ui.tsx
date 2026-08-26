@@ -11,7 +11,7 @@ export function PageIntro({ eyebrow, title, description, action }: { eyebrow: st
 }
 
 export function Panel({ children, className = "", accent = false }: { children: ReactNode; className?: string; accent?: boolean }) {
-  return <section className={`surface relative overflow-hidden rounded-md ${accent ? "border-l-[3px] border-l-accent" : ""} ${className}`}>{children}</section>;
+  return <section className={`surface relative overflow-hidden rounded-md transition-[border-color,box-shadow] duration-200 ${accent ? "border-l-[3px] border-l-accent" : ""} ${className}`}>{children}</section>;
 }
 
 export function PanelTitle({ eyebrow, title, right }: { eyebrow?: string; title: string; right?: ReactNode }) {
@@ -38,13 +38,16 @@ export function StatusBadge({ status }: { status: SignalStatus }) {
 
 export function MiniCandleChart({ candles, ntz, levels = [] }: { candles: Candle[]; ntz?: NtzState; levels?: Array<{ name: string; price: number }> }) {
   if (!candles?.length) return <div className="flex h-[248px] items-center justify-center text-sm text-muted-foreground" data-testid="empty-candle-chart">No simulated candles yet.</div>;
-  const width = 860, height = 248, padX = 22, padY = 22;
+  const width = 860, height = 248, padX = 22, padY = 20, plotBottom = 190, volumeTop = 207;
   const ntzPrices = ntz?.complete && ntz.high != null && ntz.low != null ? [ntz.high, ntz.low] : [];
   const overlayPrices = [...levels.map((level) => level.price), ...ntzPrices];
   const max = Math.max(...candles.map((c) => c.high), ...overlayPrices), min = Math.min(...candles.map((c) => c.low), ...overlayPrices);
-  const scaleY = (v: number) => height - padY - ((v - min) / Math.max(max - min, .01)) * (height - padY * 2);
+  const scaleY = (v: number) => plotBottom - padY - ((v - min) / Math.max(max - min, .01)) * (plotBottom - padY * 2);
   const step = (width - padX * 2) / candles.length;
-  const gridYs = [padY, height / 2, height - padY];
+  const gridYs = [padY, plotBottom / 2, plotBottom - padY];
+  const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
+  const currentPrice = candles[candles.length - 1].close;
+  const currentX = padX + (candles.length - 1) * step + step / 2;
   const completedEvent = ntz?.events.find((event) => event.type === "NTZ completed");
   const ntzStart = completedEvent ? new Date(completedEvent.time).getTime() - 15 * 60_000 : null;
   const ntzStartIndex = ntzStart == null ? -1 : candles.findIndex((candle) => new Date(candle.openTime).getTime() >= ntzStart);
@@ -54,9 +57,15 @@ export function MiniCandleChart({ candles, ntz, levels = [] }: { candles: Candle
     {gridYs.map((y) => <line key={y} x1={0} x2={width} y1={y} y2={y} stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray={y === height - padY ? "0" : "3 5"} />)}
      {ntz?.complete && ntz.high != null && ntz.low != null && ntzBarCount === 3 && <g data-testid="chart-ntz-range"><rect x={padX + ntzStartIndex * step} y={scaleY(ntz.high)} width={step * 3} height={Math.max(scaleY(ntz.low) - scaleY(ntz.high), 1)} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="4 4" /><text x={padX + ntzStartIndex * step + 4} y={scaleY(ntz.high) + 12} fill="hsl(var(--accent-foreground))" fontSize="9" fontFamily="DM Mono">NTZ</text><text x={padX + ntzStartIndex * step + step * 3 + 4} y={scaleY(ntz.high) + 4} fill="hsl(var(--muted-foreground))" fontSize="8" fontFamily="DM Mono">H {ntz.high.toFixed(2)}</text><text x={padX + ntzStartIndex * step + step * 3 + 4} y={scaleY(ntz.low) - 2} fill="hsl(var(--muted-foreground))" fontSize="8" fontFamily="DM Mono">L {ntz.low.toFixed(2)}</text></g>}
     {levels.slice(0, 5).map((level) => <g key={level.name}><line x1={padX} x2={width - padX} y1={scaleY(level.price)} y2={scaleY(level.price)} stroke="hsl(var(--accent) / .45)" strokeWidth="1" strokeDasharray="5 5" /><text x={width - padX - 4} y={scaleY(level.price) - 3} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{level.name}</text></g>)}
-    {candles.map((c, index) => { const x = padX + index * step + step / 2; const up = c.close >= c.open; const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))"; const bodyTop = Math.min(scaleY(c.open), scaleY(c.close)); const bodyHeight = Math.max(Math.abs(scaleY(c.close) - scaleY(c.open)), 3); return <g key={`${c.time}-${index}`}><line x1={x} x2={x} y1={scaleY(c.high)} y2={scaleY(c.low)} stroke={color} strokeWidth="1.5" /><rect x={x - Math.max(step * .22, 3)} y={bodyTop} width={Math.max(step * .44, 6)} height={bodyHeight} rx="1" fill={color} /></g>; })}
+     <line x1={padX} x2={width - padX} y1={scaleY(currentPrice)} y2={scaleY(currentPrice)} stroke="hsl(var(--accent) / .85)" strokeWidth="1" strokeDasharray="2 3" />
+     <rect x={width - 72} y={scaleY(currentPrice) - 10} width="64" height="18" rx="2" fill="hsl(var(--accent))" />
+     <text x={width - 40} y={scaleY(currentPrice) + 3} textAnchor="middle" fill="hsl(var(--accent-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono">{currentPrice.toFixed(2)}</text>
+     {candles.map((c, index) => { const x = padX + index * step + step / 2; const up = c.close >= c.open; const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))"; const bodyTop = Math.min(scaleY(c.open), scaleY(c.close)); const bodyHeight = Math.max(Math.abs(scaleY(c.close) - scaleY(c.open)), 3); const volumeHeight = Math.max((c.volume / volumeMax) * 22, 2); return <g key={`${c.time}-${index}`}><line x1={x} x2={x} y1={scaleY(c.high)} y2={scaleY(c.low)} stroke={color} strokeWidth="1.5" /><rect x={x - Math.max(step * .22, 3)} y={bodyTop} width={Math.max(step * .44, 6)} height={bodyHeight} rx="1" fill={color} /><rect x={x - Math.max(step * .18, 2)} y={volumeTop + 22 - volumeHeight} width={Math.max(step * .36, 4)} height={volumeHeight} rx="1" fill={color} opacity=".42" /></g>; })}
+     <line x1={padX} x2={width - padX} y1={volumeTop + 23} y2={volumeTop + 23} stroke="hsl(var(--border))" />
     <text x="8" y={padY + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{max.toFixed(2)}</text>
-    <text x="8" y={height - padY - 5} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{min.toFixed(2)}</text>
+     <text x="8" y={plotBottom - padY - 5} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{min.toFixed(2)}</text>
+     <text x={currentX} y={height - 4} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">latest</text>
+     <text x={padX} y={height - 4} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">5m candles</text>
   </svg></div>;
 }
 

@@ -1,0 +1,225 @@
+ORB BREAKOUT QUALITY AMENDMENT
+
+Do not treat every movement beyond the ORB boundary as a qualified breakout.
+
+The strategy must distinguish between:
+
+1. ORB probe
+2. Weak ORB break
+3. Qualified ORB breakout
+4. Failed ORB breakout
+5. Qualified breakout awaiting pullback
+6. Pullback and patience-candle setup
+
+WEAK ORB PROBE
+
+Classify the move as ORB_PROBE_WAIT when price:
+
+- Only wicks slightly beyond the ORB boundary
+- Trades beyond the boundary intrabar but does not close beyond it
+- Closes only marginally beyond the boundary
+- Has weak or below-baseline volume
+- Shows no directional continuation
+- Immediately stalls near the boundary
+- Moves back inside the ORB
+
+A weak probe does not qualify the breakout.
+
+Do not:
+
+- Start the pullback sequence
+- Search for an entry patience candle
+- Enter the trade
+- Treat the ORB boundary as successfully broken
+
+Display:
+
+WEAK ORB PROBE — WAIT FOR CONFIRMATION
+
+SLIGHT-BREAK PROXIMITY
+
+Initial configurable slight-break threshold:
+
+Maximum of:
+
+- Two minimum futures ticks
+- 0.10 of the 5-minute 14-period ATR
+
+A close beyond the ORB by less than this threshold should remain a weak probe unless unusually strong volume and candle structure support the breakout.
+
+QUALIFIED ORB BREAKOUT
+
+A qualified bullish breakout requires:
+
+- A completed 5-minute candle closes above the ORB high
+- The close has meaningful distance beyond the ORB high
+- Volume supports the move
+- Candle structure shows bullish intent
+- Price does not immediately collapse back inside the ORB
+- The move demonstrates continuation or acceptance above the ORB
+
+A qualified bearish breakout requires:
+
+- A completed 5-minute candle closes below the ORB low
+- The close has meaningful distance beyond the ORB low
+- Volume supports the move
+- Candle structure shows bearish intent
+- Price does not immediately reclaim the ORB
+- The move demonstrates continuation or acceptance below the ORB
+
+INITIAL CONFIGURABLE BREAKOUT DEFAULTS
+
+Meaningful close distance:
+
+Maximum of:
+
+- Two minimum futures ticks
+- 0.10 of the 5-minute 14-period ATR
+
+Supporting volume:
+
+- Breakout candle volume is at least 1.25 times the average volume of the previous six completed 5-minute candles
+
+Directional candle body:
+
+- Candle body is at least 60% of its total high-low range
+
+Bullish close location:
+
+- Close is in the upper 25% of the breakout candle’s range
+
+Bearish close location:
+
+- Close is in the lower 25% of the breakout candle’s range
+
+These are initial testing values. Keep them configurable and do not present them as proven optimal thresholds.
+
+STRONG CONTINUATION
+
+After the first qualifying close, continuation is confirmed when at least one of these configurable conditions occurs:
+
+- The immediately following candle extends farther in the breakout direction without closing back inside the ORB
+- Price achieves additional movement of at least two ticks or 0.10 ATR beyond the qualifying breakout close
+- Two consecutive completed candles close outside the ORB
+- Price consolidates above the ORB high for a bullish breakout
+- Price consolidates below the ORB low for a bearish breakout
+
+Record which continuation condition passed.
+
+PREFERRED INITIAL RULE
+
+Initially require:
+
+1. A qualifying completed candle close outside the ORB
+2. Supporting volume
+3. Either:
+   - Immediate directional extension, or
+   - A second completed candle close outside the ORB
+
+Only then change the state to:
+
+QUALIFIED BREAKOUT — WAITING FOR PULLBACK
+
+If the first breakout candle is exceptionally strong, allow the continuation requirement to be satisfied by that candle when all of these pass:
+
+- Volume is at least 1.5 times the recent baseline
+- Body is at least 70% of the candle range
+- Close is in the outer 20% of its range
+- Close distance exceeds the configured meaningful-break threshold
+
+Make this exception configurable.
+
+WAITING AFTER A WEAK BREAK
+
+When price slightly breaks the ORB without sufficient volume or continuation:
+
+- Remain in WAITING state
+- Continue monitoring subsequent candles
+- Do not permanently invalidate the directional setup
+- Require a later strong push to qualify the breakout
+- Recalculate breakout volume using the later strong-push candle
+- Use the later strong push as the beginning of the impulse leg
+- Use that move when selecting Fibonacci anchors
+
+If a later strong push qualifies:
+
+- Mark the new breakout candle and time
+- Establish the impulse swing
+- Wait for a pullback or retracement
+- Require price to reach or come near a qualifying level
+- Require a valid patience candle
+- Allow only the immediately following candle to trigger entry
+
+Do not use a patience candle that formed before the strong breakout was qualified.
+
+FAILED BREAKOUT
+
+Classify the breakout as failed when:
+
+- A qualifying breakout occurs
+- Price then closes back inside the ORB before producing acceptable continuation
+- Opposing volume increases materially
+- The ORB boundary fails to hold on the retest
+
+Display:
+
+FAILED ORB BREAKOUT — NO CONTINUATION ENTRY
+
+A failed breakout may later be evaluated as a separate reversal setup, but it cannot qualify as an ordinary ORB continuation entry.
+
+ORB CONTINUATION STATE MACHINE
+
+Use these exact states:
+
+ORB_FORMING
+INSIDE_ORB
+ORB_PROBE_WAIT
+WEAK_BREAK_WAIT
+BREAKOUT_CANDIDATE
+WAITING_FOR_CONTINUATION
+QUALIFIED_BREAKOUT
+WAITING_FOR_PULLBACK
+PULLBACK_IN_PROGRESS
+WAITING_FOR_PATIENCE_CANDLE
+PATIENCE_CANDLE_VALID
+TRIGGER_CANDLE_ACTIVE
+ENTRY_TRIGGERED
+BREAKOUT_FAILED
+SETUP_EXPIRED
+
+REQUIRED SEQUENCE
+
+For a standard ORB continuation trade, enforce this order:
+
+1. ORB completes
+2. Price attempts to break the ORB
+3. Breakout quality is evaluated
+4. Weak probes remain in WAITING
+5. A strong push qualifies the breakout
+6. Continuation is confirmed
+7. Price pulls back or retraces
+8. Pullback reaches or comes near a qualifying level
+9. A completed patience candle forms
+10. Only the immediately following candle can trigger
+11. Entry occurs intrabar in the trend direction
+
+Do not allow the application to skip or reorder these steps.
+
+TESTS
+
+Add deterministic tests for:
+
+- Wick above ORB with no close
+- Wick below ORB with no close
+- Marginal close with weak volume
+- Marginal close with no continuation
+- Weak probe followed by return inside ORB
+- Weak probe followed later by strong bullish push
+- Weak probe followed later by strong bearish push
+- Strong single-candle breakout exception
+- Qualifying breakout followed by continuation
+- Qualifying breakout followed by immediate failure
+- Pullback beginning only after breakout qualification
+- Fibonacci anchors beginning from the later strong push
+- Patience candle forming before breakout qualification being rejected
+- Valid pullback and patience candle after qualified breakout
