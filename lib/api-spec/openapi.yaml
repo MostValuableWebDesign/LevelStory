@@ -52,6 +52,18 @@ paths:
             type: string
             enum: [premarket, regular]
             default: regular
+        - name: fibHigh
+          in: query
+          required: false
+          description: Optional manual Fibonacci high anchor for descriptive replay analysis.
+          schema:
+            type: number
+        - name: fibLow
+          in: query
+          required: false
+          description: Optional manual Fibonacci low anchor for descriptive replay analysis.
+          schema:
+            type: number
       responses:
         "200":
           description: Simulated market snapshot
@@ -417,6 +429,143 @@ components:
         detail:
           type: string
       required: [type, time, detail]
+    BreakoutEvent:
+      type: object
+      properties:
+        detected:
+          type: boolean
+        direction:
+          type: ["string", "null"]
+          enum: [long, short, null]
+        time:
+          type: ["string", "null"]
+        candleOpenTime:
+          type: ["string", "null"]
+        distanceOutside:
+          type: ["number", "null"]
+        breakoutVolume:
+          type: ["number", "null"]
+        baselineVolume:
+          type: ["number", "null"]
+        volumeRatio:
+          type: ["number", "null"]
+        volumeSupported:
+          type: boolean
+        detail:
+          type: string
+      required: [detected, direction, time, candleOpenTime, distanceOutside, breakoutVolume, baselineVolume, volumeRatio, volumeSupported, detail]
+    PullbackEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [touch, proximity, "break and reclaim", hold, consolidation, "break through"]
+        time:
+          type: string
+        level:
+          type: string
+        price:
+          type: number
+        detail:
+          type: string
+      required: [type, time, level, price, detail]
+    PullbackAnalysis:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, observed, expired]
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PullbackEvent"
+        evaluatedCandles:
+          type: number
+        maxCandles:
+          type: number
+        maxDurationMinutes:
+          type: number
+        elapsedMinutes:
+          type: number
+        proximityTolerance:
+          type: ["number", "null"]
+        atr14:
+          type: ["number", "null"]
+        qualifyingLevelCount:
+          type: number
+        detail:
+          type: string
+      required: [status, events, evaluatedCandles, maxCandles, maxDurationMinutes, elapsedMinutes, proximityTolerance, atr14, qualifyingLevelCount, detail]
+    FibonacciLevel:
+      type: object
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        ratio:
+          type: number
+        price:
+          type: number
+      required: [name, label, ratio, price]
+    FibonacciAnalysis:
+      type: object
+      properties:
+        direction:
+          type: ["string", "null"]
+          enum: [bullish, bearish, null]
+        impulseLow:
+          type: ["number", "null"]
+        impulseHigh:
+          type: ["number", "null"]
+        breakoutTime:
+          type: ["string", "null"]
+        frozen:
+          type: boolean
+        frozenAt:
+          type: ["string", "null"]
+        manualCorrection:
+          type: boolean
+        levels:
+          type: array
+          items:
+            $ref: "#/components/schemas/FibonacciLevel"
+        retracementPercent:
+          type: ["number", "null"]
+        classification:
+          type: string
+          enum: [shallow, normal, deep, "elevated failure risk", "fully retraced", unavailable]
+        detail:
+          type: string
+      required: [direction, impulseLow, impulseHigh, breakoutTime, frozen, frozenAt, manualCorrection, levels, retracementPercent, classification, detail]
+    VolumeAnalysis:
+      type: object
+      properties:
+        baselineCandleCount:
+          type: number
+        recentSixAverage:
+          type: ["number", "null"]
+        breakoutVolume:
+          type: ["number", "null"]
+        breakoutRatio:
+          type: ["number", "null"]
+        supportingBreakoutVolume:
+          type: boolean
+        averageImpulseVolume:
+          type: ["number", "null"]
+        pullbackAverageVolume:
+          type: ["number", "null"]
+        pullbackToBreakoutRatio:
+          type: ["number", "null"]
+        pullbackToImpulseRatio:
+          type: ["number", "null"]
+        pullbackToRecentRatio:
+          type: ["number", "null"]
+        opposingPullbackVolume:
+          type: ["number", "null"]
+        reversalWarning:
+          type: ["string", "null"]
+      required: [baselineCandleCount, recentSixAverage, breakoutVolume, breakoutRatio, supportingBreakoutVolume, averageImpulseVolume, pullbackAverageVolume, pullbackToBreakoutRatio, pullbackToImpulseRatio, pullbackToRecentRatio, opposingPullbackVolume, reversalWarning]
     TrendEvidence:
       type: object
       properties:
@@ -580,6 +729,14 @@ components:
           required: [premarketHigh, premarketLow, previousDayHigh, previousDayLow, previousDayClose, dayBeforeYesterdayHigh, dayBeforeYesterdayLow, openingRangeHigh, openingRangeLow, ntzHigh, ntzLow, ntzWidth, vwap, critical]
         ntz:
           $ref: "#/components/schemas/NtzState"
+        breakout:
+          $ref: "#/components/schemas/BreakoutEvent"
+        pullback:
+          $ref: "#/components/schemas/PullbackAnalysis"
+        fibonacci:
+          $ref: "#/components/schemas/FibonacciAnalysis"
+        volumeAnalysis:
+          $ref: "#/components/schemas/VolumeAnalysis"
         indicators:
           type: object
           properties:
@@ -622,7 +779,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

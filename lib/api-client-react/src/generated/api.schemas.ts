@@ -206,6 +206,156 @@ export interface NtzState {
   events: NtzEvent[];
 }
 
+/**
+ * @nullable
+ */
+export type BreakoutEventDirection = typeof BreakoutEventDirection[keyof typeof BreakoutEventDirection] | null;
+
+
+export const BreakoutEventDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export interface BreakoutEvent {
+  detected: boolean;
+  /** @nullable */
+  direction: BreakoutEventDirection;
+  /** @nullable */
+  time: string | null;
+  /** @nullable */
+  candleOpenTime: string | null;
+  /** @nullable */
+  distanceOutside: number | null;
+  /** @nullable */
+  breakoutVolume: number | null;
+  /** @nullable */
+  baselineVolume: number | null;
+  /** @nullable */
+  volumeRatio: number | null;
+  volumeSupported: boolean;
+  detail: string;
+}
+
+export type PullbackEventType = typeof PullbackEventType[keyof typeof PullbackEventType];
+
+
+export const PullbackEventType = {
+  touch: 'touch',
+  proximity: 'proximity',
+  break_and_reclaim: 'break and reclaim',
+  hold: 'hold',
+  consolidation: 'consolidation',
+  break_through: 'break through',
+} as const;
+
+export interface PullbackEvent {
+  type: PullbackEventType;
+  time: string;
+  level: string;
+  price: number;
+  detail: string;
+}
+
+export type PullbackAnalysisStatus = typeof PullbackAnalysisStatus[keyof typeof PullbackAnalysisStatus];
+
+
+export const PullbackAnalysisStatus = {
+  pending: 'pending',
+  observed: 'observed',
+  expired: 'expired',
+} as const;
+
+export interface PullbackAnalysis {
+  status: PullbackAnalysisStatus;
+  events: PullbackEvent[];
+  evaluatedCandles: number;
+  maxCandles: number;
+  maxDurationMinutes: number;
+  elapsedMinutes: number;
+  /** @nullable */
+  proximityTolerance: number | null;
+  /** @nullable */
+  atr14: number | null;
+  qualifyingLevelCount: number;
+  detail: string;
+}
+
+export interface FibonacciLevel {
+  name: string;
+  label: string;
+  ratio: number;
+  price: number;
+}
+
+/**
+ * @nullable
+ */
+export type FibonacciAnalysisDirection = typeof FibonacciAnalysisDirection[keyof typeof FibonacciAnalysisDirection] | null;
+
+
+export const FibonacciAnalysisDirection = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+} as const;
+
+export type FibonacciAnalysisClassification = typeof FibonacciAnalysisClassification[keyof typeof FibonacciAnalysisClassification];
+
+
+export const FibonacciAnalysisClassification = {
+  shallow: 'shallow',
+  normal: 'normal',
+  deep: 'deep',
+  elevated_failure_risk: 'elevated failure risk',
+  fully_retraced: 'fully retraced',
+  unavailable: 'unavailable',
+} as const;
+
+export interface FibonacciAnalysis {
+  /** @nullable */
+  direction: FibonacciAnalysisDirection;
+  /** @nullable */
+  impulseLow: number | null;
+  /** @nullable */
+  impulseHigh: number | null;
+  /** @nullable */
+  breakoutTime: string | null;
+  frozen: boolean;
+  /** @nullable */
+  frozenAt: string | null;
+  manualCorrection: boolean;
+  levels: FibonacciLevel[];
+  /** @nullable */
+  retracementPercent: number | null;
+  classification: FibonacciAnalysisClassification;
+  detail: string;
+}
+
+export interface VolumeAnalysis {
+  baselineCandleCount: number;
+  /** @nullable */
+  recentSixAverage: number | null;
+  /** @nullable */
+  breakoutVolume: number | null;
+  /** @nullable */
+  breakoutRatio: number | null;
+  supportingBreakoutVolume: boolean;
+  /** @nullable */
+  averageImpulseVolume: number | null;
+  /** @nullable */
+  pullbackAverageVolume: number | null;
+  /** @nullable */
+  pullbackToBreakoutRatio: number | null;
+  /** @nullable */
+  pullbackToImpulseRatio: number | null;
+  /** @nullable */
+  pullbackToRecentRatio: number | null;
+  /** @nullable */
+  opposingPullbackVolume: number | null;
+  /** @nullable */
+  reversalWarning: string | null;
+}
+
 export type TrendEvidenceDirection = typeof TrendEvidenceDirection[keyof typeof TrendEvidenceDirection];
 
 
@@ -400,6 +550,10 @@ export interface MarketSnapshot {
   candles: Candle[];
   levels: MarketSnapshotLevels;
   ntz: NtzState;
+  breakout: BreakoutEvent;
+  pullback: PullbackAnalysis;
+  fibonacci: FibonacciAnalysis;
+  volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
   trend: TrendEvidence;
@@ -510,6 +664,14 @@ export type GetMarketSnapshotParams = {
  */
 symbol?: string;
 session?: GetMarketSnapshotSession;
+/**
+ * Optional manual Fibonacci high anchor for descriptive replay analysis.
+ */
+fibHigh?: number;
+/**
+ * Optional manual Fibonacci low anchor for descriptive replay analysis.
+ */
+fibLow?: number;
 };
 
 export type GetMarketSnapshotSession = typeof GetMarketSnapshotSession[keyof typeof GetMarketSnapshotSession];

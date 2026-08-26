@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BreakoutEvent } from './breakoutEvent';
 import type { Candle } from './candle';
+import type { FibonacciAnalysis } from './fibonacciAnalysis';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
 import type { FuturesSessionCalendar } from './futuresSessionCalendar';
 import type { LevelStoryEvent } from './levelStoryEvent';
@@ -15,12 +17,14 @@ import type { MarketSnapshotLevels } from './marketSnapshotLevels';
 import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
 import type { MarketSnapshotMode } from './marketSnapshotMode';
 import type { NtzState } from './ntzState';
+import type { PullbackAnalysis } from './pullbackAnalysis';
 import type { ReplayMetadata } from './replayMetadata';
 import type { ReversalState } from './reversalState';
 import type { RiskPlan } from './riskPlan';
 import type { Signal } from './signal';
 import type { StrategyDecision } from './strategyDecision';
 import type { TrendEvidence } from './trendEvidence';
+import type { VolumeAnalysis } from './volumeAnalysis';
 
 export interface MarketSnapshot {
   mode: MarketSnapshotMode;
@@ -38,6 +42,10 @@ export interface MarketSnapshot {
   candles: Candle[];
   levels: MarketSnapshotLevels;
   ntz: NtzState;
+  breakout: BreakoutEvent;
+  pullback: PullbackAnalysis;
+  fibonacci: FibonacciAnalysis;
+  volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
   trend: TrendEvidence;

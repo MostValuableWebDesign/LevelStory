@@ -39,7 +39,7 @@ export type NtzEvent = {
 
 export type NtzPhase = "pending" | "forming" | "completed";
 export type NtzPosition = "unknown" | "inside" | "outside";
-export type NtzRange = { high: number; low: number; complete: boolean };
+export type NtzRange = { high: number; low: number; complete: boolean; completedAt?: number };
 
 export type SessionLevels = {
   levels: Level[];
@@ -98,6 +98,7 @@ export function sessionLevels(
         high: Math.max(...partialRangeCandles.map((candle) => candle.high)),
         low: Math.min(...partialRangeCandles.map((candle) => candle.low)),
         complete: orbComplete,
+        completedAt: orbComplete ? partialRangeCandles[2].closeTime : undefined,
       }
     : null;
   const ntzPhase: NtzPhase = orbComplete ? "completed" : partialRangeCandles.length ? "forming" : "pending";

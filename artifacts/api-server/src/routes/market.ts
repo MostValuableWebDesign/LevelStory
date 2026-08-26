@@ -20,7 +20,16 @@ router.get("/market/snapshot", async (req, res): Promise<void> => {
   }
   try {
     const [risk] = await db.select().from(riskSettingsTable).limit(1);
-    res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk)));
+    const hasManualHigh = parsed.data.fibHigh !== undefined;
+    const hasManualLow = parsed.data.fibLow !== undefined;
+    if (hasManualHigh !== hasManualLow) {
+      res.status(400).json({ error: "Manual Fibonacci correction requires both fibHigh and fibLow." });
+      return;
+    }
+    const manualFibAnchors = hasManualHigh && hasManualLow
+      ? { high: parsed.data.fibHigh!, low: parsed.data.fibLow! }
+      : undefined;
+    res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk, manualFibAnchors)));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid futures contract.";
     req.log.warn({ error: message }, "Rejected market snapshot request");

@@ -6,6 +6,11 @@ import {
   sessionLevels,
   strategyConfig,
   trendEvidence,
+  analyzePullback,
+  detectInitialBreakout,
+  fibonacciAnalysis,
+  phase4Volume,
+  type ManualFibAnchors,
   type Candle as StrategyCandle,
   type DecisionState,
   type Direction,
@@ -94,6 +99,54 @@ export type MarketSnapshot = {
     low: number | null;
     events: Array<{ type: string; time: string; detail: string }>;
   };
+  breakout: {
+    detected: boolean;
+    direction: Direction | null;
+    time: string | null;
+    candleOpenTime: string | null;
+    distanceOutside: number | null;
+    breakoutVolume: number | null;
+    baselineVolume: number | null;
+    volumeRatio: number | null;
+    volumeSupported: boolean;
+    detail: string;
+  };
+  pullback: {
+    status: "pending" | "observed" | "expired";
+    events: Array<{ type: string; time: string; level: string; price: number; detail: string }>;
+    evaluatedCandles: number;
+    maxCandles: number;
+    maxDurationMinutes: number;
+    elapsedMinutes: number;
+    proximityTolerance: number | null;
+    atr14: number | null;
+    qualifyingLevelCount: number;
+    detail: string;
+  };
+  fibonacci: {
+    direction: "bullish" | "bearish" | null;
+    impulseLow: number | null;
+    impulseHigh: number | null;
+    breakoutTime: string | null;
+    frozen: boolean;
+    frozenAt: string | null;
+    manualCorrection: boolean;
+    levels: Array<{ name: string; label: string; ratio: number; price: number }>;
+    retracementPercent: number | null;
+    classification: "shallow" | "normal" | "deep" | "elevated failure risk" | "fully retraced" | "unavailable";
+    detail: string;
+  };
+  volumeAnalysis: {
+    baselineCandleCount: number;
+    recentSixAverage: number | null;
+    breakoutVolume: number | null;
+    breakoutRatio: number | null;
+    supportingBreakoutVolume: boolean;
+    averageImpulseVolume: number | null;
+    pullbackAverageVolume: number | null;
+    opposingPullbackVolume: number | null;
+    reversalWarning: string | null;
+  };
   indicators: {
     rsi: number | null;
     ema200: number | null;
@@ -161,7 +214,7 @@ const CURRENT_TRADING_DATE = "2026-08-25";
 
 type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
 
-export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput): MarketSnapshot {
+export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput, manualFibAnchors?: ManualFibAnchors): MarketSnapshot {
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
   const config = strategyConfig();
@@ -205,6 +258,20 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     calendar,
     specification,
   );
+  const breakout = detectInitialBreakout(regular, levels.ntz, config);
+  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors);
+  const qualifyingLevels = [
+    ...levels.levels,
+    { name: "VWAP", price: levels.vwap, kind: "indicator" },
+    { name: "EMA 200", price: levels.ema, kind: "indicator" },
+    ...levels.majorLevels.map((level) => ({ name: level.name, price: level.price, kind: level.kind })),
+    ...levels.majorLevels
+      .filter((level) => level.confluence !== "normal")
+      .map((level) => ({ name: `Confluence · ${level.name}`, price: level.price, kind: "confluence" })),
+    ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, kind: "fibonacci" })),
+  ];
+  const pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config);
+  const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
@@ -297,6 +364,44 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
          detail: event.detail,
        })),
      },
+     breakout: {
+       detected: breakout.detected,
+       direction: breakout.direction,
+       time: breakout.time === null ? null : new Date(breakout.time).toISOString(),
+       candleOpenTime: breakout.candleOpenTime === null ? null : new Date(breakout.candleOpenTime).toISOString(),
+       distanceOutside: breakout.distanceOutside,
+       breakoutVolume: breakout.breakoutVolume,
+       baselineVolume: breakout.baselineVolume,
+       volumeRatio: breakout.volumeRatio,
+       volumeSupported: breakout.volumeSupported,
+       detail: breakout.detail,
+     },
+     pullback: {
+       status: pullback.status,
+       events: pullback.events.map((event) => ({ ...event, time: new Date(event.time).toISOString() })),
+       evaluatedCandles: pullback.evaluatedCandles,
+       maxCandles: pullback.maxCandles,
+       maxDurationMinutes: pullback.maxDurationMinutes,
+       elapsedMinutes: pullback.elapsedMinutes,
+       proximityTolerance: pullback.proximityTolerance,
+       atr14: pullback.atr14,
+       qualifyingLevelCount: pullback.qualifyingLevelCount,
+       detail: pullback.detail,
+     },
+     fibonacci: {
+       direction: fibonacci.direction,
+       impulseLow: fibonacci.impulseLow,
+       impulseHigh: fibonacci.impulseHigh,
+       breakoutTime: fibonacci.breakoutTime === null ? null : new Date(fibonacci.breakoutTime).toISOString(),
+       frozen: fibonacci.frozen,
+       frozenAt: fibonacci.frozenAt === null ? null : new Date(fibonacci.frozenAt).toISOString(),
+       manualCorrection: fibonacci.manualCorrection,
+       levels: fibonacci.levels,
+       retracementPercent: fibonacci.retracementPercent,
+       classification: fibonacci.classification,
+       detail: fibonacci.detail,
+     },
+     volumeAnalysis,
     indicators,
      majorLevels: levels.majorLevels,
     trend,
@@ -312,7 +417,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     reversal: {
       doji: alert.doji,
       equivalentCandles: detectEquivalentCandles(regular, config),
-      warning: alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null,
+       warning: volumeAnalysis.reversalWarning ?? (alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null),
     },
     assumptions: [
       "Simulation uses America/New_York trading dates with UTC timestamps for deterministic replay.",
@@ -322,6 +427,8 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       `EMA uses ${config.emaPeriod} completed five-minute candles; slope compares ${config.emaSlopeWindow} completed candles.`,
       `VWAP resets at 09:30 ET for each regular session; major levels use ${config.historicalLookbackTradingDays} trading days of hourly reactions.`,
       `Trend classification requires ${config.trendCandleCount} completed 15-minute candles and remains descriptive only.`,
+      `Phase 4 breakout support requires ${config.phase4BreakoutVolumeRatio.toFixed(2)}x the previous six completed five-minute candle volume average.`,
+      `Phase 4 pullback proximity is the greater of ${config.phase4ProximityTicks} ticks and ${config.phase4ProximityAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period five-minute ATR, bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
       `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
   };

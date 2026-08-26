@@ -12,7 +12,11 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [symbol, setSymbol] = useState("MES");
   const [session, setSession] = useState<"premarket" | "regular">("premarket");
-  const market = useGetMarketSnapshot({ symbol, session });
+  const [fibHigh, setFibHigh] = useState("");
+  const [fibLow, setFibLow] = useState("");
+  const [appliedFib, setAppliedFib] = useState<{ fibHigh: number; fibLow: number } | undefined>();
+  const marketParams = { symbol, session, ...appliedFib };
+  const market = useGetMarketSnapshot(marketParams);
   const overview = useGetDashboardOverview();
   const risk = useGetRiskSettings();
   const snapshot = market.data;
@@ -29,7 +33,7 @@ export default function Dashboard() {
 
         <div className="mb-5 flex flex-col gap-3 border border-border bg-card/85 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
            <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="eyebrow px-1 text-muted-foreground">Watchlist</span><div className="flex flex-wrap gap-1">{symbols.map((item) => <button type="button" key={item} onClick={() => setSymbol(item)} className={`rounded-sm px-3 py-2 text-xs font-bold transition-colors ${symbol === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`} aria-pressed={symbol === item} data-testid={`button-symbol-${item.toLowerCase()}`}>{item}</button>)}</div></div><div className="flex rounded-sm border border-border p-0.5"><button type="button" onClick={() => setSession("premarket")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "premarket" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "premarket"} data-testid="button-session-premarket">Premarket</button><button type="button" onClick={() => setSession("regular")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "regular" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "regular"} data-testid="button-session-regular">Replay</button></div></div>
-           <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: getGetMarketSnapshotQueryKey({ symbol, session }) })} disabled={market.isFetching} className="inline-flex items-center justify-center gap-2 self-start rounded-sm border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 sm:self-auto" data-testid="button-refresh-market"><RefreshCw size={13} className={market.isFetching ? "animate-spin" : ""} />Refresh simulation</button>
+            <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: getGetMarketSnapshotQueryKey(marketParams) })} disabled={market.isFetching} className="inline-flex items-center justify-center gap-2 self-start rounded-sm border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 sm:self-auto" data-testid="button-refresh-market"><RefreshCw size={13} className={market.isFetching ? "animate-spin" : ""} />Refresh simulation</button>
         </div>
 
         <Panel className="mb-5">
@@ -63,6 +67,11 @@ export default function Dashboard() {
 
            <NtzPanel snapshot={snapshot} />
            <MajorLevelsPanel snapshot={snapshot} />
+           <Phase4Panel snapshot={snapshot} fibHigh={fibHigh} fibLow={fibLow} onFibHighChange={setFibHigh} onFibLowChange={setFibLow} onApplyFib={() => {
+             const high = Number(fibHigh);
+             const low = Number(fibLow);
+             setAppliedFib(Number.isFinite(high) && Number.isFinite(low) ? { fibHigh: high, fibLow: low } : undefined);
+           }} />
 
           <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
             <Panel>
@@ -148,6 +157,54 @@ function MajorLevelsPanel({ snapshot }: { snapshot: MarketSnapshot }) {
       </div>) : <div className="p-6 text-sm text-muted-foreground">No three-reaction hourly zones are available yet.</div>}
     </div>
   </Panel>;
+}
+
+function Phase4Panel({ snapshot, fibHigh, fibLow, onFibHighChange, onFibLowChange, onApplyFib }: {
+  snapshot: MarketSnapshot;
+  fibHigh: string;
+  fibLow: string;
+  onFibHighChange: (value: string) => void;
+  onFibLowChange: (value: string) => void;
+  onApplyFib: () => void;
+}) {
+  const breakout = snapshot.breakout;
+  const volume = snapshot.volumeAnalysis;
+  const fib = snapshot.fibonacci;
+  return <div className="space-y-5">
+    <div className="grid gap-5 lg:grid-cols-[1.05fr_.95fr]">
+      <Panel accent={breakout.detected}>
+        <PanelTitle eyebrow="Phase 4 / initial event" title="ORB breakout" right={<span className={`text-[10px] font-bold uppercase ${breakout.detected ? "status-positive" : "text-muted-foreground"}`}>{breakout.detected ? `${breakout.direction} detected` : "Waiting"}</span>} />
+        <div className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-4">
+          {[["Close", breakout.time ? new Date(breakout.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"], ["Distance", breakout.distanceOutside == null ? "—" : `${breakout.distanceOutside.toFixed(2)} pts`], ["Volume", breakout.breakoutVolume == null ? "—" : breakout.breakoutVolume.toFixed(0)], ["Support", breakout.volumeSupported ? "≥ 1.25× baseline" : "Not confirmed"]].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mono mt-1 text-sm font-medium">{value}</div></div>)}
+        </div>
+        <p className="border-t border-border px-5 py-4 text-[11px] leading-5 text-muted-foreground">{breakout.detail} A breakout is recorded evidence only; it never creates an entry.</p>
+      </Panel>
+      <Panel className={volume.reversalWarning ? "border-destructive/30" : ""}>
+        <PanelTitle eyebrow="Phase 4 / separate variables" title="Volume evidence" right={<span className={`text-[10px] font-bold uppercase ${volume.reversalWarning ? "status-negative" : "text-muted-foreground"}`}>{volume.reversalWarning ? "Warning" : "No warning"}</span>} />
+        <div className="divide-y divide-border border-t border-border">
+          {[["Previous six average", volume.recentSixAverage == null ? "—" : volume.recentSixAverage.toFixed(0)], ["Breakout ratio", volume.breakoutRatio == null ? "—" : `${volume.breakoutRatio.toFixed(2)}×`], ["Impulse average", volume.averageImpulseVolume == null ? "—" : volume.averageImpulseVolume.toFixed(0)], ["Pullback average", volume.pullbackAverageVolume == null ? "—" : volume.pullbackAverageVolume.toFixed(0)], ["Pullback / breakout", volume.pullbackToBreakoutRatio == null ? "—" : `${volume.pullbackToBreakoutRatio.toFixed(2)}×`], ["Pullback / impulse", volume.pullbackToImpulseRatio == null ? "—" : `${volume.pullbackToImpulseRatio.toFixed(2)}×`], ["Pullback / recent", volume.pullbackToRecentRatio == null ? "—" : `${volume.pullbackToRecentRatio.toFixed(2)}×`], ["Opposing pullback", volume.opposingPullbackVolume == null ? "—" : volume.opposingPullbackVolume.toFixed(0)]].map(([label, value]) => <div key={label} className="flex items-center justify-between px-5 py-3 text-xs"><span className="text-muted-foreground">{label}</span><span className="mono font-medium">{value}</span></div>)}
+        </div>
+        {volume.reversalWarning && <p className="m-4 border border-destructive/25 bg-destructive/10 p-3 text-xs font-semibold text-destructive">{volume.reversalWarning}</p>}
+        <p className="px-5 pb-4 text-[11px] leading-5 text-muted-foreground">Breakout strength and pullback pressure remain separate. Volume is descriptive evidence, not proof of reversal.</p>
+      </Panel>
+    </div>
+    <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+      <Panel>
+        <PanelTitle eyebrow="Phase 4 / bounded window" title="Pullback ledger" right={<span className="mono text-[10px] uppercase text-muted-foreground">{snapshot.pullback.evaluatedCandles}/{snapshot.pullback.maxCandles} candles</span>} />
+        <div className="flex flex-wrap gap-2 border-t border-border px-5 py-3 text-[10px] text-muted-foreground"><span>{snapshot.pullback.status}</span><span>·</span><span>{snapshot.pullback.elapsedMinutes}/{snapshot.pullback.maxDurationMinutes} min</span><span>·</span><span>±{snapshot.pullback.proximityTolerance == null ? "—" : snapshot.pullback.proximityTolerance.toFixed(2)} proximity</span><span>·</span><span>{snapshot.pullback.qualifyingLevelCount} levels</span></div>
+        <div className="max-h-[280px] overflow-y-auto border-t border-border">{snapshot.pullback.events.length ? snapshot.pullback.events.map((event, index) => <div key={`${event.time}-${event.level}-${event.type}-${index}`} className="flex gap-3 border-b border-border px-5 py-3 last:border-0"><span className="mono mt-0.5 shrink-0 text-[10px] text-muted-foreground">{new Date(event.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><span><span className="block text-[11px] font-semibold">{event.type} · {event.level}</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{event.detail}</span></span></div>) : <div className="p-6 text-sm text-muted-foreground">{snapshot.pullback.detail}</div>}</div>
+      </Panel>
+      <Panel accent={fib.frozen}>
+        <PanelTitle eyebrow="Phase 4 / frozen anchors" title="Fibonacci retracement" right={<span className="text-[10px] font-bold uppercase text-muted-foreground">{fib.classification}</span>} />
+        <div className="grid grid-cols-2 gap-px border-t border-border bg-border">
+          {[["Impulse low", formatPrice(fib.impulseLow)], ["Impulse high", formatPrice(fib.impulseHigh)], ["Depth", fib.retracementPercent == null ? "—" : `${fib.retracementPercent.toFixed(1)}%`], ["State", fib.frozen ? "Frozen" : "Unavailable"]].map(([label, value]) => <div key={label} className="bg-card px-4 py-3"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mono mt-1 text-sm font-medium">{value}</div></div>)}
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-t border-border p-4 sm:grid-cols-4">{fib.levels.map((level) => <div key={level.name} className="rounded-sm bg-secondary/70 px-3 py-2"><div className="text-[10px] text-muted-foreground">{level.label}</div><div className="mono mt-1 text-xs">{level.price.toFixed(2)}</div></div>)}</div>
+        <div className="border-t border-border p-4"><div className="mb-2 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">Manual anchor correction</div><div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-muted-foreground">High<input value={fibHigh} onChange={(event) => onFibHighChange(event.target.value)} type="number" step="0.01" className="mt-1 w-full rounded-sm border border-border bg-background px-2 py-2 text-xs text-foreground" aria-label="Manual Fibonacci high" /></label><label className="text-[10px] text-muted-foreground">Low<input value={fibLow} onChange={(event) => onFibLowChange(event.target.value)} type="number" step="0.01" className="mt-1 w-full rounded-sm border border-border bg-background px-2 py-2 text-xs text-foreground" aria-label="Manual Fibonacci low" /></label></div><button type="button" onClick={onApplyFib} className="mt-3 rounded-sm bg-primary px-3 py-2 text-[10px] font-bold uppercase text-primary-foreground hover:opacity-90" data-testid="button-apply-fibonacci">Apply anchors</button></div>
+        <p className="border-t border-border px-5 py-4 text-[11px] leading-5 text-muted-foreground">{fib.detail}</p>
+      </Panel>
+    </div>
+  </div>;
 }
 
 function formatPrice(value: number | string | null) { return value == null ? "—" : typeof value === "number" ? value.toFixed(2) : value; }

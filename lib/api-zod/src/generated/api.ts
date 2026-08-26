@@ -28,7 +28,9 @@ export const getMarketSnapshotQuerySessionDefault = `regular`;
 
 export const GetMarketSnapshotQueryParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getMarketSnapshotQuerySymbolMax).default(getMarketSnapshotQuerySymbolDefault),
-  "session": zod.enum(['premarket', 'regular']).default(getMarketSnapshotQuerySessionDefault)
+  "session": zod.enum(['premarket', 'regular']).default(getMarketSnapshotQuerySessionDefault),
+  "fibHigh": zod.coerce.number().optional().describe('Optional manual Fibonacci high anchor for descriptive replay analysis.'),
+  "fibLow": zod.coerce.number().optional().describe('Optional manual Fibonacci low anchor for descriptive replay analysis.')
 })
 
 export const GetMarketSnapshotResponse = zod.object({
@@ -135,6 +137,68 @@ export const GetMarketSnapshotResponse = zod.object({
   "time": zod.string(),
   "detail": zod.string()
 }))
+}),
+  "breakout": zod.object({
+  "detected": zod.boolean(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "time": zod.string().nullable(),
+  "candleOpenTime": zod.string().nullable(),
+  "distanceOutside": zod.number().nullable(),
+  "breakoutVolume": zod.number().nullable(),
+  "baselineVolume": zod.number().nullable(),
+  "volumeRatio": zod.number().nullable(),
+  "volumeSupported": zod.boolean(),
+  "detail": zod.string()
+}),
+  "pullback": zod.object({
+  "status": zod.enum(['pending', 'observed', 'expired']),
+  "events": zod.array(zod.object({
+  "type": zod.enum(['touch', 'proximity', 'break and reclaim', 'hold', 'consolidation', 'break through']),
+  "time": zod.string(),
+  "level": zod.string(),
+  "price": zod.number(),
+  "detail": zod.string()
+})),
+  "evaluatedCandles": zod.number(),
+  "maxCandles": zod.number(),
+  "maxDurationMinutes": zod.number(),
+  "elapsedMinutes": zod.number(),
+  "proximityTolerance": zod.number().nullable(),
+  "atr14": zod.number().nullable(),
+  "qualifyingLevelCount": zod.number(),
+  "detail": zod.string()
+}),
+  "fibonacci": zod.object({
+  "direction": zod.union([zod.literal('bullish'),zod.literal('bearish'),zod.literal(null)]).nullable(),
+  "impulseLow": zod.number().nullable(),
+  "impulseHigh": zod.number().nullable(),
+  "breakoutTime": zod.string().nullable(),
+  "frozen": zod.boolean(),
+  "frozenAt": zod.string().nullable(),
+  "manualCorrection": zod.boolean(),
+  "levels": zod.array(zod.object({
+  "name": zod.string(),
+  "label": zod.string(),
+  "ratio": zod.number(),
+  "price": zod.number()
+})),
+  "retracementPercent": zod.number().nullable(),
+  "classification": zod.enum(['shallow', 'normal', 'deep', 'elevated failure risk', 'fully retraced', 'unavailable']),
+  "detail": zod.string()
+}),
+  "volumeAnalysis": zod.object({
+  "baselineCandleCount": zod.number(),
+  "recentSixAverage": zod.number().nullable(),
+  "breakoutVolume": zod.number().nullable(),
+  "breakoutRatio": zod.number().nullable(),
+  "supportingBreakoutVolume": zod.boolean(),
+  "averageImpulseVolume": zod.number().nullable(),
+  "pullbackAverageVolume": zod.number().nullable(),
+  "pullbackToBreakoutRatio": zod.number().nullable(),
+  "pullbackToImpulseRatio": zod.number().nullable(),
+  "pullbackToRecentRatio": zod.number().nullable(),
+  "opposingPullbackVolume": zod.number().nullable(),
+  "reversalWarning": zod.string().nullable()
 }),
   "indicators": zod.object({
   "rsi": zod.number().nullable(),

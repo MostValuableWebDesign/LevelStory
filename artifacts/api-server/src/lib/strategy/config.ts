@@ -38,6 +38,12 @@ export type StrategyConfig = {
   majorLevelProximityAtrFactor: number;
   majorLevelConfluenceToleranceTicks: number;
   majorLevelRecencyHalfLifeDays: number;
+  phase4AtrPeriod: number;
+  phase4ProximityTicks: number;
+  phase4ProximityAtrFactor: number;
+  phase4PullbackMaxCandles: number;
+  phase4PullbackMaxMinutes: number;
+  phase4BreakoutVolumeRatio: number;
 };
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
@@ -79,6 +85,12 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   majorLevelProximityAtrFactor: 0.25,
   majorLevelConfluenceToleranceTicks: 2,
   majorLevelRecencyHalfLifeDays: 60,
+  phase4AtrPeriod: 14,
+  phase4ProximityTicks: 2,
+  phase4ProximityAtrFactor: 0.1,
+  phase4PullbackMaxCandles: 6,
+  phase4PullbackMaxMinutes: 30,
+  phase4BreakoutVolumeRatio: 1.25,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -126,6 +138,11 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["majorLevelProximityTicks", config.majorLevelProximityTicks],
     ["majorLevelConfluenceToleranceTicks", config.majorLevelConfluenceToleranceTicks],
     ["majorLevelRecencyHalfLifeDays", config.majorLevelRecencyHalfLifeDays],
+    ["phase4AtrPeriod", config.phase4AtrPeriod],
+    ["phase4ProximityTicks", config.phase4ProximityTicks],
+    ["phase4PullbackMaxCandles", config.phase4PullbackMaxCandles],
+    ["phase4PullbackMaxMinutes", config.phase4PullbackMaxMinutes],
+    ["phase4BreakoutVolumeRatio", config.phase4BreakoutVolumeRatio],
   ];
   for (const [name, value] of positiveNumbers) {
     if (!Number.isFinite(value) || value <= 0) {
@@ -145,6 +162,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["trendEmaFlatThreshold", config.trendEmaFlatThreshold],
     ["majorLevelProximityPercent", config.majorLevelProximityPercent],
     ["majorLevelProximityAtrFactor", config.majorLevelProximityAtrFactor],
+    ["phase4ProximityAtrFactor", config.phase4ProximityAtrFactor],
   ];
   for (const [name, value] of nonNegativeNumbers) {
     if (!Number.isFinite(value) || value < 0) {
@@ -153,6 +171,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.orbMinutes !== 15 || config.ntzMinutes !== 15) {
     throw new Error("Invalid strategy configuration: Phase 2 opening range and NTZ must be 15 minutes.");
+  }
+  if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
+    throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");
   }
   return { ...config };
 }

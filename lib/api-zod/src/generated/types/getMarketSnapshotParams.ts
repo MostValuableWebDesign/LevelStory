@@ -14,4 +14,12 @@ export type GetMarketSnapshotParams = {
  */
 symbol?: string;
 session?: GetMarketSnapshotSession;
+/**
+ * Optional manual Fibonacci high anchor for descriptive replay analysis.
+ */
+fibHigh?: number;
+/**
+ * Optional manual Fibonacci low anchor for descriptive replay analysis.
+ */
+fibLow?: number;
 };
