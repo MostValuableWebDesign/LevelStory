@@ -432,6 +432,14 @@
     border-left: 2px solid hsl(var(--accent));
     background: hsl(var(--accent) / .08);
   }
+  .state-rail {
+    background: hsl(var(--card) / .96);
+    border: 1px solid hsl(var(--card-border));
+    box-shadow: 0 1px 0 hsl(var(--foreground) / .025);
+  }
+  .state-rail-warning { border-color: hsl(var(--accent) / .62); }
+  .state-rail-danger { border-color: hsl(var(--negative) / .42); }
+  .state-rail-positive { border-color: hsl(var(--positive) / .42); }
   .field {
     width: 100%;
     border: 1px solid hsl(var(--input));

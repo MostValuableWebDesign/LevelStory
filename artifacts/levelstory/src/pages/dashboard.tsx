@@ -6,6 +6,7 @@ import type { MarketSnapshot, Signal } from "@workspace/api-client-react";
 import { ArrowUpRight, Check, Clock3, Crosshair, RefreshCw, ShieldAlert, Target } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, MiniCandleChart, Panel, PanelTitle, PageIntro, PriceChange, QueryError, QuerySkeleton, ShadowBadge, SignalSummary, StatusBadge } from "@/components/levelstory-ui";
+import { COCKPIT_PREVIEW_STATES, getCockpitPreview, type CockpitPreviewState } from "@/lib/cockpit-state";
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
 export default function Dashboard() {
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [targetSelection, setTargetSelection] = useState("75");
   const [customTarget, setCustomTarget] = useState("75");
   const [slippageMode, setSlippageMode] = useState<"normal" | "fast" | "abnormal_spread">("normal");
+  const [previewState, setPreviewState] = useState<CockpitPreviewState>("live");
   const targetDollars = targetSelection === "custom" ? Number(customTarget) || 75 : Number(targetSelection);
   const marketParams = { symbol, session, targetDollars, slippageMode, ...appliedFib };
   const market = useGetMarketSnapshot(marketParams);
@@ -29,6 +31,7 @@ export default function Dashboard() {
   const activeSignals = snapshot?.signals ?? [];
   const confirmedCount = activeSignals.filter((signal) => signal.status === "confirmed").length;
   const blockedCount = activeSignals.filter((signal) => signal.status === "blocked").length;
+  const preview = getCockpitPreview(previewState);
 
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
@@ -51,19 +54,22 @@ export default function Dashboard() {
              </div>
         </div>
 
+         <PreviewStateRail state={previewState} actualDecision={snapshot?.decision.state} onChange={setPreviewState} />
+         <SessionStatusRail snapshot={snapshot} isLoading={market.isLoading} isError={market.isError} preview={preview} />
+
         <Panel className="mb-5">
            {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[0, 1, 2, 3].map((item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">{[["Session P&L", `${overviewData.sessionPnl >= 0 ? "+" : ""}$${overviewData.sessionPnl.toFixed(2)}`, overviewData.sessionPnl >= 0 ? "status-positive" : "status-negative"], ["Reviews logged", String(overviewData.tradeCount), ""], ["Win rate", `${overviewData.winRate.toFixed(1)}%`, ""], ["Plan completion", `${overviewData.checklistCompleted}/${overviewData.checklistTotal}`, ""]].map(([label, value, tone]) => <div key={label} className="metric-cell px-5 py-4 sm:px-6"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
         </Panel>
 
         {market.isLoading ? <Panel><QuerySkeleton rows={5} /></Panel> : market.isError || !snapshot ? <Panel><QueryError onRetry={() => market.refetch()} message="Simulated market feed unavailable." /></Panel> : <div className="space-y-5 appear">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,.7fr)]">
+           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,.7fr)]">
             <Panel accent>
               <div className="flex flex-col justify-between gap-5 px-5 pb-4 pt-6 sm:flex-row sm:items-start sm:px-7">
                  <div><div className="mb-3 flex items-center gap-2"><span className="eyebrow text-muted-foreground">Selected futures contract</span><span className="border border-border bg-secondary px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground" data-testid="status-market-session">{snapshot.marketStatus}</span></div><div className="flex flex-wrap items-end gap-x-4 gap-y-1"><span className="display text-5xl font-bold tracking-[-.08em]" data-testid="text-market-symbol">{snapshot.contract.fullContractSymbol}</span><span className="pb-1 text-sm text-muted-foreground" data-testid="text-market-company">{snapshot.company}</span></div><div className="mt-3 text-[10px] text-muted-foreground" data-testid="text-contract-metadata">{snapshot.contract.exchange} · {snapshot.contract.contractMonth} · {snapshot.contract.tickSize.toFixed(2)} tick · {snapshot.contract.verificationNote}</div></div>
                 <div className="sm:text-right"><div className="mono text-3xl font-medium tracking-[-.05em]" data-testid="text-market-price">${snapshot.price.toFixed(2)}</div><PriceChange value={snapshot.change} percent={snapshot.changePercent} /><div className="mt-2 text-[10px] text-muted-foreground">Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
               </div>
-                <div className="chart-frame terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={snapshot.levels.critical} /></div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min · {snapshot.replay.timeZone} · {snapshot.sessionCalendar.tradingDate}</span></div>
+                 <div className="chart-frame terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={getChartLevels(snapshot)} /></div>
+                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-accent" />Calculated levels / NTZ</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min · {snapshot.replay.timeZone} · {snapshot.sessionCalendar.tradingDate}</span></div>
             </Panel>
 
              <DecisionPanel snapshot={snapshot} confirmedCount={confirmedCount} signalCount={activeSignals.length} />
@@ -152,6 +158,34 @@ function DecisionPanel({ snapshot, confirmedCount, signalCount }: { snapshot: Ma
       <div className="mt-5"><LockedNote>No live orders. This is a decision rehearsal, not an execution terminal.</LockedNote></div>
     </div>
   </Panel>;
+}
+
+function PreviewStateRail({ state, actualDecision, onChange }: { state: CockpitPreviewState; actualDecision?: string; onChange: (value: CockpitPreviewState) => void }) {
+  const preview = getCockpitPreview(state);
+  const isBaseline = state === "live";
+  return <section className={`state-rail mb-5 ${preview.tone === "danger" ? "state-rail-danger" : preview.tone === "warning" ? "state-rail-warning" : preview.tone === "positive" ? "state-rail-positive" : ""}`} aria-label="Audit state preview" data-testid="state-preview-rail">
+    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="flex min-w-0 items-start gap-3"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" /><div><div className="eyebrow text-muted-foreground">Interface audit / display-only state preview</div><div className="mt-1 text-xs font-semibold">{isBaseline ? "Showing calculated state" : preview.label}</div><p className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground">{preview.description}</p></div></div>
+      <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground" htmlFor="cockpit-state-preview">Preview state<select id="cockpit-state-preview" value={state} onChange={(event) => onChange(event.target.value as CockpitPreviewState)} className="field h-9 min-w-[170px] px-2 text-[10px]" data-testid="select-cockpit-state-preview">{COCKPIT_PREVIEW_STATES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+    </div>
+    {!isBaseline && <div className="border-t border-border/70 px-4 py-2.5 text-[10px] text-muted-foreground sm:px-5" data-testid="text-preview-safety">{actualDecision ? `The API evaluator remains ${actualDecision}. This preview changes presentation only; it never changes qualification, sizing, journal data, or execution.` : "This preview changes presentation only; it never changes qualification, sizing, journal data, or execution."}</div>}
+  </section>;
+}
+
+function SessionStatusRail({ snapshot, isLoading, isError, preview }: { snapshot?: MarketSnapshot; isLoading: boolean; isError: boolean; preview: ReturnType<typeof getCockpitPreview> }) {
+  const previewFeedState = preview.group === "feed" ? preview : null;
+  const statusLabel = previewFeedState?.label ?? (isError ? "Disconnected" : isLoading ? "Pending" : snapshot?.marketStatus === "closed" ? "Market closed" : snapshot?.marketStatus === "open" ? "Open" : "Premarket");
+  const statusTone = previewFeedState?.tone ?? (isError ? "danger" : snapshot?.marketStatus === "closed" ? "warning" : "positive");
+  return <section className="mb-5 grid gap-px overflow-hidden border border-border bg-border sm:grid-cols-4" aria-label="Session and data status" data-testid="session-status-rail">
+    <StatusCell label="Feed" value={statusLabel} tone={statusTone} detail={previewFeedState?.description ?? (isError ? "Retry the simulated feed before relying on context." : "Deterministic API snapshot")} />
+    <StatusCell label="Contract" value={snapshot?.contract.fullContractSymbol ?? "Pending"} detail={snapshot ? `${snapshot.contract.exchange} · ${snapshot.contract.contractMonth}` : "Waiting for contract"} />
+    <StatusCell label="Replay cursor" value={snapshot ? new Date(snapshot.replay.cursor).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"} detail={snapshot ? `${snapshot.replay.visibleCandleCount} visible completed candles` : "No cursor loaded"} />
+    <div className="bg-card px-4 py-3 sm:px-5"><div className="eyebrow text-muted-foreground">Replay workspace</div><Link href="/backtest" className="mt-1 inline-flex items-center gap-1 text-xs font-bold underline decoration-accent decoration-2 underline-offset-4" data-testid="link-open-replay-lab">Open Replay Lab <ArrowUpRight size={13} /></Link><div className="mt-1 text-[10px] text-muted-foreground">{snapshot ? `${snapshot.replay.timeZone} · ${snapshot.sessionCalendar.tradingDate}` : "Causal report controls"}</div></div>
+  </section>;
+}
+
+function StatusCell({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: string }) {
+  return <div className="bg-card px-4 py-3 sm:px-5"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mt-1 text-xs font-bold uppercase ${tone === "danger" ? "status-negative" : tone === "warning" ? "text-accent-foreground" : tone === "positive" ? "status-positive" : "text-foreground"}`} data-testid={`status-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div><div className="mt-1 truncate text-[10px] text-muted-foreground">{detail}</div></div>;
 }
 
 function RiskRail({ risk, isLoading, isError, onRetry }: {
@@ -314,6 +348,17 @@ function Phase4Panel({ snapshot, fibHigh, fibLow, onFibHighChange, onFibLowChang
 
 function formatPrice(value: number | string | null) { return value == null ? "—" : typeof value === "number" ? value.toFixed(2) : value; }
 function formatSigned(value: number | null) { return value == null ? "—" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}`; }
+
+function getChartLevels(snapshot: MarketSnapshot): Array<{ name: string; price: number }> {
+  const levels: Array<{ name: string; price: number }> = [
+    ...snapshot.levels.critical.map((level) => ({ name: level.name, price: level.price })),
+    ...snapshot.majorLevels.slice(0, 2).map((level) => ({ name: level.kind === "support" ? "Support" : "Resistance", price: level.price })),
+    { name: "VWAP", price: snapshot.indicators.vwap ?? Number.NaN },
+    { name: "EMA 200", price: snapshot.indicators.ema200 ?? Number.NaN },
+    ...snapshot.fibonacci.levels.map((level) => ({ name: `Fib ${level.label}`, price: level.price })),
+  ];
+  return levels.filter((level) => Number.isFinite(level.price)).slice(0, 8);
+}
 
 function SignalRow({ signal }: { signal: Signal }) {
   return <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6" data-testid={`row-signal-${signal.label.toLowerCase().replaceAll(" ", "-")}`}><div><div className="text-sm font-semibold">{signal.label}</div><div className="mt-1 text-xs leading-5 text-muted-foreground">{signal.detail}</div></div><StatusBadge status={signal.status} /></div>;
