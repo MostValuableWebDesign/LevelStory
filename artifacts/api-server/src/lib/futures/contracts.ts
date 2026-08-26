@@ -42,7 +42,7 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     dollarValuePerTick: 1.25,
     pointValue: 5,
     contractMultiplier: 1,
-    regularSessionHours: { timeZone: "UTC", start: "09:30", end: "16:00" },
+    regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 0.62,
     exchangeAndRegulatoryFeesPerContract: 0.18,
     maximumSpreadTicks: 2,
@@ -60,7 +60,7 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     dollarValuePerTick: 12.5,
     pointValue: 50,
     contractMultiplier: 1,
-    regularSessionHours: { timeZone: "UTC", start: "09:30", end: "16:00" },
+    regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 1.24,
     exchangeAndRegulatoryFeesPerContract: 0.36,
     maximumSpreadTicks: 2,
@@ -78,7 +78,7 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     dollarValuePerTick: 0.5,
     pointValue: 2,
     contractMultiplier: 1,
-    regularSessionHours: { timeZone: "UTC", start: "09:30", end: "16:00" },
+    regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 0.62,
     exchangeAndRegulatoryFeesPerContract: 0.18,
     maximumSpreadTicks: 2,
@@ -96,7 +96,7 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     dollarValuePerTick: 5,
     pointValue: 20,
     contractMultiplier: 1,
-    regularSessionHours: { timeZone: "UTC", start: "09:30", end: "16:00" },
+    regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 1.24,
     exchangeAndRegulatoryFeesPerContract: 0.36,
     maximumSpreadTicks: 2,
@@ -113,6 +113,11 @@ function invalid(message: string): never {
 
 function finitePositive(value: number, label: string): void {
   if (!Number.isFinite(value) || value <= 0) invalid(`${label} must be a finite positive number.`);
+}
+
+function positiveInteger(value: number, label: string): void {
+  finitePositive(value, label);
+  if (!Number.isInteger(value)) invalid(`${label} must be a positive integer.`);
 }
 
 function finiteNonNegative(value: number, label: string): void {
@@ -144,7 +149,7 @@ export function validateFuturesContractSpecification(
   finitePositive(specification.contractMultiplier, "contractMultiplier");
   finiteNonNegative(specification.commissionPerContract, "commissionPerContract");
   finiteNonNegative(specification.exchangeAndRegulatoryFeesPerContract, "exchangeAndRegulatoryFeesPerContract");
-  finitePositive(specification.maximumSpreadTicks, "maximumSpreadTicks");
+  positiveInteger(specification.maximumSpreadTicks, "maximumSpreadTicks");
   finitePositive(specification.minimumLiquidity, "minimumLiquidity");
   validTime(specification.regularSessionHours.start, "regularSessionHours.start");
   validTime(specification.regularSessionHours.end, "regularSessionHours.end");
