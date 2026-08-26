@@ -1,0 +1,1 @@
+- [OpenAPI numeric validation](openapi-numeric-validation.md) — this workspace's generated Zod runtime does not support OpenAPI integer schemas; use numeric boundaries at the contract edge when needed.

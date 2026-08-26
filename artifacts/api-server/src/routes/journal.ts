@@ -11,6 +11,10 @@ import {
 
 const router: IRouter = Router();
 
+function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect) {
+  return { ...entry, createdAt: entry.createdAt.toISOString() };
+}
+
 router.get("/journal", async (req, res): Promise<void> => {
   const parsed = ListJournalEntriesQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -18,7 +22,7 @@ router.get("/journal", async (req, res): Promise<void> => {
     return;
   }
   const entries = await db.select().from(journalEntriesTable).orderBy(desc(journalEntriesTable.createdAt)).limit(parsed.data.limit);
-  res.json(ListJournalEntriesResponse.parse(entries));
+  res.json(ListJournalEntriesResponse.parse(entries.map(toApiJournalEntry)));
 });
 
 router.post("/journal", async (req, res): Promise<void> => {
@@ -29,7 +33,7 @@ router.post("/journal", async (req, res): Promise<void> => {
     return;
   }
   const [entry] = await db.insert(journalEntriesTable).values(parsed.data).returning();
-  res.status(201).json(CreateJournalEntryResponse.parse(entry));
+  res.status(201).json(CreateJournalEntryResponse.parse(toApiJournalEntry(entry)));
 });
 
 router.delete("/journal/:id", async (req, res): Promise<void> => {

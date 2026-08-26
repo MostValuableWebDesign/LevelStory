@@ -6,6 +6,10 @@ import { createMarketSnapshot } from "../lib/market-data";
 
 const router: IRouter = Router();
 
+function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect) {
+  return { ...entry, createdAt: entry.createdAt.toISOString() };
+}
+
 router.get("/market/snapshot", (req, res): void => {
   const parsed = GetMarketSnapshotQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -30,7 +34,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
     winRate: entries.length ? Number(((wins / entries.length) * 100).toFixed(1)) : 0,
     checklistCompleted: 4,
     checklistTotal: 5,
-    recentEntries: entries,
+    recentEntries: entries.map(toApiJournalEntry),
   };
   res.json(GetDashboardOverviewResponse.parse(data));
 });
