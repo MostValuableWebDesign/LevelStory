@@ -1,0 +1,420 @@
+Update LevelStory’s authoritative strategy knowledge, implementation, interface copy, and automated tests with this corrected patience-candle definition.
+
+This correction supersedes every previous patience-candle definition.
+
+CORE DEFINITION
+
+A patience candle is a completed, trend-aligned candle that forms after a pullback or consolidation at or near an important level.
+
+A patience candle is not necessarily a traditional inside candle.
+
+Only the side facing the established trend must remain inside the corresponding side of the preceding completed candle.
+
+A candle cannot qualify as a bullish or bearish patience candle based on its shape alone. The established trend must agree with the patience-candle direction.
+
+TREND REQUIREMENT
+
+Bullish patience candles are allowed only when the established strategy trend is bullish.
+
+Bearish patience candles are allowed only when the established strategy trend is bearish.
+
+Use the existing LevelStory 15-minute trend classifier.
+
+If the trend is neutral:
+
+- Do not qualify an ordinary patience-candle continuation setup.
+- Display WAITING — TREND UNCLEAR.
+
+If the candle points against the established trend:
+
+- Do not label it an ordinary patience candle.
+- It may be recorded as possible reversal evidence.
+- It must be evaluated by the separate reversal strategy.
+
+BULLISH PATIENCE CANDLE
+
+A valid bullish patience candle requires:
+
+1. Established trend is bullish.
+2. A qualified bullish ORB breakout, pullback, or valid bullish consolidation context exists.
+3. Price is at or near a qualifying critical level.
+4. The candidate candle is completely closed.
+5. The candidate candle’s high does not surpass the preceding completed candle’s high.
+
+Use:
+
+bullishPatience =
+trend == BULLISH
+&& contextIsValid
+&& nearQualifyingLevel
+&& candidateCandle.isClosed
+&& candidateCandle.high <= precedingCandle.high
+
+The bullish patience candle’s low may extend below the preceding candle’s low.
+
+Do not reject a bullish patience candle merely because its bottom wick or body extends below the preceding candle.
+
+BEARISH PATIENCE CANDLE
+
+A valid bearish patience candle requires:
+
+1. Established trend is bearish.
+2. A qualified bearish ORB breakout, pullback, or valid bearish consolidation context exists.
+3. Price is at or near a qualifying critical level.
+4. The candidate candle is completely closed.
+5. The candidate candle’s low does not surpass the preceding completed candle’s low.
+
+Use:
+
+bearishPatience =
+trend == BEARISH
+&& contextIsValid
+&& nearQualifyingLevel
+&& candidateCandle.isClosed
+&& candidateCandle.low >= precedingCandle.low
+
+The bearish patience candle’s high may extend above the preceding candle’s high.
+
+Do not reject a bearish patience candle merely because its upper wick or body extends above the preceding candle.
+
+“DOES NOT SURPASS” DEFINITION
+
+Use the complete candle extreme, including body and wick:
+
+- Bullish comparison uses candle highs.
+- Bearish comparison uses candle lows.
+
+Do not compare only candle bodies.
+
+Use the instrument’s exact high and low prices.
+
+IMMEDIATE NEXT-CANDLE REQUIREMENT
+
+Only the immediately following candle can trigger an entry.
+
+A later candle cannot trigger from the same patience candle.
+
+If the immediate next candle does not reach the required entry price before it closes:
+
+- Mark the patience setup EXPIRED.
+- Require a new patience candle.
+- Do not allow a later candle to reuse the expired pattern.
+
+ENTRY CONFIRMATION BUFFER
+
+Do not enter on the first tick beyond the patience candle.
+
+Require price to surpass the patience candle by a configurable confirmation buffer.
+
+Initial allowed buffer:
+
+- Three ticks
+- Four ticks
+
+The trader must select the exact buffer before the setup triggers.
+
+Default shadow-testing value:
+
+- Four ticks
+
+Make the buffer configurable per futures contract.
+
+BULLISH ENTRY
+
+For a valid bullish patience candle:
+
+longEntryPrice =
+patienceCandle.high
++ (entryBufferTicks × contractTickSize)
+
+The immediately following candle must trade at or above longEntryPrice.
+
+Enter intrabar when that price is reached.
+
+Example:
+
+patience high = 6000.00
+tick size = 0.25
+entry buffer = 4 ticks
+
+long entry =
+6000.00 + (4 × 0.25)
+= 6001.00
+
+BEARISH ENTRY
+
+For a valid bearish patience candle:
+
+shortEntryPrice =
+patienceCandle.low
+- (entryBufferTicks × contractTickSize)
+
+The immediately following candle must trade at or below shortEntryPrice.
+
+Enter intrabar when that price is reached.
+
+Example:
+
+patience low = 6000.00
+tick size = 0.25
+entry buffer = 4 ticks
+
+short entry =
+6000.00 - (4 × 0.25)
+= 5999.00
+
+INSUFFICIENT BREAK
+
+If the next candle crosses the patience high or low but does not reach the complete three-to-four-tick buffer:
+
+- Do not enter.
+- Display BREAK DETECTED — WAITING FOR CONFIRMATION BUFFER.
+- If the full buffer is not reached before that candle closes, expire the setup.
+
+STOP PLACEMENT
+
+Use a strategy stop beyond the opposite side of the patience candle.
+
+Initial configurable protective buffer:
+
+- One tick beyond the opposite patience-candle extreme
+
+Bullish:
+
+longStrategyStop =
+patienceCandle.low
+- (stopBufferTicks × contractTickSize)
+
+Bearish:
+
+shortStrategyStop =
+patienceCandle.high
++ (stopBufferTicks × contractTickSize)
+
+The hard catastrophe stop must also remain active.
+
+Before authorizing entry:
+
+- Calculate the complete distance from buffered entry to buffered stop.
+- Include slippage and fees.
+- Calculate futures risk per contract.
+- Reduce contract quantity if necessary.
+- Reject the trade if even one contract exceeds the maximum permitted risk.
+
+Do not tighten or move the initial stop merely to force the position into the risk limit.
+
+A+ PATIENCE SETUP
+
+Classify a patience setup as A+ only when all required conditions pass:
+
+1. Clear established 15-minute trend.
+2. Qualified ORB breakout with strong volume and continuation.
+3. Pullback or valid consolidation.
+4. Price reaches or comes near a critical level.
+5. Critical level has meaningful confluence.
+6. Pullback volume supports continuation.
+7. Fibonacci context supports the setup.
+8. Valid trend-aligned patience candle.
+9. Immediate next candle reaches the full three-to-four-tick entry buffer.
+10. Spread, liquidity, stale-data, daily-loss, and position-risk checks pass.
+
+Do not classify a setup as A+ based only on the patience-candle shape.
+
+REVERSAL WARNING
+
+If the established trend is bullish:
+
+- Do not classify a red or lower-contained candle as bearish patience merely because its shape appears bearish.
+
+If the established trend is bearish:
+
+- Do not classify a green or upper-contained candle as bullish patience merely because its shape appears bullish.
+
+An opposing pattern may be:
+
+- Possible reversal evidence
+- A failed continuation warning
+- A level rejection
+- A doji or equivalent-candle alert
+
+It must use the separate reversal strategy and cannot become an ordinary patience continuation entry.
+
+STATE MACHINE
+
+Use these patience-candle states:
+
+WAITING_FOR_VALID_CONTEXT
+WAITING_FOR_LEVEL
+WAITING_FOR_PATIENCE_CANDLE
+PATIENCE_CANDLE_FORMING
+PATIENCE_CANDLE_VALID
+PATIENCE_TREND_MISMATCH
+TRIGGER_CANDLE_ACTIVE
+BREAK_DETECTED_WAITING_FOR_BUFFER
+ENTRY_BUFFER_REACHED
+ENTRY_TRIGGERED
+OPPOSITE_SIDE_INVALIDATION
+PATIENCE_CANDLE_EXPIRED
+AMBIGUOUS_EVENT_ORDER
+RISK_REJECTED
+
+REQUIRED SEQUENCE
+
+For a normal continuation trade:
+
+1. Determine established trend.
+2. Qualify the ORB breakout.
+3. Confirm strong continuation.
+4. Wait for pullback or valid consolidation.
+5. Confirm price is at or near a critical level.
+6. Wait for a completed trend-aligned patience candle.
+7. Calculate the buffered entry.
+8. Calculate the buffered strategy stop.
+9. Calculate risk and allowed contracts.
+10. Monitor only the immediately following candle.
+11. Enter intrabar only when the complete three-to-four-tick buffer is reached.
+12. Expire the setup if that immediate candle fails to reach the entry price.
+
+INTERFACE DEFINITION
+
+Use this plain-language explanation:
+
+“A patience candle is a completed, trend-aligned candle that forms after a pullback or consolidation near an important level. In a bullish trend, its high remains at or below the preceding candle’s high. In a bearish trend, its low remains at or above the preceding candle’s low. Only the immediately following candle can trigger entry, and price must move the configured three-to-four ticks beyond the patience candle before entry.”
+
+INTERFACE DISPLAY
+
+When a valid pattern forms, display:
+
+- Trend direction
+- Preceding candle high and low
+- Patience-candle high and low
+- Why it qualifies
+- Critical level
+- Distance from critical level
+- Entry-buffer ticks
+- Calculated entry price
+- Stop-buffer ticks
+- Calculated stop price
+- Dollar risk per contract
+- Maximum allowed contracts
+- Whether it qualifies as A+
+
+AUTOMATED TESTS
+
+Add deterministic tests for:
+
+1. Valid bullish patience candle:
+   - Trend is bullish
+   - Candidate high equals previous high
+   - Candidate low extends below previous low
+   - Must qualify
+
+2. Valid bullish patience candle:
+   - Trend is bullish
+   - Candidate high is below previous high
+   - Must qualify
+
+3. Invalid bullish patience candle:
+   - Candidate high exceeds previous high
+   - Must not qualify
+
+4. Bullish shape during bearish trend:
+   - Must not qualify as bullish patience
+
+5. Valid bearish patience candle:
+   - Trend is bearish
+   - Candidate low equals previous low
+   - Candidate high extends above previous high
+   - Must qualify
+
+6. Valid bearish patience candle:
+   - Trend is bearish
+   - Candidate low is above previous low
+   - Must qualify
+
+7. Invalid bearish patience candle:
+   - Candidate low is below previous low
+   - Must not qualify
+
+8. Bearish shape during bullish trend:
+   - Must not qualify as bearish patience
+
+9. Bullish immediate next candle crosses patience high by only one tick:
+   - Must not enter
+
+10. Bullish immediate next candle reaches the complete selected buffer:
+   - Must trigger long entry
+
+11. Bearish immediate next candle crosses patience low by only one tick:
+   - Must not enter
+
+12. Bearish immediate next candle reaches the complete selected buffer:
+   - Must trigger short entry
+
+13. Immediate next candle fails to reach the complete buffer:
+   - Setup expires
+
+14. Later candle reaches the buffer:
+   - Must not trigger the expired setup
+
+15. Candle shape is valid but not near a qualifying level:
+   - Must not qualify
+
+16. Candle shape is valid but ORB context is missing:
+   - Must not qualify as an A+ continuation setup
+
+17. Buffered entry and stop:
+   - Risk must use the full distance
+
+18. Contract quantity:
+   - Must round down
+
+19. One contract exceeds maximum risk:
+   - Trade must be rejected
+
+20. Ambiguous intrabar event order:
+   - Must be marked AMBIGUOUS
+   - Must not produce an optimistic fill
+
+KNOWLEDGE CLEANUP
+
+Update:
+
+- LEVELSTORY_SPEC.md
+- Strategy configuration
+- Patience-candle detector
+- Trend requirements
+- Setup state machine
+- Entry engine
+- Stop engine
+- Futures risk engine
+- Replay engine
+- Backtesting engine
+- Interface descriptions
+- Tooltips
+- Journal explanations
+- Existing tests
+- Seed examples
+
+Search the entire project and remove conflicting definitions, including:
+
+- Full inside-candle requirement
+- Patience patterns allowed against the trend
+- Entry at the first tick beyond the patience candle
+- Entries triggered by later candles
+- Options-specific language
+
+DELIVERY
+
+After implementing:
+
+1. List every file changed.
+2. Show the old and new detection logic.
+3. Show the entry and stop formulas.
+4. Run all relevant tests.
+5. Report passed and failed tests.
+6. Identify remaining placeholders.
+7. Confirm that no conflicting patience-candle definition remains.
+8. Keep Shadow Mode active.
+9. Do not add live-order functionality.
+10. Do not make unrelated strategy changes.
