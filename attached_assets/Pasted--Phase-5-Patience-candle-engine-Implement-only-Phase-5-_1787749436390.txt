@@ -1,0 +1,93 @@
+
+Phase 5 — Patience-candle engine
+Implement only Phase 5 of LevelStory.
+
+This phase is timing-sensitive. Do not simplify the rules.
+
+PATIENCE-CANDLE LOCATION
+
+A patience candle may form after:
+
+- A pullback reaches or comes within proximity of a qualifying level
+- Price consolidates near a qualifying level
+- Price completes extended consolidation inside or near the NTZ
+
+PATIENCE-CANDLE DEFINITION
+
+The patience candle must be completely closed.
+
+Initial containment rule:
+
+- Its high is no higher than the previous completed candle’s high
+- Its low is no lower than the previous completed candle’s low
+
+The patience candle is not the entry.
+
+IMMEDIATE NEXT-CANDLE RULE
+
+Only the immediately following 5-minute candle can trigger entry.
+
+Bullish:
+
+- Trigger intrabar when the immediate next candle first trades above the patience-candle high
+
+Bearish:
+
+- Trigger intrabar when the immediate next candle first trades below the patience-candle low
+
+Do not wait for the trigger candle to close.
+
+EXPIRATION
+
+If the immediate next candle does not break the patience candle in the intended direction:
+
+- Expire the setup
+- Require a completely new patience-candle pattern
+
+A later candle cannot trigger from an expired patience candle.
+
+OPPOSITE-SIDE INVALIDATION
+
+If the immediate next candle first breaks the opposite side:
+
+- Invalidate the setup
+- Do not enter if it later crosses the intended side
+
+AMBIGUITY
+
+If both sides are touched and tick or lower-timeframe data cannot prove which occurred first:
+
+- Reject the setup
+- Mark it AMBIGUOUS
+- Never assume the profitable sequence
+
+STATES
+
+Display:
+
+- WAITING FOR PATIENCE CANDLE
+- PATIENCE CANDLE FORMING
+- VALID PATIENCE CANDLE
+- TRIGGER CANDLE ACTIVE
+- ENTRY TRIGGERED
+- INVALIDATED
+- EXPIRED
+- AMBIGUOUS
+
+TESTS
+
+Create deterministic sequences testing:
+
+- Valid bullish pattern
+- Valid bearish pattern
+- Incomplete patience candle
+- Failed immediate trigger
+- Later candle incorrectly attempting to trigger
+- Bullish opposite-side-first break
+- Bearish opposite-side-first break
+- Both sides touched
+- Gap above or below trigger
+- Consolidation patience candle
+- Pullback patience candle
+
+Do not proceed until every timing test passes.
