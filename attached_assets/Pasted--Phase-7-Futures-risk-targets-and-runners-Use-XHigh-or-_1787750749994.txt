@@ -1,0 +1,112 @@
+
+
+Phase 7 — Futures risk, targets and runners
+Use XHigh or Max effort.
+Implement only Phase 7 of LevelStory.
+
+FUTURES POSITION SIZING
+
+Calculate:
+
+Stop distance in ticks =
+absolute(entry price - catastrophe stop) ÷ tick size
+
+Risk per contract =
+(stop distance in ticks × dollar value per tick)
++ modeled entry slippage
++ modeled exit slippage
++ round-trip fees
+
+Maximum contracts =
+floor(maximum trade risk ÷ risk per contract)
+
+Require whole contracts and always round down.
+
+Block trades when maximum contracts equals zero.
+
+RISK CONTROLS
+
+Implement:
+
+- Maximum risk per trade
+- Maximum daily loss
+- Maximum trades per day
+- Maximum contracts
+- No averaging down
+- Duplicate-entry prevention
+- Maximum spread
+- Minimum liquidity
+- Stale-data lockout
+- Emergency kill switch
+
+STOPS
+
+Maintain:
+
+1. Catastrophe stop
+   - Hard protective stop
+   - Always active
+
+2. Strategy stop
+   - Based on patience-candle or level invalidation
+   - May trigger intrabar
+
+PROFIT TARGETS
+
+Require selection before entry:
+
+- $50
+- $75
+- $100
+- Custom between $50 and $100
+
+Default shadow target:
+
+$75
+
+Convert dollars to valid ticks:
+
+Required ticks =
+ceiling(target dollars ÷ dollar value per tick)
+
+MULTIPLE CONTRACTS
+
+- Close at least one contract at the selected target
+- Designate remaining contracts as runners
+
+RUNNER
+
+A runner begins after partial profit is taken.
+
+Freeze its reference point when runner management begins.
+
+Calculate adverse retracement from the most favorable price achieved.
+
+Exit the runner intrabar when adverse retracement reaches or exceeds 40% of the measured runner impulse.
+
+Do not continually move both Fibonacci anchors.
+
+The catastrophe stop remains active.
+
+SLIPPAGE
+
+Initial model:
+
+- Normal market: one adverse tick per fill
+- Fast market: two adverse ticks
+- Abnormal spread: spread plus adverse slippage
+
+FEES
+
+Include configurable:
+
+- Commission
+- Exchange fees
+- Regulatory fees
+- Clearing fees
+
+Report gross P/L, slippage, fees, and net P/L.
+
+Add tests for every calculation and lockout.
+
+
