@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, BookOpen, ChevronRight, Gauge, Menu, Settings2, ShieldCheck, X } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChevronRight, Gauge, Menu, Settings2, ShieldCheck, X } from "lucide-react";
 import { SHADOW_MODE_LABEL } from "@/lib/shadow-mode";
 
 const navItems = [
   { href: "/", label: "Cockpit", detail: "Decision surface", icon: Gauge },
   { href: "/journal", label: "Shadow journal", detail: "Review ledger", icon: BookOpen },
   { href: "/settings", label: "Risk guardrails", detail: "Rules of engagement", icon: Settings2 },
+  { href: "/backtest", label: "Replay lab", detail: "Causal reports", icon: BarChart3 },
 ];
 
 export function LevelStoryShell({ children }: { children: ReactNode }) {

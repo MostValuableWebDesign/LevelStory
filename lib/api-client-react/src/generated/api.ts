@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BacktestReport,
+  BacktestRequest,
   DashboardOverview,
   ErrorResponse,
   FuturesContractSpecification,
@@ -378,6 +380,78 @@ export function useGetDashboardOverview<TData = Awaited<ReturnType<typeof getDas
 
 
 
+
+export const getRunBacktestUrl = () => {
+
+
+
+
+  return `/api/backtest`
+}
+
+/**
+ * Replays deterministic futures data through the existing strategy without future-candle access, broker access, or order creation.
+ * @summary Run a causal shadow backtest
+ */
+export const runBacktest = async (backtestRequest: BacktestRequest, options?: Parameters<typeof customFetch>[1]): Promise<BacktestReport> => {
+
+  return customFetch<BacktestReport>(getRunBacktestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(backtestRequest)
+  }
+);}
+
+
+
+
+
+export const getRunBacktestMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runBacktest>>, TError,{data: BodyType<BacktestRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runBacktest>>, TError,{data: BodyType<BacktestRequest>}, TContext> => {
+
+const mutationKey = ['runBacktest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runBacktest>>, {data: BodyType<BacktestRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runBacktest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunBacktestMutationResult = NonNullable<Awaited<ReturnType<typeof runBacktest>>>
+    export type RunBacktestMutationBody = BodyType<BacktestRequest>
+    export type RunBacktestMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Run a causal shadow backtest
+ */
+export const useRunBacktest = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runBacktest>>, TError,{data: BodyType<BacktestRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runBacktest>>,
+        TError,
+        {data: BodyType<BacktestRequest>},
+        TContext
+      > => {
+      return useMutation(getRunBacktestMutationOptions(options));
+    }
 
 export const getListJournalEntriesUrl = (params?: ListJournalEntriesParams,) => {
   const normalizedParams = new URLSearchParams();

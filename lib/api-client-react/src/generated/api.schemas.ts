@@ -1214,6 +1214,279 @@ export interface RiskSettingsUpdate {
   maxDailyLoss?: number;
 }
 
+export type BacktestRequestSlippageMode = typeof BacktestRequestSlippageMode[keyof typeof BacktestRequestSlippageMode];
+
+
+export const BacktestRequestSlippageMode = {
+  normal: 'normal',
+  fast: 'fast',
+  abnormal_spread: 'abnormal_spread',
+} as const;
+
+export interface BacktestRequest {
+  /**
+     * @minLength 1
+     * @maxLength 12
+     */
+  symbol: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  endDate: string;
+  /**
+     * @minimum 1
+     * @maximum 30
+     */
+  inSampleDays: number;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  outOfSampleDays: number;
+  /**
+     * @minimum 1
+     * @maximum 100000
+     */
+  seed?: number;
+  premarketAvailable?: boolean;
+  /**
+     * @minimum 50
+     * @maximum 100
+     */
+  targetDollars?: number;
+  slippageMode?: BacktestRequestSlippageMode;
+}
+
+export interface BacktestMetricSet {
+  tradeCount: number;
+  winRate: number;
+  /** @nullable */
+  averageWin: number | null;
+  /** @nullable */
+  averageLoss: number | null;
+  /** @nullable */
+  expectancy: number | null;
+  /** @nullable */
+  profitFactor: number | null;
+  maximumDrawdown: number;
+  grossPnl: number;
+  fees: number;
+  slippage: number;
+  netPnl: number;
+  ambiguousTradeCount: number;
+  rejectedSetupCount: number;
+}
+
+export type BacktestSegmentationDirection = typeof BacktestSegmentationDirection[keyof typeof BacktestSegmentationDirection];
+
+
+export const BacktestSegmentationDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type BacktestSegmentationTimeOfDay = typeof BacktestSegmentationTimeOfDay[keyof typeof BacktestSegmentationTimeOfDay];
+
+
+export const BacktestSegmentationTimeOfDay = {
+  open: 'open',
+  midday: 'midday',
+  close: 'close',
+} as const;
+
+export type BacktestSegmentationTrend = typeof BacktestSegmentationTrend[keyof typeof BacktestSegmentationTrend];
+
+
+export const BacktestSegmentationTrend = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+export type BacktestSegmentationVolumeCondition = typeof BacktestSegmentationVolumeCondition[keyof typeof BacktestSegmentationVolumeCondition];
+
+
+export const BacktestSegmentationVolumeCondition = {
+  supported: 'supported',
+  warning: 'warning',
+  neutral: 'neutral',
+} as const;
+
+export type BacktestSegmentationLevelType = typeof BacktestSegmentationLevelType[keyof typeof BacktestSegmentationLevelType];
+
+
+export const BacktestSegmentationLevelType = {
+  NTZ: 'NTZ',
+  ORB: 'ORB',
+  major_level: 'major level',
+  Fibonacci: 'Fibonacci',
+  mixed: 'mixed',
+  unmapped: 'unmapped',
+} as const;
+
+export type BacktestSegmentationConfluence = typeof BacktestSegmentationConfluence[keyof typeof BacktestSegmentationConfluence];
+
+
+export const BacktestSegmentationConfluence = {
+  normal: 'normal',
+  strong: 'strong',
+  dynamite: 'dynamite',
+} as const;
+
+export type BacktestSegmentationMarketRegime = typeof BacktestSegmentationMarketRegime[keyof typeof BacktestSegmentationMarketRegime];
+
+
+export const BacktestSegmentationMarketRegime = {
+  trend: 'trend',
+  range: 'range',
+  transition: 'transition',
+} as const;
+
+export interface BacktestSegmentation {
+  contract: string;
+  contractMonth: string;
+  setupType: string;
+  direction: BacktestSegmentationDirection;
+  timeOfDay: BacktestSegmentationTimeOfDay;
+  trend: BacktestSegmentationTrend;
+  fibonacciDepth: string;
+  volumeCondition: BacktestSegmentationVolumeCondition;
+  levelType: BacktestSegmentationLevelType;
+  confluence: BacktestSegmentationConfluence;
+  patienceCharacteristic: string;
+  marketRegime: BacktestSegmentationMarketRegime;
+}
+
+export type BacktestSegment = BacktestMetricSet & {
+  dimension: string;
+  value: string;
+};
+
+export type BacktestTradePeriod = typeof BacktestTradePeriod[keyof typeof BacktestTradePeriod];
+
+
+export const BacktestTradePeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type BacktestTradeDirection = typeof BacktestTradeDirection[keyof typeof BacktestTradeDirection];
+
+
+export const BacktestTradeDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type BacktestTradeOutcome = typeof BacktestTradeOutcome[keyof typeof BacktestTradeOutcome];
+
+
+export const BacktestTradeOutcome = {
+  target: 'target',
+  strategy_stop: 'strategy stop',
+  catastrophe_stop: 'catastrophe stop',
+  manual: 'manual',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BacktestTradeAmbiguityLabel = typeof BacktestTradeAmbiguityLabel[keyof typeof BacktestTradeAmbiguityLabel] | null;
+
+
+export const BacktestTradeAmbiguityLabel = {
+  AMBIGUOUS_STOP_FIRST: 'AMBIGUOUS_STOP_FIRST',
+  AMBIGUOUS_ENTRY_INVALIDATION: 'AMBIGUOUS_ENTRY_INVALIDATION',
+} as const;
+
+export type BacktestTradeSource = typeof BacktestTradeSource[keyof typeof BacktestTradeSource];
+
+
+export const BacktestTradeSource = {
+  tick: 'tick',
+  'one-minute': 'one-minute',
+  ohlc: 'ohlc',
+} as const;
+
+export interface BacktestTrade {
+  id: string;
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  period: BacktestTradePeriod;
+  setupType: string;
+  direction: BacktestTradeDirection;
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  contracts: number;
+  grossPnl: number;
+  fees: number;
+  slippage: number;
+  netPnl: number;
+  outcome: BacktestTradeOutcome;
+  /** @nullable */
+  ambiguityLabel: BacktestTradeAmbiguityLabel;
+  source: BacktestTradeSource;
+  segmentation: BacktestSegmentation;
+}
+
+export type BacktestReportMode = typeof BacktestReportMode[keyof typeof BacktestReportMode];
+
+
+export const BacktestReportMode = {
+  'SHADOW_MODE_—_NO_LIVE_ORDERS': 'SHADOW MODE — NO LIVE ORDERS',
+} as const;
+
+export type BacktestReportDataResolution = typeof BacktestReportDataResolution[keyof typeof BacktestReportDataResolution];
+
+
+export const BacktestReportDataResolution = {
+  tick: 'tick',
+  'one-minute-fallback': 'one-minute-fallback',
+} as const;
+
+export type BacktestReportDataset = {
+  startDate: string;
+  endDate: string;
+  inSampleDates: string[];
+  outOfSampleDates: string[];
+  untouchedOutOfSample: true;
+  optimizationApplied: false;
+};
+
+export type BacktestReportReplayMode = typeof BacktestReportReplayMode[keyof typeof BacktestReportReplayMode];
+
+
+export const BacktestReportReplayMode = {
+  replay: 'replay',
+} as const;
+
+export type BacktestReportReplay = {
+  cursor: number;
+  visibleCandleCount: number;
+  /** @nullable */
+  visibleCandleCloseTime: number | null;
+  mode: BacktestReportReplayMode;
+  totalCandleCount: number;
+  causal: true;
+  futureCandleAccess: false;
+};
+
+export interface BacktestReport {
+  mode: BacktestReportMode;
+  symbol: string;
+  contract: FuturesContractSpecification;
+  dataResolution: BacktestReportDataResolution;
+  dataset: BacktestReportDataset;
+  replay: BacktestReportReplay;
+  metrics: BacktestMetricSet;
+  inSample: BacktestMetricSet;
+  outOfSample: BacktestMetricSet;
+  segments: BacktestSegment[];
+  trades: BacktestTrade[];
+  assumptions: string[];
+}
+
 export type GetMarketSnapshotParams = {
 /**
  * @minLength 1

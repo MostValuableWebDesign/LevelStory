@@ -6,6 +6,30 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './backtestMetricSet';
+export * from './backtestReport';
+export * from './backtestReportDataResolution';
+export * from './backtestReportDataset';
+export * from './backtestReportMode';
+export * from './backtestReportReplay';
+export * from './backtestReportReplayMode';
+export * from './backtestRequest';
+export * from './backtestRequestSlippageMode';
+export * from './backtestSegment';
+export * from './backtestSegmentation';
+export * from './backtestSegmentationConfluence';
+export * from './backtestSegmentationDirection';
+export * from './backtestSegmentationLevelType';
+export * from './backtestSegmentationMarketRegime';
+export * from './backtestSegmentationTimeOfDay';
+export * from './backtestSegmentationTrend';
+export * from './backtestSegmentationVolumeCondition';
+export * from './backtestTrade';
+export * from './backtestTradeAmbiguityLabel';
+export * from './backtestTradeDirection';
+export * from './backtestTradeOutcome';
+export * from './backtestTradePeriod';
+export * from './backtestTradeSource';
 export * from './breakoutEvent';
 export * from './breakoutEventDirection';
 export * from './candle';

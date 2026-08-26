@@ -16,6 +16,8 @@ tags:
     description: Shadow trade journal
   - name: risk
     description: Risk guardrails
+  - name: backtest
+    description: Causal historical replay and shadow backtesting
 paths:
   /healthz:
     get:
@@ -122,6 +124,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardOverview"
+  /backtest:
+    post:
+      operationId: runBacktest
+      tags: [backtest]
+      summary: Run a causal shadow backtest
+      description: Replays deterministic futures data through the existing strategy without future-candle access, broker access, or order creation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BacktestRequest"
+      responses:
+        "200":
+          description: Causal backtest report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestReport"
+        "400":
+          description: Invalid backtest request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /journal:
     get:
       operationId: listJournalEntries
@@ -1479,4 +1506,144 @@ components:
           type: number
           exclusiveMinimum: 0
       minProperties: 1
+    BacktestRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+          default: MES
+        endDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          default: "2026-08-25"
+        inSampleDays:
+          type: number
+          minimum: 1
+          maximum: 30
+          default: 5
+        outOfSampleDays:
+          type: number
+          minimum: 1
+          maximum: 10
+          default: 2
+        seed:
+          type: number
+          minimum: 1
+          maximum: 100000
+          default: 11
+        premarketAvailable:
+          type: boolean
+          default: true
+        targetDollars:
+          type: number
+          minimum: 50
+          maximum: 100
+          default: 75
+        slippageMode:
+          type: string
+          enum: [normal, fast, abnormal_spread]
+          default: normal
+      required: [symbol, endDate, inSampleDays, outOfSampleDays]
+    BacktestMetricSet:
+      type: object
+      properties:
+        tradeCount: { type: number }
+        winRate: { type: number }
+        averageWin: { type: ["number", "null"] }
+        averageLoss: { type: ["number", "null"] }
+        expectancy: { type: ["number", "null"] }
+        profitFactor: { type: ["number", "null"] }
+        maximumDrawdown: { type: number }
+        grossPnl: { type: number }
+        fees: { type: number }
+        slippage: { type: number }
+        netPnl: { type: number }
+        ambiguousTradeCount: { type: number }
+        rejectedSetupCount: { type: number }
+      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount]
+    BacktestSegmentation:
+      type: object
+      properties:
+        contract: { type: string }
+        contractMonth: { type: string }
+        setupType: { type: string }
+        direction: { type: string, enum: [long, short] }
+        timeOfDay: { type: string, enum: [open, midday, close] }
+        trend: { type: string, enum: [bullish, bearish, neutral] }
+        fibonacciDepth: { type: string }
+        volumeCondition: { type: string, enum: [supported, warning, neutral] }
+        levelType: { type: string, enum: [NTZ, ORB, "major level", Fibonacci, mixed, unmapped] }
+        confluence: { type: string, enum: [normal, strong, dynamite] }
+        patienceCharacteristic: { type: string }
+        marketRegime: { type: string, enum: [trend, range, transition] }
+      required: [contract, contractMonth, setupType, direction, timeOfDay, trend, fibonacciDepth, volumeCondition, levelType, confluence, patienceCharacteristic, marketRegime]
+    BacktestSegment:
+      allOf:
+        - $ref: "#/components/schemas/BacktestMetricSet"
+        - type: object
+          properties:
+            dimension: { type: string }
+            value: { type: string }
+          required: [dimension, value]
+    BacktestTrade:
+      type: object
+      properties:
+        id: { type: string }
+        tradingDate: { type: string }
+        contractSymbol: { type: string }
+        contractMonth: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        setupType: { type: string }
+        direction: { type: string, enum: [long, short] }
+        entryTime: { type: string }
+        exitTime: { type: string }
+        entryPrice: { type: number }
+        exitPrice: { type: number }
+        contracts: { type: number }
+        grossPnl: { type: number }
+        fees: { type: number }
+        slippage: { type: number }
+        netPnl: { type: number }
+        outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", manual] }
+        ambiguityLabel: { type: ["string", "null"], enum: [AMBIGUOUS_STOP_FIRST, AMBIGUOUS_ENTRY_INVALIDATION, null] }
+        source: { type: string, enum: [tick, one-minute, ohlc] }
+        segmentation: { $ref: "#/components/schemas/BacktestSegmentation" }
+      required: [id, tradingDate, contractSymbol, contractMonth, period, setupType, direction, entryTime, exitTime, entryPrice, exitPrice, contracts, grossPnl, fees, slippage, netPnl, outcome, ambiguityLabel, source, segmentation]
+    BacktestReport:
+      type: object
+      properties:
+        mode: { type: string, enum: ["SHADOW MODE — NO LIVE ORDERS"] }
+        symbol: { type: string }
+        contract: { $ref: "#/components/schemas/FuturesContractSpecification" }
+        dataResolution: { type: string, enum: [tick, one-minute-fallback] }
+        dataset:
+          type: object
+          properties:
+            startDate: { type: string }
+            endDate: { type: string }
+            inSampleDates: { type: array, items: { type: string } }
+            outOfSampleDates: { type: array, items: { type: string } }
+            untouchedOutOfSample: { type: boolean, enum: [true] }
+            optimizationApplied: { type: boolean, enum: [false] }
+          required: [startDate, endDate, inSampleDates, outOfSampleDates, untouchedOutOfSample, optimizationApplied]
+        replay:
+          type: object
+          properties:
+            cursor: { type: number }
+            visibleCandleCount: { type: number }
+            visibleCandleCloseTime: { type: ["number", "null"] }
+            mode: { type: string, enum: [replay] }
+            totalCandleCount: { type: number }
+            causal: { type: boolean, enum: [true] }
+            futureCandleAccess: { type: boolean, enum: [false] }
+          required: [cursor, visibleCandleCount, visibleCandleCloseTime, mode, totalCandleCount, causal, futureCandleAccess]
+        metrics: { $ref: "#/components/schemas/BacktestMetricSet" }
+        inSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        segments: { type: array, items: { $ref: "#/components/schemas/BacktestSegment" } }
+        trades: { type: array, items: { $ref: "#/components/schemas/BacktestTrade" } }
+        assumptions: { type: array, items: { type: string } }
+      required: [mode, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, assumptions]
 

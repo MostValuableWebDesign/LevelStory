@@ -7,6 +7,7 @@ import NotFound from '@/pages/not-found';
 import Dashboard from '@/pages/dashboard';
 import Journal from '@/pages/journal';
 import Settings from '@/pages/settings';
+import Backtest from '@/pages/backtest';
 import {
   Route,
   Switch,
@@ -25,6 +26,7 @@ function Router() {
          <Route path="/" component={Dashboard} />
          <Route path="/journal" component={Journal} />
          <Route path="/settings" component={Settings} />
+          <Route path="/backtest" component={Backtest} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

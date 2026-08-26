@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/strategy/strategy.test.ts ../artifacts/api-server/src/lib/futures/futures.test.ts ../artifacts/api-server/src/lib/futures/session-calendar.test.ts ../artifacts/api-server/src/lib/strategy/levels.test.ts ../artifacts/api-server/src/lib/strategy/phase3.test.ts ../artifacts/api-server/src/lib/strategy/phase4.test.ts ../artifacts/api-server/src/lib/strategy/phase5.test.ts ../artifacts/api-server/src/lib/strategy/phase6.test.ts ../artifacts/api-server/src/lib/strategy/phase7.test.ts ../artifacts/api-server/src/lib/strategy/phase8.test.ts"
+    "test": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/strategy/strategy.test.ts ../artifacts/api-server/src/lib/futures/futures.test.ts ../artifacts/api-server/src/lib/futures/session-calendar.test.ts ../artifacts/api-server/src/lib/strategy/levels.test.ts ../artifacts/api-server/src/lib/strategy/phase3.test.ts ../artifacts/api-server/src/lib/strategy/phase4.test.ts ../artifacts/api-server/src/lib/strategy/phase5.test.ts ../artifacts/api-server/src/lib/strategy/phase6.test.ts ../artifacts/api-server/src/lib/strategy/phase7.test.ts ../artifacts/api-server/src/lib/strategy/phase8.test.ts ../artifacts/api-server/src/lib/phase9.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

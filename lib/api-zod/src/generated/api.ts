@@ -595,6 +595,190 @@ export const GetDashboardOverviewResponse = zod.object({
 
 
 /**
+ * Replays deterministic futures data through the existing strategy without future-candle access, broker access, or order creation.
+ * @summary Run a causal shadow backtest
+ */
+export const runBacktestBodySymbolDefault = `MES`;
+export const runBacktestBodySymbolMax = 12;
+
+export const runBacktestBodyEndDateDefault = `2026-08-25`;
+export const runBacktestBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const runBacktestBodyInSampleDaysDefault = 5;
+export const runBacktestBodyInSampleDaysMax = 30;
+
+export const runBacktestBodyOutOfSampleDaysDefault = 2;
+export const runBacktestBodyOutOfSampleDaysMax = 10;
+
+export const runBacktestBodySeedDefault = 11;
+export const runBacktestBodySeedMax = 100000;
+
+export const runBacktestBodyPremarketAvailableDefault = true;
+export const runBacktestBodyTargetDollarsDefault = 75;
+export const runBacktestBodyTargetDollarsMin = 50;
+export const runBacktestBodyTargetDollarsMax = 100;
+
+export const runBacktestBodySlippageModeDefault = `normal`;
+
+export const RunBacktestBody = zod.object({
+  "symbol": zod.string().min(1).max(runBacktestBodySymbolMax).default(runBacktestBodySymbolDefault),
+  "endDate": zod.string().regex(runBacktestBodyEndDateRegExp).default(runBacktestBodyEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(runBacktestBodyInSampleDaysMax).default(runBacktestBodyInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(runBacktestBodyOutOfSampleDaysMax).default(runBacktestBodyOutOfSampleDaysDefault),
+  "seed": zod.number().min(1).max(runBacktestBodySeedMax).default(runBacktestBodySeedDefault),
+  "premarketAvailable": zod.boolean().default(runBacktestBodyPremarketAvailableDefault),
+  "targetDollars": zod.number().min(runBacktestBodyTargetDollarsMin).max(runBacktestBodyTargetDollarsMax).default(runBacktestBodyTargetDollarsDefault),
+  "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault)
+})
+
+export const RunBacktestResponse = zod.object({
+  "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
+  "symbol": zod.string(),
+  "contract": zod.object({
+  "rootSymbol": zod.string(),
+  "fullContractSymbol": zod.string(),
+  "exchange": zod.string(),
+  "contractMonth": zod.string(),
+  "tickSize": zod.number(),
+  "dollarValuePerTick": zod.number(),
+  "pointValue": zod.number(),
+  "contractMultiplier": zod.number(),
+  "regularSessionHours": zod.object({
+  "timeZone": zod.string(),
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "commissionPerContract": zod.number(),
+  "exchangeAndRegulatoryFeesPerContract": zod.number(),
+  "exchangeFeePerContract": zod.number(),
+  "regulatoryFeePerContract": zod.number(),
+  "clearingFeePerContract": zod.number(),
+  "maximumSpreadTicks": zod.number(),
+  "minimumLiquidity": zod.number(),
+  "rolloverDate": zod.string(),
+  "configurable": zod.boolean(),
+  "verificationNote": zod.string()
+}),
+  "dataResolution": zod.enum(['tick', 'one-minute-fallback']),
+  "dataset": zod.object({
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "inSampleDates": zod.array(zod.string()),
+  "outOfSampleDates": zod.array(zod.string()),
+  "untouchedOutOfSample": zod.literal(true),
+  "optimizationApplied": zod.literal(false)
+}),
+  "replay": zod.object({
+  "cursor": zod.number(),
+  "visibleCandleCount": zod.number(),
+  "visibleCandleCloseTime": zod.number().nullable(),
+  "mode": zod.enum(['replay']),
+  "totalCandleCount": zod.number(),
+  "causal": zod.literal(true),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "metrics": zod.object({
+  "tradeCount": zod.number(),
+  "winRate": zod.number(),
+  "averageWin": zod.number().nullable(),
+  "averageLoss": zod.number().nullable(),
+  "expectancy": zod.number().nullable(),
+  "profitFactor": zod.number().nullable(),
+  "maximumDrawdown": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "ambiguousTradeCount": zod.number(),
+  "rejectedSetupCount": zod.number()
+}),
+  "inSample": zod.object({
+  "tradeCount": zod.number(),
+  "winRate": zod.number(),
+  "averageWin": zod.number().nullable(),
+  "averageLoss": zod.number().nullable(),
+  "expectancy": zod.number().nullable(),
+  "profitFactor": zod.number().nullable(),
+  "maximumDrawdown": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "ambiguousTradeCount": zod.number(),
+  "rejectedSetupCount": zod.number()
+}),
+  "outOfSample": zod.object({
+  "tradeCount": zod.number(),
+  "winRate": zod.number(),
+  "averageWin": zod.number().nullable(),
+  "averageLoss": zod.number().nullable(),
+  "expectancy": zod.number().nullable(),
+  "profitFactor": zod.number().nullable(),
+  "maximumDrawdown": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "ambiguousTradeCount": zod.number(),
+  "rejectedSetupCount": zod.number()
+}),
+  "segments": zod.array(zod.object({
+  "tradeCount": zod.number(),
+  "winRate": zod.number(),
+  "averageWin": zod.number().nullable(),
+  "averageLoss": zod.number().nullable(),
+  "expectancy": zod.number().nullable(),
+  "profitFactor": zod.number().nullable(),
+  "maximumDrawdown": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "ambiguousTradeCount": zod.number(),
+  "rejectedSetupCount": zod.number()
+}).and(zod.object({
+  "dimension": zod.string(),
+  "value": zod.string()
+}))),
+  "trades": zod.array(zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.string(),
+  "exitTime": zod.string(),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'manual']),
+  "ambiguityLabel": zod.union([zod.literal('AMBIGUOUS_STOP_FIRST'),zod.literal('AMBIGUOUS_ENTRY_INVALIDATION'),zod.literal(null)]).nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+})
+})),
+  "assumptions": zod.array(zod.string())
+})
+
+
+/**
  * @summary List shadow journal entries
  */
 export const listJournalEntriesQueryLimitDefault = 20;

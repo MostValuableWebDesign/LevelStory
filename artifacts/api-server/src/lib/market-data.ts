@@ -310,34 +310,55 @@ type Phase7Input = {
   averagingDown?: boolean;
 };
 
-export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput, manualFibAnchors?: ManualFibAnchors, phase7Input?: Phase7Input): MarketSnapshot {
+export type ReplaySnapshotOptions = {
+  tradingDate?: string;
+  cursor?: number;
+  allCandles?: readonly SimulatedFuturesCandle[];
+  historicalFeed?: readonly SimulatedFuturesCandle[];
+  premarketAvailable?: boolean;
+};
+
+export function createMarketSnapshot(
+  symbol: string,
+  session: string,
+  riskInput?: RiskInput,
+  manualFibAnchors?: ManualFibAnchors,
+  phase7Input?: Phase7Input,
+  replayOptions?: ReplaySnapshotOptions,
+): MarketSnapshot {
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
   const config = strategyConfig();
   const calendar = sessionCalendarForContract(specification);
-  const allCandles = generateSimulatedFuturesFeed(specification, {
-    calendar,
-    days: config.simulationDays,
-    seed: config.simulationSeed,
-    includePremarket: true,
-    startDate: CURRENT_TRADING_DATE,
-  });
-  const historicalFeed = generateSimulatedFuturesFeed(specification, {
-    calendar,
-    days: config.historicalLookbackTradingDays,
-    seed: config.simulationSeed,
-    includePremarket: false,
-    startDate: CURRENT_TRADING_DATE,
-  });
-  const currentCursor = session === "premarket"
-    ? timestampForTradingDate(CURRENT_TRADING_DATE, "09:20", calendar)
-    : timestampForTradingDate(CURRENT_TRADING_DATE, "13:00", calendar);
+  const tradingDate = replayOptions?.tradingDate ?? CURRENT_TRADING_DATE;
+  const premarketAvailable = replayOptions?.premarketAvailable !== false;
+  const allCandles = replayOptions?.allCandles
+    ? [...replayOptions.allCandles]
+    : generateSimulatedFuturesFeed(specification, {
+        calendar,
+        days: config.simulationDays,
+        seed: config.simulationSeed,
+        includePremarket: premarketAvailable,
+        startDate: tradingDate,
+      });
+  const historicalFeed = replayOptions?.historicalFeed
+    ? [...replayOptions.historicalFeed]
+    : generateSimulatedFuturesFeed(specification, {
+        calendar,
+        days: config.historicalLookbackTradingDays,
+        seed: config.simulationSeed,
+        includePremarket: false,
+        startDate: tradingDate,
+      });
+  const currentCursor = replayOptions?.cursor ?? (session === "premarket"
+    ? timestampForTradingDate(tradingDate, "09:20", calendar)
+    : timestampForTradingDate(tradingDate, "13:00", calendar));
   const visible = completedSimulatedCandles(allCandles, currentCursor);
   const historicalHourly = completedSimulatedHourlyCandles(
     completedSimulatedCandles(historicalFeed, currentCursor),
     calendar,
   );
-  const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === CURRENT_TRADING_DATE);
+  const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === tradingDate);
   const premarket = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "premarket");
   const regular = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "regular");
   const levels = sessionLevels(
@@ -345,8 +366,8 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     {
       premarket,
       regular,
-      tradingDate: CURRENT_TRADING_DATE,
-      premarketAvailable: true,
+       tradingDate,
+       premarketAvailable,
       replayCursor: currentCursor,
       historicalHourly,
     },
