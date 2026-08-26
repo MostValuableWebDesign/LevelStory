@@ -1,0 +1,116 @@
+
+
+
+
+Phase 4 — Breakout, pullback, Fibonacci and volume
+Use High effort.
+Implement only Phase 4 of LevelStory.
+
+ORB BREAKOUT
+
+A valid initial breakout event requires:
+
+- NTZ is complete
+- A completed 5-minute candle closes outside the NTZ
+- Breakout direction is recorded
+- Distance outside the NTZ is recorded
+- Breakout volume is recorded
+
+Do not create an entry directly from this breakout.
+
+PULLBACK
+
+Detect when price subsequently:
+
+- Touches a qualifying level
+- Comes within proximity
+- Breaks and reclaims it
+- Holds it
+- Consolidates near it
+- Breaks through it
+
+Qualifying levels include:
+
+- NTZ/ORB boundary
+- Premarket high/low
+- Yesterday’s high/low
+- Two-days-ago high/low
+- VWAP
+- 200 EMA
+- Major hourly level
+- Fibonacci level
+- Confluence level
+
+Initial proximity:
+
+Maximum of:
+
+- Two ticks
+- 0.10 of 5-minute 14-period ATR
+
+Initial maximum pullback duration:
+
+- Six completed 5-minute candles
+- Thirty minutes
+
+FIBONACCI
+
+For bullish setups:
+
+- Anchor from impulse swing low to breakout swing high
+
+For bearish setups:
+
+- Anchor from impulse swing high to breakout swing low
+
+Freeze anchors once the pullback begins.
+
+Allow manual anchor correction.
+
+Display:
+
+- 0%
+- 23.6%
+- 38.2%
+- 40%
+- 50%
+- 61.8%
+- 78.6%
+- 100%
+
+Classify:
+
+- Below 38.2%: shallow
+- 38.2%–50%: normal
+- 50%–61.8%: deep
+- Above 61.8%: elevated failure risk
+- 100%: original impulse fully retraced
+
+Do not treat Fibonacci depth alone as proof of reversal.
+
+VOLUME
+
+Use the previous six completed 5-minute candles as the primary volume baseline.
+
+Initial supporting breakout volume:
+
+- At least 1.25 times the baseline
+
+Compare pullback volume with:
+
+- Breakout volume
+- Average impulse volume
+- Recent six-candle average
+
+Equal or higher opposing volume creates:
+
+HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL
+
+Keep Fibonacci depth and volume strength as separate variables.
+
+TESTS
+
+Add tests for breakout close, pullback detection, proximity, frozen Fibonacci anchors, retracement classifications, recent-volume baseline, supporting breakout volume, and reversal warnings.
+
+Do not implement entries yet.
+
