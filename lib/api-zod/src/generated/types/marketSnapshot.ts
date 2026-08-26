@@ -6,10 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Candle } from './candle';
+import type { LevelStoryEvent } from './levelStoryEvent';
 import type { MarketSnapshotIndicators } from './marketSnapshotIndicators';
 import type { MarketSnapshotLevels } from './marketSnapshotLevels';
 import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
+import type { NtzState } from './ntzState';
+import type { ReplayMetadata } from './replayMetadata';
+import type { ReversalState } from './reversalState';
+import type { RiskPlan } from './riskPlan';
 import type { Signal } from './signal';
+import type { StrategyDecision } from './strategyDecision';
+import type { TrendEvidence } from './trendEvidence';
 
 export interface MarketSnapshot {
   symbol: string;
@@ -20,8 +27,16 @@ export interface MarketSnapshot {
   marketStatus: MarketSnapshotMarketStatus;
   session: string;
   updatedAt: string;
+  replay: ReplayMetadata;
   candles: Candle[];
   levels: MarketSnapshotLevels;
+  ntz: NtzState;
   indicators: MarketSnapshotIndicators;
+  trend: TrendEvidence;
   signals: Signal[];
+  decision: StrategyDecision;
+  riskPlan: RiskPlan;
+  levelStory: LevelStoryEvent[];
+  reversal: ReversalState;
+  assumptions: string[];
 }

@@ -1,1 +1,2 @@
 - [OpenAPI numeric validation](openapi-numeric-validation.md) — this workspace's generated Zod runtime does not support OpenAPI integer schemas; use numeric boundaries at the contract edge when needed.
+- [TypeScript test execution](typescript-test-execution.md) — source files use .js ESM specifiers, so direct Node test execution cannot resolve them; run tests through the workspace TypeScript runner.

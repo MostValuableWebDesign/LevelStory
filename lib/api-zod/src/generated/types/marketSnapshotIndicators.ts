@@ -7,10 +7,24 @@
  */
 
 export type MarketSnapshotIndicators = {
-  rsi: number;
-  ema200: number;
-  fib382: number;
-  fib5: number;
-  fib618: number;
-  volumeRatio: number;
+  /** @nullable */
+  rsi: number | null;
+  /** @nullable */
+  ema200: number | null;
+  /** @nullable */
+  emaSlope: number | null;
+  /** @nullable */
+  vwap: number | null;
+  /** @nullable */
+  fib236: number | null;
+  /** @nullable */
+  fib382: number | null;
+  /** @nullable */
+  fib5: number | null;
+  /** @nullable */
+  fib618: number | null;
+  /** @nullable */
+  fib786: number | null;
+  /** @nullable */
+  volumeRatio: number | null;
 };

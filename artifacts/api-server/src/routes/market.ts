@@ -10,14 +10,15 @@ function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect) {
   return { ...entry, createdAt: entry.createdAt.toISOString() };
 }
 
-router.get("/market/snapshot", (req, res): void => {
+router.get("/market/snapshot", async (req, res): Promise<void> => {
   const parsed = GetMarketSnapshotQueryParams.safeParse(req.query);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid market snapshot query");
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session)));
+  const [risk] = await db.select().from(riskSettingsTable).limit(1);
+  res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk)));
 });
 
 router.get("/dashboard/overview", async (_req, res): Promise<void> => {

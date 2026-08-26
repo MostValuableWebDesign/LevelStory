@@ -15,11 +15,14 @@ export interface ErrorResponse {
 
 export interface Candle {
   time: string;
+  openTime: string;
+  closeTime: string;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+  isComplete: boolean;
 }
 
 export type SignalKey = typeof SignalKey[keyof typeof SignalKey];
@@ -48,6 +51,111 @@ export interface Signal {
   detail: string;
 }
 
+export interface ReplayMetadata {
+  cursor: string;
+  visibleCandleCount: number;
+  timeZone: string;
+}
+
+export interface CriticalLevel {
+  name: string;
+  price: number;
+  kind: string;
+}
+
+export type NtzStateStatus = typeof NtzStateStatus[keyof typeof NtzStateStatus];
+
+
+export const NtzStateStatus = {
+  pending: 'pending',
+  inside: 'inside',
+  outside: 'outside',
+} as const;
+
+export interface NtzState {
+  status: NtzStateStatus;
+  complete: boolean;
+}
+
+export type TrendEvidenceDirection = typeof TrendEvidenceDirection[keyof typeof TrendEvidenceDirection];
+
+
+export const TrendEvidenceDirection = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+export interface TrendEvidence {
+  direction: TrendEvidenceDirection;
+  score: number;
+  evidence: string[];
+  structure: string;
+}
+
+export interface RuleEvidence {
+  key: string;
+  label: string;
+  detail: string;
+}
+
+export type StrategyDecisionState = typeof StrategyDecisionState[keyof typeof StrategyDecisionState];
+
+
+export const StrategyDecisionState = {
+  NO_TRADE: 'NO TRADE',
+  WAITING: 'WAITING',
+  SETUP_FORMING: 'SETUP FORMING',
+  SETUP_QUALIFIED: 'SETUP QUALIFIED',
+  POSSIBLE_REVERSAL: 'POSSIBLE REVERSAL',
+  RISK_LOCKOUT: 'RISK LOCKOUT',
+} as const;
+
+export interface StrategyDecision {
+  state: StrategyDecisionState;
+  explanation: string;
+  passedRules: RuleEvidence[];
+  failedRules: RuleEvidence[];
+}
+
+export type RiskPlanDirection = typeof RiskPlanDirection[keyof typeof RiskPlanDirection];
+
+
+export const RiskPlanDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export interface RiskPlan {
+  direction: RiskPlanDirection;
+  /** @nullable */
+  entry: number | null;
+  /** @nullable */
+  thesisStop: number | null;
+  /** @nullable */
+  catastropheStop: number | null;
+  /** @nullable */
+  target: number | null;
+  shares: number;
+  dollarRisk: number;
+  allowed: boolean;
+  reasons: string[];
+}
+
+export interface LevelStoryEvent {
+  time: string;
+  level: string;
+  interaction: string;
+  detail: string;
+}
+
+export interface ReversalState {
+  doji: boolean;
+  equivalentCandles: boolean;
+  /** @nullable */
+  warning: string | null;
+}
+
 export type MarketSnapshotMarketStatus = typeof MarketSnapshotMarketStatus[keyof typeof MarketSnapshotMarketStatus];
 
 
@@ -63,17 +171,46 @@ export type MarketSnapshotLevels = {
   previousDayHigh: number;
   previousDayLow: number;
   previousDayClose: number;
-  openingRangeHigh: number;
-  openingRangeLow: number;
+  /** @nullable */
+  dayBeforeYesterdayHigh: number | null;
+  /** @nullable */
+  dayBeforeYesterdayLow: number | null;
+  /** @nullable */
+  openingRangeHigh: number | null;
+  /** @nullable */
+  openingRangeLow: number | null;
+  /** @nullable */
+  ntzHigh: number | null;
+  /** @nullable */
+  ntzLow: number | null;
+  /** @nullable */
+  ntzWidth: number | null;
+  /** @nullable */
+  vwap: number | null;
+  critical: CriticalLevel[];
 };
 
 export type MarketSnapshotIndicators = {
-  rsi: number;
-  ema200: number;
-  fib382: number;
-  fib5: number;
-  fib618: number;
-  volumeRatio: number;
+  /** @nullable */
+  rsi: number | null;
+  /** @nullable */
+  ema200: number | null;
+  /** @nullable */
+  emaSlope: number | null;
+  /** @nullable */
+  vwap: number | null;
+  /** @nullable */
+  fib236: number | null;
+  /** @nullable */
+  fib382: number | null;
+  /** @nullable */
+  fib5: number | null;
+  /** @nullable */
+  fib618: number | null;
+  /** @nullable */
+  fib786: number | null;
+  /** @nullable */
+  volumeRatio: number | null;
 };
 
 export interface MarketSnapshot {
@@ -85,10 +222,18 @@ export interface MarketSnapshot {
   marketStatus: MarketSnapshotMarketStatus;
   session: string;
   updatedAt: string;
+  replay: ReplayMetadata;
   candles: Candle[];
   levels: MarketSnapshotLevels;
+  ntz: NtzState;
   indicators: MarketSnapshotIndicators;
+  trend: TrendEvidence;
   signals: Signal[];
+  decision: StrategyDecision;
+  riskPlan: RiskPlan;
+  levelStory: LevelStoryEvent[];
+  reversal: ReversalState;
+  assumptions: string[];
 }
 
 export type JournalEntrySide = typeof JournalEntrySide[keyof typeof JournalEntrySide];

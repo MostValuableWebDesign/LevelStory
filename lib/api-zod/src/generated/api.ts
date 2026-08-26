@@ -40,13 +40,21 @@ export const GetMarketSnapshotResponse = zod.object({
   "marketStatus": zod.enum(['premarket', 'open', 'closed']),
   "session": zod.string(),
   "updatedAt": zod.string(),
+  "replay": zod.object({
+  "cursor": zod.string(),
+  "visibleCandleCount": zod.number(),
+  "timeZone": zod.string()
+}),
   "candles": zod.array(zod.object({
   "time": zod.string(),
+  "openTime": zod.string(),
+  "closeTime": zod.string(),
   "open": zod.number(),
   "high": zod.number(),
   "low": zod.number(),
   "close": zod.number(),
-  "volume": zod.number()
+  "volume": zod.number(),
+  "isComplete": zod.boolean()
 })),
   "levels": zod.object({
   "premarketHigh": zod.number(),
@@ -54,23 +62,85 @@ export const GetMarketSnapshotResponse = zod.object({
   "previousDayHigh": zod.number(),
   "previousDayLow": zod.number(),
   "previousDayClose": zod.number(),
-  "openingRangeHigh": zod.number(),
-  "openingRangeLow": zod.number()
+  "dayBeforeYesterdayHigh": zod.number().nullable(),
+  "dayBeforeYesterdayLow": zod.number().nullable(),
+  "openingRangeHigh": zod.number().nullable(),
+  "openingRangeLow": zod.number().nullable(),
+  "ntzHigh": zod.number().nullable(),
+  "ntzLow": zod.number().nullable(),
+  "ntzWidth": zod.number().nullable(),
+  "vwap": zod.number().nullable(),
+  "critical": zod.array(zod.object({
+  "name": zod.string(),
+  "price": zod.number(),
+  "kind": zod.string()
+}))
+}),
+  "ntz": zod.object({
+  "status": zod.enum(['pending', 'inside', 'outside']),
+  "complete": zod.boolean()
 }),
   "indicators": zod.object({
-  "rsi": zod.number(),
-  "ema200": zod.number(),
-  "fib382": zod.number(),
-  "fib5": zod.number(),
-  "fib618": zod.number(),
-  "volumeRatio": zod.number()
+  "rsi": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "emaSlope": zod.number().nullable(),
+  "vwap": zod.number().nullable(),
+  "fib236": zod.number().nullable(),
+  "fib382": zod.number().nullable(),
+  "fib5": zod.number().nullable(),
+  "fib618": zod.number().nullable(),
+  "fib786": zod.number().nullable(),
+  "volumeRatio": zod.number().nullable()
+}),
+  "trend": zod.object({
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "score": zod.number(),
+  "evidence": zod.array(zod.string()),
+  "structure": zod.string()
 }),
   "signals": zod.array(zod.object({
   "key": zod.enum(['orb', 'pullback', 'patience', 'volume']),
   "label": zod.string(),
   "status": zod.enum(['confirmed', 'watching', 'blocked']),
   "detail": zod.string()
+})),
+  "decision": zod.object({
+  "state": zod.enum(['NO TRADE', 'WAITING', 'SETUP FORMING', 'SETUP QUALIFIED', 'POSSIBLE REVERSAL', 'RISK LOCKOUT']),
+  "explanation": zod.string(),
+  "passedRules": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "detail": zod.string()
+})),
+  "failedRules": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "detail": zod.string()
 }))
+}),
+  "riskPlan": zod.object({
+  "direction": zod.enum(['long', 'short']),
+  "entry": zod.number().nullable(),
+  "thesisStop": zod.number().nullable(),
+  "catastropheStop": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "shares": zod.number(),
+  "dollarRisk": zod.number(),
+  "allowed": zod.boolean(),
+  "reasons": zod.array(zod.string())
+}),
+  "levelStory": zod.array(zod.object({
+  "time": zod.string(),
+  "level": zod.string(),
+  "interaction": zod.string(),
+  "detail": zod.string()
+})),
+  "reversal": zod.object({
+  "doji": zod.boolean(),
+  "equivalentCandles": zod.boolean(),
+  "warning": zod.string().nullable()
+}),
+  "assumptions": zod.array(zod.string())
 })
 
 

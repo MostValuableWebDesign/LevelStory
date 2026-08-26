@@ -8,9 +8,12 @@
 
 export interface Candle {
   time: string;
+  openTime: string;
+  closeTime: string;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+  isComplete: boolean;
 }

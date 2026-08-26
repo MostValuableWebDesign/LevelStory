@@ -200,6 +200,10 @@ components:
       properties:
         time:
           type: string
+        openTime:
+          type: string
+        closeTime:
+          type: string
         open:
           type: number
         high:
@@ -210,7 +214,9 @@ components:
           type: number
         volume:
           type: number
-      required: [time, open, high, low, close, volume]
+        isComplete:
+          type: boolean
+      required: [time, openTime, closeTime, open, high, low, close, volume, isComplete]
     Signal:
       type: object
       properties:
@@ -225,6 +231,124 @@ components:
         detail:
           type: string
       required: [key, label, status, detail]
+    ReplayMetadata:
+      type: object
+      properties:
+        cursor:
+          type: string
+        visibleCandleCount:
+          type: number
+        timeZone:
+          type: string
+      required: [cursor, visibleCandleCount, timeZone]
+    CriticalLevel:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        kind:
+          type: string
+      required: [name, price, kind]
+    NtzState:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, inside, outside]
+        complete:
+          type: boolean
+      required: [status, complete]
+    TrendEvidence:
+      type: object
+      properties:
+        direction:
+          type: string
+          enum: [bullish, bearish, neutral]
+        score:
+          type: number
+        evidence:
+          type: array
+          items:
+            type: string
+        structure:
+          type: string
+      required: [direction, score, evidence, structure]
+    RuleEvidence:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        detail:
+          type: string
+      required: [key, label, detail]
+    StrategyDecision:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: ["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "RISK LOCKOUT"]
+        explanation:
+          type: string
+        passedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleEvidence"
+        failedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleEvidence"
+      required: [state, explanation, passedRules, failedRules]
+    RiskPlan:
+      type: object
+      properties:
+        direction:
+          type: string
+          enum: [long, short]
+        entry:
+          type: ["number", "null"]
+        thesisStop:
+          type: ["number", "null"]
+        catastropheStop:
+          type: ["number", "null"]
+        target:
+          type: ["number", "null"]
+        shares:
+          type: number
+        dollarRisk:
+          type: number
+        allowed:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+      required: [direction, entry, thesisStop, catastropheStop, target, shares, dollarRisk, allowed, reasons]
+    LevelStoryEvent:
+      type: object
+      properties:
+        time:
+          type: string
+        level:
+          type: string
+        interaction:
+          type: string
+        detail:
+          type: string
+      required: [time, level, interaction, detail]
+    ReversalState:
+      type: object
+      properties:
+        doji:
+          type: boolean
+        equivalentCandles:
+          type: boolean
+        warning:
+          type: ["string", "null"]
+      required: [doji, equivalentCandles, warning]
     MarketSnapshot:
       type: object
       properties:
@@ -245,6 +369,8 @@ components:
           type: string
         updatedAt:
           type: string
+        replay:
+          $ref: "#/components/schemas/ReplayMetadata"
         candles:
           type: array
           items:
@@ -257,24 +383,56 @@ components:
             previousDayHigh: { type: number }
             previousDayLow: { type: number }
             previousDayClose: { type: number }
-            openingRangeHigh: { type: number }
-            openingRangeLow: { type: number }
-          required: [premarketHigh, premarketLow, previousDayHigh, previousDayLow, previousDayClose, openingRangeHigh, openingRangeLow]
+            dayBeforeYesterdayHigh: { type: ["number", "null"] }
+            dayBeforeYesterdayLow: { type: ["number", "null"] }
+            openingRangeHigh: { type: ["number", "null"] }
+            openingRangeLow: { type: ["number", "null"] }
+            ntzHigh: { type: ["number", "null"] }
+            ntzLow: { type: ["number", "null"] }
+            ntzWidth: { type: ["number", "null"] }
+            vwap: { type: ["number", "null"] }
+            critical:
+              type: array
+              items:
+                $ref: "#/components/schemas/CriticalLevel"
+          required: [premarketHigh, premarketLow, previousDayHigh, previousDayLow, previousDayClose, dayBeforeYesterdayHigh, dayBeforeYesterdayLow, openingRangeHigh, openingRangeLow, ntzHigh, ntzLow, ntzWidth, vwap, critical]
+        ntz:
+          $ref: "#/components/schemas/NtzState"
         indicators:
           type: object
           properties:
-            rsi: { type: number }
-            ema200: { type: number }
-            fib382: { type: number }
-            fib5: { type: number }
-            fib618: { type: number }
-            volumeRatio: { type: number }
-          required: [rsi, ema200, fib382, fib5, fib618, volumeRatio]
+            rsi: { type: ["number", "null"] }
+            ema200: { type: ["number", "null"] }
+            emaSlope: { type: ["number", "null"] }
+            vwap: { type: ["number", "null"] }
+            fib236: { type: ["number", "null"] }
+            fib382: { type: ["number", "null"] }
+            fib5: { type: ["number", "null"] }
+            fib618: { type: ["number", "null"] }
+            fib786: { type: ["number", "null"] }
+            volumeRatio: { type: ["number", "null"] }
+          required: [rsi, ema200, emaSlope, vwap, fib236, fib382, fib5, fib618, fib786, volumeRatio]
+        trend:
+          $ref: "#/components/schemas/TrendEvidence"
         signals:
           type: array
           items:
             $ref: "#/components/schemas/Signal"
-      required: [symbol, company, price, change, changePercent, marketStatus, session, updatedAt, candles, levels, indicators, signals]
+        decision:
+          $ref: "#/components/schemas/StrategyDecision"
+        riskPlan:
+          $ref: "#/components/schemas/RiskPlan"
+        levelStory:
+          type: array
+          items:
+            $ref: "#/components/schemas/LevelStoryEvent"
+        reversal:
+          $ref: "#/components/schemas/ReversalState"
+        assumptions:
+          type: array
+          items:
+            type: string
+      required: [symbol, company, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, indicators, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

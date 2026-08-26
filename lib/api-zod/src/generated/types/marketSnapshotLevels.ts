@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CriticalLevel } from './criticalLevel';
 
 export type MarketSnapshotLevels = {
   premarketHigh: number;
@@ -12,6 +13,21 @@ export type MarketSnapshotLevels = {
   previousDayHigh: number;
   previousDayLow: number;
   previousDayClose: number;
-  openingRangeHigh: number;
-  openingRangeLow: number;
+  /** @nullable */
+  dayBeforeYesterdayHigh: number | null;
+  /** @nullable */
+  dayBeforeYesterdayLow: number | null;
+  /** @nullable */
+  openingRangeHigh: number | null;
+  /** @nullable */
+  openingRangeLow: number | null;
+  /** @nullable */
+  ntzHigh: number | null;
+  /** @nullable */
+  ntzLow: number | null;
+  /** @nullable */
+  ntzWidth: number | null;
+  /** @nullable */
+  vwap: number | null;
+  critical: CriticalLevel[];
 };
