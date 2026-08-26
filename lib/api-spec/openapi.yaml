@@ -673,6 +673,60 @@ components:
         warning:
           type: ["string", "null"]
       required: [doji, equivalentCandles, warning]
+    PatienceCandle:
+      type: object
+      properties:
+        openTime:
+          type: string
+        closeTime:
+          type: string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        isComplete:
+          type: boolean
+      required: [openTime, closeTime, open, high, low, close, isComplete]
+    PatienceAnalysis:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - WAITING FOR PATIENCE CANDLE
+            - PATIENCE CANDLE FORMING
+            - VALID PATIENCE CANDLE
+            - TRIGGER CANDLE ACTIVE
+            - ENTRY TRIGGERED
+            - INVALIDATED
+            - EXPIRED
+            - AMBIGUOUS
+        eligible:
+          type: boolean
+        eligibilityReason:
+          type: ["string", "null"]
+          enum: [pullback, consolidation, "ntz consolidation", null]
+        eligibilityTime:
+          type: ["string", "null"]
+        patienceCandle:
+          oneOf:
+            - $ref: "#/components/schemas/PatienceCandle"
+            - type: "null"
+        triggerCandle:
+          oneOf:
+            - $ref: "#/components/schemas/PatienceCandle"
+            - type: "null"
+        triggerPrice:
+          type: ["number", "null"]
+        stateTime:
+          type: ["string", "null"]
+        detail:
+          type: string
+      required: [state, eligible, eligibilityReason, eligibilityTime, patienceCandle, triggerCandle, triggerPrice, stateTime, detail]
     MarketSnapshot:
       type: object
       properties:
@@ -733,6 +787,8 @@ components:
           $ref: "#/components/schemas/BreakoutEvent"
         pullback:
           $ref: "#/components/schemas/PullbackAnalysis"
+        patience:
+          $ref: "#/components/schemas/PatienceAnalysis"
         fibonacci:
           $ref: "#/components/schemas/FibonacciAnalysis"
         volumeAnalysis:
@@ -779,7 +835,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

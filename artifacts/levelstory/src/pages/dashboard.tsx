@@ -72,6 +72,7 @@ export default function Dashboard() {
              const low = Number(fibLow);
              setAppliedFib(Number.isFinite(high) && Number.isFinite(low) ? { fibHigh: high, fibLow: low } : undefined);
            }} />
+           <PatiencePanel snapshot={snapshot} />
 
           <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
             <Panel>
@@ -155,6 +156,26 @@ function MajorLevelsPanel({ snapshot }: { snapshot: MarketSnapshot }) {
         <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{level.kind === "support" ? "Support" : "Resistance"}</span><span className={`rounded-sm px-2 py-1 text-[10px] font-bold uppercase ${level.confluence === "dynamite" ? "bg-accent text-accent-foreground" : level.confluence === "strong" ? "bg-secondary text-foreground" : "bg-muted text-muted-foreground"}`}>{level.confluence}</span></div><p className="mt-1 truncate text-[11px] text-muted-foreground">{level.components.join(" · ")}</p></div>
         <div className="flex shrink-0 items-center gap-5"><div><div className="mono text-sm font-medium">{level.price.toFixed(2)}</div><div className="text-[10px] text-muted-foreground">zone {level.zoneLow.toFixed(2)}–{level.zoneHigh.toFixed(2)}</div></div><div className="text-right"><div className="mono text-sm font-medium">{level.strength}</div><div className="text-[10px] text-muted-foreground">{level.reactionCount} reactions</div></div></div>
       </div>) : <div className="p-6 text-sm text-muted-foreground">No three-reaction hourly zones are available yet.</div>}
+    </div>
+  </Panel>;
+}
+
+function PatiencePanel({ snapshot }: { snapshot: MarketSnapshot }) {
+  const patience = snapshot.patience;
+  const candle = patience.patienceCandle;
+  const trigger = patience.triggerCandle;
+  const active = patience.state === "ENTRY TRIGGERED" || patience.state === "TRIGGER CANDLE ACTIVE";
+  const warning = patience.state === "INVALIDATED" || patience.state === "EXPIRED" || patience.state === "AMBIGUOUS";
+  return <Panel className={active ? "border-[hsl(var(--positive)/.3)]" : warning ? "border-destructive/30" : ""}>
+    <PanelTitle eyebrow="Phase 5 / exact timing" title="Patience-candle engine" right={<span className={`text-[10px] font-bold uppercase ${active ? "status-positive" : warning ? "status-negative" : "text-muted-foreground"}`} data-testid="patience-state">{patience.state}</span>} />
+    <div className="border-t border-border p-5 sm:p-6">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Eligibility</div><div className="mt-1 text-xs font-semibold uppercase">{patience.eligibilityReason ?? "Not opened"}</div><div className="mt-1 text-[10px] text-muted-foreground">{patience.eligibilityTime ? new Date(patience.eligibilityTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Patience range</div><div className="mono mt-1 text-sm">{candle ? `${candle.low.toFixed(2)} – ${candle.high.toFixed(2)}` : "—"}</div><div className="mt-1 text-[10px] text-muted-foreground">{candle?.isComplete ? "Closed and contained" : "Still forming"}</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">Trigger price</div><div className="mono mt-1 text-sm">{formatPrice(patience.triggerPrice)}</div><div className="mt-1 text-[10px] text-muted-foreground">{trigger ? "Immediate next candle" : "No trigger candle"}</div></div>
+      </div>
+      <p className="mt-4 text-xs leading-5 text-muted-foreground">{patience.detail}</p>
+      <LockedNote>Timing state is descriptive shadow analysis only. `ENTRY TRIGGERED` never creates a live or paper order.</LockedNote>
     </div>
   </Panel>;
 }

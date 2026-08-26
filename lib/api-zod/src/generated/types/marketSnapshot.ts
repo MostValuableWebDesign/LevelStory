@@ -17,6 +17,7 @@ import type { MarketSnapshotLevels } from './marketSnapshotLevels';
 import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
 import type { MarketSnapshotMode } from './marketSnapshotMode';
 import type { NtzState } from './ntzState';
+import type { PatienceAnalysis } from './patienceAnalysis';
 import type { PullbackAnalysis } from './pullbackAnalysis';
 import type { ReplayMetadata } from './replayMetadata';
 import type { ReversalState } from './reversalState';
@@ -44,6 +45,7 @@ export interface MarketSnapshot {
   ntz: NtzState;
   breakout: BreakoutEvent;
   pullback: PullbackAnalysis;
+  patience: PatienceAnalysis;
   fibonacci: FibonacciAnalysis;
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;

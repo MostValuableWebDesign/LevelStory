@@ -10,7 +10,11 @@ import {
   detectInitialBreakout,
   fibonacciAnalysis,
   phase4Volume,
+  phase5PatienceAnalysis,
   type ManualFibAnchors,
+  type PatienceAnalysis,
+  type PatienceEligibilityReason,
+  type PatienceState,
   type Candle as StrategyCandle,
   type DecisionState,
   type Direction,
@@ -121,6 +125,17 @@ export type MarketSnapshot = {
     proximityTolerance: number | null;
     atr14: number | null;
     qualifyingLevelCount: number;
+    detail: string;
+  };
+  patience: {
+    state: PatienceState;
+    eligible: boolean;
+    eligibilityReason: PatienceEligibilityReason | null;
+    eligibilityTime: string | null;
+    patienceCandle: PatienceCandleSummary | null;
+    triggerCandle: PatienceCandleSummary | null;
+    triggerPrice: number | null;
+    stateTime: string | null;
     detail: string;
   };
   fibonacci: {
@@ -277,6 +292,8 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
   const trend = trendEvidence(regular, levels, config);
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
+  const patienceDirection = breakout.direction ?? direction;
+  const patience = phase5PatienceAnalysis(regular, patienceDirection, pullback, levels.ntz, levels.ntzEvents);
   const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
   const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
@@ -388,6 +405,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
        qualifyingLevelCount: pullback.qualifyingLevelCount,
        detail: pullback.detail,
      },
+      patience: toApiPatience(patience),
      fibonacci: {
        direction: fibonacci.direction,
        impulseLow: fibonacci.impulseLow,
@@ -429,6 +447,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       `Trend classification requires ${config.trendCandleCount} completed 15-minute candles and remains descriptive only.`,
       `Phase 4 breakout support requires ${config.phase4BreakoutVolumeRatio.toFixed(2)}x the previous six completed five-minute candle volume average.`,
       `Phase 4 pullback proximity is the greater of ${config.phase4ProximityTicks} ticks and ${config.phase4ProximityAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period five-minute ATR, bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
+      "Patience-candle states are descriptive shadow analysis only; a trigger never creates a live or paper order.",
       `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
   };
@@ -469,6 +488,43 @@ function toApiCandle(candle: SimulatedFuturesCandle) {
     bidSize: candle.bidSize,
     askSize: candle.askSize,
     contractSymbol: candle.contractSymbol,
+  };
+}
+
+type PatienceCandleSummary = {
+  openTime: string;
+  closeTime: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  isComplete: boolean;
+};
+
+function toApiPatience(analysis: PatienceAnalysis): MarketSnapshot["patience"] {
+  return {
+    state: analysis.state,
+    eligible: analysis.eligible,
+    eligibilityReason: analysis.eligibilityReason,
+    eligibilityTime: analysis.eligibilityTime === null ? null : new Date(analysis.eligibilityTime).toISOString(),
+    patienceCandle: toApiPatienceCandle(analysis.patienceCandle),
+    triggerCandle: toApiPatienceCandle(analysis.triggerCandle),
+    triggerPrice: analysis.triggerPrice,
+    stateTime: analysis.stateTime === null ? null : new Date(analysis.stateTime).toISOString(),
+    detail: analysis.detail,
+  };
+}
+
+function toApiPatienceCandle(candle: PatienceAnalysis["patienceCandle"]): PatienceCandleSummary | null {
+  if (!candle) return null;
+  return {
+    openTime: new Date(candle.openTime).toISOString(),
+    closeTime: new Date(candle.closeTime).toISOString(),
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    isComplete: candle.isComplete,
   };
 }
 

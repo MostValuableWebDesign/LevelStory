@@ -463,6 +463,58 @@ export interface ReversalState {
   warning: string | null;
 }
 
+export interface PatienceCandle {
+  openTime: string;
+  closeTime: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  isComplete: boolean;
+}
+
+export type PatienceAnalysisState = typeof PatienceAnalysisState[keyof typeof PatienceAnalysisState];
+
+
+export const PatienceAnalysisState = {
+  WAITING_FOR_PATIENCE_CANDLE: 'WAITING FOR PATIENCE CANDLE',
+  PATIENCE_CANDLE_FORMING: 'PATIENCE CANDLE FORMING',
+  VALID_PATIENCE_CANDLE: 'VALID PATIENCE CANDLE',
+  TRIGGER_CANDLE_ACTIVE: 'TRIGGER CANDLE ACTIVE',
+  ENTRY_TRIGGERED: 'ENTRY TRIGGERED',
+  INVALIDATED: 'INVALIDATED',
+  EXPIRED: 'EXPIRED',
+  AMBIGUOUS: 'AMBIGUOUS',
+} as const;
+
+/**
+ * @nullable
+ */
+export type PatienceAnalysisEligibilityReason = typeof PatienceAnalysisEligibilityReason[keyof typeof PatienceAnalysisEligibilityReason] | null;
+
+
+export const PatienceAnalysisEligibilityReason = {
+  pullback: 'pullback',
+  consolidation: 'consolidation',
+  ntz_consolidation: 'ntz consolidation',
+} as const;
+
+export interface PatienceAnalysis {
+  state: PatienceAnalysisState;
+  eligible: boolean;
+  /** @nullable */
+  eligibilityReason: PatienceAnalysisEligibilityReason;
+  /** @nullable */
+  eligibilityTime: string | null;
+  patienceCandle: PatienceCandle | null;
+  triggerCandle: PatienceCandle | null;
+  /** @nullable */
+  triggerPrice: number | null;
+  /** @nullable */
+  stateTime: string | null;
+  detail: string;
+}
+
 export type MarketSnapshotMode = typeof MarketSnapshotMode[keyof typeof MarketSnapshotMode];
 
 
@@ -552,6 +604,7 @@ export interface MarketSnapshot {
   ntz: NtzState;
   breakout: BreakoutEvent;
   pullback: PullbackAnalysis;
+  patience: PatienceAnalysis;
   fibonacci: FibonacciAnalysis;
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;

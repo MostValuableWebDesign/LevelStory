@@ -168,6 +168,33 @@ export const GetMarketSnapshotResponse = zod.object({
   "qualifyingLevelCount": zod.number(),
   "detail": zod.string()
 }),
+  "patience": zod.object({
+  "state": zod.enum(['WAITING FOR PATIENCE CANDLE', 'PATIENCE CANDLE FORMING', 'VALID PATIENCE CANDLE', 'TRIGGER CANDLE ACTIVE', 'ENTRY TRIGGERED', 'INVALIDATED', 'EXPIRED', 'AMBIGUOUS']),
+  "eligible": zod.boolean(),
+  "eligibilityReason": zod.union([zod.literal('pullback'),zod.literal('consolidation'),zod.literal('ntz consolidation'),zod.literal(null)]).nullable(),
+  "eligibilityTime": zod.string().nullable(),
+  "patienceCandle": zod.union([zod.object({
+  "openTime": zod.string(),
+  "closeTime": zod.string(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "isComplete": zod.boolean()
+}),zod.null()]),
+  "triggerCandle": zod.union([zod.object({
+  "openTime": zod.string(),
+  "closeTime": zod.string(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "isComplete": zod.boolean()
+}),zod.null()]),
+  "triggerPrice": zod.number().nullable(),
+  "stateTime": zod.string().nullable(),
+  "detail": zod.string()
+}),
   "fibonacci": zod.object({
   "direction": zod.union([zod.literal('bullish'),zod.literal('bearish'),zod.literal(null)]).nullable(),
   "impulseLow": zod.number().nullable(),
