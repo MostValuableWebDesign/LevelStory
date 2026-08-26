@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { GetDashboardOverviewResponse, GetMarketSnapshotQueryParams, GetMarketSnapshotResponse } from "@workspace/api-zod";
+import { GetDashboardOverviewResponse, GetMarketSnapshotQueryParams, GetMarketSnapshotResponse, ListFuturesContractSpecificationsResponse } from "@workspace/api-zod";
 import { db, journalEntriesTable, riskSettingsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import { createMarketSnapshot } from "../lib/market-data";
+import { listFuturesContractSpecifications } from "../lib/futures/contracts";
 
 const router: IRouter = Router();
 
@@ -17,8 +18,18 @@ router.get("/market/snapshot", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [risk] = await db.select().from(riskSettingsTable).limit(1);
-  res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk)));
+  try {
+    const [risk] = await db.select().from(riskSettingsTable).limit(1);
+    res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk)));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid futures contract.";
+    req.log.warn({ error: message }, "Rejected market snapshot request");
+    res.status(400).json({ error: message });
+  }
+});
+
+router.get("/futures/contracts", (_req, res): void => {
+  res.json(ListFuturesContractSpecificationsResponse.parse(listFuturesContractSpecifications()));
 });
 
 router.get("/dashboard/overview", async (_req, res): Promise<void> => {

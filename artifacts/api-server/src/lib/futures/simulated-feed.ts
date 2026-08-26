@@ -1,4 +1,4 @@
-import type { FuturesContractSpecification } from "./contracts.js";
+import { roundToTick, type FuturesContractSpecification } from "./contracts.js";
 import { classifyFuturesSession, type FuturesSessionCalendar } from "./session-calendar.js";
 
 export type SimulatedFuturesCandle = {
@@ -74,10 +74,10 @@ export function generateSimulatedFuturesFeed(
       const premarket = minute < regularStart;
       const drift = dayOffset * -0.42 + (premarket ? 0.12 : 1 + index * 0.035);
       const wave = seededWave(index + dayOffset * 97, seed);
-      const close = Number((base + drift + wave).toFixed(2));
-      const open = Number((close - seededWave(index + 11, seed) * 0.22).toFixed(2));
-      const high = Number((Math.max(open, close) + 0.18 + (index % 3) * 0.03).toFixed(2));
-      const low = Number((Math.min(open, close) - 0.16 - (index % 2) * 0.03).toFixed(2));
+      const close = roundToTick(base + drift + wave, specification);
+      const open = roundToTick(close - seededWave(index + 11, seed) * 0.22, specification);
+      const high = roundToTick(Math.max(open, close) + 0.18 + (index % 3) * 0.03, specification);
+      const low = roundToTick(Math.min(open, close) - 0.16 - (index % 2) * 0.03, specification);
       const openTime = day + minute * MINUTE;
       const closeTime = openTime + interval;
       const spreadTicks = 1 + ((index + seed) % 2);
@@ -95,8 +95,8 @@ export function generateSimulatedFuturesFeed(
         low,
         close,
         volume,
-        bid: Number((close - spread / 2).toFixed(2)),
-        ask: Number((close + spread / 2).toFixed(2)),
+        bid: roundToTick(close - spread, specification),
+        ask: close,
         bidSize: 10 + ((index + seed) % 8) * 5,
         askSize: 10 + ((index + seed * 2) % 8) * 5,
         contractSymbol: specification.fullContractSymbol,

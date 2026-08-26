@@ -1,32 +1,49 @@
 import {
   candleAlert,
-  completedCandles,
   fullDecision,
   levelStory,
   positionSize,
   sessionLevels,
-  simulateFill,
   strategyConfig,
   trendEvidence,
   type Candle as StrategyCandle,
   type DecisionState,
   type Direction,
-  type RiskState,
   type StrategyConfig,
 } from "./strategy/index.js";
+import {
+  getFuturesContractSpecification,
+  roundToTick,
+  type FuturesContractSpecification,
+} from "./futures/contracts.js";
+import { sessionCalendarForContract } from "./futures/session-calendar.js";
+import {
+  completedSimulatedCandles,
+  generateSimulatedFuturesFeed,
+  type SimulatedFuturesCandle,
+} from "./futures/simulated-feed.js";
+import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
 
 export type MarketSnapshot = {
+  mode: typeof SHADOW_MODE_LABEL;
   symbol: string;
   company: string;
+  contract: FuturesContractSpecification;
+  sessionCalendar: {
+    timeZone: string;
+    premarket: { timeZone: string; start: string; end: string };
+    regular: { timeZone: string; start: string; end: string };
+  };
   price: number;
   change: number;
   changePercent: number;
   marketStatus: "premarket" | "open" | "closed";
   session: string;
   updatedAt: string;
-  replay: { cursor: string; visibleCandleCount: number; timeZone: string };
+  replay: { cursor: string; visibleCandleCount: number; timeZone: string; barIntervalMinutes: 5 };
   candles: Array<{
     time: string;
+    timestamp: string;
     openTime: string;
     closeTime: string;
     open: number;
@@ -35,6 +52,11 @@ export type MarketSnapshot = {
     close: number;
     volume: number;
     isComplete: boolean;
+    bid: number;
+    ask: number;
+    bidSize: number;
+    askSize: number;
+    contractSymbol: string;
   }>;
   levels: {
     premarketHigh: number | null;
@@ -84,7 +106,7 @@ export type MarketSnapshot = {
     thesisStop: number | null;
     catastropheStop: number | null;
     target: number | null;
-    shares: number;
+    contracts: number;
     dollarRisk: number;
     allowed: boolean;
     reasons: string[];
@@ -95,11 +117,10 @@ export type MarketSnapshot = {
 };
 
 const companies: Record<string, string> = {
-  AAPL: "Apple Inc.",
-  NVDA: "NVIDIA Corporation",
-  TSLA: "Tesla, Inc.",
-  AMD: "Advanced Micro Devices",
-  SPY: "SPDR S&P 500 ETF Trust",
+  MES: "Micro E-mini S&P 500 Futures",
+  ES: "E-mini S&P 500 Futures",
+  MNQ: "Micro E-mini Nasdaq-100 Futures",
+  NQ: "E-mini Nasdaq-100 Futures",
 };
 
 const CURRENT_DAY = Date.UTC(2026, 7, 25);
@@ -112,24 +133,31 @@ const SESSION_END = 16 * 60;
 type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
 
 export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput): MarketSnapshot {
-  const normalized = symbol.trim().toUpperCase();
-  const base = normalized === "NVDA" ? 183.42 : normalized === "TSLA" ? 344.18 : normalized === "AMD" ? 174.26 : normalized === "SPY" ? 646.32 : 126.84;
+  const specification = getFuturesContractSpecification(symbol);
+  const normalized = specification.rootSymbol;
   const config = strategyConfig();
-  const allCandles = generateSimulation(base);
+  const calendar = sessionCalendarForContract(specification);
+  const allCandles = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    days: config.simulationDays,
+    seed: config.simulationSeed,
+    includePremarket: true,
+    startDate: CURRENT_DAY,
+  });
   const currentCursor = session === "premarket"
     ? timestamp(CURRENT_DAY, 9 * 60 + 20)
     : timestamp(CURRENT_DAY, 13 * 60);
-  const visible = completedCandles({ candles: allCandles, cursor: currentCursor });
+  const visible = completedSimulatedCandles(allCandles, currentCursor);
   const currentDay = visible.filter(c => sameDay(c.openTime, CURRENT_DAY));
   const premarket = currentDay.filter(c => minuteOfDay(c.openTime) >= PREMARKET_START && minuteOfDay(c.openTime) < SESSION_START);
   const regular = currentDay.filter(c => minuteOfDay(c.openTime) >= SESSION_START && minuteOfDay(c.openTime) < SESSION_END);
   const levels = sessionLevels(visible, { premarket, regular }, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
-  const price = current?.close ?? base;
-  const previousClose = findPreviousClose(visible, CURRENT_DAY) ?? Number((base - 1.84).toFixed(2));
+  const price = current?.close ?? 0;
+  const previousClose = findPreviousClose(visible, CURRENT_DAY) ?? Number((price - specification.tickSize * 4).toFixed(2));
   const trend = trendEvidence(regular, levels);
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
-  const plan = buildRiskPlan(price, direction, levels, riskInput, config);
+  const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
   const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
   const evaluation = fullDecision(regular, levels, config, direction, riskGateAllowed);
@@ -164,15 +192,18 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
   const priorLevels = levels.levels.filter(level => !["ORB high", "ORB low", "NTZ high", "NTZ low"].includes(level.name));
   const critical = [...priorLevels, ...levels.fibonacci.filter(level => ["Fib 0.382", "Fib 0.5", "Fib 0.618"].includes(level.name) && Number.isFinite(level.price))].filter(level => Number.isFinite(level.price)).map(level => ({ name: level.name, price: Number(level.price.toFixed(2)), kind: level.kind ?? "reference" }));
   return {
+    mode: SHADOW_MODE_LABEL,
     symbol: normalized,
     company: companies[normalized] ?? `${normalized} Holdings`,
+    contract: specification,
+    sessionCalendar: calendar,
     price,
     change: Number((price - previousClose).toFixed(2)),
     changePercent: Number((((price - previousClose) / previousClose) * 100).toFixed(2)),
     marketStatus: session === "premarket" ? "premarket" : "open",
     session: session === "premarket" ? "Premarket" : "Regular session / replay",
     updatedAt: new Date(currentCursor).toISOString(),
-    replay: { cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "UTC exchange-local simulation" },
+    replay: { cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "UTC exchange-local simulation", barIntervalMinutes: config.barIntervalMinutes },
     candles: visible.map(toApiCandle),
     levels: {
       premarketHigh: finiteOrNull(currentLevels["Premarket high"]),
@@ -211,54 +242,47 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       "Simulation uses UTC as exchange-local time for deterministic replay.",
       `NTZ is the first completed ${config.ntzMinutes}-minute regular-session candle.`,
       `Volume safety uses a ${config.volumeLookback}-candle average and ${config.adverseVolumeRatio.toFixed(2)}x adverse-volume ratio.`,
-      `Simulated costs: $${config.spread.toFixed(2)} spread, $${config.slippage.toFixed(2)} slippage, $${config.feePerShare.toFixed(3)} per share.`,
+      `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
   };
 }
 
-function generateSimulation(base: number): StrategyCandle[] {
-  const candles: StrategyCandle[] = [];
-  for (let dayOffset = -3; dayOffset <= 0; dayOffset++) {
-    const day = CURRENT_DAY + dayOffset * DAY;
-    if (dayOffset === 0) {
-      for (let minute = PREMARKET_START; minute < SESSION_START; minute += 5) candles.push(makeCandle(day, minute, base, dayOffset, true));
-    }
-    for (let minute = SESSION_START; minute < SESSION_END; minute += 5) candles.push(makeCandle(day, minute, base, dayOffset, true));
-  }
-  return candles;
-}
-
-function makeCandle(day: number, minute: number, base: number, dayOffset: number, complete: boolean): StrategyCandle {
-  const index = Math.max(0, Math.round((minute - SESSION_START) / 5));
-  const premarket = minute < SESSION_START;
-  const dayBias = dayOffset * -0.42;
-  let close = base + dayBias;
-  if (premarket) close += 0.12 + Math.sin(index / 3) * 0.34;
-  else if (dayOffset === 0 && index < 3) close += Math.sin(index) * 0.08;
-  else if (dayOffset === 0 && index < 9) close += 0.35 + (index - 2) * 0.16;
-  else if (dayOffset === 0 && index < 14) close += 1.32 - (index - 9) * 0.12;
-  else close += 1.0 + index * 0.035 + Math.sin(index / 2.8) * 0.22;
-  close = Number(close.toFixed(2));
-  const open = Number((close - (Math.sin(index * 1.7 + dayOffset) * 0.22)).toFixed(2));
-  const high = Number((Math.max(open, close) + 0.18 + (index % 3) * 0.03).toFixed(2));
-  const low = Number((Math.min(open, close) - 0.16 - (index % 2) * 0.03).toFixed(2));
-  const openTime = timestamp(day, minute);
-  return { openTime, closeTime: openTime + 5 * MINUTE, open, high, low, close, volume: 120_000 + Math.max(index, 0) * 4_200 + (index % 5) * 13_000 + (dayOffset === 0 && index >= 3 && index < 9 ? 90_000 : 0), isComplete: complete };
-}
-
-function buildRiskPlan(entry: number, direction: Direction, levels: ReturnType<typeof sessionLevels>, input: RiskInput | undefined, config: StrategyConfig) {
+function buildRiskPlan(
+  entry: number,
+  direction: Direction,
+  levels: ReturnType<typeof sessionLevels>,
+  input: RiskInput | undefined,
+  config: StrategyConfig,
+  specification: FuturesContractSpecification,
+) {
   const risk = input ?? { accountSize: 25_000, riskPercent: 0.5, maxDailyLoss: 500, dailyLossUsed: 0, isLocked: false };
   const edge = direction === "long" ? levels.orb?.high : levels.orb?.low;
-  const thesisStop = edge === undefined ? null : direction === "long" ? edge - config.stopBuffer : edge + config.stopBuffer;
+  const thesisStop = edge === undefined ? null : roundToTick(direction === "long" ? edge - config.stopBuffer : edge + config.stopBuffer, specification);
   const target = direction === "long" ? levels.levels.find(level => level.price > entry + 0.5)?.price : [...levels.levels].reverse().find(level => level.price < entry - 0.5)?.price;
-  if (thesisStop === null) return { direction, entry: Number(entry.toFixed(2)), thesisStop, catastropheStop: null, target: target ?? null, shares: 0, dollarRisk: 0, allowed: false, reasons: ["No completed opening range; catastrophe stop cannot be defined."] };
-  const catastropheStop = direction === "long" ? thesisStop - 0.5 : thesisStop + 0.5;
-  const plan = positionSize(entry, catastropheStop, risk.accountSize, { dailyLoss: risk.dailyLossUsed, trades: 0, locked: risk.isLocked }, { ...config, riskPerTrade: risk.accountSize * risk.riskPercent / 100, dailyLossLimit: risk.maxDailyLoss });
-  return { direction, entry: Number(entry.toFixed(2)), thesisStop: Number(thesisStop.toFixed(2)), catastropheStop: Number(catastropheStop.toFixed(2)), target: target ? Number(target.toFixed(2)) : null, shares: plan.shares, dollarRisk: Number(plan.risk.toFixed(2)), allowed: plan.allowed, reasons: plan.allowed ? ["Risk formula passed; no live order is created."] : [plan.reason] };
+  if (thesisStop === null) return { direction, entry: Number(entry.toFixed(2)), thesisStop, catastropheStop: null, target: target ?? null, contracts: 0, dollarRisk: 0, allowed: false, reasons: ["No completed opening range; catastrophe stop cannot be defined."] };
+  const catastropheStop = roundToTick(direction === "long" ? thesisStop - 0.5 : thesisStop + 0.5, specification);
+  const plan = positionSize(entry, catastropheStop, risk.accountSize, { dailyLoss: risk.dailyLossUsed, trades: 0, locked: risk.isLocked }, { ...config, riskPerTrade: risk.accountSize * risk.riskPercent / 100, dailyLossLimit: risk.maxDailyLoss }, specification);
+  return { direction, entry: Number(entry.toFixed(2)), thesisStop: Number(thesisStop.toFixed(2)), catastropheStop: Number(catastropheStop.toFixed(2)), target: target ? Number(target.toFixed(2)) : null, contracts: plan.contracts, dollarRisk: Number(plan.risk.toFixed(2)), allowed: plan.allowed, reasons: plan.allowed ? ["Risk formula passed; no live order is created."] : [plan.reason] };
 }
 
-function toApiCandle(candle: StrategyCandle) {
-  return { time: new Date(candle.openTime).toISOString(), openTime: new Date(candle.openTime).toISOString(), closeTime: new Date(candle.closeTime).toISOString(), open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume, isComplete: candle.isComplete };
+function toApiCandle(candle: SimulatedFuturesCandle) {
+  return {
+    time: new Date(candle.openTime).toISOString(),
+    timestamp: new Date(candle.timestamp).toISOString(),
+    openTime: new Date(candle.openTime).toISOString(),
+    closeTime: new Date(candle.closeTime).toISOString(),
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    isComplete: candle.isComplete,
+    bid: candle.bid,
+    ask: candle.ask,
+    bidSize: candle.bidSize,
+    askSize: candle.askSize,
+    contractSymbol: candle.contractSymbol,
+  };
 }
 
 function timestamp(day: number, minute: number) { return day + minute * MINUTE; }

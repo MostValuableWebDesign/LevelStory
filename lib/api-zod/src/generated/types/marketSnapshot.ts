@@ -6,10 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Candle } from './candle';
+import type { FuturesContractSpecification } from './futuresContractSpecification';
+import type { FuturesSessionCalendar } from './futuresSessionCalendar';
 import type { LevelStoryEvent } from './levelStoryEvent';
 import type { MarketSnapshotIndicators } from './marketSnapshotIndicators';
 import type { MarketSnapshotLevels } from './marketSnapshotLevels';
 import type { MarketSnapshotMarketStatus } from './marketSnapshotMarketStatus';
+import type { MarketSnapshotMode } from './marketSnapshotMode';
 import type { NtzState } from './ntzState';
 import type { ReplayMetadata } from './replayMetadata';
 import type { ReversalState } from './reversalState';
@@ -19,8 +22,11 @@ import type { StrategyDecision } from './strategyDecision';
 import type { TrendEvidence } from './trendEvidence';
 
 export interface MarketSnapshot {
+  mode: MarketSnapshotMode;
   symbol: string;
   company: string;
+  contract: FuturesContractSpecification;
+  sessionCalendar: FuturesSessionCalendar;
   price: number;
   change: number;
   changePercent: number;

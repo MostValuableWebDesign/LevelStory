@@ -16,7 +16,7 @@ export type StrategyConfig = {
   adverseVolumeRatio: number;
   spread: number;
   slippage: number;
-  feePerShare: number;
+  feePerContract: number;
   profitBuffer: number;
   riskPerTrade: number;
   dailyLossLimit: number;
@@ -47,7 +47,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   adverseVolumeRatio: 1.5,
   spread: 0.02,
   slippage: 0.01,
-  feePerShare: 0.005,
+  feePerContract: 0.62,
   profitBuffer: 0.02,
   riskPerTrade: 100,
   dailyLossLimit: 300,
@@ -105,7 +105,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   const nonNegativeNumbers: Array<[string, number]> = [
     ["spread", config.spread],
     ["slippage", config.slippage],
-    ["feePerShare", config.feePerShare],
+    ["feePerContract", config.feePerContract],
     ["profitBuffer", config.profitBuffer],
     ["stopBuffer", config.stopBuffer],
     ["levelTolerance", config.levelTolerance],

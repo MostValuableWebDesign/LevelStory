@@ -22,6 +22,7 @@ import type {
 import type {
   DashboardOverview,
   ErrorResponse,
+  FuturesContractSpecification,
   GetMarketSnapshotParams,
   HealthStatus,
   JournalEntry,
@@ -210,6 +211,84 @@ export function useGetMarketSnapshot<TData = Awaited<ReturnType<typeof getMarket
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMarketSnapshotQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListFuturesContractSpecificationsUrl = () => {
+
+
+
+
+  return `/api/futures/contracts`
+}
+
+/**
+ * Returns the configurable contract catalog used by the deterministic Shadow Mode feed. Values must be verified before any future provider integration.
+ * @summary List configurable simulated futures contracts
+ */
+export const listFuturesContractSpecifications = async ( options?: Parameters<typeof customFetch>[1]): Promise<FuturesContractSpecification[]> => {
+
+  return customFetch<FuturesContractSpecification[]>(getListFuturesContractSpecificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFuturesContractSpecificationsQueryKey = () => {
+    return [
+    `/api/futures/contracts`
+    ] as const;
+    }
+
+
+export const getListFuturesContractSpecificationsQueryOptions = <TData = Awaited<ReturnType<typeof listFuturesContractSpecifications>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFuturesContractSpecifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFuturesContractSpecificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFuturesContractSpecifications>>> = ({ signal }) => listFuturesContractSpecifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFuturesContractSpecifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFuturesContractSpecificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listFuturesContractSpecifications>>>
+export type ListFuturesContractSpecificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List configurable simulated futures contracts
+ */
+
+export function useListFuturesContractSpecifications<TData = Awaited<ReturnType<typeof listFuturesContractSpecifications>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFuturesContractSpecifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFuturesContractSpecificationsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

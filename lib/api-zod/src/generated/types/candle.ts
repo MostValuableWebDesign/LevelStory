@@ -8,6 +8,7 @@
 
 export interface Candle {
   time: string;
+  timestamp: string;
   openTime: string;
   closeTime: string;
   open: number;
@@ -16,4 +17,9 @@ export interface Candle {
   close: number;
   volume: number;
   isComplete: boolean;
+  bid: number;
+  ask: number;
+  bidSize: number;
+  askSize: number;
+  contractSymbol: string;
 }

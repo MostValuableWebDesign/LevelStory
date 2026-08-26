@@ -15,6 +15,7 @@ export interface ErrorResponse {
 
 export interface Candle {
   time: string;
+  timestamp: string;
   openTime: string;
   closeTime: string;
   open: number;
@@ -23,6 +24,42 @@ export interface Candle {
   close: number;
   volume: number;
   isComplete: boolean;
+  bid: number;
+  ask: number;
+  bidSize: number;
+  askSize: number;
+  contractSymbol: string;
+}
+
+export interface SessionHours {
+  timeZone: string;
+  start: string;
+  end: string;
+}
+
+export interface FuturesContractSpecification {
+  rootSymbol: string;
+  fullContractSymbol: string;
+  exchange: string;
+  contractMonth: string;
+  tickSize: number;
+  dollarValuePerTick: number;
+  pointValue: number;
+  contractMultiplier: number;
+  regularSessionHours: SessionHours;
+  commissionPerContract: number;
+  exchangeAndRegulatoryFeesPerContract: number;
+  maximumSpreadTicks: number;
+  minimumLiquidity: number;
+  rolloverDate: string;
+  configurable: boolean;
+  verificationNote: string;
+}
+
+export interface FuturesSessionCalendar {
+  timeZone: string;
+  premarket: SessionHours;
+  regular: SessionHours;
 }
 
 export type SignalKey = typeof SignalKey[keyof typeof SignalKey];
@@ -51,10 +88,18 @@ export interface Signal {
   detail: string;
 }
 
+export type ReplayMetadataBarIntervalMinutes = typeof ReplayMetadataBarIntervalMinutes[keyof typeof ReplayMetadataBarIntervalMinutes];
+
+
+export const ReplayMetadataBarIntervalMinutes = {
+  NUMBER_5: 5,
+} as const;
+
 export interface ReplayMetadata {
   cursor: string;
   visibleCandleCount: number;
   timeZone: string;
+  barIntervalMinutes: ReplayMetadataBarIntervalMinutes;
 }
 
 export interface CriticalLevel {
@@ -136,7 +181,7 @@ export interface RiskPlan {
   catastropheStop: number | null;
   /** @nullable */
   target: number | null;
-  shares: number;
+  contracts: number;
   dollarRisk: number;
   allowed: boolean;
   reasons: string[];
@@ -155,6 +200,13 @@ export interface ReversalState {
   /** @nullable */
   warning: string | null;
 }
+
+export type MarketSnapshotMode = typeof MarketSnapshotMode[keyof typeof MarketSnapshotMode];
+
+
+export const MarketSnapshotMode = {
+  'SHADOW_MODE_—_NO_LIVE_ORDERS': 'SHADOW MODE — NO LIVE ORDERS',
+} as const;
 
 export type MarketSnapshotMarketStatus = typeof MarketSnapshotMarketStatus[keyof typeof MarketSnapshotMarketStatus];
 
@@ -214,8 +266,11 @@ export type MarketSnapshotIndicators = {
 };
 
 export interface MarketSnapshot {
+  mode: MarketSnapshotMode;
   symbol: string;
   company: string;
+  contract: FuturesContractSpecification;
+  sessionCalendar: FuturesSessionCalendar;
   price: number;
   change: number;
   changePercent: number;

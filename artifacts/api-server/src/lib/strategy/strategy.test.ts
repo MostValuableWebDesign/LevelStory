@@ -7,6 +7,7 @@ import { ema, fibonacci, rsi } from "./indicators.js";
 import { positionSize } from "./risk.js";
 import { patience, volumeCheck } from "./rules.js";
 import { createMarketSnapshot } from "../market-data.js";
+import { getFuturesContractSpecification } from "../futures/contracts.js";
 
 const candle = (n: number, close = 10, complete = true) => ({
   openTime: n * 60_000, closeTime: (n + 1) * 60_000, open: close - .1, high: close + .2, low: close - .2, close, volume: 100, isComplete: complete,
@@ -41,25 +42,27 @@ test("volume and patience are table-driven", () => {
 });
 
 test("sizing enforces daily lockout and risk cap", () => {
-  const config = strategyConfig({ riskPerTrade: 100 });
-  assert.equal(positionSize(10, 9, 10_000, { dailyLoss: 300, trades: 0, locked: false }, config).allowed, false);
-  assert.equal(positionSize(10, 9, 10_000, { dailyLoss: 0, trades: 0, locked: false }, config).shares, 100);
+  const config = strategyConfig({ riskPerTrade: 100, maxPositionValue: 100_000 });
+  const contract = getFuturesContractSpecification("MES");
+  assert.equal(positionSize(6_800, 6_799.5, 100_000, { dailyLoss: 300, trades: 0, locked: false }, config, contract).allowed, false);
+  assert.equal(positionSize(6_800, 6_799.5, 100_000, { dailyLoss: 0, trades: 0, locked: false }, config, contract).contracts, 2);
 });
 
 test("snapshot replay is causal and session bounded", () => {
-  const premarket = createMarketSnapshot("AAPL", "premarket");
+  const premarket = createMarketSnapshot("MES", "premarket");
   assert.equal(premarket.ntz.complete, false);
   assert.equal(premarket.candles.every(candle => candle.closeTime <= premarket.replay.cursor), true);
   assert.equal(premarket.candles.some(candle => candle.openTime.startsWith("2026-08-25T09:30:")), false);
+  assert.equal(premarket.candles.every(candle => candle.contractSymbol === "MESU26"), true);
 
-  const regular = createMarketSnapshot("AAPL", "regular");
+  const regular = createMarketSnapshot("MES", "regular");
   assert.equal(regular.ntz.complete, true);
   assert.equal(regular.levels.openingRangeHigh !== null, true);
   assert.equal(regular.candles.every(candle => candle.closeTime <= regular.replay.cursor), true);
 });
 
 test("snapshot decision honors server-side emergency lockout", () => {
-  const locked = createMarketSnapshot("AAPL", "regular", {
+  const locked = createMarketSnapshot("MES", "regular", {
     accountSize: 25_000,
     riskPercent: 0.5,
     maxDailyLoss: 500,
@@ -72,6 +75,6 @@ test("snapshot decision honors server-side emergency lockout", () => {
 });
 
 test("snapshot conforms to the generated API contract", () => {
-  const snapshot = createMarketSnapshot("NVDA", "regular");
+  const snapshot = createMarketSnapshot("MNQ", "regular");
   assert.doesNotThrow(() => GetMarketSnapshotResponse.parse(snapshot));
 });

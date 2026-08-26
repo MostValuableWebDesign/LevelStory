@@ -21,7 +21,7 @@ export const HealthCheckResponse = zod.object({
  * Returns simulated five-minute candles, levels, indicators, and discipline signals. This endpoint never connects to a broker or places orders.
  * @summary Get the simulated market snapshot
  */
-export const getMarketSnapshotQuerySymbolDefault = `NVDA`;
+export const getMarketSnapshotQuerySymbolDefault = `MES`;
 export const getMarketSnapshotQuerySymbolMax = 12;
 
 export const getMarketSnapshotQuerySessionDefault = `regular`;
@@ -32,8 +32,44 @@ export const GetMarketSnapshotQueryParams = zod.object({
 })
 
 export const GetMarketSnapshotResponse = zod.object({
+  "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
   "symbol": zod.string(),
   "company": zod.string(),
+  "contract": zod.object({
+  "rootSymbol": zod.string(),
+  "fullContractSymbol": zod.string(),
+  "exchange": zod.string(),
+  "contractMonth": zod.string(),
+  "tickSize": zod.number(),
+  "dollarValuePerTick": zod.number(),
+  "pointValue": zod.number(),
+  "contractMultiplier": zod.number(),
+  "regularSessionHours": zod.object({
+  "timeZone": zod.string(),
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "commissionPerContract": zod.number(),
+  "exchangeAndRegulatoryFeesPerContract": zod.number(),
+  "maximumSpreadTicks": zod.number(),
+  "minimumLiquidity": zod.number(),
+  "rolloverDate": zod.string(),
+  "configurable": zod.boolean(),
+  "verificationNote": zod.string()
+}),
+  "sessionCalendar": zod.object({
+  "timeZone": zod.string(),
+  "premarket": zod.object({
+  "timeZone": zod.string(),
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "regular": zod.object({
+  "timeZone": zod.string(),
+  "start": zod.string(),
+  "end": zod.string()
+})
+}),
   "price": zod.number(),
   "change": zod.number(),
   "changePercent": zod.number(),
@@ -43,10 +79,12 @@ export const GetMarketSnapshotResponse = zod.object({
   "replay": zod.object({
   "cursor": zod.string(),
   "visibleCandleCount": zod.number(),
-  "timeZone": zod.string()
+  "timeZone": zod.string(),
+  "barIntervalMinutes": zod.literal(5)
 }),
   "candles": zod.array(zod.object({
   "time": zod.string(),
+  "timestamp": zod.string(),
   "openTime": zod.string(),
   "closeTime": zod.string(),
   "open": zod.number(),
@@ -54,7 +92,12 @@ export const GetMarketSnapshotResponse = zod.object({
   "low": zod.number(),
   "close": zod.number(),
   "volume": zod.number(),
-  "isComplete": zod.boolean()
+  "isComplete": zod.boolean(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string()
 })),
   "levels": zod.object({
   "premarketHigh": zod.number(),
@@ -124,7 +167,7 @@ export const GetMarketSnapshotResponse = zod.object({
   "thesisStop": zod.number().nullable(),
   "catastropheStop": zod.number().nullable(),
   "target": zod.number().nullable(),
-  "shares": zod.number(),
+  "contracts": zod.number(),
   "dollarRisk": zod.number(),
   "allowed": zod.boolean(),
   "reasons": zod.array(zod.string())
@@ -142,6 +185,35 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "assumptions": zod.array(zod.string())
 })
+
+
+/**
+ * Returns the configurable contract catalog used by the deterministic Shadow Mode feed. Values must be verified before any future provider integration.
+ * @summary List configurable simulated futures contracts
+ */
+export const ListFuturesContractSpecificationsResponseItem = zod.object({
+  "rootSymbol": zod.string(),
+  "fullContractSymbol": zod.string(),
+  "exchange": zod.string(),
+  "contractMonth": zod.string(),
+  "tickSize": zod.number(),
+  "dollarValuePerTick": zod.number(),
+  "pointValue": zod.number(),
+  "contractMultiplier": zod.number(),
+  "regularSessionHours": zod.object({
+  "timeZone": zod.string(),
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "commissionPerContract": zod.number(),
+  "exchangeAndRegulatoryFeesPerContract": zod.number(),
+  "maximumSpreadTicks": zod.number(),
+  "minimumLiquidity": zod.number(),
+  "rolloverDate": zod.string(),
+  "configurable": zod.boolean(),
+  "verificationNote": zod.string()
+})
+export const ListFuturesContractSpecificationsResponse = zod.array(ListFuturesContractSpecificationsResponseItem)
 
 
 /**

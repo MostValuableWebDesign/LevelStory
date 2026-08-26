@@ -1,0 +1,1 @@
+export const SHADOW_MODE_LABEL = "SHADOW MODE — NO LIVE ORDERS";

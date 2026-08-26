@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Activity, BookOpen, ChevronRight, Gauge, Menu, Settings2, ShieldCheck, X } from "lucide-react";
+import { SHADOW_MODE_LABEL } from "@/lib/shadow-mode";
 
 const navItems = [
   { href: "/", label: "Cockpit", detail: "Decision surface", icon: Gauge },
@@ -46,7 +47,7 @@ export function LevelStoryShell({ children }: { children: ReactNode }) {
           <button type="button" className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden" onClick={() => setMenuOpen(true)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button>
           <div className="hidden items-center gap-3 lg:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--positive))]" /><span className="eyebrow text-muted-foreground">Focus session</span><span className="text-xs text-muted-foreground/70">/ pre-market simulation</span></div>
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden items-center gap-2 border border-accent/45 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.14em] text-foreground sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-accent" />Shadow Mode</span>
+             <span className="flex max-w-[min(70vw,320px)] items-center gap-2 border border-accent/45 bg-accent/10 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-[.1em] text-foreground sm:max-w-none sm:text-[10px]" data-testid="banner-shadow-mode"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />{SHADOW_MODE_LABEL}</span>
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground" aria-label="Trader profile">LM</span>
           </div>
         </header>
@@ -65,9 +66,9 @@ function SidebarBrand() {
 
 function SafetyNote() {
   return <div className="m-3 rounded-md border border-sidebar-border bg-sidebar-accent/70 p-4">
-    <div className="mb-3 flex items-center gap-2 text-sidebar-primary"><ShieldCheck size={15} /><span className="eyebrow">Safe by design</span></div>
+     <div className="mb-3 flex items-center gap-2 text-sidebar-primary"><ShieldCheck size={15} /><span className="eyebrow">Safe by design</span></div>
     <p className="text-xs leading-5 text-sidebar-foreground/65">A quiet place to decide. No broker connection, no live orders, no execution path.</p>
-    <div className="mt-4 flex items-center gap-2 text-[10px] font-semibold text-sidebar-foreground/50"><span className="h-1.5 w-1.5 rounded-full bg-sidebar-primary" />Shadow mode active</div>
+     <div className="mt-4 flex items-center gap-2 text-[10px] font-semibold text-sidebar-foreground/50" data-testid="text-shadow-mode-safety"><span className="h-1.5 w-1.5 rounded-full bg-sidebar-primary" />{SHADOW_MODE_LABEL}</div>
   </div>;
 }
 

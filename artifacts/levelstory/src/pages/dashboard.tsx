@@ -7,10 +7,10 @@ import { ArrowUpRight, Check, Clock3, Crosshair, RefreshCw, ShieldAlert, Target 
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, MiniCandleChart, Panel, PanelTitle, PageIntro, PriceChange, QueryError, QuerySkeleton, ShadowBadge, SignalSummary, StatusBadge } from "@/components/levelstory-ui";
 
-const symbols = ["AAPL", "NVDA", "TSLA", "AMD"];
+const symbols = ["MES", "ES", "MNQ", "NQ"];
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState("MES");
   const [session, setSession] = useState<"premarket" | "regular">("premarket");
   const market = useGetMarketSnapshot({ symbol, session });
   const overview = useGetDashboardOverview();
@@ -40,11 +40,11 @@ export default function Dashboard() {
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,.7fr)]">
             <Panel accent>
               <div className="flex flex-col justify-between gap-5 px-5 pb-4 pt-6 sm:flex-row sm:items-start sm:px-7">
-                <div><div className="mb-3 flex items-center gap-2"><span className="eyebrow text-muted-foreground">Selected symbol</span><span className="border border-border bg-secondary px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground" data-testid="status-market-session">{snapshot.marketStatus}</span></div><div className="flex items-end gap-4"><span className="display text-5xl font-bold tracking-[-.08em]" data-testid="text-market-symbol">{snapshot.symbol}</span><span className="pb-1 text-sm text-muted-foreground" data-testid="text-market-company">{snapshot.company}</span></div></div>
+                 <div><div className="mb-3 flex items-center gap-2"><span className="eyebrow text-muted-foreground">Selected futures contract</span><span className="border border-border bg-secondary px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground" data-testid="status-market-session">{snapshot.marketStatus}</span></div><div className="flex flex-wrap items-end gap-x-4 gap-y-1"><span className="display text-5xl font-bold tracking-[-.08em]" data-testid="text-market-symbol">{snapshot.contract.fullContractSymbol}</span><span className="pb-1 text-sm text-muted-foreground" data-testid="text-market-company">{snapshot.company}</span></div><div className="mt-3 text-[10px] text-muted-foreground" data-testid="text-contract-metadata">{snapshot.contract.exchange} · {snapshot.contract.contractMonth} · {snapshot.contract.tickSize.toFixed(2)} tick · {snapshot.contract.verificationNote}</div></div>
                 <div className="sm:text-right"><div className="mono text-3xl font-medium tracking-[-.05em]" data-testid="text-market-price">${snapshot.price.toFixed(2)}</div><PriceChange value={snapshot.change} percent={snapshot.changePercent} /><div className="mt-2 text-[10px] text-muted-foreground">Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
               </div>
                <div className="terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={snapshot.levels.critical} /></div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />5 min / simulated</span></div>
+               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min / simulated</span></div>
             </Panel>
 
              <DecisionPanel snapshot={snapshot} confirmedCount={confirmedCount} signalCount={activeSignals.length} />
@@ -79,7 +79,7 @@ export default function Dashboard() {
            <div className="grid gap-5 lg:grid-cols-[.95fr_1.05fr]">
              <Panel>
                <PanelTitle eyebrow="Risk / no execution" title="Position plan" right={<span className={`text-[10px] font-bold uppercase ${snapshot.riskPlan.allowed ? "status-positive" : "status-negative"}`}>{snapshot.riskPlan.allowed ? "Allowed" : "Blocked"}</span>} />
-               <div className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-3">{[["Direction", snapshot.riskPlan.direction], ["Entry", formatPrice(snapshot.riskPlan.entry)], ["Thesis stop", formatPrice(snapshot.riskPlan.thesisStop)], ["Catastrophe stop", formatPrice(snapshot.riskPlan.catastropheStop)], ["Target", formatPrice(snapshot.riskPlan.target)], ["Shares", String(snapshot.riskPlan.shares)], ["Dollar risk", `$${snapshot.riskPlan.dollarRisk.toFixed(2)}`]].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mono mt-1 text-sm font-medium">{value}</div></div>)}</div>
+               <div className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-3">{[["Direction", snapshot.riskPlan.direction], ["Entry", formatPrice(snapshot.riskPlan.entry)], ["Thesis stop", formatPrice(snapshot.riskPlan.thesisStop)], ["Catastrophe stop", formatPrice(snapshot.riskPlan.catastropheStop)], ["Target", formatPrice(snapshot.riskPlan.target)], ["Contracts", String(snapshot.riskPlan.contracts)], ["Dollar risk", `$${snapshot.riskPlan.dollarRisk.toFixed(2)}`]].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mono mt-1 text-sm font-medium">{value}</div></div>)}</div>
                <div className="space-y-2 border-t border-border p-5">{snapshot.riskPlan.reasons.map(reason => <p key={reason} className="text-xs leading-5 text-muted-foreground">{reason}</p>)}</div>
              </Panel>
              <Panel>
@@ -117,7 +117,7 @@ function DecisionPanel({ snapshot, confirmedCount, signalCount }: { snapshot: Ma
   </Panel>;
 }
 
-function formatPrice(value: number | string | null) { return value == null ? "—" : typeof value === "number" ? `$${value.toFixed(2)}` : value; }
+function formatPrice(value: number | string | null) { return value == null ? "—" : typeof value === "number" ? value.toFixed(2) : value; }
 function formatSigned(value: number | null) { return value == null ? "—" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}`; }
 
 function SignalRow({ signal }: { signal: Signal }) {

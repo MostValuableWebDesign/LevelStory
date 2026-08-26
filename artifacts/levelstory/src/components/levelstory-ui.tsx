@@ -1,6 +1,7 @@
 import type { Candle, Signal, SignalStatus } from "@workspace/api-client-react";
 import type { ReactNode } from "react";
 import { Check, CircleAlert, CircleDashed, LockKeyhole, Minus, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
+import { SHADOW_MODE_LABEL } from "@/lib/shadow-mode";
 
 export function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
   return <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
@@ -18,7 +19,7 @@ export function PanelTitle({ eyebrow, title, right }: { eyebrow?: string; title:
 }
 
 export function ShadowBadge({ className = "" }: { className?: string }) {
-  return <span className={`inline-flex items-center gap-1.5 border border-accent/50 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.11em] text-foreground ${className}`}><span className="h-1.5 w-1.5 rounded-full bg-accent" />Shadow Mode</span>;
+  return <span className={`inline-flex items-center gap-1.5 border border-accent/50 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.11em] text-foreground ${className}`} data-testid="badge-shadow-mode"><span className="h-1.5 w-1.5 rounded-full bg-accent" />{SHADOW_MODE_LABEL}</span>;
 }
 
 export function QuerySkeleton({ rows = 3 }: { rows?: number }) {

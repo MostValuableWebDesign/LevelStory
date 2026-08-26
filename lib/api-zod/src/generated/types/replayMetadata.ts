@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ReplayMetadataBarIntervalMinutes } from './replayMetadataBarIntervalMinutes';
 
 export interface ReplayMetadata {
   cursor: string;
   visibleCandleCount: number;
   timeZone: string;
+  barIntervalMinutes: ReplayMetadataBarIntervalMinutes;
 }

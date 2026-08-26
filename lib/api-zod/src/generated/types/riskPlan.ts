@@ -17,7 +17,7 @@ export interface RiskPlan {
   catastropheStop: number | null;
   /** @nullable */
   target: number | null;
-  shares: number;
+  contracts: number;
   dollarRisk: number;
   allowed: boolean;
   reasons: string[];

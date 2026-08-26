@@ -199,6 +199,14 @@ export function priceToTicks(price: number, specification: FuturesContractSpecif
   return rounded;
 }
 
+export function roundToTick(
+  price: number,
+  specification: FuturesContractSpecification,
+): number {
+  if (!Number.isFinite(price)) invalid("price must be finite.");
+  return Number((Math.round(price / specification.tickSize) * specification.tickSize).toFixed(10));
+}
+
 export function ticksBetween(
   firstPrice: number,
   secondPrice: number,
