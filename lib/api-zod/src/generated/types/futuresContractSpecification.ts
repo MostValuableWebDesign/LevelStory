@@ -19,6 +19,9 @@ export interface FuturesContractSpecification {
   regularSessionHours: SessionHours;
   commissionPerContract: number;
   exchangeAndRegulatoryFeesPerContract: number;
+  exchangeFeePerContract: number;
+  regulatoryFeePerContract: number;
+  clearingFeePerContract: number;
   maximumSpreadTicks: number;
   minimumLiquidity: number;
   rolloverDate: string;

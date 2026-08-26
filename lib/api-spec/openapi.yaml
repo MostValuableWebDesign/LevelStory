@@ -64,6 +64,23 @@ paths:
           description: Optional manual Fibonacci low anchor for descriptive replay analysis.
           schema:
             type: number
+        - name: targetDollars
+          in: query
+          required: false
+          description: Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.
+          schema:
+            type: number
+            minimum: 50
+            maximum: 100
+            default: 75
+        - name: slippageMode
+          in: query
+          required: false
+          description: Descriptive slippage regime used by the shadow cost model.
+          schema:
+            type: string
+            enum: [normal, fast, abnormal_spread]
+            default: normal
       responses:
         "200":
           description: Simulated market snapshot
@@ -291,6 +308,12 @@ components:
           type: number
         exchangeAndRegulatoryFeesPerContract:
           type: number
+        exchangeFeePerContract:
+          type: number
+        regulatoryFeePerContract:
+          type: number
+        clearingFeePerContract:
+          type: number
         maximumSpreadTicks:
           type: number
         minimumLiquidity:
@@ -301,7 +324,7 @@ components:
           type: boolean
         verificationNote:
           type: string
-      required: [rootSymbol, fullContractSymbol, exchange, contractMonth, tickSize, dollarValuePerTick, pointValue, contractMultiplier, regularSessionHours, commissionPerContract, exchangeAndRegulatoryFeesPerContract, maximumSpreadTicks, minimumLiquidity, rolloverDate, configurable, verificationNote]
+      required: [rootSymbol, fullContractSymbol, exchange, contractMonth, tickSize, dollarValuePerTick, pointValue, contractMultiplier, regularSessionHours, commissionPerContract, exchangeAndRegulatoryFeesPerContract, exchangeFeePerContract, regulatoryFeePerContract, clearingFeePerContract, maximumSpreadTicks, minimumLiquidity, rolloverDate, configurable, verificationNote]
     FuturesSessionCalendar:
       type: object
       properties:
@@ -638,9 +661,23 @@ components:
           type: ["number", "null"]
         catastropheStop:
           type: ["number", "null"]
+        strategyStop:
+          type: ["number", "null"]
         target:
           type: ["number", "null"]
+        targetDollars:
+          type: number
+        targetTicks:
+          type: number
+        targetContracts:
+          type: number
+        runnerContracts:
+          type: number
         contracts:
+          type: number
+        stopTicks:
+          type: number
+        riskPerContract:
           type: number
         dollarRisk:
           type: number
@@ -650,7 +687,48 @@ components:
           type: array
           items:
             type: string
-      required: [direction, entry, thesisStop, catastropheStop, target, contracts, dollarRisk, allowed, reasons]
+        slippageMode:
+          type: string
+          enum: [normal, fast, abnormal_spread]
+        costBreakdown:
+          type: object
+          properties:
+            commission: { type: number }
+            exchange: { type: number }
+            regulatory: { type: number }
+            clearing: { type: number }
+            roundTripFees: { type: number }
+            entrySlippage: { type: number }
+            exitSlippage: { type: number }
+            totalSlippage: { type: number }
+          required: [commission, exchange, regulatory, clearing, roundTripFees, entrySlippage, exitSlippage, totalSlippage]
+        projectedTargetPnl:
+          type: object
+          properties:
+            grossPnl: { type: number }
+            slippage: { type: number }
+            fees: { type: number }
+            netPnl: { type: number }
+          required: [grossPnl, slippage, fees, netPnl]
+        runner:
+          $ref: "#/components/schemas/RunnerState"
+        locks:
+          type: object
+          additionalProperties:
+            type: boolean
+      required: [direction, entry, thesisStop, catastropheStop, strategyStop, target, targetDollars, targetTicks, targetContracts, runnerContracts, contracts, stopTicks, riskPerContract, dollarRisk, allowed, slippageMode, costBreakdown, projectedTargetPnl, runner, locks, reasons]
+    RunnerState:
+      type: object
+      properties:
+        active: { type: boolean }
+        referencePrice: { type: ["number", "null"] }
+        impulse: { type: ["number", "null"] }
+        mostFavorablePrice: { type: ["number", "null"] }
+        adverseRetracement: { type: number }
+        retracementThreshold: { type: ["number", "null"] }
+        exit: { type: boolean }
+        exitReason: { type: ["string", "null"] }
+      required: [active, referencePrice, impulse, mostFavorablePrice, adverseRetracement, retracementThreshold, exit, exitReason]
     LevelStoryEvent:
       type: object
       properties:

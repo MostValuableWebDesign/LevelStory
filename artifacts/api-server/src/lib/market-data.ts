@@ -23,6 +23,10 @@ import {
   type DecisionState,
   type Direction,
   type StrategyConfig,
+  buildPhase7RiskPlan,
+  evaluateRunner,
+  type Phase7RiskConfig,
+  type Phase7RiskPlan,
 } from "./strategy/index.js";
 import {
   getFuturesContractSpecification,
@@ -216,6 +220,32 @@ export type MarketSnapshot = {
     dollarRisk: number;
     allowed: boolean;
     reasons: string[];
+    strategyStop: number | null;
+    targetDollars: number;
+    targetTicks: number;
+    targetContracts: number;
+    runnerContracts: number;
+    stopTicks: number;
+    riskPerContract: number;
+    slippageMode: string;
+    costBreakdown: {
+      commission: number;
+      exchange: number;
+      regulatory: number;
+      clearing: number;
+      roundTripFees: number;
+      entrySlippage: number;
+      exitSlippage: number;
+      totalSlippage: number;
+    };
+    projectedTargetPnl: {
+      grossPnl: number;
+      slippage: number;
+      fees: number;
+      netPnl: number;
+    };
+    runner: Phase7RiskPlan["runner"];
+    locks: Record<string, boolean>;
   };
   levelStory: Array<{ time: string; level: string; interaction: string; detail: string }>;
   reversal: { doji: boolean; equivalentCandles: boolean; warning: string | null };
@@ -268,8 +298,18 @@ const companies: Record<string, string> = {
 const CURRENT_TRADING_DATE = "2026-08-25";
 
 type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
+type Phase7Input = {
+  targetDollars?: number;
+  slippageMode?: Phase7RiskConfig["slippageMode"];
+  observedSpreadTicks?: number;
+  liquidity?: number;
+  dataAgeSeconds?: number;
+  tradesToday?: number;
+  duplicateEntry?: boolean;
+  averagingDown?: boolean;
+};
 
-export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput, manualFibAnchors?: ManualFibAnchors): MarketSnapshot {
+export function createMarketSnapshot(symbol: string, session: string, riskInput?: RiskInput, manualFibAnchors?: ManualFibAnchors, phase7Input?: Phase7Input): MarketSnapshot {
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
   const config = strategyConfig();
@@ -334,7 +374,12 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
   const patienceDirection = breakout.direction ?? direction;
   const patience = phase5PatienceAnalysis(regular, patienceDirection, pullback, levels.ntz, levels.ntzEvents);
-  const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
+  const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification, {
+    ...phase7Input,
+    observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
+    liquidity: current?.volume,
+    dataAgeSeconds: 0,
+  });
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
   const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
   const reversalDirection: Direction = patienceDirection === "long" ? "short" : "long";
@@ -485,7 +530,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       passedRules: evaluation.rules.filter(rule => rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
       failedRules: evaluation.rules.filter(rule => !rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
     },
-    riskPlan: plan,
+     riskPlan: plan,
     levelStory: story,
     reversal: {
       doji: alert.doji,
@@ -507,7 +552,8 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       "Phase 6 setup decisions require every mandatory rule; scores and reversal alerts cannot qualify a setup.",
       "Doji uses a 10% body-to-range default; equivalent opposing candles use 15% body-size tolerance, 70% minimum body-to-range, and 15% trend-facing-wick limits.",
       `Extended NTZ consolidation requires 9–12 contiguous completed five-minute candles (45–60 minutes), primarily inside or near NTZ, with no more than ${config.phase6ConsolidationExpansionRatio.toFixed(2)}× range expansion.`,
-      `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
+       `Phase 7 uses tick-aligned catastrophe risk, ${plan.targetDollars.toFixed(2)} dollar target selection, whole-contract sizing, and a frozen 40% runner retracement.`,
+       `Simulated costs: normal slippage is one adverse tick per fill; abnormal spread mode includes the observed spread. Fees include commission, exchange/regulatory, regulatory, and clearing components.`,
     ],
   };
 }
@@ -519,15 +565,61 @@ function buildRiskPlan(
   input: RiskInput | undefined,
   config: StrategyConfig,
   specification: FuturesContractSpecification,
+  phase7Input?: Phase7Input,
 ) {
   const risk = input ?? { accountSize: 25_000, riskPercent: 0.5, maxDailyLoss: 500, dailyLossUsed: 0, isLocked: false };
   const edge = direction === "long" ? levels.orb?.high : levels.orb?.low;
   const thesisStop = edge === undefined ? null : roundToTick(direction === "long" ? edge - config.stopBuffer : edge + config.stopBuffer, specification);
-  const target = direction === "long" ? levels.levels.find(level => level.price > entry + 0.5)?.price : [...levels.levels].reverse().find(level => level.price < entry - 0.5)?.price;
-  if (thesisStop === null) return { direction, entry: Number(entry.toFixed(2)), thesisStop, catastropheStop: null, target: target ?? null, contracts: 0, dollarRisk: 0, allowed: false, reasons: ["No completed opening range; catastrophe stop cannot be defined."] };
+  if (thesisStop === null) {
+    return buildPhase7RiskPlan(
+      entry,
+      direction,
+      null,
+      null,
+      phase7Config(risk, config, specification, phase7Input),
+      specification,
+    );
+  }
   const catastropheStop = roundToTick(direction === "long" ? thesisStop - 0.5 : thesisStop + 0.5, specification);
-  const plan = positionSize(entry, catastropheStop, risk.accountSize, { dailyLoss: risk.dailyLossUsed, trades: 0, locked: risk.isLocked }, { ...config, riskPerTrade: risk.accountSize * risk.riskPercent / 100, dailyLossLimit: risk.maxDailyLoss }, specification);
-  return { direction, entry: Number(entry.toFixed(2)), thesisStop: Number(thesisStop.toFixed(2)), catastropheStop: Number(catastropheStop.toFixed(2)), target: target ? Number(target.toFixed(2)) : null, contracts: plan.contracts, dollarRisk: Number(plan.risk.toFixed(2)), allowed: plan.allowed, reasons: plan.allowed ? ["Risk formula passed; no live order is created."] : [plan.reason] };
+  return buildPhase7RiskPlan(
+    entry,
+    direction,
+    thesisStop,
+    catastropheStop,
+    phase7Config(risk, config, specification, phase7Input),
+    specification,
+  );
+}
+
+function phase7Config(
+  risk: RiskInput,
+  config: StrategyConfig,
+  specification: FuturesContractSpecification,
+  phase7Input?: Phase7Input,
+): Phase7RiskConfig {
+  const latest = { observedSpreadTicks: 1, liquidity: specification.minimumLiquidity, dataAgeSeconds: 0 };
+  return {
+    riskDollars: risk.accountSize * risk.riskPercent / 100,
+    dailyLossLimit: risk.maxDailyLoss,
+    dailyLossUsed: risk.dailyLossUsed,
+    tradesToday: phase7Input?.tradesToday ?? 0,
+    maxTradesPerDay: config.maxRiskTrades,
+    maxContracts: config.phase7MaxContracts,
+    maxPositionValue: config.maxPositionValue,
+    maximumSpreadTicks: specification.maximumSpreadTicks,
+    minimumLiquidity: specification.minimumLiquidity,
+    staleDataSeconds: config.phase7StaleDataSeconds,
+    observedSpreadTicks: phase7Input?.observedSpreadTicks ?? latest.observedSpreadTicks,
+    liquidity: phase7Input?.liquidity ?? latest.liquidity,
+    dataAgeSeconds: phase7Input?.dataAgeSeconds ?? latest.dataAgeSeconds,
+    emergencyKillSwitch: risk.isLocked,
+    duplicateEntry: phase7Input?.duplicateEntry ?? false,
+    averagingDown: phase7Input?.averagingDown ?? false,
+    slippageMode: phase7Input?.slippageMode ?? "normal",
+    normalSlippageTicks: config.phase7NormalSlippageTicks,
+    fastSlippageTicks: config.phase7FastSlippageTicks,
+    targetDollars: phase7Input?.targetDollars ?? config.phase7DefaultTargetDollars,
+  };
 }
 
 function toApiCandle(candle: SimulatedFuturesCandle) {

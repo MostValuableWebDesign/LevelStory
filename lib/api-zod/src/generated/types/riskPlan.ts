@@ -5,7 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RiskPlanCostBreakdown } from './riskPlanCostBreakdown';
 import type { RiskPlanDirection } from './riskPlanDirection';
+import type { RiskPlanLocks } from './riskPlanLocks';
+import type { RiskPlanProjectedTargetPnl } from './riskPlanProjectedTargetPnl';
+import type { RiskPlanSlippageMode } from './riskPlanSlippageMode';
+import type { RunnerState } from './runnerState';
 
 export interface RiskPlan {
   direction: RiskPlanDirection;
@@ -16,9 +21,22 @@ export interface RiskPlan {
   /** @nullable */
   catastropheStop: number | null;
   /** @nullable */
+  strategyStop: number | null;
+  /** @nullable */
   target: number | null;
+  targetDollars: number;
+  targetTicks: number;
+  targetContracts: number;
+  runnerContracts: number;
   contracts: number;
+  stopTicks: number;
+  riskPerContract: number;
   dollarRisk: number;
   allowed: boolean;
   reasons: string[];
+  slippageMode: RiskPlanSlippageMode;
+  costBreakdown: RiskPlanCostBreakdown;
+  projectedTargetPnl: RiskPlanProjectedTargetPnl;
+  runner: RunnerState;
+  locks: RiskPlanLocks;
 }

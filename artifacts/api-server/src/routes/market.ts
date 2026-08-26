@@ -30,7 +30,13 @@ router.get("/market/snapshot", async (req, res): Promise<void> => {
     const manualFibAnchors = hasManualHigh && hasManualLow
       ? { high: parsed.data.fibHigh!, low: parsed.data.fibLow! }
       : undefined;
-    res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(parsed.data.symbol, parsed.data.session, risk, manualFibAnchors)));
+     res.json(GetMarketSnapshotResponse.parse(createMarketSnapshot(
+       parsed.data.symbol,
+       parsed.data.session,
+       risk,
+       manualFibAnchors,
+       { targetDollars: parsed.data.targetDollars, slippageMode: parsed.data.slippageMode },
+     )));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid futures contract.";
     req.log.warn({ error: message }, "Rejected market snapshot request");

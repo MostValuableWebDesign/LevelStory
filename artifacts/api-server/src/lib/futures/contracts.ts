@@ -22,6 +22,9 @@ export type FuturesContractSpecification = {
   regularSessionHours: SessionHours;
   commissionPerContract: number;
   exchangeAndRegulatoryFeesPerContract: number;
+  exchangeFeePerContract?: number;
+  regulatoryFeePerContract?: number;
+  clearingFeePerContract?: number;
   maximumSpreadTicks: number;
   minimumLiquidity: number;
   rolloverDate: string;
@@ -45,6 +48,9 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 0.62,
     exchangeAndRegulatoryFeesPerContract: 0.18,
+    exchangeFeePerContract: 0.12,
+    regulatoryFeePerContract: 0.06,
+    clearingFeePerContract: 0,
     maximumSpreadTicks: 2,
     minimumLiquidity: 2_000,
     rolloverDate: "2026-09-10",
@@ -63,6 +69,9 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 1.24,
     exchangeAndRegulatoryFeesPerContract: 0.36,
+    exchangeFeePerContract: 0.24,
+    regulatoryFeePerContract: 0.12,
+    clearingFeePerContract: 0,
     maximumSpreadTicks: 2,
     minimumLiquidity: 10_000,
     rolloverDate: "2026-09-10",
@@ -81,6 +90,9 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 0.62,
     exchangeAndRegulatoryFeesPerContract: 0.18,
+    exchangeFeePerContract: 0.12,
+    regulatoryFeePerContract: 0.06,
+    clearingFeePerContract: 0,
     maximumSpreadTicks: 2,
     minimumLiquidity: 2_000,
     rolloverDate: "2026-09-10",
@@ -99,6 +111,9 @@ export const FUTURES_CONTRACT_SPECS: Readonly<Record<string, FuturesContractSpec
     regularSessionHours: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
     commissionPerContract: 1.24,
     exchangeAndRegulatoryFeesPerContract: 0.36,
+    exchangeFeePerContract: 0.24,
+    regulatoryFeePerContract: 0.12,
+    clearingFeePerContract: 0,
     maximumSpreadTicks: 2,
     minimumLiquidity: 10_000,
     rolloverDate: "2026-09-10",
@@ -149,6 +164,9 @@ export function validateFuturesContractSpecification(
   finitePositive(specification.contractMultiplier, "contractMultiplier");
   finiteNonNegative(specification.commissionPerContract, "commissionPerContract");
   finiteNonNegative(specification.exchangeAndRegulatoryFeesPerContract, "exchangeAndRegulatoryFeesPerContract");
+  finiteNonNegative(specification.exchangeFeePerContract ?? specification.exchangeAndRegulatoryFeesPerContract, "exchangeFeePerContract");
+  finiteNonNegative(specification.regulatoryFeePerContract ?? 0, "regulatoryFeePerContract");
+  finiteNonNegative(specification.clearingFeePerContract ?? 0, "clearingFeePerContract");
   positiveInteger(specification.maximumSpreadTicks, "maximumSpreadTicks");
   finitePositive(specification.minimumLiquidity, "minimumLiquidity");
   validTime(specification.regularSessionHours.start, "regularSessionHours.start");

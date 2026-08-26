@@ -49,6 +49,9 @@ export interface FuturesContractSpecification {
   regularSessionHours: SessionHours;
   commissionPerContract: number;
   exchangeAndRegulatoryFeesPerContract: number;
+  exchangeFeePerContract: number;
+  regulatoryFeePerContract: number;
+  clearingFeePerContract: number;
   maximumSpreadTicks: number;
   minimumLiquidity: number;
   rolloverDate: string;
@@ -433,6 +436,51 @@ export const RiskPlanDirection = {
   short: 'short',
 } as const;
 
+export type RiskPlanSlippageMode = typeof RiskPlanSlippageMode[keyof typeof RiskPlanSlippageMode];
+
+
+export const RiskPlanSlippageMode = {
+  normal: 'normal',
+  fast: 'fast',
+  abnormal_spread: 'abnormal_spread',
+} as const;
+
+export type RiskPlanCostBreakdown = {
+  commission: number;
+  exchange: number;
+  regulatory: number;
+  clearing: number;
+  roundTripFees: number;
+  entrySlippage: number;
+  exitSlippage: number;
+  totalSlippage: number;
+};
+
+export type RiskPlanProjectedTargetPnl = {
+  grossPnl: number;
+  slippage: number;
+  fees: number;
+  netPnl: number;
+};
+
+export type RiskPlanLocks = {[key: string]: boolean};
+
+export interface RunnerState {
+  active: boolean;
+  /** @nullable */
+  referencePrice: number | null;
+  /** @nullable */
+  impulse: number | null;
+  /** @nullable */
+  mostFavorablePrice: number | null;
+  adverseRetracement: number;
+  /** @nullable */
+  retracementThreshold: number | null;
+  exit: boolean;
+  /** @nullable */
+  exitReason: string | null;
+}
+
 export interface RiskPlan {
   direction: RiskPlanDirection;
   /** @nullable */
@@ -442,11 +490,24 @@ export interface RiskPlan {
   /** @nullable */
   catastropheStop: number | null;
   /** @nullable */
+  strategyStop: number | null;
+  /** @nullable */
   target: number | null;
+  targetDollars: number;
+  targetTicks: number;
+  targetContracts: number;
+  runnerContracts: number;
   contracts: number;
+  stopTicks: number;
+  riskPerContract: number;
   dollarRisk: number;
   allowed: boolean;
   reasons: string[];
+  slippageMode: RiskPlanSlippageMode;
+  costBreakdown: RiskPlanCostBreakdown;
+  projectedTargetPnl: RiskPlanProjectedTargetPnl;
+  runner: RunnerState;
+  locks: RiskPlanLocks;
 }
 
 export interface LevelStoryEvent {
@@ -852,6 +913,16 @@ fibHigh?: number;
  * Optional manual Fibonacci low anchor for descriptive replay analysis.
  */
 fibLow?: number;
+/**
+ * Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.
+ * @minimum 50
+ * @maximum 100
+ */
+targetDollars?: number;
+/**
+ * Descriptive slippage regime used by the shadow cost model.
+ */
+slippageMode?: GetMarketSnapshotSlippageMode;
 };
 
 export type GetMarketSnapshotSession = typeof GetMarketSnapshotSession[keyof typeof GetMarketSnapshotSession];
@@ -860,6 +931,15 @@ export type GetMarketSnapshotSession = typeof GetMarketSnapshotSession[keyof typ
 export const GetMarketSnapshotSession = {
   premarket: 'premarket',
   regular: 'regular',
+} as const;
+
+export type GetMarketSnapshotSlippageMode = typeof GetMarketSnapshotSlippageMode[keyof typeof GetMarketSnapshotSlippageMode];
+
+
+export const GetMarketSnapshotSlippageMode = {
+  normal: 'normal',
+  fast: 'fast',
+  abnormal_spread: 'abnormal_spread',
 } as const;
 
 export type ListJournalEntriesParams = {

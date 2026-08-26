@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetMarketSnapshotSession } from './getMarketSnapshotSession';
+import type { GetMarketSnapshotSlippageMode } from './getMarketSnapshotSlippageMode';
 
 export type GetMarketSnapshotParams = {
 /**
@@ -22,4 +23,14 @@ fibHigh?: number;
  * Optional manual Fibonacci low anchor for descriptive replay analysis.
  */
 fibLow?: number;
+/**
+ * Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.
+ * @minimum 50
+ * @maximum 100
+ */
+targetDollars?: number;
+/**
+ * Descriptive slippage regime used by the shadow cost model.
+ */
+slippageMode?: GetMarketSnapshotSlippageMode;
 };

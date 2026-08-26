@@ -25,12 +25,19 @@ export const getMarketSnapshotQuerySymbolDefault = `MES`;
 export const getMarketSnapshotQuerySymbolMax = 12;
 
 export const getMarketSnapshotQuerySessionDefault = `regular`;
+export const getMarketSnapshotQueryTargetDollarsDefault = 75;
+export const getMarketSnapshotQueryTargetDollarsMin = 50;
+export const getMarketSnapshotQueryTargetDollarsMax = 100;
+
+export const getMarketSnapshotQuerySlippageModeDefault = `normal`;
 
 export const GetMarketSnapshotQueryParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getMarketSnapshotQuerySymbolMax).default(getMarketSnapshotQuerySymbolDefault),
   "session": zod.enum(['premarket', 'regular']).default(getMarketSnapshotQuerySessionDefault),
   "fibHigh": zod.coerce.number().optional().describe('Optional manual Fibonacci high anchor for descriptive replay analysis.'),
-  "fibLow": zod.coerce.number().optional().describe('Optional manual Fibonacci low anchor for descriptive replay analysis.')
+  "fibLow": zod.coerce.number().optional().describe('Optional manual Fibonacci low anchor for descriptive replay analysis.'),
+  "targetDollars": zod.coerce.number().min(getMarketSnapshotQueryTargetDollarsMin).max(getMarketSnapshotQueryTargetDollarsMax).default(getMarketSnapshotQueryTargetDollarsDefault).describe('Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.'),
+  "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(getMarketSnapshotQuerySlippageModeDefault).describe('Descriptive slippage regime used by the shadow cost model.')
 })
 
 export const GetMarketSnapshotResponse = zod.object({
@@ -53,6 +60,9 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "commissionPerContract": zod.number(),
   "exchangeAndRegulatoryFeesPerContract": zod.number(),
+  "exchangeFeePerContract": zod.number(),
+  "regulatoryFeePerContract": zod.number(),
+  "clearingFeePerContract": zod.number(),
   "maximumSpreadTicks": zod.number(),
   "minimumLiquidity": zod.number(),
   "rolloverDate": zod.string(),
@@ -336,11 +346,46 @@ export const GetMarketSnapshotResponse = zod.object({
   "entry": zod.number().nullable(),
   "thesisStop": zod.number().nullable(),
   "catastropheStop": zod.number().nullable(),
+  "strategyStop": zod.number().nullable(),
   "target": zod.number().nullable(),
+  "targetDollars": zod.number(),
+  "targetTicks": zod.number(),
+  "targetContracts": zod.number(),
+  "runnerContracts": zod.number(),
   "contracts": zod.number(),
+  "stopTicks": zod.number(),
+  "riskPerContract": zod.number(),
   "dollarRisk": zod.number(),
   "allowed": zod.boolean(),
-  "reasons": zod.array(zod.string())
+  "reasons": zod.array(zod.string()),
+  "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']),
+  "costBreakdown": zod.object({
+  "commission": zod.number(),
+  "exchange": zod.number(),
+  "regulatory": zod.number(),
+  "clearing": zod.number(),
+  "roundTripFees": zod.number(),
+  "entrySlippage": zod.number(),
+  "exitSlippage": zod.number(),
+  "totalSlippage": zod.number()
+}),
+  "projectedTargetPnl": zod.object({
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number()
+}),
+  "runner": zod.object({
+  "active": zod.boolean(),
+  "referencePrice": zod.number().nullable(),
+  "impulse": zod.number().nullable(),
+  "mostFavorablePrice": zod.number().nullable(),
+  "adverseRetracement": zod.number(),
+  "retracementThreshold": zod.number().nullable(),
+  "exit": zod.boolean(),
+  "exitReason": zod.string().nullable()
+}),
+  "locks": zod.record(zod.string(), zod.boolean())
 }),
   "levelStory": zod.array(zod.object({
   "time": zod.string(),
@@ -377,6 +422,9 @@ export const ListFuturesContractSpecificationsResponseItem = zod.object({
 }),
   "commissionPerContract": zod.number(),
   "exchangeAndRegulatoryFeesPerContract": zod.number(),
+  "exchangeFeePerContract": zod.number(),
+  "regulatoryFeePerContract": zod.number(),
+  "clearingFeePerContract": zod.number(),
   "maximumSpreadTicks": zod.number(),
   "minimumLiquidity": zod.number(),
   "rolloverDate": zod.string(),

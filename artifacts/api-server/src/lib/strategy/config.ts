@@ -45,6 +45,12 @@ export type StrategyConfig = {
   phase4PullbackMaxMinutes: number;
   phase4BreakoutVolumeRatio: number;
   phase6ConsolidationExpansionRatio: number;
+  phase7MaxContracts: number;
+  phase7StaleDataSeconds: number;
+  phase7NormalSlippageTicks: number;
+  phase7FastSlippageTicks: number;
+  phase7DefaultTargetDollars: number;
+  phase7RunnerRetracementRatio: number;
 };
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
@@ -93,6 +99,12 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4PullbackMaxMinutes: 30,
   phase4BreakoutVolumeRatio: 1.25,
   phase6ConsolidationExpansionRatio: 1.25,
+  phase7MaxContracts: 10,
+  phase7StaleDataSeconds: 15,
+  phase7NormalSlippageTicks: 1,
+  phase7FastSlippageTicks: 2,
+  phase7DefaultTargetDollars: 75,
+  phase7RunnerRetracementRatio: 0.4,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -146,6 +158,11 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase4PullbackMaxMinutes", config.phase4PullbackMaxMinutes],
     ["phase4BreakoutVolumeRatio", config.phase4BreakoutVolumeRatio],
     ["phase6ConsolidationExpansionRatio", config.phase6ConsolidationExpansionRatio],
+    ["phase7MaxContracts", config.phase7MaxContracts],
+    ["phase7StaleDataSeconds", config.phase7StaleDataSeconds],
+    ["phase7NormalSlippageTicks", config.phase7NormalSlippageTicks],
+    ["phase7FastSlippageTicks", config.phase7FastSlippageTicks],
+    ["phase7DefaultTargetDollars", config.phase7DefaultTargetDollars],
   ];
   for (const [name, value] of positiveNumbers) {
     if (!Number.isFinite(value) || value <= 0) {
@@ -166,6 +183,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["majorLevelProximityPercent", config.majorLevelProximityPercent],
     ["majorLevelProximityAtrFactor", config.majorLevelProximityAtrFactor],
     ["phase4ProximityAtrFactor", config.phase4ProximityAtrFactor],
+    ["phase7RunnerRetracementRatio", config.phase7RunnerRetracementRatio],
   ];
   for (const [name, value] of nonNegativeNumbers) {
     if (!Number.isFinite(value) || value < 0) {
@@ -174,6 +192,12 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.orbMinutes !== 15 || config.ntzMinutes !== 15) {
     throw new Error("Invalid strategy configuration: Phase 2 opening range and NTZ must be 15 minutes.");
+  }
+  if (config.phase7RunnerRetracementRatio !== 0.4) {
+    throw new Error("Invalid strategy configuration: Phase 7 runner retracement must be 40%.");
+  }
+  if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
+    throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");

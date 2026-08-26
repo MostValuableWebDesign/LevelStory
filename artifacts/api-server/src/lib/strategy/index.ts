@@ -9,3 +9,4 @@ export * from "./phase6.js";
 export * from "./rules.js";
 export * from "./risk.js";
 export * from "./simulation.js";
+export * from "./phase7.js";
