@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { JournalEntry } from './journalEntry';
+import type { SetupPerformance } from './setupPerformance';
 
 export interface DashboardOverview {
   sessionPnl: number;
@@ -14,6 +15,7 @@ export interface DashboardOverview {
   dailyLossUsed: number;
   tradeCount: number;
   winRate: number;
+  setupPerformance: SetupPerformance[];
   checklistCompleted: number;
   checklistTotal: number;
   recentEntries: JournalEntry[];

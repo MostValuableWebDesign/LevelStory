@@ -195,6 +195,48 @@ export const GetMarketSnapshotResponse = zod.object({
   "stateTime": zod.string().nullable(),
   "detail": zod.string()
 }),
+  "setupAnalysis": zod.object({
+  "decision": zod.enum(['NO TRADE', 'WAITING', 'SETUP FORMING', 'SETUP QUALIFIED', 'POSSIBLE REVERSAL', 'EXPIRED', 'AMBIGUOUS']),
+  "primarySetup": zod.union([zod.literal('ORB_BREAK_PULLBACK_CONTINUATION'),zod.literal('EXTENDED_NTZ_CONSOLIDATION_BREAKOUT'),zod.literal('BONUS_REVERSAL'),zod.literal(null)]).nullable(),
+  "explanation": zod.string(),
+  "evaluations": zod.array(zod.object({
+  "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "decision": zod.enum(['NO TRADE', 'WAITING', 'SETUP FORMING', 'SETUP QUALIFIED', 'POSSIBLE REVERSAL', 'EXPIRED', 'AMBIGUOUS']),
+  "mandatoryPassed": zod.boolean(),
+  "alertOnly": zod.boolean(),
+  "rules": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "passed": zod.boolean(),
+  "mandatory": zod.boolean(),
+  "detail": zod.string()
+})),
+  "reversalEvidence": zod.union([zod.object({
+  "dojiAtMajorLevel": zod.boolean(),
+  "equivalentOpposingCandles": zod.boolean(),
+  "failedBreakout": zod.boolean(),
+  "strongOpposingVolume": zod.boolean(),
+  "deepFibonacciRetracement": zod.boolean(),
+  "majorLevelRejection": zod.boolean(),
+  "structureBreak": zod.boolean(),
+  "alert": zod.boolean(),
+  "detail": zod.string()
+}),zod.null()]),
+  "consolidation": zod.union([zod.object({
+  "detected": zod.boolean(),
+  "candleCount": zod.number(),
+  "durationMinutes": zod.number(),
+  "insideOrNearCount": zod.number(),
+  "range": zod.number().nullable(),
+  "expansionRatio": zod.number().nullable(),
+  "startTime": zod.string().nullable(),
+  "endTime": zod.string().nullable(),
+  "detail": zod.string()
+}),zod.null()]),
+  "explanation": zod.string()
+}))
+}),
   "fibonacci": zod.object({
   "direction": zod.union([zod.literal('bullish'),zod.literal('bearish'),zod.literal(null)]).nullable(),
   "impulseLow": zod.number().nullable(),
@@ -355,6 +397,15 @@ export const GetDashboardOverviewResponse = zod.object({
   "dailyLossUsed": zod.number(),
   "tradeCount": zod.number(),
   "winRate": zod.number(),
+  "setupPerformance": zod.array(zod.object({
+  "setupType": zod.string(),
+  "reviewCount": zod.number(),
+  "closedCount": zod.number(),
+  "wins": zod.number(),
+  "losses": zod.number(),
+  "winRate": zod.number(),
+  "netPnl": zod.number()
+})),
   "checklistCompleted": zod.number(),
   "checklistTotal": zod.number(),
   "recentEntries": zod.array(zod.object({

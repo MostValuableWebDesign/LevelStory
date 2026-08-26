@@ -515,6 +515,121 @@ export interface PatienceAnalysis {
   detail: string;
 }
 
+export interface SetupRule {
+  key: string;
+  label: string;
+  passed: boolean;
+  mandatory: boolean;
+  detail: string;
+}
+
+export interface ReversalEvidence {
+  dojiAtMajorLevel: boolean;
+  equivalentOpposingCandles: boolean;
+  failedBreakout: boolean;
+  strongOpposingVolume: boolean;
+  deepFibonacciRetracement: boolean;
+  majorLevelRejection: boolean;
+  structureBreak: boolean;
+  alert: boolean;
+  detail: string;
+}
+
+export interface ExtendedConsolidation {
+  detected: boolean;
+  candleCount: number;
+  durationMinutes: number;
+  insideOrNearCount: number;
+  /** @nullable */
+  range: number | null;
+  /** @nullable */
+  expansionRatio: number | null;
+  /** @nullable */
+  startTime: string | null;
+  /** @nullable */
+  endTime: string | null;
+  detail: string;
+}
+
+export type SetupEvaluationSetupType = typeof SetupEvaluationSetupType[keyof typeof SetupEvaluationSetupType];
+
+
+export const SetupEvaluationSetupType = {
+  ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
+  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
+  BONUS_REVERSAL: 'BONUS_REVERSAL',
+} as const;
+
+/**
+ * @nullable
+ */
+export type SetupEvaluationDirection = typeof SetupEvaluationDirection[keyof typeof SetupEvaluationDirection] | null;
+
+
+export const SetupEvaluationDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type SetupEvaluationDecision = typeof SetupEvaluationDecision[keyof typeof SetupEvaluationDecision];
+
+
+export const SetupEvaluationDecision = {
+  NO_TRADE: 'NO TRADE',
+  WAITING: 'WAITING',
+  SETUP_FORMING: 'SETUP FORMING',
+  SETUP_QUALIFIED: 'SETUP QUALIFIED',
+  POSSIBLE_REVERSAL: 'POSSIBLE REVERSAL',
+  EXPIRED: 'EXPIRED',
+  AMBIGUOUS: 'AMBIGUOUS',
+} as const;
+
+export interface SetupEvaluation {
+  setupType: SetupEvaluationSetupType;
+  /** @nullable */
+  direction: SetupEvaluationDirection;
+  decision: SetupEvaluationDecision;
+  mandatoryPassed: boolean;
+  alertOnly: boolean;
+  rules: SetupRule[];
+  reversalEvidence: ReversalEvidence | null;
+  consolidation: ExtendedConsolidation | null;
+  explanation: string;
+}
+
+export type SetupAnalysisDecision = typeof SetupAnalysisDecision[keyof typeof SetupAnalysisDecision];
+
+
+export const SetupAnalysisDecision = {
+  NO_TRADE: 'NO TRADE',
+  WAITING: 'WAITING',
+  SETUP_FORMING: 'SETUP FORMING',
+  SETUP_QUALIFIED: 'SETUP QUALIFIED',
+  POSSIBLE_REVERSAL: 'POSSIBLE REVERSAL',
+  EXPIRED: 'EXPIRED',
+  AMBIGUOUS: 'AMBIGUOUS',
+} as const;
+
+/**
+ * @nullable
+ */
+export type SetupAnalysisPrimarySetup = typeof SetupAnalysisPrimarySetup[keyof typeof SetupAnalysisPrimarySetup] | null;
+
+
+export const SetupAnalysisPrimarySetup = {
+  ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
+  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
+  BONUS_REVERSAL: 'BONUS_REVERSAL',
+} as const;
+
+export interface SetupAnalysis {
+  decision: SetupAnalysisDecision;
+  /** @nullable */
+  primarySetup: SetupAnalysisPrimarySetup;
+  explanation: string;
+  evaluations: SetupEvaluation[];
+}
+
 export type MarketSnapshotMode = typeof MarketSnapshotMode[keyof typeof MarketSnapshotMode];
 
 
@@ -605,6 +720,7 @@ export interface MarketSnapshot {
   breakout: BreakoutEvent;
   pullback: PullbackAnalysis;
   patience: PatienceAnalysis;
+  setupAnalysis: SetupAnalysis;
   fibonacci: FibonacciAnalysis;
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;
@@ -616,6 +732,16 @@ export interface MarketSnapshot {
   levelStory: LevelStoryEvent[];
   reversal: ReversalState;
   assumptions: string[];
+}
+
+export interface SetupPerformance {
+  setupType: string;
+  reviewCount: number;
+  closedCount: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  netPnl: number;
 }
 
 export type JournalEntrySide = typeof JournalEntrySide[keyof typeof JournalEntrySide];
@@ -649,6 +775,7 @@ export interface DashboardOverview {
   dailyLossUsed: number;
   tradeCount: number;
   winRate: number;
+  setupPerformance: SetupPerformance[];
   checklistCompleted: number;
   checklistTotal: number;
   recentEntries: JournalEntry[];

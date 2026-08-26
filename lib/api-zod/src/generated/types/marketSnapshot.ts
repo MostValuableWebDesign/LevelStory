@@ -22,6 +22,7 @@ import type { PullbackAnalysis } from './pullbackAnalysis';
 import type { ReplayMetadata } from './replayMetadata';
 import type { ReversalState } from './reversalState';
 import type { RiskPlan } from './riskPlan';
+import type { SetupAnalysis } from './setupAnalysis';
 import type { Signal } from './signal';
 import type { StrategyDecision } from './strategyDecision';
 import type { TrendEvidence } from './trendEvidence';
@@ -46,6 +47,7 @@ export interface MarketSnapshot {
   breakout: BreakoutEvent;
   pullback: PullbackAnalysis;
   patience: PatienceAnalysis;
+  setupAnalysis: SetupAnalysis;
   fibonacci: FibonacciAnalysis;
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;

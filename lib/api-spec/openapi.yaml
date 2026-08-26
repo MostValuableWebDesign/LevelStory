@@ -727,6 +727,111 @@ components:
         detail:
           type: string
       required: [state, eligible, eligibilityReason, eligibilityTime, patienceCandle, triggerCandle, triggerPrice, stateTime, detail]
+    SetupRule:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        passed:
+          type: boolean
+        mandatory:
+          type: boolean
+        detail:
+          type: string
+      required: [key, label, passed, mandatory, detail]
+    ReversalEvidence:
+      type: object
+      properties:
+        dojiAtMajorLevel:
+          type: boolean
+        equivalentOpposingCandles:
+          type: boolean
+        failedBreakout:
+          type: boolean
+        strongOpposingVolume:
+          type: boolean
+        deepFibonacciRetracement:
+          type: boolean
+        majorLevelRejection:
+          type: boolean
+        structureBreak:
+          type: boolean
+        alert:
+          type: boolean
+        detail:
+          type: string
+      required: [dojiAtMajorLevel, equivalentOpposingCandles, failedBreakout, strongOpposingVolume, deepFibonacciRetracement, majorLevelRejection, structureBreak, alert, detail]
+    ExtendedConsolidation:
+      type: object
+      properties:
+        detected:
+          type: boolean
+        candleCount:
+          type: number
+        durationMinutes:
+          type: number
+        insideOrNearCount:
+          type: number
+        range:
+          type: ["number", "null"]
+        expansionRatio:
+          type: ["number", "null"]
+        startTime:
+          type: ["string", "null"]
+        endTime:
+          type: ["string", "null"]
+        detail:
+          type: string
+      required: [detected, candleCount, durationMinutes, insideOrNearCount, range, expansionRatio, startTime, endTime, detail]
+    SetupEvaluation:
+      type: object
+      properties:
+        setupType:
+          type: string
+          enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL]
+        direction:
+          type: ["string", "null"]
+          enum: [long, short, null]
+        decision:
+          type: string
+          enum: ["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "EXPIRED", "AMBIGUOUS"]
+        mandatoryPassed:
+          type: boolean
+        alertOnly:
+          type: boolean
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SetupRule"
+        reversalEvidence:
+          oneOf:
+            - $ref: "#/components/schemas/ReversalEvidence"
+            - type: "null"
+        consolidation:
+          oneOf:
+            - $ref: "#/components/schemas/ExtendedConsolidation"
+            - type: "null"
+        explanation:
+          type: string
+      required: [setupType, direction, decision, mandatoryPassed, alertOnly, rules, reversalEvidence, consolidation, explanation]
+    SetupAnalysis:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "EXPIRED", "AMBIGUOUS"]
+        primarySetup:
+          type: ["string", "null"]
+          enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL, null]
+        explanation:
+          type: string
+        evaluations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SetupEvaluation"
+      required: [decision, primarySetup, explanation, evaluations]
     MarketSnapshot:
       type: object
       properties:
@@ -789,6 +894,8 @@ components:
           $ref: "#/components/schemas/PullbackAnalysis"
         patience:
           $ref: "#/components/schemas/PatienceAnalysis"
+        setupAnalysis:
+          $ref: "#/components/schemas/SetupAnalysis"
         fibonacci:
           $ref: "#/components/schemas/FibonacciAnalysis"
         volumeAnalysis:
@@ -835,7 +942,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:
@@ -851,6 +958,10 @@ components:
           type: number
         winRate:
           type: number
+        setupPerformance:
+          type: array
+          items:
+            $ref: "#/components/schemas/SetupPerformance"
         checklistCompleted:
           type: number
         checklistTotal:
@@ -859,7 +970,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/JournalEntry"
-      required: [sessionPnl, sessionPnlPercent, maxDailyLoss, dailyLossUsed, tradeCount, winRate, checklistCompleted, checklistTotal, recentEntries]
+      required: [sessionPnl, sessionPnlPercent, maxDailyLoss, dailyLossUsed, tradeCount, winRate, setupPerformance, checklistCompleted, checklistTotal, recentEntries]
+    SetupPerformance:
+      type: object
+      properties:
+        setupType:
+          type: string
+        reviewCount:
+          type: number
+        closedCount:
+          type: number
+        wins:
+          type: number
+        losses:
+          type: number
+        winRate:
+          type: number
+        netPnl:
+          type: number
+      required: [setupType, reviewCount, closedCount, wins, losses, winRate, netPnl]
     JournalEntry:
       type: object
       properties:

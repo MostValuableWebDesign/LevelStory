@@ -73,6 +73,7 @@ export default function Dashboard() {
              setAppliedFib(Number.isFinite(high) && Number.isFinite(low) ? { fibHigh: high, fibLow: low } : undefined);
            }} />
            <PatiencePanel snapshot={snapshot} />
+           <SetupEnginesPanel snapshot={snapshot} />
 
           <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
             <Panel>
@@ -84,6 +85,11 @@ export default function Dashboard() {
                <div className="space-y-2 border-t border-border p-5 sm:p-6">{[...snapshot.decision.passedRules.map(rule => ({ ...rule, passed: true })), ...snapshot.decision.failedRules.map(rule => ({ ...rule, passed: false }))].map((rule) => <div key={rule.key} className="flex items-start gap-3 rounded-sm px-2 py-2" data-testid={`rule-${rule.key}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border ${rule.passed ? "border-[hsl(var(--positive))] bg-[hsl(var(--positive))] text-white" : "border-destructive/40 text-destructive"}`}>{rule.passed ? <Check size={13} strokeWidth={3} /> : <span className="text-xs">—</span>}</span><span><span className={`block text-xs font-semibold ${rule.passed ? "text-foreground" : "text-muted-foreground"}`}>{rule.label}</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{rule.detail}</span></span></div>)}</div>
              </Panel>
           </div>
+
+          <Panel>
+            <PanelTitle eyebrow="Shadow review history" title="Performance by setup" right={<span className="text-[10px] uppercase text-muted-foreground">Never blended</span>} />
+            {overview.isLoading ? <QuerySkeleton rows={3} /> : overview.isError || !overviewData ? <QueryError onRetry={() => overview.refetch()} /> : <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">{overviewData.setupPerformance.map((item) => <div key={item.setupType} className="bg-card p-5" data-testid={`setup-performance-${item.setupType}`}><div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{formatSetupName(item.setupType)}</div><div className="mono mt-3 text-xl font-medium">{item.netPnl >= 0 ? "+" : ""}${item.netPnl.toFixed(2)}</div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{item.reviewCount} reviews · {item.closedCount} closed</span><span>{item.closedCount ? `${item.winRate.toFixed(1)}% win` : "No closed reviews"}</span></div></div>)}</div>}
+          </Panel>
 
           <Panel>
             <PanelTitle eyebrow="Session ledger" title="Recent shadow reviews" right={<Link href="/journal" className="text-xs font-bold underline decoration-accent decoration-2 underline-offset-4" data-testid="link-view-journal">Open journal</Link>} />
@@ -178,6 +184,34 @@ function PatiencePanel({ snapshot }: { snapshot: MarketSnapshot }) {
       <LockedNote>Timing state is descriptive shadow analysis only. `ENTRY TRIGGERED` never creates a live or paper order.</LockedNote>
     </div>
   </Panel>;
+}
+
+function SetupEnginesPanel({ snapshot }: { snapshot: MarketSnapshot }) {
+  const analysis = snapshot.setupAnalysis;
+  return <Panel accent>
+    <PanelTitle eyebrow="Phase 6 / independent engines" title="Setup qualification matrix" right={<span className={`text-[10px] font-bold uppercase ${analysis.decision === "SETUP QUALIFIED" ? "status-positive" : analysis.decision === "POSSIBLE REVERSAL" ? "status-negative" : "text-muted-foreground"}`} data-testid="phase6-decision">{analysis.decision}</span>} />
+    <div className="border-t border-border p-5 sm:p-6">
+      <p className="mb-5 text-xs leading-5 text-muted-foreground">{analysis.explanation} Scores never qualify a setup; every mandatory rule must pass.</p>
+      <div className="grid gap-4 xl:grid-cols-3">
+        {analysis.evaluations.map((evaluation) => {
+          const mandatory = evaluation.rules.filter((item) => item.mandatory);
+          const passed = mandatory.filter((item) => item.passed).length;
+          return <div key={evaluation.setupType} className="rounded-sm border border-border/80 bg-secondary/25" data-testid={`setup-engine-${evaluation.setupType}`}>
+            <div className="border-b border-border/80 p-4"><div className="flex items-start justify-between gap-3"><span className="text-xs font-bold leading-4">{formatSetupName(evaluation.setupType)}</span><span className={`shrink-0 text-[10px] font-bold uppercase ${evaluation.decision === "SETUP QUALIFIED" ? "status-positive" : evaluation.decision === "POSSIBLE REVERSAL" || evaluation.decision === "AMBIGUOUS" || evaluation.decision === "EXPIRED" ? "status-negative" : "text-muted-foreground"}`}>{evaluation.decision}</span></div><div className="mt-2 text-[10px] text-muted-foreground">{evaluation.direction ?? "direction pending"} · {passed}/{mandatory.length} mandatory</div></div>
+            <div className="space-y-2 p-4">{evaluation.rules.map((item) => <div key={item.key} className="flex items-start gap-2" data-testid={`setup-rule-${evaluation.setupType}-${item.key}`}><span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${item.passed ? "bg-[hsl(var(--positive))]" : item.mandatory ? "bg-destructive/70" : "bg-muted-foreground/40"}`} /><span><span className={`block text-[11px] font-semibold ${item.mandatory ? "text-foreground" : "text-muted-foreground"}`}>{item.label}{item.mandatory ? "" : " · evidence"}</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{item.detail}</span></span></div>)}</div>
+            {evaluation.consolidation && <div className="border-t border-border/80 px-4 py-3 text-[10px] text-muted-foreground">{evaluation.consolidation.detail}</div>}
+            {evaluation.reversalEvidence && <div className="border-t border-border/80 px-4 py-3 text-[10px] leading-4 text-muted-foreground">{evaluation.reversalEvidence.detail}</div>}
+            {evaluation.alertOnly && <div className="border-t border-border/80 px-4 py-3 text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground">Alert only · no entry by itself</div>}
+          </div>;
+        })}
+      </div>
+      <div className="mt-5"><LockedNote>Phase 6 is deterministic shadow analysis. `ENTRY TRIGGERED` is descriptive and never submits a live or paper order.</LockedNote></div>
+    </div>
+  </Panel>;
+}
+
+function formatSetupName(value: string): string {
+  return value.replaceAll("_", " ");
 }
 
 function Phase4Panel({ snapshot, fibHigh, fibLow, onFibHighChange, onFibLowChange, onApplyFib }: {

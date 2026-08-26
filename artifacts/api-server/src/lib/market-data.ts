@@ -11,6 +11,10 @@ import {
   fibonacciAnalysis,
   phase4Volume,
   phase5PatienceAnalysis,
+  phase6Analysis,
+  type Phase6Analysis,
+  type Phase6Decision,
+  type SetupType,
   type ManualFibAnchors,
   type PatienceAnalysis,
   type PatienceEligibilityReason,
@@ -215,6 +219,42 @@ export type MarketSnapshot = {
   };
   levelStory: Array<{ time: string; level: string; interaction: string; detail: string }>;
   reversal: { doji: boolean; equivalentCandles: boolean; warning: string | null };
+  setupAnalysis: {
+    decision: Phase6Decision;
+    primarySetup: SetupType | null;
+    explanation: string;
+    evaluations: Array<{
+      setupType: SetupType;
+      direction: Direction | null;
+      decision: Phase6Decision;
+      mandatoryPassed: boolean;
+      alertOnly: boolean;
+      rules: Array<{ key: string; label: string; passed: boolean; mandatory: boolean; detail: string }>;
+      reversalEvidence: {
+        dojiAtMajorLevel: boolean;
+        equivalentOpposingCandles: boolean;
+        failedBreakout: boolean;
+        strongOpposingVolume: boolean;
+        deepFibonacciRetracement: boolean;
+        majorLevelRejection: boolean;
+        structureBreak: boolean;
+        alert: boolean;
+        detail: string;
+      } | null;
+      consolidation: {
+        detected: boolean;
+        candleCount: number;
+        durationMinutes: number;
+        insideOrNearCount: number;
+        range: number | null;
+        expansionRatio: number | null;
+        startTime: string | null;
+        endTime: string | null;
+        detail: string;
+      } | null;
+      explanation: string;
+    }>;
+  };
   assumptions: string[];
 };
 
@@ -297,6 +337,21 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
   const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
   const hardRiskLock = !!riskInput?.isLocked || (riskInput !== undefined && riskInput.dailyLossUsed >= riskInput.maxDailyLoss);
   const riskGateAllowed = plan.catastropheStop === null ? !hardRiskLock : plan.allowed;
+  const reversalDirection: Direction = patienceDirection === "long" ? "short" : "long";
+  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents);
+  const setupAnalysis = phase6Analysis({
+    candles: regular,
+    levels,
+    breakout,
+    pullback,
+    fibonacci,
+    volume: volumeAnalysis,
+    patience,
+    reversalPatience,
+    trend,
+    riskApproved: riskGateAllowed,
+    config,
+  });
   const evaluation = fullDecision(regular, levels, config, direction, riskGateAllowed);
   const story = regular.slice(-10).flatMap(c => levelStory(c, levels.levels, config.levelTolerance).interactions.map(item => ({
     time: new Date(c.closeTime).toISOString(),
@@ -437,6 +492,7 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       equivalentCandles: detectEquivalentCandles(regular, config),
        warning: volumeAnalysis.reversalWarning ?? (alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null),
     },
+      setupAnalysis: toApiSetupAnalysis(setupAnalysis),
     assumptions: [
       "Simulation uses America/New_York trading dates with UTC timestamps for deterministic replay.",
       "Premarket is available only when the simulated feed includes 04:00–09:29:59 ET candles.",
@@ -448,6 +504,9 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       `Phase 4 breakout support requires ${config.phase4BreakoutVolumeRatio.toFixed(2)}x the previous six completed five-minute candle volume average.`,
       `Phase 4 pullback proximity is the greater of ${config.phase4ProximityTicks} ticks and ${config.phase4ProximityAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period five-minute ATR, bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
       "Patience-candle states are descriptive shadow analysis only; a trigger never creates a live or paper order.",
+      "Phase 6 setup decisions require every mandatory rule; scores and reversal alerts cannot qualify a setup.",
+      "Doji uses a 10% body-to-range default; equivalent opposing candles use 15% body-size tolerance, 70% minimum body-to-range, and 15% trend-facing-wick limits.",
+      `Extended NTZ consolidation requires 9–12 contiguous completed five-minute candles (45–60 minutes), primarily inside or near NTZ, with no more than ${config.phase6ConsolidationExpansionRatio.toFixed(2)}× range expansion.`,
       `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
   };
@@ -488,6 +547,31 @@ function toApiCandle(candle: SimulatedFuturesCandle) {
     bidSize: candle.bidSize,
     askSize: candle.askSize,
     contractSymbol: candle.contractSymbol,
+  };
+}
+
+function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnalysis"] {
+  return {
+    decision: analysis.decision,
+    primarySetup: analysis.primarySetup,
+    explanation: analysis.explanation,
+    evaluations: analysis.evaluations.map((evaluation) => ({
+      setupType: evaluation.setupType,
+      direction: evaluation.direction,
+      decision: evaluation.decision,
+      mandatoryPassed: evaluation.mandatoryPassed,
+      alertOnly: evaluation.alertOnly,
+      rules: evaluation.rules,
+      reversalEvidence: evaluation.reversalEvidence,
+      consolidation: evaluation.consolidation
+        ? {
+            ...evaluation.consolidation,
+            startTime: evaluation.consolidation.startTime === null ? null : new Date(evaluation.consolidation.startTime).toISOString(),
+            endTime: evaluation.consolidation.endTime === null ? null : new Date(evaluation.consolidation.endTime).toISOString(),
+          }
+        : null,
+      explanation: evaluation.explanation,
+    })),
   };
 }
 

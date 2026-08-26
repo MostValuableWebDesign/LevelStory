@@ -44,6 +44,7 @@ export type StrategyConfig = {
   phase4PullbackMaxCandles: number;
   phase4PullbackMaxMinutes: number;
   phase4BreakoutVolumeRatio: number;
+  phase6ConsolidationExpansionRatio: number;
 };
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
@@ -91,6 +92,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4PullbackMaxCandles: 6,
   phase4PullbackMaxMinutes: 30,
   phase4BreakoutVolumeRatio: 1.25,
+  phase6ConsolidationExpansionRatio: 1.25,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -143,6 +145,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase4PullbackMaxCandles", config.phase4PullbackMaxCandles],
     ["phase4PullbackMaxMinutes", config.phase4PullbackMaxMinutes],
     ["phase4BreakoutVolumeRatio", config.phase4BreakoutVolumeRatio],
+    ["phase6ConsolidationExpansionRatio", config.phase6ConsolidationExpansionRatio],
   ];
   for (const [name, value] of positiveNumbers) {
     if (!Number.isFinite(value) || value <= 0) {
