@@ -35,11 +35,11 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   simulationSeed: 17,
   simulationDays: 3,
   barIntervalMinutes: 5,
-  sessionTimeZone: "UTC",
+  sessionTimeZone: "America/New_York",
   sessionStartMinutes: 570, // assumption: 09:30 exchange-local minutes
   premarketStartMinutes: 240, // assumption: 04:00
-  orbMinutes: 15, // assumption: first completed 15m candle
-  ntzMinutes: 15, // assumption: NTZ is the first completed 15m regular-session candle
+  orbMinutes: 15, // assumption: exact 9:30–9:45 ET opening range
+  ntzMinutes: 15, // assumption: exact first three completed 5m candles
   emaPeriod: 200,
   rsiPeriod: 14,
   volumeLookback: 20,
@@ -81,6 +81,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (!config.sessionTimeZone.trim()) {
     throw new Error("Invalid strategy configuration: sessionTimeZone is required.");
   }
+  if (config.sessionTimeZone !== "America/New_York") {
+    throw new Error("Invalid strategy configuration: sessionTimeZone must be America/New_York.");
+  }
   const positiveNumbers: Array<[string, number]> = [
     ["sessionStartMinutes", config.sessionStartMinutes],
     ["premarketStartMinutes", config.premarketStartMinutes],
@@ -117,6 +120,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     if (!Number.isFinite(value) || value < 0) {
       throw new Error(`Invalid strategy configuration: ${name} must be finite and non-negative.`);
     }
+  }
+  if (config.orbMinutes !== 15 || config.ntzMinutes !== 15) {
+    throw new Error("Invalid strategy configuration: Phase 2 opening range and NTZ must be 15 minutes.");
   }
   return { ...config };
 }

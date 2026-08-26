@@ -44,7 +44,7 @@ export default function Dashboard() {
                 <div className="sm:text-right"><div className="mono text-3xl font-medium tracking-[-.05em]" data-testid="text-market-price">${snapshot.price.toFixed(2)}</div><PriceChange value={snapshot.change} percent={snapshot.changePercent} /><div className="mt-2 text-[10px] text-muted-foreground">Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
               </div>
                <div className="terminal-rule px-1 pt-2"><MiniCandleChart candles={snapshot.candles} ntz={snapshot.ntz} levels={snapshot.levels.critical} /></div>
-               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min / simulated</span></div>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 px-5 py-3 text-[10px] text-muted-foreground sm:px-7"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--positive))]" />Up candle</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[hsl(var(--negative))]" />Down candle</span><span className="ml-auto inline-flex items-center gap-1.5"><Clock3 size={12} />{snapshot.replay.barIntervalMinutes} min · {snapshot.replay.timeZone} · {snapshot.sessionCalendar.tradingDate}</span></div>
             </Panel>
 
              <DecisionPanel snapshot={snapshot} confirmedCount={confirmedCount} signalCount={activeSignals.length} />
@@ -60,6 +60,8 @@ export default function Dashboard() {
                <div className="divide-y divide-border border-t border-border">{[["RSI", snapshot.indicators.rsi == null ? "—" : snapshot.indicators.rsi.toFixed(1), snapshot.indicators.rsi == null ? "Pending" : snapshot.indicators.rsi > 70 ? "Extended" : snapshot.indicators.rsi < 30 ? "Oversold" : "Balanced"], ["EMA 200", formatPrice(snapshot.indicators.ema200), "Calculated"], ["EMA slope", formatSigned(snapshot.indicators.emaSlope), "Recent direction"], ["VWAP", formatPrice(snapshot.indicators.vwap), "Session reference"], ["Fib 23.6", formatPrice(snapshot.indicators.fib236), "Confluence"], ["Fib 38.2", formatPrice(snapshot.indicators.fib382), "Confluence"], ["Fib 50", formatPrice(snapshot.indicators.fib5), "Confluence"], ["Fib 61.8", formatPrice(snapshot.indicators.fib618), "Confluence"], ["Fib 78.6", formatPrice(snapshot.indicators.fib786), "Confluence"], ["Volume ratio", snapshot.indicators.volumeRatio == null ? "—" : `${snapshot.indicators.volumeRatio.toFixed(2)}×`, snapshot.indicators.volumeRatio == null ? "Pending" : snapshot.indicators.volumeRatio > 1 ? "Elevated" : "Quiet"]].map(([label, value, detail]) => <div key={label} className="flex items-center justify-between px-5 py-3 text-xs"><span className="text-muted-foreground">{label}</span><span className="mono font-medium">{value}</span><span className="hidden w-20 text-right text-[10px] text-muted-foreground sm:block">{detail}</span></div>)}</div>
             </Panel>
           </div>
+
+           <NtzPanel snapshot={snapshot} />
 
           <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
             <Panel>
@@ -111,8 +113,26 @@ function DecisionPanel({ snapshot, confirmedCount, signalCount }: { snapshot: Ma
     <div className="p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4"><div><div className="eyebrow text-muted-foreground">Current decision</div><div className={`display mt-3 text-3xl font-bold tracking-[-.06em] ${qualified ? "status-positive" : waiting ? "text-accent-foreground" : "status-negative"}`} data-testid="status-current-decision">{snapshot.decision.state}</div></div><ShieldAlert size={19} className={qualified ? "status-positive" : waiting ? "text-accent-foreground" : "status-negative"} /></div>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">{snapshot.decision.explanation}</p>
+       {snapshot.ntz.complete && snapshot.ntz.position === "inside" && <div className="mt-4 border border-accent/45 bg-accent/10 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-[.12em] text-accent-foreground" data-testid="status-inside-ntz">INSIDE NTZ — NO TRADE</div>}
       <div className="mt-6 space-y-3 border-t border-border pt-4"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Rules passed</span><span className="mono">{snapshot.decision.passedRules.length}/{snapshot.decision.passedRules.length + snapshot.decision.failedRules.length}</span></div><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Confirmed signals</span><span className="mono">{confirmedCount}/{signalCount || 0}</span></div></div>
       <div className="mt-5"><LockedNote>No live orders. This is a decision rehearsal, not an execution terminal.</LockedNote></div>
+    </div>
+  </Panel>;
+}
+
+function NtzPanel({ snapshot }: { snapshot: MarketSnapshot }) {
+  const phaseLabel = snapshot.ntz.phase === "pending" ? "Awaiting 09:30 ET" : snapshot.ntz.phase === "forming" ? "Forming · not final" : snapshot.ntz.position === "inside" ? "Completed · price inside" : "Completed · price outside";
+  return <Panel className={snapshot.ntz.position === "inside" && snapshot.ntz.complete ? "border-accent/50" : ""}>
+    <PanelTitle eyebrow="Opening range lifecycle" title="NTZ / ORB state" right={<span className="mono text-[10px] uppercase text-muted-foreground">{phaseLabel}</span>} />
+    <div className="grid gap-4 border-t border-border p-5 sm:grid-cols-[.8fr_1.2fr] sm:p-6">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">NTZ high</div><div className="mono mt-1 text-sm">{formatPrice(snapshot.ntz.high)}</div></div>
+        <div className="rounded-sm bg-secondary/70 p-3"><div className="text-[10px] text-muted-foreground">NTZ low</div><div className="mono mt-1 text-sm">{formatPrice(snapshot.ntz.low)}</div></div>
+        <div className="col-span-2 text-[11px] leading-5 text-muted-foreground">Exactly three completed 5-minute candles: 09:30–09:35, 09:35–09:40, and 09:40–09:45 ET. The range is not final before 09:45 ET.</div>
+      </div>
+      <div className="max-h-[170px] overflow-y-auto rounded-sm border border-border" data-testid="ntz-event-ledger">
+        {snapshot.ntz.events.length ? snapshot.ntz.events.map((event, index) => <div key={`${event.time}-${event.type}-${index}`} className="flex gap-3 border-b border-border px-3 py-2.5 last:border-0"><span className="mono mt-0.5 shrink-0 text-[10px] text-muted-foreground">{new Date(event.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><span><span className="block text-[11px] font-semibold">{event.type}</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{event.detail}</span></span></div>) : <div className="p-4 text-xs text-muted-foreground">No NTZ lifecycle events yet.</div>}
+      </div>
     </div>
   </Panel>;
 }

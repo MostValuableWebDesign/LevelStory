@@ -62,7 +62,9 @@ function minutes(value: string): number {
 }
 
 function validDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function parseDateInput(date: string | number, timeZone: string): string {
@@ -81,15 +83,24 @@ function parseDateInput(date: string | number, timeZone: string): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function dateParts(timestamp: number, timeZone: string): { year: number; month: number; day: number } {
+function dateParts(timestamp: number, timeZone: string): { year: number; month: number; day: number; hour: number; minute: number } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
   }).formatToParts(new Date(timestamp));
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return { year: Number(values.year), month: Number(values.month), day: Number(values.day) };
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+  };
 }
 
 function wallClockAsUtc(date: string, time: string): number {
@@ -108,7 +119,7 @@ export function newYorkTimeToUtc(date: string, time: string): number {
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) invalid(`time "${time}" must use HH:mm.`);
   const desiredWallClock = wallClockAsUtc(date, time);
   const parts = dateParts(desiredWallClock, "America/New_York");
-  const localWallClock = Date.UTC(parts.year, parts.month - 1, parts.day, new Date(desiredWallClock).getUTCHours(), new Date(desiredWallClock).getUTCMinutes());
+  const localWallClock = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
   const offset = localWallClock - desiredWallClock;
   return desiredWallClock - offset;
 }

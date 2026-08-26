@@ -5,9 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { NtzEvent } from './ntzEvent';
+import type { NtzStatePhase } from './ntzStatePhase';
+import type { NtzStatePosition } from './ntzStatePosition';
 import type { NtzStateStatus } from './ntzStateStatus';
 
 export interface NtzState {
   status: NtzStateStatus;
+  phase: NtzStatePhase;
+  position: NtzStatePosition;
   complete: boolean;
+  /** @nullable */
+  high: number | null;
+  /** @nullable */
+  low: number | null;
+  events: NtzEvent[];
 }

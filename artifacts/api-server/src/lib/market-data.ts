@@ -16,7 +16,12 @@ import {
   roundToTick,
   type FuturesContractSpecification,
 } from "./futures/contracts.js";
-import { sessionCalendarForContract } from "./futures/session-calendar.js";
+import {
+  classifyFuturesSession,
+  sessionCalendarForContract,
+  timestampForTradingDate,
+  tradingDateForTimestamp,
+} from "./futures/session-calendar.js";
 import {
   completedSimulatedCandles,
   generateSimulatedFuturesFeed,
@@ -31,8 +36,12 @@ export type MarketSnapshot = {
   contract: FuturesContractSpecification;
   sessionCalendar: {
     timeZone: string;
+    tradingDate: string;
+    premarketAvailable: boolean;
     premarket: { timeZone: string; start: string; end: string };
     regular: { timeZone: string; start: string; end: string };
+    holidays: string[];
+    earlyCloses: Record<string, string>;
   };
   price: number;
   change: number;
@@ -74,7 +83,15 @@ export type MarketSnapshot = {
     vwap: number | null;
     critical: Array<{ name: string; price: number; kind: string }>;
   };
-  ntz: { status: "pending" | "inside" | "outside"; complete: boolean };
+  ntz: {
+    status: "pending" | "inside" | "outside";
+    phase: "pending" | "forming" | "completed";
+    position: "unknown" | "inside" | "outside";
+    complete: boolean;
+    high: number | null;
+    low: number | null;
+    events: Array<{ type: string; time: string; detail: string }>;
+  };
   indicators: {
     rsi: number | null;
     ema200: number | null;
@@ -123,12 +140,7 @@ const companies: Record<string, string> = {
   NQ: "E-mini Nasdaq-100 Futures",
 };
 
-const CURRENT_DAY = Date.UTC(2026, 7, 25);
-const MINUTE = 60_000;
-const DAY = 86_400_000;
-const SESSION_START = 9 * 60 + 30;
-const PREMARKET_START = 4 * 60;
-const SESSION_END = 16 * 60;
+const CURRENT_TRADING_DATE = "2026-08-25";
 
 type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean };
 
@@ -142,19 +154,24 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     days: config.simulationDays,
     seed: config.simulationSeed,
     includePremarket: true,
-    startDate: CURRENT_DAY,
+    startDate: CURRENT_TRADING_DATE,
   });
   const currentCursor = session === "premarket"
-    ? timestamp(CURRENT_DAY, 9 * 60 + 20)
-    : timestamp(CURRENT_DAY, 13 * 60);
+    ? timestampForTradingDate(CURRENT_TRADING_DATE, "09:20", calendar)
+    : timestampForTradingDate(CURRENT_TRADING_DATE, "13:00", calendar);
   const visible = completedSimulatedCandles(allCandles, currentCursor);
-  const currentDay = visible.filter(c => sameDay(c.openTime, CURRENT_DAY));
-  const premarket = currentDay.filter(c => minuteOfDay(c.openTime) >= PREMARKET_START && minuteOfDay(c.openTime) < SESSION_START);
-  const regular = currentDay.filter(c => minuteOfDay(c.openTime) >= SESSION_START && minuteOfDay(c.openTime) < SESSION_END);
-  const levels = sessionLevels(visible, { premarket, regular }, config);
+  const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === CURRENT_TRADING_DATE);
+  const premarket = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "premarket");
+  const regular = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "regular");
+  const levels = sessionLevels(
+    visible,
+    { premarket, regular, tradingDate: CURRENT_TRADING_DATE, premarketAvailable: true, replayCursor: currentCursor },
+    config,
+    calendar,
+  );
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
-  const previousClose = findPreviousClose(visible, CURRENT_DAY) ?? Number((price - specification.tickSize * 4).toFixed(2));
+  const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
   const trend = trendEvidence(regular, levels);
   const direction: Direction = trend.direction === "bearish" ? "short" : "long";
   const plan = buildRiskPlan(price, direction, levels, riskInput, config, specification);
@@ -181,7 +198,9 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     volumeRatio: finiteOrNull(levels.volumeRatio),
   };
   const currentLevels = Object.fromEntries(levels.levels.map(level => [level.name, level.price]));
-  const ntzStatus = !levels.ntz ? "pending" : !current ? "pending" : current.close > levels.ntz.high || current.close < levels.ntz.low ? "outside" : "inside";
+  const ntzStatus = levels.ntzPhase !== "completed"
+    ? "pending"
+    : levels.ntzPosition === "inside" ? "inside" : "outside";
   const decision = evaluation.decision;
   const signals = evaluation.rules.filter(rule => ["orb", "pullback", "patience", "volume"].includes(rule.key)).map(rule => ({
     key: rule.key as "orb" | "pullback" | "patience" | "volume",
@@ -196,14 +215,20 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
     symbol: normalized,
     company: companies[normalized] ?? `${normalized} Holdings`,
     contract: specification,
-    sessionCalendar: calendar,
+    sessionCalendar: {
+      ...calendar,
+      tradingDate: CURRENT_TRADING_DATE,
+      premarketAvailable: true,
+      holidays: [...calendar.holidays],
+      earlyCloses: { ...calendar.earlyCloses },
+    },
     price,
     change: Number((price - previousClose).toFixed(2)),
     changePercent: Number((((price - previousClose) / previousClose) * 100).toFixed(2)),
     marketStatus: session === "premarket" ? "premarket" : "open",
     session: session === "premarket" ? "Premarket" : "Regular session / replay",
     updatedAt: new Date(currentCursor).toISOString(),
-    replay: { cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "UTC exchange-local simulation", barIntervalMinutes: config.barIntervalMinutes },
+     replay: { cursor: new Date(currentCursor).toISOString(), visibleCandleCount: visible.length, timeZone: "America/New_York", barIntervalMinutes: config.barIntervalMinutes },
     candles: visible.map(toApiCandle),
     levels: {
       premarketHigh: finiteOrNull(currentLevels["Premarket high"]),
@@ -221,7 +246,19 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       vwap: indicators.vwap,
       critical,
     },
-    ntz: { status: ntzStatus, complete: !!levels.ntz },
+     ntz: {
+       status: ntzStatus,
+       phase: levels.ntzPhase,
+       position: levels.ntzPosition,
+       complete: levels.ntz?.complete === true,
+       high: finiteOrNull(levels.ntz?.high),
+       low: finiteOrNull(levels.ntz?.low),
+       events: levels.ntzEvents.map((event) => ({
+         type: event.type,
+         time: new Date(event.time).toISOString(),
+         detail: event.detail,
+       })),
+     },
     indicators,
     trend,
     signals,
@@ -239,8 +276,9 @@ export function createMarketSnapshot(symbol: string, session: string, riskInput?
       warning: alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null,
     },
     assumptions: [
-      "Simulation uses UTC as exchange-local time for deterministic replay.",
-      `NTZ is the first completed ${config.ntzMinutes}-minute regular-session candle.`,
+      "Simulation uses America/New_York trading dates with UTC timestamps for deterministic replay.",
+      "Premarket is available only when the simulated feed includes 04:00–09:29:59 ET candles.",
+      "NTZ/ORB is the exact first three completed five-minute candles from 09:30 through 09:45 ET.",
       `Volume safety uses a ${config.volumeLookback}-candle average and ${config.adverseVolumeRatio.toFixed(2)}x adverse-volume ratio.`,
       `Simulated costs: ${config.spread.toFixed(2)} points spread, ${config.slippage.toFixed(2)} points slippage, $${specification.commissionPerContract.toFixed(2)} commission and $${specification.exchangeAndRegulatoryFeesPerContract.toFixed(2)} exchange/regulatory fees per contract.`,
     ],
@@ -285,11 +323,7 @@ function toApiCandle(candle: SimulatedFuturesCandle) {
   };
 }
 
-function timestamp(day: number, minute: number) { return day + minute * MINUTE; }
-function sameDay(value: number, day: number) { return Math.floor(value / DAY) === Math.floor(day / DAY); }
-function minuteOfDay(value: number) { const date = new Date(value); return date.getUTCHours() * 60 + date.getUTCMinutes(); }
 function finiteOrNull(value: number | undefined) { return value !== undefined && Number.isFinite(value) ? Number(value.toFixed(2)) : null; }
-function findPreviousClose(candles: readonly StrategyCandle[], currentDay: number) { return candles.filter(c => c.openTime < currentDay).at(-1)?.close; }
 function calculateEmaSlope(values: readonly number[], config: StrategyConfig) { const short = values.slice(-10); if (short.length < 2) return null; const emaValues = short.map((_, index) => { const all = values.slice(0, values.length - short.length + index + 1); return all.length ? all.reduce((sum, value) => sum + value, 0) / all.length : 0; }); return Number((emaValues.at(-1)! - emaValues[0]).toFixed(2)); }
 function detectEquivalentCandles(candles: readonly StrategyCandle[], config: StrategyConfig) { const first = candles.at(-2), second = candles.at(-1); if (!first || !second) return false; const a = Math.abs(first.close - first.open), b = Math.abs(second.close - second.open); return a > 0 && Math.abs(a - b) / a <= config.equivalentBodyTolerance && (first.close >= first.open) !== (second.close >= second.open); }
 function decisionExplanation(decision: DecisionState, rules: Array<{ label: string; passed: boolean; detail: string }>) { if (decision === "SETUP QUALIFIED") return "Every required market and risk rule passed on completed candles."; if (decision === "RISK LOCKOUT") return rules.find(rule => rule.label === "Risk controls passed")?.detail ?? "Risk controls blocked this setup."; const failed = rules.filter(rule => !rule.passed).map(rule => rule.label); return failed.length ? `${decision}: ${failed.join(", ")}.` : decision; }

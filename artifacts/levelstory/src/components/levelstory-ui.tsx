@@ -1,4 +1,4 @@
-import type { Candle, Signal, SignalStatus } from "@workspace/api-client-react";
+import type { Candle, NtzState, Signal, SignalStatus } from "@workspace/api-client-react";
 import type { ReactNode } from "react";
 import { Check, CircleAlert, CircleDashed, LockKeyhole, Minus, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import { SHADOW_MODE_LABEL } from "@/lib/shadow-mode";
@@ -36,17 +36,23 @@ export function StatusBadge({ status }: { status: SignalStatus }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] ${className}`} data-testid={`status-signal-${status}`}><Icon size={11} />{label}</span>;
 }
 
-export function MiniCandleChart({ candles, ntz, levels = [] }: { candles: Candle[]; ntz?: { status: "pending" | "inside" | "outside"; complete: boolean }; levels?: Array<{ name: string; price: number }> }) {
+export function MiniCandleChart({ candles, ntz, levels = [] }: { candles: Candle[]; ntz?: NtzState; levels?: Array<{ name: string; price: number }> }) {
   if (!candles?.length) return <div className="flex h-[248px] items-center justify-center text-sm text-muted-foreground" data-testid="empty-candle-chart">No simulated candles yet.</div>;
   const width = 860, height = 248, padX = 22, padY = 22;
-  const overlayPrices = levels.map((level) => level.price);
+  const ntzPrices = ntz?.complete && ntz.high != null && ntz.low != null ? [ntz.high, ntz.low] : [];
+  const overlayPrices = [...levels.map((level) => level.price), ...ntzPrices];
   const max = Math.max(...candles.map((c) => c.high), ...overlayPrices), min = Math.min(...candles.map((c) => c.low), ...overlayPrices);
   const scaleY = (v: number) => height - padY - ((v - min) / Math.max(max - min, .01)) * (height - padY * 2);
   const step = (width - padX * 2) / candles.length;
   const gridYs = [padY, height / 2, height - padY];
+  const completedEvent = ntz?.events.find((event) => event.type === "NTZ completed");
+  const ntzStart = completedEvent ? new Date(completedEvent.time).getTime() - 15 * 60_000 : null;
+  const ntzStartIndex = ntzStart == null ? -1 : candles.findIndex((candle) => new Date(candle.openTime).getTime() >= ntzStart);
+  const ntzEndIndex = completedEvent == null ? -1 : candles.findIndex((candle) => new Date(candle.closeTime).getTime() > new Date(completedEvent.time).getTime());
+  const ntzBarCount = ntzStartIndex >= 0 && ntzEndIndex >= 0 ? ntzEndIndex - ntzStartIndex : 0;
   return <div className="w-full overflow-x-auto px-4 pb-3" data-testid="chart-candles"><svg viewBox={`0 0 ${width} ${height}`} className="h-[248px] w-full min-w-[600px]" role="img" aria-label="Simulated five minute candle chart">
     {gridYs.map((y) => <line key={y} x1={0} x2={width} y1={y} y2={y} stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray={y === height - padY ? "0" : "3 5"} />)}
-    {ntz?.complete && <rect x={padX} y={scaleY(max)} width={Math.min(step * 3, width - padX * 2)} height={Math.max(scaleY(min) - scaleY(max), 1)} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .45)" strokeDasharray="4 4" />}
+     {ntz?.complete && ntz.high != null && ntz.low != null && ntzBarCount === 3 && <g data-testid="chart-ntz-range"><rect x={padX + ntzStartIndex * step} y={scaleY(ntz.high)} width={step * 3} height={Math.max(scaleY(ntz.low) - scaleY(ntz.high), 1)} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="4 4" /><text x={padX + ntzStartIndex * step + 4} y={scaleY(ntz.high) + 12} fill="hsl(var(--accent-foreground))" fontSize="9" fontFamily="DM Mono">NTZ</text><text x={padX + ntzStartIndex * step + step * 3 + 4} y={scaleY(ntz.high) + 4} fill="hsl(var(--muted-foreground))" fontSize="8" fontFamily="DM Mono">H {ntz.high.toFixed(2)}</text><text x={padX + ntzStartIndex * step + step * 3 + 4} y={scaleY(ntz.low) - 2} fill="hsl(var(--muted-foreground))" fontSize="8" fontFamily="DM Mono">L {ntz.low.toFixed(2)}</text></g>}
     {levels.slice(0, 5).map((level) => <g key={level.name}><line x1={padX} x2={width - padX} y1={scaleY(level.price)} y2={scaleY(level.price)} stroke="hsl(var(--accent) / .45)" strokeWidth="1" strokeDasharray="5 5" /><text x={width - padX - 4} y={scaleY(level.price) - 3} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{level.name}</text></g>)}
     {candles.map((c, index) => { const x = padX + index * step + step / 2; const up = c.close >= c.open; const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))"; const bodyTop = Math.min(scaleY(c.open), scaleY(c.close)); const bodyHeight = Math.max(Math.abs(scaleY(c.close) - scaleY(c.open)), 3); return <g key={`${c.time}-${index}`}><line x1={x} x2={x} y1={scaleY(c.high)} y2={scaleY(c.low)} stroke={color} strokeWidth="1.5" /><rect x={x - Math.max(step * .22, 3)} y={bodyTop} width={Math.max(step * .44, 6)} height={bodyHeight} rx="1" fill={color} /></g>; })}
     <text x="8" y={padY + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{max.toFixed(2)}</text>

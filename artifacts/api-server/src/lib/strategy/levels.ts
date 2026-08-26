@@ -1,67 +1,223 @@
 import type { Candle, Level } from "./types.js";
 import { ema, fibonacci, rsi, volumeRatio, vwap } from "./indicators.js";
 import type { StrategyConfig } from "./config.js";
+import {
+  classifyFuturesSession,
+  DEFAULT_FUTURES_SESSION_CALENDAR,
+  sessionWindow,
+  tradingDateForTimestamp,
+  type FuturesSessionCalendar,
+} from "../futures/session-calendar.js";
 
-export type SessionWindows = { premarket: readonly Candle[]; regular: readonly Candle[] };
+export type SessionWindows = {
+  premarket: readonly Candle[];
+  regular: readonly Candle[];
+  tradingDate?: string;
+  replayCursor?: number;
+  premarketAvailable?: boolean;
+};
+
+export type NtzEventType =
+  | "NTZ forming"
+  | "NTZ completed"
+  | "Price inside"
+  | "Close outside"
+  | "Break and reentry"
+  | "Break and retest"
+  | "Failed breakout"
+  | "Consolidation inside NTZ";
+
+export type NtzEvent = {
+  type: NtzEventType;
+  time: number;
+  detail: string;
+};
+
+export type NtzPhase = "pending" | "forming" | "completed";
+export type NtzPosition = "unknown" | "inside" | "outside";
+export type NtzRange = { high: number; low: number; complete: boolean };
+
 export type SessionLevels = {
   levels: Level[];
   orb: { high: number; low: number } | null;
-  ntz: { high: number; low: number } | null;
+  orbComplete: boolean;
+  ntz: NtzRange | null;
+  ntzPhase: NtzPhase;
+  ntzPosition: NtzPosition;
+  ntzEvents: NtzEvent[];
   vwap: number;
   ema: number;
   rsi: number;
   volumeRatio: number;
   fibonacci: Level[];
+  previousDayClose: number | null;
 };
 
-export function sessionLevels(candles: readonly Candle[], windows: SessionWindows, config: StrategyConfig): SessionLevels {
-  const regular = windows.regular;
-  const dayMap = new Map<number, Candle[]>();
-  for (const c of candles) { const day = Math.floor(c.openTime / 86_400_000); const list = dayMap.get(day) ?? []; list.push(c); dayMap.set(day, list); }
-  const days = [...dayMap.keys()].sort((a, b) => b - a);
-  const previous = days.slice(1, 3).flatMap(d => dayMap.get(d) ?? []);
-  const orbCandle = aggregateCandles(regular, config.orbMinutes).find(c => c.isComplete);
-  const orb = orbCandle ? { high: orbCandle.high, low: orbCandle.low } : null;
-  const ntzStart = orbCandle?.openTime;
-  const ntzCandles = ntzStart === undefined ? [] : regular.filter(c => c.isComplete && c.closeTime <= ntzStart + config.ntzMinutes * 60_000);
-  const ntz = ntzCandles.length ? { high: Math.max(...ntzCandles.map(c => c.high)), low: Math.min(...ntzCandles.map(c => c.low)) } : null;
+const FIVE_MINUTES = 5 * 60_000;
+
+export function sessionLevels(
+  candles: readonly Candle[],
+  windows: SessionWindows,
+  config: StrategyConfig,
+  calendar: FuturesSessionCalendar = DEFAULT_FUTURES_SESSION_CALENDAR,
+): SessionLevels {
+  const regular = [...windows.regular].sort((first, second) => first.openTime - second.openTime);
+  const currentTradingDate = windows.tradingDate
+    ?? (regular[0] ? tradingDateForTimestamp(regular[0].openTime, calendar) : undefined)
+    ?? (candles[0] ? tradingDateForTimestamp(candles[0].openTime, calendar) : undefined);
+  const regularCandles = candles
+    .filter((candle) => classifyFuturesSession(candle.openTime, calendar) === "regular")
+    .sort((first, second) => first.openTime - second.openTime);
+  const dayMap = new Map<string, Candle[]>();
+  for (const candle of regularCandles) {
+    const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+    const day = dayMap.get(tradingDate) ?? [];
+    day.push(candle);
+    dayMap.set(tradingDate, day);
+  }
+  const tradingDays = [...dayMap.keys()].sort((first, second) => second.localeCompare(first));
+  const currentDate = currentTradingDate ?? tradingDays[0];
+  const priorDays = tradingDays.filter((date) => date < (currentDate ?? ""));
+  const previousDay = priorDays[0] ? dayMap.get(priorDays[0]) ?? [] : [];
+  const dayBeforeYesterday = priorDays[1] ? dayMap.get(priorDays[1]) ?? [] : [];
+
+  const currentSessionWindow = currentDate ? sessionWindow(currentDate, "regular", calendar) : null;
+  const openingRangeStart = currentSessionWindow?.openTime;
+  const openingRangeCandles = openingRangeStart === undefined ? [] : exactOpeningCandles(regular, openingRangeStart);
+  const orbComplete = openingRangeCandles.length === 3;
+  const partialRangeCandles = openingRangeCandles;
+  const ntz = partialRangeCandles.length
+    ? {
+        high: Math.max(...partialRangeCandles.map((candle) => candle.high)),
+        low: Math.min(...partialRangeCandles.map((candle) => candle.low)),
+        complete: orbComplete,
+      }
+    : null;
+  const ntzPhase: NtzPhase = orbComplete ? "completed" : partialRangeCandles.length ? "forming" : "pending";
+  const orb = orbComplete ? { high: ntz!.high, low: ntz!.low } : null;
+  const ntzEvents = buildNtzEvents(regular, openingRangeCandles, ntz, openingRangeStart);
+
   const levels: Level[] = [];
-  if (windows.premarket.length) levels.push({ name: "Premarket high", price: Math.max(...windows.premarket.map(c => c.high)) }, { name: "Premarket low", price: Math.min(...windows.premarket.map(c => c.low)) });
+  if (windows.premarket.length && windows.premarketAvailable !== false) {
+    levels.push(
+      { name: "Premarket high", price: Math.max(...windows.premarket.map((candle) => candle.high)) },
+      { name: "Premarket low", price: Math.min(...windows.premarket.map((candle) => candle.low)) },
+    );
+  }
   const priorLevels: Array<[string, number]> = [
-    ["Prior day high", previous.length ? Math.max(...(dayMap.get(days[1]) ?? []).map(c => c.high)) : NaN],
-    ["Prior day low", previous.length ? Math.min(...(dayMap.get(days[1]) ?? []).map(c => c.low)) : NaN],
-    ["Two days ago high", days[2] !== undefined ? Math.max(...(dayMap.get(days[2]) ?? []).map(c => c.high)) : NaN],
-    ["Two days ago low", days[2] !== undefined ? Math.min(...(dayMap.get(days[2] ?? 0) ?? []).map(c => c.low)) : NaN],
+    ["Prior day high", high(previousDay)],
+    ["Prior day low", low(previousDay)],
+    ["Two days ago high", high(dayBeforeYesterday)],
+    ["Two days ago low", low(dayBeforeYesterday)],
   ];
-  for (const [name, value] of priorLevels) if (Number.isFinite(value)) levels.push({ name, price: value });
+  for (const [name, price] of priorLevels) {
+    if (Number.isFinite(price)) levels.push({ name, price });
+  }
   if (orb) levels.push({ name: "ORB high", price: orb.high }, { name: "ORB low", price: orb.low });
   if (ntz) levels.push({ name: "NTZ high", price: ntz.high }, { name: "NTZ low", price: ntz.low });
-  const indicatorCandles = [...previous, ...regular];
-  const emaValues = ema(indicatorCandles.map(c => c.close), config.emaPeriod);
+
+  const indicatorCandles = [...previousDay, ...regular];
+  const emaValues = ema(indicatorCandles.map((candle) => candle.close), config.emaPeriod);
+  const position = ntz && orbComplete && regular.length
+    ? regular.at(-1)!.close >= ntz.low && regular.at(-1)!.close <= ntz.high ? "inside" : "outside"
+    : "unknown";
   return {
     levels,
     orb,
+    orbComplete,
     ntz,
+    ntzPhase,
+    ntzPosition: position,
+    ntzEvents,
+    previousDayClose: previousDay.at(-1)?.close ?? null,
     vwap: vwap(regular),
     ema: emaValues.at(-1) ?? NaN,
-    rsi: rsi(indicatorCandles.map(c => c.close), config.rsiPeriod).at(-1) ?? 50,
+    rsi: rsi(indicatorCandles.map((candle) => candle.close), config.rsiPeriod).at(-1) ?? 50,
     volumeRatio: volumeRatio(regular, config.volumeLookback),
     fibonacci: fibonacci(regular),
   };
 }
 
-function aggregateCandles(candles: readonly Candle[], minutes: number): Candle[] {
-  const size = Math.max(1, Math.round(minutes / 5));
-  const groups: Candle[][] = [];
-  for (let index = 0; index < candles.length; index += size) groups.push(candles.slice(index, index + size) as Candle[]);
-  return groups.filter(group => group.length === size).map(group => ({
-    openTime: group[0].openTime,
-    closeTime: group[group.length - 1].closeTime,
-    open: group[0].open,
-    high: Math.max(...group.map(c => c.high)),
-    low: Math.min(...group.map(c => c.low)),
-    close: group[group.length - 1].close,
-    volume: group.reduce((sum, c) => sum + c.volume, 0),
-    isComplete: group.every(c => c.isComplete),
-  }));
+function high(candles: readonly Candle[]): number {
+  return candles.length ? Math.max(...candles.map((candle) => candle.high)) : NaN;
+}
+
+function low(candles: readonly Candle[]): number {
+  return candles.length ? Math.min(...candles.map((candle) => candle.low)) : NaN;
+}
+
+function exactOpeningCandles(candles: readonly Candle[], openingRangeStart: number): Candle[] {
+  const result: Candle[] = [];
+  for (let offset = 0; offset < 3; offset += 1) {
+    const expectedOpen = openingRangeStart + offset * FIVE_MINUTES;
+    const candidate = candles.find((candle) =>
+      candle.openTime === expectedOpen
+      && candle.closeTime === expectedOpen + FIVE_MINUTES
+      && candle.isComplete,
+    );
+    if (!candidate) break;
+    result.push(candidate);
+  }
+  return result;
+}
+
+function buildNtzEvents(
+  regular: readonly Candle[],
+  openingRangeCandles: readonly Candle[],
+  ntz: NtzRange | null,
+  openingRangeStart: number | undefined,
+): NtzEvent[] {
+  if (!openingRangeStart || !ntz) return [];
+  const events: NtzEvent[] = [];
+  if (openingRangeCandles.length < 3) {
+    events.push({
+      type: "NTZ forming",
+      time: openingRangeCandles.at(-1)?.closeTime ?? openingRangeStart,
+      detail: `${openingRangeCandles.length}/3 opening candles completed; NTZ is not final.`,
+    });
+    return events;
+  }
+  const completedAt = openingRangeCandles[2].closeTime;
+  events.push({ type: "NTZ completed", time: completedAt, detail: "The 9:40–9:45 ET candle closed; NTZ/ORB is final." });
+
+  const afterRange = regular.filter((candle) => candle.openTime >= completedAt && candle.isComplete);
+  let previousPosition: NtzPosition = "unknown";
+  let lastBreak: { side: "above" | "below"; time: number; retested: boolean } | null = null;
+  let insideStreak = 0;
+  for (const candle of afterRange) {
+    const inside = candle.close >= ntz.low && candle.close <= ntz.high;
+    const side: "above" | "below" | null = candle.close > ntz.high ? "above" : candle.close < ntz.low ? "below" : null;
+    if (inside) {
+      insideStreak += 1;
+      if (previousPosition !== "inside") {
+        events.push({ type: "Price inside", time: candle.closeTime, detail: "Completed close is inside the finalized NTZ." });
+      }
+      if (previousPosition === "outside") {
+        events.push({ type: "Break and reentry", time: candle.closeTime, detail: "Price broke outside NTZ and closed back inside." });
+        if (lastBreak) events.push({ type: "Failed breakout", time: candle.closeTime, detail: `The ${lastBreak.side} breakout failed on reentry.` });
+      }
+      if (insideStreak === 2) {
+        events.push({ type: "Consolidation inside NTZ", time: candle.closeTime, detail: "Two consecutive completed closes remain inside NTZ." });
+      }
+      previousPosition = "inside";
+      continue;
+    }
+
+    insideStreak = 0;
+    if (previousPosition !== "outside") {
+      events.push({ type: "Close outside", time: candle.closeTime, detail: `Completed close is ${side === "above" ? "above" : "below"} NTZ.` });
+      lastBreak = side ? { side, time: candle.closeTime, retested: false } : null;
+    } else if (lastBreak && !lastBreak.retested && side === lastBreak.side && touchesBrokenEdge(candle, ntz, lastBreak.side)) {
+      events.push({ type: "Break and retest", time: candle.closeTime, detail: `Price retested the ${lastBreak.side} NTZ boundary and held outside.` });
+      lastBreak.retested = true;
+    }
+    previousPosition = "outside";
+  }
+  return events;
+}
+
+function touchesBrokenEdge(candle: Candle, ntz: NtzRange, side: "above" | "below"): boolean {
+  return side === "above"
+    ? candle.low <= ntz.high && candle.high > ntz.high
+    : candle.high >= ntz.low && candle.low < ntz.low;
 }

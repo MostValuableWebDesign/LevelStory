@@ -59,6 +59,8 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "sessionCalendar": zod.object({
   "timeZone": zod.string(),
+  "tradingDate": zod.string(),
+  "premarketAvailable": zod.boolean(),
   "premarket": zod.object({
   "timeZone": zod.string(),
   "start": zod.string(),
@@ -68,7 +70,9 @@ export const GetMarketSnapshotResponse = zod.object({
   "timeZone": zod.string(),
   "start": zod.string(),
   "end": zod.string()
-})
+}),
+  "holidays": zod.array(zod.string()),
+  "earlyCloses": zod.record(zod.string(), zod.string())
 }),
   "price": zod.number(),
   "change": zod.number(),
@@ -100,11 +104,11 @@ export const GetMarketSnapshotResponse = zod.object({
   "contractSymbol": zod.string()
 })),
   "levels": zod.object({
-  "premarketHigh": zod.number(),
-  "premarketLow": zod.number(),
-  "previousDayHigh": zod.number(),
-  "previousDayLow": zod.number(),
-  "previousDayClose": zod.number(),
+  "premarketHigh": zod.number().nullable(),
+  "premarketLow": zod.number().nullable(),
+  "previousDayHigh": zod.number().nullable(),
+  "previousDayLow": zod.number().nullable(),
+  "previousDayClose": zod.number().nullable(),
   "dayBeforeYesterdayHigh": zod.number().nullable(),
   "dayBeforeYesterdayLow": zod.number().nullable(),
   "openingRangeHigh": zod.number().nullable(),
@@ -121,7 +125,16 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "ntz": zod.object({
   "status": zod.enum(['pending', 'inside', 'outside']),
-  "complete": zod.boolean()
+  "phase": zod.enum(['pending', 'forming', 'completed']),
+  "position": zod.enum(['unknown', 'inside', 'outside']),
+  "complete": zod.boolean(),
+  "high": zod.number().nullable(),
+  "low": zod.number().nullable(),
+  "events": zod.array(zod.object({
+  "type": zod.enum(['NTZ forming', 'NTZ completed', 'Price inside', 'Close outside', 'Break and reentry', 'Break and retest', 'Failed breakout', 'Consolidation inside NTZ']),
+  "time": zod.string(),
+  "detail": zod.string()
+}))
 }),
   "indicators": zod.object({
   "rsi": zod.number().nullable(),

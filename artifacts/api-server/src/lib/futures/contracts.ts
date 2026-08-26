@@ -153,6 +153,9 @@ export function validateFuturesContractSpecification(
   finitePositive(specification.minimumLiquidity, "minimumLiquidity");
   validTime(specification.regularSessionHours.start, "regularSessionHours.start");
   validTime(specification.regularSessionHours.end, "regularSessionHours.end");
+  if (specification.regularSessionHours.timeZone !== "America/New_York") {
+    invalid("regularSessionHours.timeZone must be America/New_York.");
+  }
   if (specification.regularSessionHours.start === specification.regularSessionHours.end) {
     invalid("regular session cannot have equal start and end.");
   }

@@ -56,10 +56,16 @@ export interface FuturesContractSpecification {
   verificationNote: string;
 }
 
+export type FuturesSessionCalendarEarlyCloses = {[key: string]: string};
+
 export interface FuturesSessionCalendar {
   timeZone: string;
+  tradingDate: string;
+  premarketAvailable: boolean;
   premarket: SessionHours;
   regular: SessionHours;
+  holidays: string[];
+  earlyCloses: FuturesSessionCalendarEarlyCloses;
 }
 
 export type SignalKey = typeof SignalKey[keyof typeof SignalKey];
@@ -117,9 +123,54 @@ export const NtzStateStatus = {
   outside: 'outside',
 } as const;
 
+export type NtzStatePhase = typeof NtzStatePhase[keyof typeof NtzStatePhase];
+
+
+export const NtzStatePhase = {
+  pending: 'pending',
+  forming: 'forming',
+  completed: 'completed',
+} as const;
+
+export type NtzStatePosition = typeof NtzStatePosition[keyof typeof NtzStatePosition];
+
+
+export const NtzStatePosition = {
+  unknown: 'unknown',
+  inside: 'inside',
+  outside: 'outside',
+} as const;
+
+export type NtzEventType = typeof NtzEventType[keyof typeof NtzEventType];
+
+
+export const NtzEventType = {
+  NTZ_forming: 'NTZ forming',
+  NTZ_completed: 'NTZ completed',
+  Price_inside: 'Price inside',
+  Close_outside: 'Close outside',
+  Break_and_reentry: 'Break and reentry',
+  Break_and_retest: 'Break and retest',
+  Failed_breakout: 'Failed breakout',
+  Consolidation_inside_NTZ: 'Consolidation inside NTZ',
+} as const;
+
+export interface NtzEvent {
+  type: NtzEventType;
+  time: string;
+  detail: string;
+}
+
 export interface NtzState {
   status: NtzStateStatus;
+  phase: NtzStatePhase;
+  position: NtzStatePosition;
   complete: boolean;
+  /** @nullable */
+  high: number | null;
+  /** @nullable */
+  low: number | null;
+  events: NtzEvent[];
 }
 
 export type TrendEvidenceDirection = typeof TrendEvidenceDirection[keyof typeof TrendEvidenceDirection];
@@ -218,11 +269,16 @@ export const MarketSnapshotMarketStatus = {
 } as const;
 
 export type MarketSnapshotLevels = {
-  premarketHigh: number;
-  premarketLow: number;
-  previousDayHigh: number;
-  previousDayLow: number;
-  previousDayClose: number;
+  /** @nullable */
+  premarketHigh: number | null;
+  /** @nullable */
+  premarketLow: number | null;
+  /** @nullable */
+  previousDayHigh: number | null;
+  /** @nullable */
+  previousDayLow: number | null;
+  /** @nullable */
+  previousDayClose: number | null;
   /** @nullable */
   dayBeforeYesterdayHigh: number | null;
   /** @nullable */

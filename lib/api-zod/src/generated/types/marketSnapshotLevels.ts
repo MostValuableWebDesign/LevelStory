@@ -8,11 +8,16 @@
 import type { CriticalLevel } from './criticalLevel';
 
 export type MarketSnapshotLevels = {
-  premarketHigh: number;
-  premarketLow: number;
-  previousDayHigh: number;
-  previousDayLow: number;
-  previousDayClose: number;
+  /** @nullable */
+  premarketHigh: number | null;
+  /** @nullable */
+  premarketLow: number | null;
+  /** @nullable */
+  previousDayHigh: number | null;
+  /** @nullable */
+  previousDayLow: number | null;
+  /** @nullable */
+  previousDayClose: number | null;
   /** @nullable */
   dayBeforeYesterdayHigh: number | null;
   /** @nullable */

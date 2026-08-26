@@ -1,5 +1,11 @@
 import { roundToTick, type FuturesContractSpecification } from "./contracts.js";
-import { classifyFuturesSession, type FuturesSessionCalendar } from "./session-calendar.js";
+import {
+  classifyFuturesSession,
+  listTradingDates,
+  sessionWindow,
+  tradingDateForTimestamp,
+  type FuturesSessionCalendar,
+} from "./session-calendar.js";
 
 export type SimulatedFuturesCandle = {
   timestamp: number;
@@ -19,15 +25,16 @@ export type SimulatedFuturesCandle = {
 };
 
 export type SimulatedFeedOptions = {
-  startDate?: number;
+  startDate?: string | number;
   days?: number;
   seed?: number;
   includePremarket?: boolean;
+  premarketAvailable?: boolean;
   calendar: FuturesSessionCalendar;
 };
 
-const DAY = 86_400_000;
 const MINUTE = 60_000;
+const INTERVAL = 5 * MINUTE;
 
 const referencePrices: Record<string, number> = {
   MES: 6_800,
@@ -44,52 +51,45 @@ function seededWave(index: number, seed: number): number {
   return Math.sin(index * 0.71 + seed * 0.13) * 0.55 + Math.sin(index * 0.19 + seed) * 0.22;
 }
 
-function sessionMinutes(calendar: FuturesSessionCalendar, kind: "premarket" | "regular"): [number, number] {
-  const hours = calendar[kind];
-  const parse = (value: string) => {
-    const [hour, minute] = value.split(":").map(Number);
-    return hour * 60 + minute;
-  };
-  return [parse(hours.start), parse(hours.end)];
-}
-
 export function generateSimulatedFuturesFeed(
   specification: FuturesContractSpecification,
   options: SimulatedFeedOptions,
 ): SimulatedFuturesCandle[] {
-  const startDate = options.startDate ?? Date.UTC(2026, 7, 25);
+  const startDate = options.startDate ?? "2026-08-25";
   const days = Math.max(1, Math.floor(options.days ?? 3));
   const seed = Number.isFinite(options.seed) ? Math.floor(options.seed!) : 1;
   const candles: SimulatedFuturesCandle[] = [];
   const base = referencePrice(specification);
-  const [regularStart, regularEnd] = sessionMinutes(options.calendar, "regular");
-  const [premarketStart] = sessionMinutes(options.calendar, "premarket");
-  const interval = 5 * MINUTE;
+  const lastTradingDate = typeof startDate === "string"
+    ? startDate
+    : tradingDateForTimestamp(startDate, options.calendar);
+  const tradingDates = listTradingDates(lastTradingDate, days, options.calendar);
+  const includePremarket = options.includePremarket === true && options.premarketAvailable !== false;
 
-  for (let dayOffset = -(days - 1); dayOffset <= 0; dayOffset++) {
-    const day = startDate + dayOffset * DAY;
-    const start = options.includePremarket ? premarketStart : regularStart;
-    for (let minute = start; minute < regularEnd; minute += 5) {
-      const index = Math.max(0, Math.round((minute - regularStart) / 5));
-      const premarket = minute < regularStart;
-      const drift = dayOffset * -0.42 + (premarket ? 0.12 : 1 + index * 0.035);
-      const wave = seededWave(index + dayOffset * 97, seed);
+  for (const [dayIndex, tradingDate] of tradingDates.entries()) {
+    const regularWindow = sessionWindow(tradingDate, "regular", options.calendar);
+    if (!regularWindow) continue;
+    const premarketWindow = includePremarket ? sessionWindow(tradingDate, "premarket", options.calendar) : null;
+    const start = premarketWindow?.openTime ?? regularWindow.openTime;
+    for (let openTime = start; openTime < regularWindow.closeTime; openTime += INTERVAL) {
+      const premarket = premarketWindow !== null && openTime < regularWindow.openTime;
+      const index = Math.max(0, Math.round((openTime - regularWindow.openTime) / INTERVAL));
+      const drift = (dayIndex - tradingDates.length + 1) * -0.42 + (premarket ? 0.12 : 1 + index * 0.035);
+      const wave = seededWave(index + (dayIndex - tradingDates.length + 1) * 97, seed);
       const close = roundToTick(base + drift + wave, specification);
       const open = roundToTick(close - seededWave(index + 11, seed) * 0.22, specification);
       const high = roundToTick(Math.max(open, close) + 0.18 + (index % 3) * 0.03, specification);
       const low = roundToTick(Math.min(open, close) - 0.16 - (index % 2) * 0.03, specification);
-      const openTime = day + minute * MINUTE;
-      const closeTime = openTime + interval;
       const spreadTicks = 1 + ((index + seed) % 2);
       const spread = spreadTicks * specification.tickSize;
       const volume = Math.round(
         1_000 + Math.max(index, 0) * 42 + ((index + seed) % 5) * 130 +
-          (dayOffset === 0 && index >= 3 && index < 9 ? 900 : 0),
+          (dayIndex === tradingDates.length - 1 && index >= 3 && index < 9 ? 900 : 0),
       );
       candles.push({
         timestamp: openTime,
         openTime,
-        closeTime,
+        closeTime: openTime + INTERVAL,
         open,
         high,
         low,

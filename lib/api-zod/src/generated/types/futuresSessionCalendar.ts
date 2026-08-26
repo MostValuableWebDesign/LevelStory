@@ -5,10 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FuturesSessionCalendarEarlyCloses } from './futuresSessionCalendarEarlyCloses';
 import type { SessionHours } from './sessionHours';
 
 export interface FuturesSessionCalendar {
   timeZone: string;
+  tradingDate: string;
+  premarketAvailable: boolean;
   premarket: SessionHours;
   regular: SessionHours;
+  holidays: string[];
+  earlyCloses: FuturesSessionCalendarEarlyCloses;
 }

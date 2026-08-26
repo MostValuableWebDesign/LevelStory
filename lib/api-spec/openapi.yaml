@@ -295,11 +295,23 @@ components:
       properties:
         timeZone:
           type: string
+        tradingDate:
+          type: string
+        premarketAvailable:
+          type: boolean
         premarket:
           $ref: "#/components/schemas/SessionHours"
         regular:
           $ref: "#/components/schemas/SessionHours"
-      required: [timeZone, premarket, regular]
+        holidays:
+          type: array
+          items:
+            type: string
+        earlyCloses:
+          type: object
+          additionalProperties:
+            type: string
+      required: [timeZone, tradingDate, premarketAvailable, premarket, regular, holidays, earlyCloses]
     Signal:
       type: object
       properties:
@@ -343,9 +355,34 @@ components:
         status:
           type: string
           enum: [pending, inside, outside]
+        phase:
+          type: string
+          enum: [pending, forming, completed]
+        position:
+          type: string
+          enum: [unknown, inside, outside]
         complete:
           type: boolean
-      required: [status, complete]
+        high:
+          type: ["number", "null"]
+        low:
+          type: ["number", "null"]
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/NtzEvent"
+      required: [status, phase, position, complete, high, low, events]
+    NtzEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: ["NTZ forming", "NTZ completed", "Price inside", "Close outside", "Break and reentry", "Break and retest", "Failed breakout", "Consolidation inside NTZ"]
+        time:
+          type: string
+        detail:
+          type: string
+      required: [type, time, detail]
     TrendEvidence:
       type: object
       properties:
@@ -471,11 +508,11 @@ components:
         levels:
           type: object
           properties:
-            premarketHigh: { type: number }
-            premarketLow: { type: number }
-            previousDayHigh: { type: number }
-            previousDayLow: { type: number }
-            previousDayClose: { type: number }
+            premarketHigh: { type: ["number", "null"] }
+            premarketLow: { type: ["number", "null"] }
+            previousDayHigh: { type: ["number", "null"] }
+            previousDayLow: { type: ["number", "null"] }
+            previousDayClose: { type: ["number", "null"] }
             dayBeforeYesterdayHigh: { type: ["number", "null"] }
             dayBeforeYesterdayLow: { type: ["number", "null"] }
             openingRangeHigh: { type: ["number", "null"] }

@@ -52,7 +52,7 @@ test("snapshot replay is causal and session bounded", () => {
   const premarket = createMarketSnapshot("MES", "premarket");
   assert.equal(premarket.ntz.complete, false);
   assert.equal(premarket.candles.every(candle => candle.closeTime <= premarket.replay.cursor), true);
-  assert.equal(premarket.candles.some(candle => candle.openTime.startsWith("2026-08-25T09:30:")), false);
+  assert.equal(premarket.candles.some(candle => candle.openTime.startsWith("2026-08-25T13:30:")), false);
   assert.equal(premarket.candles.every(candle => candle.contractSymbol === "MESU26"), true);
 
   const regular = createMarketSnapshot("MES", "regular");
