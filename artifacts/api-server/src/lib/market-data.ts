@@ -1,6 +1,4 @@
 import {
-  candleAlert,
-  fullDecision,
   sessionLevels,
   strategyConfig,
   trendEvidence,
@@ -18,7 +16,6 @@ import {
   type PatienceAnalysis,
   type PatienceEligibilityReason,
   type PatienceState,
-  type Candle as StrategyCandle,
   type DecisionState,
   type Direction,
   type StrategyConfig,
@@ -30,6 +27,7 @@ import {
   buildPhase8EvaluationRecord,
   type Phase8Execution,
   type Phase8TimelineEvent,
+  assertDashboardInvariants,
 } from "./strategy/index.js";
 import {
   getFuturesContractSpecification,
@@ -462,10 +460,6 @@ export function createMarketSnapshot(
     liquidity: current?.volume,
     dataAgeSeconds: 0,
   });
-  const evaluatedPatience: PatienceAnalysis = !plan.allowed && patience.entryBufferPrice !== null
-    ? { ...patience, state: "RISK_REJECTED", detail: `${patience.detail} ${plan.reasons.join(" ")}` }
-    : patience;
-  const finalBreakout = advanceOrbBreakoutState(breakout, pullback, evaluatedPatience.state);
   const reversalDirection: Direction | null = patienceDirection === null
     ? null
     : patienceDirection === "long" ? "short" : "long";
@@ -473,33 +467,30 @@ export function createMarketSnapshot(
   const setupAnalysis = phase6Analysis({
     candles: regular,
     levels,
-    breakout: finalBreakout,
+    breakout: evaluatedBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
-    patience: evaluatedPatience,
+    patience,
     reversalPatience,
     trend,
     riskApproved: plan.allowed,
     config,
   });
-  const evaluation = fullDecision(regular, levels, config, direction, plan.allowed);
   const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
     ?? setupAnalysis.evaluations[0];
-  const riskExplanation = plan.allowed ? "" : ` Risk plan blocked: ${plan.reasons.join(" ")}`;
-  const gatedSetupAnalysis = { ...setupAnalysis, explanation: `${setupAnalysis.explanation}${riskExplanation}` };
   const phase8Record = buildPhase8EvaluationRecord({
     candles: regular,
     ntz: levels.ntz,
     ntzEvents: levels.ntzEvents,
-    breakout: finalBreakout,
+    breakout: evaluatedBreakout,
     pullback,
     fibonacci,
     volume: volumeAnalysis,
-    patience: evaluatedPatience,
+    patience,
     evaluation: selectedEvaluation,
     riskPlan: plan,
-    direction: selectedEvaluation.direction ?? direction,
+    direction: plan.direction,
     trend: trend.direction,
     specification,
     slippageMode: plan.slippageMode,
@@ -513,9 +504,6 @@ export function createMarketSnapshot(
     eventType: item.eventType,
     status: item.status,
   }));
-  const alert = current && direction
-    ? candleAlert(current, direction, config)
-    : { doji: false, reversal: false, detail: "No executable direction is available for candle alerts." };
   const indicators = {
     rsi: finiteOrNull(levels.rsi),
     ema200: finiteOrNull(levels.ema),
@@ -534,16 +522,22 @@ export function createMarketSnapshot(
   const ntzStatus = levels.ntzPhase !== "completed"
     ? "pending"
     : levels.ntzPosition === "inside" ? "inside" : "outside";
-  const decision = evaluation.decision;
-  const signals = evaluation.rules.filter(rule => ["orb", "pullback", "patience", "volume"].includes(rule.key)).map(rule => ({
-    key: rule.key as "orb" | "pullback" | "patience" | "volume",
-    label: rule.label,
-    status: rule.passed ? "confirmed" as const : rule.key === "volume" && evaluation.volume.adverseWarning ? "blocked" as const : "watching" as const,
-    detail: rule.detail,
-  }));
+  const signals = phasedSignals(evaluatedBreakout, levels.ntz?.complete === true, pullback, patience, volumeAnalysis);
+  const decisionProjection = phasedDecision(setupAnalysis, selectedEvaluation, plan, evaluatedBreakout, phase8Record.execution);
+  const riskExplanation = plan.allowed ? "" : ` Risk plan blocked: ${plan.reasons.join(" ")}`;
+  const publicSetupAnalysis = { ...setupAnalysis, explanation: `${setupAnalysis.explanation}${riskExplanation}` };
+  const passedRules = phase8Record.passedRules.map(({ key, label, detail }) => ({ key, label, detail }));
+  const failedRules = phase8Record.failedRules.map(({ key, label, detail }) => ({ key, label, detail }));
+  const reversalEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === "BONUS_REVERSAL");
+  const reversalEvidence = reversalEvaluation?.reversalEvidence;
+  const reversal = {
+    doji: reversalEvidence?.dojiAtMajorLevel ?? false,
+    equivalentCandles: reversalEvidence?.equivalentOpposingCandles ?? false,
+    warning: volumeAnalysis.reversalWarning ?? (reversalEvidence?.alert ? reversalEvidence.detail : null),
+  };
   const priorLevels = levels.levels.filter(level => !["ORB high", "ORB low", "NTZ high", "NTZ low"].includes(level.name));
   const critical = [...priorLevels, ...levels.fibonacci.filter(level => ["Fib 0.382", "Fib 0.5", "Fib 0.618"].includes(level.name) && Number.isFinite(level.price))].filter(level => Number.isFinite(level.price)).map(level => ({ name: level.name, price: Number(level.price.toFixed(2)), kind: level.kind ?? "reference" }));
-  return {
+  const snapshot: MarketSnapshot = {
     mode: SHADOW_MODE_LABEL,
     symbol: normalized,
     company: companies[normalized] ?? `${normalized} Holdings`,
@@ -592,8 +586,8 @@ export function createMarketSnapshot(
          detail: event.detail,
        })),
      },
-     breakout: {
-        detected: evaluatedBreakout.detected,
+      breakout: {
+         detected: evaluatedBreakout.detected,
         direction: evaluatedBreakout.direction,
         state: evaluatedBreakout.state,
         time: evaluatedBreakout.time === null ? null : new Date(evaluatedBreakout.time).toISOString(),
@@ -626,7 +620,7 @@ export function createMarketSnapshot(
        qualifyingLevelCount: pullback.qualifyingLevelCount,
        detail: pullback.detail,
      },
-      patience: toApiPatience(evaluatedPatience),
+      patience: toApiPatience(patience),
      fibonacci: {
        direction: fibonacci.direction,
        impulseLow: fibonacci.impulseLow,
@@ -644,22 +638,18 @@ export function createMarketSnapshot(
     indicators,
      majorLevels: levels.majorLevels,
     trend,
-    signals,
+     signals,
     decision: {
-      state: decision,
-      explanation: `${decisionExplanation(decision, evaluation.rules)}${riskExplanation}`,
-      passedRules: evaluation.rules.filter(rule => rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
-      failedRules: evaluation.rules.filter(rule => !rule.passed).map(({ key, label, detail }) => ({ key, label, detail })),
+       state: decisionProjection.state,
+       explanation: decisionProjection.explanation,
+       passedRules,
+       failedRules,
     },
      riskPlan: plan,
     levelStory: story,
       shadowExecution: phase8Record.execution,
-    reversal: {
-      doji: alert.doji,
-      equivalentCandles: detectEquivalentCandles(regular, config),
-       warning: volumeAnalysis.reversalWarning ?? (alert.reversal || evaluation.volume.adverseWarning ? (evaluation.volume.adverseWarning ? "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" : alert.detail) : null),
-    },
-      setupAnalysis: toApiSetupAnalysis(gatedSetupAnalysis),
+      reversal,
+       setupAnalysis: toApiSetupAnalysis(publicSetupAnalysis),
     assumptions: [
       "Simulation uses America/New_York trading dates with UTC timestamps for deterministic replay.",
       "Premarket is available only when the simulated feed includes 04:00–09:29:59 ET candles.",
@@ -680,6 +670,94 @@ export function createMarketSnapshot(
        `Simulated costs: normal slippage is one adverse tick per fill; abnormal spread mode includes the observed spread. Fees include commission, exchange/regulatory, regulatory, and clearing components.`,
     ],
   };
+  assertDashboardInvariants({
+    ntz: snapshot.ntz,
+    breakout: snapshot.breakout,
+    signals: snapshot.signals,
+    riskPlan: snapshot.riskPlan,
+    patience,
+    setupAnalysis,
+    shadowExecution: snapshot.shadowExecution,
+  });
+  return snapshot;
+}
+
+type BreakoutForProjection = ReturnType<typeof advanceOrbBreakoutState>;
+
+function phasedSignals(
+  breakout: BreakoutForProjection,
+  ntzComplete: boolean,
+  pullback: ReturnType<typeof analyzePullback>,
+  patience: PatienceAnalysis,
+  volume: ReturnType<typeof phase4Volume>,
+): MarketSnapshot["signals"] {
+  const orbConfirmed = ntzComplete
+    && breakout.detected
+    && !breakout.failed
+    && breakout.volumeSupported
+    && volume.supportingBreakoutVolume
+    && breakout.continuationConfirmed;
+  const pullbackConfirmed = breakout.detected
+    && !breakout.failed
+    && pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
+  const patienceConfirmed = patience.state === "ENTRY_TRIGGERED";
+  const patienceBlocked = ["PATIENCE_CANDLE_EXPIRED", "OPPOSITE_SIDE_INVALIDATION", "AMBIGUOUS_EVENT_ORDER"].includes(patience.state);
+  const volumeConfirmed = breakout.detected
+    && breakout.volumeSupported
+    && volume.supportingBreakoutVolume
+    && volume.reversalWarning === null;
+  return [
+    {
+      key: "orb",
+      label: "ORB breakout",
+      status: orbConfirmed ? "confirmed" : breakout.failed ? "blocked" : "watching",
+      detail: breakout.detail,
+    },
+    {
+      key: "pullback",
+      label: "Pullback",
+      status: pullbackConfirmed ? "confirmed" : breakout.failed ? "blocked" : "watching",
+      detail: pullback.detail,
+    },
+    {
+      key: "patience",
+      label: "Patience candle",
+      status: patienceConfirmed ? "confirmed" : patienceBlocked ? "blocked" : "watching",
+      detail: patience.detail,
+    },
+    {
+      key: "volume",
+      label: "Volume support",
+      status: volume.reversalWarning !== null ? "blocked" : volumeConfirmed ? "confirmed" : "watching",
+      detail: volume.reversalWarning ?? (volumeConfirmed ? "Breakout and pullback volume support the setup." : "Volume support is not confirmed for the current phased state."),
+    },
+  ];
+}
+
+function phasedDecision(
+  setupAnalysis: Phase6Analysis,
+  selectedEvaluation: Phase6Analysis["evaluations"][number],
+  plan: Phase7RiskPlan,
+  breakout: BreakoutForProjection,
+  execution: Phase8Execution | null,
+): { state: DecisionState; explanation: string } {
+  const riskLockout = !plan.allowed && Object.values(plan.locks).some(Boolean);
+  const state: DecisionState = riskLockout
+    ? "RISK LOCKOUT"
+    : setupAnalysis.decision === "SETUP QUALIFIED" && selectedEvaluation.alertOnly
+      ? "POSSIBLE REVERSAL"
+      : setupAnalysis.decision === "EXPIRED"
+        ? "NO TRADE"
+        : setupAnalysis.decision === "AMBIGUOUS"
+          ? "WAITING"
+          : setupAnalysis.decision;
+  const parts = [
+    selectedEvaluation.explanation,
+    `ORB state: ${breakout.state}.`,
+    riskLockout ? `Risk controls blocked the plan: ${plan.reasons.join(" ")}` : !plan.allowed ? `Plan blocked: ${plan.reasons.join(" ")}` : "",
+    execution ? `Shadow execution is simulated only (${execution.contracts} contract${execution.contracts === 1 ? "" : "s"}).` : "",
+  ].filter(Boolean);
+  return { state, explanation: parts.join(" ") };
 }
 
 function buildRiskPlan(
@@ -836,5 +914,3 @@ function toApiPatienceCandle(candle: PatienceAnalysis["patienceCandle"]): Patien
 }
 
 function finiteOrNull(value: number | undefined) { return value !== undefined && Number.isFinite(value) ? Number(value.toFixed(2)) : null; }
-function detectEquivalentCandles(candles: readonly StrategyCandle[], config: StrategyConfig) { const first = candles.at(-2), second = candles.at(-1); if (!first || !second) return false; const a = Math.abs(first.close - first.open), b = Math.abs(second.close - second.open); return a > 0 && Math.abs(a - b) / a <= config.equivalentBodyTolerance && (first.close >= first.open) !== (second.close >= second.open); }
-function decisionExplanation(decision: DecisionState, rules: Array<{ label: string; passed: boolean; detail: string }>) { if (decision === "SETUP QUALIFIED") return "Every required market and risk rule passed on completed candles."; if (decision === "RISK LOCKOUT") return rules.find(rule => rule.label === "Risk controls passed")?.detail ?? "Risk controls blocked this setup."; const failed = rules.filter(rule => !rule.passed).map(rule => rule.label); return failed.length ? `${decision}: ${failed.join(", ")}.` : decision; }

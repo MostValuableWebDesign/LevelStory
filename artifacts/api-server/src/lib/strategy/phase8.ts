@@ -389,7 +389,7 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
     event(events, context.patience.triggerCandle.closeTime, "Immediate trigger", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
   }
 
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed && context.direction !== null
+  const execution = context.evaluation.decision === "SETUP QUALIFIED" && !context.evaluation.alertOnly && context.riskPlan.allowed && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: lastCandle ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
@@ -437,7 +437,7 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
 
 export function buildPhase8EvaluationRecord(context: TimelineContext): Phase8EvaluationRecord {
   const timeline = buildPhase8Timeline(context);
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && context.riskPlan.allowed && context.direction !== null
+  const execution = context.evaluation.decision === "SETUP QUALIFIED" && !context.evaluation.alertOnly && context.riskPlan.allowed && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: context.candles.at(-1) ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
@@ -464,7 +464,7 @@ export function buildPhase8EvaluationRecord(context: TimelineContext): Phase8Eva
   const entry = context.riskPlan.entry ?? context.candles.at(-1)?.close ?? 0;
   return {
     setupType: context.evaluation.setupType,
-    direction: context.evaluation.direction,
+    direction: context.direction,
     decision: context.evaluation.decision,
     outcome: setupOutcome(context.evaluation.decision),
     timeline,

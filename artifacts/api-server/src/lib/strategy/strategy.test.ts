@@ -7,6 +7,7 @@ import { ema, fibonacci, rsi } from "./indicators.js";
 import { positionSize } from "./risk.js";
 import { patience, volumeCheck } from "./rules.js";
 import { buildPhase7RiskPlan } from "./phase7.js";
+import { assertDashboardInvariants, validateDashboardInvariants } from "./invariants.js";
 import { createMarketSnapshot, selectExecutableDirection } from "../market-data.js";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import type { Phase6Analysis } from "./phase6.js";
@@ -177,4 +178,96 @@ test("setup, breakout, patience, risk direction, stops, and targets cannot contr
 test("snapshot conforms to the generated API contract", () => {
   const snapshot = createMarketSnapshot("MNQ", "regular");
   assert.doesNotThrow(() => GetMarketSnapshotResponse.parse(snapshot));
+});
+
+test("public dashboard decision and rule lists project the selected phased evaluation", () => {
+  const snapshot = createMarketSnapshot("MES", "regular");
+  const selected = snapshot.setupAnalysis.primarySetup === null
+    ? snapshot.setupAnalysis.evaluations[0]
+    : snapshot.setupAnalysis.evaluations.find((evaluation) => evaluation.setupType === snapshot.setupAnalysis.primarySetup)!;
+  assert.deepEqual(
+    snapshot.decision.passedRules.map((rule) => rule.key),
+    selected.rules.filter((rule) => rule.passed).map((rule) => rule.key),
+  );
+  assert.deepEqual(
+    snapshot.decision.failedRules.map((rule) => rule.key),
+    selected.rules.filter((rule) => !rule.passed).map((rule) => rule.key),
+  );
+  assert.equal(snapshot.signals.length, 4);
+  assert.ok(snapshot.decision.explanation.includes(`ORB state: ${snapshot.breakout.state}.`));
+  assert.equal(snapshot.breakout.detected, snapshot.signals.find((signal) => signal.key === "orb")?.status === "confirmed");
+});
+
+function invariantFixture(overrides: Record<string, unknown> = {}) {
+  const evaluation = {
+    setupType: "ORB_BREAK_PULLBACK_CONTINUATION" as const,
+    direction: "long" as const,
+    decision: "SETUP QUALIFIED" as const,
+    mandatoryPassed: true,
+    alertOnly: false,
+    rules: [{
+      key: "riskApproval",
+      label: "Risk approval",
+      passed: true,
+      mandatory: true,
+      detail: "approved",
+    }],
+    reversalEvidence: null,
+    consolidation: null,
+    explanation: "qualified",
+  };
+  return {
+    ntz: { complete: true },
+    breakout: {
+      detected: true,
+      failed: false,
+      state: "QUALIFIED_BREAKOUT" as const,
+      volumeSupported: true,
+      continuationConfirmed: true,
+      direction: "long" as const,
+    },
+    signals: [
+      { key: "orb" as const, status: "confirmed" as const },
+      { key: "pullback" as const, status: "confirmed" as const },
+      { key: "patience" as const, status: "confirmed" as const },
+      { key: "volume" as const, status: "confirmed" as const },
+    ],
+    riskPlan: { allowed: true, contracts: 1, direction: "long" as const },
+    patience: { entryBufferPrice: 100, strategyStopPrice: 99 },
+    setupAnalysis: {
+      decision: "SETUP QUALIFIED" as const,
+      primarySetup: "ORB_BREAK_PULLBACK_CONTINUATION" as const,
+      evaluations: [evaluation],
+    },
+    shadowExecution: { contracts: 1 },
+    ...overrides,
+  };
+}
+
+test("dashboard invariant validator flags every blocked or contradictory state", () => {
+  const orbContradiction = validateDashboardInvariants(invariantFixture({
+    breakout: {
+      detected: false,
+      failed: false,
+      state: "WEAK_BREAK_WAIT",
+      volumeSupported: false,
+      continuationConfirmed: false,
+      direction: "long",
+    },
+  }));
+  assert.ok(orbContradiction.some((violation) => violation.code === "ORB_SIGNAL_WITHOUT_QUALIFIED_BREAKOUT"));
+
+  const blockedRisk = validateDashboardInvariants(invariantFixture({
+    riskPlan: { allowed: false, contracts: 0, direction: "short" },
+  }));
+  assert.ok(blockedRisk.some((violation) => violation.code === "RISK_APPROVAL_CONTRADICTION"));
+  assert.ok(blockedRisk.some((violation) => violation.code === "SETUP_DIRECTION_CONTRADICTION"));
+  assert.ok(blockedRisk.some((violation) => violation.code === "SHADOW_EXECUTION_WHILE_BLOCKED"));
+
+  const missingEntry = invariantFixture({
+    patience: { entryBufferPrice: null, strategyStopPrice: null },
+    shadowExecution: null,
+  });
+  assert.ok(validateDashboardInvariants(missingEntry).some((violation) => violation.code === "QUALIFIED_SETUP_WITHOUT_PATIENCE_ENTRY"));
+  assert.throws(() => assertDashboardInvariants(missingEntry), /QUALIFIED_SETUP_WITHOUT_PATIENCE_ENTRY/);
 });

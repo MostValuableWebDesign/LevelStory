@@ -165,3 +165,24 @@ test("Phase 8 timeline is chronological and includes failed setup outcome", () =
   assert.equal(timeline.at(-1)?.eventType, "Failed setup");
   assert.ok(timeline.every((item, index) => index === 0 || item.time >= timeline[index - 1].time));
 });
+
+test("Phase 8 never simulates execution for an alert-only qualified reversal", () => {
+  const timeline = buildPhase8Timeline({
+    candles: [{ openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 1.5, volume: 10, isComplete: true, ...quote }],
+    ntz: null,
+    ntzEvents: [],
+    breakout: { detected: true, direction: "long", state: "QUALIFIED_BREAKOUT", time: 1, candleOpenTime: 1, candidateTime: 1, candidateCandleOpenTime: 1, distanceOutside: 1, meaningfulDistance: 1, breakoutVolume: 10, baselineVolume: 5, volumeRatio: 2, volumeSupported: true, bodyRatio: 0.8, closeLocationRatio: 0.9, candleStructureSupported: true, continuationConfirmed: true, continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION", failed: false, detail: "Qualified." },
+    pullback: { status: "observed", events: [], evaluatedCandles: 0, maxCandles: 6, maxDurationMinutes: 30, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: 0, detail: "Observed." },
+    fibonacci: { direction: "bullish", impulseLow: 1, impulseHigh: 2, breakoutTime: 1, frozen: true, frozenAt: 1, manualCorrection: false, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 1.5 }], retracementPercent: 0, classification: "normal", detail: "Frozen." },
+    volume: { baselineCandleCount: 6, recentSixAverage: 5, breakoutVolume: 10, breakoutRatio: 2, supportingBreakoutVolume: true, averageImpulseVolume: 10, pullbackAverageVolume: 5, pullbackToBreakoutRatio: 0.5, pullbackToImpulseRatio: 0.5, pullbackToRecentRatio: 1, opposingPullbackVolume: null, reversalWarning: null },
+    patience: { state: "ENTRY_TRIGGERED", eligible: true, eligibilityReason: "pullback", eligibilityTime: 1, trend: "bullish", previousCandle: null, patienceCandle: { openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 1.5, isComplete: true }, triggerCandle: null, entryBufferTicks: 4, entryBufferPrice: 2, stopBufferTicks: 1, strategyStopPrice: 0.75, triggerPrice: 2, stateTime: 2, detail: "Triggered." },
+    evaluation: { setupType: "BONUS_REVERSAL", direction: "long", decision: "SETUP QUALIFIED", mandatoryPassed: true, alertOnly: true, rules: [], reversalEvidence: { dojiAtMajorLevel: true, equivalentOpposingCandles: false, failedBreakout: false, strongOpposingVolume: false, deepFibonacciRetracement: false, majorLevelRejection: false, structureBreak: false, alert: true, detail: "Alert only." }, consolidation: null, explanation: "Alert only." },
+    riskPlan: riskPlan(),
+    direction: "long",
+    trend: "bullish",
+    specification,
+    now: 3,
+  });
+  assert.equal(timeline.some((item) => item.eventType === "Shadow entry"), false);
+  assert.equal(timeline.at(-1)?.eventType, "Failed setup");
+});

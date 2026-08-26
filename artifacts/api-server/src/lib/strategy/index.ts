@@ -11,3 +11,4 @@ export * from "./risk.js";
 export * from "./simulation.js";
 export * from "./phase7.js";
 export * from "./phase8.js";
+export * from "./invariants.js";
