@@ -197,32 +197,68 @@ test("causal fixture matrix preserves weak-probe rejection, patience rejects, am
   const target = simulatePhase8ShadowExecution({
     direction: "long",
     entryQuote: { bid: 6799.75, ask: 6800.25 },
-    exitQuote: { bid: 6805.25, ask: 6805.75 },
+    exitQuote: { bid: 6815.25, ask: 6815.75 },
     entryReferencePrice: 6800,
-    currentPrice: 6805,
+    currentPrice: 6815,
     contracts: 1,
-    target: 6805,
+    target: 6815,
     specification,
   });
   assert.equal(target.exitReason, "target");
+  assert.equal(target.entryFillPrice, 6800.5);
+  assert.equal(target.exitFillPrice, 6815);
+  assert.deepEqual(target.accounting, { grossPnl: 72.5, slippage: 2.5, fees: 1.6, netPnl: 70.9 });
+
+  const strategyStop = simulatePhase8ShadowExecution({
+    direction: "long",
+    entryQuote: { bid: 6799.75, ask: 6800.25 },
+    exitQuote: { bid: 6797.75, ask: 6798.25 },
+    entryReferencePrice: 6800,
+    exitReferencePrice: 6798,
+    currentPrice: 6798,
+    high: 6800,
+    low: 6798,
+    contracts: 1,
+    strategyStop: 6798,
+    catastropheStop: 6797.5,
+    specification,
+  });
+  assert.equal(strategyStop.stop, "strategy");
+  assert.equal(strategyStop.exitReason, "strategy stop");
+  assert.equal(strategyStop.entryFillPrice, 6800.5);
+  assert.equal(strategyStop.exitFillPrice, 6797.5);
+  assert.deepEqual(strategyStop.accounting, { grossPnl: -15, slippage: 12.5, fees: 1.6, netPnl: -16.6 });
+  assert.equal(strategyStop.legs.length, 1);
 
   const runner = simulatePhase8ShadowExecution({
     direction: "long",
     entryQuote: { bid: 6799.75, ask: 6800.25 },
-    exitQuote: { bid: 6805.25, ask: 6805.75 },
+    exitQuote: { bid: 6815.25, ask: 6815.75 },
     entryReferencePrice: 6800,
-    currentPrice: 6802,
-    high: 6805,
+    currentPrice: 6809,
+    high: 6815,
     low: 6799,
     contracts: 2,
     targetContracts: 1,
     runnerContracts: 1,
-    target: 6805,
+    target: 6815,
     runnerReferencePrice: 6800,
-    runnerImpulse: 5,
-    runnerMostFavorablePrice: 6805,
+    runnerImpulse: 15,
+    runnerMostFavorablePrice: 6815,
     specification,
   });
   assert.equal(runner.exitReason, "runner");
   assert.equal(runner.runnerExited, true);
+  assert.deepEqual(runner.legs.map((leg) => ({
+    kind: leg.kind,
+    contracts: leg.contracts,
+    grossPnl: leg.grossPnl,
+    slippage: leg.slippage,
+    fees: leg.fees,
+    netPnl: leg.netPnl,
+  })), [
+    { kind: "target", contracts: 1, grossPnl: 72.5, slippage: 2.5, fees: 1.6, netPnl: 70.9 },
+    { kind: "runner", contracts: 1, grossPnl: 72.5, slippage: 2.5, fees: 1.6, netPnl: 70.9 },
+  ]);
+  assert.deepEqual(runner.accounting, { grossPnl: 145, slippage: 5, fees: 3.2, netPnl: 141.8 });
 });
