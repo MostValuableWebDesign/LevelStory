@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GetMarketSnapshotProvider } from './getMarketSnapshotProvider';
 import type { GetMarketSnapshotSession } from './getMarketSnapshotSession';
 import type { GetMarketSnapshotSlippageMode } from './getMarketSnapshotSlippageMode';
 
@@ -14,6 +15,7 @@ export type GetMarketSnapshotParams = {
  * @maxLength 12
  */
 symbol?: string;
+provider?: GetMarketSnapshotProvider;
 session?: GetMarketSnapshotSession;
 /**
  * New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.

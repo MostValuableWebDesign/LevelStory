@@ -4,3 +4,4 @@
 - [Journal schema preservation](journal-schema-preservation.md) — adding uniqueness to populated journal tables may prompt destructive truncation; preserve history with non-destructive DDL.
 - [Patience buffer semantics](patience-buffer-semantics.md) — raw wick breaks never bypass the configured confirmation buffer; only a fully buffered immediate candle can trigger.
 - [Synthetic A+ fixtures](synthetic-a-plus-fixtures.md) — deterministic replay scenarios must preserve one-sided ORB probes, strict 15-minute structure, liquidity, and micro-contract notional headroom.
+- [Databento JSON normalization](databento-json-normalization.md) — historical JSONL nests timestamps and identity under `hd`; OHLCV and quote prices use 1e9 fixed-point units.

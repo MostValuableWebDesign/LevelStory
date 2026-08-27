@@ -33,6 +33,7 @@ export const getMarketSnapshotQuerySlippageModeDefault = `normal`;
 
 export const GetMarketSnapshotQueryParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getMarketSnapshotQuerySymbolMax).default(getMarketSnapshotQuerySymbolDefault),
+  "provider": zod.enum(['simulated', 'csv', 'databento']).optional(),
   "session": zod.enum(['premarket', 'regular']).default(getMarketSnapshotQuerySessionDefault),
   "tradingDate": zod.coerce.string().optional().describe('New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.'),
   "cursor": zod.coerce.number().optional().describe('Replay cursor as a Unix timestamp in milliseconds. When supplied, only candles completed by this instant are visible.'),
@@ -466,6 +467,53 @@ export const GetMarketSnapshotResponse = zod.object({
   "warning": zod.string().nullable()
 }),
   "assumptions": zod.array(zod.string())
+})
+
+
+/**
+ * Returns server-side provider health and normalized data-quality metadata. This endpoint never exposes credentials or creates an order.
+ * @summary Get market-data provider status
+ */
+export const getMarketDataStatusQuerySymbolDefault = `MES`;
+
+export const GetMarketDataStatusQueryParams = zod.object({
+  "provider": zod.enum(['simulated', 'csv', 'databento']).optional(),
+  "symbol": zod.coerce.string().default(getMarketDataStatusQuerySymbolDefault),
+  "tradingDate": zod.coerce.string().optional()
+})
+
+export const GetMarketDataStatusResponse = zod.object({
+  "provider": zod.enum(['simulated', 'csv', 'databento']),
+  "state": zod.enum(['simulated', 'csv_replay', 'live_shadow', 'delayed_shadow', 'disconnected']),
+  "connected": zod.boolean(),
+  "authenticated": zod.boolean(),
+  "delayed": zod.boolean(),
+  "lastEventAt": zod.string().nullable(),
+  "checkedAt": zod.string(),
+  "message": zod.string(),
+  "dataOnly": zod.literal(true),
+  "executionEnabled": zod.literal(false),
+  "metadata": zod.object({
+  "displayName": zod.string(),
+  "dataset": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "rolloverDate": zod.string()
+}),
+  "quality": zod.object({
+  "valid": zod.boolean(),
+  "stale": zod.boolean(),
+  "delayed": zod.boolean(),
+  "completeCandleCount": zod.number(),
+  "incompleteCandleCount": zod.number(),
+  "duplicateCount": zod.number(),
+  "outOfOrderCount": zod.number(),
+  "gapCount": zod.number(),
+  "missingBidAskCount": zod.number(),
+  "missingVolumeCount": zod.number(),
+  "contractMismatchCount": zod.number(),
+  "codes": zod.array(zod.string())
+}).nullable()
 })
 
 

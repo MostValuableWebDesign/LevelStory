@@ -11,7 +11,7 @@ tags:
   - name: health
     description: Health operations
   - name: market
-    description: Simulated market intelligence
+    description: Provider-backed market intelligence
   - name: journal
     description: Shadow trade journal
   - name: risk
@@ -47,6 +47,12 @@ paths:
             minLength: 1
             maxLength: 12
             default: MES
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [simulated, csv, databento]
         - name: session
           in: query
           required: false
@@ -110,6 +116,43 @@ paths:
                 $ref: "#/components/schemas/MarketSnapshot"
         "400":
           description: Invalid market query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/data-status:
+    get:
+      operationId: getMarketDataStatus
+      tags: [market]
+      summary: Get market-data provider status
+      description: Returns server-side provider health and normalized data-quality metadata. This endpoint never exposes credentials or creates an order.
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [simulated, csv, databento]
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+            default: MES
+        - name: tradingDate
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Provider health and data quality
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDataStatus"
+        "400":
+          description: Invalid provider or market query
           content:
             application/json:
               schema:
@@ -342,6 +385,61 @@ components:
         error:
           type: string
       required: [error]
+    MarketDataQuality:
+      type: object
+      properties:
+        valid: { type: boolean }
+        stale: { type: boolean }
+        delayed: { type: boolean }
+        completeCandleCount: { type: number }
+        incompleteCandleCount: { type: number }
+        duplicateCount: { type: number }
+        outOfOrderCount: { type: number }
+        gapCount: { type: number }
+        missingBidAskCount: { type: number }
+        missingVolumeCount: { type: number }
+        contractMismatchCount: { type: number }
+        codes:
+          type: array
+          items: { type: string }
+      required: [valid, stale, delayed, completeCandleCount, incompleteCandleCount, duplicateCount, outOfOrderCount, gapCount, missingBidAskCount, missingVolumeCount, contractMismatchCount, codes]
+    MarketDataStatus:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [simulated, csv, databento]
+        state:
+          type: string
+          enum: [simulated, csv_replay, live_shadow, delayed_shadow, disconnected]
+        connected: { type: boolean }
+        authenticated: { type: boolean }
+        delayed: { type: boolean }
+        lastEventAt:
+          type: ["string", "null"]
+        checkedAt:
+          type: string
+        message: { type: string }
+        dataOnly:
+          type: boolean
+          enum: [true]
+        executionEnabled:
+          type: boolean
+          enum: [false]
+        metadata:
+          type: object
+          properties:
+            displayName: { type: string }
+            dataset: { type: ["string", "null"] }
+            contractSymbol: { type: string }
+            contractMonth: { type: string }
+            rolloverDate: { type: string }
+          required: [displayName, dataset, contractSymbol, contractMonth, rolloverDate]
+        quality:
+          allOf:
+            - $ref: "#/components/schemas/MarketDataQuality"
+          nullable: true
+      required: [provider, state, connected, authenticated, delayed, lastEventAt, checkedAt, message, dataOnly, executionEnabled, metadata, quality]
     Candle:
       type: object
       properties:

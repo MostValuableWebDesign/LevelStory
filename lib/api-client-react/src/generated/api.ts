@@ -26,11 +26,13 @@ import type {
   ErrorResponse,
   FuturesContractSpecification,
   GetDashboardOverviewParams,
+  GetMarketDataStatusParams,
   GetMarketSnapshotParams,
   HealthStatus,
   JournalEntry,
   JournalEntryInput,
   ListJournalEntriesParams,
+  MarketDataStatus,
   MarketSnapshot,
   RiskSettings,
   RiskSettingsUpdate
@@ -214,6 +216,91 @@ export function useGetMarketSnapshot<TData = Awaited<ReturnType<typeof getMarket
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMarketSnapshotQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMarketDataStatusUrl = (params?: GetMarketDataStatusParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/market/data-status?${stringifiedParams}` : `/api/market/data-status`
+}
+
+/**
+ * Returns server-side provider health and normalized data-quality metadata. This endpoint never exposes credentials or creates an order.
+ * @summary Get market-data provider status
+ */
+export const getMarketDataStatus = async (params?: GetMarketDataStatusParams, options?: Parameters<typeof customFetch>[1]): Promise<MarketDataStatus> => {
+
+  return customFetch<MarketDataStatus>(getGetMarketDataStatusUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketDataStatusQueryKey = (params?: GetMarketDataStatusParams,) => {
+    return [
+    `/api/market/data-status`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMarketDataStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMarketDataStatus>>, TError = ErrorType<ErrorResponse>>(params?: GetMarketDataStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketDataStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketDataStatusQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketDataStatus>>> = ({ signal }) => getMarketDataStatus(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketDataStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketDataStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketDataStatus>>>
+export type GetMarketDataStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get market-data provider status
+ */
+
+export function useGetMarketDataStatus<TData = Awaited<ReturnType<typeof getMarketDataStatus>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetMarketDataStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketDataStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketDataStatusQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

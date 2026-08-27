@@ -13,6 +13,66 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface MarketDataQuality {
+  valid: boolean;
+  stale: boolean;
+  delayed: boolean;
+  completeCandleCount: number;
+  incompleteCandleCount: number;
+  duplicateCount: number;
+  outOfOrderCount: number;
+  gapCount: number;
+  missingBidAskCount: number;
+  missingVolumeCount: number;
+  contractMismatchCount: number;
+  codes: string[];
+}
+
+export type MarketDataStatusProvider = typeof MarketDataStatusProvider[keyof typeof MarketDataStatusProvider];
+
+
+export const MarketDataStatusProvider = {
+  simulated: 'simulated',
+  csv: 'csv',
+  databento: 'databento',
+} as const;
+
+export type MarketDataStatusState = typeof MarketDataStatusState[keyof typeof MarketDataStatusState];
+
+
+export const MarketDataStatusState = {
+  simulated: 'simulated',
+  csv_replay: 'csv_replay',
+  live_shadow: 'live_shadow',
+  delayed_shadow: 'delayed_shadow',
+  disconnected: 'disconnected',
+} as const;
+
+export type MarketDataStatusMetadata = {
+  displayName: string;
+  /** @nullable */
+  dataset: string | null;
+  contractSymbol: string;
+  contractMonth: string;
+  rolloverDate: string;
+};
+
+export interface MarketDataStatus {
+  provider: MarketDataStatusProvider;
+  state: MarketDataStatusState;
+  connected: boolean;
+  authenticated: boolean;
+  delayed: boolean;
+  /** @nullable */
+  lastEventAt: string | null;
+  checkedAt: string;
+  message: string;
+  dataOnly: true;
+  executionEnabled: false;
+  metadata: MarketDataStatusMetadata;
+  quality: MarketDataQuality | null;
+}
+
 export interface Candle {
   time: string;
   timestamp: string;
@@ -1613,6 +1673,7 @@ export type GetMarketSnapshotParams = {
  * @maxLength 12
  */
 symbol?: string;
+provider?: GetMarketSnapshotProvider;
 session?: GetMarketSnapshotSession;
 /**
  * New York trading date for the deterministic replay. Defaults to the latest trading date in the session calendar.
@@ -1646,6 +1707,15 @@ targetDollars?: number;
 slippageMode?: GetMarketSnapshotSlippageMode;
 };
 
+export type GetMarketSnapshotProvider = typeof GetMarketSnapshotProvider[keyof typeof GetMarketSnapshotProvider];
+
+
+export const GetMarketSnapshotProvider = {
+  simulated: 'simulated',
+  csv: 'csv',
+  databento: 'databento',
+} as const;
+
 export type GetMarketSnapshotSession = typeof GetMarketSnapshotSession[keyof typeof GetMarketSnapshotSession];
 
 
@@ -1661,6 +1731,21 @@ export const GetMarketSnapshotSlippageMode = {
   normal: 'normal',
   fast: 'fast',
   abnormal_spread: 'abnormal_spread',
+} as const;
+
+export type GetMarketDataStatusParams = {
+provider?: GetMarketDataStatusProvider;
+symbol?: string;
+tradingDate?: string;
+};
+
+export type GetMarketDataStatusProvider = typeof GetMarketDataStatusProvider[keyof typeof GetMarketDataStatusProvider];
+
+
+export const GetMarketDataStatusProvider = {
+  simulated: 'simulated',
+  csv: 'csv',
+  databento: 'databento',
 } as const;
 
 export type GetDashboardOverviewParams = {

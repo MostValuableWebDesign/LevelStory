@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetDashboardOverviewQueryKey, getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketSnapshot, useGetRiskSettings } from "@workspace/api-client-react";
+import { getGetDashboardOverviewQueryKey, getGetMarketDataStatusQueryKey, getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketDataStatus, useGetMarketSnapshot, useGetRiskSettings } from "@workspace/api-client-react";
 import type { MarketSnapshot, Signal } from "@workspace/api-client-react";
 import { ArrowUpRight, Check, Clock3, Crosshair, RefreshCw, ShieldAlert, Target } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
@@ -19,10 +19,14 @@ export default function Dashboard() {
   const [targetSelection, setTargetSelection] = useState("75");
   const [customTarget, setCustomTarget] = useState("75");
   const [slippageMode, setSlippageMode] = useState<"normal" | "fast" | "abnormal_spread">("normal");
+  const [dataProvider, setDataProvider] = useState<"simulated" | "csv" | "databento">("simulated");
   const [previewState, setPreviewState] = useState<CockpitPreviewState>("live");
   const targetDollars = targetSelection === "custom" ? Number(customTarget) || 75 : Number(targetSelection);
   const marketParams = { symbol, session, targetDollars, slippageMode, ...appliedFib };
   const market = useGetMarketSnapshot(marketParams);
+  const dataStatus = useGetMarketDataStatus({ provider: dataProvider, symbol }, {
+    query: { queryKey: getGetMarketDataStatusQueryKey({ provider: dataProvider, symbol }), refetchInterval: 30_000 },
+  });
   const risk = useGetRiskSettings();
   const snapshot = market.data;
   const overviewParams = snapshot ? { tradingDate: snapshot.sessionCalendar.tradingDate } : undefined;
@@ -40,11 +44,15 @@ export default function Dashboard() {
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
-         <PageIntro eyebrow={`Daily cockpit / ${session === "premarket" ? "premarket context" : "regular-session replay"}`} title="Make the plan. Then wait." description="Read the simulated tape, mark the conditions, and decide whether attention is earned today." action={<ShadowBadge />} />
+         <PageIntro eyebrow={`Daily cockpit / ${session === "premarket" ? "premarket context" : "regular-session replay"}`} title="Make the plan. Then wait." description="Read the normalized tape, mark the conditions, and decide whether attention is earned today." action={<ShadowBadge />} />
 
          <div className="control-ribbon mb-5 flex flex-col gap-3 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
            <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="eyebrow px-1 text-muted-foreground">Watchlist</span><div className="flex flex-wrap gap-1">{symbols.map((item) => <button type="button" key={item} onClick={() => setSymbol(item)} className={`rounded-sm px-3 py-2 text-xs font-bold transition-colors ${symbol === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`} aria-pressed={symbol === item} data-testid={`button-symbol-${item.toLowerCase()}`}>{item}</button>)}</div></div><div className="flex rounded-sm border border-border p-0.5"><button type="button" onClick={() => setSession("premarket")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "premarket" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "premarket"} data-testid="button-session-premarket">Premarket</button><button type="button" onClick={() => setSession("regular")} className={`px-2.5 py-1.5 text-[10px] font-bold uppercase ${session === "regular" ? "bg-secondary text-foreground" : "text-muted-foreground"}`} aria-pressed={session === "regular"} data-testid="button-session-regular">Replay</button></div></div>
-              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+               <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <label className="eyebrow text-muted-foreground" htmlFor="market-data-provider">Data source</label>
+                <select id="market-data-provider" value={dataProvider} onChange={(event) => setDataProvider(event.target.value as typeof dataProvider)} className="field h-9 w-32 px-2 text-[10px]" data-testid="select-market-data-provider">
+                  <option value="simulated">Simulated</option><option value="csv">CSV replay</option><option value="databento">Databento</option>
+                </select>
                <label className="eyebrow text-muted-foreground" htmlFor="target-dollars">Target</label>
                <select id="target-dollars" value={targetSelection} onChange={(event) => setTargetSelection(event.target.value)} className="field mono h-9 w-24 px-2 text-xs" data-testid="select-target-dollars">
                  <option value="50">$50</option><option value="75">$75</option><option value="100">$100</option><option value="custom">Custom</option>
@@ -54,12 +62,12 @@ export default function Dashboard() {
                  <option value="normal">Normal slip</option><option value="fast">Fast tape</option><option value="abnormal_spread">Abnormal spread</option>
                </select>
                 <RiskRail risk={riskData} isLoading={risk.isLoading} isError={risk.isError} onRetry={() => risk.refetch()} />
-               <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: getGetMarketSnapshotQueryKey(marketParams) })} disabled={market.isFetching} className="inline-flex items-center justify-center gap-2 rounded-sm border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50" data-testid="button-refresh-market"><RefreshCw size={13} className={market.isFetching ? "animate-spin" : ""} />Refresh simulation</button>
+                <button type="button" onClick={() => { void queryClient.invalidateQueries({ queryKey: getGetMarketSnapshotQueryKey(marketParams) }); void dataStatus.refetch(); }} disabled={market.isFetching || dataStatus.isFetching} className="inline-flex items-center justify-center gap-2 rounded-sm border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50" data-testid="button-refresh-market"><RefreshCw size={13} className={market.isFetching || dataStatus.isFetching ? "animate-spin" : ""} />Refresh feed</button>
              </div>
         </div>
 
          <PreviewStateRail state={previewState} actualDecision={snapshot?.decision.state} onChange={setPreviewState} />
-         <SessionStatusRail snapshot={snapshot} isLoading={market.isLoading} isError={market.isError} preview={preview} />
+          <SessionStatusRail snapshot={snapshot} dataStatus={dataStatus.data} isLoading={market.isLoading} isError={market.isError} preview={preview} />
 
         <Panel className="mb-5">
             {overview.isLoading ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 xl:grid-cols-8">{Array.from({ length: 8 }, (_, item) => <div key={item} className="skeleton m-5 h-12 rounded" />)}</div> : overview.isError ? <div className="flex items-center justify-between px-5 py-4 text-xs text-muted-foreground"><span>Session summary could not be loaded.</span><button type="button" onClick={() => overview.refetch()} className="font-bold text-foreground underline decoration-accent decoration-2 underline-offset-4" data-testid="button-retry-overview">Retry</button></div> : overviewData ? <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 xl:grid-cols-8">{[
@@ -74,7 +82,7 @@ export default function Dashboard() {
             ].map(([label, value, tone]) => <div key={label} className="metric-cell px-4 py-4 sm:px-5"><div className="eyebrow text-muted-foreground">{label}</div><div className={`mono mt-2 text-xl font-medium ${tone}`} data-testid={`text-overview-${label.toLowerCase().replaceAll(" ", "-")}`}>{value}</div></div>)}</div> : <div className="px-5 py-4 text-xs text-muted-foreground">Session summary is waiting for the review feed.</div>}
         </Panel>
 
-        {market.isLoading ? <Panel><QuerySkeleton rows={5} /></Panel> : market.isError || !snapshot ? <Panel><QueryError onRetry={() => market.refetch()} message="Simulated market feed unavailable." /></Panel> : <div className="space-y-5 appear">
+         {market.isLoading ? <Panel><QuerySkeleton rows={5} /></Panel> : market.isError || !snapshot ? <Panel><QueryError onRetry={() => market.refetch()} message="Market feed unavailable." /></Panel> : <div className="space-y-5 appear">
            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,.7fr)]">
             <Panel accent>
               <div className="flex flex-col justify-between gap-5 px-5 pb-4 pt-6 sm:flex-row sm:items-start sm:px-7">
@@ -185,13 +193,15 @@ function PreviewStateRail({ state, actualDecision, onChange }: { state: CockpitP
   </section>;
 }
 
-function SessionStatusRail({ snapshot, isLoading, isError, preview }: { snapshot?: MarketSnapshot; isLoading: boolean; isError: boolean; preview: ReturnType<typeof getCockpitPreview> }) {
+function SessionStatusRail({ snapshot, dataStatus, isLoading, isError, preview }: { snapshot?: MarketSnapshot; dataStatus?: { state: string; connected: boolean; delayed: boolean; message: string; metadata: { displayName: string; dataset: string | null; contractSymbol: string; contractMonth: string; rolloverDate: string }; quality: { valid: boolean; stale: boolean; codes: string[] } | null }; isLoading: boolean; isError: boolean; preview: ReturnType<typeof getCockpitPreview> }) {
   const previewFeedState = preview.group === "feed" ? preview : null;
-  const statusLabel = previewFeedState?.label ?? (isError ? "Disconnected" : isLoading ? "Pending" : snapshot?.marketStatus === "closed" ? "Market closed" : snapshot?.marketStatus === "open" ? "Open" : "Premarket");
-  const statusTone = previewFeedState?.tone ?? (isError ? "danger" : snapshot?.marketStatus === "closed" ? "warning" : "positive");
-  return <section className="mb-5 grid gap-px overflow-hidden border border-border bg-border sm:grid-cols-4" aria-label="Session and data status" data-testid="session-status-rail">
-    <StatusCell label="Feed" value={statusLabel} tone={statusTone} detail={previewFeedState?.description ?? (isError ? "Retry the simulated feed before relying on context." : "Deterministic API snapshot")} />
+  const statusLabel = previewFeedState?.label ?? (isError || dataStatus?.state === "disconnected" ? "Disconnected" : dataStatus?.state === "live_shadow" ? "Live Shadow" : dataStatus?.state === "delayed_shadow" ? "Delayed Shadow" : dataStatus?.state === "csv_replay" ? "CSV replay" : dataStatus?.state === "simulated" ? "Simulated" : isLoading ? "Pending" : snapshot?.marketStatus === "closed" ? "Market closed" : snapshot?.marketStatus === "open" ? "Open" : "Premarket");
+  const statusTone = previewFeedState?.tone ?? (isError || dataStatus?.state === "disconnected" ? "danger" : dataStatus?.delayed ? "warning" : dataStatus?.state === "live_shadow" ? "positive" : "neutral");
+  const qualityLabel = dataStatus?.quality ? dataStatus.quality.valid ? "Quality passed" : dataStatus.quality.stale ? "Stale / gated" : "Quality warnings" : "No quality report";
+  return <section className="mb-5 grid gap-px overflow-hidden border border-border bg-border sm:grid-cols-5" aria-label="Session and data status" data-testid="session-status-rail">
+    <StatusCell label="Feed" value={statusLabel} tone={statusTone} detail={previewFeedState?.description ?? dataStatus?.message ?? (isError ? "Retry the market feed before relying on context." : "Waiting for provider status")} />
     <StatusCell label="Contract" value={snapshot?.contract.fullContractSymbol ?? "Pending"} detail={snapshot ? `${snapshot.contract.exchange} · ${snapshot.contract.contractMonth}` : "Waiting for contract"} />
+    <StatusCell label="Quality" value={qualityLabel} tone={dataStatus?.quality?.valid ? "positive" : dataStatus?.quality?.stale ? "warning" : "neutral"} detail={dataStatus?.quality?.codes.join(" · ") || dataStatus?.metadata.displayName || "No normalized candles"} />
     <StatusCell label="Replay cursor" value={snapshot ? new Date(snapshot.replay.cursor).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"} detail={snapshot ? `${snapshot.replay.visibleCandleCount} visible completed candles` : "No cursor loaded"} />
     <div className="bg-card px-4 py-3 sm:px-5"><div className="eyebrow text-muted-foreground">Replay workspace</div><Link href="/backtest" className="mt-1 inline-flex items-center gap-1 text-xs font-bold underline decoration-accent decoration-2 underline-offset-4" data-testid="link-open-replay-lab">Open Replay Lab <ArrowUpRight size={13} /></Link><div className="mt-1 text-[10px] text-muted-foreground">{snapshot ? `${snapshot.replay.timeZone} · ${snapshot.sessionCalendar.tradingDate}` : "Causal report controls"}</div></div>
   </section>;

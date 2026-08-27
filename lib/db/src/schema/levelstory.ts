@@ -55,5 +55,37 @@ export const riskSettingsTable = pgTable("levelstory_risk_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const marketDataCandlesTable = pgTable("levelstory_market_data_candles", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  dataset: text("dataset"),
+  rootSymbol: text("root_symbol").notNull(),
+  contractSymbol: text("contract_symbol").notNull(),
+  intervalMinutes: integer("interval_minutes").notNull(),
+  openTime: timestamp("open_time", { withTimezone: true }).notNull(),
+  closeTime: timestamp("close_time", { withTimezone: true }).notNull(),
+  open: numeric("open", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  high: numeric("high", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  low: numeric("low", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  close: numeric("close", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  volume: numeric("volume", { precision: 18, scale: 4, mode: "number" }),
+  bid: numeric("bid", { precision: 14, scale: 4, mode: "number" }),
+  ask: numeric("ask", { precision: 14, scale: 4, mode: "number" }),
+  bidSize: numeric("bid_size", { precision: 18, scale: 4, mode: "number" }),
+  askSize: numeric("ask_size", { precision: 18, scale: 4, mode: "number" }),
+  isComplete: boolean("is_complete").notNull(),
+  quality: jsonb("quality").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  candleIdentityUnique: unique("levelstory_market_data_candle_identity_unique").on(
+    table.provider,
+    table.rootSymbol,
+    table.contractSymbol,
+    table.intervalMinutes,
+    table.openTime,
+  ),
+}));
+
 export type JournalEntry = typeof journalEntriesTable.$inferSelect;
 export type RiskSettings = typeof riskSettingsTable.$inferSelect;
+export type MarketDataCandle = typeof marketDataCandlesTable.$inferSelect;
