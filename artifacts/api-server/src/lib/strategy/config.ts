@@ -88,7 +88,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   profitBuffer: 0.02,
   riskPerTrade: 100,
   dailyLossLimit: 300,
-  maxPositionValue: 25_000,
+  maxPositionValue: 100_000,
   maxRiskTrades: 1,
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,

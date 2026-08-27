@@ -51,6 +51,16 @@ import {
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
 import type { MajorLevel } from "./strategy/major-levels.js";
 
+const CONFIRMED_ORB_STATES = new Set<OrbBreakoutState>([
+  "QUALIFIED_BREAKOUT",
+  "WAITING_FOR_PULLBACK",
+  "PULLBACK_IN_PROGRESS",
+  "WAITING_FOR_PATIENCE_CANDLE",
+  "PATIENCE_CANDLE_VALID",
+  "TRIGGER_CANDLE_ACTIVE",
+  "ENTRY_TRIGGERED",
+]);
+
 export type MarketSnapshot = {
   mode: typeof SHADOW_MODE_LABEL;
   symbol: string;
@@ -713,7 +723,8 @@ function phasedSignals(
     && !breakout.failed
     && breakout.volumeSupported
     && volume.supportingBreakoutVolume
-    && breakout.continuationConfirmed;
+    && breakout.continuationConfirmed
+    && CONFIRMED_ORB_STATES.has(breakout.state);
   const pullbackConfirmed = breakout.detected
     && !breakout.failed
     && pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));

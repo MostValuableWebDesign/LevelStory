@@ -115,7 +115,125 @@ export function generateSimulatedFuturesFeed(
       });
     }
   }
+  applyDeterministicAPlusScenario(candles, specification, tradingDates.at(-1)!, options.calendar, seed);
   return candles.sort((first, second) => first.timestamp - second.timestamp);
+}
+
+function applyDeterministicAPlusScenario(
+  candles: SimulatedFuturesCandle[],
+  specification: FuturesContractSpecification,
+  tradingDate: string,
+  calendar: FuturesSessionCalendar,
+  seed: number,
+): void {
+  const regularWindow = sessionWindow(tradingDate, "regular", calendar);
+  if (!regularWindow) return;
+  const regular = candles
+    .filter((candle) =>
+      candle.openTime >= regularWindow.openTime
+      && candle.openTime < regularWindow.closeTime
+      && tradingDateForTimestamp(candle.openTime, calendar) === tradingDate,
+    )
+    .sort((first, second) => first.openTime - second.openTime);
+  if (regular.length < 38) return;
+
+  const base = referencePrice(specification);
+  const bullish = Math.abs(seed) % 2 === 1;
+  const set = (
+    index: number,
+    values: { open: number; high: number; low: number; close: number; volume: number },
+  ): void => {
+    const candle = regular[index];
+    candle.open = roundToTick(values.open, specification);
+    candle.high = roundToTick(values.high, specification);
+    candle.low = roundToTick(values.low, specification);
+    candle.close = roundToTick(values.close, specification);
+    candle.bid = roundToTick(candle.close - specification.tickSize, specification);
+    candle.ask = candle.close;
+    candle.volume = values.volume;
+  };
+
+  if (bullish) {
+    set(0, { open: base, high: base + 1, low: base - 1, close: base, volume: 1_000 });
+    set(1, { open: base, high: base + 1.25, low: base - 0.75, close: base + 0.5, volume: 1_000 });
+    set(2, { open: base + 0.5, high: base + 1.5, low: base - 0.5, close: base + 1, volume: 1_000 });
+    for (let index = 3; index < 30; index += 1) {
+      const group = Math.floor(index / 3);
+      const close = base + 0.5 + group * 0.1;
+      const lowByGroup: Record<number, number> = {
+        1: -0.75,
+        2: -0.5,
+        3: -0.25,
+        4: -0.25,
+        5: 0,
+        6: 0.25,
+        7: 0.5,
+        8: 0.75,
+        9: 1,
+      };
+      set(index, {
+        open: close - 0.1,
+        high: base + 1.5 + group * 0.4 + (index % 3) * 0.05,
+        low: base + (lowByGroup[group] ?? -0.25) + (index % 3) * 0.02,
+        close,
+        volume: 1_000,
+      });
+    }
+    set(30, { open: base + 1.5, high: base + 9, low: base + 1.25, close: base + 8, volume: 10_000 });
+    set(31, { open: base + 8, high: base + 8.5, low: base + 1.25, close: base + 8, volume: 1_000 });
+    set(32, { open: base + 8, high: base + 9.5, low: base + 7.75, close: base + 9, volume: 1_000 });
+    set(33, { open: base + 9, high: base + 10.5, low: base + 8.75, close: base + 10, volume: 1_000 });
+    set(34, { open: base + 10, high: base + 11, low: base + 9.5, close: base + 10.5, volume: 1_000 });
+    set(35, { open: base + 10.5, high: base + 10.75, low: base + 9, close: base + 10.5, volume: 1_000 });
+    set(36, { open: base + 10.5, high: base + 12, low: base + 10, close: base + 11.75, volume: 2_000 });
+    set(37, { open: base + 11.75, high: base + 27, low: base + 11.5, close: base + 26, volume: 2_000 });
+    return;
+  }
+
+  set(0, { open: base, high: base + 1, low: base - 1, close: base, volume: 1_000 });
+  set(1, { open: base, high: base + 0.75, low: base - 1.25, close: base - 0.5, volume: 1_000 });
+  set(2, { open: base - 0.5, high: base + 0.5, low: base - 1.5, close: base - 1, volume: 1_000 });
+  for (let index = 3; index < 30; index += 1) {
+    const group = Math.floor(index / 3);
+    const close = base - 0.5 - group * 0.1;
+    const highByGroup: Record<number, number> = {
+      1: 0.75,
+      2: 0.5,
+      3: 0.25,
+      4: 0,
+      5: -0.25,
+      6: -0.5,
+      7: -0.75,
+      8: -1,
+      9: -1.25,
+    };
+    const lowByGroup: Record<number, number> = {
+      1: -1.75,
+      2: -2,
+      3: -2.25,
+      4: -2.5,
+      5: -2.75,
+      6: -3,
+      7: -3.25,
+      8: -3.5,
+      9: -3.75,
+    };
+    set(index, {
+      open: close + 0.1,
+      high: base + (highByGroup[group] ?? 0.5) - (index % 3) * 0.02,
+      low: base + (lowByGroup[group] ?? -2.5) - (index % 3) * 0.02,
+      close,
+      volume: 1_000,
+    });
+  }
+  set(30, { open: base - 1.5, high: base - 1.5, low: base - 9, close: base - 8, volume: 10_000 });
+  set(31, { open: base - 8, high: base - 1.5, low: base - 8.5, close: base - 8, volume: 1_000 });
+  set(32, { open: base - 8, high: base - 7.75, low: base - 8.5, close: base - 8.5, volume: 1_000 });
+  set(33, { open: base - 8.5, high: base - 8.75, low: base - 9.5, close: base - 9, volume: 1_000 });
+  set(34, { open: base - 9, high: base - 9.5, low: base - 10, close: base - 9.5, volume: 1_000 });
+  set(35, { open: base - 9.5, high: base - 9, low: base - 9.75, close: base - 9.5, volume: 1_000 });
+  set(36, { open: base - 9.5, high: base - 9.25, low: base - 11, close: base - 10.75, volume: 2_000 });
+  set(37, { open: base - 10.75, high: base - 10.5, low: base - 26, close: base - 25.75, volume: 2_000 });
 }
 
 export function completedSimulatedCandles(

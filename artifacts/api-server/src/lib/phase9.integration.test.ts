@@ -1,0 +1,196 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildReplayDataset, resolveIntrabarOutcome, runCausalBacktest } from "./phase9.js";
+import { createMarketSnapshot } from "./market-data.js";
+import { generateSimulatedFuturesFeed, type SimulatedFuturesCandle } from "./futures/simulated-feed.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
+import { sessionCalendarForContract, sessionWindow } from "./futures/session-calendar.js";
+import { strategyConfig } from "./strategy/config.js";
+import { evaluateOrbBreakoutQuality } from "./strategy/phase4.js";
+import { patienceCandleEngine } from "./strategy/phase5.js";
+import { buildPhase7RiskPlan, type Phase7RiskConfig } from "./strategy/phase7.js";
+import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
+
+const specification = getFuturesContractSpecification("MES");
+const calendar = sessionCalendarForContract(specification);
+const FIVE_MINUTES = 5 * 60_000;
+
+function scenarioSnapshot(seed: number) {
+  const candles = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: "2026-08-25",
+    days: 3,
+    seed,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const window = sessionWindow("2026-08-25", "regular", calendar)!;
+  const regular = candles.filter((candle) => candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  return createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[36].closeTime,
+      allCandles: candles,
+      historicalFeed: candles,
+      premarketAvailable: true,
+    },
+  );
+}
+
+function candle(index: number, open: number, high: number, low: number, close: number, volume = 100, isComplete = true): SimulatedFuturesCandle {
+  const openTime = index * FIVE_MINUTES;
+  return {
+    timestamp: openTime,
+    openTime,
+    closeTime: openTime + FIVE_MINUTES,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    bid: close - specification.tickSize,
+    ask: close,
+    bidSize: 10,
+    askSize: 10,
+    contractSymbol: specification.fullContractSymbol,
+    isComplete,
+  };
+}
+
+function riskConfig(overrides: Partial<Phase7RiskConfig> = {}): Phase7RiskConfig {
+  return {
+    riskDollars: 100,
+    dailyLossLimit: 500,
+    dailyLossUsed: 0,
+    tradesToday: 0,
+    maxTradesPerDay: 1,
+    maxContracts: 10,
+    maxPositionValue: 100_000,
+    maximumSpreadTicks: specification.maximumSpreadTicks,
+    minimumLiquidity: specification.minimumLiquidity,
+    staleDataSeconds: 15,
+    dataAgeSeconds: 0,
+    observedSpreadTicks: 1,
+    liquidity: specification.minimumLiquidity,
+    emergencyKillSwitch: false,
+    duplicateEntry: false,
+    averagingDown: false,
+    normalSlippageTicks: 1,
+    fastSlippageTicks: 2,
+    slippageMode: "normal",
+    targetDollars: 75,
+    ...overrides,
+  };
+}
+
+test("deterministic bullish and bearish A+ fixtures qualify and target-exit through the endpoint pipeline", () => {
+  for (const [seed, direction] of [[11, "long"], [12, "short"]] as const) {
+    const snapshot = scenarioSnapshot(seed);
+    assert.equal(snapshot.setupAnalysis.decision, "SETUP QUALIFIED", `seed ${seed}`);
+    assert.equal(snapshot.setupAnalysis.primarySetup, "ORB_BREAK_PULLBACK_CONTINUATION", `seed ${seed}`);
+    assert.equal(snapshot.riskPlan.allowed, true, `seed ${seed}`);
+    assert.equal(snapshot.riskPlan.direction, direction, `seed ${seed}`);
+    assert.equal(snapshot.shadowExecution?.contracts, 2, `seed ${seed}`);
+
+    const report = runCausalBacktest({
+      symbol: "MES",
+      endDate: "2026-08-25",
+      inSampleDays: 5,
+      outOfSampleDays: 2,
+      seed,
+      premarketAvailable: true,
+      targetDollars: 75,
+      slippageMode: "normal",
+    });
+    assert.equal(report.metrics.tradeCount, 1, `seed ${seed}`);
+    assert.equal(report.trades[0]?.direction, direction, `seed ${seed}`);
+    assert.equal(report.trades[0]?.outcome, "target", `seed ${seed}`);
+  }
+});
+
+test("causal fixture matrix preserves weak-probe rejection, patience rejects, ambiguous OHLC, risk rejection, target, and runner exits", () => {
+  const ntz = { high: 102, low: 99, complete: true, completedAt: candle(2, 100, 102, 99, 101).closeTime };
+  const weakProbe = evaluateOrbBreakoutQuality([
+    candle(0, 100, 101, 99, 100),
+    candle(1, 100, 101.5, 99.5, 100.5),
+    candle(2, 100.5, 102, 99, 101),
+    candle(3, 101, 102.2, 100.5, 101.5),
+  ], ntz, strategyConfig(), specification);
+  assert.equal(weakProbe.detected, false);
+  assert.equal(weakProbe.state, "ORB_PROBE_WAIT");
+
+  const eligibility = [{ time: FIVE_MINUTES, reason: "pullback" as const, detail: "Retest reached a qualifying level." }];
+  const patienceBase = [candle(0, 10, 12, 8, 10.5), candle(1, 10.5, 11, 7, 10.8)];
+  const expired = patienceCandleEngine([
+    ...patienceBase,
+    candle(2, 10.8, 11.2, 10.1, 10.4),
+    candle(4, 10.4, 12.2, 10.1, 12.1),
+  ], "long", { eligibilityEvents: eligibility, tickSize: 0.25 });
+  assert.equal(expired.state, "PATIENCE_CANDLE_EXPIRED");
+
+  const opposite = patienceCandleEngine([
+    ...patienceBase,
+    candle(2, 8.8, 10.5, 6.5, 8, 100, false),
+  ], "long", { eligibilityEvents: eligibility, tickSize: 0.25 });
+  assert.equal(opposite.state, "OPPOSITE_SIDE_INVALIDATION");
+
+  const ambiguous = resolveIntrabarOutcome({
+    direction: "long",
+    target: 104,
+    stop: 96,
+    candle: candle(1, 100, 105, 95, 101),
+    oneMinute: [{
+      openTime: FIVE_MINUTES,
+      closeTime: FIVE_MINUTES + 60_000,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 101,
+      source: "one-minute",
+      sequenceKnown: false,
+    }],
+  });
+  assert.equal(ambiguous.status, "ambiguous");
+  assert.equal(ambiguous.ambiguityLabel, "AMBIGUOUS_STOP_FIRST");
+
+  const denied = buildPhase7RiskPlan(6800, "long", 6799.75, 6799.5, riskConfig({ riskDollars: 5.34 }), specification);
+  assert.equal(denied.allowed, false);
+  assert.equal(denied.contracts, 0);
+
+  const target = simulatePhase8ShadowExecution({
+    direction: "long",
+    entryQuote: { bid: 6799.75, ask: 6800.25 },
+    exitQuote: { bid: 6805.25, ask: 6805.75 },
+    entryReferencePrice: 6800,
+    currentPrice: 6805,
+    contracts: 1,
+    target: 6805,
+    specification,
+  });
+  assert.equal(target.exitReason, "target");
+
+  const runner = simulatePhase8ShadowExecution({
+    direction: "long",
+    entryQuote: { bid: 6799.75, ask: 6800.25 },
+    exitQuote: { bid: 6805.25, ask: 6805.75 },
+    entryReferencePrice: 6800,
+    currentPrice: 6802,
+    high: 6805,
+    low: 6799,
+    contracts: 2,
+    targetContracts: 1,
+    runnerContracts: 1,
+    target: 6805,
+    runnerReferencePrice: 6800,
+    runnerImpulse: 5,
+    runnerMostFavorablePrice: 6805,
+    specification,
+  });
+  assert.equal(runner.exitReason, "runner");
+  assert.equal(runner.runnerExited, true);
+});

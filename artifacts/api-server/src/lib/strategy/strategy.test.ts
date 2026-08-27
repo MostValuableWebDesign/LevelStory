@@ -250,7 +250,14 @@ test("public dashboard decision and rule lists project the selected phased evalu
   );
   assert.equal(snapshot.signals.length, 4);
   assert.ok(snapshot.decision.explanation.includes(`ORB state: ${snapshot.breakout.state}.`));
-  assert.equal(snapshot.breakout.detected, snapshot.signals.find((signal) => signal.key === "orb")?.status === "confirmed");
+  const orbSignal = snapshot.signals.find((signal) => signal.key === "orb");
+  assert.equal(
+    orbSignal?.status === "confirmed",
+    snapshot.breakout.detected
+      && snapshot.breakout.state !== "SETUP_EXPIRED"
+      && snapshot.breakout.volumeSupported
+      && snapshot.breakout.continuationConfirmed,
+  );
 });
 
 function invariantFixture(overrides: Record<string, unknown> = {}) {
