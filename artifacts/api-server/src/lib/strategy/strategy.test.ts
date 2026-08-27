@@ -5,7 +5,6 @@ import { completedCandles } from "./types.js";
 import { strategyConfig } from "./config.js";
 import { ema, fibonacci, rsi } from "./indicators.js";
 import { positionSize } from "./risk.js";
-import { patience, volumeCheck } from "./rules.js";
 import { buildPhase7RiskPlan } from "./phase7.js";
 import { assertDashboardInvariants, validateDashboardInvariants } from "./invariants.js";
 import { createMarketSnapshot, selectExecutableDirection } from "../market-data.js";
@@ -34,15 +33,6 @@ test("indicators and automatic fibonacci are deterministic", () => {
   assert.equal(rsi([1, 2, 3], 2)[2], 100);
   const levels = fibonacci([candle(0, 10), { ...candle(1, 12), high: 13 }]);
   assert.equal(levels.find(level => level.name === "Fib 0.5")?.price, 11.4);
-});
-
-test("volume and patience are table-driven", () => {
-  const config = strategyConfig({ volumeExpansionRatio: 1.4 });
-  for (const [vol, confirmed] of [[80, true], [200, false]] as const) {
-    const candles = [candle(0), { ...candle(1), volume: vol }];
-    assert.equal(volumeCheck(candles, config, "long").confirmed, confirmed);
-  }
-  assert.equal(patience({ ...candle(0), open: 9, close: 10, high: 10.1, low: 8.9 }, "long").status, "ready");
 });
 
 test("sizing enforces daily lockout and risk cap", () => {
@@ -233,6 +223,14 @@ test("setup, breakout, patience, risk direction, stops, and targets cannot contr
 test("snapshot conforms to the generated API contract", () => {
   const snapshot = createMarketSnapshot("MNQ", "regular");
   assert.doesNotThrow(() => GetMarketSnapshotResponse.parse(snapshot));
+});
+
+test("public strategy barrels do not expose the retired monolithic decision helper", async () => {
+  const strategyExports = await import("./index.js");
+  const compatibilityExports = await import("../modules/strategy-evaluation.js");
+  const retiredHelper = ["full", "Decision"].join("");
+  assert.equal(retiredHelper in strategyExports, false);
+  assert.equal(retiredHelper in compatibilityExports, false);
 });
 
 test("public dashboard decision and rule lists project the selected phased evaluation", () => {

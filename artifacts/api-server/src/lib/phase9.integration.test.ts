@@ -113,6 +113,38 @@ test("deterministic bullish and bearish A+ fixtures qualify and target-exit thro
   }
 });
 
+test("public decision surfaces project the same phased Phase 4–8 evaluation", () => {
+  const snapshot = scenarioSnapshot(11);
+  const selected = snapshot.setupAnalysis.evaluations.find((evaluation) =>
+    evaluation.setupType === snapshot.setupAnalysis.primarySetup,
+  )!;
+  const signal = (key: "orb" | "pullback" | "patience" | "volume") =>
+    snapshot.signals.find((item) => item.key === key)!;
+
+  assert.equal(selected.decision, "SETUP QUALIFIED");
+  assert.equal(snapshot.setupAnalysis.decision, selected.decision);
+  assert.equal(snapshot.decision.state, selected.decision);
+  assert.deepEqual(
+    snapshot.decision.passedRules.map((rule) => rule.key),
+    selected.rules.filter((rule) => rule.passed).map((rule) => rule.key),
+  );
+  assert.deepEqual(
+    snapshot.decision.failedRules.map((rule) => rule.key),
+    selected.rules.filter((rule) => !rule.passed).map((rule) => rule.key),
+  );
+  assert.equal(signal("orb").status, "confirmed");
+  assert.equal(signal("orb").detail, snapshot.breakout.detail);
+  assert.equal(signal("pullback").status, "confirmed");
+  assert.equal(signal("pullback").detail, snapshot.pullback.detail);
+  assert.equal(signal("patience").status, "confirmed");
+  assert.equal(signal("patience").detail, snapshot.patience.detail);
+  assert.equal(signal("volume").status, "confirmed");
+  assert.equal(snapshot.riskPlan.direction, selected.direction);
+  assert.equal(snapshot.riskPlan.allowed, true);
+  assert.equal(snapshot.shadowExecution?.entryQuoteSide, snapshot.riskPlan.direction === "long" ? "ask" : "bid");
+  assert.equal(snapshot.shadowExecution?.contracts, snapshot.riskPlan.contracts);
+});
+
 test("causal fixture matrix preserves weak-probe rejection, patience rejects, ambiguous OHLC, risk rejection, target, and runner exits", () => {
   const ntz = { high: 102, low: 99, complete: true, completedAt: candle(2, 100, 102, 99, 101).closeTime };
   const weakProbe = evaluateOrbBreakoutQuality([

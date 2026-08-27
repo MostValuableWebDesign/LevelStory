@@ -24,15 +24,7 @@ export function completedCandles(replay: Replay): Candle[] {
 }
 
 export type Direction = "long" | "short";
-export type RuleResult = { rule: string; passed: boolean; detail: string };
 export type Level = { name: string; price: number; kind?: string };
 
 export type TrendDirection = "bullish" | "bearish" | "neutral";
 export type DecisionState = "NO TRADE" | "WAITING" | "SETUP FORMING" | "SETUP QUALIFIED" | "POSSIBLE REVERSAL" | "RISK LOCKOUT";
-
-export type RuleEvidence = {
-  key: string;
-  label: string;
-  passed: boolean;
-  detail: string;
-};

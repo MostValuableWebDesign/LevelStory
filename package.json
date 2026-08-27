@@ -7,7 +7,8 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "test": "pnpm --filter @workspace/api-server run test"
+    "check:no-legacy-levelstory-rule-helper": "node scripts/check-no-legacy-full-decision.mjs",
+    "test": "pnpm run check:no-legacy-levelstory-rule-helper && pnpm --filter @workspace/api-server run test"
   },
   "private": true,
   "dependencies": {
