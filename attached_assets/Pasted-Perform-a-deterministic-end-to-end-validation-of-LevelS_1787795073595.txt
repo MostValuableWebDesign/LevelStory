@@ -1,0 +1,184 @@
+Perform a deterministic end-to-end validation of LevelStory’s complete phased strategy engine.
+
+This is a futures Shadow Mode application. Do not add broker integration, paper orders, or live orders. Do not change strategy rules merely to make tests pass.
+
+OBJECTIVE
+
+Prove that the application correctly moves through the complete lifecycle:
+
+market data
+→ NTZ/ORB formation
+→ breakout-quality evaluation
+→ continuation
+→ pullback or qualifying consolidation
+→ patience candle
+→ immediate-next-candle trigger
+→ risk approval
+→ shadow entry
+→ target, stop, or runner exit
+→ journal and performance reporting
+
+CREATE DETERMINISTIC REPLAY FIXTURES
+
+Create fixed, named OHLCV fixtures with known timestamps, tick sizes, expected states, and expected results.
+
+Fixture 1 — Weak ORB probe rejected
+
+- First three completed five-minute candles form the 09:30–09:45 ET NTZ/ORB.
+- A completed candle closes slightly beyond the ORB.
+- Volume and continuation are insufficient.
+- Expected:
+  - breakout.detected=false;
+  - state is ORB_PROBE_WAIT, WEAK_BREAK_WAIT, or WAITING_FOR_CONTINUATION;
+  - ORB signal is not confirmed;
+  - no pullback evaluation begins;
+  - no patience entry is eligible;
+  - no risk approval;
+  - no shadow position.
+
+Fixture 2 — Bullish A+ continuation setup
+
+- Bullish 15-minute trend.
+- Strong close above ORB high with qualifying volume and continuation.
+- Pullback reaches or comes within configured proximity of ORB high and at least one critical level, VWAP, EMA, Fibonacci level, or valid confluence.
+- Pullback volume is weaker than breakout volume.
+- Bullish patience candle high does not exceed the previous completed candle’s high.
+- Only the immediate next candle reaches four ticks above the patience high.
+- Expected:
+  - qualified long breakout;
+  - pullback observed;
+  - patience valid;
+  - long entry triggered at the exact buffered price;
+  - stop below patience low;
+  - catastrophe stop beyond strategy stop;
+  - positive whole-number contract quantity;
+  - risk approved;
+  - Shadow Mode position recorded.
+
+Fixture 3 — Bearish A+ continuation setup
+
+- Bearish 15-minute trend.
+- Strong close below ORB low with qualifying volume and continuation.
+- Valid pullback with weaker volume.
+- Bearish patience candle low does not go below the previous completed candle’s low.
+- Only the immediate next candle reaches four ticks below the patience low.
+- Expected:
+  - qualified short setup;
+  - exact buffered short entry;
+  - stop above patience high;
+  - catastrophe stop beyond strategy stop;
+  - risk approved;
+  - Shadow Mode position recorded.
+
+Fixture 4 — Patience candle expires
+
+- Valid breakout, pullback, trend, and patience candle.
+- The immediate next candle does not reach the full four-tick entry buffer.
+- A later candle reaches it.
+- Expected:
+  - PATIENCE_CANDLE_EXPIRED;
+  - later candle cannot reuse the pattern;
+  - no entry;
+  - no shadow position.
+
+Fixture 5 — Opposite-side invalidation
+
+- Valid patience candle.
+- Immediate next candle crosses the opposite patience extreme before reaching the entry buffer.
+- Expected:
+  - OPPOSITE_SIDE_INVALIDATION;
+  - setup permanently rejected;
+  - no later recovery or entry.
+
+Fixture 6 — Same-candle ambiguity
+
+- Immediate next OHLC candle contains both the entry buffer and opposite invalidation price.
+- No intrabar sequence data exists.
+- Expected:
+  - AMBIGUOUS_EVENT_ORDER;
+  - setup rejected;
+  - do not assume the profitable event occurred first.
+
+Fixture 7 — Risk rejection
+
+- Fully qualified setup and entry trigger.
+- Daily loss lockout, excessive spread, stale data, insufficient liquidity, duplicate entry, or invalid sizing blocks the plan.
+- Expected:
+  - riskPlan.allowed=false;
+  - contracts=0;
+  - setup riskApproval fails;
+  - no shadow position;
+  - decision explanation includes the exact risk reason.
+
+Fixture 8 — Profit-target exit
+
+- Qualified Shadow Mode entry.
+- Price reaches the selected futures profit target between $50 and $100.
+- Calculate the target from contract tick size and dollar value per tick.
+- Include slippage and fees.
+- Expected:
+  - target exit;
+  - correct gross and net P&L;
+  - completed journal record.
+
+Fixture 9 — Strategy-stop exit
+
+- Qualified entry.
+- Price crosses the patience-based strategy stop.
+- Expected:
+  - stop evaluated according to the configured intrabar/close policy;
+  - exit recorded once;
+  - correct P&L, fees, and reason;
+  - no duplicate exit.
+
+Fixture 10 — Runner exit
+
+- Enter more than one futures contract.
+- Take the planned target contracts off at the $50–$100 target.
+- Leave at least one runner.
+- Freeze the runner’s reference impulse.
+- Price retraces adversely by 40% or more from the most favorable excursion.
+- Expected:
+  - runner exits at the defined threshold;
+  - frozen reference does not move backward;
+  - target and runner P&L are accounted for separately;
+  - journal contains the complete lifecycle.
+
+REQUIRED INVARIANTS
+
+Add assertions proving:
+
+1. Every public decision comes from the phased engine.
+2. Breakout, setup, patience, risk plan, and execution share one direction.
+3. breakout.detected=false can never produce a confirmed ORB signal.
+4. riskPlan.allowed=false can never produce a qualified entry.
+5. contracts=0 can never produce a shadow position.
+6. Entry cannot occur before a qualifying breakout and pullback/consolidation.
+7. Entry cannot occur without a valid patience candle.
+8. Only the immediate next candle may trigger.
+9. Entry requires the complete configured tick buffer.
+10. No setup can create more than one entry or exit.
+11. All prices are rounded to the futures contract tick size.
+12. Timestamps use the correct America/New_York session boundaries.
+13. Journal and dashboard metrics agree with executed Shadow Mode trades.
+14. Descriptive evaluations are not counted as trades.
+15. No code path can submit an external order.
+
+TEST AND REPORTING REQUIREMENTS
+
+- Run TypeScript typecheck.
+- Run all unit tests.
+- Run all integration tests.
+- Run all replay/backtest tests.
+- Report exact totals: passed, failed, skipped.
+- Report the outcome of every fixture.
+- Report the exact entry, stop, catastrophe stop, target, contracts, gross P&L, fees, slippage, and net P&L for fixtures that trade.
+- Include the final state timeline for each fixture.
+- Do not mark this phase complete if:
+  - any test fails;
+  - any invariant is violated;
+  - the replay produces zero qualified entries;
+  - bullish or bearish execution remains untested;
+  - target, stop, and runner exits are not demonstrated.
+
+Do not modify thresholds simply to force fixture qualification. Build fixture data that legitimately satisfies the existing configured strategy.
