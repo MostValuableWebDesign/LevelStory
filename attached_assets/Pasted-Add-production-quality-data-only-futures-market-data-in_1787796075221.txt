@@ -1,0 +1,211 @@
+Add production-quality, data-only futures market-data integration to LevelStory.
+
+IMPORTANT SAFETY BOUNDARY
+
+LevelStory must remain Shadow Mode only.
+
+- Do not add order placement.
+- Do not add broker execution endpoints.
+- Do not add buy/sell buttons that submit orders.
+- Do not request trading permissions.
+- Do not store broker trading credentials.
+- Market-data credentials must not be usable for execution.
+- Keep simulated data available as a fallback and testing mode.
+
+OBJECTIVE
+
+Allow LevelStory to analyze real MES, ES, MNQ, and NQ futures data using the existing phased strategy engine, without changing any trading rules.
+
+ARCHITECTURE
+
+Create a MarketDataProvider interface supporting:
+
+1. getHistoricalCandles()
+2. subscribeToQuotes()
+3. subscribeToTrades()
+4. subscribeToFiveMinuteCandles()
+5. getContractMetadata()
+6. getMarketStatus()
+7. disconnect()
+8. health/status reporting
+
+Implement providers for:
+
+- SimulatedMarketDataProvider — existing deterministic feed;
+- CsvReplayMarketDataProvider — imported historical OHLCV data;
+- RealMarketDataProvider — selected data-only API or WebSocket service.
+
+The strategy engine must not know which provider supplied the data.
+
+DATA REQUIREMENTS
+
+For every candle preserve:
+
+- root symbol;
+- full contract symbol;
+- expiration month/year;
+- timestamp;
+- open time;
+- close time;
+- open;
+- high;
+- low;
+- close;
+- volume;
+- completion status;
+- source;
+- data delay;
+- timezone metadata.
+
+For quotes preserve:
+
+- bid;
+- ask;
+- bid size;
+- ask size;
+- timestamp;
+- source;
+- stale-data age.
+
+For trades preserve:
+
+- price;
+- size;
+- timestamp;
+- aggressor classification when genuinely available;
+- source.
+
+Do not manufacture Level 2, aggressor, bid/ask, or volume information when the provider does not supply it. Mark unavailable fields clearly.
+
+FUTURES-SPECIFIC REQUIREMENTS
+
+1. Support MES, ES, MNQ, and NQ.
+2. Distinguish root symbols from actual expiring contracts.
+3. Add explicit contract selection.
+4. Display expiration and active contract.
+5. Add configurable rollover handling.
+6. Never silently combine two contracts into one session.
+7. If continuous contracts are supported, label them as continuous/back-adjusted and do not treat synthetic prices as executable contract prices.
+8. Use the contract’s actual:
+   - tick size;
+   - dollar value per tick;
+   - point value;
+   - multiplier;
+   - exchange timezone.
+9. Preserve America/New_York strategy-session calculations for the 09:30–16:00 ET regular session.
+10. Handle DST correctly.
+
+CANDLE CONSTRUCTION
+
+1. Build five-minute candles from authoritative provider bars when available.
+2. If bars must be built from trades:
+   - align boundaries to New York session time;
+   - use half-open intervals;
+   - prevent duplicate trades;
+   - handle late/out-of-order events;
+   - finalize each candle exactly once;
+   - never let an incomplete candle satisfy a completed-candle rule.
+3. Build 15-minute trend candles from three contiguous completed five-minute candles.
+4. Reset regular-session VWAP at 09:30 ET.
+5. Form NTZ/ORB from exactly:
+   - 09:30–09:35;
+   - 09:35–09:40;
+   - 09:40–09:45.
+6. Do not evaluate a normal ORB breakout until the 09:40 candle completes at 09:45.
+
+DATA-QUALITY GATES
+
+Block new Shadow Mode entries when:
+
+- feed is disconnected;
+- data is stale;
+- candle sequence has a gap;
+- timestamps move backward;
+- contract changes unexpectedly;
+- bid/ask spread is unavailable when required;
+- required volume data is missing;
+- duplicate candles are detected;
+- provider reports delayed data but the mode is labeled real-time.
+
+Display a clear reason for every block.
+
+REPLAY AND PERSISTENCE
+
+1. Save normalized incoming completed candles for audit and replay.
+2. Store provider, contract, timestamps, and data-quality flags.
+3. Allow replaying a recorded real-data session through the same engine.
+4. Replay must be causal:
+   - future candles cannot be visible;
+   - future levels cannot influence past decisions;
+   - only completed candles may satisfy completed-candle rules.
+5. Ensure replay produces the same strategy states as the originally recorded session.
+
+UI REQUIREMENTS
+
+Add a visible data-source badge:
+
+- SIMULATED;
+- CSV REPLAY;
+- LIVE DATA — SHADOW MODE;
+- DELAYED DATA — SHADOW MODE;
+- DISCONNECTED.
+
+Display:
+
+- active futures contract;
+- expiration;
+- connection status;
+- last update;
+- data age;
+- real-time or delayed status;
+- candle gaps;
+- market session;
+- explicit “NO ORDERS ARE SENT” message.
+
+Do not use wording such as “executed,” “filled by broker,” or “live trade” for shadow positions.
+
+SECURITY
+
+1. Store market-data secrets only in Replit Secrets/environment variables.
+2. Never expose keys to the browser.
+3. Make all provider connections server-side.
+4. Redact secrets from logs and errors.
+5. Add reconnection backoff and rate-limit handling.
+6. Do not log complete authorization headers or WebSocket URLs containing tokens.
+
+TESTS
+
+Add deterministic tests for:
+
+- provider normalization;
+- exact five-minute boundaries;
+- 09:45 NTZ completion;
+- incomplete candles;
+- duplicate events;
+- late/out-of-order events;
+- missing candles;
+- stale data;
+- reconnect behavior;
+- DST transitions;
+- contract rollover;
+- delayed-data labeling;
+- replay causality;
+- recorded-session reproducibility;
+- provider failure fallback;
+- proof that no order-placement endpoint or execution client exists.
+
+Run typecheck, unit tests, integration tests, and replay tests.
+
+REPORT
+
+At completion, report:
+
+- provider selected;
+- whether its data is real-time or delayed;
+- required environment-variable names, without values;
+- supported symbols/contracts;
+- data limitations;
+- test totals;
+- any exchange subscriptions or market-data entitlements the user must obtain.
+
+Do not mark this phase complete using simulated data alone. Real-data connectivity must be demonstrated, but the strategy must remain Shadow Mode and must never submit an order.
