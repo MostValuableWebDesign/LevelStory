@@ -1,0 +1,397 @@
+Paste this into Replit:
+
+```text
+Correct the LevelStory historical backtest implementation using the verified code-review findings below.
+
+This is a repair task, not a new redesign. Preserve the existing strategy engine, Databento importer, simulated-data mode, quote-based Shadow Mode, responsive UI, and no-live-orders safeguards.
+
+Do not claim completion until every acceptance criterion and test below passes.
+
+VERIFIED DEFECTS
+
+1. Historical Databento fills are unconditionally blocked in:
+   artifacts/api-server/src/lib/phase9.ts
+
+2. Strategy evaluation occurs only once every twelve 5-minute candles, which misses patience candles and immediate-next-candle triggers.
+
+3. The replay includes more dates than the displayed in-sample and holdout partitions.
+
+4. The catastrophe stop replaces the closer strategy stop.
+
+5. Positions left open at session end can incorrectly use a candle from the next trading date as their exit.
+
+6. Missing-minute calculations count expected CME closures and maintenance periods as missing data.
+
+7. Imported symbol MESU6 is reported as configured symbol MESU26.
+
+8. Tests do not exercise historical OHLCV modeled fills, partial exits, runners, session-aware gaps, or partition enforcement.
+
+A. SEPARATE EXECUTION ENGINES
+
+Create two explicitly separate execution modes:
+
+1. QUOTE_BASED_SHADOW
+   - Requires genuine bid and ask data.
+   - Preserve the existing quote-based execution behavior.
+
+2. MODELED_OHLCV
+   - Used for historical Databento OHLCV data.
+   - Does not create or fabricate bid/ask quotes.
+   - Uses conservative bar-based execution assumptions.
+   - Every fill must be labeled:
+     “Modeled OHLCV Fill — Not a Quote-Based Fill”
+
+Remove the unconditional historical rejection currently caused by:
+
+if (dataset.quotesAvailable === false) {
+  rejectedByPeriod[period] += 1;
+  continue;
+}
+
+Replace it with explicit dispatch to the MODELED_OHLCV execution engine.
+
+Never silently switch execution modes.
+
+B. PROCESS EVERY COMPLETED 5-MINUTE CANDLE
+
+Remove the hourly checkpoint behavior:
+
+if (regularOrdinal % 12 !== 0 && !isLastRegularCandle) continue;
+
+Evaluate the strategy after every completed 5-minute candle during the regular session.
+
+This is necessary because:
+
+- A patience candle may occur at any 5-minute interval.
+- Only its immediate next candle may trigger entry.
+- Sampling once per hour invalidates the strategy.
+
+Performance improvements must not change strategy semantics. Optimize caching, prefix calculations, and indicator reuse instead of skipping decision candles.
+
+C. EXACT PATIENCE-CANDLE ENTRY
+
+Use the existing authoritative patience rules.
+
+Bullish:
+
+- Established trend must be bullish.
+- Patience candle’s high must be less than or equal to the preceding candle’s high.
+- The entire candle does not need to be inside the preceding candle.
+- Entry trigger is 3–4 ticks above the patience-candle high.
+- Default is 4 ticks.
+- Only the immediately following completed 5-minute candle can trigger it.
+
+Bearish:
+
+- Established trend must be bearish.
+- Patience candle’s low must be greater than or equal to the preceding candle’s low.
+- The entire candle does not need to be inside the preceding candle.
+- Entry trigger is 3–4 ticks below the patience-candle low.
+- Default is 4 ticks.
+- Only the immediately following completed 5-minute candle can trigger it.
+
+If the next candle does not reach the buffered trigger, expire the setup. A later candle cannot reuse it.
+
+Do not use an hourly snapshot candle as the entry candle. Record the actual patience candle and actual immediate trigger candle.
+
+D. CONSERVATIVE OHLCV ENTRY FILLS
+
+MES defaults:
+
+- Tick size: 0.25
+- Tick value: $1.25
+- Point value: $5.00
+- Entry buffer: configurable 3 or 4 ticks
+- Default entry slippage: 1 adverse tick
+- Default exit slippage: 1 adverse tick
+- Fees and commissions configurable and reported separately
+
+Long entry:
+
+- Trigger when the immediate next candle’s high reaches the buffered entry.
+- If that candle opens above the entry trigger, pre-slippage fill is its opening price.
+- Otherwise pre-slippage fill is the trigger price.
+- Apply adverse entry slippage.
+- Round to a valid MES tick.
+
+Short entry:
+
+- Trigger when the immediate next candle’s low reaches the buffered entry.
+- If that candle opens below the trigger, pre-slippage fill is its opening price.
+- Otherwise pre-slippage fill is the trigger price.
+- Apply adverse entry slippage.
+- Round to a valid MES tick.
+
+Do not use candle.close as a substitute for the entry.
+
+E. STRATEGY STOP AND CATASTROPHE STOP
+
+The strategy stop and catastrophe stop are separate levels.
+
+Initial default strategy stop:
+
+- Long: one tick below the patience-candle low.
+- Short: one tick above the patience-candle high.
+
+This must remain configurable and visibly labeled as a backtest assumption.
+
+Do not use:
+
+catastropheStop ?? strategyStop
+
+That incorrectly ignores the strategy stop whenever a catastrophe stop exists.
+
+For a long, the normal strategy stop will generally be above the catastrophe stop and must trigger first. For a short, it will generally be below the catastrophe stop and must trigger first.
+
+Evaluate every active protective level and record which one was reached.
+
+For gap-through stops:
+
+- Use the candle opening price when it is worse than the stop.
+- Then apply adverse exit slippage.
+- Record “gap through stop” in the audit trail.
+
+F. SAME-CANDLE AMBIGUITY
+
+OHLCV does not reveal high/low order within a bar.
+
+When entry and opposite-side invalidation are both reachable on the immediate trigger candle:
+
+- Reject the entry using the adverse-first policy.
+- Label it:
+  “AMBIGUOUS_ENTRY_INVALIDATION”
+
+When stop and target are both reachable in the same one-minute candle:
+
+- Apply the stop first.
+- Label the trade:
+  “AMBIGUOUS_STOP_FIRST”
+
+Do not set sequenceKnown=true for unresolved 5-minute OHLC data.
+
+Use ordered one-minute bars when available, but treat each individual one-minute bar’s internal high/low order as unknown.
+
+G. SESSION-END EXIT
+
+Never use the next trading date’s candle to close a prior session’s position.
+
+If a trade remains open at the regular-session close:
+
+- Exit using the final valid regular-session observation from the same trading date.
+- Apply adverse exit slippage.
+- Record exit reason:
+  “regular session close”
+
+No position may cross into the next date unless a separately configurable overnight-trading mode is explicitly enabled. Keep that mode disabled for this phase.
+
+H. PROFIT TARGETS, PARTIAL EXITS, AND RUNNERS
+
+Support $50, $75, and $100 profit targets.
+
+Convert the selected dollar target into valid MES ticks using quantity and tick value.
+
+For multiple contracts:
+
+- Take the configured target contracts off at the target.
+- Record each partial exit separately.
+- Only the final remaining contract becomes the runner.
+- Activate the existing runner logic after the initial target exit.
+- Exit the runner when its adverse Fibonacci retracement reaches or exceeds 40%.
+- Record runner activation, most favorable price, retracement reference, retracement percentage, exit price, slippage, fees, and P&L.
+
+Do not calculate a runner exit from a single final snapshot. Walk forward through the subsequent one-minute bars causally.
+
+I. FIX DATASET PARTITIONING
+
+Use exactly the requested number of trading dates.
+
+Given:
+
+- inSampleDays = N
+- outOfSampleDays = M
+- selected endDate
+
+Select exactly N + M consecutive available trading dates ending on or before endDate and not earlier than startDate.
+
+- First N dates: in-sample
+- Final M dates: untouched holdout
+- Do not replay unlisted middle dates.
+- The candle dataset must contain only those selected dates.
+- Every trade’s period must correspond to one of the displayed partition dates.
+
+Report:
+
+- requested date range
+- actual selected trading dates
+- in-sample dates
+- holdout dates
+- excluded dates
+
+Reject the request if N + M valid dates cannot be selected.
+
+J. SESSION-AWARE MISSING-MINUTE REPORTING
+
+Replace the current adjacent-timestamp gap counter.
+
+Build expected MES session windows from the existing session calendar and compare data only against minutes that were expected to trade.
+
+Exclude:
+
+- weekends
+- exchange holidays
+- scheduled CME maintenance breaks
+- closed-session periods
+- minutes outside the selected contract’s expected activity window
+
+Report these separately:
+
+- unexpected regular-session missing minutes
+- unexpected overnight-session missing minutes
+- expected closed-market minutes
+- inactive-contract or low-liquidity periods
+- regular-session gap segments
+
+Do not fill or manufacture missing candles.
+
+Incomplete aggregated candles must remain marked incomplete and must not be used as completed strategy candles.
+
+K. PRESERVE ACTUAL CONTRACT IDENTITY
+
+The imported file contains MESU6.
+
+Use the detected Databento symbol as the historical dataset and trade symbol:
+
+- contractSymbol: MESU6
+- contractMonth: 2026-09
+
+Do not relabel historical trades as MESU26.
+
+The configurable specification may retain its internal alias, but historical reports, trades, audit records, and UI must display the actual imported symbol.
+
+L. BACKTEST AUDIT RECORD
+
+For every detected setup, store:
+
+- trading date
+- ORB high and low
+- breakout timestamp and direction
+- breakout-volume evidence
+- pullback or consolidation evidence
+- critical level
+- trend direction
+- patience candle timestamp and OHLC
+- immediate trigger candle timestamp and OHLC
+- buffered trigger price
+- entry fill and slippage
+- strategy stop
+- catastrophe stop
+- target
+- partial exits
+- runner state
+- exit price and reason
+- fees
+- gross and net P&L
+- ambiguity policy applied
+- rejection reason when no trade occurred
+- execution mode
+
+Do not label modeled executions as actual fills.
+
+M. USER INTERFACE
+
+For historical Databento results, replace:
+
+“Quote-less OHLCV; Shadow fills are blocked.”
+
+with:
+
+“Historical results use conservative OHLCV-based modeled fills. They do not represent actual bid/ask quotes, queue position, or guaranteed executions.”
+
+Display:
+
+- MODELED_OHLCV execution badge
+- modeled entries
+- expired patience setups
+- ambiguous entries
+- strategy-stop exits
+- catastrophe-stop exits
+- target exits
+- partial exits
+- runner exits
+- regular-session-close exits
+- gross P&L
+- entry and exit slippage
+- commissions and fees
+- net P&L
+- maximum drawdown
+- profit factor
+
+N. REQUIRED AUTOMATED TESTS
+
+Add tests that fail against the current implementation and pass only after correction:
+
+1. Historical OHLCV can produce a modeled fill without bid/ask quotes.
+2. Quote-based execution still requires genuine quotes.
+3. Every completed 5-minute candle is evaluated.
+4. A patience setup at a non-hourly timestamp is detected.
+5. Only the immediate next candle may trigger entry.
+6. A later candle cannot reuse an expired patience candle.
+7. Bullish 4-tick entry.
+8. Bearish 4-tick entry.
+9. Configurable 3-tick entry.
+10. Gap-through entry.
+11. Entry and exit tick rounding.
+12. Adverse entry and exit slippage.
+13. Strategy stop triggers before catastrophe stop.
+14. Gap-through stop.
+15. Entry/invalidation ambiguity.
+16. Same-minute stop/target ambiguity uses stop first.
+17. Session-close exit never uses the next date.
+18. Exact in-sample and holdout partition sizes.
+19. No unlisted middle dates enter the replay.
+20. CME maintenance is not reported as missing data.
+21. An actual RTH missing minute is reported.
+22. MESU6 identity is preserved.
+23. Partial target exit accounting.
+24. Runner activation and 40% retracement exit.
+25. No look-ahead access.
+26. No broker or order-placement path is introduced.
+
+Include an integration fixture guaranteed to produce at least one valid modeled historical trade. Do not require the real MESU6 dataset itself to produce a trade if no setup genuinely qualifies.
+
+O. FINAL VERIFICATION
+
+Run:
+
+- API test suite
+- API typecheck
+- LevelStory typecheck
+- API production build
+- LevelStory production build
+
+Then run the real MESU6 historical backtest for July 27 through August 26, 2026.
+
+Report:
+
+- files changed
+- API/schema changes
+- tests added
+- complete test results
+- actual selected partition dates
+- corrected missing-minute statistics
+- setups detected
+- patience candles detected
+- expired patience setups
+- modeled entries
+- ambiguous entries
+- target exits
+- stop exits
+- runner exits
+- session-close exits
+- complete P&L metrics
+- remaining assumptions or limitations
+
+Do not claim success merely because tests pass. Confirm through the API response and rendered backtest page that historical execution mode is MODELED_OHLCV and that fills are no longer blocked solely because bid/ask quotes are unavailable.
+
+Do not add live trading, paper trading, broker authentication, or order placement.
+```
