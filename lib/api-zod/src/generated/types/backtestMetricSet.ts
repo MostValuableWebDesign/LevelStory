@@ -40,4 +40,5 @@ export interface BacktestMetricSet {
   catastropheStopExits: number;
   sessionCloseExits: number;
   partialTargetExits: number;
+  consecutiveLosses: number;
 }

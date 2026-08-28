@@ -11,3 +11,4 @@
 - [Preview private paths](preview-private-paths.md) — SPA fallback can return index.html for protected-looking URLs; guard dev/preview middleware before fallback.
 - [Worker backtest boundary](worker-backtest-boundary.md) — CPU-bound runs need a separately bundled, parent-terminable worker; publish to cache only after success.
 - [Content digest cache identity](content-digest-cache-identity.md) — historical source cache identity must hash streamed bytes, not path, size, or modification time.
+- [Walk-forward evidence](walk-forward-evidence.md) — chronological holdouts and independent cost cases must remain descriptive; never select a best sensitivity result.

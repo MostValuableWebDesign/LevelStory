@@ -2099,7 +2099,8 @@ components:
         catastropheStopExits: { type: number }
         sessionCloseExits: { type: number }
         partialTargetExits: { type: number }
-      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, ambiguousExitCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits]
+        consecutiveLosses: { type: number }
+      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, ambiguousExitCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits, consecutiveLosses]
     BacktestAuditRecord:
       type: object
       additionalProperties: false
@@ -2184,6 +2185,80 @@ components:
             dimension: { type: string }
             value: { type: string }
           required: [dimension, value]
+    WalkForwardEdgeStatus:
+      type: string
+      enum: [insufficient_evidence, negative_observed_expectancy, mixed_inconclusive, positive_observed_expectancy_requires_further_validation]
+    WalkForwardSampleStatus:
+      type: string
+      enum: [sufficient, insufficient_sample]
+    WalkForwardSegment:
+      allOf:
+        - $ref: "#/components/schemas/BacktestSegment"
+        - type: object
+          properties:
+            sampleStatus: { $ref: "#/components/schemas/WalkForwardSampleStatus" }
+            edgeStatus: { $ref: "#/components/schemas/WalkForwardEdgeStatus" }
+          required: [sampleStatus, edgeStatus]
+    WalkForwardFold:
+      type: object
+      properties:
+        foldId: { type: string }
+        sequence: { type: number }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        startDate: { type: string }
+        endDate: { type: string }
+        inSampleDates: { type: array, items: { type: string } }
+        outOfSampleDates: { type: array, items: { type: string } }
+        contractPartitions:
+          type: array
+          items:
+            type: object
+            properties:
+              tradingDate: { type: string }
+              contractSymbol: { type: string }
+              period: { type: string, enum: [in_sample, out_of_sample] }
+            required: [tradingDate, contractSymbol, period]
+        metrics: { $ref: "#/components/schemas/BacktestMetricSet" }
+        inSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        segments: { type: array, items: { $ref: "#/components/schemas/WalkForwardSegment" } }
+        edgeStatus: { $ref: "#/components/schemas/WalkForwardEdgeStatus" }
+      required: [foldId, sequence, formulaHash, startDate, endDate, inSampleDates, outOfSampleDates, contractPartitions, metrics, inSample, outOfSample, segments, edgeStatus]
+    WalkForwardSensitivityCase:
+      type: object
+      properties:
+        scenario: { type: string, enum: [normal, higher_cost, adverse_slippage] }
+        label: { type: string }
+        assumptions: { type: array, items: { type: string } }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        metrics: { $ref: "#/components/schemas/BacktestMetricSet" }
+        inSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        edgeStatus: { $ref: "#/components/schemas/WalkForwardEdgeStatus" }
+      required: [scenario, label, assumptions, formulaHash, metrics, inSample, outOfSample, edgeStatus]
+    WalkForwardReport:
+      type: object
+      properties:
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        formulaVersion: { type: string }
+        foldCount: { type: number }
+        folds: { type: array, items: { $ref: "#/components/schemas/WalkForwardFold" } }
+        metrics: { $ref: "#/components/schemas/BacktestMetricSet" }
+        inSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
+        segments: { type: array, items: { $ref: "#/components/schemas/WalkForwardSegment" } }
+        edgeStatus: { $ref: "#/components/schemas/WalkForwardEdgeStatus" }
+        minimumEvidence:
+          type: object
+          properties:
+            totalTrades: { type: number }
+            holdoutTrades: { type: number }
+            requiredTotalTrades: { type: number }
+            requiredHoldoutTrades: { type: number }
+            riskToleranceDollars: { type: number }
+          required: [totalTrades, holdoutTrades, requiredTotalTrades, requiredHoldoutTrades, riskToleranceDollars]
+        sensitivity: { type: array, items: { $ref: "#/components/schemas/WalkForwardSensitivityCase" } }
+      required: [formulaHash, formulaVersion, foldCount, folds, metrics, inSample, outOfSample, segments, edgeStatus, minimumEvidence, sensitivity]
     BacktestTrade:
       type: object
       properties:
@@ -2260,6 +2335,7 @@ components:
         mode: { type: string, enum: ["SHADOW MODE — NO LIVE ORDERS"] }
         dataSource: { type: string, enum: [simulated, historical_databento, historical_databento_multicontract] }
         symbol: { type: string }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         contract: { $ref: "#/components/schemas/FuturesContractSpecification" }
         dataResolution: { type: string, enum: [tick, one-minute-fallback] }
         dataset:
@@ -2367,7 +2443,7 @@ components:
             earlyCloseDates: { type: array, items: { type: string } }
             overnightCoverageObserved: { type: boolean }
           required: [missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
-      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+      required: [mode, dataSource, symbol, formulaHash, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
     BatchBacktestRequest:
       allOf:
         - $ref: "#/components/schemas/BacktestRequest"
@@ -2473,7 +2549,9 @@ components:
               required: [totalPartitions, completedPartitions, selectedDates, contractPartitions]
             funnel:
               $ref: "#/components/schemas/QualificationFunnel"
-          required: [batch, funnel]
+            walkForward:
+              $ref: "#/components/schemas/WalkForwardReport"
+          required: [batch, funnel, walkForward]
     BatchBacktestStatus:
       type: object
       properties:

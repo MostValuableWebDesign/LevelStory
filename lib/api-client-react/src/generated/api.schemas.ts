@@ -1634,6 +1634,7 @@ export interface BacktestMetricSet {
   catastropheStopExits: number;
   sessionCloseExits: number;
   partialTargetExits: number;
+  consecutiveLosses: number;
 }
 
 export type BacktestAuditRecordPeriod = typeof BacktestAuditRecordPeriod[keyof typeof BacktestAuditRecordPeriod];
@@ -1875,6 +1876,104 @@ export type BacktestSegment = BacktestMetricSet & {
   dimension: string;
   value: string;
 };
+
+export type WalkForwardEdgeStatus = typeof WalkForwardEdgeStatus[keyof typeof WalkForwardEdgeStatus];
+
+
+export const WalkForwardEdgeStatus = {
+  insufficient_evidence: 'insufficient_evidence',
+  negative_observed_expectancy: 'negative_observed_expectancy',
+  mixed_inconclusive: 'mixed_inconclusive',
+  positive_observed_expectancy_requires_further_validation: 'positive_observed_expectancy_requires_further_validation',
+} as const;
+
+export type WalkForwardSampleStatus = typeof WalkForwardSampleStatus[keyof typeof WalkForwardSampleStatus];
+
+
+export const WalkForwardSampleStatus = {
+  sufficient: 'sufficient',
+  insufficient_sample: 'insufficient_sample',
+} as const;
+
+export type WalkForwardSegment = BacktestSegment & {
+  sampleStatus: WalkForwardSampleStatus;
+  edgeStatus: WalkForwardEdgeStatus;
+};
+
+export type WalkForwardFoldContractPartitionsItemPeriod = typeof WalkForwardFoldContractPartitionsItemPeriod[keyof typeof WalkForwardFoldContractPartitionsItemPeriod];
+
+
+export const WalkForwardFoldContractPartitionsItemPeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type WalkForwardFoldContractPartitionsItem = {
+  tradingDate: string;
+  contractSymbol: string;
+  period: WalkForwardFoldContractPartitionsItemPeriod;
+};
+
+export interface WalkForwardFold {
+  foldId: string;
+  sequence: number;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  startDate: string;
+  endDate: string;
+  inSampleDates: string[];
+  outOfSampleDates: string[];
+  contractPartitions: WalkForwardFoldContractPartitionsItem[];
+  metrics: BacktestMetricSet;
+  inSample: BacktestMetricSet;
+  outOfSample: BacktestMetricSet;
+  segments: WalkForwardSegment[];
+  edgeStatus: WalkForwardEdgeStatus;
+}
+
+export type WalkForwardSensitivityCaseScenario = typeof WalkForwardSensitivityCaseScenario[keyof typeof WalkForwardSensitivityCaseScenario];
+
+
+export const WalkForwardSensitivityCaseScenario = {
+  normal: 'normal',
+  higher_cost: 'higher_cost',
+  adverse_slippage: 'adverse_slippage',
+} as const;
+
+export interface WalkForwardSensitivityCase {
+  scenario: WalkForwardSensitivityCaseScenario;
+  label: string;
+  assumptions: string[];
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  metrics: BacktestMetricSet;
+  inSample: BacktestMetricSet;
+  outOfSample: BacktestMetricSet;
+  edgeStatus: WalkForwardEdgeStatus;
+}
+
+export type WalkForwardReportMinimumEvidence = {
+  totalTrades: number;
+  holdoutTrades: number;
+  requiredTotalTrades: number;
+  requiredHoldoutTrades: number;
+  riskToleranceDollars: number;
+};
+
+export interface WalkForwardReport {
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  formulaVersion: string;
+  foldCount: number;
+  folds: WalkForwardFold[];
+  metrics: BacktestMetricSet;
+  inSample: BacktestMetricSet;
+  outOfSample: BacktestMetricSet;
+  segments: WalkForwardSegment[];
+  edgeStatus: WalkForwardEdgeStatus;
+  minimumEvidence: WalkForwardReportMinimumEvidence;
+  sensitivity: WalkForwardSensitivityCase[];
+}
 
 export type BacktestTradePeriod = typeof BacktestTradePeriod[keyof typeof BacktestTradePeriod];
 
@@ -2191,6 +2290,8 @@ export interface BacktestReport {
   mode: BacktestReportMode;
   dataSource: BacktestReportDataSource;
   symbol: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
   contract: FuturesContractSpecification;
   dataResolution: BacktestReportDataResolution;
   dataset: BacktestReportDataset;
@@ -2366,6 +2467,7 @@ export type BatchBacktestReportBatch = {
 export type BatchBacktestReport = BacktestReport & {
   batch: BatchBacktestReportBatch;
   funnel: QualificationFunnel;
+  walkForward: WalkForwardReport;
 };
 
 export type BatchBacktestStatusStatus = typeof BatchBacktestStatusStatus[keyof typeof BatchBacktestStatusStatus];

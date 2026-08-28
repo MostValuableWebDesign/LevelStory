@@ -15,6 +15,8 @@ import type {
   BatchBacktestReport,
   HistoricalImportSummary,
   QualificationFunnelStage,
+  WalkForwardEdgeStatus,
+  WalkForwardReport,
 } from "@workspace/api-client-react";
 import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
@@ -88,12 +90,101 @@ function MetricGrid({ metrics, accent = false }: { metrics: BacktestMetricSet; a
     ["Net P&L", money(metrics.netPnl)],
     ["Fees", money(-metrics.fees)],
     ["Slippage", money(-metrics.slippage)],
+    ["Consecutive losses", String(metrics.consecutiveLosses)],
+    ["Ambiguous trades", String(metrics.ambiguousTradeCount)],
   ];
   return <div className={`grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-4 sm:divide-y-0 ${accent ? "bg-accent/5" : ""}`}>
     {items.map(([label, value]) => <div key={label} className="px-4 py-4 sm:px-5">
       <div className="eyebrow text-muted-foreground">{label}</div>
       <div className={`mono mt-2 text-lg font-medium ${label === "Net P&L" || label === "Expectancy" ? (metrics.netPnl >= 0 ? "status-positive" : "status-negative") : ""}`}>{value}</div>
     </div>)}
+  </div>;
+}
+
+const edgeStatusLabels: Record<WalkForwardEdgeStatus, string> = {
+  insufficient_evidence: "Insufficient evidence",
+  negative_observed_expectancy: "Negative observed expectancy",
+  mixed_inconclusive: "Mixed / inconclusive",
+  positive_observed_expectancy_requires_further_validation: "Positive observed expectancy — further validation required",
+};
+
+function edgeStatusClass(status: WalkForwardEdgeStatus): string {
+  if (status === "negative_observed_expectancy") return "status-negative";
+  if (status === "positive_observed_expectancy_requires_further_validation") return "status-positive";
+  return "text-foreground";
+}
+
+function WalkForwardMetrics({ metrics }: { metrics: BacktestMetricSet }) {
+  return <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-4">
+    {[
+      ["Trades", String(metrics.tradeCount)],
+      ["Expectancy", money(metrics.expectancy)],
+      ["Net P&L", money(metrics.netPnl)],
+      ["Max drawdown", money(-metrics.maximumDrawdown)],
+      ["Fees", money(-metrics.fees)],
+      ["Slippage", money(-metrics.slippage)],
+      ["Stops / targets / runners", `${metrics.stopExits} / ${metrics.targetExits} / ${metrics.runnerExits}`],
+      ["Consecutive losses", String(metrics.consecutiveLosses)],
+      ["Ambiguous trades", String(metrics.ambiguousTradeCount)],
+    ].map(([label, value]) => <div key={label} className="px-4 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
+  </div>;
+}
+
+function WalkForwardPanel({ report }: { report: BatchBacktestReport }) {
+  const validation: WalkForwardReport = report.walkForward;
+  const segmentRows = validation.segments.slice(0, 40);
+  return <div className="space-y-5">
+    <Panel accent>
+      <PanelTitle eyebrow="Phase 11C / fixed chronological folds" title="Walk-forward validation" right={<span className={`text-[10px] font-bold uppercase ${edgeStatusClass(validation.edgeStatus)}`}>{edgeStatusLabels[validation.edgeStatus]}</span>} />
+      <div className="border-t border-border bg-accent/5 px-5 py-4 text-xs leading-5">
+        <p className="font-semibold">Descriptive validation only — no tuning, optimization, live trading, or proven-edge claim.</p>
+        <p className="mt-1 text-muted-foreground">Each fold keeps its out-of-sample dates untouched. The fixed formula identity is carried through the report and cache.</p>
+      </div>
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-4">
+        {[
+          ["Formula hash", `${validation.formulaHash.slice(0, 16)}…`],
+          ["Formula version", validation.formulaVersion],
+          ["Folds", String(validation.foldCount)],
+          ["Evidence", `${validation.minimumEvidence.totalTrades} / ${validation.minimumEvidence.requiredTotalTrades} trades · ${validation.minimumEvidence.holdoutTrades} / ${validation.minimumEvidence.requiredHoldoutTrades} holdout`],
+        ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 break-all text-xs">{value}</div></div>)}
+      </div>
+      <WalkForwardMetrics metrics={validation.metrics} />
+    </Panel>
+
+    <div className="grid gap-5 lg:grid-cols-2">
+      <Panel>
+        <PanelTitle eyebrow="Chronological training view" title="In-sample evidence" />
+        <WalkForwardMetrics metrics={validation.inSample} />
+      </Panel>
+      <Panel accent>
+        <PanelTitle eyebrow="Untouched evaluation view" title="Out-of-sample evidence" right={<span className="border border-accent/40 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase">Holdout</span>} />
+        <WalkForwardMetrics metrics={validation.outOfSample} />
+      </Panel>
+    </div>
+
+    <Panel>
+      <PanelTitle eyebrow="No random splits / exact dates" title="Fold ledger" right={<span className="mono text-[10px] text-muted-foreground">{validation.foldCount} folds</span>} />
+      {validation.folds.length ? <div className="divide-y divide-border border-t border-border">{validation.folds.map((fold) => <div key={fold.foldId} className="grid gap-4 px-5 py-4 lg:grid-cols-[120px_1fr_1fr_220px]">
+        <div><div className="eyebrow text-muted-foreground">{fold.foldId}</div><div className="mono mt-2 text-xs">{fold.startDate} → {fold.endDate}</div></div>
+        <div className="text-xs"><div className="eyebrow text-muted-foreground">In-sample dates</div><div className="mono mt-2 leading-5">{fold.inSampleDates.join(", ") || "—"}</div></div>
+        <div className="text-xs"><div className="eyebrow text-muted-foreground">Untouched holdout dates</div><div className="mono mt-2 leading-5">{fold.outOfSampleDates.join(", ") || "—"}</div><div className="mt-2 text-[10px] text-muted-foreground">{fold.contractPartitions.map((partition) => `${partition.tradingDate} · ${partition.contractSymbol}`).join(" / ")}</div></div>
+        <div><div className="eyebrow text-muted-foreground">Observed status</div><div className={`mt-2 text-xs font-semibold ${edgeStatusClass(fold.edgeStatus)}`}>{edgeStatusLabels[fold.edgeStatus]}</div><div className="mono mt-2 text-[10px] text-muted-foreground">{fold.metrics.tradeCount} trades · {money(fold.metrics.netPnl)}</div></div>
+      </div>)}</div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No complete fixed fold fits the selected dates. The report does not invent a partial fold.</div>}
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Independent cost cases" title="Sensitivity — never selected" right={<span className="text-[10px] text-muted-foreground">same formula / dates / contracts</span>} />
+      <div className="grid gap-4 border-t border-border p-5 md:grid-cols-3">{validation.sensitivity.map((scenario) => <div key={scenario.scenario} className="border border-border p-4">
+        <div className="flex items-start justify-between gap-2"><div className="text-xs font-semibold">{scenario.label}</div><span className={`text-[9px] font-bold uppercase ${edgeStatusClass(scenario.edgeStatus)}`}>{edgeStatusLabels[scenario.edgeStatus]}</span></div>
+        <div className="mt-4"><WalkForwardMetrics metrics={scenario.outOfSample} /></div>
+        <ul className="mt-3 space-y-1 text-[10px] leading-4 text-muted-foreground">{scenario.assumptions.map((assumption) => <li key={assumption}>• {assumption}</li>)}</ul>
+      </div>)}</div>
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Required segmentation" title="Where observed results cluster" right={<span className="mono text-[10px] text-muted-foreground">{validation.segments.length} groups</span>} />
+      {segmentRows.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[980px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Dimension</th><th className="px-4 py-3">Value</th><th className="px-4 py-3">Sample</th><th className="px-4 py-3">Trades</th><th className="px-4 py-3">Expectancy</th><th className="px-4 py-3">Net</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Ambiguous</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-border">{segmentRows.map((segment) => <tr key={`${segment.dimension}-${segment.value}`}><td className="px-4 py-3 font-semibold">{segment.dimension}</td><td className="px-4 py-3 text-muted-foreground">{segment.value}</td><td className="px-4 py-3 text-[10px]">{segment.sampleStatus === "insufficient_sample" ? "Insufficient sample" : "Sufficient"}</td><td className="mono px-4 py-3">{segment.tradeCount}</td><td className="mono px-4 py-3">{money(segment.expectancy)}</td><td className={`mono px-4 py-3 ${segment.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(segment.netPnl)}</td><td className="mono px-4 py-3 text-muted-foreground">{money(segment.fees + segment.slippage)}</td><td className="mono px-4 py-3">{segment.ambiguousTradeCount}</td><td className={`px-4 py-3 text-[10px] font-semibold ${edgeStatusClass(segment.edgeStatus)}`}>{edgeStatusLabels[segment.edgeStatus]}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No qualified trade groups were produced; this is reported as insufficient evidence rather than an edge.</div>}
+    </Panel>
   </div>;
 }
 
@@ -269,7 +360,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
           ["Ambiguity", report.executionPolicy.ambiguityRule],
         ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mt-2 text-xs leading-5">{value}</div></div>)}
       </div>
-      <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Immediate-next-candle-only: <strong className="text-foreground">{report.executionPolicy.immediateNextCandleOnly ? "yes" : "no"}</strong> · Fee assumption: <strong className="mono text-foreground">${report.executionPolicy.commissionPerContract.toFixed(2)} / contract round trip</strong></div>
+         <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Formula hash: <strong className="mono text-foreground">{report.formulaHash.slice(0, 16)}…</strong> · Immediate-next-candle-only: <strong className="text-foreground">{report.executionPolicy.immediateNextCandleOnly ? "yes" : "no"}</strong> · Fee assumption: <strong className="mono text-foreground">${report.executionPolicy.commissionPerContract.toFixed(2)} / contract round trip</strong></div>
     </Panel>
 
      <div className="grid gap-5 lg:grid-cols-2">
@@ -465,7 +556,6 @@ export default function Backtest() {
     run.mutate({ data: request });
   };
   const submitBatch = () => {
-    if (availableBatchDates.length < 2) return;
     setBatchId(null);
     startBatch.mutate({ data: batchRequest }, {
       onSuccess: (response) => setBatchId(response.batchId),
@@ -517,7 +607,7 @@ export default function Backtest() {
              {(batchStatus.data.status === "cancelled" || batchStatus.data.status === "failed" || batchStatus.data.status === "timed_out") && <div className="mt-4 flex items-center gap-2 text-xs text-destructive"><RefreshCw size={13} />No partial result was persisted. Start a new batch after adjusting the window or source.</div>}
            </div>
          </Panel>}
-         {batchReport && batchId && <BatchFunnelPanel report={batchReport} batchId={batchId} />}
+         {batchReport && batchId && <><WalkForwardPanel report={batchReport} /><BatchFunnelPanel report={batchReport} batchId={batchId} /></>}
          {run.data && <ReportBody report={run.data} fullCoverage={source === "simulated" ? undefined : historicalImport.data} />}
          {!run.isPending && !run.isError && !run.data && !batchReport && !batchActive && <Panel><div className="flex flex-col items-center gap-3 p-12 text-center"><ShieldCheck size={28} className="text-accent" /><h2 className="text-sm font-bold">Ready for a clean replay</h2><p className="max-w-md text-xs leading-5 text-muted-foreground">Choose the evaluation window, then run the locked strategy. Results will show why setups qualified, rejected, or became ambiguous.</p></div></Panel>}
         <LockedNote>Phase 9 is a research surface only. It has no broker connection, no position state, and no live or paper order path.</LockedNote>

@@ -24,6 +24,8 @@ export interface BacktestReport {
   mode: BacktestReportMode;
   dataSource: BacktestReportDataSource;
   symbol: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
   contract: FuturesContractSpecification;
   dataResolution: BacktestReportDataResolution;
   dataset: BacktestReportDataset;

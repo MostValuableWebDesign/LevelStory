@@ -11,6 +11,12 @@ import {
   type CausalReplayDataset,
   type QualificationFunnel,
 } from "./phase9.js";
+import { FIXED_FORMULA_VERSION } from "./formula-hash.js";
+import {
+  buildSensitivityCase,
+  evaluateWalkForward,
+  type WalkForwardReport,
+} from "./walk-forward.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { tradingDateForTimestamp, sessionCalendarForContract } from "./futures/session-calendar.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
@@ -36,6 +42,7 @@ export type BatchBacktestReport = BacktestReport & {
     contractPartitions: Array<{ tradingDate: string; contractSymbol: string; period: "in_sample" | "out_of_sample" }>;
   };
   funnel: QualificationFunnel;
+  walkForward: WalkForwardReport;
 };
 
 type BatchPartition = {
@@ -175,6 +182,7 @@ function aggregateBatchReports(
   reports: readonly BacktestReport[],
   partitions: readonly BatchPartition[],
   selectedDates: readonly string[],
+  walkForward: WalkForwardReport,
 ): BatchBacktestReport {
   const first = reports[0];
   if (!first) throw new Error("The batch produced no completed replay partitions.");
@@ -238,7 +246,48 @@ function aggregateBatchReports(
       contractPartitions: partitions.map(({ tradingDate, contractSymbol, period }) => ({ tradingDate, contractSymbol, period })),
     },
     funnel,
+    walkForward,
   };
+}
+
+async function runPartitionSet(
+  partitions: readonly BatchPartition[],
+  backtestRequest: BacktestRequest,
+  risk: BacktestWorkerInput["risk"],
+  options: BatchRunnerOptions,
+  emitProgress: boolean,
+): Promise<BacktestReport[]> {
+  const runPartition = options.runPartition ?? ((partitionInput, partitionOptions) => runBacktestInWorker(partitionInput, partitionOptions));
+  const reports: BacktestReport[] = [];
+  for (const [index, partition] of partitions.entries()) {
+    abortIfNeeded(options.signal);
+    if (emitProgress) {
+      options.onProgress?.({
+        status: "running",
+        totalPartitions: partitions.length,
+        completedPartitions: index,
+        currentTradingDate: partition.tradingDate,
+        currentContractSymbol: partition.contractSymbol,
+        message: `Replaying ${partition.tradingDate} on ${partition.contractSymbol}.`,
+      });
+    }
+    const report = await runPartition(
+      { request: backtestRequest, risk, replayDataset: partition.dataset },
+      { timeoutMs: options.timeoutMs, signal: options.signal },
+    );
+    reports.push(report);
+    if (emitProgress) {
+      options.onProgress?.({
+        status: "running",
+        totalPartitions: partitions.length,
+        completedPartitions: index + 1,
+        currentTradingDate: partition.tradingDate,
+        currentContractSymbol: partition.contractSymbol,
+        message: `Completed ${partition.tradingDate} on ${partition.contractSymbol}.`,
+      });
+    }
+  }
+  return reports;
 }
 
 export async function runBatchBacktest(
@@ -251,9 +300,7 @@ export async function runBatchBacktest(
 ): Promise<BatchBacktestReport> {
   const partitions = createPartitions(input.request, input.replayDataset);
   if (!partitions.length) throw new Error("No replay partitions contain completed candles.");
-  const reports: BacktestReport[] = [];
   const { selectedDates, ...backtestRequest } = input.request;
-  const runPartition = options.runPartition ?? ((partitionInput, partitionOptions) => runBacktestInWorker(partitionInput, partitionOptions));
   options.onProgress?.({
     status: "running",
     totalPartitions: partitions.length,
@@ -262,32 +309,67 @@ export async function runBatchBacktest(
     currentContractSymbol: null,
     message: "Batch queued; waiting for the first causal partition.",
   });
-  for (const [index, partition] of partitions.entries()) {
-    abortIfNeeded(options.signal);
-    options.onProgress?.({
-      status: "running",
-      totalPartitions: partitions.length,
-      completedPartitions: index,
-      currentTradingDate: partition.tradingDate,
-      currentContractSymbol: partition.contractSymbol,
-      message: `Replaying ${partition.tradingDate} on ${partition.contractSymbol}.`,
-    });
-    const report = await runPartition(
-      { request: backtestRequest, risk: input.risk, replayDataset: partition.dataset },
-      { timeoutMs: options.timeoutMs, signal: options.signal },
-    );
-    reports.push(report);
-    options.onProgress?.({
-      status: "running",
-      totalPartitions: partitions.length,
-      completedPartitions: index + 1,
-      currentTradingDate: partition.tradingDate,
-      currentContractSymbol: partition.contractSymbol,
-      message: `Completed ${partition.tradingDate} on ${partition.contractSymbol}.`,
-    });
-  }
+  const reports = await runPartitionSet(partitions, backtestRequest, input.risk, options, true);
   abortIfNeeded(options.signal);
-  const result = aggregateBatchReports(reports, partitions, selectedDates ?? partitions.map((partition) => partition.tradingDate));
+  const dates = selectedDates ?? partitions.map((partition) => partition.tradingDate);
+  const first = reports[0];
+  if (!first) throw new Error("The batch produced no completed replay partitions.");
+  const normalEvaluation = evaluateWalkForward({
+    reports,
+    partitions,
+    selectedDates: dates,
+    formulaHash: first.formulaHash,
+    formulaVersion: FIXED_FORMULA_VERSION,
+  }, input.request.inSampleDays, input.request.outOfSampleDays);
+  const specification = getFuturesContractSpecification(input.request.symbol);
+  const baseCommission = input.request.ohlcvCommissionPerContract
+    ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);
+  const baseSlippage = input.request.ohlcvSlippageTicks ?? 1;
+  const higherCostRequest: BacktestRequest = {
+    ...backtestRequest,
+    slippageMode: "abnormal_spread",
+    ohlcvSlippageTicks: baseSlippage + 1,
+    ohlcvCommissionPerContract: Number((baseCommission * 1.5).toFixed(2)),
+  };
+  const adverseSlippageRequest: BacktestRequest = {
+    ...backtestRequest,
+    slippageMode: "abnormal_spread",
+    ohlcvSlippageTicks: baseSlippage + 2,
+    ohlcvCommissionPerContract: Number((baseCommission * 1.25).toFixed(2)),
+  };
+  const higherReports = await runPartitionSet(partitions, higherCostRequest, input.risk, options, false);
+  const adverseReports = await runPartitionSet(partitions, adverseSlippageRequest, input.risk, options, false);
+  const higherEvaluation = evaluateWalkForward({
+    reports: higherReports,
+    partitions,
+    selectedDates: dates,
+    formulaHash: first.formulaHash,
+    formulaVersion: FIXED_FORMULA_VERSION,
+  }, input.request.inSampleDays, input.request.outOfSampleDays);
+  const adverseEvaluation = evaluateWalkForward({
+    reports: adverseReports,
+    partitions,
+    selectedDates: dates,
+    formulaHash: first.formulaHash,
+    formulaVersion: FIXED_FORMULA_VERSION,
+  }, input.request.inSampleDays, input.request.outOfSampleDays);
+  normalEvaluation.sensitivity = [
+    buildSensitivityCase(normalEvaluation, "normal", "Normal costs", [
+      "The requested commission and slippage assumptions are unchanged.",
+      "This is the descriptive baseline; it is not selected over the stress cases.",
+    ]),
+    buildSensitivityCase(higherEvaluation, "higher_cost", "Higher cost", [
+      `Commission is increased to ${higherCostRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
+      `Adverse slippage is increased to ${higherCostRequest.ohlcvSlippageTicks} ticks per side.`,
+      "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
+    ]),
+    buildSensitivityCase(adverseEvaluation, "adverse_slippage", "Adverse slippage", [
+      `Commission is increased to ${adverseSlippageRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
+      `Adverse slippage is increased to ${adverseSlippageRequest.ohlcvSlippageTicks} ticks per side.`,
+      "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
+    ]),
+  ];
+  const result = aggregateBatchReports(reports, partitions, dates, normalEvaluation);
   options.onProgress?.({
     status: "completed",
     totalPartitions: partitions.length,

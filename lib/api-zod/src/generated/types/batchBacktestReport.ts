@@ -8,8 +8,10 @@
 import type { BacktestReport } from './backtestReport';
 import type { BatchBacktestReportBatch } from './batchBacktestReportBatch';
 import type { QualificationFunnel } from './qualificationFunnel';
+import type { WalkForwardReport } from './walkForwardReport';
 
 export type BatchBacktestReport = BacktestReport & {
   batch: BatchBacktestReportBatch;
   funnel: QualificationFunnel;
+  walkForward: WalkForwardReport;
 };

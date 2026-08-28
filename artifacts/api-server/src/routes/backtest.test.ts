@@ -407,7 +407,7 @@ test("batch completion persists one report and exposes the funnel drill-down", a
     const funnelPage = await requestJson(port, `/api/backtest/batch-funnel?batchId=${batchId}&page=1&pageSize=10`, "GET");
     assert.equal(funnelPage.statusCode, 200);
     assert.equal(typeof funnelPage.body.total, "number");
-    assert.equal(runner.callCount, 2);
+    assert.equal(runner.callCount, 6);
   } finally {
     await closeServer(server);
   }

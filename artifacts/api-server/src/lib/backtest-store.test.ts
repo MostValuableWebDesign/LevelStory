@@ -54,7 +54,10 @@ test("source content, risk, and execution changes invalidate cache identity", ()
     executionPolicy: { ...base.executionPolicy, slippageTicks: 2 },
     historicalSource: { fingerprint: "a" },
   });
+  const formulaA = buildBacktestCacheKey({ ...base, formulaHash: "a".repeat(64) });
+  const formulaB = buildBacktestCacheKey({ ...base, formulaHash: "b".repeat(64) });
   assert.notEqual(sourceA, sourceB);
   assert.notEqual(sourceA, riskChanged);
   assert.notEqual(sourceA, executionChanged);
+  assert.notEqual(formulaA, formulaB);
 });

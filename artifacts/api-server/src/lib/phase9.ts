@@ -24,6 +24,7 @@ import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
+import { formulaConfigurationHash } from "./formula-hash.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -289,6 +290,7 @@ export type BacktestMetrics = {
   catastropheStopExits: number;
   sessionCloseExits: number;
   partialTargetExits: number;
+  consecutiveLosses: number;
 };
 
 export type BacktestSegment = BacktestMetrics & {
@@ -300,6 +302,7 @@ export type BacktestReport = {
   mode: "SHADOW MODE — NO LIVE ORDERS";
   dataSource: "simulated" | "historical_databento" | "historical_databento_multicontract";
   symbol: string;
+  formulaHash: string;
   contract: FuturesContractSpecification;
   dataResolution: "tick" | "one-minute-fallback";
   dataset: {
@@ -744,6 +747,7 @@ function emptyMetrics(rejectedSetupCount = 0): BacktestMetrics {
     catastropheStopExits: 0,
     sessionCloseExits: 0,
     partialTargetExits: 0,
+    consecutiveLosses: 0,
   };
 }
 
@@ -764,10 +768,14 @@ export function calculateBacktestMetrics(
   let equity = 0;
   let peak = 0;
   let maximumDrawdown = 0;
+  let consecutiveLosses = 0;
+  let currentLosses = 0;
   for (const trade of trades) {
     equity += trade.netPnl;
     peak = Math.max(peak, equity);
     maximumDrawdown = Math.max(maximumDrawdown, peak - equity);
+    currentLosses = trade.netPnl < 0 ? currentLosses + 1 : 0;
+    consecutiveLosses = Math.max(consecutiveLosses, currentLosses);
   }
   const grossWins = wins.reduce((sum, trade) => sum + trade.netPnl, 0);
   const grossLosses = Math.abs(losses.reduce((sum, trade) => sum + trade.netPnl, 0));
@@ -802,6 +810,7 @@ export function calculateBacktestMetrics(
     catastropheStopExits: trades.filter((trade) => trade.outcome === "catastrophe stop").length,
     sessionCloseExits: trades.filter((trade) => trade.outcome === "session close").length,
      partialTargetExits: trades.filter((trade) => trade.audit?.legs?.some((leg) => leg.kind === "target") && trade.audit?.legs?.some((leg) => leg.kind === "runner")).length,
+     consecutiveLosses,
   };
 }
 
@@ -810,13 +819,20 @@ export function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCou
     "contract", "contractMonth", "setupType", "direction", "timeOfDay", "trend",
     "fibonacciDepth", "volumeCondition", "levelType", "confluence", "patienceCharacteristic", "orbState", "marketRegime",
   ];
-  return dimensions.flatMap((dimension) => {
+  const dimensionalSegments = dimensions.flatMap((dimension) => {
     const values = [...new Set(trades.map((trade) => String(trade.segmentation[dimension])))];
     return values.map((value) => {
       const matching = trades.filter((trade) => String(trade.segmentation[dimension]) === value);
       return { dimension, value, ...calculateBacktestMetrics(matching, matching.length ? 0 : rejectedSetupCount) };
     });
   });
+  const periodSegments = (["in_sample", "out_of_sample"] as const)
+    .map((value) => {
+      const matching = trades.filter((trade) => trade.period === value);
+      return { dimension: "period", value, ...calculateBacktestMetrics(matching) };
+    })
+    .filter((segment) => segment.tradeCount > 0);
+  return [...dimensionalSegments, ...periodSegments];
 }
 
 function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Record<string, number | boolean> | null {
@@ -1586,6 +1602,7 @@ export function runCausalBacktest(
     symbol: dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
       ? historicalContractSymbol
       : specification.rootSymbol,
+    formulaHash: formulaConfigurationHash(request),
     contract: reportContract,
     dataResolution: dataset.ticks?.length ? "tick" : "one-minute-fallback",
     dataset: {

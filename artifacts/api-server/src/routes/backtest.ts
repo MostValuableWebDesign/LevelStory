@@ -46,6 +46,7 @@ import {
   storeBacktestReport,
 } from "../lib/backtest-store.js";
 import { requestRateLimit, requestTimeout } from "../lib/security.js";
+import { formulaConfigurationHash } from "../lib/formula-hash.js";
 
 const MAX_BACKTEST_SESSIONS = 22;
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
@@ -295,7 +296,8 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
-          cacheVersion: "qualification-batch-v1",
+          cacheVersion: "qualification-batch-v2-walk-forward",
+          formulaHash: formulaConfigurationHash(request),
           request,
           risk,
           contract: specification,
@@ -552,7 +554,8 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         : undefined;
       if (deadline.signal.aborted) throw signalError(deadline.signal);
       const cacheKey = buildBacktestCacheKey({
-        cacheVersion: "causal-backtest-v2",
+        cacheVersion: "causal-backtest-v3-formula-hash",
+        formulaHash: formulaConfigurationHash(parsed.data),
         request: parsed.data,
         risk,
         contract: specification,
