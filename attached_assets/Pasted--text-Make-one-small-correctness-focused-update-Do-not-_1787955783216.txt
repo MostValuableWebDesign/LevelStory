@@ -1,0 +1,78 @@
+```text
+Make one small, correctness-focused update. Do not perform performance optimization, architectural changes, or expensive full historical reruns.
+
+1. Correct the remaining shortened MES sessions
+
+The uploaded scheduled-contract Databento data shows trading through approximately 12:59 p.m. New York time on:
+
+- January 19, 2026 — MESH6
+- February 16, 2026 — MESH6
+- June 19, 2026 — MESU6
+
+Move these dates from full holidays to verified 1:00 p.m. ET early closes.
+
+Requirements:
+
+- Keep full closures and early closes separate.
+- Preserve DST-safe America/New_York handling.
+- Bump the CME equity-index calendar version to invalidate affected caches.
+- Preserve existing September 1, 2025 and May 25, 2026 corrections.
+- Do not change unrelated calendar dates without supporting evidence.
+- Correct the previous report typo: May 25, 2026 used MESM6, not MESH6.
+
+Add focused tests proving:
+
+- Each corrected date is a valid trading date.
+- Its regular-session window is 9:30 a.m.–1:00 p.m. ET.
+- The session contains 210 expected one-minute regular-session candles.
+- The dates can become eligible when the scheduled contract has complete data.
+- The post-1:00 p.m. holiday halt is expected closure time, not unexpected missing data.
+
+2. Correct visual-review wording only
+
+Do not change the review data, causal engine, chart calculations, or cursor behavior.
+
+The chart intentionally shows:
+
+- Candles through the evaluation cursor that were visible to the machine.
+- Shaded candles after the evaluation cursor, through the review cursor, that are visible only to the human reviewer as outcome context.
+
+Update the manifest copy, legend, SVG title, and accessibility label so they no longer claim all post-evaluation candles are hidden.
+
+Suggested language:
+
+“The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context and were never available to the strategy.”
+
+Label the shaded area clearly as:
+
+“Human-only outcome context”
+
+3. Compute limits
+
+Keep this update lightweight:
+
+- Run only focused calendar, historical-import, visual-validation, and frontend tests first.
+- Run typechecks and the API/frontend production builds once.
+- Do not run a cold 20+2 backtest.
+- Do not rebuild the full historical index solely for this task.
+- A cached 5+2 smoke test is sufficient if runtime verification is needed.
+- Do not add infrastructure, queues, databases, or paid services.
+
+Preserve all safeguards:
+
+- Shadow Mode only
+- No live or paper orders
+- No broker integration
+- No fabricated candles, quotes, or fills
+- Deterministic caching
+- Existing 22-session interactive limit
+
+Report:
+
+1. Files changed
+2. Calendar dates moved to early-close status
+3. Focused test totals
+4. Typecheck and build results
+5. Cached smoke-test result, if performed
+6. Confirmation that no performance architecture or execution behavior changed
+```

@@ -317,7 +317,7 @@ function SetManifest({ data, loading }: { data?: VisualValidationSet; loading: b
     </div>
     <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5">
       <div className="flex items-center gap-2 font-semibold"><FileSearch size={14} className="text-accent" />Read the cursor, not the future.</div>
-      <p className="mt-1 text-muted-foreground">The shaded boundary is the last candle available to the deterministic evaluation. Candles after that boundary are intentionally withheld.</p>
+       <p className="mt-1 text-muted-foreground">The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context and were never available to the strategy.</p>
     </div>
   </Panel>;
 }
@@ -371,7 +371,8 @@ function CausalChart({ snapshot }: { snapshot: VisualValidationSnapshot }) {
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full border border-accent bg-accent/20" />annotation</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-px border-l border-dashed border-foreground" />evaluation cursor</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-px border-l border-dashed border-foreground" />evaluation cursor</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />Human-only outcome context</span>
        <span className="mono ml-auto">5m · raw OHLCV · NY / UTC · review-bounded</span>
     </div>
   </div>;
@@ -411,10 +412,11 @@ function CausalSvg({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
   const gridPrices = [max, max - span / 2, min];
   return <div className="w-full overflow-x-auto">
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[330px] min-w-[700px] w-full" role="img" aria-label={`Causal annotated OHLCV chart for ${snapshot.categoryLabel}. Candles after the evaluation cursor are hidden.`}>
-      <title>Causal annotated chart. Future candles are hidden.</title>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[330px] min-w-[700px] w-full" role="img" aria-label={`Causal annotated OHLCV chart for ${snapshot.categoryLabel}. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context and were never available to the strategy.`}>
+      <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
       {gridPrices.map((price) => <g key={price}><line x1={left} x2={width - right} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="3 6" /><text x="4" y={y(price) + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{price.toFixed(2)}</text></g>)}
-      <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={plotBottom - top} fill="hsl(var(--foreground) / .035)" />
+       <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={plotBottom - top} fill="hsl(var(--foreground) / .035)" />
+       {width - right - Math.max(boundaryX, left) >= 150 && <text x={Math.max(boundaryX, left) + 10} y={top + 18} fill="hsl(var(--muted-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono">HUMAN-ONLY OUTCOME CONTEXT</text>}
       {annotations.filter((annotation) => annotation.price !== null).slice(0, 18).map((annotation) => <g key={annotation.id}><line x1={left} x2={width - right} y1={y(annotation.price as number)} y2={y(annotation.price as number)} stroke={annotationTone(annotation.color)} strokeWidth={annotation.kind === "price" ? 1.5 : 1} strokeDasharray={annotation.kind === "indicator" ? "2 5" : "6 4"} opacity=".76" /><text x={width - right - 4} y={y(annotation.price as number) - 4} textAnchor="end" fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{annotation.label}</text></g>)}
       {candles.map((candle, index) => {
         const up = candle.close >= candle.open;

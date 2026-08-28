@@ -51,7 +51,7 @@ test("early close ends regular session at 1:00 p.m. ET", () => {
 });
 
 test("CME 2025 holiday and modified-session dates are explicit", () => {
-  assert.equal(calendar.calendarVersion, "CME_EQUITY_INDEX_2025_2026_V2");
+  assert.equal(calendar.calendarVersion, "CME_EQUITY_INDEX_2025_2026_V3");
   assert.match(calendar.source, /cmegroup\.com\/tools-information\/holiday-calendar/);
   assert.equal(calendar.verifiedOn, "2026-08-28");
   assert.equal(sessionWindow("2025-09-01", "regular", calendar)?.closeTime, Date.parse("2025-09-01T17:00:00.000Z"));
@@ -60,6 +60,16 @@ test("CME 2025 holiday and modified-session dates are explicit", () => {
   assert.equal(sessionWindow("2025-11-28", "regular", calendar)?.closeTime, Date.parse("2025-11-28T18:00:00.000Z"));
   assert.equal(sessionWindow("2025-12-24", "regular", calendar)?.earlyClose, true);
   assert.equal(sessionWindow("2025-12-25", "regular", calendar), null);
+});
+
+test("2026 observed holidays are verified 1:00 p.m. ET early closes", () => {
+  for (const tradingDate of ["2026-01-19", "2026-02-16", "2026-06-19"]) {
+    const regular = sessionWindow(tradingDate, "regular", calendar);
+    assert.equal(isTradingDate(tradingDate, calendar), true);
+    assert.equal(regular?.openTime, newYorkTimeToUtc(tradingDate, "09:30"));
+    assert.equal(regular?.closeTime, newYorkTimeToUtc(tradingDate, "13:00"));
+    assert.equal(regular?.earlyClose, true);
+  }
 });
 
 test("Memorial Day 2026 is a verified 1:00 p.m. ET early close", () => {

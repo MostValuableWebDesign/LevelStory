@@ -166,15 +166,35 @@ test("discloses inactive, missing, complete, and early-close session coverage", 
   });
 });
 
-test("counts a verified shortened holiday session through the 1:00 p.m. ET halt", async () => {
-  const regularStart = Date.parse("2025-09-01T13:30:00.000Z");
-  const rows = Array.from({ length: 210 }, (_, index) => row(regularStart + index * 60_000, index));
+test("counts every verified shortened holiday session through the 1:00 p.m. ET halt", async () => {
+  const sessions = [
+    ["2025-09-01", "2025-09-01T13:30:00.000Z"],
+    ["2026-01-19", "2026-01-19T14:30:00.000Z"],
+    ["2026-02-16", "2026-02-16T14:30:00.000Z"],
+    ["2026-05-25", "2026-05-25T13:30:00.000Z"],
+    ["2026-06-19", "2026-06-19T13:30:00.000Z"],
+  ] as const;
+  const rows = sessions.flatMap(([, start], sessionIndex) => {
+    const regularStart = Date.parse(start);
+    return Array.from({ length: 210 }, (_, index) => row(regularStart + index * 60_000, sessionIndex * 210 + index));
+  });
   await withCsv(rows, async (path) => {
     const imported = await importHistoricalCsv(path, specification);
-    assert.equal(imported.summary.regularSessionCandleCount, 210);
-    assert.deepEqual(imported.summary.earlyCloseDates, ["2025-09-01"]);
-    assert.deepEqual(imported.summary.completeRegularSessionDates, ["2025-09-01"]);
+    const correctedDates = sessions.map(([date]) => date).sort();
+    assert.equal(imported.summary.regularSessionCandleCount, 1_050);
+    assert.equal(correctedDates.every((date) => imported.summary.earlyCloseDates.includes(date)), true);
+    assert.deepEqual(imported.summary.completeRegularSessionDates, correctedDates);
     assert.equal(imported.summary.missingRegularSessionDates.length, 0);
+    const dataset = historicalImportToReplayDataset(
+      imported,
+      "2025-09-01",
+      "2026-06-19",
+      4,
+      1,
+      correctedDates,
+    );
+    assert.deepEqual(dataset.selectedDates, correctedDates);
+    assert.equal(dataset.gapReport?.unexpectedMissingMinutes, 0);
   });
 });
 
