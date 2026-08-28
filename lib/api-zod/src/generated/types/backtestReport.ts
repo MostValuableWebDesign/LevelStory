@@ -9,6 +9,9 @@ import type { BacktestMetricSet } from './backtestMetricSet';
 import type { BacktestReportDataResolution } from './backtestReportDataResolution';
 import type { BacktestReportDataset } from './backtestReportDataset';
 import type { BacktestReportDataSource } from './backtestReportDataSource';
+import type { BacktestReportExecutionMode } from './backtestReportExecutionMode';
+import type { BacktestReportExecutionPolicy } from './backtestReportExecutionPolicy';
+import type { BacktestReportGapReport } from './backtestReportGapReport';
 import type { BacktestReportMode } from './backtestReportMode';
 import type { BacktestReportReplay } from './backtestReportReplay';
 import type { BacktestSegment } from './backtestSegment';
@@ -29,4 +32,8 @@ export interface BacktestReport {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   assumptions: string[];
+  executionMode: BacktestReportExecutionMode;
+  fillLabel: string;
+  executionPolicy: BacktestReportExecutionPolicy;
+  gapReport: BacktestReportGapReport;
 }

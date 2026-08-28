@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestRequestExecutionMode } from './backtestRequestExecutionMode';
+import type { BacktestRequestOhlcvEntryBufferTicks } from './backtestRequestOhlcvEntryBufferTicks';
 import type { BacktestRequestSlippageMode } from './backtestRequestSlippageMode';
 import type { BacktestRequestSource } from './backtestRequestSource';
 
@@ -41,4 +43,22 @@ export interface BacktestRequest {
   targetDollars?: number;
   slippageMode?: BacktestRequestSlippageMode;
   source?: BacktestRequestSource;
+  /** Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source. */
+  executionMode?: BacktestRequestExecutionMode;
+  ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
+  /**
+     * @minimum 1
+     * @maximum 8
+     */
+  ohlcvStopBufferTicks?: number;
+  /**
+     * @minimum 0
+     * @maximum 8
+     */
+  ohlcvSlippageTicks?: number;
+  /**
+     * Round-trip commission and exchange/regulatory fee assumption per contract.
+     * @minimum 0
+     */
+  ohlcvCommissionPerContract?: number;
 }

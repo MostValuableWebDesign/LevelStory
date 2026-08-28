@@ -25,6 +25,10 @@ export interface HistoricalImportSummary {
   duplicateRowsRemoved: number;
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
   regularSessionCandleCount: number;
   overnightCandleCount: number;
   availableTradingDates: string[];

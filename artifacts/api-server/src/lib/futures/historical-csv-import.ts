@@ -6,6 +6,7 @@ import {
   classifyFuturesSession,
   isTradingDate,
   sessionCalendarForContract,
+  sessionWindow,
   tradingDateForTimestamp,
   type FuturesSessionCalendar,
 } from "./session-calendar.js";
@@ -36,6 +37,10 @@ export type HistoricalCsvImportSummary = {
   duplicateRowsRemoved: number;
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
   regularSessionCandleCount: number;
   overnightCandleCount: number;
   availableTradingDates: string[];
@@ -179,6 +184,54 @@ function countMissingMinutes(
   return { missingMinutes, segments };
 }
 
+function overlapMinutes(start: number, end: number, window: { openTime: number; closeTime: number } | null): number {
+  if (!window) return 0;
+  return Math.max(0, Math.round((Math.min(end, window.closeTime) - Math.max(start, window.openTime)) / MINUTE));
+}
+
+function countSessionAwareGaps(
+  candles: readonly NormalizedCandle[],
+  calendar: FuturesSessionCalendar,
+): {
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
+} {
+  let unexpectedOpenSessionMissingMinutes = 0;
+  let regularSessionMissingMinutes = 0;
+  let expectedClosedMarketMinutes = 0;
+  let lowLiquidityInactiveMinutes = 0;
+  for (const candle of candles) {
+    if (candle.volume === 0) lowLiquidityInactiveMinutes += 1;
+  }
+  for (let index = 1; index < candles.length; index += 1) {
+    const previous = candles[index - 1];
+    const current = candles[index];
+    const previousDate = tradingDateForTimestamp(previous.openTime, calendar);
+    const currentDate = tradingDateForTimestamp(current.openTime, calendar);
+    if (previousDate !== currentDate) continue;
+    const gapStart = previous.openTime + MINUTE;
+    const gapEnd = current.openTime;
+    const missing = Math.max(0, Math.round((gapEnd - gapStart) / MINUTE));
+    if (!missing) continue;
+    const regular = sessionWindow(previousDate, "regular", calendar);
+    const premarket = sessionWindow(previousDate, "premarket", calendar);
+    const regularMinutes = overlapMinutes(gapStart, gapEnd, regular);
+    const premarketMinutes = overlapMinutes(gapStart, gapEnd, premarket);
+    const openMinutes = regularMinutes + premarketMinutes;
+    regularSessionMissingMinutes += regularMinutes;
+    unexpectedOpenSessionMissingMinutes += openMinutes;
+    expectedClosedMarketMinutes += Math.max(0, missing - openMinutes);
+  }
+  return {
+    unexpectedOpenSessionMissingMinutes,
+    regularSessionMissingMinutes,
+    expectedClosedMarketMinutes,
+    lowLiquidityInactiveMinutes,
+  };
+}
+
 function toReplayCandle(candle: NormalizedCandle): SimulatedFuturesCandle {
   // The strategy consumes a quote-shaped candle for descriptive calculations.
   // runCausalBacktest checks quotesAvailable before any fill is simulated, so
@@ -233,6 +286,14 @@ export function historicalImportToReplayDataset(
     outOfSampleDates: availableDates.slice(-outOfSampleDays),
     source: "historical_databento",
     quotesAvailable: false,
+    gapReport: {
+      missingMinuteGaps: imported.summary.missingMinuteGaps,
+      missingGapSegments: imported.summary.missingGapSegments,
+      unexpectedOpenSessionMissingMinutes: imported.summary.unexpectedOpenSessionMissingMinutes,
+      regularSessionMissingMinutes: imported.summary.regularSessionMissingMinutes,
+      expectedClosedMarketMinutes: imported.summary.expectedClosedMarketMinutes,
+      lowLiquidityInactiveMinutes: imported.summary.lowLiquidityInactiveMinutes,
+    },
   };
 }
 
@@ -279,6 +340,10 @@ export async function importHistoricalCsv(
     duplicateRowsRemoved: 0,
     missingMinuteGaps: 0,
     missingGapSegments: 0,
+    unexpectedOpenSessionMissingMinutes: 0,
+    regularSessionMissingMinutes: 0,
+    expectedClosedMarketMinutes: 0,
+    lowLiquidityInactiveMinutes: 0,
     regularSessionCandleCount: 0,
     overnightCandleCount: 0,
     availableTradingDates: [],
@@ -384,6 +449,7 @@ export async function importHistoricalCsv(
   const gaps = countMissingMinutes(candles, calendar);
   summary.missingMinuteGaps = gaps.missingMinutes;
   summary.missingGapSegments = gaps.segments;
+  Object.assign(summary, countSessionAwareGaps(candles, calendar));
   summary.availableTradingDates = [...tradingDates].sort();
   const fiveMinute = aggregate(candles, 5, specification);
   const fifteenMinute = aggregate(candles, 15, specification);

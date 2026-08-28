@@ -19,6 +19,8 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
+import { MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
+import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
 
@@ -76,6 +78,16 @@ export type CausalReplayDataset = {
   outOfSampleDates: readonly string[];
   source?: "simulated" | "historical_databento";
   quotesAvailable?: boolean;
+  gapReport?: BacktestGapReport;
+};
+
+export type BacktestGapReport = {
+  missingMinuteGaps: number;
+  missingGapSegments: number;
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
 };
 
 export type ReplayDatasetOptions = {
@@ -92,6 +104,11 @@ export type BacktestRequest = ReplayDatasetOptions & {
   source?: "simulated" | "historical_databento";
   targetDollars?: number;
   slippageMode?: "normal" | "fast" | "abnormal_spread";
+  executionMode?: "quote_based_shadow" | "ohlcv_modeled";
+  ohlcvEntryBufferTicks?: 3 | 4;
+  ohlcvStopBufferTicks?: number;
+  ohlcvSlippageTicks?: number;
+  ohlcvCommissionPerContract?: number;
 };
 
 export type BacktestTrade = {
@@ -115,6 +132,23 @@ export type BacktestTrade = {
   ambiguityLabel: "AMBIGUOUS_STOP_FIRST" | "AMBIGUOUS_ENTRY_INVALIDATION" | null;
   source: "tick" | "one-minute" | "ohlc";
   segmentation: BacktestSegmentation;
+  executionMode?: "quote_based_shadow" | "ohlcv_modeled";
+  fillLabel?: string | null;
+  audit?: {
+    entryTriggerPrice: number | null;
+    modeledFillPrice: number | null;
+    stopPrice: number | null;
+    targetPrice: number | null;
+    entryCandleOpenTime: string | null;
+    exitCandleOpenTime: string | null;
+    assumptions: string[];
+    ambiguityLabels: string[];
+    targetHit: boolean;
+    runnerActivated: boolean;
+    runnerExited: boolean;
+    exitReason: string;
+    legs: ModeledExecutionLeg[];
+  };
 };
 
 export type BacktestSegmentation = {
@@ -147,6 +181,15 @@ export type BacktestMetrics = {
   netPnl: number;
   ambiguousTradeCount: number;
   rejectedSetupCount: number;
+  setupsDetected: number;
+  setupsRejected: number;
+  patienceCandles: number;
+  entryTriggers: number;
+  modeledFills: number;
+  stopExits: number;
+  targetExits: number;
+  runnerExits: number;
+  ambiguityCount: number;
 };
 
 export type BacktestSegment = BacktestMetrics & {
@@ -179,6 +222,18 @@ export type BacktestReport = {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   assumptions: string[];
+  executionMode: "quote_based_shadow" | "ohlcv_modeled";
+  fillLabel: string;
+  executionPolicy: {
+    entryBufferTicks: number;
+    immediateNextCandleOnly: true;
+    entrySlippageTicks: number;
+    exitSlippageTicks: number;
+    stopRule: string;
+    ambiguityRule: string;
+    commissionPerContract: number;
+  };
+  gapReport: BacktestGapReport;
 };
 
 const MINUTE = 60_000;
@@ -459,6 +514,15 @@ function emptyMetrics(rejectedSetupCount = 0): BacktestMetrics {
     netPnl: 0,
     ambiguousTradeCount: 0,
     rejectedSetupCount,
+    setupsDetected: 0,
+    setupsRejected: rejectedSetupCount,
+    patienceCandles: 0,
+    entryTriggers: 0,
+    modeledFills: 0,
+    stopExits: 0,
+    targetExits: 0,
+    runnerExits: 0,
+    ambiguityCount: 0,
   };
 }
 
@@ -490,6 +554,15 @@ export function calculateBacktestMetrics(trades: readonly BacktestTrade[], rejec
     netPnl: money(trades.reduce((sum, trade) => sum + trade.netPnl, 0)),
     ambiguousTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null).length,
     rejectedSetupCount,
+    setupsDetected: trades.length,
+    setupsRejected: rejectedSetupCount,
+    patienceCandles: trades.filter((trade) => trade.audit?.entryCandleOpenTime !== null).length,
+    entryTriggers: trades.filter((trade) => trade.audit?.entryTriggerPrice !== null).length,
+    modeledFills: trades.filter((trade) => trade.executionMode === "ohlcv_modeled").length,
+    stopExits: trades.filter((trade) => trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop").length,
+    targetExits: trades.filter((trade) => trade.audit?.targetHit === true).length,
+    runnerExits: trades.filter((trade) => trade.audit?.runnerExited === true || trade.audit?.legs.some((leg) => leg.kind === "runner") === true).length,
+    ambiguityCount: trades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
   };
 }
 
@@ -515,6 +588,19 @@ export function runCausalBacktest(
   const specification = getFuturesContractSpecification(request.symbol);
   const calendar = sessionCalendarForContract(specification);
   const dataset = providedDataset ?? buildReplayDataset(request.symbol, request);
+  const executionMode = request.executionMode
+    ?? (dataset.quotesAvailable === false ? "ohlcv_modeled" : "quote_based_shadow");
+  if (executionMode === "quote_based_shadow" && dataset.quotesAvailable === false) {
+    throw new Error("Quote-based Shadow execution requires genuine bid/ask data; this dataset is OHLCV-only.");
+  }
+  if (executionMode === "ohlcv_modeled" && dataset.source !== "historical_databento" && dataset.quotesAvailable !== false) {
+    throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
+  }
+  const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 4;
+  const stopBufferTicks = request.ohlcvStopBufferTicks ?? 1;
+  const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
+  const commissionPerContract = request.ohlcvCommissionPerContract
+    ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);
   const candles = sortedCandles(dataset.candles);
   const ticks = dataset.ticks ?? [];
   const oneMinute = dataset.oneMinute ?? candles.flatMap(buildSyntheticOneMinuteBars);
@@ -551,8 +637,11 @@ export function runCausalBacktest(
         cursor: candle.closeTime,
         allCandles: dataset.candles,
         historicalFeed: dataset.candles,
-          historicalHourly,
+        historicalHourly,
         premarketAvailable: request.premarketAvailable !== false,
+        executionMode,
+        ohlcvEntryBufferTicks: executionMode === "ohlcv_modeled" ? entryBufferTicks : undefined,
+        ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations;
@@ -563,8 +652,99 @@ export function runCausalBacktest(
     }
     const selected = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
     if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) continue;
-    if (dataset.quotesAvailable === false) {
-      rejectedByPeriod[period] += 1;
+    if (executionMode === "ohlcv_modeled") {
+      const patienceSummary = snapshot.patience.patienceCandle;
+      const triggerSummary = snapshot.patience.triggerCandle;
+      const trigger = triggerSummary
+        ? candles.find((item) => item.openTime === Date.parse(triggerSummary.openTime) && item.isComplete)
+        : undefined;
+      const patienceCandle = patienceSummary
+        ? candles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
+        : undefined;
+      if (!trigger || !patienceCandle || trigger.closeTime > candle.closeTime) {
+        rejectedByPeriod[period] += 1;
+        continue;
+      }
+      const triggerIndex = candles.indexOf(trigger);
+      const postTrigger = candles
+        .slice(triggerIndex + 1)
+        .filter((item) => tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+          && item.isComplete
+          && item.closeTime <= regularWindow.closeTime);
+      const modeled = simulateOhlcvExecution({
+        direction: selected.direction,
+        entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
+        patienceCandle,
+        immediateTriggerCandle: trigger,
+        subsequentCompletedCandles: postTrigger,
+        contracts: snapshot.riskPlan.contracts,
+        targetQuantity: snapshot.riskPlan.targetContracts,
+        target: snapshot.riskPlan.target,
+        stop: snapshot.riskPlan.strategyStop,
+        tickSize: specification.tickSize,
+        tickValue: specification.dollarValuePerTick,
+        pointMultiplier: specification.pointValue * specification.contractMultiplier,
+        entrySlippageTicks: modeledSlippageTicks,
+        exitSlippageTicks: modeledSlippageTicks,
+        fees: request.ohlcvCommissionPerContract === undefined
+          ? {
+              commission: specification.commissionPerContract,
+              exchange: specification.exchangeFeePerContract ?? specification.exchangeAndRegulatoryFeesPerContract,
+              regulatory: specification.regulatoryFeePerContract,
+              clearing: specification.clearingFeePerContract,
+            }
+          : { commission: request.ohlcvCommissionPerContract / 2 },
+      });
+      if (modeled.modeledFill === null || modeled.exitPrice === null || !modeled.legs.length) {
+        rejectedByPeriod[period] += 1;
+        continue;
+      }
+      const exitCandle = modeled.audit.exitCandle ?? trigger;
+      const outcome = modeled.exitReason === "target"
+        ? "target"
+        : modeled.exitReason === "stop" ? "strategy stop" : "manual";
+      const ambiguityLabel = modeled.ambiguityLabels.length ? "AMBIGUOUS_STOP_FIRST" : null;
+      const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger);
+      trades.push({
+        id: `${tradingDate}-${triggerIndex}-${selected.setupType}-ohlcv`,
+        tradingDate,
+        contractSymbol: specification.fullContractSymbol,
+        contractMonth: specification.contractMonth,
+        period,
+        setupType: selected.setupType,
+        direction: selected.direction,
+        entryTime: new Date(trigger.closeTime).toISOString(),
+        exitTime: new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
+        entryPrice: modeled.modeledFill,
+        exitPrice: modeled.exitPrice,
+        contracts: snapshot.riskPlan.contracts,
+        grossPnl: modeled.accounting.grossPnl,
+        fees: modeled.accounting.fees,
+        slippage: modeled.accounting.slippage,
+        netPnl: modeled.accounting.netPnl,
+        outcome,
+        ambiguityLabel,
+        source: "ohlc",
+        segmentation: segment,
+        executionMode,
+        fillLabel: MODELED_OHLCV_FILL_LABEL,
+        audit: {
+          entryTriggerPrice: modeled.entryTrigger,
+          modeledFillPrice: modeled.modeledFill,
+          stopPrice: modeled.stopPrice,
+          targetPrice: modeled.targetPrice,
+          entryCandleOpenTime: patienceCandle.openTime === undefined ? null : new Date(patienceCandle.openTime).toISOString(),
+          exitCandleOpenTime: exitCandle.openTime === undefined ? null : new Date(exitCandle.openTime).toISOString(),
+          assumptions: modeled.assumptions,
+          ambiguityLabels: modeled.ambiguityLabels,
+          targetHit: modeled.audit.targetHit,
+          runnerActivated: modeled.audit.runnerActivated,
+          runnerExited: modeled.audit.runnerExited,
+          exitReason: modeled.exitReason,
+          legs: modeled.legs,
+        },
+      });
+      lastExitIndex = Math.max(lastExitIndex, candles.findIndex((item) => item.openTime === exitCandle.openTime));
       continue;
     }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
@@ -642,6 +822,8 @@ export function runCausalBacktest(
       ambiguityLabel: resolution.ambiguityLabel,
       source: resolution.source,
       segmentation: segment,
+      executionMode,
+      fillLabel: "Quote-based Shadow fill",
     });
     lastExitIndex = Math.min(exitIndex, candles.length - 1);
   }
@@ -684,10 +866,40 @@ export function runCausalBacktest(
       "Unknown entry/invalidation order rejects the setup; unknown stop/target order applies stop first and is labeled AMBIGUOUS_STOP_FIRST.",
       "Each contract month keeps its own tick economics and fees; contract rollover boundaries are never blended.",
       "The out-of-sample dates are immutable holdout data and are not used for optimization.",
-      ...(dataset.quotesAvailable === false
-        ? ["The selected historical OHLCV file has no bid/ask quotes; descriptive setups ran, but Shadow fills were blocked."]
+      ...(executionMode === "ohlcv_modeled"
+        ? [
+          MODELED_OHLCV_FILL_LABEL,
+          "Only completed candles are visible. The entry uses the immediate next candle after the patience candle; later candles cannot trigger entry.",
+          `Entry and exit slippage are ${modeledSlippageTicks} adverse tick${modeledSlippageTicks === 1 ? "" : "s"} per side.`,
+          `The patience stop buffer is ${stopBufferTicks} tick${stopBufferTicks === 1 ? "" : "s"} and the confirmation buffer is ${entryBufferTicks} ticks.`,
+          "OHLCV barriers that share one candle are resolved adverse-first and labeled.",
+          `Fees use the configurable ${commissionPerContract.toFixed(2)} per-contract round-trip assumption.`,
+        ]
         : []),
       "This report is simulated futures analysis only. No live or paper order was created.",
     ],
+    executionMode,
+    fillLabel: executionMode === "ohlcv_modeled" ? MODELED_OHLCV_FILL_LABEL : "Quote-based Shadow fill",
+    executionPolicy: {
+      entryBufferTicks,
+      immediateNextCandleOnly: true,
+      entrySlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
+      exitSlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
+      stopRule: executionMode === "ohlcv_modeled"
+        ? `${stopBufferTicks} tick${stopBufferTicks === 1 ? "" : "s"} beyond the patience candle`
+        : "Quote-based strategy and catastrophe stops",
+      ambiguityRule: executionMode === "ohlcv_modeled"
+        ? "Adverse-first when stop and target are both touched inside one OHLCV candle"
+        : "Quote/tick order first; unresolved bars use stop-first",
+      commissionPerContract,
+    },
+    gapReport: dataset.gapReport ?? {
+      missingMinuteGaps: 0,
+      missingGapSegments: 0,
+      unexpectedOpenSessionMissingMinutes: 0,
+      regularSessionMissingMinutes: 0,
+      expectedClosedMarketMinutes: 0,
+      lowLiquidityInactiveMinutes: 0,
+    },
   };
 }

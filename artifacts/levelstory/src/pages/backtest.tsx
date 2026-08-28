@@ -15,6 +15,10 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     ["Rejected rows", data.rejectedRows.toLocaleString()],
     ["Duplicates removed", data.duplicateRowsRemoved.toLocaleString()],
     ["Missing minutes", `${data.missingMinuteGaps.toLocaleString()} across ${data.missingGapSegments} gaps`],
+    ["Open-session gaps", `${data.unexpectedOpenSessionMissingMinutes.toLocaleString()} min`],
+    ["Regular-session gaps", `${data.regularSessionMissingMinutes.toLocaleString()} min`],
+    ["Expected closed time", `${data.expectedClosedMarketMinutes.toLocaleString()} min`],
+    ["Low-liquidity / inactive", `${data.lowLiquidityInactiveMinutes.toLocaleString()} min`],
     ["Regular session", data.regularSessionCandleCount.toLocaleString()],
     ["Overnight", data.overnightCandleCount.toLocaleString()],
   ];
@@ -64,19 +68,46 @@ function ReportBody({ report }: { report: BacktestReport }) {
   return <div className="space-y-5">
     <Panel accent>
       <PanelTitle eyebrow="Run integrity / causal replay" title={`${report.symbol} · ${report.contract.fullContractSymbol}`} right={<span className="mono text-[10px] text-muted-foreground">{report.dataResolution}</span>} />
-      <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6 — Shadow Mode" : "Simulated demo data — Shadow Mode"}</strong>{report.dataSource === "historical_databento" && <span className="ml-2 text-muted-foreground">Quote-less OHLCV; Shadow fills are blocked.</span>}</div>
-      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-4">
+       <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6" : "Simulated demo data"} — {report.executionMode === "ohlcv_modeled" ? "Modeled OHLCV execution" : "Shadow Mode"}</strong><span className="ml-2 text-muted-foreground">{report.fillLabel}</span></div>
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-5">
         {[
           ["Dataset", `${report.dataset.startDate} → ${report.dataset.endDate}`],
           ["Visible candles", `${report.replay.visibleCandleCount} / ${report.replay.totalCandleCount}`],
           ["Holdout", `${report.dataset.outOfSampleDates.length} trading days`],
           ["Ambiguous trades", String(report.metrics.ambiguousTradeCount)],
+         ["Modeled fills", String(report.metrics.modeledFills)],
         ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
       </div>
       <div className="grid gap-3 border-t border-border p-5 text-xs sm:grid-cols-3">
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Causal cursor enforced</div>
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Future access blocked</div>
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Holdout untouched</div>
+      </div>
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Execution policy / explicit assumptions" title={report.executionMode === "ohlcv_modeled" ? "Conservative OHLCV modeled fills" : "Observed quote Shadow fills"} right={<span className="mono text-[10px] text-muted-foreground">{report.executionPolicy.entryBufferTicks} tick buffer</span>} />
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-4">
+        {[
+          ["Fill label", report.fillLabel],
+          ["Entry / exit slippage", `${report.executionPolicy.entrySlippageTicks} / ${report.executionPolicy.exitSlippageTicks} ticks`],
+          ["Stop rule", report.executionPolicy.stopRule],
+          ["Ambiguity", report.executionPolicy.ambiguityRule],
+        ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mt-2 text-xs leading-5">{value}</div></div>)}
+      </div>
+      <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Immediate-next-candle-only: <strong className="text-foreground">{report.executionPolicy.immediateNextCandleOnly ? "yes" : "no"}</strong> · Fee assumption: <strong className="mono text-foreground">${report.executionPolicy.commissionPerContract.toFixed(2)} / contract round trip</strong></div>
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Data quality / session-aware gaps" title="Missing-minute accounting" right={<span className="mono text-[10px] text-muted-foreground">{report.gapReport.missingGapSegments.toLocaleString()} segments</span>} />
+      <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-5">
+        {[
+          ["All missing", `${report.gapReport.missingMinuteGaps.toLocaleString()} min`],
+          ["Unexpected open", `${report.gapReport.unexpectedOpenSessionMissingMinutes.toLocaleString()} min`],
+          ["Regular session", `${report.gapReport.regularSessionMissingMinutes.toLocaleString()} min`],
+          ["Expected closed", `${report.gapReport.expectedClosedMarketMinutes.toLocaleString()} min`],
+          ["Low liquidity", `${report.gapReport.lowLiquidityInactiveMinutes.toLocaleString()} min`],
+        ].map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
       </div>
     </Panel>
 
@@ -101,6 +132,12 @@ function ReportBody({ report }: { report: BacktestReport }) {
         <span>Average loss: <strong className="mono text-foreground">{money(report.metrics.averageLoss)}</strong></span>
         <span>Gross P&L: <strong className="mono text-foreground">{money(report.metrics.grossPnl)}</strong></span>
       </div>
+      <div className="grid gap-3 border-t border-border px-5 py-4 text-xs text-muted-foreground sm:grid-cols-4">
+        <span>Setups detected: <strong className="mono text-foreground">{report.metrics.setupsDetected}</strong></span>
+        <span>Patience candles: <strong className="mono text-foreground">{report.metrics.patienceCandles}</strong></span>
+        <span>Entry triggers: <strong className="mono text-foreground">{report.metrics.entryTriggers}</strong></span>
+        <span>Stops / targets / runners: <strong className="mono text-foreground">{report.metrics.stopExits} / {report.metrics.targetExits} / {report.metrics.runnerExits}</strong></span>
+      </div>
     </Panel>
 
     <Panel>
@@ -110,7 +147,7 @@ function ReportBody({ report }: { report: BacktestReport }) {
 
     <Panel>
       <PanelTitle eyebrow="Execution evidence" title="Trade ledger" right={<span className="mono text-[10px] text-muted-foreground">{report.trades.length} simulated fills</span>} />
-      {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[920px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Resolution</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}</td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.source}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
+       {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[1120px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Mode / audit</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}<span className="block text-[10px] text-muted-foreground">trigger {trade.audit?.entryTriggerPrice?.toFixed(2) ?? "—"} · stop {trade.audit?.stopPrice?.toFixed(2) ?? "—"} · target {trade.audit?.targetPrice?.toFixed(2) ?? "—"}</span></td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.fillLabel ?? trade.source}{trade.audit?.runnerExited && <span className="ml-2">runner</span>}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
     </Panel>
 
     <Panel>
@@ -130,6 +167,11 @@ export default function Backtest() {
   const [seed, setSeed] = useState("11");
   const [targetDollars, setTargetDollars] = useState("75");
   const [slippageMode, setSlippageMode] = useState<"normal" | "fast" | "abnormal_spread">("normal");
+  const [executionMode, setExecutionMode] = useState<"quote_based_shadow" | "ohlcv_modeled">("ohlcv_modeled");
+  const [entryBufferTicks, setEntryBufferTicks] = useState("4");
+  const [stopBufferTicks, setStopBufferTicks] = useState("1");
+  const [ohlcvSlippageTicks, setOhlcvSlippageTicks] = useState("1");
+  const [commissionPerContract, setCommissionPerContract] = useState("");
   const run = useRunBacktest();
   const historicalImport = useGetHistoricalData({ symbol: "MES" });
 
@@ -144,6 +186,11 @@ export default function Backtest() {
     premarketAvailable: true,
     targetDollars: Number(targetDollars),
     slippageMode,
+    executionMode,
+    ohlcvEntryBufferTicks: Number(entryBufferTicks) as 3 | 4,
+    ohlcvStopBufferTicks: Number(stopBufferTicks),
+    ohlcvSlippageTicks: Number(ohlcvSlippageTicks),
+    ...(commissionPerContract.trim() ? { ohlcvCommissionPerContract: Number(commissionPerContract) } : {}),
   } as const;
 
   const submit = (event: FormEvent) => {
@@ -159,7 +206,8 @@ export default function Backtest() {
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); if (next === "historical_databento") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value="historical_databento">Historical Databento CSV</option><option value="simulated">Simulated demo</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); setExecutionMode(next === "historical_databento" ? "ohlcv_modeled" : "quote_based_shadow"); if (next === "historical_databento") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value="historical_databento">Historical Databento CSV</option><option value="simulated">Simulated demo</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Execution mode</span><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value as typeof executionMode)} className="field w-full" data-testid="select-backtest-execution-mode"><option value="ohlcv_modeled" disabled={source !== "historical_databento"}>Modeled OHLCV fill</option><option value="quote_based_shadow" disabled={source === "historical_databento"}>Quote-based Shadow fill</option></select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} disabled={source === "historical_databento" && item !== "MES"}>{item}</option>)}</select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-start-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">End date</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-end-date" /></label>
@@ -168,9 +216,13 @@ export default function Backtest() {
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Seed</span><input type="number" min="1" max="100000" value={seed} onChange={(event) => setSeed(event.target.value)} className="field mono w-full" data-testid="input-backtest-seed" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Target</span><select value={targetDollars} onChange={(event) => setTargetDollars(event.target.value)} className="field w-full" data-testid="select-backtest-target"><option value="50">$50</option><option value="75">$75</option><option value="100">$100</option></select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Slippage regime</span><select value={slippageMode} onChange={(event) => setSlippageMode(event.target.value as typeof slippageMode)} className="field w-full" data-testid="select-backtest-slippage"><option value="normal">Normal</option><option value="fast">Fast tape</option><option value="abnormal_spread">Abnormal spread</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">OHLCV entry buffer</span><select value={entryBufferTicks} onChange={(event) => setEntryBufferTicks(event.target.value)} className="field w-full" data-testid="select-ohlcv-entry-buffer"><option value="3">3 ticks</option><option value="4">4 ticks</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Patience stop buffer</span><input type="number" min="1" max="8" value={stopBufferTicks} onChange={(event) => setStopBufferTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-stop-buffer" /></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Modeled slippage</span><input type="number" min="0" max="8" value={ohlcvSlippageTicks} onChange={(event) => setOhlcvSlippageTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-slippage" /></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
             <div className="flex items-end"><button type="submit" disabled={run.isPending} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : "Run causal backtest"}</button></div>
           </form>
-          <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Contract economics remain month-specific.</div>
+           <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific.</div>
         </Panel>
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}

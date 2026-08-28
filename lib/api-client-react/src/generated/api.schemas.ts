@@ -1389,6 +1389,25 @@ export const BacktestRequestSource = {
   historical_databento: 'historical_databento',
 } as const;
 
+/**
+ * Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source.
+ */
+export type BacktestRequestExecutionMode = typeof BacktestRequestExecutionMode[keyof typeof BacktestRequestExecutionMode];
+
+
+export const BacktestRequestExecutionMode = {
+  quote_based_shadow: 'quote_based_shadow',
+  ohlcv_modeled: 'ohlcv_modeled',
+} as const;
+
+export type BacktestRequestOhlcvEntryBufferTicks = typeof BacktestRequestOhlcvEntryBufferTicks[keyof typeof BacktestRequestOhlcvEntryBufferTicks];
+
+
+export const BacktestRequestOhlcvEntryBufferTicks = {
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
 export interface BacktestRequest {
   /**
      * @minLength 1
@@ -1422,6 +1441,24 @@ export interface BacktestRequest {
   targetDollars?: number;
   slippageMode?: BacktestRequestSlippageMode;
   source?: BacktestRequestSource;
+  /** Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source. */
+  executionMode?: BacktestRequestExecutionMode;
+  ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
+  /**
+     * @minimum 1
+     * @maximum 8
+     */
+  ohlcvStopBufferTicks?: number;
+  /**
+     * @minimum 0
+     * @maximum 8
+     */
+  ohlcvSlippageTicks?: number;
+  /**
+     * Round-trip commission and exchange/regulatory fee assumption per contract.
+     * @minimum 0
+     */
+  ohlcvCommissionPerContract?: number;
 }
 
 export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource[keyof typeof HistoricalImportSummarySource];
@@ -1460,6 +1497,10 @@ export interface HistoricalImportSummary {
   duplicateRowsRemoved: number;
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
   regularSessionCandleCount: number;
   overnightCandleCount: number;
   availableTradingDates: string[];
@@ -1486,6 +1527,15 @@ export interface BacktestMetricSet {
   netPnl: number;
   ambiguousTradeCount: number;
   rejectedSetupCount: number;
+  setupsDetected: number;
+  setupsRejected: number;
+  patienceCandles: number;
+  entryTriggers: number;
+  modeledFills: number;
+  stopExits: number;
+  targetExits: number;
+  runnerExits: number;
+  ambiguityCount: number;
 }
 
 export type BacktestSegmentationDirection = typeof BacktestSegmentationDirection[keyof typeof BacktestSegmentationDirection];
@@ -1641,6 +1691,67 @@ export const BacktestTradeSource = {
   ohlc: 'ohlc',
 } as const;
 
+export type BacktestTradeExecutionMode = typeof BacktestTradeExecutionMode[keyof typeof BacktestTradeExecutionMode];
+
+
+export const BacktestTradeExecutionMode = {
+  quote_based_shadow: 'quote_based_shadow',
+  ohlcv_modeled: 'ohlcv_modeled',
+} as const;
+
+export type BacktestTradeAuditLegsItemKind = typeof BacktestTradeAuditLegsItemKind[keyof typeof BacktestTradeAuditLegsItemKind];
+
+
+export const BacktestTradeAuditLegsItemKind = {
+  target: 'target',
+  runner: 'runner',
+  full: 'full',
+} as const;
+
+export type BacktestTradeAuditLegsItemExitReason = typeof BacktestTradeAuditLegsItemExitReason[keyof typeof BacktestTradeAuditLegsItemExitReason];
+
+
+export const BacktestTradeAuditLegsItemExitReason = {
+  target: 'target',
+  runner: 'runner',
+  stop: 'stop',
+  manual: 'manual',
+} as const;
+
+export type BacktestTradeAuditLegsItem = {
+  kind: BacktestTradeAuditLegsItemKind;
+  quantity: number;
+  referencePrice: number;
+  fillPrice: number;
+  grossPnl: number;
+  slippage: number;
+  fees: number;
+  netPnl: number;
+  exitReason: BacktestTradeAuditLegsItemExitReason;
+};
+
+export type BacktestTradeAudit = {
+  /** @nullable */
+  entryTriggerPrice: number | null;
+  /** @nullable */
+  modeledFillPrice: number | null;
+  /** @nullable */
+  stopPrice: number | null;
+  /** @nullable */
+  targetPrice: number | null;
+  /** @nullable */
+  entryCandleOpenTime: string | null;
+  /** @nullable */
+  exitCandleOpenTime: string | null;
+  assumptions: string[];
+  ambiguityLabels: string[];
+  targetHit: boolean;
+  runnerActivated: boolean;
+  runnerExited: boolean;
+  exitReason: string;
+  legs: BacktestTradeAuditLegsItem[];
+};
+
 export interface BacktestTrade {
   id: string;
   tradingDate: string;
@@ -1663,6 +1774,10 @@ export interface BacktestTrade {
   ambiguityLabel: BacktestTradeAmbiguityLabel;
   source: BacktestTradeSource;
   segmentation: BacktestSegmentation;
+  executionMode?: BacktestTradeExecutionMode;
+  /** @nullable */
+  fillLabel?: string | null;
+  audit?: BacktestTradeAudit;
 }
 
 export type BacktestReportMode = typeof BacktestReportMode[keyof typeof BacktestReportMode];
@@ -1715,6 +1830,33 @@ export type BacktestReportReplay = {
   futureCandleAccess: false;
 };
 
+export type BacktestReportExecutionMode = typeof BacktestReportExecutionMode[keyof typeof BacktestReportExecutionMode];
+
+
+export const BacktestReportExecutionMode = {
+  quote_based_shadow: 'quote_based_shadow',
+  ohlcv_modeled: 'ohlcv_modeled',
+} as const;
+
+export type BacktestReportExecutionPolicy = {
+  entryBufferTicks: number;
+  immediateNextCandleOnly: true;
+  entrySlippageTicks: number;
+  exitSlippageTicks: number;
+  stopRule: string;
+  ambiguityRule: string;
+  commissionPerContract: number;
+};
+
+export type BacktestReportGapReport = {
+  missingMinuteGaps: number;
+  missingGapSegments: number;
+  unexpectedOpenSessionMissingMinutes: number;
+  regularSessionMissingMinutes: number;
+  expectedClosedMarketMinutes: number;
+  lowLiquidityInactiveMinutes: number;
+};
+
 export interface BacktestReport {
   mode: BacktestReportMode;
   dataSource: BacktestReportDataSource;
@@ -1729,6 +1871,10 @@ export interface BacktestReport {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   assumptions: string[];
+  executionMode: BacktestReportExecutionMode;
+  fillLabel: string;
+  executionPolicy: BacktestReportExecutionPolicy;
+  gapReport: BacktestReportGapReport;
 }
 
 export type GetMarketSnapshotParams = {

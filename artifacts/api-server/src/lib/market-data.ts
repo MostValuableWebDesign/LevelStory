@@ -330,6 +330,7 @@ type RiskInput = { accountSize: number; riskPercent: number; maxDailyLoss: numbe
 type Phase7Input = {
   targetDollars?: number;
   slippageMode?: Phase7RiskConfig["slippageMode"];
+  normalSlippageTicks?: number;
   observedSpreadTicks?: number;
   liquidity?: number;
   dataAgeSeconds?: number;
@@ -356,6 +357,9 @@ export type ReplaySnapshotOptions = {
   historicalFeed?: readonly SimulatedFuturesCandle[];
   historicalHourly?: readonly SimulatedHourlyCandle[];
   premarketAvailable?: boolean;
+  executionMode?: "quote_based_shadow" | "ohlcv_modeled";
+  ohlcvEntryBufferTicks?: 3 | 4;
+  ohlcvStopBufferTicks?: number;
 };
 
 function latestTradingDate(calendar: ReturnType<typeof sessionCalendarForContract>): string {
@@ -374,7 +378,10 @@ export function createMarketSnapshot(
 ): MarketSnapshot {
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
-  const config = strategyConfig();
+  const config = strategyConfig({
+    ...(replayOptions?.ohlcvEntryBufferTicks === undefined ? {} : { patienceEntryBufferTicks: replayOptions.ohlcvEntryBufferTicks }),
+    ...(replayOptions?.ohlcvStopBufferTicks === undefined ? {} : { patienceStopBufferTicks: replayOptions.ohlcvStopBufferTicks }),
+  });
   const calendar = sessionCalendarForContract(specification);
   const requestedCursor = replayOptions?.cursor;
   const tradingDate = replayOptions?.tradingDate
@@ -851,7 +858,7 @@ function phase7Config(
     duplicateEntry: phase7Input?.duplicateEntry ?? false,
     averagingDown: phase7Input?.averagingDown ?? false,
     slippageMode: phase7Input?.slippageMode ?? "normal",
-    normalSlippageTicks: config.phase7NormalSlippageTicks,
+    normalSlippageTicks: phase7Input?.normalSlippageTicks ?? config.phase7NormalSlippageTicks,
     fastSlippageTicks: config.phase7FastSlippageTicks,
     targetDollars: phase7Input?.targetDollars ?? config.phase7DefaultTargetDollars,
   };

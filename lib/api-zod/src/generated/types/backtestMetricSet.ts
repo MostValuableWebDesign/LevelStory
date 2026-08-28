@@ -24,4 +24,13 @@ export interface BacktestMetricSet {
   netPnl: number;
   ambiguousTradeCount: number;
   rejectedSetupCount: number;
+  setupsDetected: number;
+  setupsRejected: number;
+  patienceCandles: number;
+  entryTriggers: number;
+  modeledFills: number;
+  stopExits: number;
+  targetExits: number;
+  runnerExits: number;
+  ambiguityCount: number;
 }

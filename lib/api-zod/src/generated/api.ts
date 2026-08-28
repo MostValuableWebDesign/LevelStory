@@ -710,6 +710,17 @@ export const runBacktestBodyTargetDollarsMax = 100;
 
 export const runBacktestBodySlippageModeDefault = `normal`;
 export const runBacktestBodySourceDefault = `simulated`;
+export const runBacktestBodyOhlcvEntryBufferTicksDefault = 4;
+export const runBacktestBodyOhlcvStopBufferTicksDefault = 1;
+export const runBacktestBodyOhlcvStopBufferTicksMax = 8;
+
+export const runBacktestBodyOhlcvSlippageTicksDefault = 1;
+export const runBacktestBodyOhlcvSlippageTicksMin = 0;
+export const runBacktestBodyOhlcvSlippageTicksMax = 8;
+
+export const runBacktestBodyOhlcvCommissionPerContractMin = 0;
+
+
 
 export const RunBacktestBody = zod.object({
   "symbol": zod.string().min(1).max(runBacktestBodySymbolMax).default(runBacktestBodySymbolDefault),
@@ -721,7 +732,12 @@ export const RunBacktestBody = zod.object({
   "premarketAvailable": zod.boolean().default(runBacktestBodyPremarketAvailableDefault),
   "targetDollars": zod.number().min(runBacktestBodyTargetDollarsMin).max(runBacktestBodyTargetDollarsMax).default(runBacktestBodyTargetDollarsDefault),
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(runBacktestBodySourceDefault)
+  "source": zod.enum(['simulated', 'historical_databento']).default(runBacktestBodySourceDefault),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
+  "ohlcvEntryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]).default(runBacktestBodyOhlcvEntryBufferTicksDefault),
+  "ohlcvStopBufferTicks": zod.number().min(1).max(runBacktestBodyOhlcvStopBufferTicksMax).default(runBacktestBodyOhlcvStopBufferTicksDefault),
+  "ohlcvSlippageTicks": zod.number().min(runBacktestBodyOhlcvSlippageTicksMin).max(runBacktestBodyOhlcvSlippageTicksMax).default(runBacktestBodyOhlcvSlippageTicksDefault),
+  "ohlcvCommissionPerContract": zod.number().min(runBacktestBodyOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 })
 
 export const RunBacktestResponse = zod.object({
@@ -784,7 +800,16 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "netPnl": zod.number(),
   "ambiguousTradeCount": zod.number(),
-  "rejectedSetupCount": zod.number()
+  "rejectedSetupCount": zod.number(),
+  "setupsDetected": zod.number(),
+  "setupsRejected": zod.number(),
+  "patienceCandles": zod.number(),
+  "entryTriggers": zod.number(),
+  "modeledFills": zod.number(),
+  "stopExits": zod.number(),
+  "targetExits": zod.number(),
+  "runnerExits": zod.number(),
+  "ambiguityCount": zod.number()
 }),
   "inSample": zod.object({
   "tradeCount": zod.number(),
@@ -799,7 +824,16 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "netPnl": zod.number(),
   "ambiguousTradeCount": zod.number(),
-  "rejectedSetupCount": zod.number()
+  "rejectedSetupCount": zod.number(),
+  "setupsDetected": zod.number(),
+  "setupsRejected": zod.number(),
+  "patienceCandles": zod.number(),
+  "entryTriggers": zod.number(),
+  "modeledFills": zod.number(),
+  "stopExits": zod.number(),
+  "targetExits": zod.number(),
+  "runnerExits": zod.number(),
+  "ambiguityCount": zod.number()
 }),
   "outOfSample": zod.object({
   "tradeCount": zod.number(),
@@ -814,7 +848,16 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "netPnl": zod.number(),
   "ambiguousTradeCount": zod.number(),
-  "rejectedSetupCount": zod.number()
+  "rejectedSetupCount": zod.number(),
+  "setupsDetected": zod.number(),
+  "setupsRejected": zod.number(),
+  "patienceCandles": zod.number(),
+  "entryTriggers": zod.number(),
+  "modeledFills": zod.number(),
+  "stopExits": zod.number(),
+  "targetExits": zod.number(),
+  "runnerExits": zod.number(),
+  "ambiguityCount": zod.number()
 }),
   "segments": zod.array(zod.object({
   "tradeCount": zod.number(),
@@ -829,7 +872,16 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "netPnl": zod.number(),
   "ambiguousTradeCount": zod.number(),
-  "rejectedSetupCount": zod.number()
+  "rejectedSetupCount": zod.number(),
+  "setupsDetected": zod.number(),
+  "setupsRejected": zod.number(),
+  "patienceCandles": zod.number(),
+  "entryTriggers": zod.number(),
+  "modeledFills": zod.number(),
+  "stopExits": zod.number(),
+  "targetExits": zod.number(),
+  "runnerExits": zod.number(),
+  "ambiguityCount": zod.number()
 }).and(zod.object({
   "dimension": zod.string(),
   "value": zod.string()
@@ -868,9 +920,55 @@ export const RunBacktestResponse = zod.object({
   "patienceCharacteristic": zod.string(),
   "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
   "marketRegime": zod.enum(['trend', 'range', 'transition'])
-})
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "entryCandleOpenTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual'])
+}))
+}).optional()
 })),
-  "assumptions": zod.array(zod.string())
+  "assumptions": zod.array(zod.string()),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']),
+  "fillLabel": zod.string(),
+  "executionPolicy": zod.object({
+  "entryBufferTicks": zod.number(),
+  "immediateNextCandleOnly": zod.literal(true),
+  "entrySlippageTicks": zod.number(),
+  "exitSlippageTicks": zod.number(),
+  "stopRule": zod.string(),
+  "ambiguityRule": zod.string(),
+  "commissionPerContract": zod.number()
+}),
+  "gapReport": zod.object({
+  "missingMinuteGaps": zod.number(),
+  "missingGapSegments": zod.number(),
+  "unexpectedOpenSessionMissingMinutes": zod.number(),
+  "regularSessionMissingMinutes": zod.number(),
+  "expectedClosedMarketMinutes": zod.number(),
+  "lowLiquidityInactiveMinutes": zod.number()
+})
 })
 
 
@@ -896,6 +994,10 @@ export const GetHistoricalDataResponse = zod.object({
   "duplicateRowsRemoved": zod.number(),
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
+  "unexpectedOpenSessionMissingMinutes": zod.number(),
+  "regularSessionMissingMinutes": zod.number(),
+  "expectedClosedMarketMinutes": zod.number(),
+  "lowLiquidityInactiveMinutes": zod.number(),
   "regularSessionCandleCount": zod.number(),
   "overnightCandleCount": zod.number(),
   "availableTradingDates": zod.array(zod.string()),

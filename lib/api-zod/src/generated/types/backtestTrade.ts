@@ -7,7 +7,9 @@
  */
 import type { BacktestSegmentation } from './backtestSegmentation';
 import type { BacktestTradeAmbiguityLabel } from './backtestTradeAmbiguityLabel';
+import type { BacktestTradeAudit } from './backtestTradeAudit';
 import type { BacktestTradeDirection } from './backtestTradeDirection';
+import type { BacktestTradeExecutionMode } from './backtestTradeExecutionMode';
 import type { BacktestTradeOutcome } from './backtestTradeOutcome';
 import type { BacktestTradePeriod } from './backtestTradePeriod';
 import type { BacktestTradeSource } from './backtestTradeSource';
@@ -34,4 +36,8 @@ export interface BacktestTrade {
   ambiguityLabel: BacktestTradeAmbiguityLabel;
   source: BacktestTradeSource;
   segmentation: BacktestSegmentation;
+  executionMode?: BacktestTradeExecutionMode;
+  /** @nullable */
+  fillLabel?: string | null;
+  audit?: BacktestTradeAudit;
 }
