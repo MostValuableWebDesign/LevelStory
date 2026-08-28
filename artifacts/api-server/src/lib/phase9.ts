@@ -355,6 +355,91 @@ export type BacktestReport = {
   gapReport: BacktestGapReport;
 };
 
+export const QUALIFICATION_FUNNEL_STAGES = [
+  "session_loaded",
+  "ntz_orb_completed",
+  "strong_breakout_candidate",
+  "strong_continuation_confirmed",
+  "pullback_or_consolidation",
+  "critical_level_interaction",
+  "fibonacci_context_available",
+  "volume_condition_passed",
+  "valid_trend_aligned_patience_candle",
+  "immediate_next_candle_confirmation",
+  "risk_approved",
+  "modeled_entry",
+  "final_exit",
+] as const;
+
+export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
+
+export type QualificationFunnelStageCount = {
+  stage: QualificationFunnelStage;
+  count: number;
+  percentOfPreceding: number;
+  percentOfSessions: number;
+};
+
+export type QualificationCandidate = {
+  candidateId: string;
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  period: "in_sample" | "out_of_sample";
+  direction: Direction | null;
+  setupType: string;
+  timeOfDay: BacktestSegmentation["timeOfDay"];
+  marketRegime: BacktestSegmentation["marketRegime"];
+  volumeRegime: "normal" | "high";
+  reachedStage: QualificationFunnelStage;
+  primaryRejectionStage: QualificationFunnelStage | null;
+  rejectionDetail: string | null;
+  evidence: {
+    evaluatedCandleOpenTime: string;
+    orbLevels: string;
+    breakout: string;
+    volume: string;
+    pullback: string;
+    criticalLevel: string;
+    trend: string;
+    patience: string;
+    trigger: string;
+    patienceCandle: Record<string, number | boolean> | null;
+    triggerCandle: Record<string, number | boolean> | null;
+    patienceCandleOpenTime: string | null;
+    patienceCandleCloseTime: string | null;
+    triggerCandleOpenTime: string | null;
+    triggerCandleCloseTime: string | null;
+    entryTriggerPrice: number | null;
+    strategyStopPrice: number | null;
+    catastropheStopPrice: number | null;
+    targetPrice: number | null;
+    decision: string;
+    rejectionCategory: BacktestAuditRecord["rejectionCategory"];
+    ruleEvidence: string[];
+    finalOutcome: BacktestTrade["outcome"] | null;
+    exitCandleOpenTime: string | null;
+    exitCandleCloseTime: string | null;
+    netPnl: number | null;
+  };
+};
+
+export type QualificationFunnelComparison = {
+  dimension: "contract" | "month" | "direction" | "period" | "market_regime" | "volume_regime";
+  value: string;
+  candidateCount: number;
+  stageCounts: QualificationFunnelStageCount[];
+};
+
+export type QualificationFunnel = {
+  sessionCount: number;
+  candidateCount: number;
+  stages: QualificationFunnelStageCount[];
+  rejectionCounts: Array<{ stage: QualificationFunnelStage; count: number }>;
+  comparisons: QualificationFunnelComparison[];
+  candidates: QualificationCandidate[];
+};
+
 const MINUTE = 60_000;
 
 function money(value: number): number {
@@ -720,7 +805,7 @@ export function calculateBacktestMetrics(
   };
 }
 
-function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCount: number): BacktestSegment[] {
+export function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCount: number): BacktestSegment[] {
   const dimensions: Array<keyof BacktestSegmentation> = [
     "contract", "contractMonth", "setupType", "direction", "timeOfDay", "trend",
     "fibonacciDepth", "volumeCondition", "levelType", "confluence", "patienceCharacteristic", "orbState", "marketRegime",
@@ -822,6 +907,241 @@ function auditForEvaluation(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
+  };
+}
+
+function stageRank(stage: QualificationFunnelStage): number {
+  return QUALIFICATION_FUNNEL_STAGES.indexOf(stage);
+}
+
+function passedRule(record: BacktestAuditRecord, pattern: RegExp): boolean {
+  return record.ruleEvidence.some((evidence) => evidence.startsWith("PASS ") && pattern.test(evidence));
+}
+
+function stageEvidence(
+  record: BacktestAuditRecord,
+  trade: BacktestTrade | undefined,
+): boolean[] {
+  const ruleText = record.ruleEvidence.join(" ");
+  const marketText = `${record.breakoutEvidence} ${record.trendEvidence} ${record.pullbackEvidence}`;
+  const orbCompleted = passedRule(record, /(?:ntz|orb)/i)
+    || !/(?:NOT_COMPLETED|INCOMPLETE|WAITING)/i.test(record.orbState);
+  const strongBreakout = passedRule(record, /(?:breakout|orb|impulse|strong)/i)
+    || /(?:strong|confirmed|breakout|impulse)/i.test(record.breakoutEvidence);
+  const continuation = passedRule(record, /(?:continuation|trend|alignment|follow)/i)
+    || /(?:continuation|aligned|follow-through|follow through)/i.test(marketText);
+  const pullback = passedRule(record, /(?:pullback|consolidation|retest)/i)
+    || /(?:pullback|consolidation|retest)/i.test(record.pullbackEvidence);
+  const criticalLevel = passedRule(record, /(?:critical|level|ntz|orb)/i)
+    || (record.criticalLevelEvidence !== "No critical level evidence." && record.criticalLevelEvidence.length > 0);
+  const fibonacci = passedRule(record, /fibonacci|fib/i)
+    || /fibonacci|fib/i.test(ruleText);
+  const volume = passedRule(record, /volume/i)
+    || /supported|confirmed/i.test(record.volumeEvidence);
+  const patience = record.patienceCandle !== null
+    || /valid|confirmed|ready|aligned/i.test(record.patienceState);
+  const trigger = record.triggerCandle !== null
+    || record.modeledFillObservationTime !== null
+    || /trigger|confirmed/i.test(record.patienceState);
+  const risk = trade !== undefined
+    || (record.rejectionReason !== "RISK_REJECTED"
+      && (record.decision === "SETUP QUALIFIED" || passedRule(record, /risk|stop|target|contract|daily/i)));
+  const entry = trade !== undefined;
+  const exit = trade !== undefined && trade.exitTime.length > 0;
+  return [
+    true,
+    orbCompleted,
+    strongBreakout,
+    continuation,
+    pullback,
+    criticalLevel,
+    fibonacci,
+    volume,
+    patience,
+    trigger,
+    risk,
+    entry,
+    exit,
+  ];
+}
+
+function contiguousStage(stageFlags: readonly boolean[]): QualificationFunnelStage {
+  let rank = 0;
+  for (let index = 1; index < stageFlags.length; index += 1) {
+    if (!stageFlags[index]) break;
+    rank = index;
+  }
+  return QUALIFICATION_FUNNEL_STAGES[rank];
+}
+
+function candidateKey(record: Pick<BacktestAuditRecord, "tradingDate" | "contractSymbol" | "setupType" | "direction">): string {
+  return [
+    record.tradingDate,
+    record.contractSymbol,
+    record.setupType,
+    record.direction ?? "unknown",
+  ].join("|");
+}
+
+function candidateDimensionValue(
+  candidate: QualificationCandidate,
+  dimension: QualificationFunnelComparison["dimension"],
+): string {
+  switch (dimension) {
+    case "contract": return candidate.contractSymbol;
+    case "month": return candidate.contractMonth;
+    case "direction": return candidate.direction ?? "unknown";
+    case "period": return candidate.period;
+    case "market_regime": return candidate.marketRegime;
+    case "volume_regime": return candidate.volumeRegime;
+  }
+}
+
+function funnelStageCounts(
+  candidates: readonly QualificationCandidate[],
+  sessionCount: number,
+): QualificationFunnelStageCount[] {
+  return QUALIFICATION_FUNNEL_STAGES.map((stage, index) => {
+    const count = candidates.filter((candidate) => stageRank(candidate.reachedStage) >= index).length;
+    const preceding = index === 0
+      ? candidates.length
+      : candidates.filter((candidate) => stageRank(candidate.reachedStage) >= index - 1).length;
+    return {
+      stage,
+      count,
+      percentOfPreceding: preceding === 0 ? 0 : Number(((count / preceding) * 100).toFixed(1)),
+      percentOfSessions: sessionCount === 0 ? 0 : Number(((count / sessionCount) * 100).toFixed(1)),
+    };
+  });
+}
+
+export function buildQualificationFunnel(
+  reports: readonly Pick<BacktestReport, "audit" | "trades" | "dataset">[],
+): QualificationFunnel {
+  const allAudits = reports.flatMap((report) => report.audit);
+  const allTrades = reports.flatMap((report) => report.trades);
+  const tradesByCandidate = new Map<string, BacktestTrade>();
+  for (const trade of allTrades) {
+    tradesByCandidate.set(candidateKey(trade), trade);
+  }
+  const selectedCandidateRecords = new Map<string, BacktestAuditRecord>();
+  for (const record of allAudits) {
+    const key = candidateKey(record);
+    const existing = selectedCandidateRecords.get(key);
+    const trade = tradesByCandidate.get(key);
+    const currentRank = stageRank(contiguousStage(stageEvidence(record, trade)));
+    const existingRank = existing
+      ? stageRank(contiguousStage(stageEvidence(existing, tradesByCandidate.get(key))))
+      : -1;
+    if (!existing || currentRank > existingRank || (
+      currentRank === existingRank
+      && record.evaluatedCandleOpenTime > existing.evaluatedCandleOpenTime
+    )) {
+      selectedCandidateRecords.set(key, record);
+    }
+  }
+
+  const sessionKeys = new Set<string>();
+  for (const report of reports) {
+    for (const date of report.dataset.selectedDates) {
+      const activeContract = report.dataset.activeContractByDate?.find((item) => item.tradingDate === date)?.contractSymbol
+        ?? report.trades.find((trade) => trade.tradingDate === date)?.contractSymbol
+        ?? report.audit.find((record) => record.tradingDate === date)?.contractSymbol
+        ?? report.contract.fullContractSymbol;
+      sessionKeys.add(`${date}|${activeContract}`);
+    }
+  }
+
+  const candidates = [...selectedCandidateRecords.values()]
+    .sort((first, second) => candidateKey(first).localeCompare(candidateKey(second)))
+    .map((record): QualificationCandidate => {
+      const trade = tradesByCandidate.get(candidateKey(record));
+      const flags = stageEvidence(record, trade);
+      const reachedStage = contiguousStage(flags);
+      const firstRejectedIndex = flags.findIndex((passed, index) => index > 0 && !passed);
+      const primaryRejectionStage = firstRejectedIndex < 0 || trade
+        ? null
+        : QUALIFICATION_FUNNEL_STAGES[firstRejectedIndex];
+      const evaluatedTime = Date.parse(record.evaluatedCandleOpenTime);
+      const hourTime = Number.isFinite(evaluatedTime) ? timeOfDay(evaluatedTime) : "close";
+      const marketRegime: BacktestSegmentation["marketRegime"] = /^neutral:/i.test(record.trendEvidence)
+        ? "range"
+        : /reversal|warning|transition/i.test(`${record.trendEvidence} ${record.volumeEvidence}`)
+          ? "transition"
+          : "trend";
+      const volumeRegime: "normal" | "high" = /supported|high volume|confirmed/i.test(record.volumeEvidence)
+        ? "high"
+        : "normal";
+      return {
+        candidateId: candidateKey(record),
+        tradingDate: record.tradingDate,
+        contractSymbol: record.contractSymbol,
+        contractMonth: record.contractMonth,
+        period: record.period,
+        direction: record.direction,
+        setupType: record.setupType,
+        timeOfDay: hourTime,
+        marketRegime,
+        volumeRegime,
+        reachedStage,
+        primaryRejectionStage,
+        rejectionDetail: primaryRejectionStage ? record.rejectionSummary ?? record.rejectionReason : null,
+        evidence: {
+          evaluatedCandleOpenTime: record.evaluatedCandleOpenTime,
+          orbLevels: record.orbState,
+          breakout: record.breakoutEvidence,
+          volume: record.volumeEvidence,
+          pullback: record.pullbackEvidence,
+          criticalLevel: record.criticalLevelEvidence,
+          trend: record.trendEvidence,
+          patience: record.patienceState,
+          trigger: record.triggerCandle ? "Trigger candle completed." : "No completed trigger candle.",
+          patienceCandle: record.patienceCandle,
+          triggerCandle: record.triggerCandle,
+          patienceCandleOpenTime: record.patienceCandleOpenTime,
+          patienceCandleCloseTime: record.patienceCandleCloseTime,
+          triggerCandleOpenTime: record.triggerCandleOpenTime,
+          triggerCandleCloseTime: record.triggerCandleCloseTime,
+          entryTriggerPrice: record.entryTriggerPrice,
+          strategyStopPrice: record.strategyStopPrice,
+          catastropheStopPrice: record.catastropheStopPrice,
+          targetPrice: record.targetPrice,
+          decision: record.decision,
+          rejectionCategory: record.rejectionCategory,
+          ruleEvidence: [...record.ruleEvidence],
+          finalOutcome: trade?.outcome ?? null,
+          exitCandleOpenTime: trade?.audit?.exitCandleOpenTime ?? record.exitCandleOpenTime,
+          exitCandleCloseTime: trade?.audit?.exitCandleCloseTime ?? record.exitCandleCloseTime,
+          netPnl: trade?.netPnl ?? record.netPnl,
+        },
+      };
+    });
+  const stages = funnelStageCounts(candidates, sessionKeys.size);
+  const dimensions: QualificationFunnelComparison["dimension"][] = [
+    "contract", "month", "direction", "period", "market_regime", "volume_regime",
+  ];
+  const comparisons = dimensions.flatMap((dimension) => {
+    const values = [...new Set(candidates.map((candidate) => candidateDimensionValue(candidate, dimension)))].sort();
+    return values.map((value) => {
+      const matching = candidates.filter((candidate) => candidateDimensionValue(candidate, dimension) === value);
+      return {
+        dimension,
+        value,
+        candidateCount: matching.length,
+        stageCounts: funnelStageCounts(matching, sessionKeys.size),
+      };
+    });
+  });
+  const rejectionCounts = QUALIFICATION_FUNNEL_STAGES
+    .map((stage) => ({ stage, count: candidates.filter((candidate) => candidate.primaryRejectionStage === stage).length }))
+    .filter((item) => item.count > 0);
+  return {
+    sessionCount: sessionKeys.size,
+    candidateCount: candidates.length,
+    stages,
+    rejectionCounts,
+    comparisons,
+    candidates,
   };
 }
 
