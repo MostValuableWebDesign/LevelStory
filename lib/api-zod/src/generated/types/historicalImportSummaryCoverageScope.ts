@@ -11,4 +11,5 @@ export type HistoricalImportSummaryCoverageScope = typeof HistoricalImportSummar
 
 export const HistoricalImportSummaryCoverageScope = {
   full_file: 'full_file',
+  multi_contract: 'multi_contract',
 } as const;

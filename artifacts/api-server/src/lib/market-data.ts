@@ -360,6 +360,7 @@ export type ReplaySnapshotOptions = {
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
   ohlcvEntryBufferTicks?: 3 | 4;
   ohlcvStopBufferTicks?: number;
+  allCandlesCompleted?: boolean;
 };
 
 function latestTradingDate(calendar: ReturnType<typeof sessionCalendarForContract>): string {
@@ -417,11 +418,18 @@ export function createMarketSnapshot(
     : currentSession === "regular"
       ? "open"
       : "closed";
-  const visible = completedSimulatedCandles(allCandles, currentCursor, { clone: false });
+  const visible = completedSimulatedCandles(allCandles, currentCursor, {
+    clone: false,
+    assumeSorted: replayOptions?.allCandlesCompleted === true,
+    assumeAllCompleted: replayOptions?.allCandlesCompleted === true,
+  });
   const historicalHourly = replayOptions?.historicalHourly
     ? replayOptions.historicalHourly.filter((candle) => candle.closeTime <= currentCursor)
     : completedSimulatedHourlyCandles(
-        completedSimulatedCandles(historicalFeed, currentCursor),
+        completedSimulatedCandles(historicalFeed, currentCursor, {
+          assumeSorted: replayOptions?.allCandlesCompleted === true,
+          assumeAllCompleted: replayOptions?.allCandlesCompleted === true,
+        }),
         calendar,
       );
   const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === tradingDate);

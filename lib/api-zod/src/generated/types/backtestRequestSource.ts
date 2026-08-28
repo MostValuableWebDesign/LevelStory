@@ -12,4 +12,5 @@ export type BacktestRequestSource = typeof BacktestRequestSource[keyof typeof Ba
 export const BacktestRequestSource = {
   simulated: 'simulated',
   historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;

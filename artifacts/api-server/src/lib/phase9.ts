@@ -23,6 +23,7 @@ import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecu
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
+import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -80,9 +81,19 @@ export type CausalReplayDataset = {
   requestedEndDate?: string;
   selectedDates?: readonly string[];
   excludedDates?: readonly string[];
-  source?: "simulated" | "historical_databento";
+  source?: "simulated" | "historical_databento" | "historical_databento_multicontract";
   quotesAvailable?: boolean;
   gapReport?: BacktestGapReport;
+  contractSchedule?: {
+    version: string;
+    activeContractByDate: readonly { tradingDate: string; contractSymbol: string }[];
+    boundaries: readonly {
+      effectiveDate: string;
+      fromContractSymbol: string | null;
+      toContractSymbol: string;
+      scheduleVersion: string;
+    }[];
+  };
 };
 
 export type BacktestGapReport = {
@@ -101,7 +112,7 @@ export type BacktestGapReport = {
   earlyCloseMinutes: number;
   inactiveContractMinutes: number;
   lowLiquidityInactiveMinutes: number;
-  coverageScope: "full_file" | "selected_dates";
+  coverageScope: "full_file" | "selected_dates" | "multi_contract";
   inactiveContractThresholdPercent: number;
   inactiveContractDays: number;
   missingRegularSessionDates: string[];
@@ -124,7 +135,7 @@ export type ReplayDatasetOptions = {
 export type BacktestRequest = ReplayDatasetOptions & {
   symbol: string;
   startDate?: string;
-  source?: "simulated" | "historical_databento";
+  source?: "simulated" | "historical_databento" | "historical_databento_multicontract";
   targetDollars?: number;
   slippageMode?: "normal" | "fast" | "abnormal_spread";
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
@@ -287,7 +298,7 @@ export type BacktestSegment = BacktestMetrics & {
 
 export type BacktestReport = {
   mode: "SHADOW MODE — NO LIVE ORDERS";
-  dataSource: "simulated" | "historical_databento";
+  dataSource: "simulated" | "historical_databento" | "historical_databento_multicontract";
   symbol: string;
   contract: FuturesContractSpecification;
   dataResolution: "tick" | "one-minute-fallback";
@@ -302,6 +313,14 @@ export type BacktestReport = {
     excludedDates: string[];
     untouchedOutOfSample: true;
     optimizationApplied: false;
+    scheduleVersion?: string | null;
+    rolloverBoundaries?: readonly {
+      effectiveDate: string;
+      fromContractSymbol: string | null;
+      toContractSymbol: string;
+      scheduleVersion: string;
+    }[];
+    activeContractByDate?: readonly { tradingDate: string; contractSymbol: string }[];
   };
   replay: ReplayCursor & {
     totalCandleCount: number;
@@ -819,7 +838,9 @@ export function runCausalBacktest(
   if (executionMode === "quote_based_shadow" && dataset.quotesAvailable === false) {
     throw new Error("Quote-based Shadow execution requires genuine bid/ask data; this dataset is OHLCV-only.");
   }
-  if (executionMode === "ohlcv_modeled" && dataset.source !== "historical_databento" && dataset.quotesAvailable !== false) {
+  if (executionMode === "ohlcv_modeled"
+    && !["historical_databento", "historical_databento_multicontract"].includes(dataset.source ?? "")
+    && dataset.quotesAvailable !== false) {
     throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
   }
   const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 4;
@@ -830,28 +851,73 @@ export function runCausalBacktest(
   const candles = sortedCandles(dataset.candles);
   const ticks = dataset.ticks ?? [];
   const oneMinute = dataset.oneMinute ?? candles.flatMap(buildSyntheticOneMinuteBars);
-  const historicalHourly: SimulatedHourlyCandle[] = completedSimulatedHourlyCandles(candles, calendar);
+  const candleSymbolByOpenTime = new Map(candles.map((item) => [item.openTime, item.contractSymbol]));
+  const candleIndexByOpenTime = new Map(candles.map((item, index) => [item.openTime, index]));
+  const candlesByContract = new Map<string, SimulatedFuturesCandle[]>();
+  for (const item of candles) {
+    const partition = candlesByContract.get(item.contractSymbol) ?? [];
+    partition.push(item);
+    candlesByContract.set(item.contractSymbol, partition);
+  }
+  const finalRegularIndexByContractDate = new Map<string, number>();
+  for (const [index, item] of candles.entries()) {
+    const date = tradingDateForTimestamp(item.openTime, calendar);
+    const window = sessionWindow(date, "regular", calendar);
+    if (item.isComplete && window && item.openTime >= window.openTime && item.closeTime <= window.closeTime) {
+      finalRegularIndexByContractDate.set(`${item.contractSymbol}:${date}`, index);
+    }
+  }
   const rejectedByPeriod = { in_sample: 0, out_of_sample: 0 };
   const trades: BacktestTrade[] = [];
   const audit: BacktestAuditRecord[] = [];
-  const historicalContractSymbol = dataset.source === "historical_databento"
+  const historicalContractSymbol = dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
     ? dataset.contractSymbol
     : specification.fullContractSymbol;
-  const reportContract = dataset.source === "historical_databento"
+  const reportContract = dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
     ? { ...specification, fullContractSymbol: dataset.contractSymbol }
     : specification;
   let lastExitIndex = -1;
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
+  let previousContractSymbol: string | null = null;
 
   for (let index = 0; index < candles.length; index += 1) {
     const candle = candles[index];
+    const currentContractSymbol = dataset.contractSchedule
+      ? candle.contractSymbol
+      : historicalContractSymbol;
+    const currentContractMonth = dataset.contractSchedule
+      ? parseMesContractSymbol(currentContractSymbol)?.contractMonth ?? dataset.contractMonth
+      : dataset.contractMonth;
+    if (dataset.contractSchedule && previousContractSymbol !== null && previousContractSymbol !== currentContractSymbol) {
+      // Never carry a position, indicators, or execution state through a
+      // scheduled contract boundary.
+      lastExitIndex = index - 1;
+    }
+    previousContractSymbol = currentContractSymbol;
+    const contractCandles = dataset.contractSchedule
+      ? candlesByContract.get(currentContractSymbol) ?? []
+      : candles;
+    const contractCandleIndex = contractCandles.findIndex((item) => item.openTime === candle.openTime);
+    const visibleContractCandles = contractCandles.slice(0, Math.max(0, contractCandleIndex) + 1);
+    const contractOneMinute = dataset.contractSchedule
+      ? oneMinute.filter((item) => {
+          return candleSymbolByOpenTime.get(item.openTime) === currentContractSymbol;
+        })
+      : oneMinute;
+    const historicalHourly = completedSimulatedHourlyCandles(contractCandles, calendar);
     const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
     const period = periodForDate(tradingDate, dataset);
     const regularWindow = sessionWindow(tradingDate, "regular", calendar);
     if (!regularWindow || candle.openTime < regularWindow.openTime || candle.openTime >= regularWindow.closeTime) continue;
      if (!candle.isComplete || !candle.closeTime) continue;
      const positionActive = lastExitIndex >= index;
-    const cursor = createCausalReplay(dataset, candle.closeTime);
+    const cursor = {
+      cursor: candle.closeTime,
+      visibleCandleCount: visibleContractCandles.length,
+      visibleCandleCloseTime: visibleContractCandles.at(-1)?.closeTime ?? null,
+      mode: "replay" as const,
+      candles: visibleContractCandles,
+    };
     assertCausalVisibility(cursor.candles, candle.closeTime);
     finalReplay = cursor;
     const snapshot = createMarketSnapshot(
@@ -863,9 +929,10 @@ export function runCausalBacktest(
       {
         tradingDate,
         cursor: candle.closeTime,
-        allCandles: dataset.candles,
-        historicalFeed: dataset.candles,
+        allCandles: visibleContractCandles,
+        historicalFeed: visibleContractCandles,
         historicalHourly,
+        allCandlesCompleted: true,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
         ohlcvEntryBufferTicks: executionMode === "ohlcv_modeled" ? entryBufferTicks : undefined,
@@ -881,8 +948,8 @@ export function runCausalBacktest(
         tradingDate,
         period,
         executionMode,
-        historicalContractSymbol,
-        dataset.contractMonth,
+        currentContractSymbol,
+        currentContractMonth,
       );
       audit.push(record);
       return record;
@@ -914,11 +981,11 @@ export function runCausalBacktest(
     if (executionMode === "ohlcv_modeled") {
       const patienceSummary = snapshot.patience.patienceCandle;
       const triggerSummary = snapshot.patience.triggerCandle;
-      const trigger = triggerSummary
-        ? candles.find((item) => item.openTime === Date.parse(triggerSummary.openTime) && item.isComplete)
+       const trigger = triggerSummary
+         ? contractCandles.find((item) => item.openTime === Date.parse(triggerSummary.openTime) && item.isComplete)
         : undefined;
       const patienceCandle = patienceSummary
-        ? candles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
+         ? contractCandles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
         : undefined;
       if (!trigger || !patienceCandle || trigger.closeTime > candle.closeTime) {
         if (selectedAudit) setAuditRejection(selectedAudit, "PATIENCE_TRIGGER_NOT_COMPLETED", "The required patience trigger was not complete at this candle.");
@@ -945,13 +1012,13 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
         continue;
       }
-      const triggerIndex = candles.indexOf(trigger);
-      const postTrigger = candles
+       const triggerIndex = contractCandles.indexOf(trigger);
+       const postTrigger = contractCandles
         .slice(triggerIndex + 1)
         .filter((item) => tradingDateForTimestamp(item.openTime, calendar) === tradingDate
           && item.isComplete
           && item.closeTime <= regularWindow.closeTime);
-      const sessionCloseCandle = [...candles]
+       const sessionCloseCandle = [...contractCandles]
         .filter((item) => item.isComplete
           && tradingDateForTimestamp(item.openTime, calendar) === tradingDate
           && item.openTime >= regularWindow.openTime
@@ -995,12 +1062,12 @@ export function runCausalBacktest(
           ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
           : modeled.exitReason === "session_close" ? "session close" : "manual";
        const ambiguityLabel = modeled.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
-      const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, historicalContractSymbol, dataset.contractMonth);
+      const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, currentContractSymbol, currentContractMonth);
       trades.push({
         id: `${tradingDate}-${triggerIndex}-${selected.setupType}-ohlcv`,
         tradingDate,
-        contractSymbol: historicalContractSymbol,
-        contractMonth: dataset.contractMonth,
+        contractSymbol: currentContractSymbol,
+        contractMonth: currentContractMonth,
         period,
         setupType: selected.setupType,
         direction: selected.direction,
@@ -1061,7 +1128,7 @@ export function runCausalBacktest(
         selectedAudit.netPnl = modeled.accounting.netPnl;
         selectedAudit.exitReason = modeled.exitReason;
       }
-      lastExitIndex = Math.max(lastExitIndex, candles.findIndex((item) => item.openTime === exitCandle.openTime));
+       lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);
       continue;
     }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
@@ -1084,14 +1151,7 @@ export function runCausalBacktest(
     }
     let exitIndex = index + 1;
     let resolution: IntrabarResolution = { status: "open", source: "ohlc", timestamp: null, price: null, ambiguityLabel: null, detail: "Trade remains open." };
-    const finalRegularIndex = candles.reduce((latest, item, itemIndex) => {
-      const itemDate = tradingDateForTimestamp(item.openTime, calendar);
-      return item.isComplete && itemDate === tradingDate
-        && item.openTime >= regularWindow.openTime
-        && item.closeTime <= regularWindow.closeTime
-        ? itemIndex
-        : latest;
-    }, index);
+    const finalRegularIndex = finalRegularIndexByContractDate.get(`${currentContractSymbol}:${tradingDate}`) ?? index;
     for (; exitIndex <= finalRegularIndex; exitIndex += 1) {
       const next = candles[exitIndex];
       resolution = resolveIntrabarOutcome({
@@ -1100,7 +1160,7 @@ export function runCausalBacktest(
         stop: snapshot.riskPlan.catastropheStop ?? snapshot.riskPlan.strategyStop,
         candle: next,
         ticks,
-        oneMinute,
+        oneMinute: contractOneMinute,
       });
       if (resolution.status !== "open") break;
     }
@@ -1138,12 +1198,12 @@ export function runCausalBacktest(
          ? ["STRATEGY_STOP_REACHED", ...(snapshot.riskPlan.catastropheStop !== null ? ["CATASTROPHE_STOP_REACHED"] : []), ...(resolution.status === "ambiguous" ? ["AMBIGUOUS_STOP_FIRST"] : [])]
          : ["SESSION_CLOSE"];
      const ambiguityLabels = resolution.ambiguityLabel ? [resolution.ambiguityLabel] : [];
-    const segment = segmentation(snapshot, selected.setupType, selected.direction, candle, historicalContractSymbol, dataset.contractMonth);
+    const segment = segmentation(snapshot, selected.setupType, selected.direction, candle, currentContractSymbol, currentContractMonth);
     trades.push({
       id: `${tradingDate}-${index}-${selected.setupType}`,
       tradingDate,
-      contractSymbol: historicalContractSymbol,
-      contractMonth: dataset.contractMonth,
+      contractSymbol: currentContractSymbol,
+      contractMonth: currentContractMonth,
       period,
       setupType: selected.setupType,
       direction: selected.direction,
@@ -1203,7 +1263,9 @@ export function runCausalBacktest(
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
-    symbol: dataset.source === "historical_databento" ? historicalContractSymbol : specification.rootSymbol,
+    symbol: dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
+      ? historicalContractSymbol
+      : specification.rootSymbol,
     contract: reportContract,
     dataResolution: dataset.ticks?.length ? "tick" : "one-minute-fallback",
     dataset: {
@@ -1217,6 +1279,13 @@ export function runCausalBacktest(
       excludedDates: [...(dataset.excludedDates ?? [])],
       untouchedOutOfSample: true,
       optimizationApplied: false,
+      scheduleVersion: dataset.contractSchedule?.version ?? null,
+      rolloverBoundaries: dataset.contractSchedule?.boundaries
+        ? [...dataset.contractSchedule.boundaries]
+        : [],
+      activeContractByDate: dataset.contractSchedule?.activeContractByDate
+        ? [...dataset.contractSchedule.activeContractByDate]
+        : [],
     },
     replay: {
       ...finalReplay,

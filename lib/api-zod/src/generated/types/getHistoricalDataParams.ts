@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GetHistoricalDataSource } from './getHistoricalDataSource';
 import type { GetHistoricalDataSymbol } from './getHistoricalDataSymbol';
 
 export type GetHistoricalDataParams = {
 symbol?: GetHistoricalDataSymbol;
+source?: GetHistoricalDataSource;
 };

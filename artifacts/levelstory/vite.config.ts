@@ -49,14 +49,19 @@ function isBlockedRequestUrl(requestUrl: string | undefined): boolean {
       break;
     }
   }
-  const path = pathname.replaceAll("\\", "/").toLowerCase();
+  let path = pathname.replaceAll("\\", "/").toLowerCase();
+  const normalizedBasePath = basePath.toLowerCase().replace(/\/+$/, "");
+  if (normalizedBasePath && (path === normalizedBasePath || path.startsWith(`${normalizedBasePath}/`))) {
+    path = path.slice(normalizedBasePath.length) || "/";
+  }
+  if (path.startsWith("/")) path = path.slice(1);
+  path = `/${path}`;
   return path.includes("/@fs/")
     || path.includes("/attached_assets/")
     || path.includes("/artifacts/api-server/src/")
     || path.includes("/workspace/")
     || path.endsWith(".csv")
-    || path === "/.env"
-    || path.startsWith("/.env.")
+    || /(^|\/)\.env(?:$|\.)/.test(path)
     || /(^|\/)(manifest|metadata)\.json$/.test(path);
 }
 

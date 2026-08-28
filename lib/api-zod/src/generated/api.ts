@@ -732,7 +732,7 @@ export const RunBacktestBody = zod.object({
   "premarketAvailable": zod.boolean().default(runBacktestBodyPremarketAvailableDefault),
   "targetDollars": zod.number().min(runBacktestBodyTargetDollarsMin).max(runBacktestBodyTargetDollarsMax).default(runBacktestBodyTargetDollarsDefault),
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(runBacktestBodySourceDefault),
+  "source": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']).default(runBacktestBodySourceDefault),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
   "ohlcvEntryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]).default(runBacktestBodyOhlcvEntryBufferTicksDefault),
   "ohlcvStopBufferTicks": zod.number().min(1).max(runBacktestBodyOhlcvStopBufferTicksMax).default(runBacktestBodyOhlcvStopBufferTicksDefault),
@@ -759,7 +759,7 @@ export const runBacktestResponseGapReportWeekendHolidayGapMinutesMin = 0;
 
 export const RunBacktestResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
-  "dataSource": zod.enum(['simulated', 'historical_databento']),
+  "dataSource": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']),
   "symbol": zod.string(),
   "contract": zod.object({
   "rootSymbol": zod.string(),
@@ -797,7 +797,18 @@ export const RunBacktestResponse = zod.object({
   "outOfSampleDates": zod.array(zod.string()),
   "excludedDates": zod.array(zod.string()),
   "untouchedOutOfSample": zod.literal(true),
-  "optimizationApplied": zod.literal(false)
+  "optimizationApplied": zod.literal(false),
+  "scheduleVersion": zod.string().nullish(),
+  "rolloverBoundaries": zod.array(zod.object({
+  "effectiveDate": zod.string(),
+  "fromContractSymbol": zod.string().nullable(),
+  "toContractSymbol": zod.string(),
+  "scheduleVersion": zod.string()
+})).optional(),
+  "activeContractByDate": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string()
+})).optional()
 }),
   "replay": zod.object({
   "cursor": zod.number(),
@@ -1201,9 +1212,11 @@ export const GetBacktestAuditPageResponse = zod.object({
  * @summary Get the imported historical Databento CSV result
  */
 export const getHistoricalDataQuerySymbolDefault = `MES`;
+export const getHistoricalDataQuerySourceDefault = `historical_databento`;
 
 export const GetHistoricalDataQueryParams = zod.object({
-  "symbol": zod.enum(['MES']).default(getHistoricalDataQuerySymbolDefault)
+  "symbol": zod.enum(['MES']).default(getHistoricalDataQuerySymbolDefault),
+  "source": zod.enum(['historical_databento', 'historical_databento_multicontract']).default(getHistoricalDataQuerySourceDefault)
 })
 
 export const getHistoricalDataResponseInactiveContractThresholdPercentMin = 0;
@@ -1218,7 +1231,7 @@ export const getHistoricalDataResponseWeekendHolidayGapMinutesMin = 0;
 
 
 export const GetHistoricalDataResponse = zod.object({
-  "source": zod.enum(['historical_databento']),
+  "source": zod.enum(['historical_databento', 'historical_databento_multicontract']),
   "filename": zod.string(),
   "detectedSymbol": zod.string().nullable(),
   "earliestTimestamp": zod.coerce.date().nullable(),
@@ -1242,7 +1255,7 @@ export const GetHistoricalDataResponse = zod.object({
   "earlyCloseMinutes": zod.number(),
   "inactiveContractMinutes": zod.number(),
   "lowLiquidityInactiveMinutes": zod.number(),
-  "coverageScope": zod.enum(['full_file']),
+  "coverageScope": zod.enum(['full_file', 'multi_contract']),
   "inactiveContractThresholdPercent": zod.number().min(getHistoricalDataResponseInactiveContractThresholdPercentMin).max(getHistoricalDataResponseInactiveContractThresholdPercentMax),
   "inactiveContractDays": zod.number().min(getHistoricalDataResponseInactiveContractDaysMin),
   "missingRegularSessionDates": zod.array(zod.string()),
@@ -1265,7 +1278,40 @@ export const GetHistoricalDataResponse = zod.object({
   "fiveMinute": zod.number(),
   "fifteenMinute": zod.number(),
   "oneHour": zod.number()
-})
+}),
+  "scheduleVersion": zod.string().nullish(),
+  "acceptedContracts": zod.array(zod.string()).optional(),
+  "inactiveContracts": zod.array(zod.string()).optional(),
+  "rejectedFiles": zod.array(zod.object({
+  "filename": zod.string(),
+  "reason": zod.string()
+})).optional(),
+  "files": zod.array(zod.object({
+  "filename": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "contentFingerprint": zod.string(),
+  "earliestTimestamp": zod.coerce.date().nullable(),
+  "latestTimestamp": zod.coerce.date().nullable(),
+  "totalRows": zod.number(),
+  "validRows": zod.number(),
+  "rejectedRows": zod.number(),
+  "availableTradingDates": zod.array(zod.string()),
+  "activeSelectedDates": zod.array(zod.string()),
+  "selected": zod.boolean(),
+  "status": zod.enum(['accepted', 'inactive', 'rejected']),
+  "rejectionReason": zod.string().nullable()
+})).optional(),
+  "rolloverBoundaries": zod.array(zod.object({
+  "effectiveDate": zod.string(),
+  "fromContractSymbol": zod.string().nullable(),
+  "toContractSymbol": zod.string(),
+  "scheduleVersion": zod.string()
+})).optional(),
+  "activeContractByDate": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string()
+})).optional()
 })
 
 

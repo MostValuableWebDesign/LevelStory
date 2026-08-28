@@ -11,4 +11,5 @@ export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource
 
 export const HistoricalImportSummarySource = {
   historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;

@@ -278,6 +278,13 @@ paths:
             type: string
             enum: [MES]
             default: MES
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [historical_databento, historical_databento_multicontract]
+            default: historical_databento
       responses:
         "200":
           description: Historical CSV import result
@@ -1813,7 +1820,7 @@ components:
           default: normal
         source:
           type: string
-          enum: [simulated, historical_databento]
+          enum: [simulated, historical_databento, historical_databento_multicontract]
           default: simulated
         executionMode:
           type: string
@@ -1841,7 +1848,7 @@ components:
     HistoricalImportSummary:
       type: object
       properties:
-        source: { type: string, enum: [historical_databento] }
+        source: { type: string, enum: [historical_databento, historical_databento_multicontract] }
         filename: { type: string }
         detectedSymbol: { type: ["string", "null"] }
         earliestTimestamp: { type: ["string", "null"], format: date-time }
@@ -1865,7 +1872,7 @@ components:
         earlyCloseMinutes: { type: number }
         inactiveContractMinutes: { type: number }
         lowLiquidityInactiveMinutes: { type: number }
-        coverageScope: { type: string, enum: [full_file] }
+        coverageScope: { type: string, enum: [full_file, multi_contract] }
         inactiveContractThresholdPercent: { type: number, minimum: 0, maximum: 100 }
         inactiveContractDays: { type: number, minimum: 0 }
         missingRegularSessionDates: { type: array, items: { type: string } }
@@ -1895,6 +1902,59 @@ components:
             fifteenMinute: { type: number }
             oneHour: { type: number }
           required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
+        scheduleVersion: { type: ["string", "null"] }
+        acceptedContracts:
+          type: array
+          items: { type: string }
+        inactiveContracts:
+          type: array
+          items: { type: string }
+        rejectedFiles:
+          type: array
+          items:
+            type: object
+            properties:
+              filename: { type: string }
+              reason: { type: string }
+            required: [filename, reason]
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              filename: { type: string }
+              contractSymbol: { type: string }
+              contractMonth: { type: string }
+              contentFingerprint: { type: string }
+              earliestTimestamp: { type: ["string", "null"], format: date-time }
+              latestTimestamp: { type: ["string", "null"], format: date-time }
+              totalRows: { type: number }
+              validRows: { type: number }
+              rejectedRows: { type: number }
+              availableTradingDates: { type: array, items: { type: string } }
+              activeSelectedDates: { type: array, items: { type: string } }
+              selected: { type: boolean }
+              status: { type: string, enum: [accepted, inactive, rejected] }
+              rejectionReason: { type: ["string", "null"] }
+            required: [filename, contractSymbol, contractMonth, contentFingerprint, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, availableTradingDates, activeSelectedDates, selected, status, rejectionReason]
+        rolloverBoundaries:
+          type: array
+          items:
+            type: object
+            properties:
+              effectiveDate: { type: string }
+              fromContractSymbol: { type: ["string", "null"] }
+              toContractSymbol: { type: string }
+              scheduleVersion: { type: string }
+            required: [effectiveDate, fromContractSymbol, toContractSymbol, scheduleVersion]
+        activeContractByDate:
+          type: array
+          items:
+            type: object
+            properties:
+              tradingDate: { type: string }
+              contractSymbol: { type: string }
+            required: [tradingDate, contractSymbol]
       required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
     BacktestMetricSet:
       type: object
@@ -2087,7 +2147,7 @@ components:
       type: object
       properties:
         mode: { type: string, enum: ["SHADOW MODE — NO LIVE ORDERS"] }
-        dataSource: { type: string, enum: [simulated, historical_databento] }
+        dataSource: { type: string, enum: [simulated, historical_databento, historical_databento_multicontract] }
         symbol: { type: string }
         contract: { $ref: "#/components/schemas/FuturesContractSpecification" }
         dataResolution: { type: string, enum: [tick, one-minute-fallback] }
@@ -2104,6 +2164,25 @@ components:
             excludedDates: { type: array, items: { type: string } }
             untouchedOutOfSample: { type: boolean, enum: [true] }
             optimizationApplied: { type: boolean, enum: [false] }
+            scheduleVersion: { type: ["string", "null"] }
+            rolloverBoundaries:
+              type: array
+              items:
+                type: object
+                properties:
+                  effectiveDate: { type: string }
+                  fromContractSymbol: { type: ["string", "null"] }
+                  toContractSymbol: { type: string }
+                  scheduleVersion: { type: string }
+                required: [effectiveDate, fromContractSymbol, toContractSymbol, scheduleVersion]
+            activeContractByDate:
+              type: array
+              items:
+                type: object
+                properties:
+                  tradingDate: { type: string }
+                  contractSymbol: { type: string }
+                required: [tradingDate, contractSymbol]
           required: [startDate, endDate, requestedStartDate, requestedEndDate, selectedDates, inSampleDates, outOfSampleDates, excludedDates, untouchedOutOfSample, optimizationApplied]
         replay:
           type: object

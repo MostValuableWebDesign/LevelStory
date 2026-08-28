@@ -6,11 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type BacktestReportDataSource = typeof BacktestReportDataSource[keyof typeof BacktestReportDataSource];
+export type GetHistoricalDataSource = typeof GetHistoricalDataSource[keyof typeof GetHistoricalDataSource];
 
 
-export const BacktestReportDataSource = {
-  simulated: 'simulated',
+export const GetHistoricalDataSource = {
   historical_databento: 'historical_databento',
   historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;

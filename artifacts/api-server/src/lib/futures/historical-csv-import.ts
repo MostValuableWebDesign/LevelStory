@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
@@ -209,7 +209,7 @@ function overnightOwnerDate(timestamp: number, calendar: FuturesSessionCalendar)
   return null;
 }
 
-function countSessionAwareGaps(
+export function countSessionAwareGaps(
   candles: readonly NormalizedCandle[],
   calendar: FuturesSessionCalendar,
 ): {
@@ -502,7 +502,9 @@ async function resolveImportPath(): Promise<string> {
     try {
       const files = await readdir(assetsDirectory);
       const match = files
-        .filter((file) => file.endsWith(".csv") && file.startsWith(DEFAULT_FILENAME_PREFIX) && file.includes("MESU6"))
+        .filter((file) => file.endsWith(".csv")
+          && file.startsWith(DEFAULT_FILENAME_PREFIX)
+          && /^glbx-mdp3-.*\.ohlcv-1m\.MESU6(?:_\d+)?\.csv$/.test(file))
         .sort()[0];
       if (match) return boundedCsvPath(join(assetsDirectory, match));
     } catch (error) {
@@ -515,6 +517,12 @@ async function resolveImportPath(): Promise<string> {
 export async function importHistoricalCsv(
   filePath: string,
   specification: FuturesContractSpecification,
+  options: {
+    analyzeCoverage?: boolean;
+    aggregations?: readonly (5 | 15 | 60)[];
+    fastParse?: boolean;
+    contentFingerprint?: string;
+  } = {},
 ): Promise<HistoricalCsvImport> {
   const calendar = sessionCalendarForContract(specification);
   const summary: HistoricalCsvImportSummary = {
@@ -563,70 +571,88 @@ export async function importHistoricalCsv(
   const tradingDates = new Set<string>();
   let headers: string[] | null = null;
   let previousTimestamp: number | null = null;
+  const fastDateCache = new Map<number, string>();
+  const fastSessionCache = new Map<number, string>();
+  const tradingDateForRow = (timestamp: number): string => {
+    if (!options.fastParse) return tradingDateForTimestamp(timestamp, calendar);
+    const hour = Math.floor(timestamp / (60 * MINUTE));
+    const cached = fastDateCache.get(hour);
+    if (cached) return cached;
+    const date = tradingDateForTimestamp(timestamp, calendar);
+    fastDateCache.set(hour, date);
+    return date;
+  };
+  const sessionForRow = (timestamp: number): string => {
+    if (!options.fastParse) return classifyFuturesSession(timestamp, calendar);
+    const hour = Math.floor(timestamp / (60 * MINUTE));
+    const cached = fastSessionCache.get(hour);
+    if (cached) return cached;
+    const session = classifyFuturesSession(timestamp, calendar);
+    fastSessionCache.set(hour, session);
+    return session;
+  };
 
-  const fileStream = createReadStream(filePath);
+  const fileStream = options.fastParse ? null : createReadStream(filePath);
   const contentHash = createHash("sha256");
-  fileStream.on("data", (chunk) => contentHash.update(chunk));
-  const input = createInterface({ input: fileStream, crlfDelay: Infinity });
-  for await (const rawLine of input) {
+  const processLine = (rawLine: string): void => {
     const line = String(rawLine).trim();
-    if (!line) continue;
+    if (!line) return;
     const values = parseCsvLine(line);
     if (!headers) {
       if (!values) throw new Error("CSV header contains an unterminated quoted field.");
       headers = values.map((header) => header.toLowerCase());
       const missing = REQUIRED_HEADERS.filter((header) => !headers!.includes(header));
       if (missing.length) throw new Error(`CSV is missing required Databento columns: ${missing.join(", ")}.`);
-      continue;
+      return;
     }
     summary.totalRows += 1;
     const row = summary.totalRows + 1;
     if (!values || values.length !== headers.length) {
       reasonFor(summary, row, "MALFORMED_ROW");
-      continue;
+      return;
     }
     const record = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
     const timestampValue = record["ts_event"] || record["timestamp"] || record["event_time"] || "";
     const symbol = record["symbol"]?.trim() ?? "";
     if (!validIsoTimestamp(timestampValue)) {
       reasonFor(summary, row, "INVALID_ISO_TIMESTAMP");
-      continue;
+      return;
     }
     if (symbol.includes("-")) {
       reasonFor(summary, row, "CALENDAR_SPREAD_REJECTED");
-      continue;
+      return;
     }
     if (!outrightMesSymbol(symbol)) {
       reasonFor(summary, row, "NON_MES_OUTRIGHT_SYMBOL");
-      continue;
+      return;
     }
     if (summary.detectedSymbol === null) summary.detectedSymbol = symbol;
     if (symbol !== summary.detectedSymbol) {
       reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
-      continue;
+      return;
     }
     const numericValues = ["open", "high", "low", "close", "volume"].map((key) => requiredNumber(record[key] ?? ""));
     if (numericValues.some((value) => value === null)) {
       reasonFor(summary, row, "NON_NUMERIC_OHLCV");
-      continue;
+      return;
     }
     const [open, high, low, close, volume] = numericValues as number[];
     if (high < open || high < close || high < low || low > open || low > close || low > high) {
       reasonFor(summary, row, "INVALID_OHLC_RELATIONSHIP");
-      continue;
+      return;
     }
     if (volume < 0) {
       reasonFor(summary, row, "NEGATIVE_VOLUME");
-      continue;
+      return;
     }
     const timestamp = Date.parse(timestampValue);
     if (previousTimestamp !== null && timestamp < previousTimestamp) {
       reasonFor(summary, row, "OUT_OF_ORDER_TIMESTAMP");
-      continue;
+      return;
     }
     if (previousTimestamp !== null && timestamp === previousTimestamp) {
       summary.duplicateRowsRemoved += 1;
-      continue;
+      return;
     }
     previousTimestamp = timestamp;
     const candle: NormalizedCandle = {
@@ -651,18 +677,33 @@ export async function importHistoricalCsv(
     summary.validRows += 1;
     summary.earliestTimestamp ??= new Date(timestamp).toISOString();
     summary.latestTimestamp = new Date(timestamp).toISOString();
-    const date = tradingDateForTimestamp(timestamp, calendar);
+    const date = tradingDateForRow(timestamp);
     if (isTradingDate(date, calendar)) tradingDates.add(date);
-    if (classifyFuturesSession(timestamp, calendar) === "regular") summary.regularSessionCandleCount += 1;
+    if (sessionForRow(timestamp) === "regular") summary.regularSessionCandleCount += 1;
     else if (overnightOwnerDate(timestamp, calendar)) summary.overnightCandleCount += 1;
+  };
+  if (options.fastParse) {
+    const content = await readFile(filePath, "utf8");
+    contentHash.update(content);
+    for (const rawLine of content.split(/\r?\n/)) processLine(rawLine);
+  } else {
+    fileStream!.on("data", (chunk) => contentHash.update(chunk));
+    const input = createInterface({ input: fileStream!, crlfDelay: Infinity });
+    for await (const rawLine of input) processLine(String(rawLine));
   }
   if (!headers) throw new Error("CSV file is empty.");
-  const gapReport = countSessionAwareGaps(candles, calendar);
+  const gapReport = options.analyzeCoverage === false
+    ? {
+        ...countSessionAwareGaps([], calendar),
+        coverageScope: "full_file" as const,
+      }
+    : countSessionAwareGaps(candles, calendar);
   Object.assign(summary, gapReport);
   summary.availableTradingDates = [...tradingDates].sort();
-  const fiveMinute = aggregate(candles, 5, specification);
-  const fifteenMinute = aggregate(candles, 15, specification);
-  const oneHour = aggregate(candles, 60, specification);
+  const aggregationSet = new Set(options.aggregations ?? [5, 15, 60]);
+  const fiveMinute = aggregationSet.has(5) ? aggregate(candles, 5, specification) : [];
+  const fifteenMinute = aggregationSet.has(15) ? aggregate(candles, 15, specification) : [];
+  const oneHour = aggregationSet.has(60) ? aggregate(candles, 60, specification) : [];
   summary.aggregationCounts = {
     oneMinute: candles.length,
     fiveMinute: fiveMinute.length,
@@ -671,7 +712,7 @@ export async function importHistoricalCsv(
   };
   return {
     summary,
-    contentFingerprint: contentHash.digest("hex"),
+    contentFingerprint: options.contentFingerprint ?? contentHash.digest("hex"),
     oneMinute: candles,
     fiveMinute,
     fifteenMinute,

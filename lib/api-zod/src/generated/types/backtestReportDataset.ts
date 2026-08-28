@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestReportDatasetActiveContractByDateItem } from './backtestReportDatasetActiveContractByDateItem';
+import type { BacktestReportDatasetRolloverBoundariesItem } from './backtestReportDatasetRolloverBoundariesItem';
 
 export type BacktestReportDataset = {
   startDate: string;
@@ -17,4 +19,8 @@ export type BacktestReportDataset = {
   excludedDates: string[];
   untouchedOutOfSample: true;
   optimizationApplied: false;
+  /** @nullable */
+  scheduleVersion?: string | null;
+  rolloverBoundaries?: BacktestReportDatasetRolloverBoundariesItem[];
+  activeContractByDate?: BacktestReportDatasetActiveContractByDateItem[];
 };

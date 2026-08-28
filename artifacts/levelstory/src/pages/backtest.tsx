@@ -7,9 +7,11 @@ import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } fro
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
 
+const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
+
 function HistoricalImportResults({ data, isLoading, isError }: { data?: HistoricalImportSummary; isLoading: boolean; isError: boolean }) {
   if (isLoading) return <Panel><div className="p-6 text-center text-xs text-muted-foreground">Streaming the uploaded Databento CSV and validating each row…</div></Panel>;
-  if (isError || !data) return <Panel><div className="p-6 text-xs text-destructive">The uploaded MESU6 CSV could not be imported. Check the server-side file path and try again.</div></Panel>;
+  if (isError || !data) return <Panel><div className="p-6 text-xs text-destructive">The server-side Databento source could not be imported. Check the configured historical inputs and try again.</div></Panel>;
   const stats = [
     ["Valid rows", data.validRows.toLocaleString()],
     ["Rejected rows", data.rejectedRows.toLocaleString()],
@@ -31,8 +33,9 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     ["Regular session", data.regularSessionCandleCount.toLocaleString()],
     ["Overnight", data.overnightCandleCount.toLocaleString()],
   ];
+  const multiContract = data.source === MULTI_CONTRACT_SOURCE;
   return <Panel accent data-testid="panel-historical-import-results">
-    <PanelTitle eyebrow="File import / validation" title="Historical Databento Data — MESU6 — Shadow Mode" right={<FileCheck2 size={16} className="text-accent" />} />
+     <PanelTitle eyebrow="File import / validation" title={multiContract ? "Historical Databento Data — MES quarterly contracts — Shadow Mode" : "Historical Databento Data — MESU6 — Shadow Mode"} right={<FileCheck2 size={16} className="text-accent" />} />
     <div className="border-t border-border px-5 py-4 text-xs">
       <div className="flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground"><span>File <strong className="text-foreground">{data.filename}</strong></span><span>Symbol <strong className="mono text-foreground">{data.detectedSymbol ?? "—"}</strong></span></div>
       <div className="mt-2 text-muted-foreground">UTC range <strong className="mono text-foreground">{data.earliestTimestamp ?? "—"} → {data.latestTimestamp ?? "—"}</strong></div>
@@ -40,12 +43,17 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-3">
       {stats.map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
     </div>
-     <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
-       <p className="mb-2 text-foreground">Full-file coverage includes dates before MESU6 became active; it is not the selected backtest window.</p>
+       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
+        <p className="mb-2 text-foreground">{multiContract ? `Nine-file coverage is reported independently from the selected replay. The active contract is chosen by the explicit ${data.scheduleVersion ?? "versioned"} schedule; no price blending or back-adjustment is applied.` : "Full-file coverage includes dates before MESU6 became active; it is not the selected backtest window."}</p>
        <p>Expected closed = maintenance/daily close + weekend/holiday + early-close minutes. Unexpected missing = unexpected regular + unexpected overnight minutes. Inactive contract minutes are excluded from unexpected data loss when RTH coverage is below the configured threshold.</p>
       <div className="eyebrow mb-2">Aggregated bars</div>
       <div className="flex flex-wrap gap-x-5 gap-y-2"><span>1m <strong className="mono text-foreground">{data.aggregationCounts.oneMinute.toLocaleString()}</strong></span><span>5m <strong className="mono text-foreground">{data.aggregationCounts.fiveMinute.toLocaleString()}</strong></span><span>15m <strong className="mono text-foreground">{data.aggregationCounts.fifteenMinute.toLocaleString()}</strong></span><span>1h <strong className="mono text-foreground">{data.aggregationCounts.oneHour.toLocaleString()}</strong></span></div>
       <div className="mt-3">Available NY trading dates: <strong className="text-foreground">{data.availableTradingDates.length}</strong> ({data.availableTradingDates[0] ?? "—"} → {data.availableTradingDates.at(-1) ?? "—"})</div>
+       {multiContract && <div className="mt-4 space-y-2">
+         <div className="eyebrow">Contract coverage</div>
+         <div className="flex flex-wrap gap-x-4 gap-y-2 text-foreground">{(data.files ?? []).map((file) => <span key={file.contractSymbol} className="mono">{file.contractSymbol} <span className="text-muted-foreground">· {file.status} · {file.activeSelectedDates.length} selected dates</span></span>)}</div>
+         <div className="text-muted-foreground">Rejected inputs: <strong className="text-foreground">{data.rejectedFiles?.length ?? 0}</strong> · Inactive/outside schedule: <strong className="text-foreground">{data.inactiveContracts?.join(", ") || "none"}</strong></div>
+       </div>}
     </div>
   </Panel>;
 }
@@ -94,7 +102,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
   return <div className="space-y-5">
     <Panel accent>
       <PanelTitle eyebrow="Run integrity / causal replay" title={`${report.symbol} · ${report.contract.fullContractSymbol}`} right={<span className="mono text-[10px] text-muted-foreground">{report.dataResolution}</span>} />
-       <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6" : "Simulated demo data"} — {report.executionMode === "ohlcv_modeled" ? "Modeled OHLCV execution" : "Shadow Mode"}</strong><span className="ml-2 text-muted-foreground">{report.fillLabel}</span></div>
+       <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === MULTI_CONTRACT_SOURCE ? "Historical Databento Data — MES quarterly contracts" : report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6" : "Simulated demo data"} — {report.executionMode === "ohlcv_modeled" ? "Modeled OHLCV execution" : "Shadow Mode"}</strong><span className="ml-2 text-muted-foreground">{report.fillLabel}</span></div>
        <div className="grid gap-px border-t border-border bg-border sm:grid-cols-6">
         {[
           ["Dataset", `${report.dataset.startDate} → ${report.dataset.endDate}`],
@@ -115,6 +123,10 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
            <span>Selected <strong className="mono text-foreground">{report.dataset.selectedDates.join(", ") || "—"}</strong></span>
            <span>Excluded <strong className="mono text-foreground">{report.dataset.excludedDates.join(", ") || "none"}</strong></span>
          </div>
+          {report.dataset.scheduleVersion && <div className="mt-3 space-y-1">
+            <div>Rollover schedule <strong className="mono text-foreground">{report.dataset.scheduleVersion}</strong></div>
+            <div>Active contract sequence <strong className="mono text-foreground">{[...new Set((report.dataset.activeContractByDate ?? []).map((item) => item.contractSymbol))].join(" → ") || "—"}</strong></div>
+          </div>}
        </div>
       <div className="grid gap-3 border-t border-border p-5 text-xs sm:grid-cols-3">
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Causal cursor enforced</div>
@@ -262,7 +274,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
 
 export default function Backtest() {
   const [symbol, setSymbol] = useState("MES");
-  const [source, setSource] = useState<"historical_databento" | "simulated">("historical_databento");
+  const [source, setSource] = useState<"historical_databento" | typeof MULTI_CONTRACT_SOURCE | "simulated">(MULTI_CONTRACT_SOURCE);
   const [startDate, setStartDate] = useState("2026-07-27");
   const [endDate, setEndDate] = useState("2026-08-26");
   const [inSampleDays, setInSampleDays] = useState("5");
@@ -276,7 +288,10 @@ export default function Backtest() {
   const [ohlcvSlippageTicks, setOhlcvSlippageTicks] = useState("1");
   const [commissionPerContract, setCommissionPerContract] = useState("");
   const run = useRunBacktest();
-  const historicalImport = useGetHistoricalData({ symbol: "MES" });
+  const historicalImport = useGetHistoricalData({
+    symbol: "MES",
+    source: source === "simulated" ? "historical_databento" : source,
+  });
 
   const request = {
     symbol,
@@ -305,11 +320,11 @@ export default function Backtest() {
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
-        {source === "historical_databento" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading} isError={historicalImport.isError} /></div>}
+        {source !== "simulated" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading} isError={historicalImport.isError} /></div>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">
-             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); setExecutionMode(next === "historical_databento" ? "ohlcv_modeled" : "quote_based_shadow"); if (next === "historical_databento") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value="historical_databento">Historical Databento CSV</option><option value="simulated">Simulated demo</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); setExecutionMode(next === "simulated" ? "quote_based_shadow" : "ohlcv_modeled"); if (next !== "simulated") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value={MULTI_CONTRACT_SOURCE}>Historical Databento — MES quarterly contracts</option><option value="historical_databento">Historical Databento CSV — MESU6</option><option value="simulated">Simulated demo</option></select></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Execution mode</span><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value as typeof executionMode)} className="field w-full" data-testid="select-backtest-execution-mode"><option value="ohlcv_modeled" disabled={source !== "historical_databento"}>Modeled OHLCV fill</option><option value="quote_based_shadow" disabled={source === "historical_databento"}>Quote-based Shadow fill</option></select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} disabled={source === "historical_databento" && item !== "MES"}>{item}</option>)}</select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-start-date" /></label>
@@ -330,7 +345,7 @@ export default function Backtest() {
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}
         {run.isError && <Panel><QueryError onRetry={() => run.mutate({ data: request })} message="The causal backtest could not be completed." /></Panel>}
-        {run.data && <ReportBody report={run.data} fullCoverage={historicalImport.data} />}
+         {run.data && <ReportBody report={run.data} fullCoverage={source === "simulated" ? undefined : historicalImport.data} />}
         {!run.isPending && !run.isError && !run.data && <Panel><div className="flex flex-col items-center gap-3 p-12 text-center"><ShieldCheck size={28} className="text-accent" /><h2 className="text-sm font-bold">Ready for a clean replay</h2><p className="max-w-md text-xs leading-5 text-muted-foreground">Choose the evaluation window, then run the locked strategy. Results will show why setups qualified, rejected, or became ambiguous.</p></div></Panel>}
         <LockedNote>Phase 9 is a research surface only. It has no broker connection, no position state, and no live or paper order path.</LockedNote>
       </div>

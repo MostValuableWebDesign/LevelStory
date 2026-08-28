@@ -1387,6 +1387,7 @@ export type BacktestRequestSource = typeof BacktestRequestSource[keyof typeof Ba
 export const BacktestRequestSource = {
   simulated: 'simulated',
   historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;
 
 /**
@@ -1466,6 +1467,7 @@ export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource
 
 export const HistoricalImportSummarySource = {
   historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;
 
 export type HistoricalImportSummaryCoverageScope = typeof HistoricalImportSummaryCoverageScope[keyof typeof HistoricalImportSummaryCoverageScope];
@@ -1473,6 +1475,7 @@ export type HistoricalImportSummaryCoverageScope = typeof HistoricalImportSummar
 
 export const HistoricalImportSummaryCoverageScope = {
   full_file: 'full_file',
+  multi_contract: 'multi_contract',
 } as const;
 
 export type HistoricalImportSummaryRejectionReasons = {[key: string]: number};
@@ -1487,6 +1490,53 @@ export type HistoricalImportSummaryAggregationCounts = {
   fiveMinute: number;
   fifteenMinute: number;
   oneHour: number;
+};
+
+export type HistoricalImportSummaryRejectedFilesItem = {
+  filename: string;
+  reason: string;
+};
+
+export type HistoricalImportSummaryFilesItemStatus = typeof HistoricalImportSummaryFilesItemStatus[keyof typeof HistoricalImportSummaryFilesItemStatus];
+
+
+export const HistoricalImportSummaryFilesItemStatus = {
+  accepted: 'accepted',
+  inactive: 'inactive',
+  rejected: 'rejected',
+} as const;
+
+export type HistoricalImportSummaryFilesItem = {
+  filename: string;
+  contractSymbol: string;
+  contractMonth: string;
+  contentFingerprint: string;
+  /** @nullable */
+  earliestTimestamp: string | null;
+  /** @nullable */
+  latestTimestamp: string | null;
+  totalRows: number;
+  validRows: number;
+  rejectedRows: number;
+  availableTradingDates: string[];
+  activeSelectedDates: string[];
+  selected: boolean;
+  status: HistoricalImportSummaryFilesItemStatus;
+  /** @nullable */
+  rejectionReason: string | null;
+};
+
+export type HistoricalImportSummaryRolloverBoundariesItem = {
+  effectiveDate: string;
+  /** @nullable */
+  fromContractSymbol: string | null;
+  toContractSymbol: string;
+  scheduleVersion: string;
+};
+
+export type HistoricalImportSummaryActiveContractByDateItem = {
+  tradingDate: string;
+  contractSymbol: string;
 };
 
 export interface HistoricalImportSummary {
@@ -1540,6 +1590,14 @@ export interface HistoricalImportSummary {
   rejectionReasons: HistoricalImportSummaryRejectionReasons;
   errors: HistoricalImportSummaryErrorsItem[];
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
+  /** @nullable */
+  scheduleVersion?: string | null;
+  acceptedContracts?: string[];
+  inactiveContracts?: string[];
+  rejectedFiles?: HistoricalImportSummaryRejectedFilesItem[];
+  files?: HistoricalImportSummaryFilesItem[];
+  rolloverBoundaries?: HistoricalImportSummaryRolloverBoundariesItem[];
+  activeContractByDate?: HistoricalImportSummaryActiveContractByDateItem[];
 }
 
 export interface BacktestMetricSet {
@@ -1994,6 +2052,7 @@ export type BacktestReportDataSource = typeof BacktestReportDataSource[keyof typ
 export const BacktestReportDataSource = {
   simulated: 'simulated',
   historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;
 
 export type BacktestReportDataResolution = typeof BacktestReportDataResolution[keyof typeof BacktestReportDataResolution];
@@ -2003,6 +2062,19 @@ export const BacktestReportDataResolution = {
   tick: 'tick',
   'one-minute-fallback': 'one-minute-fallback',
 } as const;
+
+export type BacktestReportDatasetRolloverBoundariesItem = {
+  effectiveDate: string;
+  /** @nullable */
+  fromContractSymbol: string | null;
+  toContractSymbol: string;
+  scheduleVersion: string;
+};
+
+export type BacktestReportDatasetActiveContractByDateItem = {
+  tradingDate: string;
+  contractSymbol: string;
+};
 
 export type BacktestReportDataset = {
   startDate: string;
@@ -2015,6 +2087,10 @@ export type BacktestReportDataset = {
   excludedDates: string[];
   untouchedOutOfSample: true;
   optimizationApplied: false;
+  /** @nullable */
+  scheduleVersion?: string | null;
+  rolloverBoundaries?: BacktestReportDatasetRolloverBoundariesItem[];
+  activeContractByDate?: BacktestReportDatasetActiveContractByDateItem[];
 };
 
 export type BacktestReportReplayMode = typeof BacktestReportReplayMode[keyof typeof BacktestReportReplayMode];
@@ -2270,6 +2346,7 @@ export const GetBacktestAuditPageCategory = {
 
 export type GetHistoricalDataParams = {
 symbol?: GetHistoricalDataSymbol;
+source?: GetHistoricalDataSource;
 };
 
 export type GetHistoricalDataSymbol = typeof GetHistoricalDataSymbol[keyof typeof GetHistoricalDataSymbol];
@@ -2277,6 +2354,14 @@ export type GetHistoricalDataSymbol = typeof GetHistoricalDataSymbol[keyof typeo
 
 export const GetHistoricalDataSymbol = {
   MES: 'MES',
+} as const;
+
+export type GetHistoricalDataSource = typeof GetHistoricalDataSource[keyof typeof GetHistoricalDataSource];
+
+
+export const GetHistoricalDataSource = {
+  historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;
 
 export type ListJournalEntriesParams = {

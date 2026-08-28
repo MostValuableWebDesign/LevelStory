@@ -5,10 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalImportSummaryActiveContractByDateItem } from './historicalImportSummaryActiveContractByDateItem';
 import type { HistoricalImportSummaryAggregationCounts } from './historicalImportSummaryAggregationCounts';
 import type { HistoricalImportSummaryCoverageScope } from './historicalImportSummaryCoverageScope';
 import type { HistoricalImportSummaryErrorsItem } from './historicalImportSummaryErrorsItem';
+import type { HistoricalImportSummaryFilesItem } from './historicalImportSummaryFilesItem';
+import type { HistoricalImportSummaryRejectedFilesItem } from './historicalImportSummaryRejectedFilesItem';
 import type { HistoricalImportSummaryRejectionReasons } from './historicalImportSummaryRejectionReasons';
+import type { HistoricalImportSummaryRolloverBoundariesItem } from './historicalImportSummaryRolloverBoundariesItem';
 import type { HistoricalImportSummarySource } from './historicalImportSummarySource';
 
 export interface HistoricalImportSummary {
@@ -62,4 +66,12 @@ export interface HistoricalImportSummary {
   rejectionReasons: HistoricalImportSummaryRejectionReasons;
   errors: HistoricalImportSummaryErrorsItem[];
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
+  /** @nullable */
+  scheduleVersion?: string | null;
+  acceptedContracts?: string[];
+  inactiveContracts?: string[];
+  rejectedFiles?: HistoricalImportSummaryRejectedFilesItem[];
+  files?: HistoricalImportSummaryFilesItem[];
+  rolloverBoundaries?: HistoricalImportSummaryRolloverBoundariesItem[];
+  activeContractByDate?: HistoricalImportSummaryActiveContractByDateItem[];
 }

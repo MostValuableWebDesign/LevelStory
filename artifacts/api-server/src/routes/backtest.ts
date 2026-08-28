@@ -8,6 +8,11 @@ import {
   publicHistoricalImportSummary,
 } from "../lib/futures/historical-csv-import.js";
 import {
+  importHistoricalMultiContract,
+  multiContractImportToReplayDataset,
+  MULTI_CONTRACT_SOURCE,
+} from "../lib/futures/multi-contract-replay.js";
+import {
   BacktestRequestAbortedError,
   BacktestTimeoutError,
   runBacktestInWorker,
@@ -157,12 +162,21 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
   });
   const runBacktest = config.runBacktest ?? ((input, options) => runBacktestInWorker(input, options));
 
-router.get("/historical-data", historicalRateLimit, requestTimeout(30_000), async (req, res): Promise<void> => {
+router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), async (req, res): Promise<void> => {
   try {
+    const source = String(req.query.source ?? "historical_databento");
+    if (source === MULTI_CONTRACT_SOURCE) {
+      const imported = await importHistoricalMultiContract();
+      if (res.headersSent) return;
+      res.json(GetHistoricalDataResponse.parse(imported.summary));
+      return;
+    }
     const specification = getFuturesContractSpecification(String(req.query.symbol ?? "MES"));
     const imported = await getHistoricalCsvImport(specification);
+    if (res.headersSent) return;
     res.json(GetHistoricalDataResponse.parse(publicHistoricalImportSummary(imported)));
   } catch (error) {
+    if (res.headersSent) return;
     const message = error instanceof Error ? error.message : "Unable to import the historical CSV.";
     req.log.warn({ error: message }, "Historical CSV import failed");
     res.status(400).json({ error: message });
@@ -231,6 +245,12 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
             deadline.signal,
           )
         : null;
+      const multiContract = parsed.data.source === MULTI_CONTRACT_SOURCE
+        ? await abortable(
+            Promise.resolve().then(() => importHistoricalMultiContract()),
+            deadline.signal,
+          )
+        : null;
       if (deadline.signal.aborted) throw signalError(deadline.signal);
       const replayDataset = imported
         ? historicalImportToReplayDataset(
@@ -240,6 +260,14 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
             parsed.data.inSampleDays,
             parsed.data.outOfSampleDays,
           )
+        : multiContract
+          ? multiContractImportToReplayDataset(
+              multiContract,
+              parsed.data.startDate ?? "2025-08-27",
+              parsed.data.endDate,
+              parsed.data.inSampleDays,
+              parsed.data.outOfSampleDays,
+            )
         : undefined;
       if (deadline.signal.aborted) throw signalError(deadline.signal);
       const cacheKey = buildBacktestCacheKey({
@@ -260,7 +288,16 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
               detectedSymbol: imported.summary.detectedSymbol,
               latestTimestamp: imported.summary.latestTimestamp,
             }
-          : null,
+          : multiContract
+            ? {
+                fingerprint: multiContract.contentFingerprint,
+                scheduleVersion: multiContract.summary.scheduleVersion,
+                files: multiContract.summary.files.map((file) => ({
+                  contractSymbol: file.contractSymbol,
+                  fingerprint: file.contentFingerprint,
+                })),
+              }
+            : null,
       });
       const cached = getCachedBacktestReport(cacheKey);
       if (cached) {
