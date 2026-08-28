@@ -1,0 +1,157 @@
+Paste this into Replit:
+
+```text
+Perform one final focused reliability pass on LevelStory.
+
+Do not redesign the UI, change the trading formula, loosen strategy/risk rules, change existing backtest results, or add broker/live/paper-order functionality.
+
+The normal deployed worker-backed backtest is functioning, but the forced-timeout path still requires correction and end-to-end proof.
+
+1. Establish one authoritative timeout flow
+
+Current risk:
+The HTTP response timeout begins when the request enters the route. The worker timeout begins later, after database access, CSV hashing/import, replay preparation, and cache lookup.
+
+If both use the same 120-second duration, the HTTP timeout may respond first while the worker continues. The worker rejection can then cause an attempted second response.
+
+Required architecture:
+- Use one absolute request deadline.
+- Calculate the remaining time before starting the worker.
+- The worker deadline must occur before the outer HTTP/socket deadline.
+- Recommended values:
+  - Overall request deadline: 120 seconds
+  - Worker termination deadline: no later than 110 seconds from request start
+- Include database access, CSV fingerprinting, import, replay preparation, and worker execution within the overall deadline.
+- Pass an AbortSignal into runBacktestInWorker.
+- Abort and terminate the worker when:
+  - the deadline expires
+  - the request is aborted
+  - the response closes before completion
+- Ensure worker termination is awaited or safely finalized.
+- Remove competing response-writing timeout behavior where possible.
+- Only the route handler should produce the JSON 408 response.
+- Before writing any response, guard against:
+  - res.headersSent
+  - res.writableEnded
+  - res.destroyed
+
+2. Timeout behavior
+
+When the deadline expires:
+- Terminate the worker.
+- Return exactly one HTTP 408 response.
+- Use the existing safe message:
+  “Backtest timed out. Reduce the historical range and try again.”
+- Do not expose worker internals.
+- Do not cache partial or late results.
+- Ignore any late worker message.
+- Release activeBacktests exactly once.
+- Do not produce:
+  - ERR_HTTP_HEADERS_SENT
+  - unhandled rejections
+  - duplicate logging
+  - negative active-backtest counts
+  - orphan workers
+
+3. Add configurable test-only timeout injection
+
+Create a safe way for automated tests to use a very short timeout without weakening production limits.
+
+Acceptable approaches:
+- Dependency-injected route configuration.
+- An application factory accepting timeout values.
+- A test-only environment setting that is rejected or ignored in production.
+
+Do not add a public request parameter that lets clients control the timeout.
+
+4. Add the required route-level integration tests
+
+The existing mocked worker-client unit tests are not sufficient.
+
+Add tests covering the full Express route:
+
+A. Forced worker timeout
+- Use a deliberately non-responsive or slow worker.
+- Use a short test deadline.
+- Assert exactly one HTTP 408 response.
+- Assert the worker was terminated.
+- Assert the response body matches the safe timeout message.
+- Assert no result was cached.
+- Assert activeBacktests returned to its original value.
+- Assert no late result changes the response or cache.
+- Assert no ERR_HTTP_HEADERS_SENT occurs.
+
+B. Client disconnect
+- Begin a slow backtest.
+- Abort the HTTP request.
+- Confirm the worker is terminated.
+- Confirm activeBacktests is released.
+- Confirm nothing is cached.
+
+C. Worker failure
+- Simulate worker error and abnormal exit.
+- Assert one controlled HTTP 500 response.
+- Do not expose private worker details.
+- Confirm cleanup and no caching.
+
+D. Successful worker run
+- Assert HTTP 200.
+- Assert the worker result matches the deterministic direct-engine result.
+- Assert it is cached only after successful completion.
+
+E. Cached request
+- Repeat an identical successful request.
+- Assert the same stable run ID.
+- Assert no new worker is created.
+
+F. Capacity recovery
+- Force a timeout or worker failure.
+- Submit another valid request.
+- Assert it runs normally and is not incorrectly rejected by the active-backtest limit.
+
+5. Preserve all completed fixes
+
+Do not regress:
+- Reconciled gap totals and invariants.
+- SHA-256 CSV content fingerprints.
+- Stable cache keys and run IDs.
+- Audit pagination and filtering.
+- Separate eventLabels and ambiguityLabels.
+- Modeled-fill timestamps and disclaimers.
+- Portable frontend builds.
+- Private-path 404 protection.
+- Long/short runner ambiguity handling.
+- Futures-only execution assumptions.
+- Shadow Mode with no live or paper order capability.
+
+6. Final verification
+
+Run:
+- Complete API test suite.
+- Complete frontend test suite.
+- API and frontend typechecks.
+- API and frontend production builds.
+- The new forced-timeout route integration tests.
+- A normal cold 20+2 historical backtest.
+- An identical cached repeat.
+- Security-path probes.
+- `/backtest` browser preview and console inspection.
+
+Final report must include:
+- Files changed.
+- Final timeout architecture.
+- Overall deadline and worker deadline.
+- How request aborts terminate workers.
+- Forced-timeout test duration and HTTP result.
+- Proof that exactly one response was written.
+- Proof that timed-out/aborted results were not cached.
+- Proof that activeBacktests recovered.
+- Full test counts.
+- Typecheck and build results.
+- Cold and cached backtest durations.
+- Stable run-ID comparison.
+- Security-probe results.
+- Any remaining unresolved issue.
+
+Do not claim completion if the forced route-level timeout test was skipped or if any worker can survive a timed-out or disconnected request.
+```
