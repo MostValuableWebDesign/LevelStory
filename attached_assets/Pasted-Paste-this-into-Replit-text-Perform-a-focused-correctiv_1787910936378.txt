@@ -1,0 +1,161 @@
+Paste this into Replit:
+
+```text
+Perform a focused corrective pass on LevelStory based on the final independent code-review findings below.
+
+Do not redesign the application, change the trading formula, loosen any strategy/risk gate, add broker connectivity, or add live/paper order execution. Preserve Shadow Mode and all existing modeled-OHLCV disclaimers.
+
+1. Fix the ineffective backtest timeout — P1
+
+Current problem:
+runCausalBacktest() executes synchronously before it is passed to withTimeout(). Because it blocks the Node event loop, neither Promise.race, res.setTimeout, nor activeBacktests can interrupt or properly manage a long run.
+
+Required correction:
+- Move CPU-intensive backtest execution into a Node worker thread or isolated child process.
+- Start the timeout before dispatching the work.
+- Terminate the worker when the timeout expires.
+- Return HTTP 408 with the existing safe timeout message.
+- Ensure a timed-out calculation cannot later write to the cache.
+- Ensure activeBacktests is always decremented.
+- Preserve the two-active-backtest limit.
+- Handle worker errors and abnormal exits safely.
+- Cached backtests should bypass worker execution and return normally.
+
+Required tests:
+- A deliberately slow backtest is terminated at the configured deadline.
+- It returns HTTP 408.
+- It is not cached.
+- activeBacktests is released after timeout.
+- Worker failure returns a controlled response.
+- A successful worker result matches the existing deterministic in-process result.
+- Repeated identical successful requests reuse the same run ID.
+
+2. Reconcile historical gap metrics — P2
+
+Current problem:
+missingMinuteGaps is calculated by countMissingMinutes(), which ignores gaps crossing trading-date boundaries. unexpectedMissingMinutes is calculated separately and can include overnight portions of those gaps. This allowed:
+
+missingMinuteGaps: 1,080
+unexpectedMissingMinutes: 1,440
+
+A reported unexpected subset must not appear larger than the displayed total.
+
+Required correction:
+- Establish one authoritative interval-classification pass.
+- Every missing interval must be divided into mutually exclusive categories:
+  - unexpected regular-session minutes
+  - unexpected overnight-session minutes
+  - inactive-contract minutes
+  - maintenance closure minutes
+  - weekend/holiday closure minutes
+  - early-close minutes
+- Prevent overlapping or double-counted minutes.
+- Make the public totals reconcile with explicit invariants.
+- Either redefine missingMinuteGaps as all classified missing minutes or rename the field to accurately describe its narrower scope.
+- Update frontend labels so users cannot confuse raw adjacent gaps, unexpected missing data, and expected market closures.
+- Preserve DST-safe America/New_York calculations.
+- Preserve Friday/weekend/holiday and maintenance handling.
+- Do not count legitimate closures as unexpected data loss.
+
+Required invariants:
+- unexpectedMissingMinutes =
+  unexpectedRegularSessionMissingMinutes +
+  unexpectedOvernightMissingMinutes
+- expectedClosedMinutes =
+  maintenanceGapMinutes +
+  weekendHolidayClosedMinutes +
+  earlyCloseMinutes
+- The displayed total missing minutes must be greater than or equal to unexpectedMissingMinutes.
+- No minute can belong to more than one classification.
+
+Add tests covering:
+- Same-session gaps.
+- Overnight gaps.
+- Maintenance windows.
+- Friday-to-Sunday closure.
+- Sunday evening reopening.
+- Holidays.
+- Early-close sessions.
+- DST transitions.
+- Gaps that cross trading-date boundaries.
+- The actual selected 5+2 and 20+2 historical ranges.
+
+3. Fix the portable frontend build — P2
+
+Current problem:
+vite.config.ts calls trim() on process.env.REPLIT_DEV_DOMAIN even when it is undefined. Production builds therefore fail outside Replit.
+
+Required correction:
+Use a safe default, such as:
+
+process.env.REPLIT_DEV_DOMAIN ?? ""
+
+Requirements:
+- Build succeeds when REPLIT_DEV_DOMAIN is undefined.
+- Build succeeds with normal Replit domain variables.
+- Preserve allowed-host protection.
+- Preserve the private-path request guard.
+- Add a configuration test for both environments.
+
+4. Replace the metadata-only CSV fingerprint — P2
+
+Current problem:
+The cache fingerprint currently uses:
+
+path + mtimeMs + size
+
+That does not prove the CSV contents are unchanged. A same-size file replacement with a preserved timestamp could reuse a stale report.
+
+Required correction:
+- Generate a SHA-256 content digest while streaming/importing the CSV.
+- Avoid reading the entire file into memory.
+- Store the digest with the validated import result.
+- Use the content digest in the backtest cache key.
+- Include strategy request, risk settings, contract configuration, execution assumptions, and cache-version information as before.
+- Do not expose the local CSV path to the frontend or API response.
+
+Required tests:
+- Identical content produces the same fingerprint and cache key.
+- Changed content produces a different fingerprint even when file size is unchanged.
+- Changed risk or execution settings produce a different cache key.
+- An unchanged request and source reuse the existing stable run ID.
+- A changed source cannot reuse the previous report.
+
+5. Preserve all verified behavior
+
+Do not regress:
+- Long and short same-candle runner ambiguity handling.
+- Separate eventLabels and ambiguityLabels.
+- Modeled-fill observation timestamps.
+- Audit pagination and filtering.
+- Stable cache reuse.
+- Futures-only calculations.
+- Immediate-next-candle patience confirmation.
+- Three-to-four-tick configurable entry confirmation.
+- Stop, target, fee, slippage, and runner accounting.
+- Protected .env, CSV, manifest, metadata, uploaded-asset, source, workspace, and /@fs paths.
+- No live or paper order capability.
+
+Verification requirements:
+- Run the complete API test suite.
+- Run the complete frontend test suite.
+- Run API and frontend typechecks.
+- Run API and frontend production builds.
+- Re-run default 5+2 and extended 20+2 historical backtests.
+- Repeat the extended request and verify stable cache reuse.
+- Confirm the cold-run timeout is genuinely enforceable.
+- Confirm all protected paths return 404.
+- Confirm /backtest still returns 200.
+- Confirm there are no browser console errors.
+
+Final report:
+- List every file changed.
+- Explain the worker/timeout architecture.
+- Show the corrected gap totals and reconciliation equations.
+- Show the CSV SHA-256 fingerprint behavior without exposing private paths.
+- Report test, typecheck, and build results.
+- Report cold and cached backtest durations.
+- Report selected dates, trades, P&L, and ambiguity totals.
+- Clearly identify any remaining unresolved issue.
+- Do not claim completion if any required verification fails.
+```
