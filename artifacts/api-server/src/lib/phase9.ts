@@ -298,6 +298,16 @@ export type BacktestSegment = BacktestMetrics & {
   value: string;
 };
 
+export type BacktestRuntimeTiming = {
+  preparationMs: number;
+  cacheLookupMs: number;
+  cacheStoreMs: number;
+  workerStartupMs: number;
+  workerMs: number;
+  responseValidationMs: number;
+  totalMs: number;
+};
+
 export type BacktestReport = {
   mode: "SHADOW MODE — NO LIVE ORDERS";
   dataSource: "simulated" | "historical_databento" | "historical_databento_multicontract";
@@ -343,6 +353,7 @@ export type BacktestReport = {
     total: number;
     hasMore: boolean;
   };
+  timing?: BacktestRuntimeTiming;
   assumptions: string[];
   executionMode: "quote_based_shadow" | "ohlcv_modeled";
   fillLabel: string;
@@ -633,6 +644,117 @@ function datesForDataset(
   calendar: FuturesSessionCalendar,
 ): string[] {
   return [...new Set(candles.map((candle) => tradingDateForTimestamp(candle.openTime, calendar)))].sort();
+}
+
+type ReplayIndexes = {
+  candlesByContract: Map<string, SimulatedFuturesCandle[]>;
+  candleIndexByContractOpenTime: Map<string, Map<number, number>>;
+  hourlyByContract: Map<string, SimulatedHourlyCandle[]>;
+  regularCandlesByContractDate: Map<string, SimulatedFuturesCandle[]>;
+  regularIndexByContractOpenTime: Map<string, Map<number, number>>;
+  ticksByCandleOpenTime: Map<number, IntrabarPoint[]>;
+  oneMinuteByContractCandle: Map<string, IntrabarBar[]>;
+};
+
+function lowerBound<T>(values: readonly T[], target: number, value: (item: T) => number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (value(values[middle]) < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function buildReplayIndexes(
+  candles: readonly SimulatedFuturesCandle[],
+  ticks: readonly IntrabarPoint[],
+  oneMinute: readonly IntrabarBar[],
+  calendar: FuturesSessionCalendar,
+): ReplayIndexes {
+  const candlesByContract = new Map<string, SimulatedFuturesCandle[]>();
+  const candleIndexByContractOpenTime = new Map<string, Map<number, number>>();
+  const regularCandlesByContractDate = new Map<string, SimulatedFuturesCandle[]>();
+  const regularIndexByContractOpenTime = new Map<string, Map<number, number>>();
+
+  for (const candle of candles) {
+    const contractCandles = candlesByContract.get(candle.contractSymbol) ?? [];
+    contractCandles.push(candle);
+    candlesByContract.set(candle.contractSymbol, contractCandles);
+
+    const contractIndex = candleIndexByContractOpenTime.get(candle.contractSymbol) ?? new Map<number, number>();
+    contractIndex.set(candle.openTime, contractCandles.length - 1);
+    candleIndexByContractOpenTime.set(candle.contractSymbol, contractIndex);
+
+    const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+    const window = sessionWindow(tradingDate, "regular", calendar);
+    if (candle.isComplete && window && candle.openTime >= window.openTime && candle.closeTime <= window.closeTime) {
+      const dateKey = `${candle.contractSymbol}:${tradingDate}`;
+      const regular = regularCandlesByContractDate.get(dateKey) ?? [];
+      regular.push(candle);
+      regularCandlesByContractDate.set(dateKey, regular);
+      const regularIndex = regularIndexByContractOpenTime.get(dateKey) ?? new Map<number, number>();
+      regularIndex.set(candle.openTime, regular.length - 1);
+      regularIndexByContractOpenTime.set(dateKey, regularIndex);
+    }
+  }
+
+  const hourlyByContract = new Map<string, SimulatedHourlyCandle[]>();
+  for (const [contractSymbol, contractCandles] of candlesByContract) {
+    hourlyByContract.set(contractSymbol, completedSimulatedHourlyCandles(contractCandles, calendar));
+  }
+
+  const sortedTicks = [...ticks].sort((first, second) => first.timestamp - second.timestamp);
+  const ticksByCandleOpenTime = new Map<number, IntrabarPoint[]>();
+  for (const candle of candles) {
+    const start = lowerBound(sortedTicks, candle.openTime, (item) => item.timestamp);
+    const end = lowerBound(sortedTicks, candle.closeTime + 1, (item) => item.timestamp);
+    if (end > start) ticksByCandleOpenTime.set(candle.openTime, sortedTicks.slice(start, end));
+  }
+
+  const candleSymbolByOpenTime = new Map(candles.map((item) => [item.openTime, item.contractSymbol]));
+  const oneMinuteByContract = new Map<string, IntrabarBar[]>();
+  const sortedOneMinute = [...oneMinute].sort((first, second) => first.closeTime - second.closeTime);
+  for (const item of sortedOneMinute) {
+    // Preserve the historical multi-contract association rule: only a bar
+    // whose open time is also a five-minute candle open belongs to that
+    // contract's intrabar stream. Single-contract replay keeps all bars.
+    const contractSymbol = candleSymbolByOpenTime.get(item.openTime);
+    if (contractSymbol) {
+      const partition = oneMinuteByContract.get(contractSymbol) ?? [];
+      partition.push(item);
+      oneMinuteByContract.set(contractSymbol, partition);
+    }
+  }
+
+  const oneMinuteByContractCandle = new Map<string, IntrabarBar[]>();
+  for (const [contractSymbol, contractCandles] of candlesByContract) {
+    const contractBars = candlesByContract.size === 1
+      ? sortedOneMinute
+      : oneMinuteByContract.get(contractSymbol) ?? [];
+    let cursor = 0;
+    for (const candle of contractCandles) {
+      while (cursor < contractBars.length && contractBars[cursor].closeTime <= candle.openTime) cursor += 1;
+      const bars: IntrabarBar[] = [];
+      for (let index = cursor; index < contractBars.length; index += 1) {
+        const bar = contractBars[index];
+        if (bar.openTime >= candle.openTime && bar.closeTime <= candle.closeTime) bars.push(bar);
+        if (bar.openTime > candle.closeTime) break;
+      }
+      if (bars.length) oneMinuteByContractCandle.set(`${contractSymbol}:${candle.openTime}`, bars);
+    }
+  }
+
+  return {
+    candlesByContract,
+    candleIndexByContractOpenTime,
+    hourlyByContract,
+    regularCandlesByContractDate,
+    regularIndexByContractOpenTime,
+    ticksByCandleOpenTime,
+    oneMinuteByContractCandle,
+  };
 }
 
 export function buildReplayDataset(
@@ -1187,14 +1309,8 @@ export function runCausalBacktest(
   const candles = sortedCandles(dataset.candles);
   const ticks = dataset.ticks ?? [];
   const oneMinute = dataset.oneMinute ?? candles.flatMap(buildSyntheticOneMinuteBars);
-  const candleSymbolByOpenTime = new Map(candles.map((item) => [item.openTime, item.contractSymbol]));
   const candleIndexByOpenTime = new Map(candles.map((item, index) => [item.openTime, index]));
-  const candlesByContract = new Map<string, SimulatedFuturesCandle[]>();
-  for (const item of candles) {
-    const partition = candlesByContract.get(item.contractSymbol) ?? [];
-    partition.push(item);
-    candlesByContract.set(item.contractSymbol, partition);
-  }
+  const replayIndexes = buildReplayIndexes(candles, ticks, oneMinute, calendar);
   const finalRegularIndexByContractDate = new Map<string, number>();
   for (const [index, item] of candles.entries()) {
     const date = tradingDateForTimestamp(item.openTime, calendar);
@@ -1231,16 +1347,15 @@ export function runCausalBacktest(
     }
     previousContractSymbol = currentContractSymbol;
     const contractCandles = dataset.contractSchedule
-      ? candlesByContract.get(currentContractSymbol) ?? []
+      ? replayIndexes.candlesByContract.get(currentContractSymbol) ?? []
       : candles;
-    const contractCandleIndex = contractCandles.findIndex((item) => item.openTime === candle.openTime);
+    const contractCandleIndex = dataset.contractSchedule
+      ? replayIndexes.candleIndexByContractOpenTime.get(currentContractSymbol)?.get(candle.openTime) ?? -1
+      : candleIndexByOpenTime.get(candle.openTime) ?? -1;
     const visibleContractCandles = contractCandles.slice(0, Math.max(0, contractCandleIndex) + 1);
-    const contractOneMinute = dataset.contractSchedule
-      ? oneMinute.filter((item) => {
-          return candleSymbolByOpenTime.get(item.openTime) === currentContractSymbol;
-        })
-      : oneMinute;
-    const historicalHourly = completedSimulatedHourlyCandles(contractCandles, calendar);
+    const historicalHourly = replayIndexes.hourlyByContract.get(currentContractSymbol)
+      ?? replayIndexes.hourlyByContract.get(dataset.contractSchedule ? currentContractSymbol : candle.contractSymbol)
+      ?? completedSimulatedHourlyCandles(contractCandles, calendar);
     const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
     const period = periodForDate(tradingDate, dataset);
     const regularWindow = sessionWindow(tradingDate, "regular", calendar);
@@ -1317,12 +1432,15 @@ export function runCausalBacktest(
     if (executionMode === "ohlcv_modeled") {
       const patienceSummary = snapshot.patience.patienceCandle;
       const triggerSummary = snapshot.patience.triggerCandle;
+       const contractCandleIndexByOpenTime = dataset.contractSchedule
+         ? replayIndexes.candleIndexByContractOpenTime.get(currentContractSymbol)
+         : candleIndexByOpenTime;
        const trigger = triggerSummary
-         ? contractCandles.find((item) => item.openTime === Date.parse(triggerSummary.openTime) && item.isComplete)
-        : undefined;
-      const patienceCandle = patienceSummary
-         ? contractCandles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
-        : undefined;
+          ? contractCandles[contractCandleIndexByOpenTime?.get(Date.parse(triggerSummary.openTime)) ?? -1]
+         : undefined;
+       const patienceCandle = patienceSummary
+          ? contractCandles[contractCandleIndexByOpenTime?.get(Date.parse(patienceSummary.openTime)) ?? -1]
+         : undefined;
       if (!trigger || !patienceCandle || trigger.closeTime > candle.closeTime) {
         if (selectedAudit) setAuditRejection(selectedAudit, "PATIENCE_TRIGGER_NOT_COMPLETED", "The required patience trigger was not complete at this candle.");
         rejectedByPeriod[period] += 1;
@@ -1348,18 +1466,24 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
         continue;
       }
-       const triggerIndex = contractCandles.indexOf(trigger);
-       const postTrigger = contractCandles
-        .slice(triggerIndex + 1)
-        .filter((item) => tradingDateForTimestamp(item.openTime, calendar) === tradingDate
-          && item.isComplete
-          && item.closeTime <= regularWindow.closeTime);
-       const sessionCloseCandle = [...contractCandles]
-        .filter((item) => item.isComplete
-          && tradingDateForTimestamp(item.openTime, calendar) === tradingDate
-          && item.openTime >= regularWindow.openTime
-          && item.closeTime <= regularWindow.closeTime)
-        .at(-1);
+        const triggerIndex = contractCandleIndexByOpenTime?.get(trigger.openTime) ?? -1;
+        const regularKey = `${currentContractSymbol}:${tradingDate}`;
+        const regularCandles = replayIndexes.regularCandlesByContractDate.get(regularKey) ?? [];
+        const regularIndex = replayIndexes.regularIndexByContractOpenTime.get(regularKey)?.get(trigger.openTime) ?? -1;
+        const postTrigger = regularIndex >= 0
+          ? regularCandles.slice(regularIndex + 1)
+          : contractCandles
+            .slice(triggerIndex + 1)
+            .filter((item) => tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+              && item.isComplete
+              && item.closeTime <= regularWindow.closeTime);
+        const sessionCloseCandle = regularCandles.at(-1)
+          ?? contractCandles
+            .filter((item) => item.isComplete
+              && tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+              && item.openTime >= regularWindow.openTime
+              && item.closeTime <= regularWindow.closeTime)
+            .at(-1);
       const modeled = simulateOhlcvExecution({
         direction: selected.direction,
         entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
@@ -1495,8 +1619,8 @@ export function runCausalBacktest(
         target: snapshot.riskPlan.target,
         stop: snapshot.riskPlan.catastropheStop ?? snapshot.riskPlan.strategyStop,
         candle: next,
-        ticks,
-        oneMinute: contractOneMinute,
+        ticks: replayIndexes.ticksByCandleOpenTime.get(next.openTime),
+        oneMinute: replayIndexes.oneMinuteByContractCandle.get(`${currentContractSymbol}:${next.openTime}`),
       });
       if (resolution.status !== "open") break;
     }

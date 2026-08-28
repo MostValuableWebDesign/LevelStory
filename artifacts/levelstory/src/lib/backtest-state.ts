@@ -1,9 +1,41 @@
 export type HistoricalIndexState = "not_started" | "indexing" | "ready" | "failed";
 
+import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
+export { MAX_BACKTEST_SESSIONS };
+
 export type HistoricalReadiness = {
   ready: boolean;
   label: string;
 };
+
+export type BacktestSessionLimits = {
+  requested: number;
+  remaining: number;
+  maxInSampleDays: number;
+  maxOutOfSampleDays: number;
+  error: string | null;
+};
+
+export function getBacktestSessionLimits(
+  inSampleDays: number,
+  outOfSampleDays: number,
+): BacktestSessionLimits {
+  const requested = inSampleDays + outOfSampleDays;
+  const error = !Number.isInteger(inSampleDays) || inSampleDays < 1
+    ? "In-sample days must be at least 1."
+    : !Number.isInteger(outOfSampleDays) || outOfSampleDays < 1
+    ? "Holdout days must be at least 1."
+    : requested > MAX_BACKTEST_SESSIONS
+    ? `This single run requests ${requested} sessions; the maximum is ${MAX_BACKTEST_SESSIONS}.`
+    : null;
+  return {
+    requested,
+    remaining: Number.isFinite(requested) ? Math.max(0, MAX_BACKTEST_SESSIONS - requested) : 0,
+    maxInSampleDays: Math.max(1, MAX_BACKTEST_SESSIONS - Math.max(1, outOfSampleDays || 1)),
+    maxOutOfSampleDays: Math.max(1, MAX_BACKTEST_SESSIONS - Math.max(1, inSampleDays || 1)),
+    error,
+  };
+}
 
 export type MultiContractCoverageInput = {
   allObservedTradingDates?: string[];

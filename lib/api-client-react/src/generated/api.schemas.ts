@@ -121,14 +121,27 @@ export interface FuturesContractSpecification {
 
 export type FuturesSessionCalendarEarlyCloses = {[key: string]: string};
 
+export type FuturesSessionCalendarMaintenanceClosuresItem = {
+  start: string;
+  end: string;
+  reason: string;
+};
+
+export type FuturesSessionCalendarMaintenanceClosures = {[key: string]: FuturesSessionCalendarMaintenanceClosuresItem[]};
+
 export interface FuturesSessionCalendar {
   timeZone: string;
+  /** Versioned CME equity-index research calendar used for session and coverage classification. */
+  calendarVersion?: string;
+  source?: string;
+  verifiedOn?: string;
   tradingDate: string;
   premarketAvailable: boolean;
   premarket: SessionHours;
   regular: SessionHours;
   holidays: string[];
   earlyCloses: FuturesSessionCalendarEarlyCloses;
+  maintenanceClosures?: FuturesSessionCalendarMaintenanceClosures;
 }
 
 export type SignalKey = typeof SignalKey[keyof typeof SignalKey];
@@ -1421,12 +1434,13 @@ export interface BacktestRequest {
   startDate?: string;
   /**
      * @minimum 1
-     * @maximum 30
+     * @maximum 22
      */
   inSampleDays: number;
   /**
+     * Single-run sessions share a maximum total of 22 across in-sample and holdout days.
      * @minimum 1
-     * @maximum 10
+     * @maximum 22
      */
   outOfSampleDays: number;
   /**
@@ -2478,6 +2492,26 @@ export type BacktestReportExecutionPolicy = {
   commissionPerContract: number;
 };
 
+/**
+ * Path-free runtime telemetry for this request; absent from direct engine reports.
+ */
+export type BacktestReportTiming = {
+  /** @minimum 0 */
+  preparationMs: number;
+  /** @minimum 0 */
+  cacheLookupMs: number;
+  /** @minimum 0 */
+  cacheStoreMs?: number;
+  /** @minimum 0 */
+  workerStartupMs?: number;
+  /** @minimum 0 */
+  workerMs: number;
+  /** @minimum 0 */
+  responseValidationMs: number;
+  /** @minimum 0 */
+  totalMs: number;
+};
+
 export type BacktestReportGapReportCoverageScope = typeof BacktestReportGapReportCoverageScope[keyof typeof BacktestReportGapReportCoverageScope];
 
 
@@ -2542,6 +2576,8 @@ export interface BacktestReport {
   executionMode: BacktestReportExecutionMode;
   fillLabel: string;
   executionPolicy: BacktestReportExecutionPolicy;
+  /** Path-free runtime telemetry for this request; absent from direct engine reports. */
+  timing?: BacktestReportTiming;
   gapReport: BacktestReportGapReport;
 }
 

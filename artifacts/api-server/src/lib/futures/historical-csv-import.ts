@@ -349,10 +349,12 @@ export function countSessionAwareGaps(
         }
       }
       if (isTradingDate(date, calendar)) {
-        maintenanceMinutesInGap += overlapMinutes(gapStart, gapEnd, {
-          openTime: newYorkTimeToUtc(date, "16:00"),
-          closeTime: newYorkTimeToUtc(date, "18:00"),
-        });
+        for (const maintenance of calendar.maintenanceClosures.default ?? []) {
+          maintenanceMinutesInGap += overlapMinutes(gapStart, gapEnd, {
+            openTime: newYorkTimeToUtc(date, maintenance.start),
+            closeTime: newYorkTimeToUtc(date, maintenance.end),
+          });
+        }
         overnightMinutesInGap += overlapMinutes(gapStart, gapEnd, {
           openTime: newYorkTimeToUtc(previousCalendarDate(date), "18:00"),
           closeTime: newYorkTimeToUtc(date, "04:00"),

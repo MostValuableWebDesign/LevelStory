@@ -16,6 +16,7 @@ import type { BacktestReportExecutionPolicy } from './backtestReportExecutionPol
 import type { BacktestReportGapReport } from './backtestReportGapReport';
 import type { BacktestReportMode } from './backtestReportMode';
 import type { BacktestReportReplay } from './backtestReportReplay';
+import type { BacktestReportTiming } from './backtestReportTiming';
 import type { BacktestSegment } from './backtestSegment';
 import type { BacktestTrade } from './backtestTrade';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
@@ -41,5 +42,7 @@ export interface BacktestReport {
   executionMode: BacktestReportExecutionMode;
   fillLabel: string;
   executionPolicy: BacktestReportExecutionPolicy;
+  /** Path-free runtime telemetry for this request; absent from direct engine reports. */
+  timing?: BacktestReportTiming;
   gapReport: BacktestReportGapReport;
 }

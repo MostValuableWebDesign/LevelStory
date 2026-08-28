@@ -5,10 +5,14 @@ export type TradingDate = `${number}-${number}-${number}`;
 
 export type FuturesSessionCalendar = {
   timeZone: "America/New_York";
+  calendarVersion: string;
+  source: string;
+  verifiedOn: string;
   premarket: SessionHours;
   regular: SessionHours;
   holidays: readonly string[];
   earlyCloses: Readonly<Record<string, string>>;
+  maintenanceClosures: Readonly<Record<string, readonly { start: string; end: string; reason: string }[]>>;
 };
 
 export type FuturesSessionWindow = {
@@ -19,7 +23,23 @@ export type FuturesSessionWindow = {
   earlyClose: boolean;
 };
 
+const CME_EQUITY_INDEX_CALENDAR_VERSION = "CME_EQUITY_INDEX_2025_2026_V1";
+const CME_EQUITY_INDEX_CALENDAR_SOURCE =
+  "CME Group, CME Globex and ClearPort Trading Schedule / Holiday Calendar, https://www.cmegroup.com/tools-information/holiday-calendar.html";
+const CME_EQUITY_INDEX_CALENDAR_VERIFIED_ON = "2026-08-28";
+
+// Regular-session exceptions are intentionally separate from full holidays.
+// These are the CME equity-index (MES) RTH dates, expressed in New York time.
 const DEFAULT_HOLIDAYS = [
+  "2025-01-01",
+  "2025-01-20",
+  "2025-02-17",
+  "2025-04-18",
+  "2025-05-26",
+  "2025-06-19",
+  "2025-07-04",
+  "2025-09-01",
+  "2025-12-25",
   "2026-01-01",
   "2026-01-19",
   "2026-02-16",
@@ -27,22 +47,35 @@ const DEFAULT_HOLIDAYS = [
   "2026-05-25",
   "2026-06-19",
   "2026-09-07",
-  "2026-11-26",
   "2026-12-25",
 ] as const;
 
 const DEFAULT_EARLY_CLOSES = {
+  "2025-11-27": "13:00",
+  "2025-11-28": "13:00",
+  "2025-12-24": "13:00",
   "2026-07-03": "13:00",
+  "2026-11-26": "13:00",
   "2026-11-27": "13:00",
   "2026-12-24": "13:00",
 } as const;
 
+const DEFAULT_MAINTENANCE_CLOSURES = {
+  default: [
+    { start: "16:00", end: "18:00", reason: "CME Globex daily maintenance / settlement window" },
+  ],
+} as const;
+
 export const DEFAULT_FUTURES_SESSION_CALENDAR: Readonly<FuturesSessionCalendar> = {
   timeZone: "America/New_York",
+  calendarVersion: CME_EQUITY_INDEX_CALENDAR_VERSION,
+  source: CME_EQUITY_INDEX_CALENDAR_SOURCE,
+  verifiedOn: CME_EQUITY_INDEX_CALENDAR_VERIFIED_ON,
   premarket: { timeZone: "America/New_York", start: "04:00", end: "09:30" },
   regular: { timeZone: "America/New_York", start: "09:30", end: "16:00" },
   holidays: DEFAULT_HOLIDAYS,
   earlyCloses: DEFAULT_EARLY_CLOSES,
+  maintenanceClosures: DEFAULT_MAINTENANCE_CLOSURES,
 };
 
 const SESSION_WINDOW_CACHE = new WeakMap<object, Map<string, FuturesSessionWindow | null>>();

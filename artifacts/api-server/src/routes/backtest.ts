@@ -51,9 +51,10 @@ import {
 import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
+import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
 
-const MAX_BACKTEST_SESSIONS = 22;
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
+const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
 export const BACKTEST_REQUEST_TIMEOUT_MS = 120_000;
 export const BACKTEST_WORKER_DEADLINE_MS = 110_000;
 export const BATCH_BACKTEST_MAX_PARTITIONS = 60;
@@ -159,15 +160,20 @@ function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-function validateBacktestRange(request: { startDate?: string; endDate: string; inSampleDays: number; outOfSampleDays: number }): string | null {
+function validateBacktestRange(request: { source?: string; startDate?: string; endDate: string; inSampleDays: number; outOfSampleDays: number }): string | null {
   if (request.inSampleDays + request.outOfSampleDays > MAX_BACKTEST_SESSIONS) {
     return `A backtest may include at most ${MAX_BACKTEST_SESSIONS} selected sessions.`;
   }
   if (request.startDate) {
     const start = Date.parse(`${request.startDate}T00:00:00Z`);
     const end = Date.parse(`${request.endDate}T00:00:00Z`);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > MAX_CALENDAR_RANGE_MS) {
-      return "The requested date range is invalid or exceeds the 45-day safety limit.";
+    const maximumRange = request.source === MULTI_CONTRACT_SOURCE
+      ? MAX_MULTI_CONTRACT_RANGE_MS
+      : MAX_CALENDAR_RANGE_MS;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > maximumRange) {
+      return request.source === MULTI_CONTRACT_SOURCE
+        ? "The requested multi-contract historical range is invalid or exceeds the 400-day safety limit."
+        : "The requested date range is invalid or exceeds the 45-day safety limit.";
     }
   }
   return null;
@@ -532,6 +538,8 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
 
   router.post("/backtest", backtestRateLimit, async (req, res): Promise<void> => {
     const deadline = createRequestDeadline(req, res, requestTimeoutMs, workerDeadlineMs);
+    const requestStartedAt = Date.now();
+    const preparationStartedAt = requestStartedAt;
     let counted = false;
     try {
       const parsed = RunBacktestBody.safeParse(req.body);
@@ -573,24 +581,8 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
           )
         : null;
       if (deadline.signal.aborted) throw signalError(deadline.signal);
-      const replayDataset = imported
-        ? historicalImportToReplayDataset(
-            imported,
-            parsed.data.startDate ?? "2026-07-27",
-            parsed.data.endDate,
-            parsed.data.inSampleDays,
-            parsed.data.outOfSampleDays,
-          )
-        : multiContract
-          ? multiContractImportToReplayDataset(
-              multiContract,
-              parsed.data.startDate ?? "2025-08-27",
-              parsed.data.endDate,
-              parsed.data.inSampleDays,
-              parsed.data.outOfSampleDays,
-            )
-        : undefined;
-      if (deadline.signal.aborted) throw signalError(deadline.signal);
+      const preparationMs = Date.now() - preparationStartedAt;
+      const cacheLookupStartedAt = Date.now();
       const cacheKey = buildBacktestCacheKey({
         cacheVersion: "causal-backtest-v3-formula-hash",
         formulaHash: formulaConfigurationHash(parsed.data),
@@ -622,25 +614,100 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
             : null,
       });
       const cached = getCachedBacktestReport(cacheKey);
+      const cacheLookupMs = Date.now() - cacheLookupStartedAt;
       if (cached) {
         if (canWriteResponse(res)) {
-          res.json(RunBacktestResponse.parse(compactBacktestReport(cached.report, cached.runId)));
+          const validationStartedAt = Date.now();
+          const response = RunBacktestResponse.parse(compactBacktestReport({
+            ...cached.report,
+            timing: {
+              ...(cached.report.timing ?? {
+                preparationMs: 0,
+                cacheLookupMs: 0,
+                cacheStoreMs: 0,
+                workerStartupMs: 0,
+                workerMs: 0,
+                responseValidationMs: 0,
+                totalMs: 0,
+              }),
+              preparationMs,
+              cacheLookupMs,
+              cacheStoreMs: 0,
+              workerStartupMs: 0,
+              responseValidationMs: Date.now() - validationStartedAt,
+              totalMs: Date.now() - requestStartedAt,
+            },
+          }, cached.runId));
+          res.json(response);
         }
         return;
       }
+      const replayDataset = imported
+        ? historicalImportToReplayDataset(
+            imported,
+            parsed.data.startDate ?? "2026-07-27",
+            parsed.data.endDate,
+            parsed.data.inSampleDays,
+            parsed.data.outOfSampleDays,
+          )
+        : multiContract
+          ? multiContractImportToReplayDataset(
+              multiContract,
+              parsed.data.startDate ?? "2025-08-27",
+              parsed.data.endDate,
+              parsed.data.inSampleDays,
+              parsed.data.outOfSampleDays,
+            )
+        : undefined;
+      if (deadline.signal.aborted) throw signalError(deadline.signal);
       const remainingWorkerMs = Math.min(
         workerDeadlineMs,
         deadline.workerDeadlineAt - Date.now(),
       );
       if (remainingWorkerMs <= 0) throw new BacktestTimeoutError();
+      const workerStartedAt = Date.now();
+      let workerStartupMs = 0;
       const resolvedReport = await runBacktest(
         { request: parsed.data, risk, replayDataset },
-        { timeoutMs: remainingWorkerMs, signal: deadline.signal },
+        {
+          timeoutMs: remainingWorkerMs,
+          signal: deadline.signal,
+          onTiming: (timing) => {
+            workerStartupMs = timing.workerStartupMs;
+          },
+        },
       );
       if (deadline.signal.aborted) throw signalError(deadline.signal);
-      const runId = storeBacktestReport(resolvedReport, cacheKey);
+      const workerMs = Date.now() - workerStartedAt;
+      const cacheStoreStartedAt = Date.now();
+      const runId = storeBacktestReport({
+        ...resolvedReport,
+        timing: {
+          preparationMs,
+          cacheLookupMs,
+          cacheStoreMs: 0,
+          workerStartupMs,
+          workerMs,
+          responseValidationMs: 0,
+          totalMs: 0,
+        },
+      }, cacheKey);
+      const cacheStoreMs = Date.now() - cacheStoreStartedAt;
       if (canWriteResponse(res)) {
-        res.json(RunBacktestResponse.parse(compactBacktestReport(resolvedReport, runId)));
+        const validationStartedAt = Date.now();
+        const response = RunBacktestResponse.parse(compactBacktestReport({
+          ...resolvedReport,
+          timing: {
+            preparationMs,
+            cacheLookupMs,
+            cacheStoreMs,
+            workerStartupMs,
+            workerMs,
+            responseValidationMs: Date.now() - validationStartedAt,
+            totalMs: Date.now() - requestStartedAt,
+          },
+        }, runId));
+        res.json(response);
       }
     } catch (error) {
       const timedOut = error instanceof BacktestTimeoutError

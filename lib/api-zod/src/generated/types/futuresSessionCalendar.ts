@@ -6,14 +6,20 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FuturesSessionCalendarEarlyCloses } from './futuresSessionCalendarEarlyCloses';
+import type { FuturesSessionCalendarMaintenanceClosures } from './futuresSessionCalendarMaintenanceClosures';
 import type { SessionHours } from './sessionHours';
 
 export interface FuturesSessionCalendar {
   timeZone: string;
+  /** Versioned CME equity-index research calendar used for session and coverage classification. */
+  calendarVersion?: string;
+  source?: string;
+  verifiedOn?: Date;
   tradingDate: string;
   premarketAvailable: boolean;
   premarket: SessionHours;
   regular: SessionHours;
   holidays: string[];
   earlyCloses: FuturesSessionCalendarEarlyCloses;
+  maintenanceClosures?: FuturesSessionCalendarMaintenanceClosures;
 }

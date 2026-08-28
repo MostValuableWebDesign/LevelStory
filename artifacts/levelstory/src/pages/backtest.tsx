@@ -27,6 +27,8 @@ import {
   coverageEligibilityLabel,
   getHistoricalBacktestReadiness,
   getMultiContractCoverageTotals,
+  getBacktestSessionLimits,
+  MAX_BACKTEST_SESSIONS,
 } from "@/lib/backtest-state";
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
@@ -619,13 +621,17 @@ export default function Backtest() {
     },
   );
 
+  const parsedInSampleDays = Number(inSampleDays);
+  const parsedOutOfSampleDays = Number(outOfSampleDays);
+  const sessionLimits = getBacktestSessionLimits(parsedInSampleDays, parsedOutOfSampleDays);
+
   const request = {
     symbol,
     source,
     startDate,
     endDate,
-    inSampleDays: Number(inSampleDays),
-    outOfSampleDays: Number(outOfSampleDays),
+    inSampleDays: parsedInSampleDays,
+    outOfSampleDays: parsedOutOfSampleDays,
     seed: Number(seed),
     premarketAvailable: true,
     targetDollars: Number(targetDollars),
@@ -664,6 +670,7 @@ export default function Backtest() {
     hasImport: Boolean(historicalImport.data),
   });
   const historicalReady = historicalReadiness.ready;
+  const canSubmitSingleRun = historicalReady && !sessionLimits.error && !run.isPending && !startBatch.isPending && !batchActive;
   const historicalIndexMessage = multiContractIndex.data?.message
     ?? (multiContractIndex.isLoading ? "Checking historical MES index…" : null);
 
@@ -681,8 +688,8 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} value={item} disabled={source !== "simulated" && item !== "MES"}>{item}</option>)}</select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-start-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">End date</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-end-date" /></label>
-            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">In-sample days</span><input type="number" min="1" max="30" value={inSampleDays} onChange={(event) => setInSampleDays(event.target.value)} className="field mono w-full" data-testid="input-backtest-in-sample" /></label>
-            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Holdout days</span><input type="number" min="1" max="10" value={outOfSampleDays} onChange={(event) => setOutOfSampleDays(event.target.value)} className="field mono w-full" data-testid="input-backtest-out-of-sample" /></label>
+           <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">In-sample days</span><input type="number" min="1" max={sessionLimits.maxInSampleDays} value={inSampleDays} onChange={(event) => setInSampleDays(event.target.value)} aria-invalid={Boolean(sessionLimits.error && (!Number.isInteger(parsedInSampleDays) || parsedInSampleDays > sessionLimits.maxInSampleDays))} className="field mono w-full" data-testid="input-backtest-in-sample" /></label>
+           <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Holdout days</span><input type="number" min="1" max={sessionLimits.maxOutOfSampleDays} value={outOfSampleDays} onChange={(event) => setOutOfSampleDays(event.target.value)} aria-invalid={Boolean(sessionLimits.error && (!Number.isInteger(parsedOutOfSampleDays) || parsedOutOfSampleDays > sessionLimits.maxOutOfSampleDays))} className="field mono w-full" data-testid="input-backtest-out-of-sample" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Seed</span><input type="number" min="1" max="100000" value={seed} onChange={(event) => setSeed(event.target.value)} className="field mono w-full" data-testid="input-backtest-seed" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Target</span><select value={targetDollars} onChange={(event) => setTargetDollars(event.target.value)} className="field w-full" data-testid="select-backtest-target"><option value="50">$50</option><option value="75">$75</option><option value="100">$100</option></select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Slippage regime</span><select value={slippageMode} onChange={(event) => setSlippageMode(event.target.value as typeof slippageMode)} className="field w-full" data-testid="select-backtest-slippage"><option value="normal">Normal</option><option value="fast">Fast tape</option><option value="abnormal_spread">Abnormal spread</option></select></label>
@@ -691,8 +698,14 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Modeled slippage</span><input type="number" min="0" max="8" value={ohlcvSlippageTicks} onChange={(event) => setOhlcvSlippageTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-slippage" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
              <div className="flex flex-col items-end gap-2 sm:col-span-2 lg:col-span-2 lg:flex-row">
-                <button type="submit" disabled={!historicalReady || run.isPending || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : !historicalReady ? "Waiting for history…" : "Run causal backtest"}</button>
-                <button type="button" onClick={submitBatch} disabled={!historicalReady || startBatch.isPending || batchActive || availableBatchDates.length < 2} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : availableBatchDates.length < 2 ? "Need 2 eligible sessions" : `Run ${availableBatchDates.length}-session funnel`}</button>
+                <button type="submit" disabled={!canSubmitSingleRun} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : !historicalReady ? "Waiting for history…" : "Run causal backtest"}</button>
+                <button type="button" onClick={submitBatch} disabled={!historicalReady || sessionLimits.error !== null || startBatch.isPending || batchActive || availableBatchDates.length < 2} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : availableBatchDates.length < 2 ? "Need 2 eligible sessions" : `Run ${availableBatchDates.length}-session funnel`}</button>
+             </div>
+             <div className="sm:col-span-2 lg:col-span-4" aria-live="polite">
+               <div className={`text-[11px] ${sessionLimits.error ? "text-destructive" : "text-muted-foreground"}`} data-testid="backtest-session-limit">
+                 {sessionLimits.error ?? `Single-run sessions requested: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.requested : "—"} / ${MAX_BACKTEST_SESSIONS}. Remaining capacity: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.remaining : "—"}.`}
+               </div>
+               <div className="mt-1 text-[11px] text-muted-foreground">The qualification batch is separate and may include up to {availableBatchDates.length ? Math.min(availableBatchDates.length, 60) : 60} selected eligible dates (batch ceiling: 60); it does not use the single-run {MAX_BACKTEST_SESSIONS}-session validation ceiling.</div>
              </div>
           </form>
              <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Eligible scheduled dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>

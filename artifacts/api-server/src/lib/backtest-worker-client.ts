@@ -44,6 +44,7 @@ export type BacktestWorkerFactory = (input: BacktestWorkerInput) => BacktestWork
 export type BacktestWorkerOptions = {
   timeoutMs: number;
   signal?: AbortSignal;
+  onTiming?: (timing: { workerStartupMs: number }) => void;
 };
 
 const workerUrl = new URL("./lib/backtest-worker.mjs", import.meta.url);
@@ -63,6 +64,7 @@ export function runBacktestInWorker(
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let worker: BacktestWorkerLike | undefined;
+    let workerCreatedAt: number | undefined;
     const signal = options.signal;
     let onAbort = (): void => {};
 
@@ -119,7 +121,9 @@ export function runBacktestInWorker(
 
     try {
       if (settled) return;
+      workerCreatedAt = Date.now();
       worker = workerFactory(input);
+      options.onTiming?.({ workerStartupMs: Date.now() - workerCreatedAt });
       worker.once("message", (message) => {
         if (message.type === "result") {
           finish(() => resolve(message.report));

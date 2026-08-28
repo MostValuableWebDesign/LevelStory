@@ -19,6 +19,7 @@ import {
   sessionCalendarForContract,
   tradingDateForTimestamp,
   isTradingDate,
+  DEFAULT_FUTURES_SESSION_CALENDAR,
   type FuturesSessionCalendar,
 } from "./session-calendar.js";
 import type { CausalReplayDataset, BacktestGapReport, IntrabarBar } from "../phase9.js";
@@ -491,6 +492,8 @@ export function multiContractImportToReplayDataset(
   const oneMinute: IntrabarBar[] = [];
   const normalizedSelectedOneMinute: NormalizedCandle[] = [];
   const activeSelectedDates = new Map<string, string[]>();
+  const oneMinuteByContractDate = new Map<string, Map<string, NormalizedCandle[]>>();
+  const fiveMinuteByContractDate = new Map<string, Map<string, SimulatedFuturesCandle[]>>();
   for (const item of activeContractByDate) {
     if (!item.contractSymbol) {
       throw new Error(`No MES contract is scheduled for eligible date ${item.tradingDate}.`);
@@ -498,16 +501,32 @@ export function multiContractImportToReplayDataset(
     const contract = imported.contracts.get(item.contractSymbol);
     if (!contract) throw new Error(`Rollover schedule selects ${item.contractSymbol}, but that contract file is unavailable.`);
     const calendar = contract.calendar;
-    const selected = contract.oneMinute.filter((candle) => selectedDateSet.has(tradingDateForTimestamp(candle.openTime, calendar))
-      && tradingDateForTimestamp(candle.openTime, calendar) === item.tradingDate);
+    if (!oneMinuteByContractDate.has(item.contractSymbol)) {
+      const oneMinuteByDate = new Map<string, NormalizedCandle[]>();
+      for (const candle of contract.oneMinute) {
+        const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+        if (!selectedDateSet.has(tradingDate)) continue;
+        const dateCandles = oneMinuteByDate.get(tradingDate) ?? [];
+        dateCandles.push(candle);
+        oneMinuteByDate.set(tradingDate, dateCandles);
+      }
+      oneMinuteByContractDate.set(item.contractSymbol, oneMinuteByDate);
+      const fiveMinuteByDate = new Map<string, SimulatedFuturesCandle[]>();
+      for (const candle of contract.fiveMinute) {
+        const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+        if (!selectedDateSet.has(tradingDate) || !candle.isComplete) continue;
+        const dateCandles = fiveMinuteByDate.get(tradingDate) ?? [];
+        dateCandles.push(toReplayCandle(candle));
+        fiveMinuteByDate.set(tradingDate, dateCandles);
+      }
+      fiveMinuteByContractDate.set(item.contractSymbol, fiveMinuteByDate);
+    }
+    const selected = oneMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
     if (!selected.length) {
       throw new Error(`Scheduled contract ${item.contractSymbol} has no eligible one-minute candles for ${item.tradingDate}.`);
     }
     if (selected.length) {
-      const regularFiveMinute = contract.fiveMinute
-        .filter((candle) => tradingDateForTimestamp(candle.openTime, calendar) === item.tradingDate)
-        .filter((candle) => candle.isComplete)
-        .map(toReplayCandle);
+      const regularFiveMinute = fiveMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
       if (!regularFiveMinute.length) {
         throw new Error(`Scheduled contract ${item.contractSymbol} has no completed replay candles for ${item.tradingDate}.`);
       }
@@ -598,6 +617,7 @@ async function resolveMultiContractIdentity(): Promise<MultiContractIdentity> {
     source: MULTI_CONTRACT_SOURCE,
     rootSymbol: "MES",
     scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+    sessionCalendarVersion: DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
     importerVersion: MULTI_CONTRACT_IMPORTER_VERSION,
     files: resolved.accepted.map((file, index) => ({
       filename: file.filename,

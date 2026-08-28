@@ -856,6 +856,14 @@ components:
       properties:
         timeZone:
           type: string
+        calendarVersion:
+          type: string
+          description: Versioned CME equity-index research calendar used for session and coverage classification.
+        source:
+          type: string
+        verifiedOn:
+          type: string
+          format: date
         tradingDate:
           type: string
         premarketAvailable:
@@ -872,6 +880,17 @@ components:
           type: object
           additionalProperties:
             type: string
+        maintenanceClosures:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                start: { type: string }
+                end: { type: string }
+                reason: { type: string }
+              required: [start, end, reason]
       required: [timeZone, tradingDate, premarketAvailable, premarket, regular, holidays, earlyCloses]
     Signal:
       type: object
@@ -2038,13 +2057,14 @@ components:
         inSampleDays:
           type: number
           minimum: 1
-          maximum: 30
+          maximum: 22
           default: 5
         outOfSampleDays:
           type: number
           minimum: 1
-          maximum: 10
+          maximum: 22
           default: 2
+          description: Single-run sessions share a maximum total of 22 across in-sample and holdout days.
         seed:
           type: number
           minimum: 1
@@ -2624,6 +2644,18 @@ components:
             ambiguityRule: { type: string }
             commissionPerContract: { type: number }
           required: [entryBufferTicks, immediateNextCandleOnly, entrySlippageTicks, exitSlippageTicks, stopRule, ambiguityRule, commissionPerContract]
+        timing:
+          type: object
+          description: Path-free runtime telemetry for this request; absent from direct engine reports.
+          properties:
+            preparationMs: { type: number, minimum: 0 }
+            cacheLookupMs: { type: number, minimum: 0 }
+            cacheStoreMs: { type: number, minimum: 0 }
+            workerStartupMs: { type: number, minimum: 0 }
+            workerMs: { type: number, minimum: 0 }
+            responseValidationMs: { type: number, minimum: 0 }
+            totalMs: { type: number, minimum: 0 }
+          required: [preparationMs, cacheLookupMs, workerMs, responseValidationMs, totalMs]
         gapReport:
           type: object
           properties:

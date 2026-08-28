@@ -75,6 +75,9 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "sessionCalendar": zod.object({
   "timeZone": zod.string(),
+  "calendarVersion": zod.string().optional().describe('Versioned CME equity-index research calendar used for session and coverage classification.'),
+  "source": zod.string().optional(),
+  "verifiedOn": zod.coerce.date().optional(),
   "tradingDate": zod.string(),
   "premarketAvailable": zod.boolean(),
   "premarket": zod.object({
@@ -88,7 +91,12 @@ export const GetMarketSnapshotResponse = zod.object({
   "end": zod.string()
 }),
   "holidays": zod.array(zod.string()),
-  "earlyCloses": zod.record(zod.string(), zod.string())
+  "earlyCloses": zod.record(zod.string(), zod.string()),
+  "maintenanceClosures": zod.record(zod.string(), zod.array(zod.object({
+  "start": zod.string(),
+  "end": zod.string(),
+  "reason": zod.string()
+}))).optional()
 }),
   "price": zod.number(),
   "change": zod.number(),
@@ -695,10 +703,10 @@ export const runBacktestBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$')
 export const runBacktestBodyStartDateDefault = `2026-07-27`;
 export const runBacktestBodyStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const runBacktestBodyInSampleDaysDefault = 5;
-export const runBacktestBodyInSampleDaysMax = 30;
+export const runBacktestBodyInSampleDaysMax = 22;
 
 export const runBacktestBodyOutOfSampleDaysDefault = 2;
-export const runBacktestBodyOutOfSampleDaysMax = 10;
+export const runBacktestBodyOutOfSampleDaysMax = 22;
 
 export const runBacktestBodySeedDefault = 11;
 export const runBacktestBodySeedMax = 100000;
@@ -727,7 +735,7 @@ export const RunBacktestBody = zod.object({
   "endDate": zod.string().regex(runBacktestBodyEndDateRegExp).default(runBacktestBodyEndDateDefault),
   "startDate": zod.string().regex(runBacktestBodyStartDateRegExp).default(runBacktestBodyStartDateDefault),
   "inSampleDays": zod.number().min(1).max(runBacktestBodyInSampleDaysMax).default(runBacktestBodyInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(runBacktestBodyOutOfSampleDaysMax).default(runBacktestBodyOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(runBacktestBodyOutOfSampleDaysMax).default(runBacktestBodyOutOfSampleDaysDefault).describe('Single-run sessions share a maximum total of 22 across in-sample and holdout days.'),
   "seed": zod.number().min(1).max(runBacktestBodySeedMax).default(runBacktestBodySeedDefault),
   "premarketAvailable": zod.boolean().default(runBacktestBodyPremarketAvailableDefault),
   "targetDollars": zod.number().min(runBacktestBodyTargetDollarsMin).max(runBacktestBodyTargetDollarsMax).default(runBacktestBodyTargetDollarsDefault),
@@ -746,6 +754,20 @@ export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]
 export const runBacktestResponseAuditPagePageSizeMax = 100;
 
 export const runBacktestResponseAuditPageTotalMin = 0;
+
+export const runBacktestResponseTimingPreparationMsMin = 0;
+
+export const runBacktestResponseTimingCacheLookupMsMin = 0;
+
+export const runBacktestResponseTimingCacheStoreMsMin = 0;
+
+export const runBacktestResponseTimingWorkerStartupMsMin = 0;
+
+export const runBacktestResponseTimingWorkerMsMin = 0;
+
+export const runBacktestResponseTimingResponseValidationMsMin = 0;
+
+export const runBacktestResponseTimingTotalMsMin = 0;
 
 export const runBacktestResponseGapReportInactiveContractThresholdPercentMin = 0;
 export const runBacktestResponseGapReportInactiveContractThresholdPercentMax = 100;
@@ -1091,6 +1113,15 @@ export const RunBacktestResponse = zod.object({
   "ambiguityRule": zod.string(),
   "commissionPerContract": zod.number()
 }),
+  "timing": zod.object({
+  "preparationMs": zod.number().min(runBacktestResponseTimingPreparationMsMin),
+  "cacheLookupMs": zod.number().min(runBacktestResponseTimingCacheLookupMsMin),
+  "cacheStoreMs": zod.number().min(runBacktestResponseTimingCacheStoreMsMin).optional(),
+  "workerStartupMs": zod.number().min(runBacktestResponseTimingWorkerStartupMsMin).optional(),
+  "workerMs": zod.number().min(runBacktestResponseTimingWorkerMsMin),
+  "responseValidationMs": zod.number().min(runBacktestResponseTimingResponseValidationMsMin),
+  "totalMs": zod.number().min(runBacktestResponseTimingTotalMsMin)
+}).optional().describe('Path-free runtime telemetry for this request; absent from direct engine reports.'),
   "gapReport": zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
@@ -1133,10 +1164,10 @@ export const startBatchBacktestBodyOneEndDateRegExp = new RegExp('^\\d{4}-\\d{2}
 export const startBatchBacktestBodyOneStartDateDefault = `2026-07-27`;
 export const startBatchBacktestBodyOneStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const startBatchBacktestBodyOneInSampleDaysDefault = 5;
-export const startBatchBacktestBodyOneInSampleDaysMax = 30;
+export const startBatchBacktestBodyOneInSampleDaysMax = 22;
 
 export const startBatchBacktestBodyOneOutOfSampleDaysDefault = 2;
-export const startBatchBacktestBodyOneOutOfSampleDaysMax = 10;
+export const startBatchBacktestBodyOneOutOfSampleDaysMax = 22;
 
 export const startBatchBacktestBodyOneSeedDefault = 11;
 export const startBatchBacktestBodyOneSeedMax = 100000;
@@ -1168,7 +1199,7 @@ export const StartBatchBacktestBody = zod.object({
   "endDate": zod.string().regex(startBatchBacktestBodyOneEndDateRegExp).default(startBatchBacktestBodyOneEndDateDefault),
   "startDate": zod.string().regex(startBatchBacktestBodyOneStartDateRegExp).default(startBatchBacktestBodyOneStartDateDefault),
   "inSampleDays": zod.number().min(1).max(startBatchBacktestBodyOneInSampleDaysMax).default(startBatchBacktestBodyOneInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(startBatchBacktestBodyOneOutOfSampleDaysMax).default(startBatchBacktestBodyOneOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(startBatchBacktestBodyOneOutOfSampleDaysMax).default(startBatchBacktestBodyOneOutOfSampleDaysDefault).describe('Single-run sessions share a maximum total of 22 across in-sample and holdout days.'),
   "seed": zod.number().min(1).max(startBatchBacktestBodyOneSeedMax).default(startBatchBacktestBodyOneSeedDefault),
   "premarketAvailable": zod.boolean().default(startBatchBacktestBodyOnePremarketAvailableDefault),
   "targetDollars": zod.number().min(startBatchBacktestBodyOneTargetDollarsMin).max(startBatchBacktestBodyOneTargetDollarsMax).default(startBatchBacktestBodyOneTargetDollarsDefault),
@@ -1190,6 +1221,20 @@ export const startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new Re
 export const startBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
 
 export const startBatchBacktestResponseReportOneOneAuditPageTotalMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingPreparationMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingCacheLookupMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingCacheStoreMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingWorkerStartupMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingWorkerMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingResponseValidationMsMin = 0;
+
+export const startBatchBacktestResponseReportOneOneTimingTotalMsMin = 0;
 
 export const startBatchBacktestResponseReportOneOneGapReportInactiveContractThresholdPercentMin = 0;
 export const startBatchBacktestResponseReportOneOneGapReportInactiveContractThresholdPercentMax = 100;
@@ -1546,6 +1591,15 @@ export const StartBatchBacktestResponse = zod.object({
   "ambiguityRule": zod.string(),
   "commissionPerContract": zod.number()
 }),
+  "timing": zod.object({
+  "preparationMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingPreparationMsMin),
+  "cacheLookupMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingCacheLookupMsMin),
+  "cacheStoreMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingCacheStoreMsMin).optional(),
+  "workerStartupMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingWorkerStartupMsMin).optional(),
+  "workerMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingWorkerMsMin),
+  "responseValidationMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingResponseValidationMsMin),
+  "totalMs": zod.number().min(startBatchBacktestResponseReportOneOneTimingTotalMsMin)
+}).optional().describe('Path-free runtime telemetry for this request; absent from direct engine reports.'),
   "gapReport": zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
@@ -2047,6 +2101,20 @@ export const getBatchBacktestStatusResponseReportOneOneAuditPagePageSizeMax = 10
 
 export const getBatchBacktestStatusResponseReportOneOneAuditPageTotalMin = 0;
 
+export const getBatchBacktestStatusResponseReportOneOneTimingPreparationMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingCacheLookupMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingCacheStoreMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingWorkerStartupMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingWorkerMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingResponseValidationMsMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneTimingTotalMsMin = 0;
+
 export const getBatchBacktestStatusResponseReportOneOneGapReportInactiveContractThresholdPercentMin = 0;
 export const getBatchBacktestStatusResponseReportOneOneGapReportInactiveContractThresholdPercentMax = 100;
 
@@ -2402,6 +2470,15 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "ambiguityRule": zod.string(),
   "commissionPerContract": zod.number()
 }),
+  "timing": zod.object({
+  "preparationMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingPreparationMsMin),
+  "cacheLookupMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingCacheLookupMsMin),
+  "cacheStoreMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingCacheStoreMsMin).optional(),
+  "workerStartupMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingWorkerStartupMsMin).optional(),
+  "workerMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingWorkerMsMin),
+  "responseValidationMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingResponseValidationMsMin),
+  "totalMs": zod.number().min(getBatchBacktestStatusResponseReportOneOneTimingTotalMsMin)
+}).optional().describe('Path-free runtime telemetry for this request; absent from direct engine reports.'),
   "gapReport": zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
@@ -2903,6 +2980,20 @@ export const cancelBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
 
 export const cancelBatchBacktestResponseReportOneOneAuditPageTotalMin = 0;
 
+export const cancelBatchBacktestResponseReportOneOneTimingPreparationMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingCacheLookupMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingCacheStoreMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingWorkerStartupMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingWorkerMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingResponseValidationMsMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneTimingTotalMsMin = 0;
+
 export const cancelBatchBacktestResponseReportOneOneGapReportInactiveContractThresholdPercentMin = 0;
 export const cancelBatchBacktestResponseReportOneOneGapReportInactiveContractThresholdPercentMax = 100;
 
@@ -3258,6 +3349,15 @@ export const CancelBatchBacktestResponse = zod.object({
   "ambiguityRule": zod.string(),
   "commissionPerContract": zod.number()
 }),
+  "timing": zod.object({
+  "preparationMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingPreparationMsMin),
+  "cacheLookupMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingCacheLookupMsMin),
+  "cacheStoreMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingCacheStoreMsMin).optional(),
+  "workerStartupMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingWorkerStartupMsMin).optional(),
+  "workerMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingWorkerMsMin),
+  "responseValidationMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingResponseValidationMsMin),
+  "totalMs": zod.number().min(cancelBatchBacktestResponseReportOneOneTimingTotalMsMin)
+}).optional().describe('Path-free runtime telemetry for this request; absent from direct engine reports.'),
   "gapReport": zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),

@@ -5,6 +5,7 @@ import {
   coverageEligibilityLabel,
   getHistoricalBacktestReadiness,
   getMultiContractCoverageTotals,
+  getBacktestSessionLimits,
 } from "../src/lib/backtest-state.ts";
 
 test("historical backtest readiness stays gated through indexing and failures", () => {
@@ -60,4 +61,16 @@ test("coverage labels stay dynamic and accessible without color", () => {
   assert.equal(acceptedOutrightFilesLabel(9), "9 accepted outright MES files");
   assert.equal(coverageEligibilityLabel(true), "Eligible for backtest");
   assert.equal(coverageEligibilityLabel(false), "Not eligible for backtest");
+});
+
+test("single-run session limits constrain both fields and reject overages", () => {
+  assert.deepEqual(getBacktestSessionLimits(5, 2), {
+    requested: 7,
+    remaining: 15,
+    maxInSampleDays: 20,
+    maxOutOfSampleDays: 17,
+    error: null,
+  });
+  assert.equal(getBacktestSessionLimits(21, 2).error, "This single run requests 23 sessions; the maximum is 22.");
+  assert.equal(getBacktestSessionLimits(21, 2).maxOutOfSampleDays, 1);
 });

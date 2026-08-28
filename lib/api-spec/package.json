@@ -2,6 +2,11 @@
   "name": "@workspace/api-spec",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./openapi.yaml",
+    "./constants": "./src/constants.ts"
+  },
   "scripts": {
     "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
   },

@@ -22,12 +22,13 @@ export interface BacktestRequest {
   startDate?: string;
   /**
      * @minimum 1
-     * @maximum 30
+     * @maximum 22
      */
   inSampleDays: number;
   /**
+     * Single-run sessions share a maximum total of 22 across in-sample and holdout days.
      * @minimum 1
-     * @maximum 10
+     * @maximum 22
      */
   outOfSampleDays: number;
   /**

@@ -50,6 +50,23 @@ test("early close ends regular session at 1:00 p.m. ET", () => {
   assert.equal(feed.at(-1)?.closeTime, Date.parse("2026-07-03T17:00:00.000Z"));
 });
 
+test("CME 2025 holiday and modified-session dates are explicit", () => {
+  assert.equal(calendar.calendarVersion, "CME_EQUITY_INDEX_2025_2026_V1");
+  assert.match(calendar.source, /cmegroup\.com\/tools-information\/holiday-calendar/);
+  assert.equal(calendar.verifiedOn, "2026-08-28");
+  assert.equal(sessionWindow("2025-09-01", "regular", calendar), null);
+  assert.equal(sessionWindow("2025-11-27", "regular", calendar)?.closeTime, Date.parse("2025-11-27T18:00:00.000Z"));
+  assert.equal(sessionWindow("2025-11-28", "regular", calendar)?.closeTime, Date.parse("2025-11-28T18:00:00.000Z"));
+  assert.equal(sessionWindow("2025-12-24", "regular", calendar)?.earlyClose, true);
+  assert.equal(sessionWindow("2025-12-25", "regular", calendar), null);
+});
+
+test("Thanksgiving 2026 is an early close rather than a full holiday", () => {
+  const regular = sessionWindow("2026-11-26", "regular", calendar);
+  assert.equal(regular?.closeTime, Date.parse("2026-11-26T18:00:00.000Z"));
+  assert.equal(regular?.earlyClose, true);
+});
+
 test("daylight-saving transitions preserve 9:30 a.m. ET", () => {
   assert.equal(newYorkTimeToUtc("2026-03-09", "09:30"), Date.parse("2026-03-09T13:30:00.000Z"));
   assert.equal(newYorkTimeToUtc("2026-01-05", "09:30"), Date.parse("2026-01-05T14:30:00.000Z"));
