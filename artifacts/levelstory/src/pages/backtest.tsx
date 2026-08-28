@@ -5,6 +5,7 @@ import {
   useGetBatchBacktestStatus,
   useGetBatchFunnel,
   useGetHistoricalData,
+  useGetHistoricalDataIndexStatus,
   useRunBacktest,
   useStartBatchBacktest,
 } from "@workspace/api-client-react";
@@ -21,6 +22,7 @@ import type {
 import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
+import { getHistoricalBacktestReadiness } from "@/lib/backtest-state";
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
 
@@ -61,15 +63,16 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
       {stats.map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
     </div>
        <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
-        <p className="mb-2 text-foreground">{multiContract ? `Nine-file coverage is reported independently from the selected replay. The active contract is chosen by the explicit ${data.scheduleVersion ?? "versioned"} schedule; no price blending or back-adjustment is applied.` : "Full-file coverage includes dates before MESU6 became active; it is not the selected backtest window."}</p>
+         <p className="mb-2 text-foreground">{multiContract ? `Coverage is reported independently for each discovered outright file. The active contract is chosen by the explicit ${data.scheduleVersion ?? "versioned"} schedule; no price blending or back-adjustment is applied.` : "Full-file coverage includes dates before MESU6 became active; it is not the selected backtest window."}</p>
        <p>Expected closed = maintenance/daily close + weekend/holiday + early-close minutes. Unexpected missing = unexpected regular + unexpected overnight minutes. Inactive contract minutes are excluded from unexpected data loss when RTH coverage is below the configured threshold.</p>
       <div className="eyebrow mb-2">Aggregated bars</div>
       <div className="flex flex-wrap gap-x-5 gap-y-2"><span>1m <strong className="mono text-foreground">{data.aggregationCounts.oneMinute.toLocaleString()}</strong></span><span>5m <strong className="mono text-foreground">{data.aggregationCounts.fiveMinute.toLocaleString()}</strong></span><span>15m <strong className="mono text-foreground">{data.aggregationCounts.fifteenMinute.toLocaleString()}</strong></span><span>1h <strong className="mono text-foreground">{data.aggregationCounts.oneHour.toLocaleString()}</strong></span></div>
       <div className="mt-3">Available NY trading dates: <strong className="text-foreground">{data.availableTradingDates.length}</strong> ({data.availableTradingDates[0] ?? "—"} → {data.availableTradingDates.at(-1) ?? "—"})</div>
        {multiContract && <div className="mt-4 space-y-2">
          <div className="eyebrow">Contract coverage</div>
-         <div className="flex flex-wrap gap-x-4 gap-y-2 text-foreground">{(data.files ?? []).map((file) => <span key={file.contractSymbol} className="mono">{file.contractSymbol} <span className="text-muted-foreground">· {file.status} · {file.activeSelectedDates.length} selected dates</span></span>)}</div>
+          <div className="grid gap-2 text-foreground sm:grid-cols-2">{(data.files ?? []).map((file) => <div key={file.contractSymbol} className="border border-border px-3 py-2"><div className="mono">{file.contractSymbol} <span className="text-muted-foreground">· {file.status}</span></div><div className="mt-1 text-[10px] text-muted-foreground">{file.coverageStatus ?? "not_calculated"} · {file.activeSelectedDates.length} eligible dates · {file.regularSessionCandleCount?.toLocaleString() ?? "—"} RTH candles</div>{file.activePeriod?.reason && <div className="mt-1 text-[10px] text-muted-foreground">{file.activePeriod.reason}</div>}</div>)}</div>
          <div className="text-muted-foreground">Rejected inputs: <strong className="text-foreground">{data.rejectedFiles?.length ?? 0}</strong> · Inactive/outside schedule: <strong className="text-foreground">{data.inactiveContracts?.join(", ") || "none"}</strong></div>
+          <div className="text-muted-foreground">Eligible scheduled dates: <strong className="text-foreground">{data.eligibleTradingDates?.length ?? 0}</strong> · unavailable schedule dates: <strong className="text-foreground">{data.ineligibleDates?.length ?? 0}</strong></div>
        </div>}
     </div>
   </Panel>;
@@ -510,6 +513,16 @@ export default function Backtest() {
     symbol: "MES",
     source: source === "simulated" ? "historical_databento" : source,
   });
+  const multiContractIndex = useGetHistoricalDataIndexStatus({
+    query: {
+      enabled: source === MULTI_CONTRACT_SOURCE,
+      queryKey: ["historical-data-index-status"],
+      refetchInterval: (query) => {
+        const state = query.state.data?.state;
+        return state === "indexing" || state === "not_started" ? 1200 : false;
+      },
+    },
+  });
   const batchStatus = useGetBatchBacktestStatus(
     { batchId: batchId ?? "00000000-0000-0000-0000-000000000000" },
     {
@@ -543,9 +556,9 @@ export default function Backtest() {
   } as const;
 
   const availableBatchDates = useMemo(() => {
-    const dates = historicalImport.data?.availableTradingDates ?? [];
+    const dates = historicalImport.data?.eligibleTradingDates ?? historicalImport.data?.availableTradingDates ?? [];
     return dates.filter((date) => date >= startDate && date <= endDate).sort();
-  }, [endDate, historicalImport.data?.availableTradingDates, startDate]);
+  }, [endDate, historicalImport.data?.availableTradingDates, historicalImport.data?.eligibleTradingDates, startDate]);
   const batchRequest = {
     ...request,
     ...(availableBatchDates.length >= 2 ? { selectedDates: availableBatchDates } : {}),
@@ -563,18 +576,27 @@ export default function Backtest() {
   };
   const batchReport = batchStatus.data?.report ?? null;
   const batchActive = batchStatus.data?.status === "queued" || batchStatus.data?.status === "running";
+  const historicalReadiness = getHistoricalBacktestReadiness(source, {
+    indexState: multiContractIndex.data?.state,
+    importLoading: historicalImport.isLoading,
+    hasImport: Boolean(historicalImport.data),
+  });
+  const historicalReady = historicalReadiness.ready;
+  const historicalIndexMessage = multiContractIndex.data?.message
+    ?? (multiContractIndex.isLoading ? "Checking historical MES index…" : null);
 
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
-        {source !== "simulated" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading} isError={historicalImport.isError} /></div>}
+         {source !== "simulated" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /></div>}
+         {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div></Panel>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); setExecutionMode(next === "simulated" ? "quote_based_shadow" : "ohlcv_modeled"); if (next !== "simulated") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value={MULTI_CONTRACT_SOURCE}>Historical Databento — MES quarterly contracts</option><option value="historical_databento">Historical Databento CSV — MESU6</option><option value="simulated">Simulated demo</option></select></label>
-             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Execution mode</span><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value as typeof executionMode)} className="field w-full" data-testid="select-backtest-execution-mode"><option value="ohlcv_modeled" disabled={source !== "historical_databento"}>Modeled OHLCV fill</option><option value="quote_based_shadow" disabled={source === "historical_databento"}>Quote-based Shadow fill</option></select></label>
-            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} disabled={source === "historical_databento" && item !== "MES"}>{item}</option>)}</select></label>
+              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Execution mode</span><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value as typeof executionMode)} className="field w-full" data-testid="select-backtest-execution-mode"><option value="ohlcv_modeled" disabled={source === "simulated"}>Modeled OHLCV fill</option><option value="quote_based_shadow" disabled={source !== "simulated"}>Quote-based Shadow fill</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} value={item} disabled={source !== "simulated" && item !== "MES"}>{item}</option>)}</select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-start-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">End date</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-end-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">In-sample days</span><input type="number" min="1" max="30" value={inSampleDays} onChange={(event) => setInSampleDays(event.target.value)} className="field mono w-full" data-testid="input-backtest-in-sample" /></label>
@@ -587,11 +609,11 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Modeled slippage</span><input type="number" min="0" max="8" value={ohlcvSlippageTicks} onChange={(event) => setOhlcvSlippageTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-slippage" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
              <div className="flex flex-col items-end gap-2 sm:col-span-2 lg:col-span-2 lg:flex-row">
-               <button type="submit" disabled={run.isPending || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : "Run causal backtest"}</button>
-               <button type="button" onClick={submitBatch} disabled={startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : `Run ${availableBatchDates.length >= 2 ? availableBatchDates.length : Number(inSampleDays) + Number(outOfSampleDays)}-session funnel`}</button>
+                <button type="submit" disabled={!historicalReady || run.isPending || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : !historicalReady ? "Waiting for history…" : "Run causal backtest"}</button>
+                <button type="button" onClick={submitBatch} disabled={!historicalReady || startBatch.isPending || batchActive || availableBatchDates.length < 2} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : availableBatchDates.length < 2 ? "Need 2 eligible sessions" : `Run ${availableBatchDates.length}-session funnel`}</button>
              </div>
           </form>
-            <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Batch dates available in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
+             <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Eligible scheduled dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
         </Panel>
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}

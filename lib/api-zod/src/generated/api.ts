@@ -4284,6 +4284,19 @@ export const GetHistoricalDataResponse = zod.object({
   "fifteenMinute": zod.number(),
   "oneHour": zod.number()
 }),
+  "eligibleTradingDates": zod.array(zod.string()).optional(),
+  "ineligibleDates": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "scheduledContractSymbol": zod.string().nullable(),
+  "status": zod.enum(['eligible', 'missing_scheduled_file', 'insufficient_rth_coverage', 'no_scheduled_contract']),
+  "reason": zod.string().nullable(),
+  "availableOnContract": zod.boolean(),
+  "regularSessionComplete": zod.boolean()
+})).optional(),
+  "indexingState": zod.enum(['ready']).optional(),
+  "indexKey": zod.string().optional(),
+  "importerVersion": zod.string().optional(),
+  "indexedAt": zod.coerce.date().optional(),
   "scheduleVersion": zod.string().nullish(),
   "acceptedContracts": zod.array(zod.string()).optional(),
   "inactiveContracts": zod.array(zod.string()).optional(),
@@ -4305,7 +4318,23 @@ export const GetHistoricalDataResponse = zod.object({
   "activeSelectedDates": zod.array(zod.string()),
   "selected": zod.boolean(),
   "status": zod.enum(['accepted', 'inactive', 'rejected']),
-  "rejectionReason": zod.string().nullable()
+  "rejectionReason": zod.string().nullable(),
+  "coverageStatus": zod.enum(['calculated', 'not_calculated']).optional(),
+  "regularSessionCandleCount": zod.number().nullish(),
+  "overnightCandleCount": zod.number().nullish(),
+  "missingMinuteGaps": zod.number().nullish(),
+  "missingGapSegments": zod.number().nullish(),
+  "unexpectedMissingMinutes": zod.number().nullish(),
+  "regularSessionMissingMinutes": zod.number().nullish(),
+  "inactiveContractMinutes": zod.number().nullish(),
+  "missingRegularSessionDates": zod.array(zod.string()).nullish(),
+  "completeRegularSessionDates": zod.array(zod.string()).nullish(),
+  "activePeriod": zod.object({
+  "firstDate": zod.string().nullable(),
+  "lastDate": zod.string().nullable(),
+  "sufficient": zod.boolean(),
+  "reason": zod.string().nullable()
+}).optional()
 })).optional(),
   "rolloverBoundaries": zod.array(zod.object({
   "effectiveDate": zod.string(),
@@ -4317,6 +4346,31 @@ export const GetHistoricalDataResponse = zod.object({
   "tradingDate": zod.string(),
   "contractSymbol": zod.string()
 })).optional()
+})
+
+
+/**
+ * Returns the reusable multi-contract MES index lifecycle without exposing server file paths.
+ * @summary Get historical MES index readiness
+ */
+export const getHistoricalDataIndexStatusResponseProgressMin = 0;
+export const getHistoricalDataIndexStatusResponseProgressMax = 100;
+
+export const getHistoricalDataIndexStatusResponseDiscoveredFileCountMin = 0;
+
+export const getHistoricalDataIndexStatusResponseIndexedFileCountMin = 0;
+
+
+
+export const GetHistoricalDataIndexStatusResponse = zod.object({
+  "state": zod.enum(['not_started', 'indexing', 'ready', 'failed']),
+  "indexKey": zod.string().nullable(),
+  "progress": zod.number().min(getHistoricalDataIndexStatusResponseProgressMin).max(getHistoricalDataIndexStatusResponseProgressMax),
+  "discoveredFileCount": zod.number().min(getHistoricalDataIndexStatusResponseDiscoveredFileCountMin),
+  "indexedFileCount": zod.number().min(getHistoricalDataIndexStatusResponseIndexedFileCountMin),
+  "message": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
 })
 
 

@@ -90,7 +90,17 @@ async function startTestServer(
   return { server, port: address.port };
 }
 
-function batchBody(seed: number) {
+function batchBody(seed: number): Record<string, unknown> & {
+  symbol: string;
+  endDate: string;
+  startDate: string;
+  inSampleDays: number;
+  outOfSampleDays: number;
+  seed: number;
+  source: "simulated" | "historical_databento_multicontract";
+  executionMode: "quote_based_shadow" | "ohlcv_modeled";
+  selectedDates: string[];
+} {
   return {
     symbol: "MES",
     endDate: "2026-08-26",
@@ -155,9 +165,19 @@ async function postBatch(port: number, body: ReturnType<typeof batchBody>): Prom
   });
 }
 
-function backtestBody(seed: number) {
+function backtestBody(seed: number): Record<string, unknown> & {
+  symbol: string;
+  endDate: string;
+  startDate: string;
+  inSampleDays: number;
+  outOfSampleDays: number;
+  seed: number;
+  source: "simulated" | "historical_databento_multicontract";
+  executionMode: "quote_based_shadow" | "ohlcv_modeled";
+} {
   return {
     symbol: "MES",
+    startDate: "2026-08-27",
     endDate: "2026-08-28",
     inSampleDays: 1,
     outOfSampleDays: 1,
@@ -377,6 +397,35 @@ test("successful route result matches the direct deterministic engine", async ()
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.body.metrics, direct.metrics);
     assert.equal(runner.callCount, 1);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("historical multi-contract requests fail closed to exact MES in both routes", async () => {
+  const runner = createTestWorkerRunner("success");
+  const { server, port } = await startTestServer(runner, {
+    requestTimeoutMs: 500,
+    workerDeadlineMs: 400,
+  });
+  try {
+    const invalidBacktest = await postBacktest(port, {
+      ...backtestBody(9037),
+      symbol: "ES",
+      source: "historical_databento_multicontract" as const,
+      executionMode: "ohlcv_modeled" as const,
+    });
+    assert.equal(invalidBacktest.statusCode, 422);
+    assert.match(String(invalidBacktest.body.error), /exact MES/i);
+    const invalidBatch = await postBatch(port, {
+      ...batchBody(9038),
+      symbol: "MNQ",
+      source: "historical_databento_multicontract" as const,
+      executionMode: "ohlcv_modeled" as const,
+    });
+    assert.equal(invalidBatch.statusCode, 422);
+    assert.match(String(invalidBatch.body.error), /exact MES/i);
+    assert.equal(runner.callCount, 0);
   } finally {
     await closeServer(server);
   }

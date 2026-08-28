@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalImportSummaryFilesItemActivePeriod } from './historicalImportSummaryFilesItemActivePeriod';
+import type { HistoricalImportSummaryFilesItemCoverageStatus } from './historicalImportSummaryFilesItemCoverageStatus';
 import type { HistoricalImportSummaryFilesItemStatus } from './historicalImportSummaryFilesItemStatus';
 
 export type HistoricalImportSummaryFilesItem = {
@@ -25,4 +27,24 @@ export type HistoricalImportSummaryFilesItem = {
   status: HistoricalImportSummaryFilesItemStatus;
   /** @nullable */
   rejectionReason: string | null;
+  coverageStatus?: HistoricalImportSummaryFilesItemCoverageStatus;
+  /** @nullable */
+  regularSessionCandleCount?: number | null;
+  /** @nullable */
+  overnightCandleCount?: number | null;
+  /** @nullable */
+  missingMinuteGaps?: number | null;
+  /** @nullable */
+  missingGapSegments?: number | null;
+  /** @nullable */
+  unexpectedMissingMinutes?: number | null;
+  /** @nullable */
+  regularSessionMissingMinutes?: number | null;
+  /** @nullable */
+  inactiveContractMinutes?: number | null;
+  /** @nullable */
+  missingRegularSessionDates?: string[] | null;
+  /** @nullable */
+  completeRegularSessionDates?: string[] | null;
+  activePeriod?: HistoricalImportSummaryFilesItemActivePeriod;
 };

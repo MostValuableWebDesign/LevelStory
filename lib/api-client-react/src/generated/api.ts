@@ -40,6 +40,7 @@ import type {
   GetMarketSnapshotParams,
   GetVisualValidationSetParams,
   HealthStatus,
+  HistoricalDataIndexStatus,
   HistoricalImportSummary,
   JournalEntry,
   JournalEntryInput,
@@ -1351,6 +1352,84 @@ export function useGetHistoricalData<TData = Awaited<ReturnType<typeof getHistor
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetHistoricalDataQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalDataIndexStatusUrl = () => {
+
+
+
+
+  return `/api/historical-data/status`
+}
+
+/**
+ * Returns the reusable multi-contract MES index lifecycle without exposing server file paths.
+ * @summary Get historical MES index readiness
+ */
+export const getHistoricalDataIndexStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataIndexStatus> => {
+
+  return customFetch<HistoricalDataIndexStatus>(getGetHistoricalDataIndexStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalDataIndexStatusQueryKey = () => {
+    return [
+    `/api/historical-data/status`
+    ] as const;
+    }
+
+
+export const getGetHistoricalDataIndexStatusQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>, TError = ErrorType<HistoricalDataIndexStatus>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalDataIndexStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>> = ({ signal }) => getHistoricalDataIndexStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalDataIndexStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>>
+export type GetHistoricalDataIndexStatusQueryError = ErrorType<HistoricalDataIndexStatus>
+
+
+/**
+ * @summary Get historical MES index readiness
+ */
+
+export function useGetHistoricalDataIndexStatus<TData = Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>, TError = ErrorType<HistoricalDataIndexStatus>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataIndexStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalDataIndexStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

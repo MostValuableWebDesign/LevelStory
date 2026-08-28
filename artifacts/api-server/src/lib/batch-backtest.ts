@@ -168,14 +168,26 @@ function createPartitions(
     dataset.contractSchedule?.activeContractByDate?.map((item) => [item.tradingDate, item.contractSymbol]) ?? [],
   );
   const fallbackContract = dataset.contractSymbol;
-  return requestedDates.flatMap((tradingDate) => {
+  const partitions = requestedDates.flatMap((tradingDate) => {
     const contractSymbol = contractByDate.get(tradingDate)
-      ?? dataset.candles.find((candle) => tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(getFuturesContractSpecification("MES"))) === tradingDate)?.contractSymbol
-      ?? fallbackContract;
+      ?? (dataset.source === "historical_databento_multicontract"
+        ? undefined
+        : dataset.candles.find((candle) => tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(getFuturesContractSpecification("MES"))) === tradingDate)?.contractSymbol
+          ?? fallbackContract);
+    if (!contractSymbol) {
+      throw new Error(`No scheduled contract is available for batch trading date ${tradingDate}.`);
+    }
     const period = holdoutDates.has(tradingDate) ? "out_of_sample" : "in_sample";
     const partition = partitionDataset(dataset, tradingDate, contractSymbol, period);
-    return partition ? [{ tradingDate, contractSymbol, period, dataset: partition }] : [];
+    if (!partition) {
+      throw new Error(`Batch trading date ${tradingDate} has no completed candles for ${contractSymbol}.`);
+    }
+    return [{ tradingDate, contractSymbol, period: period as BatchPartition["period"], dataset: partition }];
   });
+  if (partitions.length !== requestedDates.length) {
+    throw new Error("The batch could not construct every requested replay partition.");
+  }
+  return partitions;
 }
 
 function aggregateBatchReports(

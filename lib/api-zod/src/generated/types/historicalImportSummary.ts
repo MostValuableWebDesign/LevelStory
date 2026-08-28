@@ -10,6 +10,8 @@ import type { HistoricalImportSummaryAggregationCounts } from './historicalImpor
 import type { HistoricalImportSummaryCoverageScope } from './historicalImportSummaryCoverageScope';
 import type { HistoricalImportSummaryErrorsItem } from './historicalImportSummaryErrorsItem';
 import type { HistoricalImportSummaryFilesItem } from './historicalImportSummaryFilesItem';
+import type { HistoricalImportSummaryIndexingState } from './historicalImportSummaryIndexingState';
+import type { HistoricalImportSummaryIneligibleDatesItem } from './historicalImportSummaryIneligibleDatesItem';
 import type { HistoricalImportSummaryRejectedFilesItem } from './historicalImportSummaryRejectedFilesItem';
 import type { HistoricalImportSummaryRejectionReasons } from './historicalImportSummaryRejectionReasons';
 import type { HistoricalImportSummaryRolloverBoundariesItem } from './historicalImportSummaryRolloverBoundariesItem';
@@ -66,6 +68,12 @@ export interface HistoricalImportSummary {
   rejectionReasons: HistoricalImportSummaryRejectionReasons;
   errors: HistoricalImportSummaryErrorsItem[];
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
+  eligibleTradingDates?: string[];
+  ineligibleDates?: HistoricalImportSummaryIneligibleDatesItem[];
+  indexingState?: HistoricalImportSummaryIndexingState;
+  indexKey?: string;
+  importerVersion?: string;
+  indexedAt?: Date;
   /** @nullable */
   scheduleVersion?: string | null;
   acceptedContracts?: string[];

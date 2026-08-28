@@ -6,6 +6,7 @@ import {
   GetBatchFunnelQueryParams,
   GetBatchFunnelResponse,
   GetHistoricalDataResponse,
+  GetHistoricalDataIndexStatusResponse,
   RunBacktestBody,
   RunBacktestResponse,
   StartBatchBacktestBody,
@@ -22,6 +23,7 @@ import {
   importHistoricalMultiContract,
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
+  getHistoricalMultiContractIndexStatus,
 } from "../lib/futures/multi-contract-replay.js";
 import {
   BacktestRequestAbortedError,
@@ -47,6 +49,7 @@ import {
 } from "../lib/backtest-store.js";
 import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
+import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
 
 const MAX_BACKTEST_SESSIONS = 22;
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
@@ -174,15 +177,21 @@ function validateBatchRequest(request: BatchBacktestRequest): string | null {
     return `A batch may include at most ${BATCH_BACKTEST_MAX_PARTITIONS} selected trading dates.`;
   }
   if (request.selectedDates) {
-    const dates = [...new Set(request.selectedDates)].sort();
+    const sorted = [...request.selectedDates].sort();
+    const dates = [...new Set(request.selectedDates)];
     if (dates.length < 2 || dates.length !== request.selectedDates.length) {
       return "A batch requires at least two unique selected trading dates.";
+    }
+    if (sorted.some((date, index) => date !== request.selectedDates?.[index])) {
+      return "Selected trading dates must be sorted in ascending order.";
     }
     if (request.outOfSampleDays >= dates.length) {
       return "A batch must include at least one in-sample trading date.";
     }
   }
-  return validateBacktestRange(request);
+  // An explicit sparse sample is already the caller's selected set. The
+  // continuous-range safety limit must not reject valid distant holdouts.
+  return request.selectedDates ? null : validateBacktestRange(request);
 }
 
 function batchStatus(record: BatchRecord) {
@@ -234,6 +243,15 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       return;
     }
     const request = parsed.data as BatchBacktestRequest;
+    try {
+      validateHistoricalBacktestSource(request);
+    } catch (error) {
+      if (error instanceof HistoricalBacktestValidationError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
     const rangeError = validateBatchRequest(request);
     if (rangeError) {
       res.status(422).json({ error: rangeError });
@@ -269,8 +287,11 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       try {
         const risk = await loadRisk();
         if (controller.signal.aborted) throw new BacktestRequestAbortedError();
-        const specification = getFuturesContractSpecification(request.symbol);
         const source = request.source ?? "simulated";
+        validateHistoricalBacktestSource(request);
+        const specification = getFuturesContractSpecification(
+          source === MULTI_CONTRACT_SOURCE ? "MES" : request.symbol,
+        );
         const selected = request.selectedDates?.slice().sort();
         const batchStart = selected?.[0] ?? request.startDate ?? request.endDate;
         const batchEnd = selected?.at(-1) ?? request.endDate;
@@ -378,7 +399,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             ? "Batch timed out before completion; no result was persisted."
             : cancelled
               ? "Batch cancelled before completion; no result was persisted."
-              : "Batch failed before completion; no result was persisted.",
+              : `Batch failed before completion; no result was persisted. ${error instanceof Error ? error.message : "The selected sample is not replayable."}`,
         };
       }
     })();
@@ -448,13 +469,18 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
 router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), async (req, res): Promise<void> => {
   try {
     const source = String(req.query.source ?? "historical_databento");
+    const symbol = String(req.query.symbol ?? "MES").trim().toUpperCase();
     if (source === MULTI_CONTRACT_SOURCE) {
+      if (symbol !== "MES") {
+        res.status(422).json({ error: "Multi-contract historical replay only supports the exact MES root symbol." });
+        return;
+      }
       const imported = await importHistoricalMultiContract();
       if (res.headersSent) return;
       res.json(GetHistoricalDataResponse.parse(imported.summary));
       return;
     }
-    const specification = getFuturesContractSpecification(String(req.query.symbol ?? "MES"));
+    const specification = getFuturesContractSpecification(symbol);
     const imported = await getHistoricalCsvImport(specification);
     if (res.headersSent) return;
     res.json(GetHistoricalDataResponse.parse(publicHistoricalImportSummary(imported)));
@@ -465,6 +491,13 @@ router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), asy
     res.status(400).json({ error: message });
   }
 });
+
+  router.get("/historical-data/status", historicalRateLimit, async (_req, res): Promise<void> => {
+    const status = await getHistoricalMultiContractIndexStatus();
+    res.status(status.state === "failed" ? 503 : 200).json(
+      GetHistoricalDataIndexStatusResponse.parse(status),
+    );
+  });
 
 router.get("/backtest/audit", auditRateLimit, (req, res): void => {
   const parsePositiveInteger = (value: unknown, fallback: number): number => {
@@ -510,6 +543,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         if (canWriteResponse(res)) res.status(422).json({ error: rangeError });
         return;
       }
+      validateHistoricalBacktestSource(parsed.data);
       if (activeBacktests >= 2) {
         if (canWriteResponse(res)) {
           res.setHeader("Retry-After", "30");
@@ -521,7 +555,9 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       counted = true;
       const risk = await abortable(Promise.resolve().then(() => loadRisk()), deadline.signal);
       if (deadline.signal.aborted) throw signalError(deadline.signal);
-      const specification = getFuturesContractSpecification(parsed.data.symbol);
+      const specification = getFuturesContractSpecification(
+        parsed.data.source === MULTI_CONTRACT_SOURCE ? "MES" : parsed.data.symbol,
+      );
       const imported = parsed.data.source === "historical_databento"
         ? await abortable(
             Promise.resolve().then(() => getHistoricalCsvImport(specification)),
@@ -610,11 +646,13 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       const requestAborted = error instanceof BacktestRequestAbortedError
         || (deadline.signal.aborted && !timedOut);
       if (requestAborted || !canWriteResponse(res)) return;
-      const message = timedOut
+      const message = error instanceof HistoricalBacktestValidationError
+        ? error.message
+        : timedOut
         ? "Backtest timed out. Reduce the historical range and try again."
         : "Unable to run the causal backtest with the supplied constraints.";
       req.log?.warn({ error: error instanceof Error ? error.message : "unknown" }, "Rejected backtest request");
-      res.status(timedOut ? 408 : 500).json({ error: message });
+      res.status(error instanceof HistoricalBacktestValidationError ? error.statusCode : timedOut ? 408 : 500).json({ error: message });
     } finally {
       if (counted) activeBacktests -= 1;
       deadline.dispose();

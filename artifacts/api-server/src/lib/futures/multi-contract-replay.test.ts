@@ -90,3 +90,54 @@ test("selects contract-local candles on each rollover date without blending", ()
   assert.equal(dataset.contractSchedule?.version, MES_ROLLOVER_SCHEDULE_VERSION);
   assert.equal(dataset.contractSchedule?.boundaries.length, 5);
 });
+
+test("rejects an explicit sparse sample when one requested date is ineligible", () => {
+  const date = "2025-09-10";
+  const specification = contractSpecificationForMesSymbol("MESU5");
+  const calendar = sessionCalendarForContract(specification);
+  const openTime = newYorkTimeToUtc(date, "09:30");
+  const candle = {
+    timestamp: openTime,
+    openTime,
+    closeTime: openTime + 60_000,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100.5,
+    volume: 10,
+    bid: null,
+    ask: null,
+    bidSize: null,
+    askSize: null,
+    contractSymbol: "MESU5",
+    isComplete: true,
+    intervalMinutes: 1 as const,
+    quality: { valid: true, codes: [] },
+  };
+  const imported = {
+    summary: {
+      availableTradingDates: [date, "2025-09-12"],
+      eligibleTradingDates: [date],
+      ineligibleDates: [{
+        tradingDate: "2025-09-12",
+        scheduledContractSymbol: "MESZ5",
+        status: "missing_scheduled_file",
+        reason: "MISSING_SCHEDULED_CONTRACT_FILE:MESZ5",
+      }],
+      acceptedContracts: ["MESU5"],
+    },
+    contracts: new Map([["MESU5", {
+      summary: { availableTradingDates: [date] },
+      oneMinute: [candle],
+      fiveMinute: [{ ...candle, intervalMinutes: 5 as const }],
+      fifteenMinute: [],
+      oneHour: [],
+      specification,
+      calendar,
+    }]]),
+  } as unknown as HistoricalMultiContractImport;
+  assert.throws(
+    () => multiContractImportToReplayDataset(imported, date, "2025-09-12", 1, 1, [date, "2025-09-12"]),
+    /not eligible.*2025-09-12/i,
+  );
+});

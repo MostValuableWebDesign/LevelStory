@@ -523,6 +523,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /historical-data/status:
+    get:
+      operationId: getHistoricalDataIndexStatus
+      tags: [backtest]
+      summary: Get historical MES index readiness
+      description: Returns the reusable multi-contract MES index lifecycle without exposing server file paths.
+      responses:
+        "200":
+          description: Historical MES index status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataIndexStatus"
+        "503":
+          description: Historical MES index failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataIndexStatus"
   /journal:
     get:
       operationId: listJournalEntries
@@ -2070,6 +2089,18 @@ components:
           minimum: 0
           description: Round-trip commission and exchange/regulatory fee assumption per contract.
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
+    HistoricalDataIndexStatus:
+      type: object
+      properties:
+        state: { type: string, enum: [not_started, indexing, ready, failed] }
+        indexKey: { type: ["string", "null"] }
+        progress: { type: number, minimum: 0, maximum: 100 }
+        discoveredFileCount: { type: number, minimum: 0 }
+        indexedFileCount: { type: number, minimum: 0 }
+        message: { type: ["string", "null"] }
+        error: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, message, error, updatedAt]
     HistoricalImportSummary:
       type: object
       properties:
@@ -2127,6 +2158,23 @@ components:
             fifteenMinute: { type: number }
             oneHour: { type: number }
           required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
+        eligibleTradingDates: { type: array, items: { type: string } }
+        ineligibleDates:
+          type: array
+          items:
+            type: object
+            properties:
+              tradingDate: { type: string }
+              scheduledContractSymbol: { type: ["string", "null"] }
+              status: { type: string, enum: [eligible, missing_scheduled_file, insufficient_rth_coverage, no_scheduled_contract] }
+              reason: { type: ["string", "null"] }
+              availableOnContract: { type: boolean }
+              regularSessionComplete: { type: boolean }
+            required: [tradingDate, scheduledContractSymbol, status, reason, availableOnContract, regularSessionComplete]
+        indexingState: { type: string, enum: [ready] }
+        indexKey: { type: string }
+        importerVersion: { type: string }
+        indexedAt: { type: string, format: date-time }
         scheduleVersion: { type: ["string", "null"] }
         acceptedContracts:
           type: array
@@ -2161,6 +2209,28 @@ components:
               selected: { type: boolean }
               status: { type: string, enum: [accepted, inactive, rejected] }
               rejectionReason: { type: ["string", "null"] }
+              coverageStatus: { type: string, enum: [calculated, not_calculated] }
+              regularSessionCandleCount: { type: ["number", "null"] }
+              overnightCandleCount: { type: ["number", "null"] }
+              missingMinuteGaps: { type: ["number", "null"] }
+              missingGapSegments: { type: ["number", "null"] }
+              unexpectedMissingMinutes: { type: ["number", "null"] }
+              regularSessionMissingMinutes: { type: ["number", "null"] }
+              inactiveContractMinutes: { type: ["number", "null"] }
+              missingRegularSessionDates:
+                type: ["array", "null"]
+                items: { type: string }
+              completeRegularSessionDates:
+                type: ["array", "null"]
+                items: { type: string }
+              activePeriod:
+                type: object
+                properties:
+                  firstDate: { type: ["string", "null"] }
+                  lastDate: { type: ["string", "null"] }
+                  sufficient: { type: boolean }
+                  reason: { type: ["string", "null"] }
+                required: [firstDate, lastDate, sufficient, reason]
             required: [filename, contractSymbol, contractMonth, contentFingerprint, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, availableTradingDates, activeSelectedDates, selected, status, rejectionReason]
         rolloverBoundaries:
           type: array

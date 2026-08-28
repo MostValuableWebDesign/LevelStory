@@ -1462,6 +1462,36 @@ export interface BacktestRequest {
   ohlcvCommissionPerContract?: number;
 }
 
+export type HistoricalDataIndexStatusState = typeof HistoricalDataIndexStatusState[keyof typeof HistoricalDataIndexStatusState];
+
+
+export const HistoricalDataIndexStatusState = {
+  not_started: 'not_started',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
+export interface HistoricalDataIndexStatus {
+  state: HistoricalDataIndexStatusState;
+  /** @nullable */
+  indexKey: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  /** @minimum 0 */
+  discoveredFileCount: number;
+  /** @minimum 0 */
+  indexedFileCount: number;
+  /** @nullable */
+  message: string | null;
+  /** @nullable */
+  error: string | null;
+  updatedAt: string;
+}
+
 export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource[keyof typeof HistoricalImportSummarySource];
 
 
@@ -1492,6 +1522,34 @@ export type HistoricalImportSummaryAggregationCounts = {
   oneHour: number;
 };
 
+export type HistoricalImportSummaryIneligibleDatesItemStatus = typeof HistoricalImportSummaryIneligibleDatesItemStatus[keyof typeof HistoricalImportSummaryIneligibleDatesItemStatus];
+
+
+export const HistoricalImportSummaryIneligibleDatesItemStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  no_scheduled_contract: 'no_scheduled_contract',
+} as const;
+
+export type HistoricalImportSummaryIneligibleDatesItem = {
+  tradingDate: string;
+  /** @nullable */
+  scheduledContractSymbol: string | null;
+  status: HistoricalImportSummaryIneligibleDatesItemStatus;
+  /** @nullable */
+  reason: string | null;
+  availableOnContract: boolean;
+  regularSessionComplete: boolean;
+};
+
+export type HistoricalImportSummaryIndexingState = typeof HistoricalImportSummaryIndexingState[keyof typeof HistoricalImportSummaryIndexingState];
+
+
+export const HistoricalImportSummaryIndexingState = {
+  ready: 'ready',
+} as const;
+
 export type HistoricalImportSummaryRejectedFilesItem = {
   filename: string;
   reason: string;
@@ -1505,6 +1563,24 @@ export const HistoricalImportSummaryFilesItemStatus = {
   inactive: 'inactive',
   rejected: 'rejected',
 } as const;
+
+export type HistoricalImportSummaryFilesItemCoverageStatus = typeof HistoricalImportSummaryFilesItemCoverageStatus[keyof typeof HistoricalImportSummaryFilesItemCoverageStatus];
+
+
+export const HistoricalImportSummaryFilesItemCoverageStatus = {
+  calculated: 'calculated',
+  not_calculated: 'not_calculated',
+} as const;
+
+export type HistoricalImportSummaryFilesItemActivePeriod = {
+  /** @nullable */
+  firstDate: string | null;
+  /** @nullable */
+  lastDate: string | null;
+  sufficient: boolean;
+  /** @nullable */
+  reason: string | null;
+};
 
 export type HistoricalImportSummaryFilesItem = {
   filename: string;
@@ -1524,6 +1600,26 @@ export type HistoricalImportSummaryFilesItem = {
   status: HistoricalImportSummaryFilesItemStatus;
   /** @nullable */
   rejectionReason: string | null;
+  coverageStatus?: HistoricalImportSummaryFilesItemCoverageStatus;
+  /** @nullable */
+  regularSessionCandleCount?: number | null;
+  /** @nullable */
+  overnightCandleCount?: number | null;
+  /** @nullable */
+  missingMinuteGaps?: number | null;
+  /** @nullable */
+  missingGapSegments?: number | null;
+  /** @nullable */
+  unexpectedMissingMinutes?: number | null;
+  /** @nullable */
+  regularSessionMissingMinutes?: number | null;
+  /** @nullable */
+  inactiveContractMinutes?: number | null;
+  /** @nullable */
+  missingRegularSessionDates?: string[] | null;
+  /** @nullable */
+  completeRegularSessionDates?: string[] | null;
+  activePeriod?: HistoricalImportSummaryFilesItemActivePeriod;
 };
 
 export type HistoricalImportSummaryRolloverBoundariesItem = {
@@ -1590,6 +1686,12 @@ export interface HistoricalImportSummary {
   rejectionReasons: HistoricalImportSummaryRejectionReasons;
   errors: HistoricalImportSummaryErrorsItem[];
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
+  eligibleTradingDates?: string[];
+  ineligibleDates?: HistoricalImportSummaryIneligibleDatesItem[];
+  indexingState?: HistoricalImportSummaryIndexingState;
+  indexKey?: string;
+  importerVersion?: string;
+  indexedAt?: string;
   /** @nullable */
   scheduleVersion?: string | null;
   acceptedContracts?: string[];
