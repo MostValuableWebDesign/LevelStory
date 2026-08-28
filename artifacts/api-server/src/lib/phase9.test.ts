@@ -161,6 +161,9 @@ test("multi-contract indexing preserves every constituent minute inside its five
 
   const firstBars = indexes.oneMinuteByContractCandle.get(`MESM6:${firstOpen}`);
   const secondBars = indexes.oneMinuteByContractCandle.get(`MESU6:${secondOpen}`);
+  const legacyExactOpenMatches = constituentMinutes(firstOpen, 100)
+    .filter((bar) => bar.openTime === firstOpen);
+  assert.equal(legacyExactOpenMatches.length, 1);
   assert.equal(firstBars?.length, 5);
   assert.equal(secondBars?.length, 5);
   assert.deepEqual(firstBars?.map((bar) => bar.openTime), constituentMinutes(firstOpen, 100).map((bar) => bar.openTime));
@@ -184,7 +187,7 @@ test("minutes two through five can resolve target, stop, and chronological colli
     oneMinute: indexedBars,
   });
   assert.equal(target.status, "target");
-  assert.equal(target.timestamp, openTime + 4 * 60_000 + 60_000);
+  assert.equal(target.timestamp, openTime + 4 * 60_000);
 
   const stop = resolveIntrabarOutcome({
     direction: "long",

@@ -711,7 +711,7 @@ export default function Backtest() {
              <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Eligible scheduled dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
         </Panel>
 
-        {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}
+        {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Backtest running. Historical runs may take approximately one minute on the current compute plan. Repeated identical runs use the cached result.</div></Panel>}
         {run.isError && <Panel><QueryError onRetry={() => run.mutate({ data: request })} message="The causal backtest could not be completed." /></Panel>}
          {startBatch.isError && <Panel><QueryError onRetry={submitBatch} message="The qualification batch could not be started." /></Panel>}
          {batchStatus.isError && <Panel><QueryError onRetry={() => batchStatus.refetch()} message="The batch status could not be loaded." /></Panel>}

@@ -166,6 +166,18 @@ test("discloses inactive, missing, complete, and early-close session coverage", 
   });
 });
 
+test("counts a verified shortened holiday session through the 1:00 p.m. ET halt", async () => {
+  const regularStart = Date.parse("2025-09-01T13:30:00.000Z");
+  const rows = Array.from({ length: 210 }, (_, index) => row(regularStart + index * 60_000, index));
+  await withCsv(rows, async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.regularSessionCandleCount, 210);
+    assert.deepEqual(imported.summary.earlyCloseDates, ["2025-09-01"]);
+    assert.deepEqual(imported.summary.completeRegularSessionDates, ["2025-09-01"]);
+    assert.equal(imported.summary.missingRegularSessionDates.length, 0);
+  });
+});
+
 test("does not classify the Friday-to-Monday closure as unexpected overnight loss", async () => {
   const fridayStart = Date.parse("2026-08-28T13:30:00.000Z");
   const rows = Array.from({ length: 391 }, (_, index) => row(fridayStart + index * 60_000, index));

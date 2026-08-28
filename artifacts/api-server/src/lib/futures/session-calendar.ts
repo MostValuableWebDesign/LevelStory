@@ -23,7 +23,7 @@ export type FuturesSessionWindow = {
   earlyClose: boolean;
 };
 
-const CME_EQUITY_INDEX_CALENDAR_VERSION = "CME_EQUITY_INDEX_2025_2026_V1";
+const CME_EQUITY_INDEX_CALENDAR_VERSION = "CME_EQUITY_INDEX_2025_2026_V2";
 const CME_EQUITY_INDEX_CALENDAR_SOURCE =
   "CME Group, CME Globex and ClearPort Trading Schedule / Holiday Calendar, https://www.cmegroup.com/tools-information/holiday-calendar.html";
 const CME_EQUITY_INDEX_CALENDAR_VERIFIED_ON = "2026-08-28";
@@ -38,22 +38,22 @@ const DEFAULT_HOLIDAYS = [
   "2025-05-26",
   "2025-06-19",
   "2025-07-04",
-  "2025-09-01",
   "2025-12-25",
   "2026-01-01",
   "2026-01-19",
   "2026-02-16",
   "2026-04-03",
-  "2026-05-25",
   "2026-06-19",
   "2026-09-07",
   "2026-12-25",
 ] as const;
 
 const DEFAULT_EARLY_CLOSES = {
+  "2025-09-01": "13:00",
   "2025-11-27": "13:00",
   "2025-11-28": "13:00",
   "2025-12-24": "13:00",
+  "2026-05-25": "13:00",
   "2026-07-03": "13:00",
   "2026-11-26": "13:00",
   "2026-11-27": "13:00",
