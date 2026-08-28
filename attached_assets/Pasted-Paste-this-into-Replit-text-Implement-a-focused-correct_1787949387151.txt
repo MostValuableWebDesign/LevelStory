@@ -1,0 +1,270 @@
+Paste this into Replit:
+
+```text
+Implement a focused corrective pass for the remaining LevelStory historical-backtest issues.
+
+Do not begin a new feature phase.
+
+Do not change:
+
+- Trading formula
+- ORB, continuation, pullback, Fibonacci, volume, patience-candle, entry, stop, target, or runner rules
+- Qualification thresholds
+- Risk rules
+- Execution assumptions
+- Deterministic rollover schedule
+- Shadow Mode protections
+- Existing MES-only validation
+- Broker/live/paper-order functionality
+- Overall UI design
+
+Verified remaining problems
+
+1. A warm 20+2 multi-contract rollover run produced no response after 110 seconds.
+2. After that request, API endpoints temporarily stopped responding while the static frontend remained available.
+3. A later default 5+2 run produced no response after 75 seconds.
+4. The replay loop repeats full-history work for every candle.
+5. The dataset begins in August 2025, but the session calendar contains only 2026 holidays and early closes.
+6. The UI allows 30 in-sample plus 10 holdout sessions, while the API allows only 22 total sessions.
+
+1. Optimize the causal replay without changing results
+
+Profile and optimize the replay path in `phase9.ts`.
+
+The current loop repeatedly performs operations such as:
+
+- Finding the current candle index with `findIndex`
+- Slicing the complete visible contract prefix
+- Filtering the entire one-minute collection
+- Rebuilding hourly candles
+- Recalculating unchanged contract/date information
+- Searching the full contract candle list for trigger and patience candles
+
+Requirements:
+
+- Preserve exact causal visibility.
+- Never expose candles later than the replay cursor.
+- Never change any setup, rejection, ambiguity, fill, stop, target, runner, fee, or P&L result.
+- Pre-index candle positions by contract and open time.
+- Partition one-minute data by contract and trading date once.
+- Precompute or incrementally maintain completed 5-minute, 15-minute, and hourly history.
+- Cache immutable contract-local metadata.
+- Reuse session windows and trading-date mappings.
+- Replace repeated full-array searches with maps or bounded indexes.
+- Avoid copying the full visible history for every candle when a read-only prefix/index can be used safely.
+- Keep state reset at contract rollover.
+- Keep trades unable to cross sessions or contracts.
+
+Add equivalence tests comparing the optimized replay with the current deterministic fixtures. Reports must remain identical except for runtime metadata.
+
+2. Protect API responsiveness
+
+A long worker must never starve the API process.
+
+Requirements:
+
+- Keep heavy replay computation in workers.
+- Ensure worker termination occurs at the deadline.
+- Ensure disconnect cancellation terminates the worker promptly.
+- Ensure the main API event loop remains responsive while a replay runs.
+- Reserve enough CPU/capacity for health, status, validation, and cancellation endpoints.
+- Do not allow repeated long requests to accumulate abandoned workers.
+- Keep the existing concurrency limit or make it stricter if required by Replit’s available CPU.
+- Return a controlled 408 before the Replit upstream timeout.
+- Do not rely on raising the timeout.
+- Do not cache timed-out, cancelled, disconnected, or partial results.
+- Record safe timing telemetry:
+  - Dataset preparation time
+  - Worker startup/transfer time
+  - Replay computation time
+  - Report serialization/validation time
+  - Cache lookup/store time
+- Do not expose file paths or sensitive data in telemetry.
+
+Add integration tests proving:
+
+- Status endpoints respond while a long worker is running.
+- MES/ES validation returns promptly while a worker is running.
+- Worker timeout terminates the worker.
+- Client disconnect terminates the worker.
+- Capacity is released after timeout or disconnect.
+- No partial report or cache entry remains.
+- The API can immediately accept a new valid request afterward.
+
+3. Reduce worker transfer and report overhead
+
+Inspect worker communication for expensive structured cloning.
+
+Requirements:
+
+- Do not send the complete year-long imported index when only selected sessions are required.
+- Construct a minimal replay dataset before worker startup.
+- Include only selected dates, active scheduled contracts, required lookback history, and necessary intrabar data.
+- Keep major-level and indicator lookbacks causal and unchanged.
+- Avoid returning unbounded audit records in the initial response.
+- Preserve paginated server-side audit storage.
+- Return only the compact report required by the UI.
+- Keep full completed audit data available through the existing audit endpoint.
+- Add tests proving compact responses and full audit pages reconcile.
+
+4. Implement the complete 2025–2026 CME session calendar
+
+The current dataset covers August 2025 through August 2026, but the calendar only defines 2026 dates.
+
+Requirements:
+
+- Add authoritative CME equity-index futures session exceptions for the entire dataset period.
+- Cover all relevant 2025 and 2026:
+  - Full holidays
+  - Modified sessions
+  - Early closes
+  - Maintenance closures
+- Do not assume every federal holiday is a completely closed futures session.
+- Model the actual relevant CME equity-index schedule.
+- Store the calendar as an explicit, versioned research input.
+- Document the source and verification date.
+- Keep all session ownership in `America/New_York`.
+- Rebuild the historical index when the calendar version changes by including the calendar version in the index key.
+- Recalculate observed, eligible, and ineligible totals.
+- Recalculate gap classifications.
+- Display holiday/modified-session reasons in date eligibility.
+
+Specifically verify:
+
+- September 1, 2025
+- November 27, 2025
+- November 28, 2025
+- December 24, 2025
+- December 25, 2025
+- Every applicable 2026 holiday and early close already modeled
+
+Do not call a shortened valid session “insufficient regular-session coverage” merely because it did not contain 390 normal RTH minutes.
+
+5. Make UI and API session limits consistent
+
+The API allows at most 22 sessions for a single backtest.
+
+Requirements:
+
+- Use one shared maximum-session constant or expose the limit through the API.
+- Prevent in-sample plus holdout from exceeding 22.
+- Dynamically constrain the two inputs.
+- Show:
+  - Maximum allowed sessions
+  - Currently requested total
+  - Remaining available sessions
+- Disable submission when invalid.
+- Show a clear inline validation message.
+- Batch limits may remain separate, but label them separately.
+- Never allow a UI configuration guaranteed to receive 422.
+
+6. Required performance acceptance
+
+Use the deployed Replit environment, not only local unit tests.
+
+After the index is ready, run:
+
+A. Default 5+2
+- Source: historical_databento_multicontract
+- Start: 2026-07-27
+- End: 2026-08-26
+- In-sample: 5
+- Holdout: 2
+- MES
+- OHLCV modeled
+- Entry buffer: 4 ticks
+- Stop buffer: 1 tick
+- Slippage: 1 tick
+
+B. Rollover-spanning 20+2
+- Source: historical_databento_multicontract
+- Start: 2026-05-13
+- End: 2026-06-12
+- In-sample: 20
+- Holdout: 2
+- MES
+- Same execution assumptions
+
+Acceptance:
+
+- Both requests return HTTP 200.
+- Both complete comfortably below the upstream timeout.
+- Target goal:
+  - 5+2 under 30 seconds cold and under 10 seconds cached
+  - 20+2 under 60 seconds cold and under 10 seconds cached
+- If those targets cannot be achieved, report the actual timings and do not claim completion.
+- Identical repeats return the same stable run ID and identical deterministic results.
+- The 20+2 run must include and report the MESM6 → MESU6 rollover.
+- No trade may cross that rollover.
+- API status and validation endpoints must respond in under 2 seconds while the run is active.
+- After the run, the API must remain immediately responsive.
+
+7. Required tests
+
+Add tests for:
+
+- Optimized and prior deterministic results are equivalent
+- No future candle changes an earlier result
+- Contract/date indexes preserve chronological order
+- One-minute partitions contain only their contract and date
+- Hourly/indicator caches expose completed data only
+- Rollover resets all required state
+- Worker dataset contains only required history
+- Long worker does not block health/status/validation routes
+- Timeout and disconnect cleanup
+- Cache stability
+- Compact response versus audit-page reconciliation
+- Complete 2025–2026 session exceptions
+- Early-close eligibility uses the shortened expected session
+- Session-limit UI validation
+- Single-run API limit and batch limit remain distinct
+
+8. Verification
+
+Run and report:
+
+- All API tests
+- All frontend tests
+- API and frontend typechecks
+- API and frontend production builds
+- `/backtest` returns 200
+- Protected paths return 404
+- Browser console contains no errors
+- Desktop and mobile review
+- Historical index readiness timing
+- Historical summary timing
+- 5+2 cold and cached timings
+- 20+2 rollover cold and cached timings
+- API status response time while each worker runs
+- Exact selected dates and contracts
+- Stable run IDs
+- Trade, rejection, ambiguity, and P&L reconciliation
+- Updated observed/eligible/ineligible coverage totals
+- Updated 2025 holiday eligibility examples
+
+Do not claim completion if:
+
+- 5+2 still exceeds 75 seconds.
+- 20+2 still exceeds 110 seconds.
+- Any long replay temporarily makes API endpoints unresponsive.
+- The rollover request does not complete.
+- 2025 holiday and modified-session handling remains absent.
+- The UI can request more than 22 single-run sessions.
+- Deterministic results change.
+- Timed-out or disconnected work remains active or cached.
+
+At completion, report:
+
+- Root causes
+- Files changed
+- Performance changes
+- Before/after timings
+- Test totals
+- Calendar version and authoritative sources
+- Updated eligibility totals
+- Exact rollover result
+- Cache behavior
+- Remaining limitations
+- Confirmation that no strategy logic changed
+- Confirmation that no broker, live-order, or paper-order capability was added
+```
