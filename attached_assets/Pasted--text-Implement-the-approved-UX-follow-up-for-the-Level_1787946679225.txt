@@ -1,0 +1,165 @@
+```text
+Implement the approved UX follow-up for the LevelStory multi-contract coverage panel.
+
+Do not change the trading formula, qualification thresholds, rollover schedule, execution modeling, risk rules, backtest calculations, or Shadow Mode safeguards.
+
+Goal:
+Make the distinction between all observed market-data dates and actual backtest-eligible dates unmistakable.
+
+Requirements
+
+1. Add two clearly separated coverage totals
+
+Display:
+
+- All observed dates
+  - Every New York trading date appearing in any accepted outright MES CSV.
+  - This is informational only.
+  - These dates must never automatically be treated as backtest eligible.
+
+- Eligible scheduled replay dates
+  - Dates where the versioned rollover schedule selects exactly one contract.
+  - The scheduled contract file exists.
+  - The scheduled contract contains completed candles for that date.
+  - Required coverage checks pass.
+  - Only these dates may enter a backtest or batch partition.
+
+2. Add explanatory language
+
+Show this directly beneath the totals:
+
+“All observed dates come from every accepted contract file. Eligible scheduled replay dates contain sufficient data for the contract selected by the deterministic rollover schedule. Backtests use eligible dates only.”
+
+Do not hide this explanation in a tooltip.
+
+3. Show date-level eligibility
+
+Add a date-level table or expandable section containing:
+
+- Trading date
+- Scheduled contract
+- Rollover reason or schedule version
+- Observed in any file: yes/no
+- Scheduled-contract data available: yes/no
+- Coverage status
+- Backtest eligible: yes/no
+- Ineligibility reason
+
+Supported ineligibility reasons should include:
+
+- No scheduled contract
+- Scheduled contract file missing
+- No scheduled-contract candles
+- Insufficient regular-session coverage
+- Invalid or rejected source data
+- Duplicate/overlapping active-contract data
+- Outside configured rollover schedule
+
+4. Use eligible dates everywhere
+
+Verify that only eligible scheduled replay dates populate:
+
+- Backtest date selection
+- `selectedDates`
+- `inSampleDates`
+- `outOfSampleDates`
+- `activeContractByDate`
+- Batch partitions
+- Funnel session totals
+- Walk-forward folds
+
+All observed dates must remain informational and must not increase sample size.
+
+5. Improve terminology
+
+Replace vague labels such as:
+
+- “Available dates”
+- “Selected dates”
+- “Contract coverage”
+
+with explicit labels where appropriate:
+
+- “All observed dates”
+- “Eligible scheduled replay dates”
+- “Dates selected for this run”
+- “Ineligible scheduled dates”
+- “Uploaded contract coverage”
+
+Replace the hard-coded “Nine-file coverage” text with the actual accepted outright-file count.
+
+6. Summary reconciliation
+
+Display and verify:
+
+All observed dates =
+Eligible scheduled replay dates
++ Ineligible observed dates
+
+Also show:
+
+- Accepted outright files
+- Scheduled active contracts
+- Inactive/future contracts
+- Rejected spreads or duplicate files
+- Missing scheduled contract files
+- Eligible date count
+- Ineligible date count
+
+If the totals do not reconcile, fail the coverage response validation instead of rendering misleading values.
+
+7. Accessibility and responsive behavior
+
+- Do not communicate eligibility with color alone.
+- Include text labels and icons.
+- Keep the panel readable on mobile.
+- Allow the date-level table to scroll horizontally if needed.
+- Preserve the existing LevelStory visual design.
+
+8. Tests
+
+Add deterministic tests proving:
+
+- Observed dates and eligible dates are calculated independently.
+- A date observed only in an inactive contract is not eligible.
+- A date missing scheduled-contract candles is ineligible.
+- An ineligible date cannot enter a backtest or batch.
+- Summary totals reconcile.
+- The file-count label is dynamic.
+- Eligibility status is accessible without relying on color.
+- Existing single-contract coverage remains unchanged.
+- No trading or execution rules changed.
+
+Verification
+
+Run and report:
+
+- API tests
+- Frontend tests
+- API and frontend typechecks
+- API and frontend production builds
+- `/backtest` returns 200
+- Protected paths remain 404
+- Browser console contains no errors
+- Mobile and desktop coverage-panel review
+- Observed, eligible, and ineligible totals from the current dataset
+- One example eligible date
+- One example ineligible date and its reason
+
+Do not claim completion unless:
+
+- The displayed totals reconcile.
+- Only eligible scheduled replay dates are used by every research workflow.
+- The distinction is clearly visible without opening a tooltip.
+- No strategy, risk, rollover, execution, or Shadow Mode behavior changed.
+
+At completion, report:
+
+- Files changed
+- Test totals
+- Coverage totals
+- Example eligibility decisions
+- Screens reviewed
+- Remaining limitations
+- Explicit confirmation that no broker, live-order, or paper-order functionality was added
+```
