@@ -667,7 +667,7 @@ function lowerBound<T>(values: readonly T[], target: number, value: (item: T) =>
   return low;
 }
 
-function buildReplayIndexes(
+export function buildReplayIndexes(
   candles: readonly SimulatedFuturesCandle[],
   ticks: readonly IntrabarPoint[],
   oneMinute: readonly IntrabarBar[],
@@ -713,18 +713,27 @@ function buildReplayIndexes(
     if (end > start) ticksByCandleOpenTime.set(candle.openTime, sortedTicks.slice(start, end));
   }
 
-  const candleSymbolByOpenTime = new Map(candles.map((item) => [item.openTime, item.contractSymbol]));
   const oneMinuteByContract = new Map<string, IntrabarBar[]>();
   const sortedOneMinute = [...oneMinute].sort((first, second) => first.closeTime - second.closeTime);
-  for (const item of sortedOneMinute) {
-    // Preserve the historical multi-contract association rule: only a bar
-    // whose open time is also a five-minute candle open belongs to that
-    // contract's intrabar stream. Single-contract replay keeps all bars.
-    const contractSymbol = candleSymbolByOpenTime.get(item.openTime);
-    if (contractSymbol) {
-      const partition = oneMinuteByContract.get(contractSymbol) ?? [];
-      partition.push(item);
-      oneMinuteByContract.set(contractSymbol, partition);
+  if (candlesByContract.size > 1) {
+    const assignedBars = new Set<string>();
+    for (const [contractSymbol, contractCandles] of candlesByContract) {
+      for (const item of sortedOneMinute) {
+        const candleIndex = lowerBound(contractCandles, item.openTime + 1, (value) => value.openTime) - 1;
+        const enclosing = contractCandles[candleIndex];
+        if (!enclosing) continue;
+        const sameTradingDate = tradingDateForTimestamp(item.openTime, calendar)
+          === tradingDateForTimestamp(enclosing.openTime, calendar);
+        const enclosedByFiveMinute = item.openTime >= enclosing.openTime
+          && item.closeTime <= enclosing.closeTime;
+        if (!sameTradingDate || !enclosedByFiveMinute) continue;
+        const barIdentity = `${item.openTime}:${item.closeTime}`;
+        if (assignedBars.has(barIdentity)) continue;
+        const partition = oneMinuteByContract.get(contractSymbol) ?? [];
+        partition.push(item);
+        oneMinuteByContract.set(contractSymbol, partition);
+        assignedBars.add(barIdentity);
+      }
     }
   }
 

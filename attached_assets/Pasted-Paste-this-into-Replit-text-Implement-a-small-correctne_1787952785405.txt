@@ -1,0 +1,104 @@
+Paste this into Replit:
+
+```text
+Implement a small, correctness-focused LevelStory backtest update. Do not perform a major performance rewrite; this Replit has limited compute.
+
+Priority 1 — Fix multi-contract one-minute indexing
+
+The current replay indexing associates a one-minute bar with a contract only when its openTime exactly equals a five-minute candle’s openTime. This can discard minutes 2–5 of each five-minute candle.
+
+Correct this so that:
+
+- Every one-minute bar is assigned to its enclosing five-minute candle.
+- Each five-minute candle can contain up to five chronological one-minute bars.
+- Bars remain isolated to the scheduled MES contract and trading date.
+- No bar may cross a contract rollover, session, or five-minute boundary.
+- Single-contract behavior remains unchanged.
+- Tick data must still take precedence over one-minute data.
+- Missing one-minute bars must remain missing; never fabricate candles.
+
+Add deterministic tests proving:
+
+1. All five one-minute bars are preserved.
+2. A stop or target occurring during minutes 2–5 is detected.
+3. A same-five-minute stop/target collision uses the complete chronological one-minute evidence.
+4. MESM6 and MESU6 bars remain isolated across the rollover.
+5. Repeated identical runs produce the same audit run ID, trades, ambiguity labels, exits, and metrics.
+
+Priority 2 — Correct shortened CME sessions
+
+Audit the 2025–2026 MES calendar against CME equity-index holiday schedules and the uploaded Databento CSV evidence.
+
+At minimum, correct dates such as:
+
+- September 1, 2025
+- May 25, 2026
+
+The uploaded files show trading through approximately 12:59 p.m. New York time before the holiday halt. Treat verified shortened sessions as early-close sessions—likely 1:00 p.m. ET—not automatically as full closures.
+
+Requirements:
+
+- Keep full closures separate from early closes.
+- Do not assume every federal holiday is fully closed.
+- Preserve DST-safe America/New_York conversion.
+- Update the calendar version so caches are invalidated.
+- Add tests for session windows, selected-date eligibility, gap classification, and shortened-session candle counts.
+- Include the authoritative CME source and verification date in calendar metadata.
+
+Limited-compute behavior
+
+Do not attempt a broad architectural or infrastructure rewrite.
+
+Keep these constraints:
+
+- Maximum one cold backtest running at a time.
+- Maximum 22 selected sessions for an interactive run.
+- Preserve deterministic caching.
+- Preserve the existing worker deadline and safe timeout behavior.
+- Repeated cached requests should remain fast.
+- Larger qualification jobs may remain asynchronous.
+- Do not add Redis, a database queue, external compute, or a paid service.
+
+UX
+
+While a cold backtest is running, show:
+
+“Backtest running. Historical runs may take approximately one minute on the current compute plan. Repeated identical runs use the cached result.”
+
+Disable duplicate submission while the request is active, but keep the rest of the existing interface unchanged.
+
+Safety
+
+- Shadow Mode only.
+- No live orders.
+- No paper orders.
+- No broker integration.
+- No fabricated quotes, fills, bid/ask, candles, or missing data.
+- Preserve OHLCV Modeled Fill labeling and disclaimers.
+
+Verification
+
+Run and report:
+
+- API tests
+- Frontend tests
+- Typechecks
+- API and frontend production builds
+- A cold 5+2 historical run
+- A cold rollover-spanning 20+2 historical run
+- An identical cached repeat
+- A protected-path security probe
+- Exact before/after evidence showing that each five-minute replay candle now receives all available constituent one-minute bars
+
+Do not claim completion unless the intrabar tests demonstrate that minutes 2–5 can affect the modeled stop, target, and ambiguity outcome.
+
+Finish with:
+
+1. Files changed
+2. Root causes fixed
+3. Calendar dates corrected
+4. Test and build totals
+5. Cold and cached runtime results
+6. Deterministic run IDs and metrics
+7. Any remaining limitations caused only by the current Replit compute plan
+```

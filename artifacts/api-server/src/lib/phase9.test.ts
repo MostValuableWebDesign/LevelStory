@@ -4,6 +4,7 @@ import {
   assertCausalVisibility,
   calculateBacktestMetrics,
   createCausalReplay,
+  buildReplayIndexes,
   resolveEntryAndInvalidation,
   resolveIntrabarOutcome,
   type IntrabarBar,
@@ -11,6 +12,7 @@ import {
   type BacktestAuditRecord,
 } from "./phase9.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
+import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;
@@ -73,6 +75,38 @@ function trade(netPnl: number, overrides: Partial<BacktestTrade> = {}): Backtest
   };
 }
 
+function replayCandle(openTime: number, contractSymbol: string, base: number): SimulatedFuturesCandle {
+  return {
+    timestamp: openTime,
+    openTime,
+    closeTime: openTime + 5 * 60_000,
+    open: base,
+    high: base + 5,
+    low: base - 5,
+    close: base + 1,
+    volume: 1_000,
+    bid: base,
+    ask: base + 0.25,
+    bidSize: 10,
+    askSize: 10,
+    contractSymbol,
+    isComplete: true,
+  };
+}
+
+function constituentMinutes(start: number, base: number): IntrabarBar[] {
+  return Array.from({ length: 5 }, (_, index) => ({
+    openTime: start + index * 60_000,
+    closeTime: start + (index + 1) * 60_000,
+    open: base,
+    high: base + 1,
+    low: base - 1,
+    close: base + 0.25,
+    source: "one-minute" as const,
+    sequenceKnown: false,
+  }));
+}
+
 test("causal replay only exposes the visible prefix and cannot leak a future candle", () => {
   const replay = createCausalReplay({ candles: [candle(0), candle(1), candle(2)] }, candle(1).closeTime);
   assert.deepEqual(replay.candles.map((item) => item.openTime), [0, 300_000]);
@@ -111,6 +145,67 @@ test("tick data takes precedence over one-minute fallback", () => {
   });
   assert.equal(result.source, "tick");
   assert.equal(result.status, "target");
+});
+
+test("multi-contract indexing preserves every constituent minute inside its five-minute candle", () => {
+  const firstOpen = newYorkTimeToUtc("2026-06-10", "09:30");
+  const secondOpen = newYorkTimeToUtc("2026-06-11", "09:30");
+  const first = replayCandle(firstOpen, "MESM6", 100);
+  const second = replayCandle(secondOpen, "MESU6", 200);
+  const indexes = buildReplayIndexes(
+    [first, second],
+    [],
+    [...constituentMinutes(firstOpen, 100), ...constituentMinutes(secondOpen, 200)],
+    DEFAULT_FUTURES_SESSION_CALENDAR,
+  );
+
+  const firstBars = indexes.oneMinuteByContractCandle.get(`MESM6:${firstOpen}`);
+  const secondBars = indexes.oneMinuteByContractCandle.get(`MESU6:${secondOpen}`);
+  assert.equal(firstBars?.length, 5);
+  assert.equal(secondBars?.length, 5);
+  assert.deepEqual(firstBars?.map((bar) => bar.openTime), constituentMinutes(firstOpen, 100).map((bar) => bar.openTime));
+  assert.deepEqual(secondBars?.map((bar) => bar.openTime), constituentMinutes(secondOpen, 200).map((bar) => bar.openTime));
+});
+
+test("minutes two through five can resolve target, stop, and chronological collision outcomes", () => {
+  const openTime = newYorkTimeToUtc("2026-06-10", "09:30");
+  const fiveMinute = replayCandle(openTime, "MESM6", 100);
+  const bars = constituentMinutes(openTime, 100);
+  bars[3] = { ...bars[3], high: 110 };
+  bars[4] = { ...bars[4], low: 90 };
+  const indexes = buildReplayIndexes([fiveMinute, { ...fiveMinute, openTime: openTime + 300_000, closeTime: openTime + 600_000 }], [], bars, DEFAULT_FUTURES_SESSION_CALENDAR);
+  const indexedBars = indexes.oneMinuteByContractCandle.get(`MESM6:${openTime}`) ?? [];
+
+  const target = resolveIntrabarOutcome({
+    direction: "long",
+    target: 109,
+    stop: 94,
+    candle: fiveMinute,
+    oneMinute: indexedBars,
+  });
+  assert.equal(target.status, "target");
+  assert.equal(target.timestamp, openTime + 4 * 60_000 + 60_000);
+
+  const stop = resolveIntrabarOutcome({
+    direction: "long",
+    target: 111,
+    stop: 91,
+    candle: fiveMinute,
+    oneMinute: indexedBars,
+  });
+  assert.equal(stop.status, "stop");
+  assert.equal(stop.timestamp, openTime + 5 * 60_000);
+
+  const collisionBars = indexedBars.map((bar, index) => index === 1 ? { ...bar, high: 109, low: 91 } : bar);
+  const collision = resolveIntrabarOutcome({
+    direction: "long",
+    target: 109,
+    stop: 91,
+    candle: fiveMinute,
+    oneMinute: collisionBars,
+  });
+  assert.equal(collision.status, "ambiguous");
+  assert.equal(collision.ambiguityLabel, "AMBIGUOUS_STOP_FIRST");
 });
 
 test("one-minute fallback resolves a target and labels same-minute collisions stop-first", () => {
