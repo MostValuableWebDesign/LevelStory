@@ -1,0 +1,104 @@
+Implement only Phase 11A: production-quality multi-contract MES historical ingestion and deterministic rollover handling.
+
+Do not change the trading formula, qualification thresholds, risk rules, execution modeling, UI design, existing single-contract behavior, or Shadow Mode protections. Do not add broker, paper, or live-order functionality.
+
+Goal:
+Allow LevelStory to import multiple Databento OHLCV-1m CSV files representing consecutive outright MES quarterly contracts and construct a trustworthy front-month replay series without blending contracts improperly.
+
+Expected contracts for the current August 2025–August 2026 dataset may include:
+- MESU5
+- MESZ5
+- MESH6
+- MESM6
+- MESU6
+
+Requirements
+
+1. Multi-file discovery
+- Discover every approved server-side MES OHLCV-1m CSV.
+- Accept only outright MES contracts matching MES plus a valid month code and year.
+- Reject calendar spreads and malformed symbols.
+- Never expose file paths or CSV contents publicly.
+- Retain SHA-256 content fingerprints per file.
+- Preserve streaming imports and bounded memory use.
+
+2. Contract validation
+For each file report:
+- Symbol
+- Contract month
+- Earliest/latest timestamps
+- Valid/rejected rows
+- Duplicate rows
+- Session counts
+- Missing-minute classifications
+- SHA-256 fingerprint
+- Whether sufficient active-period coverage exists
+
+Reject:
+- Mixed symbols inside one file
+- Overlapping duplicate rows
+- Invalid OHLCV
+- Out-of-order rows
+- Calendar spreads
+- Unknown expiration codes
+
+3. Deterministic rollover schedule
+- Create an explicit versioned roll schedule.
+- Select exactly one executable outright contract for every trading date.
+- Prefer the configured rollover date already used by LevelStory.
+- Do not silently infer rollover from price.
+- If volume-based confirmation is supported, make it descriptive and deterministic.
+- Report the selected contract and rollover reason for every session.
+- Never open a trade in one contract and close it in another.
+- Never combine P&L across different tick economics incorrectly.
+
+4. No artificial price blending
+- Do not merge two contracts into the same candle.
+- Do not back-adjust execution prices.
+- Keep every execution, fee, fill, stop and target tied to its actual contract.
+- Mark any price discontinuity at rollover.
+- Reset contract-local EMA, VWAP, Fibonacci and execution state when required to avoid treating a rollover gap as a market move.
+- If long-term major-level research cannot safely span raw contract changes yet, label it “insufficient continuous-series history” instead of fabricating levels.
+
+5. Coverage report
+Add a multi-contract coverage screen/report showing:
+- Trading dates
+- Selected contract per date
+- Rollover dates
+- Missing contract files
+- Overlap dates
+- Coverage gaps
+- Inactive contracts
+- Contract-local candle counts
+- Whether each date is eligible for backtesting
+
+6. Compatibility
+- Preserve the existing MESU6 single-contract replay.
+- Add a selectable source:
+  “Historical Databento — Multi-contract MES”
+- Keep the existing single-contract source available for comparison.
+- No live data subscription is required.
+
+Tests
+Add deterministic tests for:
+- Contract-code parsing
+- Quarterly sequence ordering
+- Five-contract discovery
+- Calendar-spread rejection
+- Missing-contract detection
+- Overlapping contract dates
+- Configured rollover selection
+- A trade never crossing rollover
+- Indicator/execution-state reset
+- Stable fingerprints
+- DST-safe session ownership
+- Same input producing the same selected contract series
+
+Verification
+- Run all existing tests.
+- Run new multi-contract tests.
+- Run typechecks and production builds.
+- Confirm protected files remain 404.
+- Report every file changed.
+- Report which historical contract CSVs are still needed.
+- Do not begin batch edge testing during this phase.

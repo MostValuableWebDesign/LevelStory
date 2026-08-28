@@ -1,0 +1,92 @@
+Implement only Phase 11B: a deterministic multi-period batch-backtest runner and strategy qualification funnel.
+
+Phase 11A must already be complete and verified.
+
+Do not optimize or loosen the trading formula. Do not change entry, patience-candle, ORB, volume, Fibonacci, stop, target, runner or risk rules.
+
+Goal:
+Explain exactly how often market opportunities reach each stage of the LevelStory formula and why candidates are rejected.
+
+1. Batch runner
+- Run the existing causal backtest across multiple selected weeks or months.
+- Process one trading date and one active contract at a time.
+- Never allow future-data access.
+- Prevent trades from crossing sessions or contract rollovers.
+- Use workers with the existing timeout, abort, capacity and cache protections.
+- Allow cancellation and display progress.
+- Persist only completed batch results.
+
+2. Qualification funnel
+Count unique candidates reaching each stage:
+- Trading session loaded
+- NTZ/ORB completed
+- Strong breakout candidate
+- Strong continuation confirmed
+- Pullback or qualifying consolidation
+- Critical-level interaction
+- Fibonacci context available
+- Volume condition passed
+- Valid trend-aligned patience candle
+- Immediate-next-candle confirmation
+- Risk approved
+- Modeled entry
+- Target, stop, runner or session-close exit
+
+3. Rejection accounting
+For every candidate record exactly one primary rejection stage plus supporting evidence.
+
+Show:
+- Count
+- Percentage of preceding stage
+- Percentage of all sessions
+- Most common rejection details
+- Bullish versus bearish
+- Time of day
+- Contract
+- Month
+- Market regime
+- In-sample versus holdout
+
+Do not count the same candidate repeatedly at every candle.
+
+4. Drill-down
+Allow the user to select a funnel stage and inspect:
+- Trading date
+- Contract
+- Direction
+- Relevant candle times
+- ORB levels
+- Breakout evidence
+- Volume evidence
+- Pullback evidence
+- Patience candle
+- Trigger candle
+- Risk decision
+- Final outcome
+
+5. Comparison
+Show separate results for:
+- Each contract
+- Each calendar month
+- Long versus short
+- In-sample versus untouched out-of-sample
+- Trending versus ranging conditions
+- Normal versus high-volume conditions
+
+6. Tests
+Add tests proving:
+- Candidates are counted once.
+- Stage counts can only decrease through the funnel.
+- A rejected candidate cannot appear as a fill.
+- Funnel trade count equals report trade count.
+- Contract rollovers do not duplicate candidates.
+- Cached batches produce identical results.
+- Cancelled/timed-out batches are not persisted.
+- Future candles cannot change earlier funnel states.
+
+Verification
+- Run all tests, typechecks and builds.
+- Run an initial multi-contract batch.
+- Report session count, candidate count and funnel totals.
+- Report trades and P&L without claiming an edge.
+- Do not implement parameter optimization yet.
