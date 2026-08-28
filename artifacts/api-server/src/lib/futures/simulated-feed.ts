@@ -239,11 +239,12 @@ function applyDeterministicAPlusScenario(
 export function completedSimulatedCandles(
   candles: readonly SimulatedFuturesCandle[],
   cursor: number,
+  options: { clone?: boolean } = {},
 ): SimulatedFuturesCandle[] {
-  return candles
+  const completed = candles
     .filter((candle) => candle.isComplete && candle.closeTime <= cursor)
-    .sort((first, second) => first.closeTime - second.closeTime)
-    .map((candle) => ({ ...candle }));
+    .sort((first, second) => first.closeTime - second.closeTime);
+  return options.clone === false ? completed : completed.map((candle) => ({ ...candle }));
 }
 
 export function completedSimulatedHourlyCandles(

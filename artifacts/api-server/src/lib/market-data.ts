@@ -391,7 +391,7 @@ export function createMarketSnapshot(
   }
   const premarketAvailable = replayOptions?.premarketAvailable !== false;
   const allCandles = replayOptions?.allCandles
-    ? [...replayOptions.allCandles]
+    ? replayOptions.allCandles
     : generateSimulatedFuturesFeed(specification, {
         calendar,
         days: config.simulationDays,
@@ -400,7 +400,7 @@ export function createMarketSnapshot(
         startDate: tradingDate,
       });
   const historicalFeed = replayOptions?.historicalFeed
-    ? [...replayOptions.historicalFeed]
+    ? replayOptions.historicalFeed
     : generateSimulatedFuturesFeed(specification, {
         calendar,
         days: config.historicalLookbackTradingDays,
@@ -417,7 +417,7 @@ export function createMarketSnapshot(
     : currentSession === "regular"
       ? "open"
       : "closed";
-  const visible = completedSimulatedCandles(allCandles, currentCursor);
+  const visible = completedSimulatedCandles(allCandles, currentCursor, { clone: false });
   const historicalHourly = replayOptions?.historicalHourly
     ? replayOptions.historicalHourly.filter((candle) => candle.closeTime <= currentCursor)
     : completedSimulatedHourlyCandles(

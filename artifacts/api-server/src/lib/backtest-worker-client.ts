@@ -8,6 +8,13 @@ export class BacktestTimeoutError extends Error {
   }
 }
 
+export class BacktestRequestAbortedError extends Error {
+  constructor() {
+    super("BACKTEST_REQUEST_ABORTED");
+    this.name = "BacktestRequestAbortedError";
+  }
+}
+
 export class BacktestWorkerError extends Error {
   constructor() {
     super("BACKTEST_WORKER_FAILED");
@@ -34,6 +41,11 @@ export type BacktestWorkerLike = {
 
 export type BacktestWorkerFactory = (input: BacktestWorkerInput) => BacktestWorkerLike;
 
+export type BacktestWorkerOptions = {
+  timeoutMs: number;
+  signal?: AbortSignal;
+};
+
 const workerUrl = new URL("./lib/backtest-worker.mjs", import.meta.url);
 
 const defaultWorkerFactory: BacktestWorkerFactory = (input) =>
@@ -41,29 +53,72 @@ const defaultWorkerFactory: BacktestWorkerFactory = (input) =>
 
 export function runBacktestInWorker(
   input: BacktestWorkerInput,
-  timeoutMs: number,
+  timeoutOrOptions: number | BacktestWorkerOptions,
   workerFactory: BacktestWorkerFactory = defaultWorkerFactory,
 ): Promise<BacktestReport> {
+  const options = typeof timeoutOrOptions === "number"
+    ? { timeoutMs: timeoutOrOptions }
+    : timeoutOrOptions;
   return new Promise((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let worker: BacktestWorkerLike | undefined;
+    const signal = options.signal;
+    let onAbort = (): void => {};
+
+    const cleanup = (): void => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
 
     const finish = (callback: () => void): void => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
+      cleanup();
       callback();
     };
 
+    const finishAfterTermination = async (error: Error): Promise<void> => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        await worker?.terminate();
+      } catch {
+        // Preserve the original safe timeout/abort outcome if termination itself fails.
+      }
+      reject(error);
+    };
+
+    onAbort = (): void => {
+      const reason = signal?.reason;
+      void finishAfterTermination(
+        reason instanceof BacktestTimeoutError
+          ? reason
+          : new BacktestRequestAbortedError(),
+      );
+    };
+
+    if (signal?.aborted) {
+      void finishAfterTermination(
+        signal.reason instanceof BacktestTimeoutError
+          ? signal.reason
+          : new BacktestRequestAbortedError(),
+      );
+      return;
+    }
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     timer = setTimeout(() => {
-      finish(() => {
-        void worker?.terminate();
-        reject(new BacktestTimeoutError());
-      });
-    }, timeoutMs);
+      void finishAfterTermination(new BacktestTimeoutError());
+    }, Math.max(0, options.timeoutMs));
 
     try {
+      if (settled) return;
       worker = workerFactory(input);
       worker.once("message", (message) => {
         if (message.type === "result") {

@@ -687,11 +687,12 @@ let importPromise: Promise<HistoricalCsvImport> | null = null;
 export async function getHistoricalCsvImport(
   specification: FuturesContractSpecification,
 ): Promise<HistoricalCsvImport> {
+  if (importPromise) return importPromise;
   const filePath = await resolveImportPath();
   const modifiedAt = (await stat(filePath)).mtimeMs;
-  const fingerprint = await getHistoricalCsvFingerprint(filePath);
-  if (cachedImport?.path === filePath && cachedImport.modifiedAt === modifiedAt && cachedImport.value.contentFingerprint === fingerprint) {
-    return cachedImport.value;
+  if (cachedImport?.path === filePath && cachedImport.modifiedAt === modifiedAt) {
+    const fingerprint = await getHistoricalCsvFingerprint(filePath);
+    if (cachedImport.value.contentFingerprint === fingerprint) return cachedImport.value;
   }
   if (!importPromise) {
     importPromise = importHistoricalCsv(filePath, specification)

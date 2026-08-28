@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
+  BacktestRequestAbortedError,
   BacktestTimeoutError,
   BacktestWorkerError,
   runBacktestInWorker,
@@ -54,4 +55,17 @@ test("worker errors and abnormal exits reject with a safe worker error", async (
   const exitResult = runBacktestInWorker(input, 100, workerFactory(exitWorker));
   exitWorker.emit("exit", 1);
   await assert.rejects(exitResult, BacktestWorkerError);
+});
+
+test("request abort terminates the worker and rejects with a request-aborted error", async () => {
+  const worker = new ControlledWorker();
+  const controller = new AbortController();
+  const result = runBacktestInWorker(
+    input,
+    { timeoutMs: 100, signal: controller.signal },
+    workerFactory(worker),
+  );
+  controller.abort();
+  await assert.rejects(result, BacktestRequestAbortedError);
+  assert.equal(worker.terminated, true);
 });

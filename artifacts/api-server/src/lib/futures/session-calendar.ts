@@ -46,6 +46,7 @@ export const DEFAULT_FUTURES_SESSION_CALENDAR: Readonly<FuturesSessionCalendar> 
 };
 
 const SESSION_WINDOW_CACHE = new WeakMap<object, Map<string, FuturesSessionWindow | null>>();
+const SESSION_CALENDAR_CACHE = new Map<string, FuturesSessionCalendar>();
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
@@ -53,6 +54,8 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 });
+const TRADING_DATE_CACHE = new Map<number, string>();
+const MAX_TRADING_DATE_CACHE_ENTRIES = 100_000;
 
 function invalid(message: string): never {
   throw new Error(`Invalid futures session calendar: ${message}`);
@@ -131,7 +134,14 @@ export function tradingDateForTimestamp(
   calendar: FuturesSessionCalendar = DEFAULT_FUTURES_SESSION_CALENDAR,
 ): string {
   if (!Number.isFinite(timestamp)) invalid("timestamp must be finite.");
-  return DATE_FORMATTER.format(new Date(timestamp));
+  const cached = TRADING_DATE_CACHE.get(timestamp);
+  if (cached) return cached;
+  const tradingDate = DATE_FORMATTER.format(new Date(timestamp));
+  if (TRADING_DATE_CACHE.size >= MAX_TRADING_DATE_CACHE_ENTRIES) {
+    TRADING_DATE_CACHE.delete(TRADING_DATE_CACHE.keys().next().value!);
+  }
+  TRADING_DATE_CACHE.set(timestamp, tradingDate);
+  return tradingDate;
 }
 
 export function isWeekend(tradingDate: string): boolean {
@@ -182,7 +192,10 @@ function previousCalendarDate(tradingDate: string): string {
 export function sessionCalendarForContract(
   specification: FuturesContractSpecification,
 ): FuturesSessionCalendar {
-  return {
+  const cacheKey = `${specification.regularSessionHours.timeZone}:${specification.regularSessionHours.start}-${specification.regularSessionHours.end}`;
+  const cached = SESSION_CALENDAR_CACHE.get(cacheKey);
+  if (cached) return cached;
+  const calendar: FuturesSessionCalendar = {
     ...DEFAULT_FUTURES_SESSION_CALENDAR,
     timeZone: "America/New_York",
     premarket: { timeZone: "America/New_York", start: "04:00", end: "09:30" },
@@ -192,6 +205,8 @@ export function sessionCalendarForContract(
       end: specification.regularSessionHours.end,
     },
   };
+  SESSION_CALENDAR_CACHE.set(cacheKey, calendar);
+  return calendar;
 }
 
 export function sessionWindow(
