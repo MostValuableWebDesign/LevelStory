@@ -1,0 +1,241 @@
+Implement the next LevelStory phase: conservative OHLCV-based historical execution for MES futures.
+
+The historical importer works, but the backtest currently produces zero fills because OHLCV data has no bid/ask quotes. Add a separate bar-based execution model designed specifically for historical OHLCV backtesting.
+
+Do not fabricate bid/ask quotes. Every modeled execution must be labeled:
+
+“Modeled OHLCV Fill — Not a Quote-Based Fill”
+
+Preserve the existing quote-based Shadow Mode engine for data sources that contain actual quotes. Do not weaken or replace it.
+
+1. Execution modes
+
+Create two explicitly separate execution modes:
+
+A. Quote-based Shadow execution
+- Used only when genuine bid/ask data exists.
+- Preserve its current behavior.
+
+B. Historical OHLCV execution
+- Used only for historical bar data.
+- Uses conservative bar-based trigger and fill assumptions.
+- Clearly identified throughout the UI, results, journal, and API.
+
+Never silently switch between modes.
+
+2. MES contract specifications
+
+Use configurable instrument metadata with these MES defaults:
+
+- Tick size: 0.25 index points
+- Tick value: $1.25 per contract
+- Point value: $5.00 per contract
+- Default entry confirmation buffer: 4 ticks
+- Permit configuration between 3 and 4 ticks
+- Default assumed slippage: 1 tick per entry and exit
+- Commission/fee assumption must be configurable and reported separately
+
+Do not hard-code these values inside the strategy logic.
+
+3. Patience-candle entry model
+
+Only evaluate completed candles.
+
+For a bullish setup:
+
+- Trend must already be bullish.
+- The patience candle’s high must not exceed the preceding candle’s high.
+- The entire candle does not need to be inside the preceding candle.
+- Entry trigger = patience-candle high plus the configured 3–4 tick buffer.
+- Only the immediately following candle may trigger the entry.
+- A later candle cannot activate an expired patience-candle setup.
+
+For a bearish setup:
+
+- Trend must already be bearish.
+- The patience candle’s low must not fall below the preceding candle’s low.
+- The entire candle does not need to be inside the preceding candle.
+- Entry trigger = patience-candle low minus the configured 3–4 tick buffer.
+- Only the immediately following candle may trigger the entry.
+- A later candle cannot activate an expired patience-candle setup.
+
+If the next candle does not trigger the entry, expire the setup.
+
+4. Entry fills using OHLC bars
+
+For a bullish stop-entry:
+
+- Trigger only when the next candle’s high reaches or exceeds the entry price.
+- If the candle opens above the entry price, use the opening price as the pre-slippage modeled fill.
+- Otherwise use the entry trigger price.
+- Add configured adverse entry slippage.
+
+For a bearish stop-entry:
+
+- Trigger only when the next candle’s low reaches or falls below the entry price.
+- If the candle opens below the entry price, use the opening price as the pre-slippage modeled fill.
+- Otherwise use the entry trigger price.
+- Add configured adverse entry slippage.
+
+Round all prices to valid MES ticks.
+
+5. Initial protective stop
+
+Make the stop rule configurable and visible.
+
+Use this initial default:
+
+- Long: one tick below the patience candle’s low
+- Short: one tick above the patience candle’s high
+
+Apply adverse exit slippage when a stop is triggered.
+
+Do not claim this default is part of the user’s permanent strategy. Label it as a configurable backtest assumption requiring final approval.
+
+6. Same-candle ambiguity
+
+OHLC bars do not reveal the sequence of prices inside a candle.
+
+When both a stop and profit target could have been touched within the same candle:
+
+- Use the adverse-first assumption.
+- Count the stop as occurring before the target.
+- Mark the trade with:
+  “Ambiguous intrabar sequence — adverse-first policy applied”
+
+If the entry and protective stop are both reachable on the entry candle, use the same adverse-first policy.
+
+Do not use lower-timeframe data that occurs after the decision point or any look-ahead information.
+
+7. Profit and runner behavior
+
+Support configurable realized-profit targets from $50 to $100 per contract.
+
+Convert dollar targets into valid MES tick prices using contract quantity and tick value.
+
+For positions containing multiple contracts:
+
+- Permit taking profit on one or more contracts at the configured dollar target.
+- Track the final remaining contract as the runner.
+- Apply the existing runner rule only after the initial profit-taking event.
+- Exit the runner when the configured 40% adverse Fibonacci retracement condition is reached.
+
+Every partial exit and runner exit must be recorded separately.
+
+8. ORB requirements
+
+Preserve the LevelStory ORB rules:
+
+- New York regular session begins at 9:30 a.m.
+- ORB/NTZ is formed from the first three completed 5-minute candles, 9:30–9:45 a.m. ET.
+- Require a meaningful break above or below the ORB with continuation and supporting volume.
+- A slight ORB probe without volume or continuation is not an entry.
+- After a weak probe, wait for a stronger push outside the ORB.
+- Entry still requires a pullback or approach to a critical level, or qualifying consolidation, followed by a valid patience candle.
+
+Record the exact reasons that each setup passed or failed.
+
+9. Correct missing-minute reporting
+
+The current gap count includes periods when trading was not expected.
+
+Recalculate missing minutes only inside expected CME MES trading windows.
+
+Exclude:
+
+- Weekends
+- Exchange holidays
+- Scheduled CME maintenance breaks
+- Closed-session periods
+- Dates before the selected contract had meaningful trading activity, when appropriate
+
+Report separate metrics for:
+
+- Unexpected missing minutes during an open session
+- Expected closed-market minutes
+- Low-liquidity or inactive-contract periods
+- Gaps inside the selected 9:30 a.m.–4:00 p.m. ET regular session
+
+Do not silently manufacture candles to fill gaps.
+
+10. Backtest results
+
+Display:
+
+- setups detected
+- setups rejected
+- patience candles detected
+- entries triggered
+- expired patience setups
+- modeled fills
+- stop-outs
+- profit-target exits
+- runner exits
+- gross P&L
+- slippage
+- commissions/fees
+- net P&L
+- win rate
+- average winner
+- average loser
+- maximum drawdown
+- profit factor
+- ambiguous same-candle events
+- results grouped by date and setup grade
+
+Each trade must include a full audit trail containing:
+
+- trend direction
+- ORB boundaries
+- breakout evidence
+- pullback level
+- patience candle timestamp and OHLC
+- trigger candle timestamp and OHLC
+- entry trigger
+- modeled fill price
+- stop price
+- target price
+- slippage
+- exit reason
+- final P&L
+- all assumptions applied
+
+11. User-interface warning
+
+Place this warning above historical results:
+
+“Historical results use conservative OHLCV-based modeled fills. They do not represent actual bid/ask quotes, queue position, or guaranteed executions.”
+
+12. Verification
+
+Add automated tests for:
+
+- bullish and bearish 4-tick patience entries
+- next-candle-only expiration
+- gap-through entry fills
+- tick rounding
+- entry slippage
+- stop slippage
+- same-candle adverse-first handling
+- dollar-to-tick profit conversion
+- partial exits and runner accounting
+- commissions
+- session-aware gap detection
+- no look-ahead bias
+- separation of quote-based and OHLCV execution
+
+Run the MESU6 backtest for July 27, 2026 through August 26, 2026.
+
+Report:
+
+- all files changed
+- assumptions introduced
+- test/typecheck/build results
+- corrected gap statistics
+- number of patience candles
+- entry triggers
+- modeled fills
+- rejected setups
+- full performance summary
+
+Do not claim the strategy is profitable or production-ready. Do not add broker connectivity or live order placement.
