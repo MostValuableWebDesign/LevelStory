@@ -72,6 +72,8 @@ export type CausalReplayDataset = {
   contractMonth: string;
   inSampleDates: readonly string[];
   outOfSampleDates: readonly string[];
+  source?: "simulated" | "historical_databento";
+  quotesAvailable?: boolean;
 };
 
 export type ReplayDatasetOptions = {
@@ -84,6 +86,8 @@ export type ReplayDatasetOptions = {
 
 export type BacktestRequest = ReplayDatasetOptions & {
   symbol: string;
+  startDate?: string;
+  source?: "simulated" | "historical_databento";
   targetDollars?: number;
   slippageMode?: "normal" | "fast" | "abnormal_spread";
 };
@@ -150,6 +154,7 @@ export type BacktestSegment = BacktestMetrics & {
 
 export type BacktestReport = {
   mode: "SHADOW MODE — NO LIVE ORDERS";
+  dataSource: "simulated" | "historical_databento";
   symbol: string;
   contract: FuturesContractSpecification;
   dataResolution: "tick" | "one-minute-fallback";
@@ -554,6 +559,10 @@ export function runCausalBacktest(
     }
     const selected = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
     if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) continue;
+    if (dataset.quotesAvailable === false) {
+      rejectedByPeriod[period] += 1;
+      continue;
+    }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
     const entryResolution = resolveEntryAndInvalidation({
       direction: selected.direction,
@@ -641,6 +650,7 @@ export function runCausalBacktest(
   const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
+    dataSource: dataset.source ?? "simulated",
     symbol: specification.rootSymbol,
     contract: specification,
     dataResolution: dataset.ticks?.length ? "tick" : "one-minute-fallback",
@@ -670,6 +680,9 @@ export function runCausalBacktest(
       "Unknown entry/invalidation order rejects the setup; unknown stop/target order applies stop first and is labeled AMBIGUOUS_STOP_FIRST.",
       "Each contract month keeps its own tick economics and fees; contract rollover boundaries are never blended.",
       "The out-of-sample dates are immutable holdout data and are not used for optimization.",
+      ...(dataset.quotesAvailable === false
+        ? ["The selected historical OHLCV file has no bid/ask quotes; descriptive setups ran, but Shadow fills were blocked."]
+        : []),
       "This report is simulated futures analysis only. No live or paper order was created.",
     ],
   };

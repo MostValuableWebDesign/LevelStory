@@ -1,0 +1,92 @@
+Upload the **MESU6 CSV** to Replit, then paste this prompt:
+
+```text
+Implement the next LevelStory phase: Databento historical CSV import and validation for futures backtesting.
+
+Use the uploaded Databento OHLCV-1m MESU6 CSV as the initial dataset. Preserve the existing application architecture, Shadow Mode, simulated-data mode, strategy rules, tests, and explicit no-live-orders behavior.
+
+Requirements:
+
+1. Inspect the CSV headers before implementing the parser. Support Databento OHLCV-1m fields, including:
+   - timestamp/event time
+   - symbol
+   - open
+   - high
+   - low
+   - close
+   - volume
+
+2. Create a reusable server-side historical-data import service. Do not parse a large CSV entirely in the browser or load the entire file into memory at once. Process it as a stream or in safe batches.
+
+3. Validate every imported row:
+   - valid ISO 8601 timestamp
+   - numeric OHLCV values
+   - high >= open, close, and low
+   - low <= open, close, and high
+   - volume >= 0
+   - timestamps are ordered
+   - duplicates are detected and removed
+   - malformed rows are rejected and reported
+
+4. Accept only outright MES futures contracts for this import. Import MESU6 and reject or ignore calendar-spread symbols containing a hyphen, such as MESZ5-MESU6.
+
+5. Store timestamps internally in UTC. Display and evaluate trading-session rules using America/New_York time, including daylight-saving-time handling. Never use a fixed UTC offset.
+
+6. Allow the user to select a backtest date range. For the first test, default to:
+   July 27, 2026 through August 26, 2026.
+
+7. Aggregate the imported 1-minute candles into accurate:
+   - 5-minute candles
+   - 15-minute candles
+   - 1-hour candles
+
+Aggregation must use:
+   - open = first candle’s open
+   - high = maximum high
+   - low = minimum low
+   - close = last candle’s close
+   - volume = sum of volume
+
+Align 5-minute and 15-minute bars to New York session boundaries so the first regular-session bars begin at 9:30 a.m. ET.
+
+8. Show an import-results screen containing:
+   - filename
+   - detected symbol
+   - earliest and latest timestamp
+   - total valid rows
+   - rejected rows
+   - duplicate rows removed
+   - missing-minute gaps
+   - regular-session candle count
+   - overnight candle count
+   - available backtest dates
+
+9. Do not silently fill missing candles. Record and display gaps so the backtest cannot treat missing data as real market inactivity.
+
+10. Add a data-source indicator:
+   “Historical Databento Data — MESU6 — Shadow Mode”
+
+11. Keep imported historical data completely separate from simulated/demo data. Let the user explicitly choose the active source.
+
+12. Do not connect to a broker, place orders, activate live trading, or require a Databento API key. This phase is file-based historical backtesting only.
+
+13. Add automated tests for:
+   - Databento CSV parsing
+   - OHLC validation
+   - duplicate removal
+   - UTC-to-America/New_York conversion
+   - daylight-saving handling
+   - 1-minute to 5/15/60-minute aggregation
+   - 9:30 a.m. session alignment
+   - calendar-spread rejection
+   - missing-data detection
+
+Before changing code, inspect the existing repository and explain which files and data models will be affected. Then implement the phase, run the tests and type checking, and report:
+   - files changed
+   - database/schema changes
+   - validation results from the uploaded MESU6 file
+   - test results
+   - any remaining limitations
+
+Do not claim completion unless the uploaded CSV has been parsed successfully and its actual import statistics are displayed.
+```
