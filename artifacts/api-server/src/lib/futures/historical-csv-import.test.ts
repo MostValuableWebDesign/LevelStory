@@ -174,28 +174,23 @@ test("counts every verified shortened holiday session through the 1:00 p.m. ET h
     ["2026-05-25", "2026-05-25T13:30:00.000Z"],
     ["2026-06-19", "2026-06-19T13:30:00.000Z"],
   ] as const;
-  const rows = sessions.flatMap(([, start], sessionIndex) => {
+  for (const [date, start] of sessions) {
     const regularStart = Date.parse(start);
-    return Array.from({ length: 210 }, (_, index) => row(regularStart + index * 60_000, sessionIndex * 210 + index));
-  });
-  await withCsv(rows, async (path) => {
-    const imported = await importHistoricalCsv(path, specification);
-    const correctedDates = sessions.map(([date]) => date).sort();
-    assert.equal(imported.summary.regularSessionCandleCount, 1_050);
-    assert.equal(correctedDates.every((date) => imported.summary.earlyCloseDates.includes(date)), true);
-    assert.deepEqual(imported.summary.completeRegularSessionDates, correctedDates);
-    assert.equal(imported.summary.missingRegularSessionDates.length, 0);
-    const dataset = historicalImportToReplayDataset(
-      imported,
-      "2025-09-01",
-      "2026-06-19",
-      4,
-      1,
-      correctedDates,
-    );
-    assert.deepEqual(dataset.selectedDates, correctedDates);
-    assert.equal(dataset.gapReport?.unexpectedMissingMinutes, 0);
-  });
+    const rows = Array.from({ length: 210 }, (_, index) => row(regularStart + index * 60_000, index));
+    rows.push(row(regularStart + 211 * 60_000, 211));
+    await withCsv(rows, async (path) => {
+      const imported = await importHistoricalCsv(path, specification);
+      assert.equal(imported.summary.regularSessionCandleCount, 210);
+      assert.equal(imported.summary.earlyCloseDates.includes(date), true);
+      assert.deepEqual(imported.summary.completeRegularSessionDates, [date]);
+      assert.deepEqual(imported.summary.missingRegularSessionDates, []);
+      assert.equal(imported.summary.unexpectedMissingMinutes, 0);
+      assert.ok(imported.summary.earlyCloseMinutes > 0);
+      const dataset = historicalImportToReplayDataset(imported, date, date, 1, 0, [date]);
+      assert.deepEqual(dataset.selectedDates, [date]);
+      assert.equal(dataset.gapReport?.unexpectedMissingMinutes, 0);
+    });
+  }
 });
 
 test("does not classify the Friday-to-Monday closure as unexpected overnight loss", async () => {

@@ -16,3 +16,4 @@
 - [Persisted summary schema changes](persisted-summary-schema-changes.md) — bump the historical index cache version and validate persisted summaries when adding response metadata.
 - [Rollover acceptance windows](rollover-acceptance-windows.md) — choose the replay window around an explicit rollover boundary; latest-N date selection can otherwise hide contract isolation bugs.
 - [Constituent-minute containment](constituent-minute-containment.md) — assign multi-contract one-minute bars by contract-local enclosing candle and boundary checks, never exact five-minute opens.
+- [Sparse historical fixtures](sparse-historical-fixtures.md) — isolate synthetic trading dates when testing gap classification; inter-date gaps can be legitimately unexpected.
