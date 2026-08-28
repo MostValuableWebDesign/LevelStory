@@ -102,10 +102,31 @@ export type MultiContractFileSummary = {
 export type MultiContractEligibility = {
   tradingDate: string;
   scheduledContractSymbol: string | null;
-  status: "eligible" | "missing_scheduled_file" | "insufficient_rth_coverage" | "no_scheduled_contract";
+  scheduleVersion: typeof MES_ROLLOVER_SCHEDULE_VERSION;
+  rolloverReason: string;
+  status:
+    | "eligible"
+    | "missing_scheduled_file"
+    | "no_scheduled_contract_candles"
+    | "insufficient_rth_coverage"
+    | "invalid_or_rejected_source_data"
+    | "duplicate_or_overlapping_active_contract_data"
+    | "no_scheduled_contract";
+  coverageStatus:
+    | "eligible"
+    | "missing_scheduled_file"
+    | "no_scheduled_contract_candles"
+    | "insufficient_rth_coverage"
+    | "invalid_or_rejected_source_data"
+    | "duplicate_or_overlapping_active_contract_data"
+    | "outside_configured_rollover_schedule";
   reason: string | null;
+  observedInAnyFile: boolean;
+  scheduledContractFileAvailable: boolean;
+  scheduledContractDataAvailable: boolean;
   availableOnContract: boolean;
   regularSessionComplete: boolean;
+  backtestEligible: boolean;
 };
 
 export type MultiContractIndexState = "not_started" | "indexing" | "ready" | "failed";
@@ -138,6 +159,19 @@ export type HistoricalMultiContractImportSummary = Omit<
   activeContractByDate: Array<{ tradingDate: string; contractSymbol: string }>;
   eligibleTradingDates: string[];
   ineligibleDates: MultiContractEligibility[];
+  allObservedTradingDates: string[];
+  ineligibleObservedDates: MultiContractEligibility[];
+  dateEligibility: MultiContractEligibility[];
+  acceptedOutrightFileCount: number;
+  scheduledActiveContractCount: number;
+  inactiveFutureContractCount: number;
+  rejectedSpreadOrDuplicateFileCount: number;
+  missingScheduledContractFileCount: number;
+  allObservedDateCount: number;
+  eligibleScheduledReplayDateCount: number;
+  ineligibleObservedDateCount: number;
+  ineligibleScheduledDateCount: number;
+  coverageReconciles: boolean;
   indexingState: "ready";
   indexKey: string;
   importerVersion: typeof MULTI_CONTRACT_IMPORTER_VERSION;
@@ -587,6 +621,31 @@ function dateRange(startDate: string, endDate: string): string[] {
   return result;
 }
 
+function rolloverContextForDate(tradingDate: string): {
+  scheduledContractSymbol: string | null;
+  rolloverReason: string;
+} {
+  let selectedIndex = -1;
+  for (const [index, item] of MES_ROLLOVER_SCHEDULE.entries()) {
+    if (tradingDate >= item.effectiveDate) selectedIndex = index;
+    else break;
+  }
+  if (selectedIndex < 0) {
+    return {
+      scheduledContractSymbol: null,
+      rolloverReason: `Outside the configured ${MES_ROLLOVER_SCHEDULE_VERSION} schedule before ${MES_ROLLOVER_SCHEDULE[0]?.effectiveDate ?? "the first effective date"}.`,
+    };
+  }
+  const selected = MES_ROLLOVER_SCHEDULE[selectedIndex];
+  const previous = MES_ROLLOVER_SCHEDULE[selectedIndex - 1];
+  return {
+    scheduledContractSymbol: selected.contractSymbol,
+    rolloverReason: previous
+      ? `Rollover effective ${selected.effectiveDate}: ${previous.contractSymbol} → ${selected.contractSymbol}.`
+      : `Initial scheduled contract effective ${selected.effectiveDate}: ${selected.contractSymbol}.`,
+  };
+}
+
 function buildEligibility(
   importedContracts: ReadonlyMap<string, HistoricalCsvImport>,
   uploadedDates: readonly string[],
@@ -598,15 +657,23 @@ function buildEligibility(
   const result: MultiContractEligibility[] = [];
   for (const tradingDate of dateRange(firstDate, lastDate)) {
     if (!isTradingDate(tradingDate, calendar)) continue;
-    const scheduledContractSymbol = scheduledMesContractForDate(tradingDate);
+    const schedule = rolloverContextForDate(tradingDate);
+    const scheduledContractSymbol = schedule.scheduledContractSymbol;
     if (!scheduledContractSymbol) {
       result.push({
         tradingDate,
         scheduledContractSymbol: null,
+        scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+        rolloverReason: schedule.rolloverReason,
         status: "no_scheduled_contract",
+        coverageStatus: "outside_configured_rollover_schedule",
         reason: "NO_SCHEDULED_MES_CONTRACT",
+        observedInAnyFile: uploadedDates.includes(tradingDate),
+        scheduledContractFileAvailable: false,
+        scheduledContractDataAvailable: false,
         availableOnContract: false,
         regularSessionComplete: false,
+        backtestEligible: false,
       });
       continue;
     }
@@ -615,29 +682,58 @@ function buildEligibility(
       result.push({
         tradingDate,
         scheduledContractSymbol,
+        scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+        rolloverReason: schedule.rolloverReason,
         status: "missing_scheduled_file",
+        coverageStatus: "missing_scheduled_file",
         reason: `MISSING_SCHEDULED_CONTRACT_FILE:${scheduledContractSymbol}`,
+        observedInAnyFile: uploadedDates.includes(tradingDate),
+        scheduledContractFileAvailable: false,
+        scheduledContractDataAvailable: false,
         availableOnContract: false,
         regularSessionComplete: false,
+        backtestEligible: false,
       });
       continue;
     }
     const availableOnContract = contract.summary.availableTradingDates.includes(tradingDate);
     const regularSessionComplete = contract.summary.completeRegularSessionDates.includes(tradingDate);
-    const status = availableOnContract && regularSessionComplete
-      ? "eligible"
-      : "insufficient_rth_coverage";
+    const hasInvalidSourceData = contract.summary.rejectedRows > 0;
+    const hasDuplicateSourceData = contract.summary.duplicateRowsRemoved > 0;
+    const status = hasInvalidSourceData
+      ? "invalid_or_rejected_source_data"
+      : hasDuplicateSourceData
+        ? "duplicate_or_overlapping_active_contract_data"
+        : !availableOnContract
+          ? "no_scheduled_contract_candles"
+          : !regularSessionComplete
+            ? "insufficient_rth_coverage"
+            : "eligible";
+    const coverageStatus = status === "no_scheduled_contract"
+      ? "outside_configured_rollover_schedule"
+      : status;
     result.push({
       tradingDate,
       scheduledContractSymbol,
+      scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+      rolloverReason: schedule.rolloverReason,
       status,
+      coverageStatus,
       reason: status === "eligible"
         ? null
-        : !availableOnContract
-          ? `MISSING_SCHEDULED_DATE:${scheduledContractSymbol}`
-          : `INSUFFICIENT_REGULAR_SESSION_COVERAGE:${scheduledContractSymbol}`,
+        : status === "invalid_or_rejected_source_data"
+          ? `INVALID_OR_REJECTED_SOURCE_DATA:${scheduledContractSymbol}`
+          : status === "duplicate_or_overlapping_active_contract_data"
+            ? `DUPLICATE_OR_OVERLAPPING_ACTIVE_CONTRACT_DATA:${scheduledContractSymbol}`
+            : status === "no_scheduled_contract_candles"
+              ? `MISSING_SCHEDULED_CANDLES:${scheduledContractSymbol}`
+              : `INSUFFICIENT_REGULAR_SESSION_COVERAGE:${scheduledContractSymbol}`,
+      observedInAnyFile: uploadedDates.includes(tradingDate),
+      scheduledContractFileAvailable: true,
+      scheduledContractDataAvailable: availableOnContract,
       availableOnContract,
       regularSessionComplete,
+      backtestEligible: status === "eligible",
     });
   }
   return result;
@@ -684,6 +780,36 @@ function fileSummaryFor(
       reason: "NOT_SCHEDULED_ACTIVE",
     },
   };
+}
+
+export function assertMultiContractCoverageReconciles(
+  summary: Pick<
+    HistoricalMultiContractImportSummary,
+    | "allObservedTradingDates"
+    | "eligibleTradingDates"
+    | "ineligibleObservedDates"
+    | "allObservedDateCount"
+    | "eligibleScheduledReplayDateCount"
+    | "ineligibleObservedDateCount"
+    | "coverageReconciles"
+  >,
+): void {
+  const observedCount = new Set(summary.allObservedTradingDates).size;
+  const eligibleCount = new Set(summary.eligibleTradingDates).size;
+  const ineligibleObservedCount = new Set(
+    summary.ineligibleObservedDates
+      .filter((item) => item.observedInAnyFile && !item.backtestEligible)
+      .map((item) => item.tradingDate),
+  ).size;
+  const reconciles = observedCount === eligibleCount + ineligibleObservedCount
+    && summary.allObservedDateCount === observedCount
+    && summary.eligibleScheduledReplayDateCount === eligibleCount
+    && summary.ineligibleObservedDateCount === ineligibleObservedCount;
+  if (!reconciles || !summary.coverageReconciles) {
+    throw new Error(
+      `Historical multi-contract coverage totals do not reconcile: observed=${observedCount}, eligible=${eligibleCount}, ineligibleObserved=${ineligibleObservedCount}.`,
+    );
+  }
 }
 
 async function readPersistedIndex(identity: MultiContractIdentity): Promise<HistoricalMultiContractImport | null> {
@@ -764,17 +890,22 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
   }
 
   const aggregate = aggregateSummaries([...importedContracts.values()].map((item) => item.summary));
+  const allObservedTradingDates = [...new Set(
+    [...importedContracts.values()].flatMap((item) => item.summary.availableTradingDates),
+  )].sort();
   const acceptedContracts = [...importedContracts.keys()].sort(compareMesContractSymbols);
   const scheduledSymbols = new Set<string>(MES_ROLLOVER_SCHEDULE.map((item) => item.contractSymbol));
   const inactiveContracts = acceptedContracts.filter((symbol) => !scheduledSymbols.has(symbol));
-  const eligibility = buildEligibility(importedContracts, aggregate.availableTradingDates, sessionCalendarForContract(base));
+  const eligibility = buildEligibility(importedContracts, allObservedTradingDates, sessionCalendarForContract(base));
   const eligibleTradingDates = eligibility
-    .filter((item) => item.status === "eligible")
+    .filter((item) => item.backtestEligible)
     .map((item) => item.tradingDate);
   const activeContractByDate = eligibility
-    .filter((item): item is MultiContractEligibility & { status: "eligible"; scheduledContractSymbol: string } =>
-      item.status === "eligible" && item.scheduledContractSymbol !== null)
+    .filter((item): item is MultiContractEligibility & { scheduledContractSymbol: string } =>
+      item.backtestEligible && item.scheduledContractSymbol !== null)
     .map((item) => ({ tradingDate: item.tradingDate, contractSymbol: item.scheduledContractSymbol }));
+  const ineligibleDates = eligibility.filter((item) => !item.backtestEligible);
+  const ineligibleObservedDates = ineligibleDates.filter((item) => item.observedInAnyFile);
   const fileSummaries = identity.resolved.accepted.map((file, index) => {
     const imported = importedContracts.get(file.contractSymbol)!;
     const summary = fileSummaryFor(file.filename, file.contractSymbol, identity.fingerprints[index], imported);
@@ -793,6 +924,12 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
     return summary;
   });
   const indexedAt = new Date().toISOString();
+  const allObservedDateCount = allObservedTradingDates.length;
+  const eligibleScheduledReplayDateCount = eligibleTradingDates.length;
+  const ineligibleObservedDateCount = ineligibleObservedDates.length;
+  const ineligibleScheduledDateCount = ineligibleDates.length;
+  const coverageReconciles = allObservedDateCount
+    === eligibleScheduledReplayDateCount + ineligibleObservedDateCount;
   const summary: HistoricalMultiContractImportSummary = {
     source: MULTI_CONTRACT_SOURCE,
     filename: `${fileSummaries.length} outright MES contract files`,
@@ -807,12 +944,33 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
     rolloverBoundaries: buildRolloverBoundaries(),
     activeContractByDate,
     eligibleTradingDates,
-    ineligibleDates: eligibility.filter((item) => item.status !== "eligible"),
+    ineligibleDates,
+    allObservedTradingDates,
+    ineligibleObservedDates,
+    dateEligibility: eligibility,
+    acceptedOutrightFileCount: fileSummaries.length,
+    scheduledActiveContractCount: new Set(activeContractByDate.map((item) => item.contractSymbol)).size,
+    inactiveFutureContractCount: inactiveContracts.length,
+    rejectedSpreadOrDuplicateFileCount: identity.resolved.rejectedFiles.filter((file) =>
+      file.reason === "CALENDAR_SPREAD_REJECTED" || file.reason === "DUPLICATE_CONTRACT_FILE"
+    ).length,
+    missingScheduledContractFileCount: new Set(
+      ineligibleDates
+        .filter((item) => item.status === "missing_scheduled_file")
+        .map((item) => item.scheduledContractSymbol)
+        .filter((symbol): symbol is string => symbol !== null),
+    ).size,
+    allObservedDateCount,
+    eligibleScheduledReplayDateCount,
+    ineligibleObservedDateCount,
+    ineligibleScheduledDateCount,
+    coverageReconciles,
     indexingState: "ready",
     indexKey: identity.indexKey,
     importerVersion: MULTI_CONTRACT_IMPORTER_VERSION,
     indexedAt,
   };
+  assertMultiContractCoverageReconciles(summary);
   const value: HistoricalMultiContractImport = {
     summary,
     contentFingerprint: identity.contentFingerprint,

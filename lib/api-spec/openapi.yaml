@@ -2166,11 +2166,37 @@ components:
             properties:
               tradingDate: { type: string }
               scheduledContractSymbol: { type: ["string", "null"] }
-              status: { type: string, enum: [eligible, missing_scheduled_file, insufficient_rth_coverage, no_scheduled_contract] }
+              scheduleVersion: { type: string }
+              rolloverReason: { type: string }
+              status: { type: string, enum: [eligible, missing_scheduled_file, no_scheduled_contract_candles, insufficient_rth_coverage, invalid_or_rejected_source_data, duplicate_or_overlapping_active_contract_data, no_scheduled_contract] }
+              coverageStatus: { type: string, enum: [eligible, missing_scheduled_file, no_scheduled_contract_candles, insufficient_rth_coverage, invalid_or_rejected_source_data, duplicate_or_overlapping_active_contract_data, outside_configured_rollover_schedule] }
               reason: { type: ["string", "null"] }
+              observedInAnyFile: { type: boolean }
+              scheduledContractFileAvailable: { type: boolean }
+              scheduledContractDataAvailable: { type: boolean }
               availableOnContract: { type: boolean }
               regularSessionComplete: { type: boolean }
-            required: [tradingDate, scheduledContractSymbol, status, reason, availableOnContract, regularSessionComplete]
+              backtestEligible: { type: boolean }
+            required: [tradingDate, scheduledContractSymbol, scheduleVersion, rolloverReason, status, coverageStatus, reason, observedInAnyFile, scheduledContractFileAvailable, scheduledContractDataAvailable, availableOnContract, regularSessionComplete, backtestEligible]
+        allObservedTradingDates: { type: array, items: { type: string } }
+        ineligibleObservedDates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricalImportSummary/properties/ineligibleDates/items'
+        dateEligibility:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricalImportSummary/properties/ineligibleDates/items'
+        acceptedOutrightFileCount: { type: number, minimum: 0 }
+        scheduledActiveContractCount: { type: number, minimum: 0 }
+        inactiveFutureContractCount: { type: number, minimum: 0 }
+        rejectedSpreadOrDuplicateFileCount: { type: number, minimum: 0 }
+        missingScheduledContractFileCount: { type: number, minimum: 0 }
+        allObservedDateCount: { type: number, minimum: 0 }
+        eligibleScheduledReplayDateCount: { type: number, minimum: 0 }
+        ineligibleObservedDateCount: { type: number, minimum: 0 }
+        ineligibleScheduledDateCount: { type: number, minimum: 0 }
+        coverageReconciles: { type: boolean }
         indexingState: { type: string, enum: [ready] }
         indexKey: { type: string }
         importerVersion: { type: string }
