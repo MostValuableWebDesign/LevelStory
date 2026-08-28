@@ -1381,6 +1381,14 @@ export const BacktestRequestSlippageMode = {
   abnormal_spread: 'abnormal_spread',
 } as const;
 
+export type BacktestRequestSource = typeof BacktestRequestSource[keyof typeof BacktestRequestSource];
+
+
+export const BacktestRequestSource = {
+  simulated: 'simulated',
+  historical_databento: 'historical_databento',
+} as const;
+
 export interface BacktestRequest {
   /**
      * @minLength 1
@@ -1389,6 +1397,8 @@ export interface BacktestRequest {
   symbol: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   endDate: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  startDate?: string;
   /**
      * @minimum 1
      * @maximum 30
@@ -1411,6 +1421,51 @@ export interface BacktestRequest {
      */
   targetDollars?: number;
   slippageMode?: BacktestRequestSlippageMode;
+  source?: BacktestRequestSource;
+}
+
+export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource[keyof typeof HistoricalImportSummarySource];
+
+
+export const HistoricalImportSummarySource = {
+  historical_databento: 'historical_databento',
+} as const;
+
+export type HistoricalImportSummaryRejectionReasons = {[key: string]: number};
+
+export type HistoricalImportSummaryErrorsItem = {
+  row: number;
+  reason: string;
+};
+
+export type HistoricalImportSummaryAggregationCounts = {
+  oneMinute: number;
+  fiveMinute: number;
+  fifteenMinute: number;
+  oneHour: number;
+};
+
+export interface HistoricalImportSummary {
+  source: HistoricalImportSummarySource;
+  filename: string;
+  /** @nullable */
+  detectedSymbol: string | null;
+  /** @nullable */
+  earliestTimestamp: string | null;
+  /** @nullable */
+  latestTimestamp: string | null;
+  totalRows: number;
+  validRows: number;
+  rejectedRows: number;
+  duplicateRowsRemoved: number;
+  missingMinuteGaps: number;
+  missingGapSegments: number;
+  regularSessionCandleCount: number;
+  overnightCandleCount: number;
+  availableTradingDates: string[];
+  rejectionReasons: HistoricalImportSummaryRejectionReasons;
+  errors: HistoricalImportSummaryErrorsItem[];
+  aggregationCounts: HistoricalImportSummaryAggregationCounts;
 }
 
 export interface BacktestMetricSet {
@@ -1617,6 +1672,14 @@ export const BacktestReportMode = {
   'SHADOW_MODE_—_NO_LIVE_ORDERS': 'SHADOW MODE — NO LIVE ORDERS',
 } as const;
 
+export type BacktestReportDataSource = typeof BacktestReportDataSource[keyof typeof BacktestReportDataSource];
+
+
+export const BacktestReportDataSource = {
+  simulated: 'simulated',
+  historical_databento: 'historical_databento',
+} as const;
+
 export type BacktestReportDataResolution = typeof BacktestReportDataResolution[keyof typeof BacktestReportDataResolution];
 
 
@@ -1654,6 +1717,7 @@ export type BacktestReportReplay = {
 
 export interface BacktestReport {
   mode: BacktestReportMode;
+  dataSource: BacktestReportDataSource;
   symbol: string;
   contract: FuturesContractSpecification;
   dataResolution: BacktestReportDataResolution;
@@ -1754,6 +1818,17 @@ export type GetDashboardOverviewParams = {
  */
 tradingDate?: string;
 };
+
+export type GetHistoricalDataParams = {
+symbol?: GetHistoricalDataSymbol;
+};
+
+export type GetHistoricalDataSymbol = typeof GetHistoricalDataSymbol[keyof typeof GetHistoricalDataSymbol];
+
+
+export const GetHistoricalDataSymbol = {
+  MES: 'MES',
+} as const;
 
 export type ListJournalEntriesParams = {
 /**

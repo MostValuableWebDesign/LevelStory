@@ -1,11 +1,39 @@
 import { useState, type FormEvent } from "react";
-import { useRunBacktest } from "@workspace/api-client-react";
-import type { BacktestMetricSet, BacktestReport } from "@workspace/api-client-react";
-import { BarChart3, Check, Database, LockKeyhole, Play, ShieldCheck } from "lucide-react";
+import { useGetHistoricalData, useRunBacktest } from "@workspace/api-client-react";
+import type { BacktestMetricSet, BacktestReport, HistoricalImportSummary } from "@workspace/api-client-react";
+import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, ShieldCheck } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
+
+function HistoricalImportResults({ data, isLoading, isError }: { data?: HistoricalImportSummary; isLoading: boolean; isError: boolean }) {
+  if (isLoading) return <Panel><div className="p-6 text-center text-xs text-muted-foreground">Streaming the uploaded Databento CSV and validating each row…</div></Panel>;
+  if (isError || !data) return <Panel><div className="p-6 text-xs text-destructive">The uploaded MESU6 CSV could not be imported. Check the server-side file path and try again.</div></Panel>;
+  const stats = [
+    ["Valid rows", data.validRows.toLocaleString()],
+    ["Rejected rows", data.rejectedRows.toLocaleString()],
+    ["Duplicates removed", data.duplicateRowsRemoved.toLocaleString()],
+    ["Missing minutes", `${data.missingMinuteGaps.toLocaleString()} across ${data.missingGapSegments} gaps`],
+    ["Regular session", data.regularSessionCandleCount.toLocaleString()],
+    ["Overnight", data.overnightCandleCount.toLocaleString()],
+  ];
+  return <Panel accent data-testid="panel-historical-import-results">
+    <PanelTitle eyebrow="File import / validation" title="Historical Databento Data — MESU6 — Shadow Mode" right={<FileCheck2 size={16} className="text-accent" />} />
+    <div className="border-t border-border px-5 py-4 text-xs">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground"><span>File <strong className="text-foreground">{data.filename}</strong></span><span>Symbol <strong className="mono text-foreground">{data.detectedSymbol ?? "—"}</strong></span></div>
+      <div className="mt-2 text-muted-foreground">UTC range <strong className="mono text-foreground">{data.earliestTimestamp ?? "—"} → {data.latestTimestamp ?? "—"}</strong></div>
+    </div>
+    <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-3">
+      {stats.map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
+    </div>
+    <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
+      <div className="eyebrow mb-2">Aggregated bars</div>
+      <div className="flex flex-wrap gap-x-5 gap-y-2"><span>1m <strong className="mono text-foreground">{data.aggregationCounts.oneMinute.toLocaleString()}</strong></span><span>5m <strong className="mono text-foreground">{data.aggregationCounts.fiveMinute.toLocaleString()}</strong></span><span>15m <strong className="mono text-foreground">{data.aggregationCounts.fifteenMinute.toLocaleString()}</strong></span><span>1h <strong className="mono text-foreground">{data.aggregationCounts.oneHour.toLocaleString()}</strong></span></div>
+      <div className="mt-3">Available NY trading dates: <strong className="text-foreground">{data.availableTradingDates.length}</strong> ({data.availableTradingDates[0] ?? "—"} → {data.availableTradingDates.at(-1) ?? "—"})</div>
+    </div>
+  </Panel>;
+}
 
 function money(value: number | null): string {
   if (value === null) return "—";
@@ -36,6 +64,7 @@ function ReportBody({ report }: { report: BacktestReport }) {
   return <div className="space-y-5">
     <Panel accent>
       <PanelTitle eyebrow="Run integrity / causal replay" title={`${report.symbol} · ${report.contract.fullContractSymbol}`} right={<span className="mono text-[10px] text-muted-foreground">{report.dataResolution}</span>} />
+      <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6 — Shadow Mode" : "Simulated demo data — Shadow Mode"}</strong>{report.dataSource === "historical_databento" && <span className="ml-2 text-muted-foreground">Quote-less OHLCV; Shadow fills are blocked.</span>}</div>
       <div className="grid gap-px border-t border-border bg-border sm:grid-cols-4">
         {[
           ["Dataset", `${report.dataset.startDate} → ${report.dataset.endDate}`],
@@ -93,38 +122,46 @@ function ReportBody({ report }: { report: BacktestReport }) {
 
 export default function Backtest() {
   const [symbol, setSymbol] = useState("MES");
-  const [endDate, setEndDate] = useState("2026-08-25");
+  const [source, setSource] = useState<"historical_databento" | "simulated">("historical_databento");
+  const [startDate, setStartDate] = useState("2026-07-27");
+  const [endDate, setEndDate] = useState("2026-08-26");
   const [inSampleDays, setInSampleDays] = useState("5");
   const [outOfSampleDays, setOutOfSampleDays] = useState("2");
   const [seed, setSeed] = useState("11");
   const [targetDollars, setTargetDollars] = useState("75");
   const [slippageMode, setSlippageMode] = useState<"normal" | "fast" | "abnormal_spread">("normal");
   const run = useRunBacktest();
+  const historicalImport = useGetHistoricalData({ symbol: "MES" });
+
+  const request = {
+    symbol,
+    source,
+    startDate,
+    endDate,
+    inSampleDays: Number(inSampleDays),
+    outOfSampleDays: Number(outOfSampleDays),
+    seed: Number(seed),
+    premarketAvailable: true,
+    targetDollars: Number(targetDollars),
+    slippageMode,
+  } as const;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    run.mutate({
-      data: {
-        symbol,
-        endDate,
-        inSampleDays: Number(inSampleDays),
-        outOfSampleDays: Number(outOfSampleDays),
-        seed: Number(seed),
-        premarketAvailable: true,
-        targetDollars: Number(targetDollars),
-        slippageMode,
-      },
-    });
+    run.mutate({ data: request });
   };
 
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
+        {source === "historical_databento" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading} isError={historicalImport.isError} /></div>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Data source</span><select value={source} onChange={(event) => { const next = event.target.value as typeof source; setSource(next); if (next === "historical_databento") setSymbol("MES"); }} className="field w-full" data-testid="select-backtest-source"><option value="historical_databento">Historical Databento CSV</option><option value="simulated">Simulated demo</option></select></label>
+            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Contract</span><select value={symbol} onChange={(event) => setSymbol(event.target.value)} className="field w-full" data-testid="select-backtest-symbol">{symbols.map((item) => <option key={item} disabled={source === "historical_databento" && item !== "MES"}>{item}</option>)}</select></label>
+            <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-start-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">End date</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="field mono w-full" data-testid="input-backtest-end-date" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">In-sample days</span><input type="number" min="1" max="30" value={inSampleDays} onChange={(event) => setInSampleDays(event.target.value)} className="field mono w-full" data-testid="input-backtest-in-sample" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Holdout days</span><input type="number" min="1" max="10" value={outOfSampleDays} onChange={(event) => setOutOfSampleDays(event.target.value)} className="field mono w-full" data-testid="input-backtest-out-of-sample" /></label>
@@ -137,7 +174,7 @@ export default function Backtest() {
         </Panel>
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}
-        {run.isError && <Panel><QueryError onRetry={() => run.mutate({ data: { symbol, endDate, inSampleDays: Number(inSampleDays), outOfSampleDays: Number(outOfSampleDays), seed: Number(seed), premarketAvailable: true, targetDollars: Number(targetDollars), slippageMode } })} message="The causal backtest could not be completed." /></Panel>}
+        {run.isError && <Panel><QueryError onRetry={() => run.mutate({ data: request })} message="The causal backtest could not be completed." /></Panel>}
         {run.data && <ReportBody report={run.data} />}
         {!run.isPending && !run.isError && !run.data && <Panel><div className="flex flex-col items-center gap-3 p-12 text-center"><ShieldCheck size={28} className="text-accent" /><h2 className="text-sm font-bold">Ready for a clean replay</h2><p className="max-w-md text-xs leading-5 text-muted-foreground">Choose the evaluation window, then run the locked strategy. Results will show why setups qualified, rejected, or became ambiguous.</p></div></Panel>}
         <LockedNote>Phase 9 is a research surface only. It has no broker connection, no position state, and no live or paper order path.</LockedNote>

@@ -8,6 +8,7 @@
 import type { BacktestMetricSet } from './backtestMetricSet';
 import type { BacktestReportDataResolution } from './backtestReportDataResolution';
 import type { BacktestReportDataset } from './backtestReportDataset';
+import type { BacktestReportDataSource } from './backtestReportDataSource';
 import type { BacktestReportMode } from './backtestReportMode';
 import type { BacktestReportReplay } from './backtestReportReplay';
 import type { BacktestSegment } from './backtestSegment';
@@ -16,6 +17,7 @@ import type { FuturesContractSpecification } from './futuresContractSpecificatio
 
 export interface BacktestReport {
   mode: BacktestReportMode;
+  dataSource: BacktestReportDataSource;
   symbol: string;
   contract: FuturesContractSpecification;
   dataResolution: BacktestReportDataResolution;

@@ -217,6 +217,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /historical-data:
+    get:
+      operationId: getHistoricalData
+      tags: [backtest]
+      summary: Get the imported historical Databento CSV result
+      description: Returns validation and aggregation statistics for the server-side MESU6 OHLCV-1m import. The file is processed without requiring a Databento API key.
+      parameters:
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [MES]
+            default: MES
+      responses:
+        "200":
+          description: Historical CSV import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalImportSummary"
+        "400":
+          description: Historical CSV import failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /journal:
     get:
       operationId: listJournalEntries
@@ -1706,6 +1733,10 @@ components:
           type: string
           pattern: '^\d{4}-\d{2}-\d{2}$'
           default: "2026-08-25"
+        startDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          default: "2026-07-27"
         inSampleDays:
           type: number
           minimum: 1
@@ -1733,7 +1764,46 @@ components:
           type: string
           enum: [normal, fast, abnormal_spread]
           default: normal
+        source:
+          type: string
+          enum: [simulated, historical_databento]
+          default: simulated
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
+    HistoricalImportSummary:
+      type: object
+      properties:
+        source: { type: string, enum: [historical_databento] }
+        filename: { type: string }
+        detectedSymbol: { type: ["string", "null"] }
+        earliestTimestamp: { type: ["string", "null"], format: date-time }
+        latestTimestamp: { type: ["string", "null"], format: date-time }
+        totalRows: { type: number }
+        validRows: { type: number }
+        rejectedRows: { type: number }
+        duplicateRowsRemoved: { type: number }
+        missingMinuteGaps: { type: number }
+        missingGapSegments: { type: number }
+        regularSessionCandleCount: { type: number }
+        overnightCandleCount: { type: number }
+        availableTradingDates: { type: array, items: { type: string } }
+        rejectionReasons: { type: object, additionalProperties: { type: number } }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: number }
+              reason: { type: string }
+            required: [row, reason]
+        aggregationCounts:
+          type: object
+          properties:
+            oneMinute: { type: number }
+            fiveMinute: { type: number }
+            fifteenMinute: { type: number }
+            oneHour: { type: number }
+          required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
+      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
     BacktestMetricSet:
       type: object
       properties:
@@ -1804,6 +1874,7 @@ components:
       type: object
       properties:
         mode: { type: string, enum: ["SHADOW MODE — NO LIVE ORDERS"] }
+        dataSource: { type: string, enum: [simulated, historical_databento] }
         symbol: { type: string }
         contract: { $ref: "#/components/schemas/FuturesContractSpecification" }
         dataResolution: { type: string, enum: [tick, one-minute-fallback] }
@@ -1834,5 +1905,5 @@ components:
         segments: { type: array, items: { $ref: "#/components/schemas/BacktestSegment" } }
         trades: { type: array, items: { $ref: "#/components/schemas/BacktestTrade" } }
         assumptions: { type: array, items: { type: string } }
-      required: [mode, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, assumptions]
+      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, assumptions]
 

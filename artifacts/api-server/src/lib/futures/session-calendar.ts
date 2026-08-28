@@ -45,6 +45,8 @@ export const DEFAULT_FUTURES_SESSION_CALENDAR: Readonly<FuturesSessionCalendar> 
   earlyCloses: DEFAULT_EARLY_CLOSES,
 };
 
+const SESSION_WINDOW_CACHE = new WeakMap<object, Map<string, FuturesSessionWindow | null>>();
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
   year: "numeric",
@@ -198,13 +200,20 @@ export function sessionWindow(
   calendar: FuturesSessionCalendar = DEFAULT_FUTURES_SESSION_CALENDAR,
 ): FuturesSessionWindow | null {
   const tradingDate = parseDateInput(date, calendar.timeZone);
+  const cacheKey = `${tradingDate}:${kind}`;
+  const calendarCache = SESSION_WINDOW_CACHE.get(calendar) ?? new Map<string, FuturesSessionWindow | null>();
+  const cached = calendarCache.get(cacheKey);
+  if (cached !== undefined) return cached;
   if (!isTradingDate(tradingDate, calendar)) return null;
   const hours = calendar[kind];
   const closeTimeText = kind === "regular" ? calendar.earlyCloses[tradingDate] ?? hours.end : hours.end;
   const openTime = newYorkTimeToUtc(tradingDate, hours.start);
   const closeTime = newYorkTimeToUtc(tradingDate, closeTimeText);
   if (closeTime <= openTime) invalid(`${kind} session must close after it opens.`);
-  return { tradingDate, openTime, closeTime, kind, earlyClose: kind === "regular" && closeTimeText !== hours.end };
+  const result = { tradingDate, openTime, closeTime, kind, earlyClose: kind === "regular" && closeTimeText !== hours.end };
+  calendarCache.set(cacheKey, result);
+  SESSION_WINDOW_CACHE.set(calendar, calendarCache);
+  return result;
 }
 
 export function timestampForTradingDate(

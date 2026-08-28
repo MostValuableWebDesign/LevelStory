@@ -46,6 +46,7 @@ import {
   completedSimulatedCandles,
   completedSimulatedHourlyCandles,
   generateSimulatedFuturesFeed,
+  type SimulatedHourlyCandle,
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
@@ -353,6 +354,7 @@ export type ReplaySnapshotOptions = {
   cursor?: number;
   allCandles?: readonly SimulatedFuturesCandle[];
   historicalFeed?: readonly SimulatedFuturesCandle[];
+  historicalHourly?: readonly SimulatedHourlyCandle[];
   premarketAvailable?: boolean;
 };
 
@@ -409,10 +411,12 @@ export function createMarketSnapshot(
       ? "open"
       : "closed";
   const visible = completedSimulatedCandles(allCandles, currentCursor);
-  const historicalHourly = completedSimulatedHourlyCandles(
-    completedSimulatedCandles(historicalFeed, currentCursor),
-    calendar,
-  );
+  const historicalHourly = replayOptions?.historicalHourly
+    ? replayOptions.historicalHourly.filter((candle) => candle.closeTime <= currentCursor)
+    : completedSimulatedHourlyCandles(
+        completedSimulatedCandles(historicalFeed, currentCursor),
+        calendar,
+      );
   const currentDay = visible.filter(c => tradingDateForTimestamp(c.openTime, calendar) === tradingDate);
   const premarket = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "premarket");
   const regular = currentDay.filter(c => classifyFuturesSession(c.openTime, calendar) === "regular");

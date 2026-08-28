@@ -26,9 +26,11 @@ import type {
   ErrorResponse,
   FuturesContractSpecification,
   GetDashboardOverviewParams,
+  GetHistoricalDataParams,
   GetMarketDataStatusParams,
   GetMarketSnapshotParams,
   HealthStatus,
+  HistoricalImportSummary,
   JournalEntry,
   JournalEntryInput,
   ListJournalEntriesParams,
@@ -547,6 +549,91 @@ export const useRunBacktest = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRunBacktestMutationOptions(options));
     }
+
+export const getGetHistoricalDataUrl = (params?: GetHistoricalDataParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/historical-data?${stringifiedParams}` : `/api/historical-data`
+}
+
+/**
+ * Returns validation and aggregation statistics for the server-side MESU6 OHLCV-1m import. The file is processed without requiring a Databento API key.
+ * @summary Get the imported historical Databento CSV result
+ */
+export const getHistoricalData = async (params?: GetHistoricalDataParams, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalImportSummary> => {
+
+  return customFetch<HistoricalImportSummary>(getGetHistoricalDataUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalDataQueryKey = (params?: GetHistoricalDataParams,) => {
+    return [
+    `/api/historical-data`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetHistoricalDataQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalData>>, TError = ErrorType<ErrorResponse>>(params?: GetHistoricalDataParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalDataQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalData>>> = ({ signal }) => getHistoricalData(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalData>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalDataQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalData>>>
+export type GetHistoricalDataQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the imported historical Databento CSV result
+ */
+
+export function useGetHistoricalData<TData = Awaited<ReturnType<typeof getHistoricalData>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetHistoricalDataParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalDataQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListJournalEntriesUrl = (params?: ListJournalEntriesParams,) => {
   const normalizedParams = new URLSearchParams();

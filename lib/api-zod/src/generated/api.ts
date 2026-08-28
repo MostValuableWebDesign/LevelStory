@@ -692,6 +692,8 @@ export const runBacktestBodySymbolMax = 12;
 
 export const runBacktestBodyEndDateDefault = `2026-08-25`;
 export const runBacktestBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const runBacktestBodyStartDateDefault = `2026-07-27`;
+export const runBacktestBodyStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const runBacktestBodyInSampleDaysDefault = 5;
 export const runBacktestBodyInSampleDaysMax = 30;
 
@@ -707,20 +709,24 @@ export const runBacktestBodyTargetDollarsMin = 50;
 export const runBacktestBodyTargetDollarsMax = 100;
 
 export const runBacktestBodySlippageModeDefault = `normal`;
+export const runBacktestBodySourceDefault = `simulated`;
 
 export const RunBacktestBody = zod.object({
   "symbol": zod.string().min(1).max(runBacktestBodySymbolMax).default(runBacktestBodySymbolDefault),
   "endDate": zod.string().regex(runBacktestBodyEndDateRegExp).default(runBacktestBodyEndDateDefault),
+  "startDate": zod.string().regex(runBacktestBodyStartDateRegExp).default(runBacktestBodyStartDateDefault),
   "inSampleDays": zod.number().min(1).max(runBacktestBodyInSampleDaysMax).default(runBacktestBodyInSampleDaysDefault),
   "outOfSampleDays": zod.number().min(1).max(runBacktestBodyOutOfSampleDaysMax).default(runBacktestBodyOutOfSampleDaysDefault),
   "seed": zod.number().min(1).max(runBacktestBodySeedMax).default(runBacktestBodySeedDefault),
   "premarketAvailable": zod.boolean().default(runBacktestBodyPremarketAvailableDefault),
   "targetDollars": zod.number().min(runBacktestBodyTargetDollarsMin).max(runBacktestBodyTargetDollarsMax).default(runBacktestBodyTargetDollarsDefault),
-  "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault)
+  "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(runBacktestBodySourceDefault)
 })
 
 export const RunBacktestResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
+  "dataSource": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "contract": zod.object({
   "rootSymbol": zod.string(),
@@ -865,6 +871,45 @@ export const RunBacktestResponse = zod.object({
 })
 })),
   "assumptions": zod.array(zod.string())
+})
+
+
+/**
+ * Returns validation and aggregation statistics for the server-side MESU6 OHLCV-1m import. The file is processed without requiring a Databento API key.
+ * @summary Get the imported historical Databento CSV result
+ */
+export const getHistoricalDataQuerySymbolDefault = `MES`;
+
+export const GetHistoricalDataQueryParams = zod.object({
+  "symbol": zod.enum(['MES']).default(getHistoricalDataQuerySymbolDefault)
+})
+
+export const GetHistoricalDataResponse = zod.object({
+  "source": zod.enum(['historical_databento']),
+  "filename": zod.string(),
+  "detectedSymbol": zod.string().nullable(),
+  "earliestTimestamp": zod.coerce.date().nullable(),
+  "latestTimestamp": zod.coerce.date().nullable(),
+  "totalRows": zod.number(),
+  "validRows": zod.number(),
+  "rejectedRows": zod.number(),
+  "duplicateRowsRemoved": zod.number(),
+  "missingMinuteGaps": zod.number(),
+  "missingGapSegments": zod.number(),
+  "regularSessionCandleCount": zod.number(),
+  "overnightCandleCount": zod.number(),
+  "availableTradingDates": zod.array(zod.string()),
+  "rejectionReasons": zod.record(zod.string(), zod.number()),
+  "errors": zod.array(zod.object({
+  "row": zod.number(),
+  "reason": zod.string()
+})),
+  "aggregationCounts": zod.object({
+  "oneMinute": zod.number(),
+  "fiveMinute": zod.number(),
+  "fifteenMinute": zod.number(),
+  "oneHour": zod.number()
+})
 })
 
 

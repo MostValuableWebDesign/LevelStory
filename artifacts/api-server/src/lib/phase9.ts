@@ -13,7 +13,9 @@ import {
   type FuturesSessionCalendar,
 } from "./futures/session-calendar.js";
 import {
+  completedSimulatedHourlyCandles,
   generateSimulatedFuturesFeed,
+  type SimulatedHourlyCandle,
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
@@ -516,6 +518,7 @@ export function runCausalBacktest(
   const candles = sortedCandles(dataset.candles);
   const ticks = dataset.ticks ?? [];
   const oneMinute = dataset.oneMinute ?? candles.flatMap(buildSyntheticOneMinuteBars);
+  const historicalHourly: SimulatedHourlyCandle[] = completedSimulatedHourlyCandles(candles, calendar);
   const rejectedByPeriod = { in_sample: 0, out_of_sample: 0 };
   const trades: BacktestTrade[] = [];
   let lastExitIndex = -1;
@@ -548,6 +551,7 @@ export function runCausalBacktest(
         cursor: candle.closeTime,
         allCandles: dataset.candles,
         historicalFeed: dataset.candles,
+          historicalHourly,
         premarketAvailable: request.premarketAvailable !== false,
       },
     );

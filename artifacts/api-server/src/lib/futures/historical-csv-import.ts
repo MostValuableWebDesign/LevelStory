@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import {
   classifyFuturesSession,
+  isTradingDate,
   sessionCalendarForContract,
   tradingDateForTimestamp,
   type FuturesSessionCalendar,
@@ -150,7 +151,7 @@ function aggregate(
       askSize: null,
       contractSymbol: first.contractSymbol || specification.fullContractSymbol,
       isComplete: complete && ordered.every((candle) => candle.isComplete),
-      intervalMinutes: intervalMinutes === 5 ? 5 : 5,
+      intervalMinutes,
       quality: { valid: complete && ordered.every((candle) => candle.quality.valid), codes: [...qualityCodes] },
     };
   });
@@ -242,13 +243,23 @@ export function publicHistoricalImportSummary(imported: HistoricalCsvImport): Hi
 async function resolveImportPath(): Promise<string> {
   const configured = process.env["LEVELSTORY_HISTORICAL_CSV_PATH"] ?? process.env["LEVELSTORY_CSV_REPLAY_PATH"];
   if (configured) return configured;
-  const assetsDirectory = join(process.cwd(), "attached_assets");
-  const files = await readdir(assetsDirectory);
-  const match = files
-    .filter((file) => file.endsWith(".csv") && file.startsWith(DEFAULT_FILENAME_PREFIX) && file.includes("MESU6"))
-    .sort()[0];
-  if (!match) throw new Error("No uploaded MESU6 Databento CSV was found in attached_assets.");
-  return join(assetsDirectory, match);
+  const assetDirectories = [
+    join(process.cwd(), "attached_assets"),
+    join(process.cwd(), "..", "attached_assets"),
+    join(process.cwd(), "..", "..", "attached_assets"),
+  ];
+  for (const assetsDirectory of assetDirectories) {
+    try {
+      const files = await readdir(assetsDirectory);
+      const match = files
+        .filter((file) => file.endsWith(".csv") && file.startsWith(DEFAULT_FILENAME_PREFIX) && file.includes("MESU6"))
+        .sort()[0];
+      if (match) return join(assetsDirectory, match);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  throw new Error("No uploaded MESU6 Databento CSV was found in attached_assets.");
 }
 
 export async function importHistoricalCsv(
@@ -365,7 +376,7 @@ export async function importHistoricalCsv(
     summary.earliestTimestamp ??= new Date(timestamp).toISOString();
     summary.latestTimestamp = new Date(timestamp).toISOString();
     const date = tradingDateForTimestamp(timestamp, calendar);
-    tradingDates.add(date);
+    if (isTradingDate(date, calendar)) tradingDates.add(date);
     if (classifyFuturesSession(timestamp, calendar) === "regular") summary.regularSessionCandleCount += 1;
     else summary.overnightCandleCount += 1;
   }

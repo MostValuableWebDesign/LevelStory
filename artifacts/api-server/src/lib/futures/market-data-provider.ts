@@ -50,7 +50,7 @@ export type NormalizedCandle = {
   askSize: number | null;
   contractSymbol: string;
   isComplete: boolean;
-  intervalMinutes: 1 | 5;
+  intervalMinutes: 1 | 5 | 15 | 60;
   quality: {
     valid: boolean;
     codes: string[];

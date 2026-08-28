@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestRequestSlippageMode } from './backtestRequestSlippageMode';
+import type { BacktestRequestSource } from './backtestRequestSource';
 
 export interface BacktestRequest {
   /**
@@ -15,6 +16,8 @@ export interface BacktestRequest {
   symbol: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   endDate: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  startDate?: string;
   /**
      * @minimum 1
      * @maximum 30
@@ -37,4 +40,5 @@ export interface BacktestRequest {
      */
   targetDollars?: number;
   slippageMode?: BacktestRequestSlippageMode;
+  source?: BacktestRequestSource;
 }
