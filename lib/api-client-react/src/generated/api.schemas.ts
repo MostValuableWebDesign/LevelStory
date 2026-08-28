@@ -2209,6 +2209,212 @@ export interface BacktestReport {
   gapReport: BacktestReportGapReport;
 }
 
+export type BatchBacktestRequest = BacktestRequest & {
+  /**
+     * @minItems 2
+     * @maxItems 60
+     * @items.pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  selectedDates: string[];
+};
+
+export type QualificationFunnelStage = typeof QualificationFunnelStage[keyof typeof QualificationFunnelStage];
+
+
+export const QualificationFunnelStage = {
+  session_loaded: 'session_loaded',
+  ntz_orb_completed: 'ntz_orb_completed',
+  strong_breakout_candidate: 'strong_breakout_candidate',
+  strong_continuation_confirmed: 'strong_continuation_confirmed',
+  pullback_or_consolidation: 'pullback_or_consolidation',
+  critical_level_interaction: 'critical_level_interaction',
+  fibonacci_context_available: 'fibonacci_context_available',
+  volume_condition_passed: 'volume_condition_passed',
+  valid_trend_aligned_patience_candle: 'valid_trend_aligned_patience_candle',
+  immediate_next_candle_confirmation: 'immediate_next_candle_confirmation',
+  risk_approved: 'risk_approved',
+  modeled_entry: 'modeled_entry',
+  final_exit: 'final_exit',
+} as const;
+
+export interface QualificationFunnelStageCount {
+  stage: QualificationFunnelStage;
+  count: number;
+  percentOfPreceding: number;
+  percentOfSessions: number;
+}
+
+export type QualificationCandidatePeriod = typeof QualificationCandidatePeriod[keyof typeof QualificationCandidatePeriod];
+
+
+export const QualificationCandidatePeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+/**
+ * @nullable
+ */
+export type QualificationCandidateDirection = typeof QualificationCandidateDirection[keyof typeof QualificationCandidateDirection] | null;
+
+
+export const QualificationCandidateDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type QualificationCandidateTimeOfDay = typeof QualificationCandidateTimeOfDay[keyof typeof QualificationCandidateTimeOfDay];
+
+
+export const QualificationCandidateTimeOfDay = {
+  open: 'open',
+  midday: 'midday',
+  close: 'close',
+} as const;
+
+export type QualificationCandidateMarketRegime = typeof QualificationCandidateMarketRegime[keyof typeof QualificationCandidateMarketRegime];
+
+
+export const QualificationCandidateMarketRegime = {
+  trend: 'trend',
+  range: 'range',
+  transition: 'transition',
+} as const;
+
+export type QualificationCandidateVolumeRegime = typeof QualificationCandidateVolumeRegime[keyof typeof QualificationCandidateVolumeRegime];
+
+
+export const QualificationCandidateVolumeRegime = {
+  normal: 'normal',
+  high: 'high',
+} as const;
+
+export type QualificationCandidateEvidence = { [key: string]: unknown };
+
+export interface QualificationCandidate {
+  candidateId: string;
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  period: QualificationCandidatePeriod;
+  /** @nullable */
+  direction: QualificationCandidateDirection;
+  setupType: string;
+  timeOfDay: QualificationCandidateTimeOfDay;
+  marketRegime: QualificationCandidateMarketRegime;
+  volumeRegime: QualificationCandidateVolumeRegime;
+  reachedStage: QualificationFunnelStage;
+  primaryRejectionStage: QualificationFunnelStage | null;
+  /** @nullable */
+  rejectionDetail: string | null;
+  evidence: QualificationCandidateEvidence;
+}
+
+export type QualificationFunnelComparisonDimension = typeof QualificationFunnelComparisonDimension[keyof typeof QualificationFunnelComparisonDimension];
+
+
+export const QualificationFunnelComparisonDimension = {
+  contract: 'contract',
+  month: 'month',
+  direction: 'direction',
+  period: 'period',
+  market_regime: 'market_regime',
+  volume_regime: 'volume_regime',
+} as const;
+
+export interface QualificationFunnelComparison {
+  dimension: QualificationFunnelComparisonDimension;
+  value: string;
+  candidateCount: number;
+  stageCounts: QualificationFunnelStageCount[];
+}
+
+export type QualificationFunnelRejectionCountsItem = {
+  stage: QualificationFunnelStage;
+  count: number;
+};
+
+export interface QualificationFunnel {
+  sessionCount: number;
+  candidateCount: number;
+  stages: QualificationFunnelStageCount[];
+  rejectionCounts: QualificationFunnelRejectionCountsItem[];
+  comparisons: QualificationFunnelComparison[];
+  candidates: QualificationCandidate[];
+}
+
+export type BatchBacktestReportBatchContractPartitionsItemPeriod = typeof BatchBacktestReportBatchContractPartitionsItemPeriod[keyof typeof BatchBacktestReportBatchContractPartitionsItemPeriod];
+
+
+export const BatchBacktestReportBatchContractPartitionsItemPeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type BatchBacktestReportBatchContractPartitionsItem = {
+  tradingDate: string;
+  contractSymbol: string;
+  period: BatchBacktestReportBatchContractPartitionsItemPeriod;
+};
+
+export type BatchBacktestReportBatch = {
+  totalPartitions: number;
+  completedPartitions: number;
+  selectedDates: string[];
+  contractPartitions: BatchBacktestReportBatchContractPartitionsItem[];
+};
+
+export type BatchBacktestReport = BacktestReport & {
+  batch: BatchBacktestReportBatch;
+  funnel: QualificationFunnel;
+};
+
+export type BatchBacktestStatusStatus = typeof BatchBacktestStatusStatus[keyof typeof BatchBacktestStatusStatus];
+
+
+export const BatchBacktestStatusStatus = {
+  queued: 'queued',
+  running: 'running',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  timed_out: 'timed_out',
+  failed: 'failed',
+} as const;
+
+export interface BatchBacktestStatus {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  batchId: string;
+  status: BatchBacktestStatusStatus;
+  totalPartitions: number;
+  completedPartitions: number;
+  /** @nullable */
+  currentTradingDate: string | null;
+  /** @nullable */
+  currentContractSymbol: string | null;
+  /** @nullable */
+  message: string | null;
+  report: BatchBacktestReport | null;
+  /** @nullable */
+  error: string | null;
+}
+
+export interface BatchFunnelPage {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  batchId: string;
+  stage: QualificationFunnelStage | null;
+  /** @minimum 1 */
+  page: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  hasMore: boolean;
+  candidates: QualificationCandidate[];
+}
+
 export type GetMarketSnapshotParams = {
 /**
  * @minLength 1
@@ -2296,6 +2502,56 @@ export type GetDashboardOverviewParams = {
  */
 tradingDate?: string;
 };
+
+export type GetBatchBacktestStatusParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+batchId: string;
+};
+
+export type CancelBatchBacktestParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+batchId: string;
+};
+
+export type GetBatchFunnelParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+batchId: string;
+stage?: GetBatchFunnelStage;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
+};
+
+export type GetBatchFunnelStage = typeof GetBatchFunnelStage[keyof typeof GetBatchFunnelStage];
+
+
+export const GetBatchFunnelStage = {
+  session_loaded: 'session_loaded',
+  ntz_orb_completed: 'ntz_orb_completed',
+  strong_breakout_candidate: 'strong_breakout_candidate',
+  strong_continuation_confirmed: 'strong_continuation_confirmed',
+  pullback_or_consolidation: 'pullback_or_consolidation',
+  critical_level_interaction: 'critical_level_interaction',
+  fibonacci_context_available: 'fibonacci_context_available',
+  volume_condition_passed: 'volume_condition_passed',
+  valid_trend_aligned_patience_candle: 'valid_trend_aligned_patience_candle',
+  immediate_next_candle_confirmation: 'immediate_next_candle_confirmation',
+  risk_approved: 'risk_approved',
+  modeled_entry: 'modeled_entry',
+  final_exit: 'final_exit',
+} as const;
 
 export type GetBacktestAuditPageParams = {
 /**

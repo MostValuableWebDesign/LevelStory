@@ -1,7 +1,22 @@
-import { useState, type FormEvent } from "react";
-import { useGetBacktestAuditPage, useGetHistoricalData, useRunBacktest } from "@workspace/api-client-react";
-import type { BacktestAuditRecord, BacktestMetricSet, BacktestReport, HistoricalImportSummary } from "@workspace/api-client-react";
-import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCancelBatchBacktest,
+  useGetBacktestAuditPage,
+  useGetBatchBacktestStatus,
+  useGetBatchFunnel,
+  useGetHistoricalData,
+  useRunBacktest,
+  useStartBatchBacktest,
+} from "@workspace/api-client-react";
+import type {
+  BacktestAuditRecord,
+  BacktestMetricSet,
+  BacktestReport,
+  BatchBacktestReport,
+  HistoricalImportSummary,
+  QualificationFunnelStage,
+} from "@workspace/api-client-react";
+import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
 
@@ -79,6 +94,115 @@ function MetricGrid({ metrics, accent = false }: { metrics: BacktestMetricSet; a
       <div className="eyebrow text-muted-foreground">{label}</div>
       <div className={`mono mt-2 text-lg font-medium ${label === "Net P&L" || label === "Expectancy" ? (metrics.netPnl >= 0 ? "status-positive" : "status-negative") : ""}`}>{value}</div>
     </div>)}
+  </div>;
+}
+
+const funnelStageLabels: Record<QualificationFunnelStage, string> = {
+  session_loaded: "Trading session loaded",
+  ntz_orb_completed: "NTZ / ORB completed",
+  strong_breakout_candidate: "Strong breakout candidate",
+  strong_continuation_confirmed: "Strong continuation confirmed",
+  pullback_or_consolidation: "Pullback / consolidation",
+  critical_level_interaction: "Critical-level interaction",
+  fibonacci_context_available: "Fibonacci context available",
+  volume_condition_passed: "Volume condition passed",
+  valid_trend_aligned_patience_candle: "Valid trend-aligned patience candle",
+  immediate_next_candle_confirmation: "Immediate-next-candle confirmation",
+  risk_approved: "Risk approved",
+  modeled_entry: "Modeled entry",
+  final_exit: "Target / stop / runner / session-close exit",
+};
+
+function candidateEvidenceValue(evidence: Record<string, unknown>, key: string): string {
+  const value = evidence[key];
+  return value === null || value === undefined ? "—" : typeof value === "string" ? value : String(value);
+}
+
+function candidateEvidenceNumber(evidence: Record<string, unknown>, key: string): number | null {
+  const value = evidence[key];
+  return typeof value === "number" ? value : null;
+}
+
+function candidateEvidenceList(evidence: Record<string, unknown>, key: string): string[] {
+  const value = evidence[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function BatchFunnelPanel({ report, batchId }: { report: BatchBacktestReport; batchId: string }) {
+  const [selectedStage, setSelectedStage] = useState<QualificationFunnelStage | "all">("all");
+  const [comparisonDimension, setComparisonDimension] = useState("contract");
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const funnelQuery = useGetBatchFunnel({
+    batchId,
+    page: 1,
+    pageSize: 50,
+    ...(selectedStage === "all" ? {} : { stage: selectedStage }),
+  }, {
+    query: {
+      enabled: Boolean(batchId),
+      staleTime: 60_000,
+      queryKey: ["batch-funnel", batchId, selectedStage],
+    },
+  });
+  const comparisons = report.funnel.comparisons.filter((comparison) => comparison.dimension === comparisonDimension);
+  const selectedCandidate = funnelQuery.data?.candidates.find((candidate) => candidate.candidateId === selectedCandidateId)
+    ?? funnelQuery.data?.candidates[0];
+  const firstCount = report.funnel.stages[0]?.count ?? 0;
+  return <div className="space-y-5">
+    <Panel accent>
+      <PanelTitle eyebrow="Phase 11B / unique candidates" title="Qualification funnel" right={<span className="mono text-[10px] text-muted-foreground">{report.funnel.candidateCount} candidates · {report.funnel.sessionCount} sessions</span>} />
+      <div className="border-t border-border bg-accent/5 px-5 py-3 text-xs leading-5 text-muted-foreground">Each candidate is counted once per trading date, active contract, setup, and direction. The funnel describes observed rule progression only; it does not optimize parameters or claim an edge.</div>
+      <div className="divide-y divide-border border-t border-border">
+        {report.funnel.stages.map((stage) => {
+          const width = firstCount === 0 ? 0 : Math.max(2, (stage.count / firstCount) * 100);
+          return <button key={stage.stage} type="button" onClick={() => setSelectedStage(stage.stage)} className={`grid w-full grid-cols-[minmax(180px,1fr)_70px_90px_90px] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/40 ${selectedStage === stage.stage ? "bg-accent/10" : ""}`} data-testid={`funnel-stage-${stage.stage}`}>
+            <span className="min-w-0"><span className="block truncate text-xs font-semibold">{funnelStageLabels[stage.stage]}</span><span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-accent" style={{ width: `${width}%` }} /></span></span>
+            <span className="mono text-right text-sm">{stage.count}</span>
+            <span className="mono text-right text-[10px] text-muted-foreground">{stage.percentOfPreceding.toFixed(1)}% prev.</span>
+            <span className="mono text-right text-[10px] text-muted-foreground">{stage.percentOfSessions.toFixed(1)}% sessions</span>
+          </button>;
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3 text-[11px] text-muted-foreground">
+        <span>Primary rejection details:</span>
+        {report.funnel.rejectionCounts.map((item) => <span key={item.stage} className="border border-border px-2 py-1"><strong className="text-foreground">{item.count}</strong> · {funnelStageLabels[item.stage]}</span>)}
+        {!report.funnel.rejectionCounts.length && <span>none recorded</span>}
+      </div>
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Comparative cuts" title="Where candidates cluster" right={<BarChart3 size={16} className="text-muted-foreground" />} />
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
+        <label className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">Compare by
+          <select value={comparisonDimension} onChange={(event) => setComparisonDimension(event.target.value)} className="field ml-2 py-1 text-xs">
+            <option value="contract">Contract</option><option value="month">Calendar month</option><option value="direction">Direction</option><option value="period">Sample partition</option><option value="market_regime">Market regime</option><option value="volume_regime">Volume regime</option>
+          </select>
+        </label>
+        <span className="text-[10px] text-muted-foreground">Counts remain unique within each comparison.</span>
+      </div>
+      {comparisons.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[920px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Value</th><th className="px-4 py-3">Candidates</th>{report.funnel.stages.slice(0, 6).map((stage) => <th key={stage.stage} className="px-4 py-3">{funnelStageLabels[stage.stage]}</th>)}</tr></thead><tbody className="divide-y divide-border">{comparisons.map((comparison) => <tr key={`${comparison.dimension}-${comparison.value}`}><td className="px-4 py-3 font-semibold">{comparison.value}</td><td className="mono px-4 py-3">{comparison.candidateCount}</td>{comparison.stageCounts.slice(0, 6).map((stage) => <td key={stage.stage} className="mono px-4 py-3 text-muted-foreground">{stage.count}</td>)}</tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No comparison candidates were recorded.</div>}
+    </Panel>
+
+    <Panel>
+      <PanelTitle eyebrow="Causal drill-down" title={selectedStage === "all" ? "All unique candidates" : funnelStageLabels[selectedStage]} right={<span className="mono text-[10px] text-muted-foreground">{funnelQuery.data?.total ?? 0} rows</span>} />
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
+        <label className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">Stage
+          <select value={selectedStage} onChange={(event) => { setSelectedStage(event.target.value as QualificationFunnelStage | "all"); setSelectedCandidateId(null); }} className="field ml-2 py-1 text-xs" data-testid="select-funnel-stage">
+            <option value="all">All candidates</option>
+            {report.funnel.stages.map((stage) => <option key={stage.stage} value={stage.stage}>{funnelStageLabels[stage.stage]}</option>)}
+          </select>
+        </label>
+        <span className="text-[10px] text-muted-foreground">Select a row to inspect the supporting evidence.</span>
+      </div>
+      {funnelQuery.isError ? <div className="border-t border-border p-6 text-sm text-destructive">The candidate drill-down could not be loaded.</div> : funnelQuery.data?.candidates.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[980px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / contract</th><th className="px-4 py-3">Setup / side</th><th className="px-4 py-3">Reached</th><th className="px-4 py-3">Primary rejection</th><th className="px-4 py-3">Regime / volume</th><th className="px-4 py-3">Outcome</th></tr></thead><tbody className="divide-y divide-border">{funnelQuery.data.candidates.map((candidate) => <tr key={candidate.candidateId} onClick={() => setSelectedCandidateId(candidate.candidateId)} className={`cursor-pointer hover:bg-muted/40 ${selectedCandidate?.candidateId === candidate.candidateId ? "bg-accent/10" : ""}`}><td className="mono px-4 py-3">{candidate.tradingDate}<span className="block text-[10px] text-muted-foreground">{candidate.contractSymbol} · {candidate.contractMonth}</span><span className="block text-[10px] text-muted-foreground">{candidate.timeOfDay}</span></td><td className="px-4 py-3">{candidate.setupType}<span className="block text-[10px] font-bold uppercase">{candidate.direction ?? "unknown"}</span></td><td className="px-4 py-3 text-[10px]">{funnelStageLabels[candidate.reachedStage]}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{candidate.primaryRejectionStage ? funnelStageLabels[candidate.primaryRejectionStage] : "—"}<span className="block max-w-[260px]">{candidate.rejectionDetail ?? ""}</span></td><td className="px-4 py-3 text-[10px] text-muted-foreground">{candidate.marketRegime} · {candidate.volumeRegime}</td><td className="mono px-4 py-3">{candidateEvidenceValue(candidate.evidence, "finalOutcome")}{candidateEvidenceNumber(candidate.evidence, "netPnl") !== null && <span className="ml-2">{money(candidateEvidenceNumber(candidate.evidence, "netPnl") ?? 0)}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No candidates match this funnel stage.</div>}
+      {selectedCandidate && <div className="grid gap-4 border-t border-border bg-muted/20 p-5 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <div><div className="eyebrow text-muted-foreground">Relevant candle times</div><div className="mono mt-2 leading-5">{candidateEvidenceValue(selectedCandidate.evidence, "evaluatedCandleOpenTime")}<br />patience {candidateEvidenceValue(selectedCandidate.evidence, "patienceCandleOpenTime")} → {candidateEvidenceValue(selectedCandidate.evidence, "patienceCandleCloseTime")}<br />trigger {candidateEvidenceValue(selectedCandidate.evidence, "triggerCandleOpenTime")} → {candidateEvidenceValue(selectedCandidate.evidence, "triggerCandleCloseTime")}</div></div>
+        <div><div className="eyebrow text-muted-foreground">ORB / breakout</div><div className="mt-2 leading-5">{candidateEvidenceValue(selectedCandidate.evidence, "orbLevels")}<br />{candidateEvidenceValue(selectedCandidate.evidence, "breakout")}</div></div>
+        <div><div className="eyebrow text-muted-foreground">Volume / pullback</div><div className="mt-2 leading-5">{candidateEvidenceValue(selectedCandidate.evidence, "volume")}<br />{candidateEvidenceValue(selectedCandidate.evidence, "pullback")}<br />{candidateEvidenceValue(selectedCandidate.evidence, "criticalLevel")}</div></div>
+        <div><div className="eyebrow text-muted-foreground">Risk / outcome</div><div className="mono mt-2 leading-5">entry {candidateEvidenceValue(selectedCandidate.evidence, "entryTriggerPrice")}<br />stop {candidateEvidenceValue(selectedCandidate.evidence, "strategyStopPrice")} / {candidateEvidenceValue(selectedCandidate.evidence, "catastropheStopPrice")}<br />target {candidateEvidenceValue(selectedCandidate.evidence, "targetPrice")}<br />{candidateEvidenceValue(selectedCandidate.evidence, "finalOutcome")}</div></div>
+        <div className="sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Rule evidence</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">{candidateEvidenceList(selectedCandidate.evidence, "ruleEvidence").map((evidence) => <span key={evidence}>{evidence}</span>)}</div></div>
+      </div>}
+    </Panel>
   </div>;
 }
 
@@ -288,10 +412,26 @@ export default function Backtest() {
   const [ohlcvSlippageTicks, setOhlcvSlippageTicks] = useState("1");
   const [commissionPerContract, setCommissionPerContract] = useState("");
   const run = useRunBacktest();
+  const startBatch = useStartBatchBacktest();
+  const cancelBatch = useCancelBatchBacktest();
+  const [batchId, setBatchId] = useState<string | null>(null);
   const historicalImport = useGetHistoricalData({
     symbol: "MES",
     source: source === "simulated" ? "historical_databento" : source,
   });
+  const batchStatus = useGetBatchBacktestStatus(
+    { batchId: batchId ?? "00000000-0000-0000-0000-000000000000" },
+    {
+      query: {
+        enabled: Boolean(batchId),
+        queryKey: ["batch-status", batchId],
+        refetchInterval: (query) => {
+          const status = query.state.data?.status;
+          return status === "queued" || status === "running" ? 1200 : false;
+        },
+      },
+    },
+  );
 
   const request = {
     symbol,
@@ -311,10 +451,28 @@ export default function Backtest() {
     ...(commissionPerContract.trim() ? { ohlcvCommissionPerContract: Number(commissionPerContract) } : {}),
   } as const;
 
+  const availableBatchDates = useMemo(() => {
+    const dates = historicalImport.data?.availableTradingDates ?? [];
+    return dates.filter((date) => date >= startDate && date <= endDate).sort();
+  }, [endDate, historicalImport.data?.availableTradingDates, startDate]);
+  const batchRequest = {
+    ...request,
+    selectedDates: availableBatchDates,
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     run.mutate({ data: request });
   };
+  const submitBatch = () => {
+    if (availableBatchDates.length < 2) return;
+    setBatchId(null);
+    startBatch.mutate({ data: batchRequest }, {
+      onSuccess: (response) => setBatchId(response.batchId),
+    });
+  };
+  const batchReport = batchStatus.data?.report ?? null;
+  const batchActive = batchStatus.data?.status === "queued" || batchStatus.data?.status === "running";
 
   return <LevelStoryShell>
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
@@ -338,15 +496,30 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Patience stop buffer</span><input type="number" min="1" max="8" value={stopBufferTicks} onChange={(event) => setStopBufferTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-stop-buffer" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Modeled slippage</span><input type="number" min="0" max="8" value={ohlcvSlippageTicks} onChange={(event) => setOhlcvSlippageTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-slippage" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
-            <div className="flex items-end"><button type="submit" disabled={run.isPending} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : "Run causal backtest"}</button></div>
+             <div className="flex flex-col items-end gap-2 sm:col-span-2 lg:col-span-2 lg:flex-row">
+               <button type="submit" disabled={run.isPending || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : "Run causal backtest"}</button>
+               <button type="button" onClick={submitBatch} disabled={availableBatchDates.length < 2 || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : `Run ${availableBatchDates.length || "—"}-session funnel`}</button>
+             </div>
           </form>
-           <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific.</div>
+            <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Batch dates available in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
         </Panel>
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Walking the replay cursor through completed observations…</div></Panel>}
         {run.isError && <Panel><QueryError onRetry={() => run.mutate({ data: request })} message="The causal backtest could not be completed." /></Panel>}
+         {startBatch.isError && <Panel><QueryError onRetry={submitBatch} message="The qualification batch could not be started." /></Panel>}
+         {batchStatus.isError && <Panel><QueryError onRetry={() => batchStatus.refetch()} message="The batch status could not be loaded." /></Panel>}
+         {batchStatus.data && <Panel accent>
+           <PanelTitle eyebrow="Phase 11B / batch status" title={batchActive ? "Qualification funnel in progress" : batchStatus.data.status === "completed" ? "Qualification funnel complete" : "Qualification funnel stopped"} right={<span className="mono text-[10px] text-muted-foreground">{batchStatus.data.completedPartitions}/{batchStatus.data.totalPartitions} partitions</span>} />
+           <div className="border-t border-border p-5">
+             <div className="flex flex-wrap items-center justify-between gap-3 text-xs"><span className="text-muted-foreground">{batchStatus.data.message}</span><span className="mono text-[10px] text-muted-foreground">{batchStatus.data.currentTradingDate ? `${batchStatus.data.currentTradingDate} · ${batchStatus.data.currentContractSymbol ?? "contract pending"}` : "no active partition"}</span></div>
+             <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${batchStatus.data.totalPartitions ? (batchStatus.data.completedPartitions / batchStatus.data.totalPartitions) * 100 : 0}%` }} /></div>
+             {batchActive && <button type="button" onClick={() => cancelBatch.mutate({ params: { batchId: batchId! } })} disabled={cancelBatch.isPending} className="mt-4 inline-flex items-center gap-2 border border-destructive/40 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-50" data-testid="button-cancel-batch"><Square size={12} />{cancelBatch.isPending ? "Cancelling…" : "Cancel batch"}</button>}
+             {(batchStatus.data.status === "cancelled" || batchStatus.data.status === "failed" || batchStatus.data.status === "timed_out") && <div className="mt-4 flex items-center gap-2 text-xs text-destructive"><RefreshCw size={13} />No partial result was persisted. Start a new batch after adjusting the window or source.</div>}
+           </div>
+         </Panel>}
+         {batchReport && batchId && <BatchFunnelPanel report={batchReport} batchId={batchId} />}
          {run.data && <ReportBody report={run.data} fullCoverage={source === "simulated" ? undefined : historicalImport.data} />}
-        {!run.isPending && !run.isError && !run.data && <Panel><div className="flex flex-col items-center gap-3 p-12 text-center"><ShieldCheck size={28} className="text-accent" /><h2 className="text-sm font-bold">Ready for a clean replay</h2><p className="max-w-md text-xs leading-5 text-muted-foreground">Choose the evaluation window, then run the locked strategy. Results will show why setups qualified, rejected, or became ambiguous.</p></div></Panel>}
+         {!run.isPending && !run.isError && !run.data && !batchReport && !batchActive && <Panel><div className="flex flex-col items-center gap-3 p-12 text-center"><ShieldCheck size={28} className="text-accent" /><h2 className="text-sm font-bold">Ready for a clean replay</h2><p className="max-w-md text-xs leading-5 text-muted-foreground">Choose the evaluation window, then run the locked strategy. Results will show why setups qualified, rejected, or became ambiguous.</p></div></Panel>}
         <LockedNote>Phase 9 is a research surface only. It has no broker connection, no position state, and no live or paper order path.</LockedNote>
       </div>
     </div>

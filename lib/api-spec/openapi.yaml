@@ -217,6 +217,117 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/batch:
+    post:
+      operationId: startBatchBacktest
+      tags: [backtest]
+      summary: Start a deterministic multi-period qualification batch
+      description: Runs the existing causal backtest one trading date and active contract at a time. Results are persisted only after every partition completes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchBacktestRequest"
+      responses:
+        "202":
+          description: Batch accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchBacktestStatus"
+        "400":
+          description: Invalid batch request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Batch capacity is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/batch-status:
+    get:
+      operationId: getBatchBacktestStatus
+      tags: [backtest]
+      summary: Read batch progress or completed results
+      parameters:
+        - name: batchId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Batch status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchBacktestStatus"
+        "404":
+          description: Batch not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/batch-cancel:
+    delete:
+      operationId: cancelBatchBacktest
+      tags: [backtest]
+      summary: Cancel a running qualification batch
+      parameters:
+        - name: batchId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchBacktestStatus"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/batch-funnel:
+    get:
+      operationId: getBatchFunnel
+      tags: [backtest]
+      summary: Read a page of unique batch qualification candidates
+      parameters:
+        - name: batchId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        - name: stage
+          in: query
+          schema:
+            type: string
+            enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strong_continuation_confirmed, pullback_or_consolidation, critical_level_interaction, fibonacci_context_available, volume_condition_passed, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
+        - name: page
+          in: query
+          schema: { type: number, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: number, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Funnel candidate page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchFunnelPage"
+        "404":
+          description: Batch not found, incomplete, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/audit:
     get:
       operationId: getBacktestAuditPage
@@ -2257,4 +2368,145 @@ components:
             overnightCoverageObserved: { type: boolean }
           required: [missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
       required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+    BatchBacktestRequest:
+      allOf:
+        - $ref: "#/components/schemas/BacktestRequest"
+        - type: object
+          properties:
+            selectedDates:
+              type: array
+              minItems: 2
+              maxItems: 60
+              items:
+                type: string
+                pattern: '^\d{4}-\d{2}-\d{2}$'
+          required: [selectedDates]
+    QualificationFunnelStage:
+      type: string
+      enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strong_continuation_confirmed, pullback_or_consolidation, critical_level_interaction, fibonacci_context_available, volume_condition_passed, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
+    QualificationFunnelStageCount:
+      type: object
+      properties:
+        stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
+        count: { type: number }
+        percentOfPreceding: { type: number }
+        percentOfSessions: { type: number }
+      required: [stage, count, percentOfPreceding, percentOfSessions]
+    QualificationCandidate:
+      type: object
+      properties:
+        candidateId: { type: string }
+        tradingDate: { type: string }
+        contractSymbol: { type: string }
+        contractMonth: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        setupType: { type: string }
+        timeOfDay: { type: string, enum: [open, midday, close] }
+        marketRegime: { type: string, enum: [trend, range, transition] }
+        volumeRegime: { type: string, enum: [normal, high] }
+        reachedStage: { $ref: "#/components/schemas/QualificationFunnelStage" }
+        primaryRejectionStage:
+          allOf:
+            - $ref: "#/components/schemas/QualificationFunnelStage"
+          nullable: true
+        rejectionDetail: { type: ["string", "null"] }
+        evidence:
+          type: object
+          additionalProperties: true
+      required: [candidateId, tradingDate, contractSymbol, contractMonth, period, direction, setupType, timeOfDay, marketRegime, volumeRegime, reachedStage, primaryRejectionStage, rejectionDetail, evidence]
+    QualificationFunnelComparison:
+      type: object
+      properties:
+        dimension: { type: string, enum: [contract, month, direction, period, market_regime, volume_regime] }
+        value: { type: string }
+        candidateCount: { type: number }
+        stageCounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationFunnelStageCount"
+      required: [dimension, value, candidateCount, stageCounts]
+    QualificationFunnel:
+      type: object
+      properties:
+        sessionCount: { type: number }
+        candidateCount: { type: number }
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationFunnelStageCount"
+        rejectionCounts:
+          type: array
+          items:
+            type: object
+            properties:
+              stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
+              count: { type: number }
+            required: [stage, count]
+        comparisons:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationFunnelComparison"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationCandidate"
+      required: [sessionCount, candidateCount, stages, rejectionCounts, comparisons, candidates]
+    BatchBacktestReport:
+      allOf:
+        - $ref: "#/components/schemas/BacktestReport"
+        - type: object
+          properties:
+            batch:
+              type: object
+              properties:
+                totalPartitions: { type: number }
+                completedPartitions: { type: number }
+                selectedDates: { type: array, items: { type: string } }
+                contractPartitions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      tradingDate: { type: string }
+                      contractSymbol: { type: string }
+                      period: { type: string, enum: [in_sample, out_of_sample] }
+                    required: [tradingDate, contractSymbol, period]
+              required: [totalPartitions, completedPartitions, selectedDates, contractPartitions]
+            funnel:
+              $ref: "#/components/schemas/QualificationFunnel"
+          required: [batch, funnel]
+    BatchBacktestStatus:
+      type: object
+      properties:
+        batchId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        status: { type: string, enum: [queued, running, completed, cancelled, timed_out, failed] }
+        totalPartitions: { type: number }
+        completedPartitions: { type: number }
+        currentTradingDate: { type: ["string", "null"] }
+        currentContractSymbol: { type: ["string", "null"] }
+        message: { type: ["string", "null"] }
+        report:
+          allOf:
+            - $ref: "#/components/schemas/BatchBacktestReport"
+          nullable: true
+        error: { type: ["string", "null"] }
+      required: [batchId, status, totalPartitions, completedPartitions, currentTradingDate, currentContractSymbol, message, report, error]
+    BatchFunnelPage:
+      type: object
+      properties:
+        batchId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        stage:
+          allOf:
+            - $ref: "#/components/schemas/QualificationFunnelStage"
+          nullable: true
+        page: { type: number, minimum: 1 }
+        pageSize: { type: number, minimum: 1, maximum: 100 }
+        total: { type: number, minimum: 0 }
+        hasMore: { type: boolean }
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationCandidate"
+      required: [batchId, stage, page, pageSize, total, hasMore, candidates]
 

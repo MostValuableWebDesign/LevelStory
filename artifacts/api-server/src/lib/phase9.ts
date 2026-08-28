@@ -1016,7 +1016,7 @@ function funnelStageCounts(
 }
 
 export function buildQualificationFunnel(
-  reports: readonly Pick<BacktestReport, "audit" | "trades" | "dataset">[],
+  reports: readonly Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">[],
 ): QualificationFunnel {
   const allAudits = reports.flatMap((report) => report.audit);
   const allTrades = reports.flatMap((report) => report.trades);

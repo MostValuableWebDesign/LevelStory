@@ -1,5 +1,16 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { GetHistoricalDataResponse, RunBacktestBody, RunBacktestResponse } from "@workspace/api-zod";
+import { randomUUID } from "node:crypto";
+import {
+  CancelBatchBacktestResponse,
+  GetBatchBacktestStatusResponse,
+  GetBatchFunnelQueryParams,
+  GetBatchFunnelResponse,
+  GetHistoricalDataResponse,
+  RunBacktestBody,
+  RunBacktestResponse,
+  StartBatchBacktestBody,
+  StartBatchBacktestResponse,
+} from "@workspace/api-zod";
 import { db, riskSettingsTable } from "@workspace/db";
 import { getFuturesContractSpecification } from "../lib/futures/contracts.js";
 import {
@@ -20,6 +31,13 @@ import {
   type BacktestWorkerOptions,
 } from "../lib/backtest-worker-client.js";
 import type { BacktestReport } from "../lib/phase9.js";
+import { buildReplayDataset, type BacktestRequest } from "../lib/phase9.js";
+import {
+  runBatchBacktest,
+  type BatchBacktestReport,
+  type BatchBacktestRequest,
+  type BatchBacktestProgress,
+} from "../lib/batch-backtest.js";
 import {
   compactBacktestReport,
   buildBacktestCacheKey,
@@ -33,19 +51,33 @@ const MAX_BACKTEST_SESSIONS = 22;
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 export const BACKTEST_REQUEST_TIMEOUT_MS = 120_000;
 export const BACKTEST_WORKER_DEADLINE_MS = 110_000;
+export const BATCH_BACKTEST_MAX_PARTITIONS = 60;
 
 type RiskSnapshot = NonNullable<BacktestWorkerInput["risk"]>;
 type BacktestRunner = (
   input: BacktestWorkerInput,
   options: BacktestWorkerOptions,
 ) => Promise<BacktestReport>;
+type BatchPartitionRunner = BacktestRunner;
 
 export type BacktestRouteConfig = {
   requestTimeoutMs?: number;
   workerDeadlineMs?: number;
   loadRisk?: () => Promise<RiskSnapshot | undefined>;
   runBacktest?: BacktestRunner;
+  runBatchPartition?: BatchPartitionRunner;
 };
+
+type BatchRecord = {
+  batchId: string;
+  controller: AbortController;
+  progress: BatchBacktestProgress;
+  report: BatchBacktestReport | null;
+  cacheKey: string | null;
+};
+
+const batchRuns = new Map<string, BatchRecord>();
+const completedBatchCache = new Map<string, BatchBacktestReport>();
 
 type RequestDeadline = {
   signal: AbortSignal;
@@ -136,6 +168,33 @@ function validateBacktestRange(request: { startDate?: string; endDate: string; i
   return null;
 }
 
+function validateBatchRequest(request: BatchBacktestRequest): string | null {
+  if (request.selectedDates && request.selectedDates.length > BATCH_BACKTEST_MAX_PARTITIONS) {
+    return `A batch may include at most ${BATCH_BACKTEST_MAX_PARTITIONS} selected trading dates.`;
+  }
+  if (request.selectedDates) {
+    const dates = [...new Set(request.selectedDates)].sort();
+    if (dates.length < 2 || dates.length !== request.selectedDates.length) {
+      return "A batch requires at least two unique selected trading dates.";
+    }
+    if (request.outOfSampleDays >= dates.length) {
+      return "A batch must include at least one in-sample trading date.";
+    }
+  }
+  return validateBacktestRange(request);
+}
+
+function batchStatus(record: BatchRecord) {
+  return {
+    batchId: record.batchId,
+    ...record.progress,
+    report: record.report,
+    error: record.progress.status === "failed" || record.progress.status === "timed_out"
+      ? record.progress.message
+      : null,
+  };
+}
+
 export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter {
   const router: IRouter = Router();
   const historicalRateLimit = requestRateLimit({
@@ -161,6 +220,223 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     return risk;
   });
   const runBacktest = config.runBacktest ?? ((input, options) => runBacktestInWorker(input, options));
+
+  router.post("/backtest/batch", backtestRateLimit, async (req, res): Promise<void> => {
+    const parsed = StartBatchBacktestBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const request = parsed.data as BatchBacktestRequest;
+    const rangeError = validateBatchRequest(request);
+    if (rangeError) {
+      res.status(422).json({ error: rangeError });
+      return;
+    }
+    const active = [...batchRuns.values()].filter((run) => run.progress.status === "queued" || run.progress.status === "running");
+    if (active.length >= 1) {
+      res.setHeader("Retry-After", "30");
+      res.status(429).json({ error: "One qualification batch is already running. Try again shortly." });
+      return;
+    }
+    const batchId = randomUUID();
+    const controller = new AbortController();
+    const selectedDates = request.selectedDates ?? [];
+    const record: BatchRecord = {
+      batchId,
+      controller,
+      progress: {
+        status: "queued",
+        totalPartitions: selectedDates.length,
+        completedPartitions: 0,
+        currentTradingDate: null,
+        currentContractSymbol: null,
+        message: "Batch accepted; preparing the causal dataset.",
+      },
+      report: null,
+      cacheKey: null,
+    };
+    batchRuns.set(batchId, record);
+    if (canWriteResponse(res)) res.status(202).json(StartBatchBacktestResponse.parse(batchStatus(record)));
+
+    void (async () => {
+      try {
+        const risk = await loadRisk();
+        if (controller.signal.aborted) throw new BacktestRequestAbortedError();
+        const specification = getFuturesContractSpecification(request.symbol);
+        const source = request.source ?? "simulated";
+        const selected = request.selectedDates?.slice().sort();
+        const batchStart = selected?.[0] ?? request.startDate ?? request.endDate;
+        const batchEnd = selected?.at(-1) ?? request.endDate;
+        const batchInSampleDays = selected
+          ? Math.max(1, selected.length - request.outOfSampleDays)
+          : request.inSampleDays;
+        const datasetRequest = {
+          ...request,
+          startDate: batchStart,
+          endDate: batchEnd,
+          inSampleDays: batchInSampleDays,
+          outOfSampleDays: selected ? request.outOfSampleDays : request.outOfSampleDays,
+        } satisfies BacktestRequest;
+        const imported = source === "historical_databento"
+          ? await getHistoricalCsvImport(specification)
+          : null;
+        const multiContract = source === MULTI_CONTRACT_SOURCE
+          ? await importHistoricalMultiContract()
+          : null;
+        const replayDataset = imported
+          ? historicalImportToReplayDataset(imported, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays)
+          : multiContract
+            ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays)
+            : buildReplayDataset(request.symbol, datasetRequest);
+        const cacheKey = buildBacktestCacheKey({
+          cacheVersion: "qualification-batch-v1",
+          request,
+          risk,
+          contract: specification,
+          executionPolicy: {
+            entryBufferTicks: request.ohlcvEntryBufferTicks ?? 4,
+            stopBufferTicks: request.ohlcvStopBufferTicks ?? 1,
+            slippageTicks: request.ohlcvSlippageTicks ?? 1,
+            commissionPerContract: request.ohlcvCommissionPerContract ?? null,
+          },
+          historicalSource: imported
+            ? {
+                fingerprint: imported.contentFingerprint,
+                filename: imported.summary.filename,
+                detectedSymbol: imported.summary.detectedSymbol,
+                latestTimestamp: imported.summary.latestTimestamp,
+              }
+            : multiContract
+              ? {
+                  fingerprint: multiContract.contentFingerprint,
+                  scheduleVersion: multiContract.summary.scheduleVersion,
+                  files: multiContract.summary.files.map((file) => ({
+                    contractSymbol: file.contractSymbol,
+                    fingerprint: file.contentFingerprint,
+                  })),
+                }
+              : null,
+        });
+        record.cacheKey = cacheKey;
+        const cached = completedBatchCache.get(cacheKey);
+        if (cached) {
+          record.report = cached;
+          record.progress = {
+            status: "completed",
+            totalPartitions: cached.batch.totalPartitions,
+            completedPartitions: cached.batch.completedPartitions,
+            currentTradingDate: null,
+            currentContractSymbol: null,
+            message: "Identical completed batch loaded from cache.",
+          };
+          return;
+        }
+        record.progress = {
+          ...record.progress,
+          status: "running",
+          totalPartitions: selected?.length ?? batchInSampleDays + request.outOfSampleDays,
+          message: "Causal batch is running.",
+        };
+        const report = await runBatchBacktest(
+          { request, risk, replayDataset },
+          {
+            timeoutMs: workerDeadlineMs,
+            signal: controller.signal,
+            runPartition: config.runBatchPartition,
+            onProgress: (progress) => { record.progress = progress; },
+          },
+        );
+        if (controller.signal.aborted) throw new BacktestRequestAbortedError();
+        completedBatchCache.set(cacheKey, report);
+        record.report = report;
+        record.progress = {
+          status: "completed",
+          totalPartitions: report.batch.totalPartitions,
+          completedPartitions: report.batch.completedPartitions,
+          currentTradingDate: null,
+          currentContractSymbol: null,
+          message: "All causal partitions completed; result is ready.",
+        };
+      } catch (error) {
+        const timedOut = error instanceof BacktestTimeoutError || (error instanceof Error && error.message === "BACKTEST_TIMEOUT");
+        const cancelled = controller.signal.aborted && !timedOut;
+        record.report = null;
+        record.progress = {
+          ...record.progress,
+          status: timedOut ? "timed_out" : cancelled ? "cancelled" : "failed",
+          currentTradingDate: null,
+          currentContractSymbol: null,
+          message: timedOut
+            ? "Batch timed out before completion; no result was persisted."
+            : cancelled
+              ? "Batch cancelled before completion; no result was persisted."
+              : "Batch failed before completion; no result was persisted.",
+        };
+      }
+    })();
+  });
+
+  router.get("/backtest/batch-status", backtestRateLimit, (req, res): void => {
+    const batchId = typeof req.query.batchId === "string" ? req.query.batchId : "";
+    const record = batchRuns.get(batchId);
+    if (!record) {
+      res.status(404).json({ error: "Batch not found or expired." });
+      return;
+    }
+    res.json(GetBatchBacktestStatusResponse.parse(batchStatus(record)));
+  });
+
+  router.delete("/backtest/batch-cancel", backtestRateLimit, (req, res): void => {
+    const batchId = typeof req.query.batchId === "string" ? req.query.batchId : "";
+    const record = batchRuns.get(batchId);
+    if (!record) {
+      res.status(404).json({ error: "Batch not found." });
+      return;
+    }
+    if (record.progress.status === "queued" || record.progress.status === "running") {
+      record.controller.abort(new BacktestRequestAbortedError());
+      record.progress = {
+        ...record.progress,
+        status: "cancelled",
+        currentTradingDate: null,
+        currentContractSymbol: null,
+        message: "Cancellation requested; active worker is being terminated.",
+      };
+    }
+    res.json(CancelBatchBacktestResponse.parse(batchStatus(record)));
+  });
+
+  router.get("/backtest/batch-funnel", backtestRateLimit, (req, res): void => {
+    const parsed = GetBatchFunnelQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const record = batchRuns.get(parsed.data.batchId);
+    if (!record?.report) {
+      res.status(404).json({ error: "Completed batch not found or expired." });
+      return;
+    }
+    const safePage = Math.max(1, Math.floor(parsed.data.page ?? 1));
+    const safePageSize = Math.min(100, Math.max(1, Math.floor(parsed.data.pageSize ?? 50)));
+    const candidates = parsed.data.stage
+      ? record.report.funnel.candidates.filter((candidate) => candidate.reachedStage === parsed.data.stage || (
+        parsed.data.stage !== "final_exit"
+        && candidate.primaryRejectionStage === parsed.data.stage
+      ))
+      : record.report.funnel.candidates;
+    const start = (safePage - 1) * safePageSize;
+    res.json(GetBatchFunnelResponse.parse({
+      batchId: record.batchId,
+      stage: parsed.data.stage ?? null,
+      page: safePage,
+      pageSize: safePageSize,
+      total: candidates.length,
+      hasMore: start + safePageSize < candidates.length,
+      candidates: candidates.slice(start, start + safePageSize),
+    }));
+  });
 
 router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), async (req, res): Promise<void> => {
   try {

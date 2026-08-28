@@ -1,0 +1,291 @@
+import type { BacktestWorkerInput } from "./backtest-worker-client.js";
+import { runBacktestInWorker } from "./backtest-worker-client.js";
+import {
+  buildSegments,
+  buildQualificationFunnel,
+  calculateBacktestMetrics,
+  type BacktestGapReport,
+  type BacktestReport,
+  type BacktestRequest,
+  type BacktestTrade,
+  type CausalReplayDataset,
+  type QualificationFunnel,
+} from "./phase9.js";
+import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
+import { tradingDateForTimestamp, sessionCalendarForContract } from "./futures/session-calendar.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
+
+export type BatchBacktestRequest = BacktestRequest & {
+  selectedDates?: string[];
+};
+
+export type BatchBacktestProgress = {
+  status: "queued" | "running" | "completed" | "cancelled" | "timed_out" | "failed";
+  totalPartitions: number;
+  completedPartitions: number;
+  currentTradingDate: string | null;
+  currentContractSymbol: string | null;
+  message: string | null;
+};
+
+export type BatchBacktestReport = BacktestReport & {
+  batch: {
+    totalPartitions: number;
+    completedPartitions: number;
+    selectedDates: string[];
+    contractPartitions: Array<{ tradingDate: string; contractSymbol: string; period: "in_sample" | "out_of_sample" }>;
+  };
+  funnel: QualificationFunnel;
+};
+
+type BatchPartition = {
+  tradingDate: string;
+  contractSymbol: string;
+  period: "in_sample" | "out_of_sample";
+  dataset: CausalReplayDataset;
+};
+
+export type BatchRunnerOptions = {
+  timeoutMs: number;
+  signal: AbortSignal;
+  onProgress?: (progress: BatchBacktestProgress) => void;
+  runPartition?: (input: BacktestWorkerInput, options: { timeoutMs: number; signal: AbortSignal }) => Promise<BacktestReport>;
+};
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort();
+}
+
+function abortIfNeeded(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error("BACKTEST_REQUEST_ABORTED");
+  }
+}
+
+function emptyGapReport(): BacktestGapReport {
+  return {
+    missingMinuteGaps: 0,
+    missingGapSegments: 0,
+    unexpectedMissingMinutes: 0,
+    unexpectedOpenSessionMissingMinutes: 0,
+    unexpectedOvernightMissingMinutes: 0,
+    unexpectedRegularSessionMissingMinutes: 0,
+    regularSessionGapSegments: 0,
+    overnightGapSegments: 0,
+    regularSessionMissingMinutes: 0,
+    expectedClosedMarketMinutes: 0,
+    expectedClosedMinutes: 0,
+    weekendHolidayClosedMinutes: 0,
+    earlyCloseMinutes: 0,
+    inactiveContractMinutes: 0,
+    lowLiquidityInactiveMinutes: 0,
+    coverageScope: "selected_dates",
+    inactiveContractThresholdPercent: 50,
+    inactiveContractDays: 0,
+    missingRegularSessionDates: [],
+    missingOvernightSessionDates: [],
+    completeRegularSessionDates: [],
+    maintenanceGapMinutes: 0,
+    weekendHolidayGapMinutes: 0,
+    earlyCloseDates: [],
+    overnightCoverageObserved: false,
+  };
+}
+
+function combineGapReports(reports: readonly BacktestReport[]): BacktestGapReport {
+  const source = reports[0]?.gapReport ?? emptyGapReport();
+  return {
+    ...source,
+    missingRegularSessionDates: uniqueSorted(source.missingRegularSessionDates),
+    missingOvernightSessionDates: uniqueSorted(source.missingOvernightSessionDates),
+    completeRegularSessionDates: uniqueSorted(source.completeRegularSessionDates),
+    earlyCloseDates: uniqueSorted(source.earlyCloseDates),
+  };
+}
+
+function partitionDataset(
+  dataset: CausalReplayDataset,
+  tradingDate: string,
+  contractSymbol: string,
+  period: "in_sample" | "out_of_sample",
+): CausalReplayDataset | null {
+  const calendar = sessionCalendarForContract(getFuturesContractSpecification("MES"));
+  const candles = dataset.candles.filter((candle) =>
+    candle.contractSymbol === contractSymbol
+    && tradingDateForTimestamp(candle.openTime, calendar) === tradingDate,
+  );
+  if (!candles.length) return null;
+  const oneMinute = (dataset.oneMinute ?? []).filter((candle) =>
+    tradingDateForTimestamp(candle.openTime, calendar) === tradingDate,
+  );
+  const identity = parseMesContractSymbol(contractSymbol);
+  return {
+    candles,
+    oneMinute,
+    contractSymbol,
+    contractMonth: identity?.contractMonth ?? dataset.contractMonth,
+    inSampleDates: period === "in_sample" ? [tradingDate] : [],
+    outOfSampleDates: period === "out_of_sample" ? [tradingDate] : [],
+    requestedStartDate: tradingDate,
+    requestedEndDate: tradingDate,
+    selectedDates: [tradingDate],
+    excludedDates: [],
+    source: dataset.source,
+    quotesAvailable: dataset.quotesAvailable,
+    gapReport: dataset.gapReport,
+    contractSchedule: dataset.contractSchedule
+      ? {
+          version: dataset.contractSchedule.version,
+          activeContractByDate: [{ tradingDate, contractSymbol }],
+          boundaries: dataset.contractSchedule.boundaries,
+        }
+      : undefined,
+  };
+}
+
+function createPartitions(
+  request: BatchBacktestRequest,
+  dataset: CausalReplayDataset,
+): BatchPartition[] {
+  const requestedDates = uniqueSorted(
+    request.selectedDates?.length
+      ? request.selectedDates
+      : dataset.selectedDates?.length
+        ? dataset.selectedDates
+        : [...dataset.inSampleDates, ...dataset.outOfSampleDates],
+  );
+  const holdoutDates = new Set(requestedDates.slice(-request.outOfSampleDays));
+  const contractByDate = new Map(
+    dataset.contractSchedule?.activeContractByDate?.map((item) => [item.tradingDate, item.contractSymbol]) ?? [],
+  );
+  const fallbackContract = dataset.contractSymbol;
+  return requestedDates.flatMap((tradingDate) => {
+    const contractSymbol = contractByDate.get(tradingDate)
+      ?? dataset.candles.find((candle) => tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(getFuturesContractSpecification("MES"))) === tradingDate)?.contractSymbol
+      ?? fallbackContract;
+    const period = holdoutDates.has(tradingDate) ? "out_of_sample" : "in_sample";
+    const partition = partitionDataset(dataset, tradingDate, contractSymbol, period);
+    return partition ? [{ tradingDate, contractSymbol, period, dataset: partition }] : [];
+  });
+}
+
+function aggregateBatchReports(
+  reports: readonly BacktestReport[],
+  partitions: readonly BatchPartition[],
+  selectedDates: readonly string[],
+): BatchBacktestReport {
+  const first = reports[0];
+  if (!first) throw new Error("The batch produced no completed replay partitions.");
+  const trades = reports.flatMap((report) => report.trades);
+  const audit = reports.flatMap((report) => report.audit);
+  const funnel = buildQualificationFunnel(reports);
+  const rejectionCount = funnel.candidates.filter((candidate) => candidate.primaryRejectionStage !== null).length;
+  const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
+  const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
+  const selected = uniqueSorted(selectedDates);
+  const activeContractByDate = partitions.map(({ tradingDate, contractSymbol }) => ({ tradingDate, contractSymbol }));
+  const reportContract = {
+    ...first.contract,
+    fullContractSymbol: "MES multi-contract",
+    contractMonth: "multi-contract",
+  };
+  return {
+    ...first,
+    symbol: first.symbol,
+    contract: reportContract,
+    dataset: {
+      ...first.dataset,
+      startDate: selected[0] ?? first.dataset.startDate,
+      endDate: selected.at(-1) ?? first.dataset.endDate,
+      requestedStartDate: selected[0] ?? first.dataset.requestedStartDate,
+      requestedEndDate: selected.at(-1) ?? first.dataset.requestedEndDate,
+      selectedDates: selected,
+      inSampleDates: partitions.filter((partition) => partition.period === "in_sample").map((partition) => partition.tradingDate),
+      outOfSampleDates: partitions.filter((partition) => partition.period === "out_of_sample").map((partition) => partition.tradingDate),
+      excludedDates: [],
+      scheduleVersion: first.dataset.scheduleVersion ?? null,
+      rolloverBoundaries: first.dataset.rolloverBoundaries ?? [],
+      activeContractByDate,
+    },
+    replay: {
+      ...first.replay,
+      cursor: Math.max(...reports.map((report) => report.replay.cursor)),
+      visibleCandleCount: reports.reduce((sum, report) => sum + report.replay.visibleCandleCount, 0),
+      totalCandleCount: reports.reduce((sum, report) => sum + report.replay.totalCandleCount, 0),
+      visibleCandleCloseTime: reports.at(-1)?.replay.visibleCandleCloseTime ?? null,
+    },
+    metrics: calculateBacktestMetrics(trades, rejectionCount, audit),
+    inSample: calculateBacktestMetrics(inSampleTrades, funnel.candidates.filter((candidate) => candidate.period === "in_sample" && candidate.primaryRejectionStage !== null).length, audit.filter((record) => record.period === "in_sample")),
+    outOfSample: calculateBacktestMetrics(outOfSampleTrades, funnel.candidates.filter((candidate) => candidate.period === "out_of_sample" && candidate.primaryRejectionStage !== null).length, audit.filter((record) => record.period === "out_of_sample")),
+    segments: buildSegments(trades, rejectionCount),
+    trades,
+    audit,
+    assumptions: [...new Set(reports.flatMap((report) => report.assumptions))],
+    gapReport: combineGapReports(reports),
+    batch: {
+      totalPartitions: partitions.length,
+      completedPartitions: reports.length,
+      selectedDates: selected,
+      contractPartitions: partitions.map(({ tradingDate, contractSymbol, period }) => ({ tradingDate, contractSymbol, period })),
+    },
+    funnel,
+  };
+}
+
+export async function runBatchBacktest(
+  input: {
+    request: BatchBacktestRequest;
+    risk?: BacktestWorkerInput["risk"];
+    replayDataset: CausalReplayDataset;
+  },
+  options: BatchRunnerOptions,
+): Promise<BatchBacktestReport> {
+  const partitions = createPartitions(input.request, input.replayDataset);
+  if (!partitions.length) throw new Error("No replay partitions contain completed candles.");
+  const reports: BacktestReport[] = [];
+  const { selectedDates, ...backtestRequest } = input.request;
+  const runPartition = options.runPartition ?? ((partitionInput, partitionOptions) => runBacktestInWorker(partitionInput, partitionOptions));
+  options.onProgress?.({
+    status: "running",
+    totalPartitions: partitions.length,
+    completedPartitions: 0,
+    currentTradingDate: null,
+    currentContractSymbol: null,
+    message: "Batch queued; waiting for the first causal partition.",
+  });
+  for (const [index, partition] of partitions.entries()) {
+    abortIfNeeded(options.signal);
+    options.onProgress?.({
+      status: "running",
+      totalPartitions: partitions.length,
+      completedPartitions: index,
+      currentTradingDate: partition.tradingDate,
+      currentContractSymbol: partition.contractSymbol,
+      message: `Replaying ${partition.tradingDate} on ${partition.contractSymbol}.`,
+    });
+    const report = await runPartition(
+      { request: backtestRequest, risk: input.risk, replayDataset: partition.dataset },
+      { timeoutMs: options.timeoutMs, signal: options.signal },
+    );
+    reports.push(report);
+    options.onProgress?.({
+      status: "running",
+      totalPartitions: partitions.length,
+      completedPartitions: index + 1,
+      currentTradingDate: partition.tradingDate,
+      currentContractSymbol: partition.contractSymbol,
+      message: `Completed ${partition.tradingDate} on ${partition.contractSymbol}.`,
+    });
+  }
+  abortIfNeeded(options.signal);
+  const result = aggregateBatchReports(reports, partitions, selectedDates ?? partitions.map((partition) => partition.tradingDate));
+  options.onProgress?.({
+    status: "completed",
+    totalPartitions: partitions.length,
+    completedPartitions: reports.length,
+    currentTradingDate: null,
+    currentContractSymbol: null,
+    message: "All causal partitions completed; result is ready.",
+  });
+  return result;
+}

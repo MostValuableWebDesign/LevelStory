@@ -23,10 +23,16 @@ import type {
   BacktestAuditPage,
   BacktestReport,
   BacktestRequest,
+  BatchBacktestRequest,
+  BatchBacktestStatus,
+  BatchFunnelPage,
+  CancelBatchBacktestParams,
   DashboardOverview,
   ErrorResponse,
   FuturesContractSpecification,
   GetBacktestAuditPageParams,
+  GetBatchBacktestStatusParams,
+  GetBatchFunnelParams,
   GetDashboardOverviewParams,
   GetHistoricalDataParams,
   GetMarketDataStatusParams,
@@ -551,6 +557,324 @@ export const useRunBacktest = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRunBacktestMutationOptions(options));
     }
+
+export const getStartBatchBacktestUrl = () => {
+
+
+
+
+  return `/api/backtest/batch`
+}
+
+/**
+ * Runs the existing causal backtest one trading date and active contract at a time. Results are persisted only after every partition completes.
+ * @summary Start a deterministic multi-period qualification batch
+ */
+export const startBatchBacktest = async (batchBacktestRequest: BatchBacktestRequest, options?: Parameters<typeof customFetch>[1]): Promise<BatchBacktestStatus> => {
+
+  return customFetch<BatchBacktestStatus>(getStartBatchBacktestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(batchBacktestRequest)
+  }
+);}
+
+
+
+
+
+export const getStartBatchBacktestMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBatchBacktest>>, TError,{data: BodyType<BatchBacktestRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startBatchBacktest>>, TError,{data: BodyType<BatchBacktestRequest>}, TContext> => {
+
+const mutationKey = ['startBatchBacktest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startBatchBacktest>>, {data: BodyType<BatchBacktestRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  startBatchBacktest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartBatchBacktestMutationResult = NonNullable<Awaited<ReturnType<typeof startBatchBacktest>>>
+    export type StartBatchBacktestMutationBody = BodyType<BatchBacktestRequest>
+    export type StartBatchBacktestMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start a deterministic multi-period qualification batch
+ */
+export const useStartBatchBacktest = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBatchBacktest>>, TError,{data: BodyType<BatchBacktestRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startBatchBacktest>>,
+        TError,
+        {data: BodyType<BatchBacktestRequest>},
+        TContext
+      > => {
+      return useMutation(getStartBatchBacktestMutationOptions(options));
+    }
+
+export const getGetBatchBacktestStatusUrl = (params: GetBatchBacktestStatusParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/batch-status?${stringifiedParams}` : `/api/backtest/batch-status`
+}
+
+/**
+ * @summary Read batch progress or completed results
+ */
+export const getBatchBacktestStatus = async (params: GetBatchBacktestStatusParams, options?: Parameters<typeof customFetch>[1]): Promise<BatchBacktestStatus> => {
+
+  return customFetch<BatchBacktestStatus>(getGetBatchBacktestStatusUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBatchBacktestStatusQueryKey = (params?: GetBatchBacktestStatusParams,) => {
+    return [
+    `/api/backtest/batch-status`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetBatchBacktestStatusQueryOptions = <TData = Awaited<ReturnType<typeof getBatchBacktestStatus>>, TError = ErrorType<ErrorResponse>>(params: GetBatchBacktestStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBatchBacktestStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBatchBacktestStatusQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBatchBacktestStatus>>> = ({ signal }) => getBatchBacktestStatus(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBatchBacktestStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBatchBacktestStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getBatchBacktestStatus>>>
+export type GetBatchBacktestStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read batch progress or completed results
+ */
+
+export function useGetBatchBacktestStatus<TData = Awaited<ReturnType<typeof getBatchBacktestStatus>>, TError = ErrorType<ErrorResponse>>(
+ params: GetBatchBacktestStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBatchBacktestStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBatchBacktestStatusQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelBatchBacktestUrl = (params: CancelBatchBacktestParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/batch-cancel?${stringifiedParams}` : `/api/backtest/batch-cancel`
+}
+
+/**
+ * @summary Cancel a running qualification batch
+ */
+export const cancelBatchBacktest = async (params: CancelBatchBacktestParams, options?: Parameters<typeof customFetch>[1]): Promise<BatchBacktestStatus> => {
+
+  return customFetch<BatchBacktestStatus>(getCancelBatchBacktestUrl(params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelBatchBacktestMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBatchBacktest>>, TError,{params: CancelBatchBacktestParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelBatchBacktest>>, TError,{params: CancelBatchBacktestParams}, TContext> => {
+
+const mutationKey = ['cancelBatchBacktest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelBatchBacktest>>, {params: CancelBatchBacktestParams}> = (props) => {
+          const {params} = props ?? {};
+
+          return  cancelBatchBacktest(params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelBatchBacktestMutationResult = NonNullable<Awaited<ReturnType<typeof cancelBatchBacktest>>>
+
+    export type CancelBatchBacktestMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a running qualification batch
+ */
+export const useCancelBatchBacktest = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBatchBacktest>>, TError,{params: CancelBatchBacktestParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelBatchBacktest>>,
+        TError,
+        {params: CancelBatchBacktestParams},
+        TContext
+      > => {
+      return useMutation(getCancelBatchBacktestMutationOptions(options));
+    }
+
+export const getGetBatchFunnelUrl = (params: GetBatchFunnelParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/batch-funnel?${stringifiedParams}` : `/api/backtest/batch-funnel`
+}
+
+/**
+ * @summary Read a page of unique batch qualification candidates
+ */
+export const getBatchFunnel = async (params: GetBatchFunnelParams, options?: Parameters<typeof customFetch>[1]): Promise<BatchFunnelPage> => {
+
+  return customFetch<BatchFunnelPage>(getGetBatchFunnelUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBatchFunnelQueryKey = (params?: GetBatchFunnelParams,) => {
+    return [
+    `/api/backtest/batch-funnel`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetBatchFunnelQueryOptions = <TData = Awaited<ReturnType<typeof getBatchFunnel>>, TError = ErrorType<ErrorResponse>>(params: GetBatchFunnelParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBatchFunnel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBatchFunnelQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBatchFunnel>>> = ({ signal }) => getBatchFunnel(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBatchFunnel>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBatchFunnelQueryResult = NonNullable<Awaited<ReturnType<typeof getBatchFunnel>>>
+export type GetBatchFunnelQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read a page of unique batch qualification candidates
+ */
+
+export function useGetBatchFunnel<TData = Awaited<ReturnType<typeof getBatchFunnel>>, TError = ErrorType<ErrorResponse>>(
+ params: GetBatchFunnelParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBatchFunnel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBatchFunnelQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetBacktestAuditPageUrl = (params: GetBacktestAuditPageParams,) => {
   const normalizedParams = new URLSearchParams();
