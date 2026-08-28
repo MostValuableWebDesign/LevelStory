@@ -44,7 +44,6 @@ export * from './backtestSegmentationTimeOfDay';
 export * from './backtestSegmentationTrend';
 export * from './backtestSegmentationVolumeCondition';
 export * from './backtestTrade';
-export * from './backtestTradeAmbiguityLabel';
 export * from './backtestTradeAudit';
 export * from './backtestTradeAuditLegsItem';
 export * from './backtestTradeAuditLegsItemExitReason';

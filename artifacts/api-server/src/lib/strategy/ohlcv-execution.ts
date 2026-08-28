@@ -2,12 +2,15 @@ import type { Direction } from "./types.js";
 
 export const MODELED_OHLCV_FILL_LABEL = "Modeled OHLCV Fill — Not a Quote-Based Fill";
 export const AMBIGUOUS_OHLCV_SEQUENCE_LABEL = "Ambiguous intrabar sequence — adverse-first policy applied";
+export const AMBIGUOUS_STOP_FIRST_LABEL = "AMBIGUOUS_STOP_FIRST";
+export const AMBIGUOUS_RUNNER_SEQUENCE_LABEL = "AMBIGUOUS_RUNNER_SEQUENCE";
 
 export function isExecutionAmbiguityLabel(label: string): boolean {
   return label === AMBIGUOUS_OHLCV_SEQUENCE_LABEL
-    || label === "AMBIGUOUS_STOP_FIRST"
+    || label === AMBIGUOUS_STOP_FIRST_LABEL
     || label === "AMBIGUOUS_ENTRY_INVALIDATION"
-    || label === "AMBIGUOUS_RUNNER_RETRACE";
+    || label === "AMBIGUOUS_RUNNER_RETRACE"
+    || label === AMBIGUOUS_RUNNER_SEQUENCE_LABEL;
 }
 
 export type OhlcvCandle = {
@@ -51,7 +54,10 @@ export type ModeledExecutionAccounting = {
 };
 
 export type OhlcvExecutionAudit = {
+  eventLabels: string[];
+  /** @deprecated Use eventLabels. Retained for internal callers during migration. */
   labels: string[];
+  ambiguityLabels: string[];
   assumptions: string[];
   entryCandle: OhlcvCandle | null;
   exitCandle: OhlcvCandle | null;
@@ -78,6 +84,7 @@ export type ModeledOhlcvExecution = {
   accounting: ModeledExecutionAccounting;
   audit: OhlcvExecutionAudit;
   ambiguityLabels: string[];
+  eventLabels: string[];
   assumptions: string[];
 };
 export type ModeledExecution = ModeledOhlcvExecution;
@@ -136,14 +143,14 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
     targetPrice: input.targetPrice ?? input.target ?? null, exitPrice: null, exitReason: "not filled",
     legs: [], accounting: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
     audit: {
-      labels, assumptions, entryCandle: null, exitCandle: null, targetHit: false,
+      eventLabels: labels, labels, ambiguityLabels: [], assumptions, entryCandle: null, exitCandle: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
       catastropheStopPrice: input.catastropheStop ?? null,
       stopLevel: null, runnerReferencePrice: null, runnerImpulse: null,
       runnerMostFavorablePrice: null, remainingQuantity: input.quantity ?? input.contractQuantity ?? input.contracts ?? 0,
     },
-    ambiguityLabels: labels, assumptions,
+    ambiguityLabels: [], eventLabels: labels, assumptions,
   };
 }
 
@@ -186,7 +193,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
   const stopPrice = selectedStop === null ? null : tick(selectedStop.price, size);
-  const labels: string[] = [];
+  const eventLabels: string[] = [];
+  const ambiguityLabels: string[] = [];
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
@@ -194,7 +202,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   ];
   const entryTouched = trigger !== null
     && (input.direction === "long" ? trigger.high >= entryReference : trigger.low <= entryReference);
-  if (!trigger || !entryTouched || quantity === 0) return emptyResult({ ...input, targetPrice: target, stopPrice }, labels);
+  if (!trigger || !entryTouched || quantity === 0) return emptyResult({ ...input, targetPrice: target, stopPrice }, []);
   const modeledFill = tick(
     input.direction === "long"
       ? (trigger.open > entryReference ? trigger.open : entryReference) + (input.entrySlippageTicks ?? 0) * size
@@ -230,11 +238,16 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const adverse = strategyHit || catastropheHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
     if (adverse) {
-      if (favorable) labels.push(AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
+      if (favorable) {
+        eventLabels.push(AMBIGUOUS_STOP_FIRST_LABEL);
+        ambiguityLabels.push(AMBIGUOUS_STOP_FIRST_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
+      }
       const level = selectedStop!;
-      labels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
+      const stopEvent = level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED";
+      eventLabels.push(stopEvent);
       const gapThrough = input.direction === "long" ? candle.open <= stopPrice! : candle.open >= stopPrice!;
       const reference = gapThrough ? candle.open : stopPrice!;
+      if (gapThrough) eventLabels.push("GAP_THROUGH_STOP");
       const fill = tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
       legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop"));
       if (targetHit && runnerQuantity > 0) runnerExited = true;
@@ -242,16 +255,19 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     }
     if (!targetHit && favorable) {
       targetHit = true; targetCandle = candle;
+      eventLabels.push("TARGET_REACHED");
       if (targetQuantity > 0) {
         const fill = tick(input.direction === "long" ? target! - (input.exitSlippageTicks ?? 0) * size : target! + (input.exitSlippageTicks ?? 0) * size, size);
         legs.push(makeLeg("target", targetQuantity, target!, fill, "target"));
         remaining -= targetQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
       }
       runnerBest = target!;
+      if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
       if (runnerQuantity === 0) break;
       continue;
     }
     if (targetHit && runnerQuantity > 0) {
+      const candidateBest = input.direction === "long" ? Math.max(runnerBest, candle.high) : Math.min(runnerBest, candle.low);
       const impulse = Math.abs(runnerBest - modeledFill);
       const retracementThreshold = input.direction === "long"
         ? runnerBest - impulse * 0.4
@@ -260,6 +276,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         ? candle.low <= retracementThreshold
         : candle.high >= retracementThreshold;
       if (impulse > 0 && thresholdTouched) {
+        if (candidateBest !== runnerBest) {
+          ambiguityLabels.push(AMBIGUOUS_RUNNER_SEQUENCE_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
+          eventLabels.push(AMBIGUOUS_RUNNER_SEQUENCE_LABEL);
+        }
         const gapThrough = input.direction === "long"
           ? candle.open <= retracementThreshold
           : candle.open >= retracementThreshold;
@@ -268,9 +288,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           ? reference - (input.exitSlippageTicks ?? 0) * size
           : reference + (input.exitSlippageTicks ?? 0) * size, size);
         legs.push(makeLeg("runner", runnerQuantity, reference, fill, "runner"));
-        remaining = 0; runnerExited = true; exitPrice = fill; exitCandle = candle; exitReason = "runner"; break;
+        remaining = 0; runnerExited = true; eventLabels.push("RUNNER_EXITED"); exitPrice = fill; exitCandle = candle; exitReason = "runner"; break;
       }
-      runnerBest = input.direction === "long" ? Math.max(runnerBest, candle.high) : Math.min(runnerBest, candle.low);
+      runnerBest = candidateBest;
     }
   }
   if (remaining > 0 && input.sessionCloseCandle) {
@@ -286,6 +306,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close"));
     remaining = 0;
     runnerExited = targetHit && runnerQuantity > 0;
+    eventLabels.push("SESSION_CLOSE");
+    if (runnerExited) eventLabels.push("RUNNER_EXITED");
     exitPrice = fill;
     exitCandle = closeCandle;
     exitReason = "session_close";
@@ -298,7 +320,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   return {
     entryTrigger: entryReference, modeledFill, stopPrice, targetPrice: target, exitPrice, exitReason, legs, accounting,
     audit: {
-      labels, assumptions, entryCandle: trigger, exitCandle, targetHit,
+      eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, targetHit,
       runnerActivated: targetHit && runnerQuantity > 0, runnerExited,
       strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
       catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),
@@ -308,6 +330,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       runnerMostFavorablePrice: targetHit && runnerQuantity > 0 ? runnerBest : null,
       remainingQuantity: remaining,
     },
-    ambiguityLabels: labels, assumptions,
+     ambiguityLabels, eventLabels, assumptions,
   };
 }

@@ -1852,6 +1852,7 @@ components:
         duplicateRowsRemoved: { type: number }
         missingMinuteGaps: { type: number }
         missingGapSegments: { type: number }
+        unexpectedMissingMinutes: { type: number }
         unexpectedOpenSessionMissingMinutes: { type: number }
         unexpectedOvernightMissingMinutes: { type: number }
         unexpectedRegularSessionMissingMinutes: { type: number }
@@ -1859,6 +1860,10 @@ components:
         overnightGapSegments: { type: number }
         regularSessionMissingMinutes: { type: number }
         expectedClosedMarketMinutes: { type: number }
+        expectedClosedMinutes: { type: number }
+        weekendHolidayClosedMinutes: { type: number }
+        earlyCloseMinutes: { type: number }
+        inactiveContractMinutes: { type: number }
         lowLiquidityInactiveMinutes: { type: number }
         coverageScope: { type: string, enum: [full_file] }
         inactiveContractThresholdPercent: { type: number, minimum: 0, maximum: 100 }
@@ -1890,7 +1895,7 @@ components:
             fifteenMinute: { type: number }
             oneHour: { type: number }
           required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
-      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
+      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
     BacktestMetricSet:
       type: object
       properties:
@@ -1916,13 +1921,14 @@ components:
         targetExits: { type: number }
         runnerExits: { type: number }
         ambiguityCount: { type: number }
+        ambiguousExitCount: { type: number }
         expiredPatienceSetups: { type: number }
         ambiguousEntryCount: { type: number }
         strategyStopExits: { type: number }
         catastropheStopExits: { type: number }
         sessionCloseExits: { type: number }
         partialTargetExits: { type: number }
-      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits]
+      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, ambiguousExitCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits]
     BacktestAuditRecord:
       type: object
       additionalProperties: false
@@ -1956,6 +1962,8 @@ components:
         triggerCandleCloseTime: { type: ["string", "null"], format: date-time }
         modeledFillObservationTime: { type: ["string", "null"], format: date-time }
         exitCandleOpenTime: { type: ["string", "null"], format: date-time }
+        exitCandleCloseTime: { type: ["string", "null"], format: date-time }
+        eventLabels: { type: array, items: { type: string } }
         entryTriggerPrice: { type: ["number", "null"] }
         strategyStopPrice: { type: ["number", "null"] }
         catastropheStopPrice: { type: ["number", "null"] }
@@ -1967,7 +1975,7 @@ components:
         grossPnl: { type: ["number", "null"] }
         netPnl: { type: ["number", "null"] }
         exitReason: { type: ["string", "null"] }
-      required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
+      required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
     BacktestAuditPage:
       type: object
       additionalProperties: false
@@ -2025,7 +2033,7 @@ components:
         slippage: { type: number }
         netPnl: { type: number }
         outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", "session close", manual] }
-        ambiguityLabel: { type: ["string", "null"], enum: [AMBIGUOUS_STOP_FIRST, AMBIGUOUS_ENTRY_INVALIDATION, null] }
+        ambiguityLabel: { type: ["string", "null"] }
         source: { type: string, enum: [tick, one-minute, ohlc] }
         segmentation: { $ref: "#/components/schemas/BacktestSegmentation" }
         executionMode: { type: string, enum: [quote_based_shadow, ohlcv_modeled] }
@@ -2040,8 +2048,14 @@ components:
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
             stopLevel: { type: ["string", "null"], enum: [strategy, catastrophe, null] }
-            entryCandleOpenTime: { type: ["string", "null"] }
+            patienceCandleOpenTime: { type: ["string", "null"] }
+            patienceCandleCloseTime: { type: ["string", "null"] }
+            triggerCandleOpenTime: { type: ["string", "null"] }
+            triggerCandleCloseTime: { type: ["string", "null"] }
+            modeledFillObservationTime: { type: ["string", "null"] }
             exitCandleOpenTime: { type: ["string", "null"] }
+            exitCandleCloseTime: { type: ["string", "null"] }
+            eventLabels: { type: array, items: { type: string } }
             assumptions: { type: array, items: { type: string } }
             ambiguityLabels: { type: array, items: { type: string } }
             targetHit: { type: boolean }
@@ -2067,7 +2081,7 @@ components:
                   netPnl: { type: number }
                   exitReason: { type: string, enum: [target, runner, stop, manual, session_close] }
                 required: [kind, quantity, referencePrice, fillPrice, grossPnl, slippage, fees, netPnl, exitReason]
-          required: [entryTriggerPrice, modeledFillPrice, stopPrice, targetPrice, strategyStopPrice, catastropheStopPrice, stopLevel, entryCandleOpenTime, exitCandleOpenTime, assumptions, ambiguityLabels, targetHit, runnerActivated, runnerExited, runnerReferencePrice, runnerImpulse, runnerMostFavorablePrice, remainingQuantity, exitReason, legs]
+          required: [entryTriggerPrice, modeledFillPrice, stopPrice, targetPrice, strategyStopPrice, catastropheStopPrice, stopLevel, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, assumptions, eventLabels, ambiguityLabels, targetHit, runnerActivated, runnerExited, runnerReferencePrice, runnerImpulse, runnerMostFavorablePrice, remainingQuantity, exitReason, legs]
       required: [id, tradingDate, contractSymbol, contractMonth, period, setupType, direction, entryTime, exitTime, entryPrice, exitPrice, contracts, grossPnl, fees, slippage, netPnl, outcome, ambiguityLabel, source, segmentation]
     BacktestReport:
       type: object
@@ -2139,6 +2153,7 @@ components:
           properties:
             missingMinuteGaps: { type: number }
             missingGapSegments: { type: number }
+            unexpectedMissingMinutes: { type: number }
             unexpectedOpenSessionMissingMinutes: { type: number }
             unexpectedOvernightMissingMinutes: { type: number }
             unexpectedRegularSessionMissingMinutes: { type: number }
@@ -2146,6 +2161,10 @@ components:
             overnightGapSegments: { type: number }
             regularSessionMissingMinutes: { type: number }
             expectedClosedMarketMinutes: { type: number }
+            expectedClosedMinutes: { type: number }
+            weekendHolidayClosedMinutes: { type: number }
+            earlyCloseMinutes: { type: number }
+            inactiveContractMinutes: { type: number }
             lowLiquidityInactiveMinutes: { type: number }
             coverageScope: { type: string, enum: [full_file, selected_dates] }
             inactiveContractThresholdPercent: { type: number, minimum: 0, maximum: 100 }
@@ -2157,6 +2176,6 @@ components:
             weekendHolidayGapMinutes: { type: number, minimum: 0 }
             earlyCloseDates: { type: array, items: { type: string } }
             overnightCoverageObserved: { type: boolean }
-          required: [missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
+          required: [missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
       required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
 

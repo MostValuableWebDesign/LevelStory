@@ -145,3 +145,25 @@ test("discloses inactive, missing, complete, and early-close session coverage", 
     assert.equal(imported.summary.overnightCoverageObserved, false);
   });
 });
+
+test("does not classify the Friday-to-Monday closure as unexpected overnight loss", async () => {
+  const fridayStart = Date.parse("2026-08-28T13:30:00.000Z");
+  const rows = Array.from({ length: 391 }, (_, index) => row(fridayStart + index * 60_000, index));
+  rows.push(...Array.from({ length: 601 }, (_, index) => row(Date.parse("2026-08-30T22:00:00.000Z") + index * 60_000, 800 + index)));
+  rows.push(row(Date.parse("2026-08-31T13:30:00.000Z"), 900));
+  await withCsv(rows, async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.unexpectedOvernightMissingMinutes, 0);
+    assert.ok(imported.summary.maintenanceGapMinutes > 0);
+    assert.ok(imported.summary.weekendHolidayClosedMinutes > 0);
+    assert.equal(
+      imported.summary.expectedClosedMinutes,
+      imported.summary.maintenanceGapMinutes
+        + imported.summary.weekendHolidayClosedMinutes
+        + imported.summary.earlyCloseMinutes,
+    );
+    assert.equal(imported.summary.unexpectedMissingMinutes,
+      imported.summary.unexpectedRegularSessionMissingMinutes
+      + imported.summary.unexpectedOvernightMissingMinutes);
+  });
+});

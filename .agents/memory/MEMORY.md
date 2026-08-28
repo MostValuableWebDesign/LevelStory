@@ -7,3 +7,5 @@
 - [Databento JSON normalization](databento-json-normalization.md) — historical JSONL nests timestamps and identity under `hd`; OHLCV and quote prices use 1e9 fixed-point units.
 - [Historical replay performance](historical-replay-performance.md) — cache calendar-scoped session windows before scanning large imported ranges.
 - [Replay audit cadence](replay-audit-cadence.md) — audit every completed regular candle even when an active position blocks overlapping entries.
+- [Historical gap performance](historical-gap-performance.md) — classify long missing spans with interval overlap, not per-minute iteration, to keep full-file imports bounded.
+- [Preview private paths](preview-private-paths.md) — SPA fallback can return index.html for protected-looking URLs; guard dev/preview middleware before fallback.

@@ -4,12 +4,15 @@ import { db, riskSettingsTable } from "@workspace/db";
 import { getFuturesContractSpecification } from "../lib/futures/contracts.js";
 import {
   getHistoricalCsvImport,
+  getHistoricalCsvFingerprint,
   historicalImportToReplayDataset,
   publicHistoricalImportSummary,
 } from "../lib/futures/historical-csv-import.js";
 import { runCausalBacktest } from "../lib/phase9";
 import {
   compactBacktestReport,
+  buildBacktestCacheKey,
+  getCachedBacktestReport,
   getBacktestAuditPage,
   storeBacktestReport,
 } from "../lib/backtest-store.js";
@@ -123,24 +126,47 @@ router.post("/backtest", backtestRateLimit, requestTimeout(BACKTEST_TIMEOUT_MS),
   activeBacktests += 1;
   try {
     const [risk] = await db.select().from(riskSettingsTable).limit(1);
-    const report = parsed.data.source === "historical_databento"
-      ? (() => {
-          const specification = getFuturesContractSpecification(parsed.data.symbol);
-          return getHistoricalCsvImport(specification).then((imported) => runCausalBacktest(
-            parsed.data,
-            risk,
-            historicalImportToReplayDataset(
-              imported,
-              parsed.data.startDate ?? "2026-07-27",
-              parsed.data.endDate,
-              parsed.data.inSampleDays,
-              parsed.data.outOfSampleDays,
-            ),
-          ));
-        })()
-      : Promise.resolve(runCausalBacktest(parsed.data, risk));
-    const resolvedReport = await withTimeout(report, BACKTEST_TIMEOUT_MS);
-    const runId = storeBacktestReport(resolvedReport);
+    const specification = getFuturesContractSpecification(parsed.data.symbol);
+    const imported = parsed.data.source === "historical_databento"
+      ? await getHistoricalCsvImport(specification)
+      : null;
+    const replayDataset = imported
+      ? historicalImportToReplayDataset(
+          imported,
+          parsed.data.startDate ?? "2026-07-27",
+          parsed.data.endDate,
+          parsed.data.inSampleDays,
+          parsed.data.outOfSampleDays,
+        )
+      : undefined;
+    const cacheKey = buildBacktestCacheKey({
+      cacheVersion: "causal-backtest-v2",
+      request: parsed.data,
+      risk,
+      contract: specification,
+      executionPolicy: {
+        entryBufferTicks: parsed.data.ohlcvEntryBufferTicks ?? 4,
+        stopBufferTicks: parsed.data.ohlcvStopBufferTicks ?? 1,
+        slippageTicks: parsed.data.ohlcvSlippageTicks ?? 1,
+        commissionPerContract: parsed.data.ohlcvCommissionPerContract ?? null,
+      },
+      historicalSource: imported
+        ? {
+            fingerprint: await getHistoricalCsvFingerprint(),
+            filename: imported.summary.filename,
+            detectedSymbol: imported.summary.detectedSymbol,
+            latestTimestamp: imported.summary.latestTimestamp,
+          }
+        : null,
+    });
+    const cached = getCachedBacktestReport(cacheKey);
+    if (cached) {
+      res.json(RunBacktestResponse.parse(compactBacktestReport(cached.report, cached.runId)));
+      return;
+    }
+    const report = runCausalBacktest(parsed.data, risk, replayDataset);
+    const resolvedReport = await withTimeout(Promise.resolve(report), BACKTEST_TIMEOUT_MS);
+    const runId = storeBacktestReport(resolvedReport, cacheKey);
     res.json(RunBacktestResponse.parse(compactBacktestReport(resolvedReport, runId)));
   } catch (error) {
     const message = error instanceof Error && error.message === "BACKTEST_TIMEOUT"

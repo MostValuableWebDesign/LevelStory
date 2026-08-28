@@ -1504,6 +1504,7 @@ export interface HistoricalImportSummary {
   duplicateRowsRemoved: number;
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedMissingMinutes: number;
   unexpectedOpenSessionMissingMinutes: number;
   unexpectedOvernightMissingMinutes: number;
   unexpectedRegularSessionMissingMinutes: number;
@@ -1511,6 +1512,10 @@ export interface HistoricalImportSummary {
   overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
+  expectedClosedMinutes: number;
+  weekendHolidayClosedMinutes: number;
+  earlyCloseMinutes: number;
+  inactiveContractMinutes: number;
   lowLiquidityInactiveMinutes: number;
   coverageScope: HistoricalImportSummaryCoverageScope;
   /**
@@ -1564,6 +1569,7 @@ export interface BacktestMetricSet {
   targetExits: number;
   runnerExits: number;
   ambiguityCount: number;
+  ambiguousExitCount: number;
   expiredPatienceSetups: number;
   ambiguousEntryCount: number;
   strategyStopExits: number;
@@ -1663,6 +1669,9 @@ export interface BacktestAuditRecord {
   modeledFillObservationTime: string | null;
   /** @nullable */
   exitCandleOpenTime: string | null;
+  /** @nullable */
+  exitCandleCloseTime: string | null;
+  eventLabels: string[];
   /** @nullable */
   entryTriggerPrice: number | null;
   /** @nullable */
@@ -1836,17 +1845,6 @@ export const BacktestTradeOutcome = {
   manual: 'manual',
 } as const;
 
-/**
- * @nullable
- */
-export type BacktestTradeAmbiguityLabel = typeof BacktestTradeAmbiguityLabel[keyof typeof BacktestTradeAmbiguityLabel] | null;
-
-
-export const BacktestTradeAmbiguityLabel = {
-  AMBIGUOUS_STOP_FIRST: 'AMBIGUOUS_STOP_FIRST',
-  AMBIGUOUS_ENTRY_INVALIDATION: 'AMBIGUOUS_ENTRY_INVALIDATION',
-} as const;
-
 export type BacktestTradeSource = typeof BacktestTradeSource[keyof typeof BacktestTradeSource];
 
 
@@ -1923,9 +1921,20 @@ export type BacktestTradeAudit = {
   /** @nullable */
   stopLevel: BacktestTradeAuditStopLevel;
   /** @nullable */
-  entryCandleOpenTime: string | null;
+  patienceCandleOpenTime: string | null;
+  /** @nullable */
+  patienceCandleCloseTime: string | null;
+  /** @nullable */
+  triggerCandleOpenTime: string | null;
+  /** @nullable */
+  triggerCandleCloseTime: string | null;
+  /** @nullable */
+  modeledFillObservationTime: string | null;
   /** @nullable */
   exitCandleOpenTime: string | null;
+  /** @nullable */
+  exitCandleCloseTime: string | null;
+  eventLabels: string[];
   assumptions: string[];
   ambiguityLabels: string[];
   targetHit: boolean;
@@ -1963,7 +1972,7 @@ export interface BacktestTrade {
   netPnl: number;
   outcome: BacktestTradeOutcome;
   /** @nullable */
-  ambiguityLabel: BacktestTradeAmbiguityLabel;
+  ambiguityLabel: string | null;
   source: BacktestTradeSource;
   segmentation: BacktestSegmentation;
   executionMode?: BacktestTradeExecutionMode;
@@ -2070,6 +2079,7 @@ export const BacktestReportGapReportCoverageScope = {
 export type BacktestReportGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedMissingMinutes: number;
   unexpectedOpenSessionMissingMinutes: number;
   unexpectedOvernightMissingMinutes: number;
   unexpectedRegularSessionMissingMinutes: number;
@@ -2077,6 +2087,10 @@ export type BacktestReportGapReport = {
   overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
+  expectedClosedMinutes: number;
+  weekendHolidayClosedMinutes: number;
+  earlyCloseMinutes: number;
+  inactiveContractMinutes: number;
   lowLiquidityInactiveMinutes: number;
   coverageScope: BacktestReportGapReportCoverageScope;
   /**

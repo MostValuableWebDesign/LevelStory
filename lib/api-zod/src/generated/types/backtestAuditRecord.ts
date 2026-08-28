@@ -54,6 +54,9 @@ export interface BacktestAuditRecord {
   /** @nullable */
   exitCandleOpenTime: Date | null;
   /** @nullable */
+  exitCandleCloseTime: Date | null;
+  eventLabels: string[];
+  /** @nullable */
   entryTriggerPrice: number | null;
   /** @nullable */
   strategyStopPrice: number | null;

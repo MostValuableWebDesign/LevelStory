@@ -24,9 +24,20 @@ export type BacktestTradeAudit = {
   /** @nullable */
   stopLevel: BacktestTradeAuditStopLevel;
   /** @nullable */
-  entryCandleOpenTime: string | null;
+  patienceCandleOpenTime: string | null;
+  /** @nullable */
+  patienceCandleCloseTime: string | null;
+  /** @nullable */
+  triggerCandleOpenTime: string | null;
+  /** @nullable */
+  triggerCandleCloseTime: string | null;
+  /** @nullable */
+  modeledFillObservationTime: string | null;
   /** @nullable */
   exitCandleOpenTime: string | null;
+  /** @nullable */
+  exitCandleCloseTime: string | null;
+  eventLabels: string[];
   assumptions: string[];
   ambiguityLabels: string[];
   targetHit: boolean;

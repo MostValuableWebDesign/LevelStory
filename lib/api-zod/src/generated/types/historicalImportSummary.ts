@@ -26,6 +26,7 @@ export interface HistoricalImportSummary {
   duplicateRowsRemoved: number;
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedMissingMinutes: number;
   unexpectedOpenSessionMissingMinutes: number;
   unexpectedOvernightMissingMinutes: number;
   unexpectedRegularSessionMissingMinutes: number;
@@ -33,6 +34,10 @@ export interface HistoricalImportSummary {
   overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
+  expectedClosedMinutes: number;
+  weekendHolidayClosedMinutes: number;
+  earlyCloseMinutes: number;
+  inactiveContractMinutes: number;
   lowLiquidityInactiveMinutes: number;
   coverageScope: HistoricalImportSummaryCoverageScope;
   /**

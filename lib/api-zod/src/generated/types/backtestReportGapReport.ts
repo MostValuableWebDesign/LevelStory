@@ -10,6 +10,7 @@ import type { BacktestReportGapReportCoverageScope } from './backtestReportGapRe
 export type BacktestReportGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
+  unexpectedMissingMinutes: number;
   unexpectedOpenSessionMissingMinutes: number;
   unexpectedOvernightMissingMinutes: number;
   unexpectedRegularSessionMissingMinutes: number;
@@ -17,6 +18,10 @@ export type BacktestReportGapReport = {
   overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
+  expectedClosedMinutes: number;
+  weekendHolidayClosedMinutes: number;
+  earlyCloseMinutes: number;
+  inactiveContractMinutes: number;
   lowLiquidityInactiveMinutes: number;
   coverageScope: BacktestReportGapReportCoverageScope;
   /**

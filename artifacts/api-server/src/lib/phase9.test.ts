@@ -8,6 +8,7 @@ import {
   resolveIntrabarOutcome,
   type IntrabarBar,
   type BacktestTrade,
+  type BacktestAuditRecord,
 } from "./phase9.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 
@@ -162,6 +163,17 @@ test("one-minute fallback resolves a target and labels same-minute collisions st
   assert.equal(ambiguous.ambiguityLabel, "AMBIGUOUS_STOP_FIRST");
 });
 
+test("a stop-only OHLC candle is an execution event, not an ambiguity", () => {
+  const result = resolveIntrabarOutcome({
+    direction: "long",
+    target: 110,
+    stop: 96,
+    candle: candle(1),
+  });
+  assert.equal(result.status, "stop");
+  assert.equal(result.ambiguityLabel, null);
+});
+
 test("entry and invalidation in an unresolved candle reject the setup", () => {
   const result = resolveEntryAndInvalidation({
     direction: "long",
@@ -192,4 +204,24 @@ test("backtest metrics include costs and equity drawdown", () => {
   assert.equal(metrics.netPnl, 80);
   assert.equal(metrics.maximumDrawdown, 60);
   assert.equal(metrics.rejectedSetupCount, 4);
+});
+
+test("ambiguity metrics separate rejected entries from ambiguous exits", () => {
+  const ambiguous = trade(40, {
+    audit: {
+      ambiguityLabels: ["AMBIGUOUS_RUNNER_SEQUENCE"],
+      patienceCandleOpenTime: null,
+    } as NonNullable<BacktestTrade["audit"]>,
+  });
+  const metrics = calculateBacktestMetrics(
+    [ambiguous],
+    1,
+    [{
+      rejectionReason: "AMBIGUOUS_ENTRY_INVALIDATION",
+    } as BacktestAuditRecord],
+  );
+  assert.equal(metrics.ambiguousEntryCount, 1);
+  assert.equal(metrics.ambiguousExitCount, 1);
+  assert.equal(metrics.ambiguousTradeCount, 1);
+  assert.equal(metrics.ambiguityCount, 2);
 });

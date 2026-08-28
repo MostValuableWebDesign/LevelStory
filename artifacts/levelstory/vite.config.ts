@@ -48,12 +48,59 @@ const privateFileDeny = [
   '**/.env*',
 ];
 
+function isBlockedRequestUrl(requestUrl: string | undefined): boolean {
+  let pathname = (requestUrl ?? "").split("?", 1)[0];
+  for (let index = 0; index < 3; index += 1) {
+    try {
+      const decoded = decodeURIComponent(pathname);
+      if (decoded === pathname) break;
+      pathname = decoded;
+    } catch {
+      break;
+    }
+  }
+  const path = pathname.replaceAll("\\", "/").toLowerCase();
+  return path.includes("/@fs/")
+    || path.includes("/attached_assets/")
+    || path.includes("/artifacts/api-server/src/")
+    || path.includes("/workspace/")
+    || path.endsWith(".csv")
+    || path === "/.env"
+    || path.startsWith("/.env.")
+    || /(^|\/)(manifest|metadata)\.json$/.test(path);
+}
+
+const privatePathGuard = {
+  name: "levelstory-private-path-guard",
+  configureServer(server: { middlewares: { use: (handler: (req: { url?: string }, res: { statusCode: number; end: (body: string) => void }, next: () => void) => void) => void } }) {
+    server.middlewares.use((req, res, next) => {
+      if (isBlockedRequestUrl(req.url)) {
+        res.statusCode = 404;
+        res.end("Not found");
+        return;
+      }
+      next();
+    });
+  },
+  configurePreviewServer(server: { middlewares: { use: (handler: (req: { url?: string }, res: { statusCode: number; end: (body: string) => void }, next: () => void) => void) => void } }) {
+    server.middlewares.use((req, res, next) => {
+      if (isBlockedRequestUrl(req.url)) {
+        res.statusCode = 404;
+        res.end("Not found");
+        return;
+      }
+      next();
+    });
+  },
+};
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    privatePathGuard,
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [

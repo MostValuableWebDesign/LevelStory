@@ -144,3 +144,35 @@ test("uses the candle open for a long runner gap-through retracement", () => {
   assert.equal(result.exitReason, "runner");
   assert.equal(result.legs.at(-1)?.referencePrice, 100);
 });
+
+test("labels a long same-candle new extreme and retracement without changing the conservative threshold", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100.5, 102, 100.5, 101)],
+    contracts: 2,
+    targetQuantity: 1,
+    target: 101,
+    stop: 98,
+  });
+  assert.equal(result.exitReason, "runner");
+  assert.ok(result.ambiguityLabels.includes("AMBIGUOUS_RUNNER_SEQUENCE"));
+  assert.equal(result.audit.eventLabels.includes("RUNNER_EXITED"), true);
+  assert.equal(result.audit.ambiguityLabels.includes("GAP_THROUGH_STOP"), false);
+});
+
+test("labels a short same-candle new extreme and retracement", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100, 99, 99.5),
+    subsequentCompletedCandles: [candle(99.5, 99.5, 98.5, 99)],
+    contracts: 2,
+    targetQuantity: 1,
+    target: 99,
+    stop: 103,
+  });
+  assert.equal(result.exitReason, "runner");
+  assert.ok(result.ambiguityLabels.includes("AMBIGUOUS_RUNNER_SEQUENCE"));
+  assert.equal(result.audit.eventLabels.includes("RUNNER_EXITED"), true);
+});

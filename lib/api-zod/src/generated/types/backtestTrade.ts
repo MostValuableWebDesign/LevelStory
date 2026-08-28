@@ -6,7 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestSegmentation } from './backtestSegmentation';
-import type { BacktestTradeAmbiguityLabel } from './backtestTradeAmbiguityLabel';
 import type { BacktestTradeAudit } from './backtestTradeAudit';
 import type { BacktestTradeDirection } from './backtestTradeDirection';
 import type { BacktestTradeExecutionMode } from './backtestTradeExecutionMode';
@@ -35,7 +34,7 @@ export interface BacktestTrade {
   netPnl: number;
   outcome: BacktestTradeOutcome;
   /** @nullable */
-  ambiguityLabel: BacktestTradeAmbiguityLabel;
+  ambiguityLabel: string | null;
   source: BacktestTradeSource;
   segmentation: BacktestSegmentation;
   executionMode?: BacktestTradeExecutionMode;
