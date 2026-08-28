@@ -1,0 +1,250 @@
+Paste this into Replit:
+
+```text
+Implement a focused corrective pass for the LevelStory multi-contract historical backtest.
+
+Do not begin a new phase. Fix only the verified Phase 11A/11B correctness, coverage, and production-runtime issues below.
+
+Do not change:
+
+- Trading formula or qualification thresholds
+- ORB, continuation, pullback, Fibonacci, volume, patience-candle, entry, stop, target, or runner rules
+- Risk limits
+- OHLCV execution assumptions
+- Existing MESU6 single-contract behavior
+- Shadow Mode protections
+- UI design language
+- Broker/live/paper-order functionality
+
+1. Enforce MES-only economics
+
+The source `historical_databento_multicontract` contains MES data only.
+
+Requirements:
+
+- Reject any multi-contract request whose symbol is not exactly `MES`.
+- Apply this validation to both normal and batch backtest endpoints.
+- Return a clear 400 or 422 response.
+- Lock the frontend contract selector to MES for:
+  - `historical_databento`
+  - `historical_databento_multicontract`
+- Never combine MES candles with ES, NQ, MNQ, or another contract’s economics.
+- Derive tick size, point value, dollar value per tick, fees, sizing, targets, fills, stops, and P&L from MES/current scheduled MES contract specifications.
+- Ensure reports show:
+  - `rootSymbol: MES`
+  - Actual scheduled contract such as `MESU6`
+  - MES dollar value per tick and point value
+- Include the validated source/symbol combination in cache identity.
+
+Add tests proving:
+
+- Multi-contract + MES is accepted.
+- Multi-contract + ES/NQ/MNQ is rejected.
+- Batch requests enforce the same restriction.
+- MESU6 candles cannot produce an ES economic specification.
+- MES sizing, target conversion, fees, and P&L use MES economics.
+
+2. Remove cold multi-contract import from the interactive critical path
+
+The deployed cold import took approximately 121 seconds, and a 20+2 rollover-spanning request returned a Replit 502 after approximately 120 seconds.
+
+Requirements:
+
+- Do not parse all nine CSV files during every interactive backtest request.
+- Build a bounded, persistent server-side multi-contract index/cache keyed by:
+  - Every file’s SHA-256 fingerprint
+  - Rollover schedule version
+  - Importer/schema version
+- Reuse the index across historical-summary, single-run, and batch requests.
+- Perform expensive import/index construction outside the replay worker’s deadline where practical.
+- Do not report “ready” until indexing completes successfully.
+- Expose an explicit indexing state:
+  - not_started
+  - indexing
+  - ready
+  - failed
+- Display this state on `/backtest`.
+- Disable run buttons until the selected historical source is ready.
+- Preserve abort, timeout, concurrency, and no-partial-cache protections.
+- Ensure every request returns a controlled application response before the Replit upstream timeout.
+- Never allow a raw Replit 502 to be the normal timeout outcome.
+- Do not raise timeouts above the deployment proxy limit as the fix.
+
+Performance acceptance:
+
+- Warm 5+2 run must finish comfortably below the upstream timeout.
+- Warm 20+2 rollover-spanning run must finish comfortably below the upstream timeout.
+- Identical repeat must reuse the stable cached run ID.
+- Cold indexing must be observable independently from a backtest request.
+- Add a production-like test with a stricter deadline than Replit’s upstream timeout.
+
+3. Implement truthful per-contract coverage analysis
+
+Remove the misleading multi-contract behavior caused by importing every file with `analyzeCoverage: false`.
+
+For each outright contract report:
+
+- Filename without exposing its server path
+- Contract symbol
+- Contract month
+- SHA-256 fingerprint
+- Earliest/latest timestamps
+- Total rows
+- Valid rows
+- Rejected rows
+- Duplicate rows removed
+- Regular-session candle count
+- Overnight candle count
+- Available trading dates
+- Missing-minute totals and segments
+- Unexpected regular-session missing minutes
+- Unexpected overnight missing minutes
+- Expected closed minutes
+- Maintenance minutes
+- Weekend/holiday minutes
+- Missing RTH dates
+- Complete RTH dates
+- Active-period dates
+- Whether active-period coverage is sufficient
+- Status and rejection/ineligibility reason
+
+Also report:
+
+- Missing scheduled contract files
+- Overlap dates
+- Coverage gaps
+- Inactive contracts
+- Selected contract and deterministic rollover reason for every date
+- Backtest eligibility for every date
+- Contract-local candle counts
+- Rollover boundaries and any raw price discontinuity
+
+Do not display zero missing/expected minutes merely because analysis was skipped. If analysis is unavailable, show `not calculated`, never a fabricated zero.
+
+Keep coverage computation bounded. It may be precomputed during indexing and stored in the fingerprinted index.
+
+4. Fail closed on missing scheduled-contract coverage
+
+The eligible date set must be based on the contract selected by the rollover schedule—not the union of dates from every uploaded contract.
+
+For every trading date:
+
+- Resolve the scheduled contract.
+- Confirm its file exists.
+- Confirm it contains completed candles for that date.
+- Confirm required regular-session coverage is sufficient.
+- Mark the date eligible or ineligible with an explicit reason.
+- Never retain an ineligible date in:
+  - selectedDates
+  - inSampleDates
+  - outOfSampleDates
+  - activeContractByDate
+  - batch partitions
+- Never silently skip a selected session.
+- Throw a clear validation error when the requested sample cannot be satisfied using eligible dates.
+- Assert that every selected date has candles belonging to exactly one scheduled contract.
+
+5. Correct multi-period range validation
+
+The existing 45-calendar-day validation must not prevent a batch from evaluating explicitly selected dates across multiple weeks or months.
+
+Requirements:
+
+- Preserve reasonable safety limits.
+- Keep the maximum partition/session limit.
+- When `selectedDates` is supplied, validate:
+  - Unique, sorted valid dates
+  - Maximum partition count
+  - Every date is eligible
+  - At least one in-sample date
+  - Holdout dates are the final untouched dates
+- Do not reject a sparse multi-month batch solely because the first and last selected dates are more than 45 days apart.
+- Keep the 45-day rule for ordinary continuous interactive requests if still needed.
+- Ensure UI controls cannot request an impossible in-sample + holdout count.
+
+6. Complete the missing deterministic tests
+
+Add tests for:
+
+- Five scheduled active-contract discovery
+- Calendar-spread rejection
+- Duplicate contract-file handling
+- Mixed-symbol file rejection
+- Missing scheduled-contract file
+- Scheduled contract missing one trading date
+- Overlapping dates across contracts
+- Exactly one active contract per eligible date
+- Ineligible dates excluded from all samples and partitions
+- Trade cannot cross a rollover
+- Indicator, Fibonacci, VWAP, EMA, and execution state reset at rollover
+- Stable combined fingerprints
+- Fingerprint invalidation after any file changes
+- DST-safe date ownership
+- Same input produces the same selected contract series
+- Per-file coverage totals reconcile
+- No skipped batch partitions
+- Multi-month selected-date validation
+- Cold/warm import behavior
+- 20+2 replay crossing a real rollover
+- Controlled timeout response before the proxy deadline
+- Non-MES economic mismatch rejection
+
+7. UI corrections
+
+On `/backtest`:
+
+- Lock MES for both historical MES sources.
+- Keep OHLCV modeled execution selected and available for multi-contract historical data.
+- Replace hard-coded “Nine-file coverage” text with the actual discovered file count.
+- Display indexing readiness.
+- Display truthful per-contract coverage and eligibility.
+- Clearly distinguish:
+  - Uploaded contracts
+  - Scheduled active contracts
+  - Inactive/future contracts
+  - Rejected spreads/duplicates
+- Show a clear error if the requested eligible sample cannot be formed.
+- Preserve explicit “Shadow Mode — No Live Orders” messaging.
+
+Verification requirements
+
+Run and report:
+
+- Every API test
+- Every frontend test
+- API and frontend typechecks
+- API and frontend production builds
+- Protected-path probes returning 404
+- `/backtest` returning 200
+- Browser-console verification
+- Cold index timing
+- Warm historical-summary timing
+- Warm 5+2 timing
+- Identical 5+2 cached timing and stable run ID
+- Warm 20+2 timing across the June 2026 MESM6 → MESU6 rollover
+- Contracts and dates selected in that rollover run
+- Coverage reconciliation for all nine uploaded outright files
+- A rejected multi-contract + ES request
+- A missing-active-date fixture that fails closed
+
+Do not claim completion if:
+
+- MES candles can still use non-MES economics.
+- Any selected date lacks scheduled-contract candles.
+- Coverage fields contain zeros because analysis was skipped.
+- A normal rollover-spanning run returns a proxy 502.
+- Required multi-contract tests remain absent.
+- The deployed code differs from the verified source.
+
+At completion, provide:
+
+- Files changed
+- Root causes
+- Test/build totals
+- Coverage totals
+- Runtime timings
+- Exact rollover selection
+- Cache/index behavior
+- Remaining limitations
+- Explicit confirmation that no live, paper, or broker-order capability was added
+```
