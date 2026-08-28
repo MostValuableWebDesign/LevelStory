@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
+import { createHash } from "node:crypto";
 import {
   classifyFuturesSession,
   isTradingDate,
@@ -77,6 +78,7 @@ export type HistoricalCsvImportSummary = {
 
 export type HistoricalCsvImport = {
   summary: HistoricalCsvImportSummary;
+  contentFingerprint: string;
   oneMinute: NormalizedCandle[];
   fiveMinute: NormalizedCandle[];
   fifteenMinute: NormalizedCandle[];
@@ -183,28 +185,6 @@ function aggregate(
   });
 }
 
-function countMissingMinutes(
-  candles: readonly NormalizedCandle[],
-  calendar: FuturesSessionCalendar,
-): { missingMinutes: number; segments: number } {
-  let missingMinutes = 0;
-  let segments = 0;
-  for (let index = 1; index < candles.length; index += 1) {
-    const previous = candles[index - 1];
-    const current = candles[index];
-    const previousDate = tradingDateForTimestamp(previous.openTime, calendar);
-    const currentDate = tradingDateForTimestamp(current.openTime, calendar);
-    if (previousDate !== currentDate) continue;
-    const difference = current.openTime - previous.openTime;
-    const missing = Math.max(0, Math.round(difference / MINUTE) - 1);
-    if (missing > 0) {
-      missingMinutes += missing;
-      segments += 1;
-    }
-  }
-  return { missingMinutes, segments };
-}
-
 function overlapMinutes(start: number, end: number, window: { openTime: number; closeTime: number } | null): number {
   if (!window) return 0;
   return Math.max(0, Math.round((Math.min(end, window.closeTime) - Math.max(start, window.openTime)) / MINUTE));
@@ -233,6 +213,8 @@ function countSessionAwareGaps(
   candles: readonly NormalizedCandle[],
   calendar: FuturesSessionCalendar,
 ): {
+  missingMinuteGaps: number;
+  missingGapSegments: number;
   unexpectedOpenSessionMissingMinutes: number;
   unexpectedOvernightMissingMinutes: number;
   unexpectedRegularSessionMissingMinutes: number;
@@ -258,6 +240,8 @@ function countSessionAwareGaps(
   overnightCoverageObserved: boolean;
 } {
   let unexpectedOpenSessionMissingMinutes = 0;
+  let missingMinuteGaps = 0;
+  let missingGapSegments = 0;
   let unexpectedOvernightMissingMinutes = 0;
   let unexpectedRegularSessionMissingMinutes = 0;
   let unexpectedMissingMinutes = 0;
@@ -327,6 +311,8 @@ function countSessionAwareGaps(
     const gapEnd = current.openTime;
     const missing = Math.max(0, Math.round((gapEnd - gapStart) / MINUTE));
     if (!missing) continue;
+    missingMinuteGaps += missing;
+    missingGapSegments += 1;
     let gapRegular = false;
     let gapOvernight = false;
     let regularMinutesInGap = 0;
@@ -374,6 +360,9 @@ function countSessionAwareGaps(
       }
     }
     const classified = regularMinutesInGap + earlyMinutesInGap + overnightMinutesInGap + maintenanceMinutesInGap;
+    if (classified > missing) {
+      throw new Error("Historical gap classification overlapped its missing-minute interval.");
+    }
     const weekendMinutesInGap = Math.max(0, missing - classified);
     gapOvernight = overnightMinutesInGap > 0;
     earlyCloseMinutes += earlyMinutesInGap;
@@ -382,12 +371,24 @@ function countSessionAwareGaps(
     maintenanceGapMinutes += maintenanceMinutesInGap;
     weekendHolidayClosedMinutes += weekendMinutesInGap;
     expectedClosedMinutes += earlyMinutesInGap + maintenanceMinutesInGap + weekendMinutesInGap;
+    if (
+      unexpectedRegularSessionMissingMinutes
+      + unexpectedOvernightMissingMinutes
+      + inactiveContractMinutes
+      + maintenanceGapMinutes
+      + weekendHolidayClosedMinutes
+      + earlyCloseMinutes !== missingMinuteGaps
+    ) {
+      throw new Error("Historical gap classification did not reconcile its missing-minute totals.");
+    }
     if (gapRegular) regularSessionGapSegments += 1;
     if (gapOvernight) overnightGapSegments += 1;
   }
   lowLiquidityInactiveMinutes = inactiveContractMinutes;
   expectedClosedMarketMinutes = expectedClosedMinutes;
   return {
+    missingMinuteGaps,
+    missingGapSegments,
     unexpectedOpenSessionMissingMinutes,
     unexpectedOvernightMissingMinutes,
     unexpectedRegularSessionMissingMinutes,
@@ -456,7 +457,6 @@ export function historicalImportToReplayDataset(
   const fiveMinute = imported.fiveMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));
   const oneMinute = imported.oneMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));
   const selectedGapReport = countSessionAwareGaps(oneMinute, imported.calendar);
-  const adjacentGaps = countMissingMinutes(oneMinute, imported.calendar);
   return {
     candles: fiveMinute.map(toReplayCandle),
     oneMinute: oneMinute.map((candle) => ({
@@ -480,8 +480,6 @@ export function historicalImportToReplayDataset(
     source: "historical_databento",
     quotesAvailable: false,
     gapReport: {
-      missingMinuteGaps: adjacentGaps.missingMinutes,
-      missingGapSegments: adjacentGaps.segments,
       ...selectedGapReport,
       coverageScope: "selected_dates",
     },
@@ -566,7 +564,10 @@ export async function importHistoricalCsv(
   let headers: string[] | null = null;
   let previousTimestamp: number | null = null;
 
-  const input = createInterface({ input: createReadStream(filePath), crlfDelay: Infinity });
+  const fileStream = createReadStream(filePath);
+  const contentHash = createHash("sha256");
+  fileStream.on("data", (chunk) => contentHash.update(chunk));
+  const input = createInterface({ input: fileStream, crlfDelay: Infinity });
   for await (const rawLine of input) {
     const line = String(rawLine).trim();
     if (!line) continue;
@@ -656,10 +657,8 @@ export async function importHistoricalCsv(
     else if (overnightOwnerDate(timestamp, calendar)) summary.overnightCandleCount += 1;
   }
   if (!headers) throw new Error("CSV file is empty.");
-  const gaps = countMissingMinutes(candles, calendar);
-  summary.missingMinuteGaps = gaps.missingMinutes;
-  summary.missingGapSegments = gaps.segments;
-  Object.assign(summary, countSessionAwareGaps(candles, calendar));
+  const gapReport = countSessionAwareGaps(candles, calendar);
+  Object.assign(summary, gapReport);
   summary.availableTradingDates = [...tradingDates].sort();
   const fiveMinute = aggregate(candles, 5, specification);
   const fifteenMinute = aggregate(candles, 15, specification);
@@ -670,7 +669,16 @@ export async function importHistoricalCsv(
     fifteenMinute: fifteenMinute.length,
     oneHour: oneHour.length,
   };
-  return { summary, oneMinute: candles, fiveMinute, fifteenMinute, oneHour, specification, calendar };
+  return {
+    summary,
+    contentFingerprint: contentHash.digest("hex"),
+    oneMinute: candles,
+    fiveMinute,
+    fifteenMinute,
+    oneHour,
+    specification,
+    calendar,
+  };
 }
 
 let cachedImport: { path: string; modifiedAt: number; value: HistoricalCsvImport } | null = null;
@@ -681,7 +689,10 @@ export async function getHistoricalCsvImport(
 ): Promise<HistoricalCsvImport> {
   const filePath = await resolveImportPath();
   const modifiedAt = (await stat(filePath)).mtimeMs;
-  if (cachedImport?.path === filePath && cachedImport.modifiedAt === modifiedAt) return cachedImport.value;
+  const fingerprint = await getHistoricalCsvFingerprint(filePath);
+  if (cachedImport?.path === filePath && cachedImport.modifiedAt === modifiedAt && cachedImport.value.contentFingerprint === fingerprint) {
+    return cachedImport.value;
+  }
   if (!importPromise) {
     importPromise = importHistoricalCsv(filePath, specification)
       .then((value) => {
@@ -695,8 +706,10 @@ export async function getHistoricalCsvImport(
   return importPromise;
 }
 
-export async function getHistoricalCsvFingerprint(): Promise<string> {
-  const filePath = await resolveImportPath();
-  const metadata = await stat(filePath);
-  return `${filePath}:${metadata.mtimeMs}:${metadata.size}`;
+export async function getHistoricalCsvFingerprint(filePath?: string): Promise<string> {
+  const resolvedPath = filePath ? boundedCsvPath(filePath) : await resolveImportPath();
+  const hash = createHash("sha256");
+  const stream = createReadStream(resolvedPath);
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
 }

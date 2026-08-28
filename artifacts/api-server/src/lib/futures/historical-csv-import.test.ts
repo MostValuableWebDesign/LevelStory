@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { getFuturesContractSpecification } from "./contracts.js";
 import {
+  getHistoricalCsvFingerprint,
   historicalImportToReplayDataset,
   importHistoricalCsv,
 } from "./historical-csv-import.js";
@@ -67,8 +68,27 @@ test("detects missing minutes without treating a session boundary as a gap", asy
   ];
   await withCsv(rows, async (path) => {
     const imported = await importHistoricalCsv(path, specification);
-    assert.equal(imported.summary.missingMinuteGaps, 1);
-    assert.equal(imported.summary.missingGapSegments, 1);
+    assert.equal(imported.summary.missingGapSegments, 2);
+    assert.equal(
+      imported.summary.missingMinuteGaps,
+      imported.summary.unexpectedMissingMinutes
+        + imported.summary.expectedClosedMinutes
+        + imported.summary.inactiveContractMinutes,
+    );
+  });
+});
+
+test("content fingerprints change when same-size CSV content changes", async () => {
+  await withCsv([row(Date.parse("2026-08-26T13:30:00.000Z"), 0)], async (path) => {
+    const first = await getHistoricalCsvFingerprint(path);
+    const replacement = row(Date.parse("2026-08-26T13:30:00.000Z"), 1);
+    assert.equal(replacement.length, row(Date.parse("2026-08-26T13:30:00.000Z"), 0).length);
+    await writeFile(path, [
+      "ts_event,rtype,publisher_id,instrument_id,open,high,low,close,volume,symbol",
+      replacement,
+    ].join("\n"));
+    const second = await getHistoricalCsvFingerprint(path);
+    assert.notEqual(second, first);
   });
 });
 
@@ -154,6 +174,7 @@ test("does not classify the Friday-to-Monday closure as unexpected overnight los
   await withCsv(rows, async (path) => {
     const imported = await importHistoricalCsv(path, specification);
     assert.equal(imported.summary.unexpectedOvernightMissingMinutes, 0);
+    assert.equal(imported.summary.overnightCoverageObserved, true);
     assert.ok(imported.summary.maintenanceGapMinutes > 0);
     assert.ok(imported.summary.weekendHolidayClosedMinutes > 0);
     assert.equal(
@@ -165,5 +186,56 @@ test("does not classify the Friday-to-Monday closure as unexpected overnight los
     assert.equal(imported.summary.unexpectedMissingMinutes,
       imported.summary.unexpectedRegularSessionMissingMinutes
       + imported.summary.unexpectedOvernightMissingMinutes);
+    assert.equal(
+      imported.summary.missingMinuteGaps,
+      imported.summary.unexpectedMissingMinutes
+        + imported.summary.expectedClosedMinutes
+        + imported.summary.inactiveContractMinutes,
+    );
   });
+});
+
+test("actual historical source reconciles selected 5 plus 2 and 20 plus 2 ranges", async () => {
+  const assetsDirectory = (
+    await Promise.all([
+      join(process.cwd(), "attached_assets"),
+      join(process.cwd(), "..", "attached_assets"),
+      join(process.cwd(), "..", "..", "attached_assets"),
+    ].map(async (directory) => {
+      try {
+        await readdir(directory);
+        return directory;
+      } catch {
+        return null;
+      }
+    }))
+  ).find((directory): directory is string => directory !== null);
+  assert.ok(assetsDirectory, "The attached_assets directory is required for this coverage test.");
+  const filename = (await readdir(assetsDirectory))
+    .find((entry) => entry.endsWith(".csv") && entry.includes("MESU6"));
+  assert.ok(filename, "The uploaded MESU6 CSV fixture is required for this coverage test.");
+  const imported = await importHistoricalCsv(join(assetsDirectory, filename), specification);
+  for (const [inSampleDays, outOfSampleDays] of [[5, 2], [20, 2]]) {
+    const dataset = historicalImportToReplayDataset(imported, "2025-08-27", "2026-08-26", inSampleDays, outOfSampleDays);
+    const gapReport = dataset.gapReport!;
+    assert.equal(dataset.selectedDates?.length, inSampleDays + outOfSampleDays);
+    assert.equal(
+      gapReport.missingMinuteGaps,
+      gapReport.unexpectedMissingMinutes
+        + gapReport.expectedClosedMinutes
+        + gapReport.inactiveContractMinutes,
+    );
+    assert.equal(
+      gapReport.expectedClosedMinutes,
+      gapReport.maintenanceGapMinutes
+        + gapReport.weekendHolidayClosedMinutes
+        + gapReport.earlyCloseMinutes,
+    );
+    assert.equal(
+      gapReport.unexpectedMissingMinutes,
+      gapReport.unexpectedRegularSessionMissingMinutes
+        + gapReport.unexpectedOvernightMissingMinutes,
+    );
+    assert.ok(gapReport.missingMinuteGaps >= gapReport.unexpectedMissingMinutes);
+  }
 });

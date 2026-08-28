@@ -4,11 +4,10 @@ import { db, riskSettingsTable } from "@workspace/db";
 import { getFuturesContractSpecification } from "../lib/futures/contracts.js";
 import {
   getHistoricalCsvImport,
-  getHistoricalCsvFingerprint,
   historicalImportToReplayDataset,
   publicHistoricalImportSummary,
 } from "../lib/futures/historical-csv-import.js";
-import { runCausalBacktest } from "../lib/phase9";
+import { BacktestTimeoutError, runBacktestInWorker } from "../lib/backtest-worker-client.js";
 import {
   compactBacktestReport,
   buildBacktestCacheKey,
@@ -51,18 +50,6 @@ function validateBacktestRange(request: { startDate?: string; endDate: string; i
     }
   }
   return null;
-}
-
-async function withTimeout<T>(work: Promise<T>, milliseconds: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("BACKTEST_TIMEOUT")), milliseconds);
-  });
-  try {
-    return await Promise.race([work, timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 router.get("/historical-data", historicalRateLimit, requestTimeout(30_000), async (req, res): Promise<void> => {
@@ -152,7 +139,7 @@ router.post("/backtest", backtestRateLimit, requestTimeout(BACKTEST_TIMEOUT_MS),
       },
       historicalSource: imported
         ? {
-            fingerprint: await getHistoricalCsvFingerprint(),
+            fingerprint: imported.contentFingerprint,
             filename: imported.summary.filename,
             detectedSymbol: imported.summary.detectedSymbol,
             latestTimestamp: imported.summary.latestTimestamp,
@@ -164,16 +151,20 @@ router.post("/backtest", backtestRateLimit, requestTimeout(BACKTEST_TIMEOUT_MS),
       res.json(RunBacktestResponse.parse(compactBacktestReport(cached.report, cached.runId)));
       return;
     }
-    const report = runCausalBacktest(parsed.data, risk, replayDataset);
-    const resolvedReport = await withTimeout(Promise.resolve(report), BACKTEST_TIMEOUT_MS);
+    const resolvedReport = await runBacktestInWorker(
+      { request: parsed.data, risk, replayDataset },
+      BACKTEST_TIMEOUT_MS,
+    );
     const runId = storeBacktestReport(resolvedReport, cacheKey);
     res.json(RunBacktestResponse.parse(compactBacktestReport(resolvedReport, runId)));
   } catch (error) {
-    const message = error instanceof Error && error.message === "BACKTEST_TIMEOUT"
+    const timedOut = error instanceof BacktestTimeoutError
+      || (error instanceof Error && error.message === "BACKTEST_TIMEOUT");
+    const message = timedOut
       ? "Backtest timed out. Reduce the historical range and try again."
       : "Unable to run the causal backtest with the supplied constraints.";
     req.log.warn({ error: error instanceof Error ? error.message : "unknown" }, "Rejected backtest request");
-    res.status(error instanceof Error && error.message === "BACKTEST_TIMEOUT" ? 408 : 400).json({ error: message });
+    res.status(timedOut ? 408 : 500).json({ error: message });
   } finally {
     activeBacktests -= 1;
   }

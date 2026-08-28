@@ -9,3 +9,5 @@
 - [Replay audit cadence](replay-audit-cadence.md) — audit every completed regular candle even when an active position blocks overlapping entries.
 - [Historical gap performance](historical-gap-performance.md) — classify long missing spans with interval overlap, not per-minute iteration, to keep full-file imports bounded.
 - [Preview private paths](preview-private-paths.md) — SPA fallback can return index.html for protected-looking URLs; guard dev/preview middleware before fallback.
+- [Worker backtest boundary](worker-backtest-boundary.md) — CPU-bound runs need a separately bundled, parent-terminable worker; publish to cache only after success.
+- [Content digest cache identity](content-digest-cache-identity.md) — historical source cache identity must hash streamed bytes, not path, size, or modification time.

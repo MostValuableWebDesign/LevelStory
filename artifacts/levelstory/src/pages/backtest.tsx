@@ -144,7 +144,8 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
          {[
            ["Valid rows", fullCoverage.validRows.toLocaleString()],
            ["Available dates", String(fullCoverage.availableTradingDates.length)],
-           ["Raw missing", `${fullCoverage.missingMinuteGaps.toLocaleString()} min`],
+           ["Classified missing total", `${fullCoverage.missingMinuteGaps.toLocaleString()} min`],
+           ["Raw adjacent gap segments", `${fullCoverage.missingGapSegments.toLocaleString()}`],
            ["Unexpected", `${fullCoverage.unexpectedMissingMinutes.toLocaleString()} min`],
            ["Expected closed", `${fullCoverage.expectedClosedMinutes.toLocaleString()} min`],
            ["Inactive", `${fullCoverage.inactiveContractMinutes.toLocaleString()} min`],
@@ -153,10 +154,11 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
        <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Inactive threshold: <strong className="text-foreground">{fullCoverage.inactiveContractThresholdPercent}% of expected RTH minutes</strong>.</div>
      </Panel>}
      <Panel>
-       <PanelTitle eyebrow="Data quality / selected backtest" title="Missing-minute accounting" right={<span className="mono text-[10px] text-muted-foreground">{report.gapReport.missingGapSegments.toLocaleString()} raw segments</span>} />
+       <PanelTitle eyebrow="Data quality / selected backtest" title="Missing-minute accounting" right={<span className="mono text-[10px] text-muted-foreground">{report.gapReport.missingGapSegments.toLocaleString()} raw adjacent segments</span>} />
        <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-7">
         {[
-          ["All missing", `${report.gapReport.missingMinuteGaps.toLocaleString()} min`],
+          ["Classified missing total", `${report.gapReport.missingMinuteGaps.toLocaleString()} min`],
+          ["Raw adjacent gap segments", `${report.gapReport.missingGapSegments.toLocaleString()}`],
           ["Unexpected open", `${report.gapReport.unexpectedOpenSessionMissingMinutes.toLocaleString()} min`],
            ["Unexpected overnight", `${report.gapReport.unexpectedOvernightMissingMinutes.toLocaleString()} min / ${report.gapReport.overnightGapSegments} segments`],
            ["Unexpected regular", `${report.gapReport.unexpectedRegularSessionMissingMinutes.toLocaleString()} min / ${report.gapReport.regularSessionGapSegments} segments`],
@@ -247,7 +249,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
           </div>
         </div>
         {auditQuery.isError ? <div className="border-t border-border p-6 text-sm text-destructive">This audit page could not be loaded. The run may have expired.</div> : rejectedAuditRows.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Trading date / observation (UTC)</th><th className="px-4 py-3">Setup / decision</th><th className="px-4 py-3">Patience</th><th className="px-4 py-3">Stops / target</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-border">{rejectedAuditRows.map((item) => <tr key={item.id}><td className="mono px-4 py-3">{item.tradingDate}<span className="block text-[10px] text-muted-foreground">candle {item.evaluatedCandleOpenTime}</span>{item.modeledFillObservationTime && <span className="block text-[10px] text-muted-foreground">modeled fill {item.modeledFillObservationTime}</span>}</td><td className="px-4 py-3">{item.setupType}<span className="block text-[10px] text-muted-foreground">{item.decision}</span></td><td className="px-4 py-3 text-[10px] text-muted-foreground">{item.patienceState}</td><td className="mono px-4 py-3 text-[10px] text-muted-foreground">{item.strategyStopPrice ?? "—"} / {item.catastropheStopPrice ?? "—"} / {item.targetPrice ?? "—"}</td><td className="max-w-[360px] px-4 py-3 text-[10px] text-muted-foreground"><strong className="text-foreground">{item.rejectionCategory}</strong> · {item.rejectionSummary ?? item.rejectionReason}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No rejected evaluations were recorded on this page.</div>}
-       <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Expected closed = maintenance/daily close + weekend/holiday + early close. Unexpected missing = unexpected regular + unexpected overnight. Inactive threshold: <strong className="text-foreground">{report.gapReport.inactiveContractThresholdPercent}% of expected RTH minutes</strong>.</div>
+       <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">Classified missing total = unexpected missing + expected closed + inactive contract. Expected closed = maintenance/daily close + weekend/holiday + early close. Unexpected missing = unexpected regular + unexpected overnight. Inactive threshold: <strong className="text-foreground">{report.gapReport.inactiveContractThresholdPercent}% of expected RTH minutes</strong>.</div>
      </Panel>
      </div>
 

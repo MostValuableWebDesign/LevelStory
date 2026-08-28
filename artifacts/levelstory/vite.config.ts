@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
+import { resolveAllowedHosts } from './vite-hosts.ts';
 
 const rawPort = process.env.PORT;
 
@@ -27,18 +28,7 @@ if (!basePath) {
   );
 }
 
-const replitPreviewHosts = [
-  process.env.REPLIT_DEV_DOMAIN,
-  ...(process.env.REPLIT_DOMAINS ?? '').split(','),
-]
-  .map((host) => host.trim())
-  .filter(Boolean);
-const configuredAllowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? '')
-  .split(',')
-  .map((host) => host.trim())
-  .filter(Boolean);
-const allowedHosts = configuredAllowedHosts.length > 0 ? configuredAllowedHosts : ['localhost', '127.0.0.1'];
-allowedHosts.push(...replitPreviewHosts);
+const allowedHosts = resolveAllowedHosts(process.env);
 const privateFileDeny = [
   '**/attached_assets/**',
   '**/*.csv',

@@ -39,3 +39,22 @@ test("completed reports reuse a normalized cache key and preserve the run id", (
   assert.equal(secondRun, firstRun);
   assert.equal(getCachedBacktestReport(keyA)?.runId, firstRun);
 });
+
+test("source content, risk, and execution changes invalidate cache identity", () => {
+  const base = {
+    request: { symbol: "MES", endDate: "2026-08-28", inSampleDays: 5, outOfSampleDays: 2 },
+    risk: { accountSize: 10_000, riskPercent: 1 },
+    executionPolicy: { entryBufferTicks: 4, slippageTicks: 1 },
+  };
+  const sourceA = buildBacktestCacheKey({ ...base, historicalSource: { fingerprint: "a" } });
+  const sourceB = buildBacktestCacheKey({ ...base, historicalSource: { fingerprint: "b" } });
+  const riskChanged = buildBacktestCacheKey({ ...base, risk: { ...base.risk, riskPercent: 2 }, historicalSource: { fingerprint: "a" } });
+  const executionChanged = buildBacktestCacheKey({
+    ...base,
+    executionPolicy: { ...base.executionPolicy, slippageTicks: 2 },
+    historicalSource: { fingerprint: "a" },
+  });
+  assert.notEqual(sourceA, sourceB);
+  assert.notEqual(sourceA, riskChanged);
+  assert.notEqual(sourceA, executionChanged);
+});
