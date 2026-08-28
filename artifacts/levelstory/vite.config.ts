@@ -27,10 +27,18 @@ if (!basePath) {
   );
 }
 
-const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? 'localhost,127.0.0.1')
+const replitPreviewHosts = [
+  process.env.REPLIT_DEV_DOMAIN,
+  ...(process.env.REPLIT_DOMAINS ?? '').split(','),
+]
+  .map((host) => host.trim())
+  .filter(Boolean);
+const configuredAllowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? '')
   .split(',')
   .map((host) => host.trim())
   .filter(Boolean);
+const allowedHosts = configuredAllowedHosts.length > 0 ? configuredAllowedHosts : ['localhost', '127.0.0.1'];
+allowedHosts.push(...replitPreviewHosts);
 const privateFileDeny = [
   '**/attached_assets/**',
   '**/*.csv',
