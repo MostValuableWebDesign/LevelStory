@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestTradeAuditLegsItem } from './backtestTradeAuditLegsItem';
+import type { BacktestTradeAuditStopLevel } from './backtestTradeAuditStopLevel';
 
 export type BacktestTradeAudit = {
   /** @nullable */
@@ -17,6 +18,12 @@ export type BacktestTradeAudit = {
   /** @nullable */
   targetPrice: number | null;
   /** @nullable */
+  strategyStopPrice: number | null;
+  /** @nullable */
+  catastropheStopPrice: number | null;
+  /** @nullable */
+  stopLevel: BacktestTradeAuditStopLevel;
+  /** @nullable */
   entryCandleOpenTime: string | null;
   /** @nullable */
   exitCandleOpenTime: string | null;
@@ -25,6 +32,13 @@ export type BacktestTradeAudit = {
   targetHit: boolean;
   runnerActivated: boolean;
   runnerExited: boolean;
+  /** @nullable */
+  runnerReferencePrice: number | null;
+  /** @nullable */
+  runnerImpulse: number | null;
+  /** @nullable */
+  runnerMostFavorablePrice: number | null;
+  remainingQuantity: number;
   exitReason: string;
   legs: BacktestTradeAuditLegsItem[];
 };

@@ -60,3 +60,42 @@ test("returns no fill when no candle triggers", () => {
   assert.equal(result.exitReason, "not filled");
   assert.equal(result.modeledFill, null);
 });
+
+test("selects the closer protective stop and records its category", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100.5, 100.75, 99.5, 100)],
+    strategyStop: 99.5,
+    catastropheStop: 99.75,
+    target: 103,
+  });
+  assert.equal(result.stopPrice, 99.75);
+  assert.equal(result.audit.stopLevel, "catastrophe");
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.legs[0]?.referencePrice, 99.75);
+});
+
+test("uses the opening price for a gap-through stop and closes remaining quantity at session close", () => {
+  const gap = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(98, 99, 97, 98)],
+    strategyStop: 99,
+    catastropheStop: 98.5,
+    target: 103,
+  });
+  assert.equal(gap.legs[0]?.referencePrice, 98);
+
+  const close = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100.5, 101, 100.25, 100.75)],
+    strategyStop: 98,
+    target: 103,
+    sessionCloseCandle: candle(100.75, 101, 100.5, 100.75),
+  });
+  assert.equal(close.exitReason, "session_close");
+  assert.equal(close.legs.at(-1)?.exitReason, "session_close");
+  assert.equal(close.audit.remainingQuantity, 0);
+});

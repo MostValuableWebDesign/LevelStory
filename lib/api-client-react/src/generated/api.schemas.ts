@@ -1498,6 +1498,10 @@ export interface HistoricalImportSummary {
   missingMinuteGaps: number;
   missingGapSegments: number;
   unexpectedOpenSessionMissingMinutes: number;
+  unexpectedOvernightMissingMinutes: number;
+  unexpectedRegularSessionMissingMinutes: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
@@ -1536,6 +1540,12 @@ export interface BacktestMetricSet {
   targetExits: number;
   runnerExits: number;
   ambiguityCount: number;
+  expiredPatienceSetups: number;
+  ambiguousEntryCount: number;
+  strategyStopExits: number;
+  catastropheStopExits: number;
+  sessionCloseExits: number;
+  partialTargetExits: number;
 }
 
 export type BacktestSegmentationDirection = typeof BacktestSegmentationDirection[keyof typeof BacktestSegmentationDirection];
@@ -1668,6 +1678,7 @@ export const BacktestTradeOutcome = {
   target: 'target',
   strategy_stop: 'strategy stop',
   catastrophe_stop: 'catastrophe stop',
+  session_close: 'session close',
   manual: 'manual',
 } as const;
 
@@ -1699,6 +1710,17 @@ export const BacktestTradeExecutionMode = {
   ohlcv_modeled: 'ohlcv_modeled',
 } as const;
 
+/**
+ * @nullable
+ */
+export type BacktestTradeAuditStopLevel = typeof BacktestTradeAuditStopLevel[keyof typeof BacktestTradeAuditStopLevel] | null;
+
+
+export const BacktestTradeAuditStopLevel = {
+  strategy: 'strategy',
+  catastrophe: 'catastrophe',
+} as const;
+
 export type BacktestTradeAuditLegsItemKind = typeof BacktestTradeAuditLegsItemKind[keyof typeof BacktestTradeAuditLegsItemKind];
 
 
@@ -1716,6 +1738,7 @@ export const BacktestTradeAuditLegsItemExitReason = {
   runner: 'runner',
   stop: 'stop',
   manual: 'manual',
+  session_close: 'session_close',
 } as const;
 
 export type BacktestTradeAuditLegsItem = {
@@ -1740,6 +1763,12 @@ export type BacktestTradeAudit = {
   /** @nullable */
   targetPrice: number | null;
   /** @nullable */
+  strategyStopPrice: number | null;
+  /** @nullable */
+  catastropheStopPrice: number | null;
+  /** @nullable */
+  stopLevel: BacktestTradeAuditStopLevel;
+  /** @nullable */
   entryCandleOpenTime: string | null;
   /** @nullable */
   exitCandleOpenTime: string | null;
@@ -1748,6 +1777,13 @@ export type BacktestTradeAudit = {
   targetHit: boolean;
   runnerActivated: boolean;
   runnerExited: boolean;
+  /** @nullable */
+  runnerReferencePrice: number | null;
+  /** @nullable */
+  runnerImpulse: number | null;
+  /** @nullable */
+  runnerMostFavorablePrice: number | null;
+  remainingQuantity: number;
   exitReason: string;
   legs: BacktestTradeAuditLegsItem[];
 };
@@ -1806,8 +1842,12 @@ export const BacktestReportDataResolution = {
 export type BacktestReportDataset = {
   startDate: string;
   endDate: string;
+  requestedStartDate: string;
+  requestedEndDate: string;
+  selectedDates: string[];
   inSampleDates: string[];
   outOfSampleDates: string[];
+  excludedDates: string[];
   untouchedOutOfSample: true;
   optimizationApplied: false;
 };
@@ -1829,6 +1869,8 @@ export type BacktestReportReplay = {
   causal: true;
   futureCandleAccess: false;
 };
+
+export type BacktestReportAuditItem = { [key: string]: unknown };
 
 export type BacktestReportExecutionMode = typeof BacktestReportExecutionMode[keyof typeof BacktestReportExecutionMode];
 
@@ -1852,6 +1894,10 @@ export type BacktestReportGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
   unexpectedOpenSessionMissingMinutes: number;
+  unexpectedOvernightMissingMinutes: number;
+  unexpectedRegularSessionMissingMinutes: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
@@ -1870,6 +1916,7 @@ export interface BacktestReport {
   outOfSample: BacktestMetricSet;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
+  audit: BacktestReportAuditItem[];
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;
   fillLabel: string;

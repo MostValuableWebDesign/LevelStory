@@ -99,3 +99,33 @@ test("historical replay selection keeps the imported source separate from simula
     assert.equal(dataset.candles.length, 3);
   });
 });
+
+test("selects the latest exact N plus M dates and exposes earlier dates as excluded", async () => {
+  const start = Date.parse("2026-08-24T13:30:00.000Z");
+  const rows = Array.from({ length: 4 }, (_, index) => row(start + index * 86_400_000, index));
+  await withCsv(rows, async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    const dataset = historicalImportToReplayDataset(imported, "2026-08-24", "2026-08-27", 2, 1);
+    assert.deepEqual(dataset.selectedDates, ["2026-08-25", "2026-08-26", "2026-08-27"]);
+    assert.deepEqual(dataset.inSampleDates, ["2026-08-25", "2026-08-26"]);
+    assert.deepEqual(dataset.outOfSampleDates, ["2026-08-27"]);
+    assert.deepEqual(dataset.excludedDates, ["2026-08-24"]);
+    assert.equal(dataset.contractSymbol, "MESU6");
+  });
+});
+
+test("classifies regular-session and overnight gaps without counting maintenance as missing", async () => {
+  const regularStart = Date.parse("2026-08-26T13:30:00.000Z");
+  const rows = Array.from({ length: 391 }, (_, index) => index === 1 ? null : row(regularStart + index * 60_000, index))
+    .filter((value): value is string => value !== null);
+  rows.push(row(Date.parse("2026-08-26T22:00:00.000Z"), 500));
+  rows.push(row(Date.parse("2026-08-26T22:02:00.000Z"), 501));
+  await withCsv(rows, async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.regularSessionMissingMinutes, 1);
+    assert.equal(imported.summary.unexpectedRegularSessionMissingMinutes, 1);
+    assert.equal(imported.summary.unexpectedOvernightMissingMinutes, 1);
+    assert.equal(imported.summary.overnightGapSegments, 1);
+    assert.equal(imported.summary.expectedClosedMarketMinutes, 119);
+  });
+});

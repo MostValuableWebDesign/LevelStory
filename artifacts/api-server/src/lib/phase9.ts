@@ -76,6 +76,10 @@ export type CausalReplayDataset = {
   contractMonth: string;
   inSampleDates: readonly string[];
   outOfSampleDates: readonly string[];
+  requestedStartDate?: string;
+  requestedEndDate?: string;
+  selectedDates?: readonly string[];
+  excludedDates?: readonly string[];
   source?: "simulated" | "historical_databento";
   quotesAvailable?: boolean;
   gapReport?: BacktestGapReport;
@@ -85,6 +89,10 @@ export type BacktestGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
   unexpectedOpenSessionMissingMinutes: number;
+  unexpectedOvernightMissingMinutes: number;
+  unexpectedRegularSessionMissingMinutes: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
@@ -128,7 +136,7 @@ export type BacktestTrade = {
   fees: number;
   slippage: number;
   netPnl: number;
-  outcome: "target" | "strategy stop" | "catastrophe stop" | "manual";
+  outcome: "target" | "strategy stop" | "catastrophe stop" | "session close" | "manual";
   ambiguityLabel: "AMBIGUOUS_STOP_FIRST" | "AMBIGUOUS_ENTRY_INVALIDATION" | null;
   source: "tick" | "one-minute" | "ohlc";
   segmentation: BacktestSegmentation;
@@ -139,6 +147,9 @@ export type BacktestTrade = {
     modeledFillPrice: number | null;
     stopPrice: number | null;
     targetPrice: number | null;
+    strategyStopPrice?: number | null;
+    catastropheStopPrice?: number | null;
+    stopLevel?: "strategy" | "catastrophe" | null;
     entryCandleOpenTime: string | null;
     exitCandleOpenTime: string | null;
     assumptions: string[];
@@ -146,9 +157,48 @@ export type BacktestTrade = {
     targetHit: boolean;
     runnerActivated: boolean;
     runnerExited: boolean;
+    runnerReferencePrice?: number | null;
+    runnerImpulse?: number | null;
+    runnerMostFavorablePrice?: number | null;
+    remainingQuantity?: number;
     exitReason: string;
     legs: ModeledExecutionLeg[];
   };
+};
+
+export type BacktestAuditRecord = {
+  id: string;
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  period: "in_sample" | "out_of_sample";
+  evaluatedCandleOpenTime: string;
+  setupType: string;
+  direction: Direction | null;
+  decision: string;
+  alertOnly: boolean;
+  rejectionReason: string | null;
+  ruleEvidence: string[];
+  orbState: string;
+  breakoutEvidence: string;
+  volumeEvidence: string;
+  pullbackEvidence: string;
+  criticalLevelEvidence: string;
+  trendEvidence: string;
+  patienceState: string;
+  patienceCandle: Record<string, number | boolean> | null;
+  triggerCandle: Record<string, number | boolean> | null;
+  entryTriggerPrice: number | null;
+  strategyStopPrice: number | null;
+  catastropheStopPrice: number | null;
+  targetPrice: number | null;
+  ambiguityLabels: string[];
+  executionMode: "quote_based_shadow" | "ohlcv_modeled";
+  fees: number;
+  slippage: number;
+  grossPnl: number | null;
+  netPnl: number | null;
+  exitReason: string | null;
 };
 
 export type BacktestSegmentation = {
@@ -190,6 +240,12 @@ export type BacktestMetrics = {
   targetExits: number;
   runnerExits: number;
   ambiguityCount: number;
+  expiredPatienceSetups: number;
+  ambiguousEntryCount: number;
+  strategyStopExits: number;
+  catastropheStopExits: number;
+  sessionCloseExits: number;
+  partialTargetExits: number;
 };
 
 export type BacktestSegment = BacktestMetrics & {
@@ -206,8 +262,12 @@ export type BacktestReport = {
   dataset: {
     startDate: string;
     endDate: string;
+    requestedStartDate: string;
+    requestedEndDate: string;
+    selectedDates: string[];
     inSampleDates: string[];
     outOfSampleDates: string[];
+    excludedDates: string[];
     untouchedOutOfSample: true;
     optimizationApplied: false;
   };
@@ -221,6 +281,7 @@ export type BacktestReport = {
   outOfSample: BacktestMetrics;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
+  audit: BacktestAuditRecord[];
   assumptions: string[];
   executionMode: "quote_based_shadow" | "ohlcv_modeled";
   fillLabel: string;
@@ -477,14 +538,21 @@ function levelType(snapshot: MarketSnapshot): BacktestSegmentation["levelType"] 
   return types.length > 1 ? "mixed" : (types[0] as BacktestSegmentation["levelType"] | undefined) ?? "unmapped";
 }
 
-function segmentation(snapshot: MarketSnapshot, setupType: string, direction: Direction, candle: SimulatedFuturesCandle): BacktestSegmentation {
+function segmentation(
+  snapshot: MarketSnapshot,
+  setupType: string,
+  direction: Direction,
+  candle: SimulatedFuturesCandle,
+  contractSymbol = snapshot.contract.fullContractSymbol,
+  contractMonth = snapshot.contract.contractMonth,
+): BacktestSegmentation {
   const confluence = snapshot.majorLevels.reduce<BacktestSegmentation["confluence"]>((strongest, level) => {
     const rank = { normal: 0, strong: 1, dynamite: 2 };
     return rank[level.confluence] > rank[strongest] ? level.confluence : strongest;
   }, "normal");
   return {
-    contract: snapshot.contract.fullContractSymbol,
-    contractMonth: snapshot.contract.contractMonth,
+    contract: contractSymbol,
+    contractMonth,
     setupType,
     direction,
     timeOfDay: timeOfDay(candle.openTime),
@@ -523,11 +591,26 @@ function emptyMetrics(rejectedSetupCount = 0): BacktestMetrics {
     targetExits: 0,
     runnerExits: 0,
     ambiguityCount: 0,
+    expiredPatienceSetups: 0,
+    ambiguousEntryCount: 0,
+    strategyStopExits: 0,
+    catastropheStopExits: 0,
+    sessionCloseExits: 0,
+    partialTargetExits: 0,
   };
 }
 
-export function calculateBacktestMetrics(trades: readonly BacktestTrade[], rejectedSetupCount = 0): BacktestMetrics {
-  if (!trades.length) return emptyMetrics(rejectedSetupCount);
+export function calculateBacktestMetrics(
+  trades: readonly BacktestTrade[],
+  rejectedSetupCount = 0,
+  audits: readonly BacktestAuditRecord[] = [],
+): BacktestMetrics {
+  if (!trades.length) {
+    const empty = emptyMetrics(rejectedSetupCount);
+    empty.expiredPatienceSetups = audits.filter((record) => record.patienceState === "PATIENCE_CANDLE_EXPIRED").length;
+    empty.ambiguousEntryCount = audits.filter((record) => record.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length;
+    return empty;
+  }
   const wins = trades.filter((trade) => trade.netPnl > 0);
   const losses = trades.filter((trade) => trade.netPnl < 0);
   let equity = 0;
@@ -563,6 +646,12 @@ export function calculateBacktestMetrics(trades: readonly BacktestTrade[], rejec
     targetExits: trades.filter((trade) => trade.audit?.targetHit === true).length,
     runnerExits: trades.filter((trade) => trade.audit?.runnerExited === true || trade.audit?.legs.some((leg) => leg.kind === "runner") === true).length,
     ambiguityCount: trades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
+    expiredPatienceSetups: audits.filter((record) => record.patienceState === "PATIENCE_CANDLE_EXPIRED").length,
+    ambiguousEntryCount: audits.filter((record) => record.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length,
+    strategyStopExits: trades.filter((trade) => trade.outcome === "strategy stop").length,
+    catastropheStopExits: trades.filter((trade) => trade.outcome === "catastrophe stop").length,
+    sessionCloseExits: trades.filter((trade) => trade.outcome === "session close").length,
+    partialTargetExits: trades.filter((trade) => trade.audit?.legs.some((leg) => leg.kind === "target") && trade.audit?.legs.some((leg) => leg.kind === "runner")).length,
   };
 }
 
@@ -578,6 +667,67 @@ function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCount: num
       return { dimension, value, ...calculateBacktestMetrics(matching, matching.length ? 0 : rejectedSetupCount) };
     });
   });
+}
+
+function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Record<string, number | boolean> | null {
+  if (!candle) return null;
+  return {
+    openTime: candle.openTime,
+    closeTime: candle.closeTime,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    isComplete: candle.isComplete,
+  };
+}
+
+function auditForEvaluation(
+  evaluation: MarketSnapshot["setupAnalysis"]["evaluations"][number],
+  snapshot: MarketSnapshot,
+  candle: SimulatedFuturesCandle,
+  tradingDate: string,
+  period: "in_sample" | "out_of_sample",
+  executionMode: "quote_based_shadow" | "ohlcv_modeled",
+  contractSymbol: string,
+  contractMonth: string,
+): BacktestAuditRecord {
+  return {
+    id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
+    tradingDate,
+    contractSymbol,
+    contractMonth,
+    period,
+    evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
+    setupType: evaluation.setupType,
+    direction: evaluation.direction,
+    decision: evaluation.decision,
+    alertOnly: evaluation.alertOnly,
+    rejectionReason: evaluation.decision === "SETUP QUALIFIED" ? null : evaluation.explanation,
+    ruleEvidence: evaluation.rules.map((rule) => `${rule.passed ? "PASS" : "FAIL"} ${rule.key}: ${rule.detail}`),
+    orbState: snapshot.breakout.state,
+    breakoutEvidence: snapshot.breakout.detail,
+    volumeEvidence: snapshot.volumeAnalysis.reversalWarning
+      ?? (snapshot.volumeAnalysis.supportingBreakoutVolume ? "Breakout volume supported." : "Breakout volume neutral or unavailable."),
+    pullbackEvidence: snapshot.pullback.detail,
+    criticalLevelEvidence: snapshot.levels.critical.map((level) => `${level.name} ${level.price}`).join("; ") || "No critical level evidence.",
+    trendEvidence: `${snapshot.trend.direction}: ${snapshot.trend.evidence.join("; ")}`,
+    patienceState: snapshot.patience.state,
+    patienceCandle: evidenceCandle(snapshot.patience.patienceCandle as SimulatedFuturesCandle | null),
+    triggerCandle: evidenceCandle(snapshot.patience.triggerCandle as SimulatedFuturesCandle | null),
+    entryTriggerPrice: snapshot.patience.entryBufferPrice,
+    strategyStopPrice: snapshot.riskPlan.strategyStop,
+    catastropheStopPrice: snapshot.riskPlan.catastropheStop,
+    targetPrice: snapshot.riskPlan.target,
+    ambiguityLabels: [],
+    executionMode,
+    fees: 0,
+    slippage: 0,
+    grossPnl: null,
+    netPnl: null,
+    exitReason: null,
+  };
 }
 
 export function runCausalBacktest(
@@ -607,6 +757,13 @@ export function runCausalBacktest(
   const historicalHourly: SimulatedHourlyCandle[] = completedSimulatedHourlyCandles(candles, calendar);
   const rejectedByPeriod = { in_sample: 0, out_of_sample: 0 };
   const trades: BacktestTrade[] = [];
+  const audit: BacktestAuditRecord[] = [];
+  const historicalContractSymbol = dataset.source === "historical_databento"
+    ? dataset.contractSymbol
+    : specification.fullContractSymbol;
+  const reportContract = dataset.source === "historical_databento"
+    ? { ...specification, fullContractSymbol: dataset.contractSymbol }
+    : specification;
   let lastExitIndex = -1;
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
 
@@ -616,13 +773,8 @@ export function runCausalBacktest(
     const period = periodForDate(tradingDate, dataset);
     const regularWindow = sessionWindow(tradingDate, "regular", calendar);
     if (!regularWindow || candle.openTime < regularWindow.openTime || candle.openTime >= regularWindow.closeTime) continue;
-    const regularOrdinal = Math.round((candle.openTime - regularWindow.openTime) / (5 * MINUTE));
-    const isLastRegularCandle = candle.closeTime >= regularWindow.closeTime;
-    // A report checkpoint is every 60 minutes. The cursor still exposes only
-    // the complete prefix, while this bounded sampling keeps a multi-day
-    // report responsive enough for an interactive research surface.
-    if (regularOrdinal % 12 !== 0 && !isLastRegularCandle) continue;
-    if (!candle.isComplete || !candle.closeTime || lastExitIndex >= index) continue;
+     if (!candle.isComplete || !candle.closeTime) continue;
+     const positionActive = lastExitIndex >= index;
     const cursor = createCausalReplay(dataset, candle.closeTime);
     assertCausalVisibility(cursor.candles, candle.closeTime);
     finalReplay = cursor;
@@ -645,13 +797,40 @@ export function runCausalBacktest(
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations;
+    const evaluationAudits = evaluations.map((evaluation) => {
+      const record = auditForEvaluation(
+        evaluation,
+        snapshot,
+        candle,
+        tradingDate,
+        period,
+        executionMode,
+        historicalContractSymbol,
+        dataset.contractMonth,
+      );
+      audit.push(record);
+      return record;
+    });
     for (const evaluation of evaluations) {
       if (evaluation.decision !== "SETUP QUALIFIED") {
         rejectedByPeriod[period] += 1;
       }
     }
     const selected = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
-    if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) continue;
+    const selectedAudit = selected
+      ? evaluationAudits.find((record) => record.setupType === selected.setupType)
+      : undefined;
+    if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) {
+      if (selectedAudit) selectedAudit.rejectionReason = selected
+        ? snapshot.riskPlan.reasons.join(" ") || "Risk plan rejected the qualified setup."
+        : "No non-alert qualified setup was available.";
+      continue;
+    }
+     if (positionActive) {
+       if (selectedAudit) selectedAudit.rejectionReason = "POSITION_ACTIVE";
+       rejectedByPeriod[period] += 1;
+       continue;
+     }
     if (executionMode === "ohlcv_modeled") {
       const patienceSummary = snapshot.patience.patienceCandle;
       const triggerSummary = snapshot.patience.triggerCandle;
@@ -662,6 +841,27 @@ export function runCausalBacktest(
         ? candles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
         : undefined;
       if (!trigger || !patienceCandle || trigger.closeTime > candle.closeTime) {
+        if (selectedAudit) selectedAudit.rejectionReason = "PATIENCE_TRIGGER_NOT_COMPLETED";
+        rejectedByPeriod[period] += 1;
+        continue;
+      }
+      if (trigger.closeTime !== candle.closeTime) {
+        if (selectedAudit) selectedAudit.rejectionReason = "PATIENCE_TRIGGER_NOT_AT_CURSOR";
+        rejectedByPeriod[period] += 1;
+        continue;
+      }
+      const entryResolution = resolveEntryAndInvalidation({
+        direction: selected.direction,
+        candle: trigger,
+        entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
+        invalidation: snapshot.riskPlan.strategyStop,
+        sequenceKnown: false,
+      });
+      if (entryResolution.status === "ambiguous") {
+        if (selectedAudit) {
+          selectedAudit.rejectionReason = entryResolution.label;
+          selectedAudit.ambiguityLabels = [entryResolution.label ?? "AMBIGUOUS_ENTRY_INVALIDATION"];
+        }
         rejectedByPeriod[period] += 1;
         continue;
       }
@@ -671,6 +871,12 @@ export function runCausalBacktest(
         .filter((item) => tradingDateForTimestamp(item.openTime, calendar) === tradingDate
           && item.isComplete
           && item.closeTime <= regularWindow.closeTime);
+      const sessionCloseCandle = [...candles]
+        .filter((item) => item.isComplete
+          && tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+          && item.openTime >= regularWindow.openTime
+          && item.closeTime <= regularWindow.closeTime)
+        .at(-1);
       const modeled = simulateOhlcvExecution({
         direction: selected.direction,
         entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
@@ -680,7 +886,9 @@ export function runCausalBacktest(
         contracts: snapshot.riskPlan.contracts,
         targetQuantity: snapshot.riskPlan.targetContracts,
         target: snapshot.riskPlan.target,
-        stop: snapshot.riskPlan.strategyStop,
+        strategyStop: snapshot.riskPlan.strategyStop,
+        catastropheStop: snapshot.riskPlan.catastropheStop,
+        sessionCloseCandle,
         tickSize: specification.tickSize,
         tickValue: specification.dollarValuePerTick,
         pointMultiplier: specification.pointValue * specification.contractMultiplier,
@@ -696,20 +904,23 @@ export function runCausalBacktest(
           : { commission: request.ohlcvCommissionPerContract / 2 },
       });
       if (modeled.modeledFill === null || modeled.exitPrice === null || !modeled.legs.length) {
+        if (selectedAudit) selectedAudit.rejectionReason = "NO_MODELED_EXIT";
         rejectedByPeriod[period] += 1;
         continue;
       }
       const exitCandle = modeled.audit.exitCandle ?? trigger;
       const outcome = modeled.exitReason === "target"
         ? "target"
-        : modeled.exitReason === "stop" ? "strategy stop" : "manual";
+        : modeled.exitReason === "stop"
+          ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
+          : modeled.exitReason === "session_close" ? "session close" : "manual";
       const ambiguityLabel = modeled.ambiguityLabels.length ? "AMBIGUOUS_STOP_FIRST" : null;
-      const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger);
+      const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, historicalContractSymbol, dataset.contractMonth);
       trades.push({
         id: `${tradingDate}-${triggerIndex}-${selected.setupType}-ohlcv`,
         tradingDate,
-        contractSymbol: specification.fullContractSymbol,
-        contractMonth: specification.contractMonth,
+        contractSymbol: historicalContractSymbol,
+        contractMonth: dataset.contractMonth,
         period,
         setupType: selected.setupType,
         direction: selected.direction,
@@ -732,6 +943,9 @@ export function runCausalBacktest(
           entryTriggerPrice: modeled.entryTrigger,
           modeledFillPrice: modeled.modeledFill,
           stopPrice: modeled.stopPrice,
+          strategyStopPrice: modeled.audit.strategyStopPrice,
+          catastropheStopPrice: modeled.audit.catastropheStopPrice,
+          stopLevel: modeled.audit.stopLevel,
           targetPrice: modeled.targetPrice,
           entryCandleOpenTime: patienceCandle.openTime === undefined ? null : new Date(patienceCandle.openTime).toISOString(),
           exitCandleOpenTime: exitCandle.openTime === undefined ? null : new Date(exitCandle.openTime).toISOString(),
@@ -740,10 +954,23 @@ export function runCausalBacktest(
           targetHit: modeled.audit.targetHit,
           runnerActivated: modeled.audit.runnerActivated,
           runnerExited: modeled.audit.runnerExited,
+          runnerReferencePrice: modeled.audit.runnerReferencePrice,
+          runnerImpulse: modeled.audit.runnerImpulse,
+          runnerMostFavorablePrice: modeled.audit.runnerMostFavorablePrice,
+          remainingQuantity: modeled.audit.remainingQuantity,
           exitReason: modeled.exitReason,
           legs: modeled.legs,
         },
       });
+      if (selectedAudit) {
+        selectedAudit.rejectionReason = null;
+        selectedAudit.ambiguityLabels = modeled.ambiguityLabels;
+        selectedAudit.fees = modeled.accounting.fees;
+        selectedAudit.slippage = modeled.accounting.slippage;
+        selectedAudit.grossPnl = modeled.accounting.grossPnl;
+        selectedAudit.netPnl = modeled.accounting.netPnl;
+        selectedAudit.exitReason = modeled.exitReason;
+      }
       lastExitIndex = Math.max(lastExitIndex, candles.findIndex((item) => item.openTime === exitCandle.openTime));
       continue;
     }
@@ -761,9 +988,16 @@ export function runCausalBacktest(
     }
     let exitIndex = index + 1;
     let resolution: IntrabarResolution = { status: "open", source: "ohlc", timestamp: null, price: null, ambiguityLabel: null, detail: "Trade remains open." };
-    for (; exitIndex < candles.length; exitIndex += 1) {
+    const finalRegularIndex = candles.reduce((latest, item, itemIndex) => {
+      const itemDate = tradingDateForTimestamp(item.openTime, calendar);
+      return item.isComplete && itemDate === tradingDate
+        && item.openTime >= regularWindow.openTime
+        && item.closeTime <= regularWindow.closeTime
+        ? itemIndex
+        : latest;
+    }, index);
+    for (; exitIndex <= finalRegularIndex; exitIndex += 1) {
       const next = candles[exitIndex];
-      if (tradingDateForTimestamp(next.openTime, calendar) !== tradingDate) break;
       resolution = resolveIntrabarOutcome({
         direction: selected.direction,
         target: snapshot.riskPlan.target,
@@ -774,7 +1008,8 @@ export function runCausalBacktest(
       });
       if (resolution.status !== "open") break;
     }
-    const exitCandle = candles[Math.min(exitIndex, candles.length - 1)];
+    if (resolution.status === "open") exitIndex = finalRegularIndex;
+    const exitCandle = candles[Math.min(exitIndex, candles.length - 1)] ?? candle;
     const exitReference = resolution.price ?? exitCandle.close;
     const simulated = simulatePhase8ShadowExecution({
       direction: selected.direction,
@@ -799,13 +1034,13 @@ export function runCausalBacktest(
       ? "target"
       : resolution.status === "stop"
         ? snapshot.riskPlan.catastropheStop !== null ? "catastrophe stop" : "strategy stop"
-        : "manual";
-    const segment = segmentation(snapshot, selected.setupType, selected.direction, candle);
+        : "session close";
+    const segment = segmentation(snapshot, selected.setupType, selected.direction, candle, historicalContractSymbol, dataset.contractMonth);
     trades.push({
       id: `${tradingDate}-${index}-${selected.setupType}`,
       tradingDate,
-      contractSymbol: specification.fullContractSymbol,
-      contractMonth: specification.contractMonth,
+      contractSymbol: historicalContractSymbol,
+      contractMonth: dataset.contractMonth,
       period,
       setupType: selected.setupType,
       direction: selected.direction,
@@ -833,18 +1068,22 @@ export function runCausalBacktest(
   }
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
-  const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample);
+  const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
-    symbol: specification.rootSymbol,
-    contract: specification,
+    symbol: dataset.source === "historical_databento" ? historicalContractSymbol : specification.rootSymbol,
+    contract: reportContract,
     dataResolution: dataset.ticks?.length ? "tick" : "one-minute-fallback",
     dataset: {
       startDate: dataset.inSampleDates[0],
       endDate: dataset.outOfSampleDates.at(-1) ?? dataset.inSampleDates.at(-1)!,
+      requestedStartDate: dataset.requestedStartDate ?? request.startDate ?? dataset.inSampleDates[0],
+      requestedEndDate: dataset.requestedEndDate ?? request.endDate,
+      selectedDates: [...(dataset.selectedDates ?? [...dataset.inSampleDates, ...dataset.outOfSampleDates])],
       inSampleDates: [...dataset.inSampleDates],
       outOfSampleDates: [...dataset.outOfSampleDates],
+      excludedDates: [...(dataset.excludedDates ?? [])],
       untouchedOutOfSample: true,
       optimizationApplied: false,
     },
@@ -855,10 +1094,11 @@ export function runCausalBacktest(
       futureCandleAccess: false,
     },
     metrics: allMetrics,
-    inSample: calculateBacktestMetrics(inSampleTrades, rejectedByPeriod.in_sample),
-    outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejectedByPeriod.out_of_sample),
+    inSample: calculateBacktestMetrics(inSampleTrades, rejectedByPeriod.in_sample, audit.filter((record) => record.period === "in_sample")),
+    outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejectedByPeriod.out_of_sample, audit.filter((record) => record.period === "out_of_sample")),
     segments: buildSegments(trades, allMetrics.rejectedSetupCount),
     trades,
+    audit,
     assumptions: [
       "Every strategy decision is recomputed from the visible candle prefix at that historical cursor.",
       "No current or future candle, indicator, volume value, level reaction, or setup state is available before its close time.",
@@ -866,6 +1106,7 @@ export function runCausalBacktest(
       "Unknown entry/invalidation order rejects the setup; unknown stop/target order applies stop first and is labeled AMBIGUOUS_STOP_FIRST.",
       "Each contract month keeps its own tick economics and fees; contract rollover boundaries are never blended.",
       "The out-of-sample dates are immutable holdout data and are not used for optimization.",
+      `Historical replay uses exactly ${dataset.inSampleDates.length + dataset.outOfSampleDates.length} selected available trading dates; excluded dates are reported separately.`,
       ...(executionMode === "ohlcv_modeled"
         ? [
           MODELED_OHLCV_FILL_LABEL,
@@ -897,6 +1138,10 @@ export function runCausalBacktest(
       missingMinuteGaps: 0,
       missingGapSegments: 0,
       unexpectedOpenSessionMissingMinutes: 0,
+      unexpectedOvernightMissingMinutes: 0,
+      unexpectedRegularSessionMissingMinutes: 0,
+      regularSessionGapSegments: 0,
+      overnightGapSegments: 0,
       regularSessionMissingMinutes: 0,
       expectedClosedMarketMinutes: 0,
       lowLiquidityInactiveMinutes: 0,

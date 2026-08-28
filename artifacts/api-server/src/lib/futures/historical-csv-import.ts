@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import {
   classifyFuturesSession,
   isTradingDate,
+  newYorkTimeToUtc,
   sessionCalendarForContract,
   sessionWindow,
   tradingDateForTimestamp,
@@ -38,6 +39,10 @@ export type HistoricalCsvImportSummary = {
   missingMinuteGaps: number;
   missingGapSegments: number;
   unexpectedOpenSessionMissingMinutes: number;
+  unexpectedOvernightMissingMinutes: number;
+  unexpectedRegularSessionMissingMinutes: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
@@ -194,11 +199,19 @@ function countSessionAwareGaps(
   calendar: FuturesSessionCalendar,
 ): {
   unexpectedOpenSessionMissingMinutes: number;
+  unexpectedOvernightMissingMinutes: number;
+  unexpectedRegularSessionMissingMinutes: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
 } {
   let unexpectedOpenSessionMissingMinutes = 0;
+  let unexpectedOvernightMissingMinutes = 0;
+  let unexpectedRegularSessionMissingMinutes = 0;
+  let regularSessionGapSegments = 0;
+  let overnightGapSegments = 0;
   let regularSessionMissingMinutes = 0;
   let expectedClosedMarketMinutes = 0;
   let lowLiquidityInactiveMinutes = 0;
@@ -221,11 +234,32 @@ function countSessionAwareGaps(
     const premarketMinutes = overlapMinutes(gapStart, gapEnd, premarket);
     const openMinutes = regularMinutes + premarketMinutes;
     regularSessionMissingMinutes += regularMinutes;
+    if (regularMinutes > 0) regularSessionGapSegments += 1;
     unexpectedOpenSessionMissingMinutes += openMinutes;
-    expectedClosedMarketMinutes += Math.max(0, missing - openMinutes);
+
+    // Overnight data is optional. Only count an overnight gap when both
+    // endpoints are inside the same expected overnight window; this prevents
+    // the CME maintenance break and the closed 16:00–18:00 period from being
+    // reported as missing market data.
+    const overnightStart = newYorkTimeToUtc(previousDate, "18:00");
+    const nextDate = new Date(newYorkTimeToUtc(previousDate, "18:00") + 86_400_000)
+      .toISOString().slice(0, 10);
+    const overnightEnd = newYorkTimeToUtc(nextDate, "04:00");
+    if (previous.openTime >= overnightStart && current.openTime <= overnightEnd) {
+      unexpectedOvernightMissingMinutes += missing;
+      overnightGapSegments += 1;
+    }
+    expectedClosedMarketMinutes += Math.max(
+      0,
+      missing - openMinutes - (previous.openTime >= overnightStart && current.openTime <= overnightEnd ? missing : 0),
+    );
   }
   return {
     unexpectedOpenSessionMissingMinutes,
+    unexpectedOvernightMissingMinutes,
+    unexpectedRegularSessionMissingMinutes: regularSessionMissingMinutes,
+    regularSessionGapSegments,
+    overnightGapSegments,
     regularSessionMissingMinutes,
     expectedClosedMarketMinutes,
     lowLiquidityInactiveMinutes,
@@ -261,13 +295,20 @@ export function historicalImportToReplayDataset(
   inSampleDays: number,
   outOfSampleDays: number,
 ): CausalReplayDataset {
-  const availableDates = imported.summary.availableTradingDates.filter((date) => date >= startDate && date <= endDate);
-  if (availableDates.length < inSampleDays + outOfSampleDays) {
-    throw new Error(`Historical range contains ${availableDates.length} trading dates; ${inSampleDays + outOfSampleDays} are required.`);
+  const requestedDates = imported.summary.availableTradingDates.filter((date) => date >= startDate && date <= endDate);
+  const requiredDates = inSampleDays + outOfSampleDays;
+  if (requestedDates.length < requiredDates) {
+    throw new Error(`Historical range contains ${requestedDates.length} trading dates; ${requiredDates} are required.`);
   }
+  // Use the latest exact N+M available dates ending on or before endDate.
+  // Earlier available dates remain explicitly excluded rather than silently
+  // becoming part of the replay.
+  const availableDates = requestedDates.slice(-requiredDates);
   const selectedDates = new Set(availableDates);
   const fiveMinute = imported.fiveMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));
   const oneMinute = imported.oneMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));
+  const selectedGapReport = countSessionAwareGaps(oneMinute, imported.calendar);
+  const adjacentGaps = countMissingMinutes(oneMinute, imported.calendar);
   return {
     candles: fiveMinute.map(toReplayCandle),
     oneMinute: oneMinute.map((candle) => ({
@@ -284,15 +325,23 @@ export function historicalImportToReplayDataset(
     contractMonth: imported.specification.contractMonth,
     inSampleDates: availableDates.slice(0, inSampleDays),
     outOfSampleDates: availableDates.slice(-outOfSampleDays),
+    requestedStartDate: startDate,
+    requestedEndDate: endDate,
+    selectedDates: availableDates,
+    excludedDates: requestedDates.filter((date) => !selectedDates.has(date)),
     source: "historical_databento",
     quotesAvailable: false,
     gapReport: {
-      missingMinuteGaps: imported.summary.missingMinuteGaps,
-      missingGapSegments: imported.summary.missingGapSegments,
-      unexpectedOpenSessionMissingMinutes: imported.summary.unexpectedOpenSessionMissingMinutes,
-      regularSessionMissingMinutes: imported.summary.regularSessionMissingMinutes,
-      expectedClosedMarketMinutes: imported.summary.expectedClosedMarketMinutes,
-      lowLiquidityInactiveMinutes: imported.summary.lowLiquidityInactiveMinutes,
+      missingMinuteGaps: adjacentGaps.missingMinutes,
+      missingGapSegments: adjacentGaps.segments,
+      unexpectedOpenSessionMissingMinutes: selectedGapReport.unexpectedOpenSessionMissingMinutes,
+      unexpectedOvernightMissingMinutes: selectedGapReport.unexpectedOvernightMissingMinutes,
+      unexpectedRegularSessionMissingMinutes: selectedGapReport.unexpectedRegularSessionMissingMinutes,
+      regularSessionGapSegments: selectedGapReport.regularSessionGapSegments,
+      overnightGapSegments: selectedGapReport.overnightGapSegments,
+      regularSessionMissingMinutes: selectedGapReport.regularSessionMissingMinutes,
+      expectedClosedMarketMinutes: selectedGapReport.expectedClosedMarketMinutes,
+      lowLiquidityInactiveMinutes: selectedGapReport.lowLiquidityInactiveMinutes,
     },
   };
 }
@@ -341,6 +390,10 @@ export async function importHistoricalCsv(
     missingMinuteGaps: 0,
     missingGapSegments: 0,
     unexpectedOpenSessionMissingMinutes: 0,
+    unexpectedOvernightMissingMinutes: 0,
+    unexpectedRegularSessionMissingMinutes: 0,
+    regularSessionGapSegments: 0,
+    overnightGapSegments: 0,
     regularSessionMissingMinutes: 0,
     expectedClosedMarketMinutes: 0,
     lowLiquidityInactiveMinutes: 0,

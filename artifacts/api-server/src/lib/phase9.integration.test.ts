@@ -4,7 +4,7 @@ import { buildReplayDataset, resolveIntrabarOutcome, runCausalBacktest } from ".
 import { createMarketSnapshot } from "./market-data.js";
 import { generateSimulatedFuturesFeed, type SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
-import { sessionCalendarForContract, sessionWindow } from "./futures/session-calendar.js";
+import { listTradingDates, sessionCalendarForContract, sessionWindow, tradingDateForTimestamp } from "./futures/session-calendar.js";
 import { strategyConfig } from "./strategy/config.js";
 import { evaluateOrbBreakoutQuality } from "./strategy/phase4.js";
 import { patienceCandleEngine } from "./strategy/phase5.js";
@@ -111,6 +111,62 @@ test("deterministic bullish and bearish A+ fixtures qualify and target-exit thro
     assert.equal(report.trades[0]?.direction, direction, `seed ${seed}`);
     assert.equal(report.trades[0]?.outcome, "target", `seed ${seed}`);
   }
+});
+
+test("historical modeled replay audits every completed regular candle while preventing overlap", () => {
+  const dates = listTradingDates("2026-08-27", 3, calendar);
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: "2026-08-27",
+    days: 3,
+    seed: 11,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const candles = source.map((candle) => ({
+    ...candle,
+    bid: candle.close,
+    ask: candle.close,
+    bidSize: 0,
+    askSize: 0,
+    contractSymbol: "MESU6",
+  }));
+  const report = runCausalBacktest({
+    symbol: "MES",
+    source: "historical_databento",
+    startDate: dates[0],
+    endDate: dates.at(-1)!,
+    inSampleDays: 2,
+    outOfSampleDays: 1,
+    seed: 11,
+    premarketAvailable: true,
+    targetDollars: 75,
+    slippageMode: "normal",
+    executionMode: "ohlcv_modeled",
+  }, undefined, {
+    candles,
+    contractSymbol: "MESU6",
+    contractMonth: "2026-09",
+    inSampleDates: dates.slice(0, 2),
+    outOfSampleDates: dates.slice(2),
+    selectedDates: dates,
+    excludedDates: [],
+    source: "historical_databento",
+    quotesAvailable: false,
+  });
+  const regularCandleCount = candles.filter((candle) => {
+    const date = tradingDateForTimestamp(candle.openTime, calendar);
+    const window = sessionWindow(date, "regular", calendar);
+    return dates.includes(date) && window !== null && candle.openTime >= window.openTime
+      && candle.openTime < window.closeTime && candle.isComplete;
+  }).length;
+  const auditedCandleCount = new Set(report.audit.map((record) => record.evaluatedCandleOpenTime)).size;
+  assert.equal(auditedCandleCount, regularCandleCount);
+  assert.ok(report.trades.length > 0);
+  assert.equal(report.symbol, "MESU6");
+  assert.equal(report.trades[0]?.contractSymbol, "MESU6");
+  assert.equal(report.trades[0]?.segmentation.contract, "MESU6");
+  assert.equal(report.trades[0]?.executionMode, "ohlcv_modeled");
 });
 
 test("public decision surfaces project the same phased Phase 4–8 evaluation", () => {

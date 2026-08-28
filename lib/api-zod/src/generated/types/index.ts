@@ -8,6 +8,7 @@
 
 export * from './backtestMetricSet';
 export * from './backtestReport';
+export * from './backtestReportAuditItem';
 export * from './backtestReportDataResolution';
 export * from './backtestReportDataset';
 export * from './backtestReportDataSource';
@@ -38,6 +39,7 @@ export * from './backtestTradeAudit';
 export * from './backtestTradeAuditLegsItem';
 export * from './backtestTradeAuditLegsItemExitReason';
 export * from './backtestTradeAuditLegsItemKind';
+export * from './backtestTradeAuditStopLevel';
 export * from './backtestTradeDirection';
 export * from './backtestTradeExecutionMode';
 export * from './backtestTradeOutcome';

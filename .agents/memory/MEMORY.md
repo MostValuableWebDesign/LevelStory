@@ -6,3 +6,4 @@
 - [Synthetic A+ fixtures](synthetic-a-plus-fixtures.md) — deterministic replay scenarios must preserve one-sided ORB probes, strict 15-minute structure, liquidity, and micro-contract notional headroom.
 - [Databento JSON normalization](databento-json-normalization.md) — historical JSONL nests timestamps and identity under `hd`; OHLCV and quote prices use 1e9 fixed-point units.
 - [Historical replay performance](historical-replay-performance.md) — cache calendar-scoped session windows before scanning large imported ranges.
+- [Replay audit cadence](replay-audit-cadence.md) — audit every completed regular candle even when an active position blocks overlapping entries.

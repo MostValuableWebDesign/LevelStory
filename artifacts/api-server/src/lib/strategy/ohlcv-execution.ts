@@ -33,7 +33,7 @@ export type ModeledExecutionLeg = {
   slippage: number;
   fees: number;
   netPnl: number;
-  exitReason: "target" | "runner" | "stop" | "manual";
+  exitReason: "target" | "runner" | "stop" | "manual" | "session_close";
 };
 
 export type ModeledExecutionAccounting = {
@@ -51,6 +51,13 @@ export type OhlcvExecutionAudit = {
   targetHit: boolean;
   runnerActivated: boolean;
   runnerExited: boolean;
+  strategyStopPrice: number | null;
+  catastropheStopPrice: number | null;
+  stopLevel: "strategy" | "catastrophe" | null;
+  runnerReferencePrice: number | null;
+  runnerImpulse: number | null;
+  runnerMostFavorablePrice: number | null;
+  remainingQuantity: number;
 };
 
 export type ModeledOhlcvExecution = {
@@ -59,7 +66,7 @@ export type ModeledOhlcvExecution = {
   stopPrice: number | null;
   targetPrice: number | null;
   exitPrice: number | null;
-  exitReason: "target" | "runner" | "stop" | "manual" | "not filled";
+  exitReason: "target" | "runner" | "stop" | "manual" | "session_close" | "not filled";
   legs: ModeledExecutionLeg[];
   accounting: ModeledExecutionAccounting;
   audit: OhlcvExecutionAudit;
@@ -85,6 +92,8 @@ export type OhlcvExecutionInput = {
   stop?: number | null;
   targetPrice?: number | null;
   stopPrice?: number | null;
+  strategyStop?: number | null;
+  catastropheStop?: number | null;
   targetDollars?: number | null;
   tickSize: number;
   tickValue?: number;
@@ -93,6 +102,7 @@ export type OhlcvExecutionInput = {
   exitSlippageTicks?: number;
   fees?: OhlcvFeeComponents;
   feeComponents?: OhlcvFeeComponents;
+  sessionCloseCandle?: OhlcvCandle | null;
 };
 
 function money(value: number): number {
@@ -118,7 +128,14 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
     entryTrigger: null, modeledFill: null, stopPrice: input.stopPrice ?? input.stop ?? null,
     targetPrice: input.targetPrice ?? input.target ?? null, exitPrice: null, exitReason: "not filled",
     legs: [], accounting: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
-    audit: { labels, assumptions, entryCandle: null, exitCandle: null, targetHit: false, runnerActivated: false, runnerExited: false },
+    audit: {
+      labels, assumptions, entryCandle: null, exitCandle: null, targetHit: false,
+      runnerActivated: false, runnerExited: false,
+      strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
+      catastropheStopPrice: input.catastropheStop ?? null,
+      stopLevel: null, runnerReferencePrice: null, runnerImpulse: null,
+      runnerMostFavorablePrice: null, remainingQuantity: input.quantity ?? input.contractQuantity ?? input.contracts ?? 0,
+    },
     ambiguityLabels: labels, assumptions,
   };
 }
@@ -146,14 +163,22 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   subsequentCandles.forEach(validCandle);
   const size = input.tickSize;
   const entryReference = tick(input.entry, size);
-  const stop = input.stopPrice ?? input.stop;
+  const strategyStop = input.strategyStop ?? input.stopPrice ?? input.stop ?? null;
+  const catastropheStop = input.catastropheStop ?? null;
+  const stopCandidates = [
+    strategyStop === null ? null : { price: strategyStop, level: "strategy" as const },
+    catastropheStop === null ? null : { price: catastropheStop, level: "catastrophe" as const },
+  ].filter((item): item is { price: number; level: "strategy" | "catastrophe" } => item !== null);
+  const selectedStop = stopCandidates.sort((first, second) =>
+    input.direction === "long" ? second.price - first.price : first.price - second.price,
+  )[0] ?? null;
   const convertedTarget = input.targetDollars == null
     ? (input.targetPrice ?? input.target ?? null)
     : (input.direction === "long"
       ? entryReference + (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
-  const stopPrice = stop == null ? null : tick(stop, size);
+  const stopPrice = selectedStop === null ? null : tick(selectedStop.price, size);
   const labels: string[] = [];
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
@@ -193,12 +218,18 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     return { kind, quantity: qty, referencePrice: tick(reference, size), fillPrice: tick(fill, size), grossPnl: money(gross), slippage: money(slip), fees: money(fees), netPnl: money(gross - slip - fees), exitReason: reason };
   };
   for (const candle of candles) {
-    const adverse = stopPrice !== null && (input.direction === "long" ? candle.low <= stopPrice : candle.high >= stopPrice);
+    const strategyHit = strategyStop !== null && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
+    const catastropheHit = catastropheStop !== null && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
+    const adverse = strategyHit || catastropheHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
     if (adverse) {
       if (favorable) labels.push(AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
-      const fill = tick(input.direction === "long" ? stopPrice! - (input.exitSlippageTicks ?? 0) * size : stopPrice! + (input.exitSlippageTicks ?? 0) * size, size);
-      legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, stopPrice!, fill, "stop"));
+      const level = selectedStop!;
+      labels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
+      const gapThrough = input.direction === "long" ? candle.open <= stopPrice! : candle.open >= stopPrice!;
+      const reference = gapThrough ? candle.open : stopPrice!;
+      const fill = tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
+      legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop"));
       if (targetHit && runnerQuantity > 0) runnerExited = true;
       remaining = 0; exitPrice = fill; exitCandle = candle; exitReason = "stop"; break;
     }
@@ -225,6 +256,23 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       }
     }
   }
+  if (remaining > 0 && input.sessionCloseCandle) {
+    const closeCandle = input.sessionCloseCandle;
+    validCandle(closeCandle);
+    const reference = tick(closeCandle.close, size);
+    const fill = tick(
+      input.direction === "long"
+        ? reference - (input.exitSlippageTicks ?? 0) * size
+        : reference + (input.exitSlippageTicks ?? 0) * size,
+      size,
+    );
+    legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close"));
+    remaining = 0;
+    runnerExited = targetHit && runnerQuantity > 0;
+    exitPrice = fill;
+    exitCandle = closeCandle;
+    exitReason = "session_close";
+  }
   if (remaining > 0 && targetHit && runnerQuantity > 0) exitReason = "target";
   const accounting = legs.reduce<ModeledExecutionAccounting>((a, leg) => ({
     grossPnl: money(a.grossPnl + leg.grossPnl), slippage: money(a.slippage + leg.slippage),
@@ -232,7 +280,17 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   }), { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 });
   return {
     entryTrigger: entryReference, modeledFill, stopPrice, targetPrice: target, exitPrice, exitReason, legs, accounting,
-    audit: { labels, assumptions, entryCandle: trigger, exitCandle, targetHit, runnerActivated: targetHit && runnerQuantity > 0, runnerExited },
+    audit: {
+      labels, assumptions, entryCandle: trigger, exitCandle, targetHit,
+      runnerActivated: targetHit && runnerQuantity > 0, runnerExited,
+      strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
+      catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),
+      stopLevel: exitReason === "stop" ? selectedStop?.level ?? null : null,
+      runnerReferencePrice: targetHit && runnerQuantity > 0 ? modeledFill : null,
+      runnerImpulse: targetHit && runnerQuantity > 0 ? Math.abs(runnerBest - modeledFill) : null,
+      runnerMostFavorablePrice: targetHit && runnerQuantity > 0 ? runnerBest : null,
+      remainingQuantity: remaining,
+    },
     ambiguityLabels: labels, assumptions,
   };
 }

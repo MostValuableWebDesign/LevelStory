@@ -16,6 +16,8 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     ["Duplicates removed", data.duplicateRowsRemoved.toLocaleString()],
     ["Missing minutes", `${data.missingMinuteGaps.toLocaleString()} across ${data.missingGapSegments} gaps`],
     ["Open-session gaps", `${data.unexpectedOpenSessionMissingMinutes.toLocaleString()} min`],
+    ["Overnight gaps", `${data.unexpectedOvernightMissingMinutes.toLocaleString()} min`],
+    ["RTH gap segments", String(data.regularSessionGapSegments)],
     ["Regular-session gaps", `${data.regularSessionMissingMinutes.toLocaleString()} min`],
     ["Expected closed time", `${data.expectedClosedMarketMinutes.toLocaleString()} min`],
     ["Low-liquidity / inactive", `${data.lowLiquidityInactiveMinutes.toLocaleString()} min`],
@@ -65,19 +67,31 @@ function MetricGrid({ metrics, accent = false }: { metrics: BacktestMetricSet; a
 
 function ReportBody({ report }: { report: BacktestReport }) {
   const segmentRows = report.segments.filter((segment) => segment.tradeCount > 0 || segment.rejectedSetupCount > 0).slice(0, 24);
+  const auditRows = report.audit as Array<Record<string, unknown>>;
+  const rejectedAuditRows = auditRows.filter((item) => typeof item.rejectionReason === "string" && item.rejectionReason.length > 0);
+  const ambiguousAuditRows = auditRows.filter((item) => Array.isArray(item.ambiguityLabels) && item.ambiguityLabels.length > 0);
   return <div className="space-y-5">
     <Panel accent>
       <PanelTitle eyebrow="Run integrity / causal replay" title={`${report.symbol} · ${report.contract.fullContractSymbol}`} right={<span className="mono text-[10px] text-muted-foreground">{report.dataResolution}</span>} />
        <div className="border-t border-border px-5 py-3 text-xs"><strong>{report.dataSource === "historical_databento" ? "Historical Databento Data — MESU6" : "Simulated demo data"} — {report.executionMode === "ohlcv_modeled" ? "Modeled OHLCV execution" : "Shadow Mode"}</strong><span className="ml-2 text-muted-foreground">{report.fillLabel}</span></div>
-      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-5">
+       <div className="grid gap-px border-t border-border bg-border sm:grid-cols-6">
         {[
           ["Dataset", `${report.dataset.startDate} → ${report.dataset.endDate}`],
+           ["Requested range", `${report.dataset.requestedStartDate} → ${report.dataset.requestedEndDate}`],
+           ["Selected dates", `${report.dataset.selectedDates.length} exact sessions`],
           ["Visible candles", `${report.replay.visibleCandleCount} / ${report.replay.totalCandleCount}`],
           ["Holdout", `${report.dataset.outOfSampleDates.length} trading days`],
           ["Ambiguous trades", String(report.metrics.ambiguousTradeCount)],
          ["Modeled fills", String(report.metrics.modeledFills)],
         ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
       </div>
+       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
+         <div className="eyebrow mb-2">Exact replay partition</div>
+         <div className="flex flex-wrap gap-x-5 gap-y-2">
+           <span>Selected <strong className="mono text-foreground">{report.dataset.selectedDates.join(", ") || "—"}</strong></span>
+           <span>Excluded <strong className="mono text-foreground">{report.dataset.excludedDates.join(", ") || "none"}</strong></span>
+         </div>
+       </div>
       <div className="grid gap-3 border-t border-border p-5 text-xs sm:grid-cols-3">
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Causal cursor enforced</div>
         <div className="flex items-center gap-2 text-[hsl(var(--positive))]"><Check size={14} /> Future access blocked</div>
@@ -100,10 +114,12 @@ function ReportBody({ report }: { report: BacktestReport }) {
 
     <Panel>
       <PanelTitle eyebrow="Data quality / session-aware gaps" title="Missing-minute accounting" right={<span className="mono text-[10px] text-muted-foreground">{report.gapReport.missingGapSegments.toLocaleString()} segments</span>} />
-      <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-5">
+       <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-7">
         {[
           ["All missing", `${report.gapReport.missingMinuteGaps.toLocaleString()} min`],
           ["Unexpected open", `${report.gapReport.unexpectedOpenSessionMissingMinutes.toLocaleString()} min`],
+           ["Unexpected overnight", `${report.gapReport.unexpectedOvernightMissingMinutes.toLocaleString()} min / ${report.gapReport.overnightGapSegments} segments`],
+           ["Unexpected regular", `${report.gapReport.unexpectedRegularSessionMissingMinutes.toLocaleString()} min / ${report.gapReport.regularSessionGapSegments} segments`],
           ["Regular session", `${report.gapReport.regularSessionMissingMinutes.toLocaleString()} min`],
           ["Expected closed", `${report.gapReport.expectedClosedMarketMinutes.toLocaleString()} min`],
           ["Low liquidity", `${report.gapReport.lowLiquidityInactiveMinutes.toLocaleString()} min`],
@@ -138,6 +154,13 @@ function ReportBody({ report }: { report: BacktestReport }) {
         <span>Entry triggers: <strong className="mono text-foreground">{report.metrics.entryTriggers}</strong></span>
         <span>Stops / targets / runners: <strong className="mono text-foreground">{report.metrics.stopExits} / {report.metrics.targetExits} / {report.metrics.runnerExits}</strong></span>
       </div>
+       <div className="grid gap-3 border-t border-border px-5 py-4 text-xs text-muted-foreground sm:grid-cols-3">
+         <span>Expired patience: <strong className="mono text-foreground">{report.metrics.expiredPatienceSetups}</strong></span>
+         <span>Ambiguous entry / exit: <strong className="mono text-foreground">{report.metrics.ambiguousEntryCount} / {report.metrics.ambiguityCount}</strong></span>
+         <span>Strategy / catastrophe stops: <strong className="mono text-foreground">{report.metrics.strategyStopExits} / {report.metrics.catastropheStopExits}</strong></span>
+         <span>Partial target + runner: <strong className="mono text-foreground">{report.metrics.partialTargetExits}</strong></span>
+         <span>Session-close exits: <strong className="mono text-foreground">{report.metrics.sessionCloseExits}</strong></span>
+       </div>
     </Panel>
 
     <Panel>
@@ -147,8 +170,21 @@ function ReportBody({ report }: { report: BacktestReport }) {
 
     <Panel>
       <PanelTitle eyebrow="Execution evidence" title="Trade ledger" right={<span className="mono text-[10px] text-muted-foreground">{report.trades.length} simulated fills</span>} />
-       {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[1120px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Mode / audit</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}<span className="block text-[10px] text-muted-foreground">trigger {trade.audit?.entryTriggerPrice?.toFixed(2) ?? "—"} · stop {trade.audit?.stopPrice?.toFixed(2) ?? "—"} · target {trade.audit?.targetPrice?.toFixed(2) ?? "—"}</span></td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.fillLabel ?? trade.source}{trade.audit?.runnerExited && <span className="ml-2">runner</span>}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
+       {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[1120px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Mode / audit</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}<span className="block text-[10px] text-muted-foreground">trigger {trade.audit?.entryTriggerPrice?.toFixed(2) ?? "—"} · strategy {trade.audit?.strategyStopPrice?.toFixed(2) ?? "—"} · catastrophe {trade.audit?.catastropheStopPrice?.toFixed(2) ?? "—"} · target {trade.audit?.targetPrice?.toFixed(2) ?? "—"}</span></td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.fillLabel ?? trade.source}{trade.audit?.stopLevel && <span className="ml-2">{trade.audit.stopLevel} stop</span>}{trade.audit?.runnerExited && <span className="ml-2">runner exit</span>}{trade.audit?.exitReason === "session_close" && <span className="ml-2">session close</span>}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
     </Panel>
+
+     <Panel>
+       <PanelTitle eyebrow="Causal setup audit" title="Detected, rejected, and ambiguous evaluations" right={<span className="mono text-[10px] text-muted-foreground">{auditRows.length} records</span>} />
+       <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-4">
+         {[
+           ["Audited evaluations", auditRows.length],
+           ["Rejected evaluations", rejectedAuditRows.length],
+           ["Ambiguous entries", ambiguousAuditRows.filter((item) => item.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length],
+           ["Ambiguous exits", ambiguousAuditRows.length],
+         ].map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
+       </div>
+       {rejectedAuditRows.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / candle</th><th className="px-4 py-3">Setup / decision</th><th className="px-4 py-3">Patience</th><th className="px-4 py-3">Stops / target</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-border">{rejectedAuditRows.slice(0, 80).map((item) => <tr key={String(item.id)}><td className="mono px-4 py-3">{String(item.tradingDate)}<span className="block text-[10px] text-muted-foreground">{String(item.evaluatedCandleOpenTime)}</span></td><td className="px-4 py-3">{String(item.setupType)}<span className="block text-[10px] text-muted-foreground">{String(item.decision)}</span></td><td className="px-4 py-3 text-[10px] text-muted-foreground">{String(item.patienceState)}</td><td className="mono px-4 py-3 text-[10px] text-muted-foreground">{String(item.strategyStopPrice ?? "—")} / {String(item.catastropheStopPrice ?? "—")} / {String(item.targetPrice ?? "—")}</td><td className="max-w-[360px] px-4 py-3 text-[10px] text-muted-foreground">{String(item.rejectionReason)}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No rejected evaluations were recorded.</div>}
+     </Panel>
 
     <Panel>
       <PanelTitle eyebrow="Method / audit trail" title="Replay assumptions" right={<Database size={16} className="text-muted-foreground" />} />

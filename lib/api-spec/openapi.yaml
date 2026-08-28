@@ -1806,6 +1806,10 @@ components:
         missingMinuteGaps: { type: number }
         missingGapSegments: { type: number }
         unexpectedOpenSessionMissingMinutes: { type: number }
+        unexpectedOvernightMissingMinutes: { type: number }
+        unexpectedRegularSessionMissingMinutes: { type: number }
+        regularSessionGapSegments: { type: number }
+        overnightGapSegments: { type: number }
         regularSessionMissingMinutes: { type: number }
         expectedClosedMarketMinutes: { type: number }
         lowLiquidityInactiveMinutes: { type: number }
@@ -1829,7 +1833,7 @@ components:
             fifteenMinute: { type: number }
             oneHour: { type: number }
           required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
-      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
+      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
     BacktestMetricSet:
       type: object
       properties:
@@ -1855,7 +1859,13 @@ components:
         targetExits: { type: number }
         runnerExits: { type: number }
         ambiguityCount: { type: number }
-      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount]
+        expiredPatienceSetups: { type: number }
+        ambiguousEntryCount: { type: number }
+        strategyStopExits: { type: number }
+        catastropheStopExits: { type: number }
+        sessionCloseExits: { type: number }
+        partialTargetExits: { type: number }
+      required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits]
     BacktestSegmentation:
       type: object
       properties:
@@ -1900,7 +1910,7 @@ components:
         fees: { type: number }
         slippage: { type: number }
         netPnl: { type: number }
-        outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", manual] }
+        outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", "session close", manual] }
         ambiguityLabel: { type: ["string", "null"], enum: [AMBIGUOUS_STOP_FIRST, AMBIGUOUS_ENTRY_INVALIDATION, null] }
         source: { type: string, enum: [tick, one-minute, ohlc] }
         segmentation: { $ref: "#/components/schemas/BacktestSegmentation" }
@@ -1913,6 +1923,9 @@ components:
             modeledFillPrice: { type: ["number", "null"] }
             stopPrice: { type: ["number", "null"] }
             targetPrice: { type: ["number", "null"] }
+            strategyStopPrice: { type: ["number", "null"] }
+            catastropheStopPrice: { type: ["number", "null"] }
+            stopLevel: { type: ["string", "null"], enum: [strategy, catastrophe, null] }
             entryCandleOpenTime: { type: ["string", "null"] }
             exitCandleOpenTime: { type: ["string", "null"] }
             assumptions: { type: array, items: { type: string } }
@@ -1920,6 +1933,10 @@ components:
             targetHit: { type: boolean }
             runnerActivated: { type: boolean }
             runnerExited: { type: boolean }
+            runnerReferencePrice: { type: ["number", "null"] }
+            runnerImpulse: { type: ["number", "null"] }
+            runnerMostFavorablePrice: { type: ["number", "null"] }
+            remainingQuantity: { type: number }
             exitReason: { type: string }
             legs:
               type: array
@@ -1934,9 +1951,9 @@ components:
                   slippage: { type: number }
                   fees: { type: number }
                   netPnl: { type: number }
-                  exitReason: { type: string, enum: [target, runner, stop, manual] }
+                  exitReason: { type: string, enum: [target, runner, stop, manual, session_close] }
                 required: [kind, quantity, referencePrice, fillPrice, grossPnl, slippage, fees, netPnl, exitReason]
-          required: [entryTriggerPrice, modeledFillPrice, stopPrice, targetPrice, entryCandleOpenTime, exitCandleOpenTime, assumptions, ambiguityLabels, targetHit, runnerActivated, runnerExited, exitReason, legs]
+          required: [entryTriggerPrice, modeledFillPrice, stopPrice, targetPrice, strategyStopPrice, catastropheStopPrice, stopLevel, entryCandleOpenTime, exitCandleOpenTime, assumptions, ambiguityLabels, targetHit, runnerActivated, runnerExited, runnerReferencePrice, runnerImpulse, runnerMostFavorablePrice, remainingQuantity, exitReason, legs]
       required: [id, tradingDate, contractSymbol, contractMonth, period, setupType, direction, entryTime, exitTime, entryPrice, exitPrice, contracts, grossPnl, fees, slippage, netPnl, outcome, ambiguityLabel, source, segmentation]
     BacktestReport:
       type: object
@@ -1951,11 +1968,15 @@ components:
           properties:
             startDate: { type: string }
             endDate: { type: string }
+            requestedStartDate: { type: string }
+            requestedEndDate: { type: string }
+            selectedDates: { type: array, items: { type: string } }
             inSampleDates: { type: array, items: { type: string } }
             outOfSampleDates: { type: array, items: { type: string } }
+            excludedDates: { type: array, items: { type: string } }
             untouchedOutOfSample: { type: boolean, enum: [true] }
             optimizationApplied: { type: boolean, enum: [false] }
-          required: [startDate, endDate, inSampleDates, outOfSampleDates, untouchedOutOfSample, optimizationApplied]
+          required: [startDate, endDate, requestedStartDate, requestedEndDate, selectedDates, inSampleDates, outOfSampleDates, excludedDates, untouchedOutOfSample, optimizationApplied]
         replay:
           type: object
           properties:
@@ -1972,6 +1993,12 @@ components:
         outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
         segments: { type: array, items: { $ref: "#/components/schemas/BacktestSegment" } }
         trades: { type: array, items: { $ref: "#/components/schemas/BacktestTrade" } }
+        audit:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
         assumptions: { type: array, items: { type: string } }
         executionMode: { type: string, enum: [quote_based_shadow, ohlcv_modeled] }
         fillLabel: { type: string }
@@ -1992,9 +2019,13 @@ components:
             missingMinuteGaps: { type: number }
             missingGapSegments: { type: number }
             unexpectedOpenSessionMissingMinutes: { type: number }
+            unexpectedOvernightMissingMinutes: { type: number }
+            unexpectedRegularSessionMissingMinutes: { type: number }
+            regularSessionGapSegments: { type: number }
+            overnightGapSegments: { type: number }
             regularSessionMissingMinutes: { type: number }
             expectedClosedMarketMinutes: { type: number }
             lowLiquidityInactiveMinutes: { type: number }
-          required: [missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes]
-      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+          required: [missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes]
+      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
 

@@ -9,8 +9,12 @@
 export type BacktestReportDataset = {
   startDate: string;
   endDate: string;
+  requestedStartDate: string;
+  requestedEndDate: string;
+  selectedDates: string[];
   inSampleDates: string[];
   outOfSampleDates: string[];
+  excludedDates: string[];
   untouchedOutOfSample: true;
   optimizationApplied: false;
 };

@@ -14,4 +14,5 @@ export const BacktestTradeAuditLegsItemExitReason = {
   runner: 'runner',
   stop: 'stop',
   manual: 'manual',
+  session_close: 'session_close',
 } as const;

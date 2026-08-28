@@ -773,8 +773,12 @@ export const RunBacktestResponse = zod.object({
   "dataset": zod.object({
   "startDate": zod.string(),
   "endDate": zod.string(),
+  "requestedStartDate": zod.string(),
+  "requestedEndDate": zod.string(),
+  "selectedDates": zod.array(zod.string()),
   "inSampleDates": zod.array(zod.string()),
   "outOfSampleDates": zod.array(zod.string()),
+  "excludedDates": zod.array(zod.string()),
   "untouchedOutOfSample": zod.literal(true),
   "optimizationApplied": zod.literal(false)
 }),
@@ -809,7 +813,13 @@ export const RunBacktestResponse = zod.object({
   "stopExits": zod.number(),
   "targetExits": zod.number(),
   "runnerExits": zod.number(),
-  "ambiguityCount": zod.number()
+  "ambiguityCount": zod.number(),
+  "expiredPatienceSetups": zod.number(),
+  "ambiguousEntryCount": zod.number(),
+  "strategyStopExits": zod.number(),
+  "catastropheStopExits": zod.number(),
+  "sessionCloseExits": zod.number(),
+  "partialTargetExits": zod.number()
 }),
   "inSample": zod.object({
   "tradeCount": zod.number(),
@@ -833,7 +843,13 @@ export const RunBacktestResponse = zod.object({
   "stopExits": zod.number(),
   "targetExits": zod.number(),
   "runnerExits": zod.number(),
-  "ambiguityCount": zod.number()
+  "ambiguityCount": zod.number(),
+  "expiredPatienceSetups": zod.number(),
+  "ambiguousEntryCount": zod.number(),
+  "strategyStopExits": zod.number(),
+  "catastropheStopExits": zod.number(),
+  "sessionCloseExits": zod.number(),
+  "partialTargetExits": zod.number()
 }),
   "outOfSample": zod.object({
   "tradeCount": zod.number(),
@@ -857,7 +873,13 @@ export const RunBacktestResponse = zod.object({
   "stopExits": zod.number(),
   "targetExits": zod.number(),
   "runnerExits": zod.number(),
-  "ambiguityCount": zod.number()
+  "ambiguityCount": zod.number(),
+  "expiredPatienceSetups": zod.number(),
+  "ambiguousEntryCount": zod.number(),
+  "strategyStopExits": zod.number(),
+  "catastropheStopExits": zod.number(),
+  "sessionCloseExits": zod.number(),
+  "partialTargetExits": zod.number()
 }),
   "segments": zod.array(zod.object({
   "tradeCount": zod.number(),
@@ -881,7 +903,13 @@ export const RunBacktestResponse = zod.object({
   "stopExits": zod.number(),
   "targetExits": zod.number(),
   "runnerExits": zod.number(),
-  "ambiguityCount": zod.number()
+  "ambiguityCount": zod.number(),
+  "expiredPatienceSetups": zod.number(),
+  "ambiguousEntryCount": zod.number(),
+  "strategyStopExits": zod.number(),
+  "catastropheStopExits": zod.number(),
+  "sessionCloseExits": zod.number(),
+  "partialTargetExits": zod.number()
 }).and(zod.object({
   "dimension": zod.string(),
   "value": zod.string()
@@ -903,7 +931,7 @@ export const RunBacktestResponse = zod.object({
   "fees": zod.number(),
   "slippage": zod.number(),
   "netPnl": zod.number(),
-  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'manual']),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'manual']),
   "ambiguityLabel": zod.union([zod.literal('AMBIGUOUS_STOP_FIRST'),zod.literal('AMBIGUOUS_ENTRY_INVALIDATION'),zod.literal(null)]).nullable(),
   "source": zod.enum(['tick', 'one-minute', 'ohlc']),
   "segmentation": zod.object({
@@ -928,6 +956,9 @@ export const RunBacktestResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal(null)]).nullable(),
   "entryCandleOpenTime": zod.string().nullable(),
   "exitCandleOpenTime": zod.string().nullable(),
   "assumptions": zod.array(zod.string()),
@@ -935,6 +966,10 @@ export const RunBacktestResponse = zod.object({
   "targetHit": zod.boolean(),
   "runnerActivated": zod.boolean(),
   "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
   "exitReason": zod.string(),
   "legs": zod.array(zod.object({
   "kind": zod.enum(['target', 'runner', 'full']),
@@ -945,10 +980,11 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "fees": zod.number(),
   "netPnl": zod.number(),
-  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual'])
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual', 'session_close'])
 }))
 }).optional()
 })),
+  "audit": zod.array(zod.record(zod.string(), zod.unknown())),
   "assumptions": zod.array(zod.string()),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']),
   "fillLabel": zod.string(),
@@ -965,6 +1001,10 @@ export const RunBacktestResponse = zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
   "unexpectedOpenSessionMissingMinutes": zod.number(),
+  "unexpectedOvernightMissingMinutes": zod.number(),
+  "unexpectedRegularSessionMissingMinutes": zod.number(),
+  "regularSessionGapSegments": zod.number(),
+  "overnightGapSegments": zod.number(),
   "regularSessionMissingMinutes": zod.number(),
   "expectedClosedMarketMinutes": zod.number(),
   "lowLiquidityInactiveMinutes": zod.number()
@@ -995,6 +1035,10 @@ export const GetHistoricalDataResponse = zod.object({
   "missingMinuteGaps": zod.number(),
   "missingGapSegments": zod.number(),
   "unexpectedOpenSessionMissingMinutes": zod.number(),
+  "unexpectedOvernightMissingMinutes": zod.number(),
+  "unexpectedRegularSessionMissingMinutes": zod.number(),
+  "regularSessionGapSegments": zod.number(),
+  "overnightGapSegments": zod.number(),
   "regularSessionMissingMinutes": zod.number(),
   "expectedClosedMarketMinutes": zod.number(),
   "lowLiquidityInactiveMinutes": zod.number(),

@@ -33,4 +33,10 @@ export interface BacktestMetricSet {
   targetExits: number;
   runnerExits: number;
   ambiguityCount: number;
+  expiredPatienceSetups: number;
+  ambiguousEntryCount: number;
+  strategyStopExits: number;
+  catastropheStopExits: number;
+  sessionCloseExits: number;
+  partialTargetExits: number;
 }
