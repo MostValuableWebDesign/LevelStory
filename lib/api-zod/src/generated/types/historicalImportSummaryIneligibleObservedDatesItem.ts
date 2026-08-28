@@ -5,17 +5,17 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { HistoricalImportSummaryIneligibleDatesItemCoverageStatus } from './historicalImportSummaryIneligibleDatesItemCoverageStatus';
-import type { HistoricalImportSummaryIneligibleDatesItemStatus } from './historicalImportSummaryIneligibleDatesItemStatus';
+import type { HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus } from './historicalImportSummaryIneligibleObservedDatesItemCoverageStatus';
+import type { HistoricalImportSummaryIneligibleObservedDatesItemStatus } from './historicalImportSummaryIneligibleObservedDatesItemStatus';
 
-export type HistoricalImportSummaryIneligibleDatesItem = {
+export type HistoricalImportSummaryIneligibleObservedDatesItem = {
   tradingDate: string;
   /** @nullable */
   scheduledContractSymbol: string | null;
   scheduleVersion: string;
   rolloverReason: string;
-  status: HistoricalImportSummaryIneligibleDatesItemStatus;
-  coverageStatus: HistoricalImportSummaryIneligibleDatesItemCoverageStatus;
+  status: HistoricalImportSummaryIneligibleObservedDatesItemStatus;
+  coverageStatus: HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus;
   /** @nullable */
   reason: string | null;
   observedInAnyFile: boolean;

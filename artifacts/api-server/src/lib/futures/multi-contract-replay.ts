@@ -32,7 +32,7 @@ const execFileAsync = promisify(execFile);
 
 export const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
 export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2026_01" as const;
-export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v2" as const;
+export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v3" as const;
 
 const MONTH_CODES = ["F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"] as const;
 const MONTH_BY_CODE = new Map(MONTH_CODES.map((code, index) => [code, index + 1]));
@@ -327,7 +327,7 @@ async function resolveMultiContractFiles(): Promise<{
   return { accepted, rejectedFiles };
 }
 
-function emptyAggregate(): Omit<HistoricalMultiContractImportSummary, "source" | "filename" | "detectedSymbol" | "coverageScope" | "scheduleVersion" | "acceptedContracts" | "inactiveContracts" | "rejectedFiles" | "files" | "rolloverBoundaries" | "activeContractByDate" | "eligibleTradingDates" | "ineligibleDates" | "indexingState" | "indexKey" | "importerVersion" | "indexedAt"> {
+function emptyAggregate(): Omit<HistoricalMultiContractImportSummary, "source" | "filename" | "detectedSymbol" | "coverageScope" | "scheduleVersion" | "acceptedContracts" | "inactiveContracts" | "rejectedFiles" | "files" | "rolloverBoundaries" | "activeContractByDate" | "eligibleTradingDates" | "ineligibleDates" | "allObservedTradingDates" | "ineligibleObservedDates" | "dateEligibility" | "acceptedOutrightFileCount" | "scheduledActiveContractCount" | "inactiveFutureContractCount" | "rejectedSpreadOrDuplicateFileCount" | "missingScheduledContractFileCount" | "allObservedDateCount" | "eligibleScheduledReplayDateCount" | "ineligibleObservedDateCount" | "ineligibleScheduledDateCount" | "coverageReconciles" | "indexingState" | "indexKey" | "importerVersion" | "indexedAt"> {
   return {
     earliestTimestamp: null,
     latestTimestamp: null,
@@ -456,7 +456,7 @@ export function multiContractImportToReplayDataset(
   outOfSampleDays: number,
   selectedDatesOverride?: readonly string[],
 ): CausalReplayDataset {
-  const eligibleDates = imported.summary.eligibleTradingDates ?? imported.summary.availableTradingDates;
+  const eligibleDates = imported.summary.eligibleTradingDates;
   const requestedDates = eligibleDates.filter((date) => date >= startDate && date <= endDate);
   const requiredDates = inSampleDays + outOfSampleDays;
   const exactDates = selectedDatesOverride ? [...new Set(selectedDatesOverride)].sort() : null;
@@ -646,7 +646,7 @@ function rolloverContextForDate(tradingDate: string): {
   };
 }
 
-function buildEligibility(
+export function buildMultiContractDateEligibility(
   importedContracts: ReadonlyMap<string, HistoricalCsvImport>,
   uploadedDates: readonly string[],
   calendar: FuturesSessionCalendar,
@@ -709,9 +709,7 @@ function buildEligibility(
           : !regularSessionComplete
             ? "insufficient_rth_coverage"
             : "eligible";
-    const coverageStatus = status === "no_scheduled_contract"
-      ? "outside_configured_rollover_schedule"
-      : status;
+    const coverageStatus = status;
     result.push({
       tradingDate,
       scheduledContractSymbol,
@@ -794,6 +792,13 @@ export function assertMultiContractCoverageReconciles(
     | "coverageReconciles"
   >,
 ): void {
+  if (
+    !Array.isArray(summary.allObservedTradingDates)
+    || !Array.isArray(summary.eligibleTradingDates)
+    || !Array.isArray(summary.ineligibleObservedDates)
+  ) {
+    throw new Error("Historical multi-contract coverage summary is missing reconciliation metadata.");
+  }
   const observedCount = new Set(summary.allObservedTradingDates).size;
   const eligibleCount = new Set(summary.eligibleTradingDates).size;
   const ineligibleObservedCount = new Set(
@@ -817,6 +822,7 @@ async function readPersistedIndex(identity: MultiContractIdentity): Promise<Hist
     const raw = await readFile(INDEX_CACHE_PATH, "utf8");
     const persisted = JSON.parse(raw) as PersistedMultiContractIndex;
     if (persisted.indexKey !== identity.indexKey || !Array.isArray(persisted.contracts)) return null;
+    assertMultiContractCoverageReconciles(persisted.summary);
     const base = getFuturesContractSpecification("MES");
     const contracts = new Map<string, HistoricalCsvImport>();
     for (const item of persisted.contracts) {
@@ -896,7 +902,7 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
   const acceptedContracts = [...importedContracts.keys()].sort(compareMesContractSymbols);
   const scheduledSymbols = new Set<string>(MES_ROLLOVER_SCHEDULE.map((item) => item.contractSymbol));
   const inactiveContracts = acceptedContracts.filter((symbol) => !scheduledSymbols.has(symbol));
-  const eligibility = buildEligibility(importedContracts, allObservedTradingDates, sessionCalendarForContract(base));
+  const eligibility = buildMultiContractDateEligibility(importedContracts, allObservedTradingDates, sessionCalendarForContract(base));
   const eligibleTradingDates = eligibility
     .filter((item) => item.backtestEligible)
     .map((item) => item.tradingDate);

@@ -4,11 +4,13 @@ import {
   MES_ROLLOVER_SCHEDULE,
   MES_ROLLOVER_SCHEDULE_VERSION,
   buildRolloverBoundaries,
+  buildMultiContractDateEligibility,
   compareMesContractSymbols,
   contractSpecificationForMesSymbol,
   multiContractImportToReplayDataset,
   parseMesContractSymbol,
   scheduledMesContractForDate,
+  assertMultiContractCoverageReconciles,
   type HistoricalMultiContractImport,
 } from "./multi-contract-replay.js";
 import { newYorkTimeToUtc, sessionCalendarForContract } from "./session-calendar.js";
@@ -76,7 +78,11 @@ test("selects contract-local candles on each rollover date without blending", ()
     });
   }
   const imported = {
-    summary: { availableTradingDates: dates, acceptedContracts: ["MESU5", "MESZ5"] },
+    summary: {
+      availableTradingDates: dates,
+      eligibleTradingDates: dates,
+      acceptedContracts: ["MESU5", "MESZ5"],
+    },
     contracts,
   } as unknown as HistoricalMultiContractImport;
 
@@ -140,4 +146,100 @@ test("rejects an explicit sparse sample when one requested date is ineligible", 
     () => multiContractImportToReplayDataset(imported, date, "2025-09-12", 1, 1, [date, "2025-09-12"]),
     /not eligible.*2025-09-12/i,
   );
+});
+
+function summaryForDates(
+  availableTradingDates: string[],
+  completeRegularSessionDates: string[] = availableTradingDates,
+  overrides: Record<string, unknown> = {},
+): any {
+  return {
+    availableTradingDates,
+    completeRegularSessionDates,
+    rejectedRows: 0,
+    duplicateRowsRemoved: 0,
+    ...overrides,
+  };
+}
+
+function importedSummary(
+  contractSymbol: string,
+  availableTradingDates: string[],
+  completeRegularSessionDates: string[] = availableTradingDates,
+  overrides: Record<string, unknown> = {},
+): any {
+  const specification = contractSpecificationForMesSymbol(contractSymbol);
+  return {
+    summary: summaryForDates(availableTradingDates, completeRegularSessionDates, overrides),
+    specification,
+    calendar: sessionCalendarForContract(specification),
+  };
+}
+
+test("calculates observed dates independently from eligible scheduled replay dates", () => {
+  const observedDates = ["2025-09-10", "2025-09-12"];
+  const calendar = sessionCalendarForContract(contractSpecificationForMesSymbol("MESU5"));
+  const rows = buildMultiContractDateEligibility(
+    new Map([
+      ["MESU5", importedSummary("MESU5", ["2025-09-10"])],
+      ["MESZ6", importedSummary("MESZ6", ["2025-09-12"])],
+    ]),
+    observedDates,
+    calendar,
+  );
+  const eligible = rows.filter((row) => row.backtestEligible).map((row) => row.tradingDate);
+  const observedIneligible = rows.filter((row) => row.observedInAnyFile && !row.backtestEligible).map((row) => row.tradingDate);
+  assert.deepEqual(eligible, ["2025-09-10"]);
+  assert.deepEqual(observedIneligible, ["2025-09-12"]);
+  assert.equal(rows.find((row) => row.tradingDate === "2025-09-12")?.status, "missing_scheduled_file");
+  assert.equal(observedDates.length, eligible.length + observedIneligible.length);
+});
+
+test("marks an observed date with no scheduled-contract candles as ineligible", () => {
+  const date = "2025-09-10";
+  const calendar = sessionCalendarForContract(contractSpecificationForMesSymbol("MESU5"));
+  const rows = buildMultiContractDateEligibility(
+    new Map([
+      ["MESU5", importedSummary("MESU5", [], [])],
+      ["MESZ6", importedSummary("MESZ6", [date])],
+    ]),
+    [date],
+    calendar,
+  );
+  const row = rows.find((item) => item.tradingDate === date);
+  assert.equal(row?.observedInAnyFile, true);
+  assert.equal(row?.scheduledContractFileAvailable, true);
+  assert.equal(row?.scheduledContractDataAvailable, false);
+  assert.equal(row?.status, "no_scheduled_contract_candles");
+  assert.equal(row?.backtestEligible, false);
+});
+
+test("fails closed when coverage totals do not reconcile", () => {
+  const dateEligibility = [{
+    tradingDate: "2025-09-10",
+    observedInAnyFile: true,
+    backtestEligible: true,
+  }, {
+    tradingDate: "2025-09-12",
+    observedInAnyFile: true,
+    backtestEligible: false,
+  }] as any;
+  assert.doesNotThrow(() => assertMultiContractCoverageReconciles({
+    allObservedTradingDates: ["2025-09-10", "2025-09-12"],
+    eligibleTradingDates: ["2025-09-10"],
+    ineligibleObservedDates: dateEligibility.slice(1),
+    allObservedDateCount: 2,
+    eligibleScheduledReplayDateCount: 1,
+    ineligibleObservedDateCount: 1,
+    coverageReconciles: true,
+  }));
+  assert.throws(() => assertMultiContractCoverageReconciles({
+    allObservedTradingDates: ["2025-09-10", "2025-09-12"],
+    eligibleTradingDates: ["2025-09-10"],
+    ineligibleObservedDates: dateEligibility.slice(1),
+    allObservedDateCount: 3,
+    eligibleScheduledReplayDateCount: 1,
+    ineligibleObservedDateCount: 1,
+    coverageReconciles: false,
+  }), /do not reconcile/i);
 });

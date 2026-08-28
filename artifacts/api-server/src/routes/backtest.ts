@@ -24,6 +24,7 @@ import {
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
   getHistoricalMultiContractIndexStatus,
+  assertMultiContractCoverageReconciles,
 } from "../lib/futures/multi-contract-replay.js";
 import {
   BacktestRequestAbortedError,
@@ -477,6 +478,7 @@ router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), asy
       }
       const imported = await importHistoricalMultiContract();
       if (res.headersSent) return;
+      assertMultiContractCoverageReconciles(imported.summary);
       res.json(GetHistoricalDataResponse.parse(imported.summary));
       return;
     }

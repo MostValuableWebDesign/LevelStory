@@ -19,14 +19,37 @@ import type {
   WalkForwardEdgeStatus,
   WalkForwardReport,
 } from "@workspace/api-client-react";
-import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
+import { BarChart3, Check, CheckCircle2, CircleX, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
-import { getHistoricalBacktestReadiness } from "@/lib/backtest-state";
+import {
+  acceptedOutrightFilesLabel,
+  coverageEligibilityLabel,
+  getHistoricalBacktestReadiness,
+  getMultiContractCoverageTotals,
+} from "@/lib/backtest-state";
 
 const symbols = ["MES", "ES", "MNQ", "NQ"];
 
 const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
+
+const coverageStatusLabels: Record<string, string> = {
+  eligible: "Sufficient scheduled coverage",
+  missing_scheduled_file: "Scheduled contract file missing",
+  no_scheduled_contract_candles: "No scheduled-contract candles",
+  insufficient_rth_coverage: "Insufficient regular-session coverage",
+  invalid_or_rejected_source_data: "Invalid or rejected source data",
+  duplicate_or_overlapping_active_contract_data: "Duplicate or overlapping active-contract data",
+  no_scheduled_contract: "No scheduled contract",
+  outside_configured_rollover_schedule: "Outside configured rollover schedule",
+};
+
+function CoverageYesNo({ value, label }: { value: boolean; label: string }) {
+  return <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold" aria-label={`${label}: ${value ? "yes" : "no"}`}>
+    {value ? <CheckCircle2 size={13} aria-hidden="true" /> : <CircleX size={13} aria-hidden="true" />}
+    {value ? "Yes" : "No"}
+  </span>;
+}
 
 function HistoricalImportResults({ data, isLoading, isError }: { data?: HistoricalImportSummary; isLoading: boolean; isError: boolean }) {
   if (isLoading) return <Panel><div className="p-6 text-center text-xs text-muted-foreground">Streaming the uploaded Databento CSV and validating each row…</div></Panel>;
@@ -53,6 +76,19 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     ["Overnight", data.overnightCandleCount.toLocaleString()],
   ];
   const multiContract = data.source === MULTI_CONTRACT_SOURCE;
+  const coverageTotals = getMultiContractCoverageTotals(data);
+  const acceptedOutrightFileCount = data.acceptedOutrightFileCount ?? data.files?.length ?? data.acceptedContracts?.length ?? 0;
+  const scheduledActiveContractCount = data.scheduledActiveContractCount ?? new Set(data.activeContractByDate?.map((item) => item.contractSymbol)).size;
+  const inactiveFutureContractCount = data.inactiveFutureContractCount ?? data.inactiveContracts?.length ?? 0;
+  const rejectedSpreadOrDuplicateFileCount = data.rejectedSpreadOrDuplicateFileCount
+    ?? data.rejectedFiles?.filter((file) => file.reason === "CALENDAR_SPREAD_REJECTED" || file.reason === "DUPLICATE_CONTRACT_FILE").length
+    ?? 0;
+  const missingScheduledContractFileCount = data.missingScheduledContractFileCount
+    ?? new Set((data.ineligibleDates ?? [])
+      .filter((item) => item.status === "missing_scheduled_file")
+      .map((item) => item.scheduledContractSymbol)
+      .filter((symbol): symbol is string => Boolean(symbol))).size;
+  const dateRows = [...(data.dateEligibility ?? [])].sort((left, right) => left.tradingDate.localeCompare(right.tradingDate));
   return <Panel accent data-testid="panel-historical-import-results">
      <PanelTitle eyebrow="File import / validation" title={multiContract ? "Historical Databento Data — MES quarterly contracts — Shadow Mode" : "Historical Databento Data — MESU6 — Shadow Mode"} right={<FileCheck2 size={16} className="text-accent" />} />
     <div className="border-t border-border px-5 py-4 text-xs">
@@ -67,13 +103,59 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
        <p>Expected closed = maintenance/daily close + weekend/holiday + early-close minutes. Unexpected missing = unexpected regular + unexpected overnight minutes. Inactive contract minutes are excluded from unexpected data loss when RTH coverage is below the configured threshold.</p>
       <div className="eyebrow mb-2">Aggregated bars</div>
       <div className="flex flex-wrap gap-x-5 gap-y-2"><span>1m <strong className="mono text-foreground">{data.aggregationCounts.oneMinute.toLocaleString()}</strong></span><span>5m <strong className="mono text-foreground">{data.aggregationCounts.fiveMinute.toLocaleString()}</strong></span><span>15m <strong className="mono text-foreground">{data.aggregationCounts.fifteenMinute.toLocaleString()}</strong></span><span>1h <strong className="mono text-foreground">{data.aggregationCounts.oneHour.toLocaleString()}</strong></span></div>
-      <div className="mt-3">Available NY trading dates: <strong className="text-foreground">{data.availableTradingDates.length}</strong> ({data.availableTradingDates[0] ?? "—"} → {data.availableTradingDates.at(-1) ?? "—"})</div>
-       {multiContract && <div className="mt-4 space-y-2">
-         <div className="eyebrow">Contract coverage</div>
-          <div className="grid gap-2 text-foreground sm:grid-cols-2">{(data.files ?? []).map((file) => <div key={file.contractSymbol} className="border border-border px-3 py-2"><div className="mono">{file.contractSymbol} <span className="text-muted-foreground">· {file.status}</span></div><div className="mt-1 text-[10px] text-muted-foreground">{file.coverageStatus ?? "not_calculated"} · {file.activeSelectedDates.length} eligible dates · {file.regularSessionCandleCount?.toLocaleString() ?? "—"} RTH candles</div>{file.activePeriod?.reason && <div className="mt-1 text-[10px] text-muted-foreground">{file.activePeriod.reason}</div>}</div>)}</div>
-         <div className="text-muted-foreground">Rejected inputs: <strong className="text-foreground">{data.rejectedFiles?.length ?? 0}</strong> · Inactive/outside schedule: <strong className="text-foreground">{data.inactiveContracts?.join(", ") || "none"}</strong></div>
-          <div className="text-muted-foreground">Eligible scheduled dates: <strong className="text-foreground">{data.eligibleTradingDates?.length ?? 0}</strong> · unavailable schedule dates: <strong className="text-foreground">{data.ineligibleDates?.length ?? 0}</strong></div>
-       </div>}
+       {!multiContract && <div className="mt-3">All observed dates: <strong className="text-foreground">{data.availableTradingDates.length}</strong> ({data.availableTradingDates[0] ?? "—"} → {data.availableTradingDates.at(-1) ?? "—"})</div>}
+        {multiContract && <div className="mt-5 space-y-5">
+          {!coverageTotals.reconciles ? <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive" role="alert">Coverage totals failed reconciliation. Backtest eligibility is unavailable until the server returns a consistent summary.</div> : <>
+            <section aria-labelledby="coverage-totals-heading">
+              <div id="coverage-totals-heading" className="eyebrow mb-2 text-foreground">Replay eligibility totals</div>
+              <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+                <div className="bg-card px-4 py-4"><div className="eyebrow">All observed dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.allObservedDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Informational only</div></div>
+                <div className="bg-card px-4 py-4"><div className="eyebrow">Eligible scheduled replay dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">May enter a backtest or batch</div></div>
+                <div className="bg-card px-4 py-4"><div className="eyebrow">Ineligible observed dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.ineligibleObservedDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Observed, but blocked</div></div>
+              </div>
+              <p className="mt-3 max-w-4xl text-foreground">All observed dates come from every accepted contract file. Eligible scheduled replay dates contain sufficient data for the contract selected by the deterministic rollover schedule. Backtests use eligible dates only.</p>
+              <p className="mt-2 font-semibold text-foreground">Reconciliation: {coverageTotals.allObservedDateCount.toLocaleString()} all observed = {coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()} eligible + {coverageTotals.ineligibleObservedDateCount.toLocaleString()} ineligible observed.</p>
+            </section>
+            <section aria-labelledby="coverage-inventory-heading">
+              <div id="coverage-inventory-heading" className="eyebrow mb-2 text-foreground">Coverage inventory</div>
+              <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  [acceptedOutrightFilesLabel(acceptedOutrightFileCount), "Accepted outright files"],
+                  [String(scheduledActiveContractCount), "Scheduled active contracts"],
+                  [String(inactiveFutureContractCount), "Inactive / future contracts"],
+                  [String(rejectedSpreadOrDuplicateFileCount), "Rejected spreads or duplicate files"],
+                  [String(missingScheduledContractFileCount), "Missing scheduled contract files"],
+                  [String(data.ineligibleScheduledDateCount ?? data.ineligibleDates?.length ?? 0), "Ineligible scheduled dates"],
+                ].map(([value, label]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow">{label}</div><div className="mono mt-2 text-sm text-foreground">{value}</div></div>)}
+              </div>
+            </section>
+            <section aria-labelledby="uploaded-coverage-heading">
+              <div id="uploaded-coverage-heading" className="eyebrow mb-2 text-foreground">Uploaded contract coverage</div>
+              <div className="grid gap-2 text-foreground sm:grid-cols-2">{(data.files ?? []).map((file) => <div key={file.contractSymbol} className="border border-border px-3 py-2"><div className="mono">{file.contractSymbol} <span className="text-muted-foreground">· {file.status}</span></div><div className="mt-1 text-[10px] text-muted-foreground">{file.coverageStatus ?? "not_calculated"} · {file.activeSelectedDates.length} eligible dates · {file.regularSessionCandleCount?.toLocaleString() ?? "—"} RTH candles</div>{file.activePeriod?.reason && <div className="mt-1 text-[10px] text-muted-foreground">{file.activePeriod.reason}</div>}</div>)}</div>
+            </section>
+            <section aria-labelledby="date-eligibility-heading">
+              <details className="border border-border" open={dateRows.length <= 20}>
+                <summary id="date-eligibility-heading" className="cursor-pointer list-none px-4 py-3 font-semibold text-foreground">Date-level eligibility <span className="ml-2 font-normal text-muted-foreground">({dateRows.length} scheduled dates; expand to review)</span></summary>
+                <div className="border-t border-border px-4 py-3 text-[10px] text-muted-foreground">Eligibility is shown with words and symbols, not color alone. The schedule version and rollover context are included for every date.</div>
+                <div className="overflow-x-auto border-t border-border">
+                  <table className="w-full min-w-[1280px] text-left text-[10px]" aria-label="Date-level scheduled replay eligibility">
+                    <thead className="bg-muted/40 uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-3 py-3">Trading date</th><th className="px-3 py-3">Scheduled contract</th><th className="px-3 py-3">Rollover / schedule</th><th className="px-3 py-3">Observed in any file</th><th className="px-3 py-3">Scheduled-contract data</th><th className="px-3 py-3">Coverage status</th><th className="px-3 py-3">Backtest eligible</th><th className="px-3 py-3">Ineligibility reason</th></tr></thead>
+                    <tbody className="divide-y divide-border">{dateRows.map((row) => <tr key={row.tradingDate} className={row.backtestEligible ? "" : "bg-muted/20"}>
+                      <td className="mono whitespace-nowrap px-3 py-3">{row.tradingDate}</td>
+                      <td className="mono whitespace-nowrap px-3 py-3">{row.scheduledContractSymbol ?? "None scheduled"}</td>
+                      <td className="max-w-[240px] px-3 py-3 text-muted-foreground"><span className="block">{row.rolloverReason}</span><span className="mono mt-1 block">{row.scheduleVersion}</span></td>
+                      <td className="px-3 py-3"><CoverageYesNo value={row.observedInAnyFile} label="Observed in any file" /></td>
+                      <td className="px-3 py-3"><CoverageYesNo value={row.scheduledContractDataAvailable} label="Scheduled-contract data available" /></td>
+                      <td className="px-3 py-3">{coverageStatusLabels[row.coverageStatus] ?? row.coverageStatus}</td>
+                      <td className="px-3 py-3"><span className="font-semibold" aria-label={coverageEligibilityLabel(row.backtestEligible)}>{row.backtestEligible ? "✓ Yes" : "— No"} <span className="sr-only">{coverageEligibilityLabel(row.backtestEligible)}</span></span></td>
+                      <td className="max-w-[280px] px-3 py-3 text-muted-foreground">{row.backtestEligible ? "—" : row.reason ?? coverageStatusLabels[row.coverageStatus] ?? "Not eligible"}</td>
+                    </tr>)}</tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+          </>}
+        </div>}
     </div>
   </Panel>;
 }
@@ -325,7 +407,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
         {[
           ["Dataset", `${report.dataset.startDate} → ${report.dataset.endDate}`],
            ["Requested range", `${report.dataset.requestedStartDate} → ${report.dataset.requestedEndDate}`],
-           ["Selected dates", `${report.dataset.selectedDates.length} exact sessions`],
+            ["Dates selected for this run", `${report.dataset.selectedDates.length} exact sessions`],
           ["Visible candles", `${report.replay.visibleCandleCount} / ${report.replay.totalCandleCount}`],
           ["Holdout", `${report.dataset.outOfSampleDates.length} trading days`],
           ["Ambiguous trades", String(report.metrics.ambiguousTradeCount)],
@@ -338,7 +420,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
        <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
          <div className="eyebrow mb-2">Exact replay partition</div>
          <div className="flex flex-wrap gap-x-5 gap-y-2">
-           <span>Selected <strong className="mono text-foreground">{report.dataset.selectedDates.join(", ") || "—"}</strong></span>
+            <span>Dates selected for this run <strong className="mono text-foreground">{report.dataset.selectedDates.join(", ") || "—"}</strong></span>
            <span>Excluded <strong className="mono text-foreground">{report.dataset.excludedDates.join(", ") || "none"}</strong></span>
          </div>
           {report.dataset.scheduleVersion && <div className="mt-3 space-y-1">
@@ -373,7 +455,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
        <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-3">
          {[
            ["Valid rows", fullCoverage.validRows.toLocaleString()],
-           ["Available dates", String(fullCoverage.availableTradingDates.length)],
+            ["All observed dates", String(fullCoverage.allObservedDateCount ?? fullCoverage.availableTradingDates.length)],
            ["Classified missing total", `${fullCoverage.missingMinuteGaps.toLocaleString()} min`],
            ["Raw adjacent gap segments", `${fullCoverage.missingGapSegments.toLocaleString()}`],
            ["Unexpected", `${fullCoverage.unexpectedMissingMinutes.toLocaleString()} min`],
@@ -399,7 +481,7 @@ function ReportBody({ report, fullCoverage }: { report: BacktestReport; fullCove
            ["Weekend / holiday", `${report.gapReport.weekendHolidayClosedMinutes.toLocaleString()} min`],
            ["Early close", `${report.gapReport.earlyCloseMinutes.toLocaleString()} min`],
            ["Inactive contract", `${report.gapReport.inactiveContractMinutes.toLocaleString()} min`],
-           ["Coverage scope", report.gapReport.coverageScope === "selected_dates" ? "Selected dates" : "Full file"],
+            ["Coverage scope", report.gapReport.coverageScope === "selected_dates" ? "Dates selected for this run" : "Full file"],
            ["Maintenance", `${report.gapReport.maintenanceGapMinutes.toLocaleString()} min`],
            ["Missing RTH dates", String(report.gapReport.missingRegularSessionDates.length)],
            ["Complete RTH dates", String(report.gapReport.completeRegularSessionDates.length)],

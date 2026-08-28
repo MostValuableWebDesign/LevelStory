@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type HistoricalImportSummaryIneligibleDatesItemStatus = typeof HistoricalImportSummaryIneligibleDatesItemStatus[keyof typeof HistoricalImportSummaryIneligibleDatesItemStatus];
+export type HistoricalImportSummaryDateEligibilityItemStatus = typeof HistoricalImportSummaryDateEligibilityItemStatus[keyof typeof HistoricalImportSummaryDateEligibilityItemStatus];
 
 
-export const HistoricalImportSummaryIneligibleDatesItemStatus = {
+export const HistoricalImportSummaryDateEligibilityItemStatus = {
   eligible: 'eligible',
   missing_scheduled_file: 'missing_scheduled_file',
   no_scheduled_contract_candles: 'no_scheduled_contract_candles',

@@ -1528,19 +1528,130 @@ export type HistoricalImportSummaryIneligibleDatesItemStatus = typeof Historical
 export const HistoricalImportSummaryIneligibleDatesItemStatus = {
   eligible: 'eligible',
   missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
   insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
   no_scheduled_contract: 'no_scheduled_contract',
+} as const;
+
+export type HistoricalImportSummaryIneligibleDatesItemCoverageStatus = typeof HistoricalImportSummaryIneligibleDatesItemCoverageStatus[keyof typeof HistoricalImportSummaryIneligibleDatesItemCoverageStatus];
+
+
+export const HistoricalImportSummaryIneligibleDatesItemCoverageStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  outside_configured_rollover_schedule: 'outside_configured_rollover_schedule',
 } as const;
 
 export type HistoricalImportSummaryIneligibleDatesItem = {
   tradingDate: string;
   /** @nullable */
   scheduledContractSymbol: string | null;
+  scheduleVersion: string;
+  rolloverReason: string;
   status: HistoricalImportSummaryIneligibleDatesItemStatus;
+  coverageStatus: HistoricalImportSummaryIneligibleDatesItemCoverageStatus;
   /** @nullable */
   reason: string | null;
+  observedInAnyFile: boolean;
+  scheduledContractFileAvailable: boolean;
+  scheduledContractDataAvailable: boolean;
   availableOnContract: boolean;
   regularSessionComplete: boolean;
+  backtestEligible: boolean;
+};
+
+export type HistoricalImportSummaryIneligibleObservedDatesItemStatus = typeof HistoricalImportSummaryIneligibleObservedDatesItemStatus[keyof typeof HistoricalImportSummaryIneligibleObservedDatesItemStatus];
+
+
+export const HistoricalImportSummaryIneligibleObservedDatesItemStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  no_scheduled_contract: 'no_scheduled_contract',
+} as const;
+
+export type HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus = typeof HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus[keyof typeof HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus];
+
+
+export const HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  outside_configured_rollover_schedule: 'outside_configured_rollover_schedule',
+} as const;
+
+export type HistoricalImportSummaryIneligibleObservedDatesItem = {
+  tradingDate: string;
+  /** @nullable */
+  scheduledContractSymbol: string | null;
+  scheduleVersion: string;
+  rolloverReason: string;
+  status: HistoricalImportSummaryIneligibleObservedDatesItemStatus;
+  coverageStatus: HistoricalImportSummaryIneligibleObservedDatesItemCoverageStatus;
+  /** @nullable */
+  reason: string | null;
+  observedInAnyFile: boolean;
+  scheduledContractFileAvailable: boolean;
+  scheduledContractDataAvailable: boolean;
+  availableOnContract: boolean;
+  regularSessionComplete: boolean;
+  backtestEligible: boolean;
+};
+
+export type HistoricalImportSummaryDateEligibilityItemStatus = typeof HistoricalImportSummaryDateEligibilityItemStatus[keyof typeof HistoricalImportSummaryDateEligibilityItemStatus];
+
+
+export const HistoricalImportSummaryDateEligibilityItemStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  no_scheduled_contract: 'no_scheduled_contract',
+} as const;
+
+export type HistoricalImportSummaryDateEligibilityItemCoverageStatus = typeof HistoricalImportSummaryDateEligibilityItemCoverageStatus[keyof typeof HistoricalImportSummaryDateEligibilityItemCoverageStatus];
+
+
+export const HistoricalImportSummaryDateEligibilityItemCoverageStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  outside_configured_rollover_schedule: 'outside_configured_rollover_schedule',
+} as const;
+
+export type HistoricalImportSummaryDateEligibilityItem = {
+  tradingDate: string;
+  /** @nullable */
+  scheduledContractSymbol: string | null;
+  scheduleVersion: string;
+  rolloverReason: string;
+  status: HistoricalImportSummaryDateEligibilityItemStatus;
+  coverageStatus: HistoricalImportSummaryDateEligibilityItemCoverageStatus;
+  /** @nullable */
+  reason: string | null;
+  observedInAnyFile: boolean;
+  scheduledContractFileAvailable: boolean;
+  scheduledContractDataAvailable: boolean;
+  availableOnContract: boolean;
+  regularSessionComplete: boolean;
+  backtestEligible: boolean;
 };
 
 export type HistoricalImportSummaryIndexingState = typeof HistoricalImportSummaryIndexingState[keyof typeof HistoricalImportSummaryIndexingState];
@@ -1688,6 +1799,28 @@ export interface HistoricalImportSummary {
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
   eligibleTradingDates?: string[];
   ineligibleDates?: HistoricalImportSummaryIneligibleDatesItem[];
+  allObservedTradingDates?: string[];
+  ineligibleObservedDates?: HistoricalImportSummaryIneligibleObservedDatesItem[];
+  dateEligibility?: HistoricalImportSummaryDateEligibilityItem[];
+  /** @minimum 0 */
+  acceptedOutrightFileCount?: number;
+  /** @minimum 0 */
+  scheduledActiveContractCount?: number;
+  /** @minimum 0 */
+  inactiveFutureContractCount?: number;
+  /** @minimum 0 */
+  rejectedSpreadOrDuplicateFileCount?: number;
+  /** @minimum 0 */
+  missingScheduledContractFileCount?: number;
+  /** @minimum 0 */
+  allObservedDateCount?: number;
+  /** @minimum 0 */
+  eligibleScheduledReplayDateCount?: number;
+  /** @minimum 0 */
+  ineligibleObservedDateCount?: number;
+  /** @minimum 0 */
+  ineligibleScheduledDateCount?: number;
+  coverageReconciles?: boolean;
   indexingState?: HistoricalImportSummaryIndexingState;
   indexKey?: string;
   importerVersion?: string;

@@ -8,10 +8,12 @@
 import type { HistoricalImportSummaryActiveContractByDateItem } from './historicalImportSummaryActiveContractByDateItem';
 import type { HistoricalImportSummaryAggregationCounts } from './historicalImportSummaryAggregationCounts';
 import type { HistoricalImportSummaryCoverageScope } from './historicalImportSummaryCoverageScope';
+import type { HistoricalImportSummaryDateEligibilityItem } from './historicalImportSummaryDateEligibilityItem';
 import type { HistoricalImportSummaryErrorsItem } from './historicalImportSummaryErrorsItem';
 import type { HistoricalImportSummaryFilesItem } from './historicalImportSummaryFilesItem';
 import type { HistoricalImportSummaryIndexingState } from './historicalImportSummaryIndexingState';
 import type { HistoricalImportSummaryIneligibleDatesItem } from './historicalImportSummaryIneligibleDatesItem';
+import type { HistoricalImportSummaryIneligibleObservedDatesItem } from './historicalImportSummaryIneligibleObservedDatesItem';
 import type { HistoricalImportSummaryRejectedFilesItem } from './historicalImportSummaryRejectedFilesItem';
 import type { HistoricalImportSummaryRejectionReasons } from './historicalImportSummaryRejectionReasons';
 import type { HistoricalImportSummaryRolloverBoundariesItem } from './historicalImportSummaryRolloverBoundariesItem';
@@ -70,6 +72,28 @@ export interface HistoricalImportSummary {
   aggregationCounts: HistoricalImportSummaryAggregationCounts;
   eligibleTradingDates?: string[];
   ineligibleDates?: HistoricalImportSummaryIneligibleDatesItem[];
+  allObservedTradingDates?: string[];
+  ineligibleObservedDates?: HistoricalImportSummaryIneligibleObservedDatesItem[];
+  dateEligibility?: HistoricalImportSummaryDateEligibilityItem[];
+  /** @minimum 0 */
+  acceptedOutrightFileCount?: number;
+  /** @minimum 0 */
+  scheduledActiveContractCount?: number;
+  /** @minimum 0 */
+  inactiveFutureContractCount?: number;
+  /** @minimum 0 */
+  rejectedSpreadOrDuplicateFileCount?: number;
+  /** @minimum 0 */
+  missingScheduledContractFileCount?: number;
+  /** @minimum 0 */
+  allObservedDateCount?: number;
+  /** @minimum 0 */
+  eligibleScheduledReplayDateCount?: number;
+  /** @minimum 0 */
+  ineligibleObservedDateCount?: number;
+  /** @minimum 0 */
+  ineligibleScheduledDateCount?: number;
+  coverageReconciles?: boolean;
   indexingState?: HistoricalImportSummaryIndexingState;
   indexKey?: string;
   importerVersion?: string;

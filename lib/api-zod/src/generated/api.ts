@@ -4233,6 +4233,24 @@ export const getHistoricalDataResponseMaintenanceGapMinutesMin = 0;
 
 export const getHistoricalDataResponseWeekendHolidayGapMinutesMin = 0;
 
+export const getHistoricalDataResponseAcceptedOutrightFileCountMin = 0;
+
+export const getHistoricalDataResponseScheduledActiveContractCountMin = 0;
+
+export const getHistoricalDataResponseInactiveFutureContractCountMin = 0;
+
+export const getHistoricalDataResponseRejectedSpreadOrDuplicateFileCountMin = 0;
+
+export const getHistoricalDataResponseMissingScheduledContractFileCountMin = 0;
+
+export const getHistoricalDataResponseAllObservedDateCountMin = 0;
+
+export const getHistoricalDataResponseEligibleScheduledReplayDateCountMin = 0;
+
+export const getHistoricalDataResponseIneligibleObservedDateCountMin = 0;
+
+export const getHistoricalDataResponseIneligibleScheduledDateCountMin = 0;
+
 
 
 export const GetHistoricalDataResponse = zod.object({
@@ -4288,11 +4306,59 @@ export const GetHistoricalDataResponse = zod.object({
   "ineligibleDates": zod.array(zod.object({
   "tradingDate": zod.string(),
   "scheduledContractSymbol": zod.string().nullable(),
-  "status": zod.enum(['eligible', 'missing_scheduled_file', 'insufficient_rth_coverage', 'no_scheduled_contract']),
+  "scheduleVersion": zod.string(),
+  "rolloverReason": zod.string(),
+  "status": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'no_scheduled_contract']),
+  "coverageStatus": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'outside_configured_rollover_schedule']),
   "reason": zod.string().nullable(),
+  "observedInAnyFile": zod.boolean(),
+  "scheduledContractFileAvailable": zod.boolean(),
+  "scheduledContractDataAvailable": zod.boolean(),
   "availableOnContract": zod.boolean(),
-  "regularSessionComplete": zod.boolean()
+  "regularSessionComplete": zod.boolean(),
+  "backtestEligible": zod.boolean()
 })).optional(),
+  "allObservedTradingDates": zod.array(zod.string()).optional(),
+  "ineligibleObservedDates": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "scheduledContractSymbol": zod.string().nullable(),
+  "scheduleVersion": zod.string(),
+  "rolloverReason": zod.string(),
+  "status": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'no_scheduled_contract']),
+  "coverageStatus": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'outside_configured_rollover_schedule']),
+  "reason": zod.string().nullable(),
+  "observedInAnyFile": zod.boolean(),
+  "scheduledContractFileAvailable": zod.boolean(),
+  "scheduledContractDataAvailable": zod.boolean(),
+  "availableOnContract": zod.boolean(),
+  "regularSessionComplete": zod.boolean(),
+  "backtestEligible": zod.boolean()
+})).optional(),
+  "dateEligibility": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "scheduledContractSymbol": zod.string().nullable(),
+  "scheduleVersion": zod.string(),
+  "rolloverReason": zod.string(),
+  "status": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'no_scheduled_contract']),
+  "coverageStatus": zod.enum(['eligible', 'missing_scheduled_file', 'no_scheduled_contract_candles', 'insufficient_rth_coverage', 'invalid_or_rejected_source_data', 'duplicate_or_overlapping_active_contract_data', 'outside_configured_rollover_schedule']),
+  "reason": zod.string().nullable(),
+  "observedInAnyFile": zod.boolean(),
+  "scheduledContractFileAvailable": zod.boolean(),
+  "scheduledContractDataAvailable": zod.boolean(),
+  "availableOnContract": zod.boolean(),
+  "regularSessionComplete": zod.boolean(),
+  "backtestEligible": zod.boolean()
+})).optional(),
+  "acceptedOutrightFileCount": zod.number().min(getHistoricalDataResponseAcceptedOutrightFileCountMin).optional(),
+  "scheduledActiveContractCount": zod.number().min(getHistoricalDataResponseScheduledActiveContractCountMin).optional(),
+  "inactiveFutureContractCount": zod.number().min(getHistoricalDataResponseInactiveFutureContractCountMin).optional(),
+  "rejectedSpreadOrDuplicateFileCount": zod.number().min(getHistoricalDataResponseRejectedSpreadOrDuplicateFileCountMin).optional(),
+  "missingScheduledContractFileCount": zod.number().min(getHistoricalDataResponseMissingScheduledContractFileCountMin).optional(),
+  "allObservedDateCount": zod.number().min(getHistoricalDataResponseAllObservedDateCountMin).optional(),
+  "eligibleScheduledReplayDateCount": zod.number().min(getHistoricalDataResponseEligibleScheduledReplayDateCountMin).optional(),
+  "ineligibleObservedDateCount": zod.number().min(getHistoricalDataResponseIneligibleObservedDateCountMin).optional(),
+  "ineligibleScheduledDateCount": zod.number().min(getHistoricalDataResponseIneligibleScheduledDateCountMin).optional(),
+  "coverageReconciles": zod.boolean().optional(),
   "indexingState": zod.enum(['ready']).optional(),
   "indexKey": zod.string().optional(),
   "importerVersion": zod.string().optional(),
