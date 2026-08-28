@@ -443,16 +443,23 @@ export function historicalImportToReplayDataset(
   endDate: string,
   inSampleDays: number,
   outOfSampleDays: number,
+  selectedDatesOverride?: readonly string[],
 ): CausalReplayDataset {
   const requestedDates = imported.summary.availableTradingDates.filter((date) => date >= startDate && date <= endDate);
   const requiredDates = inSampleDays + outOfSampleDays;
-  if (requestedDates.length < requiredDates) {
+  const exactDates = selectedDatesOverride
+    ? [...new Set(selectedDatesOverride)].filter((date) => requestedDates.includes(date)).sort()
+    : null;
+  if (exactDates && exactDates.length < requiredDates) {
+    throw new Error(`Historical range contains ${exactDates.length} selected trading dates; ${requiredDates} are required.`);
+  }
+  if (!exactDates && requestedDates.length < requiredDates) {
     throw new Error(`Historical range contains ${requestedDates.length} trading dates; ${requiredDates} are required.`);
   }
   // Use the latest exact N+M available dates ending on or before endDate.
   // Earlier available dates remain explicitly excluded rather than silently
   // becoming part of the replay.
-  const availableDates = requestedDates.slice(-requiredDates);
+  const availableDates = exactDates ?? requestedDates.slice(-requiredDates);
   const selectedDates = new Set(availableDates);
   const fiveMinute = imported.fiveMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));
   const oneMinute = imported.oneMinute.filter((candle) => selectedDates.has(tradingDateForTimestamp(candle.openTime, imported.calendar)));

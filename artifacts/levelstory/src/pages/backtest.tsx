@@ -457,7 +457,7 @@ export default function Backtest() {
   }, [endDate, historicalImport.data?.availableTradingDates, startDate]);
   const batchRequest = {
     ...request,
-    selectedDates: availableBatchDates,
+    ...(availableBatchDates.length >= 2 ? { selectedDates: availableBatchDates } : {}),
   };
 
   const submit = (event: FormEvent) => {
@@ -498,7 +498,7 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
              <div className="flex flex-col items-end gap-2 sm:col-span-2 lg:col-span-2 lg:flex-row">
                <button type="submit" disabled={run.isPending || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : "Run causal backtest"}</button>
-               <button type="button" onClick={submitBatch} disabled={availableBatchDates.length < 2 || startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : `Run ${availableBatchDates.length || "—"}-session funnel`}</button>
+               <button type="button" onClick={submitBatch} disabled={startBatch.isPending || batchActive} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : `Run ${availableBatchDates.length >= 2 ? availableBatchDates.length : Number(inSampleDays) + Number(outOfSampleDays)}-session funnel`}</button>
              </div>
           </form>
             <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Batch dates available in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>

@@ -2211,11 +2211,10 @@ export interface BacktestReport {
 
 export type BatchBacktestRequest = BacktestRequest & {
   /**
-     * @minItems 2
      * @maxItems 60
      * @items.pattern ^\d{4}-\d{2}-\d{2}$
      */
-  selectedDates: string[];
+  selectedDates?: string[];
 };
 
 export type QualificationFunnelStage = typeof QualificationFunnelStage[keyof typeof QualificationFunnelStage];

@@ -45,6 +45,8 @@ type BatchPartition = {
   dataset: CausalReplayDataset;
 };
 
+const BATCH_AUDIT_RUN_ID = "00000000-0000-0000-0000-000000000011";
+
 export type BatchRunnerOptions = {
   timeoutMs: number;
   signal: AbortSignal;
@@ -220,6 +222,13 @@ function aggregateBatchReports(
     segments: buildSegments(trades, rejectionCount),
     trades,
     audit,
+    auditPage: {
+      runId: BATCH_AUDIT_RUN_ID,
+      page: 1,
+      pageSize: 50,
+      total: audit.length,
+      hasMore: audit.length > 50,
+    },
     assumptions: [...new Set(reports.flatMap((report) => report.assumptions))],
     gapReport: combineGapReports(reports),
     batch: {

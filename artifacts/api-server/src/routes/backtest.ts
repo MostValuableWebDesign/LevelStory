@@ -207,6 +207,11 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     max: 3,
     message: "Backtest requests are temporarily limited. Try again shortly.",
   });
+  const batchStatusRateLimit = requestRateLimit({
+    windowMs: 60_000,
+    max: 120,
+    message: "Batch status polling is temporarily limited. Try again shortly.",
+  });
   const auditRateLimit = requestRateLimit({
     windowMs: 60_000,
     max: 60,
@@ -285,9 +290,9 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           ? await importHistoricalMultiContract()
           : null;
         const replayDataset = imported
-          ? historicalImportToReplayDataset(imported, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays)
+          ? historicalImportToReplayDataset(imported, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
           : multiContract
-            ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays)
+            ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
           cacheVersion: "qualification-batch-v1",
@@ -377,7 +382,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     })();
   });
 
-  router.get("/backtest/batch-status", backtestRateLimit, (req, res): void => {
+  router.get("/backtest/batch-status", batchStatusRateLimit, (req, res): void => {
     const batchId = typeof req.query.batchId === "string" ? req.query.batchId : "";
     const record = batchRuns.get(batchId);
     if (!record) {
@@ -407,7 +412,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     res.json(CancelBatchBacktestResponse.parse(batchStatus(record)));
   });
 
-  router.get("/backtest/batch-funnel", backtestRateLimit, (req, res): void => {
+  router.get("/backtest/batch-funnel", auditRateLimit, (req, res): void => {
     const parsed = GetBatchFunnelQueryParams.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });

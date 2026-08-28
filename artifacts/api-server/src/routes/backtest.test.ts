@@ -80,6 +80,7 @@ async function startTestServer(
     ...options,
     loadRisk: async () => undefined,
     runBacktest: runner.run,
+    runBatchPartition: runner.run,
   }));
   const server = createServer(app);
   server.listen(0);
@@ -87,6 +88,71 @@ async function startTestServer(
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Test server did not expose a port.");
   return { server, port: address.port };
+}
+
+function batchBody(seed: number) {
+  return {
+    symbol: "MES",
+    endDate: "2026-08-26",
+    startDate: "2026-08-25",
+    inSampleDays: 1,
+    outOfSampleDays: 1,
+    seed,
+    source: "simulated" as const,
+    executionMode: "quote_based_shadow" as const,
+    selectedDates: ["2026-08-25", "2026-08-26"],
+  };
+}
+
+async function requestJson(
+  port: number,
+  path: string,
+  method: "GET" | "DELETE",
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ port, path, method }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => {
+        try {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+async function postBatch(port: number, body: ReturnType<typeof batchBody>): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      port,
+      path: "/api/backtest/batch",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => {
+        try {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify(body));
+  });
 }
 
 function backtestBody(seed: number) {
@@ -311,6 +377,85 @@ test("successful route result matches the direct deterministic engine", async ()
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.body.metrics, direct.metrics);
     assert.equal(runner.callCount, 1);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("batch completion persists one report and exposes the funnel drill-down", async () => {
+  const runner = createTestWorkerRunner("success");
+  const { server, port } = await startTestServer(runner, {
+    requestTimeoutMs: 500,
+    workerDeadlineMs: 400,
+  });
+  try {
+    const started = await postBatch(port, batchBody(9041));
+    assert.equal(started.statusCode, 202);
+    const batchId = String(started.body.batchId);
+    let status: { statusCode: number; body: Record<string, unknown> } | undefined;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await requestJson(port, `/api/backtest/batch-status?batchId=${batchId}`, "GET");
+      if (status.body.status === "completed" || status.body.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(status?.statusCode, 200);
+    assert.equal(status?.body.status, "completed");
+    const report = status?.body.report as { batch: { totalPartitions: number; completedPartitions: number }; funnel: { candidateCount: number } };
+    assert.equal(report.batch.totalPartitions, 2);
+    assert.equal(report.batch.completedPartitions, 2);
+    assert.equal(typeof report.funnel.candidateCount, "number");
+    const funnelPage = await requestJson(port, `/api/backtest/batch-funnel?batchId=${batchId}&page=1&pageSize=10`, "GET");
+    assert.equal(funnelPage.statusCode, 200);
+    assert.equal(typeof funnelPage.body.total, "number");
+    assert.equal(runner.callCount, 2);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("cancelled and timed-out batches never expose a partial report", async () => {
+  const runner = createTestWorkerRunner("timeout");
+  const { server, port } = await startTestServer(runner, {
+    requestTimeoutMs: 500,
+    workerDeadlineMs: 20,
+  });
+  try {
+    const started = await postBatch(port, batchBody(9051));
+    const batchId = String(started.body.batchId);
+    for (let attempt = 0; attempt < 100 && runner.workers.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const cancelled = await requestJson(port, `/api/backtest/batch-cancel?batchId=${batchId}`, "DELETE");
+    assert.equal(cancelled.statusCode, 200);
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const status = await requestJson(port, `/api/backtest/batch-status?batchId=${batchId}`, "GET");
+      if (status.body.status === "cancelled") {
+        assert.equal(status.body.report, null);
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(runner.workers.every((worker) => worker.terminated), true);
+
+    const timeoutRunner = createTestWorkerRunner("timeout");
+    const timeoutServer = await startTestServer(timeoutRunner, {
+      requestTimeoutMs: 500,
+      workerDeadlineMs: 20,
+    });
+    try {
+      const timeoutStart = await postBatch(timeoutServer.port, batchBody(9052));
+      const timeoutId = String(timeoutStart.body.batchId);
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const status = await requestJson(timeoutServer.port, `/api/backtest/batch-status?batchId=${timeoutId}`, "GET");
+        if (status.body.status === "timed_out") {
+          assert.equal(status.body.report, null);
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    } finally {
+      await closeServer(timeoutServer.server);
+    }
   } finally {
     await closeServer(server);
   }

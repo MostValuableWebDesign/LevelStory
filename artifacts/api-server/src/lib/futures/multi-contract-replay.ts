@@ -372,12 +372,21 @@ export function multiContractImportToReplayDataset(
   endDate: string,
   inSampleDays: number,
   outOfSampleDays: number,
+  selectedDatesOverride?: readonly string[],
 ): CausalReplayDataset {
-  const selectedDates = selectedDatesInRange(
+  const requestedDates = imported.summary.availableTradingDates.filter((date) => date >= startDate && date <= endDate);
+  const requiredDates = inSampleDays + outOfSampleDays;
+  const exactDates = selectedDatesOverride
+    ? [...new Set(selectedDatesOverride)].filter((date) => requestedDates.includes(date)).sort()
+    : null;
+  if (exactDates && exactDates.length < requiredDates) {
+    throw new Error(`Historical range contains ${exactDates.length} selected trading dates; ${requiredDates} are required.`);
+  }
+  const selectedDates = exactDates ?? selectedDatesInRange(
     imported.summary.availableTradingDates,
     startDate,
     endDate,
-    inSampleDays + outOfSampleDays,
+    requiredDates,
   );
   const selectedDateSet = new Set(selectedDates);
   const activeContractByDate = selectedDates.map((tradingDate) => ({

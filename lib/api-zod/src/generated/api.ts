@@ -1153,7 +1153,6 @@ export const startBatchBacktestBodyOneOhlcvSlippageTicksMax = 8;
 export const startBatchBacktestBodyOneOhlcvCommissionPerContractMin = 0;
 
 export const startBatchBacktestBodyTwoSelectedDatesItemRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const startBatchBacktestBodyTwoSelectedDatesMin = 2;
 export const startBatchBacktestBodyTwoSelectedDatesMax = 60;
 
 
@@ -1175,7 +1174,7 @@ export const StartBatchBacktestBody = zod.object({
   "ohlcvSlippageTicks": zod.number().min(startBatchBacktestBodyOneOhlcvSlippageTicksMin).max(startBatchBacktestBodyOneOhlcvSlippageTicksMax).default(startBatchBacktestBodyOneOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(startBatchBacktestBodyOneOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 }).and(zod.object({
-  "selectedDates": zod.array(zod.string().regex(startBatchBacktestBodyTwoSelectedDatesItemRegExp)).min(startBatchBacktestBodyTwoSelectedDatesMin).max(startBatchBacktestBodyTwoSelectedDatesMax)
+  "selectedDates": zod.array(zod.string().regex(startBatchBacktestBodyTwoSelectedDatesItemRegExp)).max(startBatchBacktestBodyTwoSelectedDatesMax).optional()
 }))
 
 export const startBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
