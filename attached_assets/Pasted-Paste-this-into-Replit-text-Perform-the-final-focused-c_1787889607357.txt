@@ -1,0 +1,362 @@
+Paste this into Replit:
+
+```text
+Perform the final focused correction pass on LevelStory’s historical backtest.
+
+Preserve all verified improvements:
+
+- production frontend build
+- protected Databento CSV
+- MODELED_OHLCV execution
+- MESU6 identity
+- exact date partitions
+- every-5-minute evaluation
+- audit pagination
+- corrected rejection summaries
+- modeled-fill disclaimer
+- no-live-orders safeguards
+
+Do not redesign the application or add broker connectivity.
+
+1. FIX THE REMAINING AMBIGUITY INCONSISTENCY
+
+The verified 20+2-session result currently reports:
+
+- trade.ambiguityLabel = null
+- ambiguousTradeCount = 0
+- ambiguousEntryCount = 0
+- ambiguityCount = 1
+- trade.audit.ambiguityLabels = ["STRATEGY_STOP_REACHED"]
+
+This is internally contradictory.
+
+Separate execution-event labels from genuine ambiguity labels.
+
+Create or use two distinct collections:
+
+eventLabels:
+- STRATEGY_STOP_REACHED
+- CATASTROPHE_STOP_REACHED
+- TARGET_REACHED
+- RUNNER_ACTIVATED
+- RUNNER_EXITED
+- SESSION_CLOSE
+- GAP_THROUGH_STOP
+
+ambiguityLabels:
+- AMBIGUOUS_ENTRY_INVALIDATION
+- AMBIGUOUS_STOP_FIRST
+- AMBIGUOUS_RUNNER_SEQUENCE
+- “Ambiguous intrabar sequence — adverse-first policy applied”
+
+Never place normal event labels in ambiguityLabels.
+
+Define metrics precisely:
+
+- ambiguousTradeCount = number of trades containing at least one genuine ambiguity label
+- ambiguousEntryCount = rejected entries labeled AMBIGUOUS_ENTRY_INVALIDATION
+- ambiguousExitCount = executed trades with a genuine exit ambiguity
+- ambiguityCount = ambiguousEntryCount + ambiguousExitCount
+
+The verified August 14, 2026 strategy-stop trade must produce:
+
+- eventLabels containing STRATEGY_STOP_REACHED
+- ambiguityLabels = []
+- ambiguityLabel = null
+- ambiguousTradeCount = 0
+- ambiguousExitCount = 0
+- ambiguityCount = 0
+
+Add regression tests for:
+
+- normal strategy stop
+- normal catastrophe stop
+- normal target
+- actual same-candle stop/target conflict
+- ambiguous entry/invalidation
+- runner ambiguity
+
+2. FIX FRIDAY OVERNIGHT GAP CLASSIFICATION
+
+The selected 20+2 report currently identifies these as missing overnight dates:
+
+- 2026-07-31
+- 2026-08-07
+- 2026-08-14
+- 2026-08-21
+
+These are Fridays. The report counts approximately 600 unexpected overnight minutes per Friday even though the futures market enters its expected weekend closure.
+
+Correct the session calendar and gap classifier so Friday post-close and weekend minutes are expected closed-market time, not unexpected overnight missing data.
+
+Build expected CME MES trading intervals explicitly for each selected trading date.
+
+Classifications must be mutually exclusive:
+
+- unexpectedRegularSessionMissingMinutes
+- unexpectedOvernightMissingMinutes
+- maintenanceMinutes
+- weekendHolidayClosedMinutes
+- earlyCloseMinutes
+- inactiveContractMinutes
+
+No minute may be counted in more than one category.
+
+Replace or clearly deprecate confusing legacy fields such as missingMinuteGaps when they do not equal the unexpected-missing totals.
+
+Expose these explicit totals:
+
+unexpectedMissingMinutes =
+  unexpectedRegularSessionMissingMinutes
+  + unexpectedOvernightMissingMinutes
+
+expectedClosedMinutes =
+  maintenanceMinutes
+  + weekendHolidayClosedMinutes
+  + earlyCloseMinutes
+
+For the active July 28–August 26 selected range:
+
+- Friday post-close must not count as unexpected overnight data loss.
+- RTH gap totals must remain separate.
+- Display the formula and categories in the UI.
+- Do not manufacture candles.
+
+Add tests for:
+
+- ordinary Monday–Thursday overnight session
+- Friday close
+- Saturday
+- Sunday reopening
+- CME maintenance
+- full holiday
+- early close
+- genuine missing overnight candle
+- genuine missing RTH candle
+
+3. FIX FULL-FILE COVERAGE PRESENTATION
+
+The import panel still presents the full one-year file’s sparse early MESU6 coverage as tens of thousands of generic missing minutes while showing zero inactive-contract minutes.
+
+Do not imply these are all vendor-data failures.
+
+Display two clearly labeled reports:
+
+A. Full-file coverage
+- informational only
+- includes early sparse/inactive contract periods
+- prominently labeled:
+  “Includes dates before MESU6 became the active contract”
+
+B. Selected backtest coverage
+- uses only the exact selected trading dates
+- used for backtest-quality evaluation
+
+Use an objective configurable inactivity rule, such as insufficient expected RTH coverage, and disclose the configured threshold.
+
+Do not call a sparse inactive-contract date an unexpected missing-data date.
+
+4. ADD A SAFE COMPLETED-REPORT CACHE
+
+The verified 20+2-session backtest still takes approximately 84 seconds.
+
+A repeated identical request did not return from cache within 30 seconds.
+
+Add a bounded completed-report cache keyed by:
+
+- normalized request parameters
+- CSV path and modification time or content hash
+- detected symbol
+- strategy configuration version/hash
+- risk settings version/hash
+- contract specification
+- execution-policy inputs
+- fee/slippage inputs
+
+Requirements:
+
+- identical valid requests return the same completed report without recomputing the replay
+- changes to the CSV, strategy configuration, risk settings, or execution assumptions invalidate the cache
+- configurable TTL
+- maximum cached reports
+- maximum total audit records/memory
+- LRU eviction
+- no unbounded growth
+- never cache failed or partial runs
+- do not share private user-specific results across users if authentication is later introduced
+
+Performance acceptance:
+
+- first 20+2 cold run: optimize as much as safely possible without skipping decision candles
+- repeated identical 20+2 run: target under 2 seconds
+- cached metrics and trades must exactly match the original run
+- audit pagination must continue working for cached runs
+- report cache and audit-page cache must expire together safely
+
+Optimize repeated causal calculations and memoize completed-prefix indicators, but do not introduce look-ahead bias or skip 5-minute candles.
+
+5. MAKE PROTECTED PATHS RETURN 404 OR 403
+
+The paid CSV and source are no longer exposed, which is good. However, protected requests currently return HTTP 200 with the SPA shell.
+
+Add explicit server-side rejection before the SPA fallback for:
+
+- /@fs/*
+- /attached_assets/*
+- *.csv
+- direct manifest.json
+- direct metadata.json
+- API-server source paths
+- encoded and double-encoded equivalents
+- path-traversal variants
+
+Return 404 or 403 with a small non-sensitive response.
+
+Do not reveal whether the protected file exists.
+
+Acceptance:
+
+- protected CSV request: 403/404
+- Range request: 403/404
+- /@fs/ server-source request: 403/404
+- encoded path variants: 403/404
+- /backtest: 200
+- hashed frontend assets: 200
+- intended API endpoints: correct responses
+
+6. FINISH AUDIT TIMESTAMP SEPARATION
+
+The trade response still contains the ambiguous field:
+
+entryCandleOpenTime
+
+Replace it with explicit fields:
+
+- patienceCandleOpenTime
+- patienceCandleCloseTime
+- triggerCandleOpenTime
+- triggerCandleCloseTime
+- modeledFillObservationTime
+- exitCandleOpenTime
+- exitCandleCloseTime
+
+OHLCV does not reveal an exact intraminute fill timestamp.
+
+The UI must label modeledFillObservationTime as:
+
+“Fill observed within trigger candle”
+
+Do not present it as an actual exchange execution time.
+
+7. PROVE THE RUNNER RULE WITH DETERMINISTIC TESTS
+
+The deployed historical sample produced no runner, so the runner fix has not been demonstrated.
+
+Add deterministic tests for both directions.
+
+Long runner:
+
+- establish most favorable high
+- calculate the 40% adverse retracement threshold
+- exit when a subsequent one-minute low touches or crosses it
+- do not require candle close below the threshold
+
+Short runner:
+
+- establish most favorable low
+- exit when a subsequent one-minute high touches or crosses the threshold
+
+Test:
+
+- exact 40% touch
+- less than 40% does not exit
+- gap through threshold
+- same-candle new extreme and retracement
+- adverse-first ambiguity label
+- slippage
+- fees
+- partial target plus runner accounting
+- session-close runner exit
+- no look-ahead
+
+Do not add a public test-only endpoint.
+
+8. KEEP THE EXISTING DISCLAIMER
+
+Continue displaying prominently:
+
+“Historical results use conservative OHLCV-based modeled fills. They do not represent actual bid/ask quotes, queue position, or guaranteed executions.”
+
+Also retain:
+
+“Modeled OHLCV Fill — Not a Quote-Based Fill”
+
+9. FINAL VERIFICATION
+
+Run:
+
+- complete API tests
+- complete frontend tests
+- API typecheck
+- frontend typecheck
+- API production build
+- frontend production build
+- security-path tests
+- cache tests
+- ambiguity tests
+- session-gap tests
+- runner tests
+
+Then execute:
+
+A. Default run
+- 5 in-sample sessions
+- 2 holdout sessions
+- $75 target
+- 4-tick entry buffer
+- 1-tick stop buffer
+- 1-tick modeled slippage
+
+B. Extended run
+- 20 in-sample sessions
+- 2 holdout sessions
+- same execution assumptions
+
+C. Repeat the identical extended run to verify cache performance
+
+Report:
+
+- files changed
+- schemas changed
+- test totals
+- build results
+- cold-run duration
+- cached-run duration
+- initial response size
+- audit-page response size
+- exact gap categories and formulas
+- protected-path HTTP results
+- ambiguity metrics
+- setups
+- patience candles
+- modeled fills
+- targets
+- stops
+- runners
+- session-close exits
+- gross P&L
+- fees
+- slippage
+- net P&L
+- remaining limitations
+
+Do not claim completion unless:
+
+- the August 14 normal stop produces ambiguityCount = 0
+- Friday closures no longer count as unexpected missing overnight data
+- repeated identical reports use the completed-report cache
+- protected filesystem paths return 403 or 404
+- deterministic runner tests prove intrabar 40% retracement handling
+
+Do not add live trading, paper trading, broker authentication, or order placement.
+```
