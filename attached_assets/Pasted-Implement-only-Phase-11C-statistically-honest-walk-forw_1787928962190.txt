@@ -1,0 +1,103 @@
+Implement only Phase 11C: statistically honest walk-forward edge validation.
+
+Do not change or automatically optimize the trading formula during this phase.
+
+Goal:
+Determine whether the current fixed formula shows positive performance on untouched historical periods after fees and modeled slippage.
+
+1. Dataset partitions
+- Divide chronological data into fixed in-sample and untouched out-of-sample windows.
+- Never select random future dates for training.
+- Display exact dates and contracts in every partition.
+- Prevent out-of-sample results from influencing rule configuration.
+- Store a hash of the formula configuration used for every run.
+
+2. Walk-forward evaluation
+Support multiple chronological folds, for example:
+- Earlier period: descriptive/in-sample review
+- Following period: untouched validation
+- Advance forward and repeat without mixing future data backward
+
+Do not automatically change parameters between folds.
+
+3. Required metrics
+Report:
+- Trade count
+- Win rate
+- Average win
+- Average loss
+- Net expectancy per trade
+- Gross and net P&L
+- Profit factor
+- Maximum drawdown
+- Consecutive losses
+- Fees
+- Slippage
+- Ambiguity count
+- Rejected-entry count
+- Target exits
+- Strategy stops
+- Catastrophe stops
+- Runner exits
+- Session-close exits
+
+4. Segmentation
+Show results by:
+- In-sample/out-of-sample
+- Contract
+- Month
+- Long/short
+- Time of day
+- Setup type
+- Trend
+- Volume condition
+- Fibonacci depth
+- Level/confluence type
+- Market regime
+
+Display “insufficient sample” rather than drawing conclusions from very small groups.
+
+5. Edge status
+Use neutral classifications:
+- Insufficient evidence
+- Negative observed expectancy
+- Mixed/inconclusive
+- Positive observed expectancy requiring further validation
+
+Do not display “proven edge” merely because a small sample is profitable.
+
+Suggested minimum evidence before stronger conclusions:
+- At least 100 qualified trades overall
+- Meaningful untouched out-of-sample trade count
+- Positive net expectancy after costs
+- Profit factor above 1 after costs
+- Drawdown within the configured risk tolerance
+- Results not dependent on one contract, month or direction
+
+These are research thresholds, not guarantees of future profitability.
+
+6. Robustness
+Run sensitivity reports using reasonable fee and slippage assumptions, but do not select the best result.
+
+Show:
+- Normal cost
+- Higher-cost stress case
+- Adverse slippage case
+
+7. Tests
+Prove:
+- Holdout dates remain untouched.
+- No future-data leakage.
+- Formula hashes remain fixed.
+- Fold boundaries are chronological.
+- Metrics reconcile with individual trades.
+- Segments reconcile with totals.
+- Small samples receive insufficient-evidence labels.
+- Cached results are deterministic.
+
+Final report
+- List files changed.
+- Report all verification results.
+- Show every fold and date range.
+- Clearly state whether evidence is sufficient.
+- Do not recommend live trading.
