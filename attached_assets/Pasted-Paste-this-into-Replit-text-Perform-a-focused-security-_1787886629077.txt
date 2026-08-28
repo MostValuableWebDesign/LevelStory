@@ -1,0 +1,340 @@
+Paste this into Replit:
+
+```text
+Perform a focused security and correctness repair of the deployed LevelStory historical backtest.
+
+The MODELED_OHLCV engine, MESU6 identity, every-5-minute evaluation, and exact date partitioning are now present. Preserve those improvements.
+
+Do not redesign the application. Fix only the verified remaining problems below.
+
+PRIORITY 0 — STOP PUBLIC DATA AND SOURCE EXPOSURE
+
+The current public Replit preview is running through Vite development mode.
+
+It currently allows unauthenticated access to:
+
+- the complete paid Databento CSV
+- frontend source
+- API-server source
+- workspace files through Vite /@fs/ URLs
+
+This is a verified exposure, not a theoretical concern.
+
+Requirements:
+
+1. Do not serve the application publicly through the Vite development server.
+2. Configure the production deployment to serve only the built frontend assets and intended API routes.
+3. Store the Databento CSV outside every publicly served static directory.
+4. Explicitly deny access to:
+   - attached_assets
+   - CSV files
+   - manifest.json
+   - metadata.json
+   - API-server source
+   - workspace files
+   - /@fs/ paths
+5. Add defense-in-depth Vite development restrictions:
+   - strict filesystem access
+   - deny attached_assets/**
+   - deny **/*.csv
+   - deny API-server source paths
+6. Do not expose the Databento data through frontend imports or static assets.
+7. Keep CSV reading server-side only.
+8. Do not delete the user’s CSV.
+9. Add appropriate production security headers.
+10. Add rate limiting and input limits to the historical-data and backtest endpoints so an unauthenticated caller cannot repeatedly trigger expensive 90-second backtests.
+11. If Replit supports deployment visibility controls, clearly instruct the user to keep this deployment private until production verification succeeds.
+
+Security acceptance tests:
+
+- GET /@fs/.../attached_assets/<historical-file>.csv must return 403 or 404.
+- Range requests for that CSV must also return 403 or 404.
+- GET /@fs/.../artifacts/api-server/src/lib/phase9.ts must return 403 or 404.
+- Direct static requests for manifest.json and metadata.json must return 403 or 404.
+- The intended /backtest page must still load.
+- Intended API endpoints must still work.
+- No API key or secret may appear in frontend JavaScript.
+- Do not claim this is fixed merely because links were removed from the UI.
+
+PRIORITY 1 — CORRECT AMBIGUITY CLASSIFICATION
+
+A verified modeled trade had only:
+
+STRATEGY_STOP_REACHED
+
+but was incorrectly reported as:
+
+AMBIGUOUS_STOP_FIRST
+
+The current logic treats any non-empty execution label array as an ambiguity.
+
+Fix this throughout the API, metrics, audit records, trade ledger, and UI.
+
+Only labels representing an unknown intrabar order may count as ambiguous, including:
+
+- AMBIGUOUS_ENTRY_INVALIDATION
+- AMBIGUOUS_STOP_FIRST
+- “Ambiguous intrabar sequence — adverse-first policy applied”
+
+Normal informational labels must not count as ambiguity:
+
+- STRATEGY_STOP_REACHED
+- CATASTROPHE_STOP_REACHED
+- TARGET_REACHED
+- RUNNER_EXITED
+- SESSION_CLOSE
+
+Acceptance criteria:
+
+- A normal strategy-stop trade has ambiguityLabel = null.
+- It does not increment ambiguousTradeCount.
+- It does not increment ambiguityCount.
+- It does not appear under “Ambiguous exits.”
+- A candle touching both target and stop still uses adverse-first and is counted as ambiguous.
+
+PRIORITY 1 — FIX MISLEADING REJECTION SUMMARIES
+
+Some rejection summaries currently state:
+
+- “Valid patience candle formed”
+- “Immediate next candle reached the confirmation buffer”
+- “Risk approval”
+
+while the detailed rule evidence marks those rules FAIL.
+
+Build rejection summaries from actual failed rule evidence.
+
+For a rejected or forming setup:
+
+- List failed mandatory rules.
+- Do not state a condition was satisfied unless its rule passed.
+- Preserve detailed PASS/FAIL evidence.
+- Distinguish:
+  - waiting for future evidence
+  - rule failure
+  - expired patience setup
+  - ambiguous entry
+  - risk rejection
+  - position already active
+
+Example:
+
+“SETUP FORMING — waiting for: directional 15-minute trend, qualifying pullback interaction, valid patience candle, and immediate-next-candle trigger.”
+
+Do not produce a sentence that contradicts ruleEvidence.
+
+Add tests comparing every generated summary against the underlying passed/failed rules.
+
+PRIORITY 1 — CORRECT GAP AND INACTIVE-CONTRACT STATISTICS
+
+The current importer reports approximately:
+
+- 27,011 missing regular-session minutes
+- 53,991 unexpected open-session minutes
+- zero inactive/low-liquidity minutes
+
+The MESU6 file is sparse during early periods when that contract was not actively traded. Those inactive periods must not be presented as vendor-data failures.
+
+Create two distinct gap reports:
+
+1. Full-file coverage report
+2. Selected-backtest-range coverage report
+
+For the selected backtest range, calculate gaps only for the exact selected trading dates.
+
+Classify minutes as:
+
+- expected closed-market time
+- insufficient/inactive-contract coverage
+- unexpected RTH missing minute
+- unexpected overnight missing minute
+- scheduled maintenance
+- exchange holiday or early close
+
+Use objective, configurable inactive-coverage criteria. For example, classify a trading date as insufficient/inactive when it contains less than the configured percentage of expected RTH minutes. Clearly disclose the threshold as an assumption.
+
+Do not label an inactive contract date as a missing-data failure.
+
+Do not manufacture candles.
+
+The backtest report must display selected-range gap statistics, not only the full one-year file statistics.
+
+Add fixtures for:
+
+- scheduled maintenance
+- weekend
+- holiday
+- early close
+- inactive contract day
+- one genuine missing RTH minute
+- one genuine missing overnight minute
+- complete active-contract session
+
+PRIORITY 1 — FIX RUNNER 40% RETRACEMENT
+
+The runner currently evaluates the 40% adverse Fibonacci retracement using candle.close. That can miss a retracement touched by the candle’s low or high.
+
+For a long runner:
+
+- Track the most favorable high causally.
+- Calculate the 40% adverse-retracement price from the runner reference/entry and most favorable price.
+- Trigger the runner exit when a subsequent one-minute candle’s low reaches or falls below that threshold.
+
+For a short runner:
+
+- Track the most favorable low causally.
+- Trigger when a subsequent one-minute candle’s high reaches or exceeds the 40% threshold.
+
+If the same one-minute candle creates a new favorable extreme and also touches the resulting retracement level, the internal order is unknown:
+
+- Apply the conservative adverse-first policy.
+- Record an explicit ambiguity label.
+- Do not use the candle close as the runner trigger.
+
+For a gap through the runner level:
+
+- Use the opening price when it is worse than the threshold.
+- Apply adverse exit slippage.
+- Record the gap-through condition.
+
+Add long, short, exact-40%, gap-through, and same-candle ambiguity tests.
+
+PRIORITY 1 — REDUCE BACKTEST RESPONSE SIZE AND TIME
+
+Verified behavior:
+
+- Seven-session result: approximately 3.9 MB
+- Twenty-two-session result: approximately 12.3 MB
+- Twenty-two-session request: approximately 90 seconds
+- The UI displays only a small portion of the audit records but receives all of them
+
+Do not return the complete audit ledger in the initial backtest response.
+
+Implement:
+
+1. A compact initial report containing:
+   - metrics
+   - partitions
+   - trades
+   - execution policy
+   - aggregate rejection counts
+   - aggregate patience-state counts
+   - audit total
+   - first audit page only
+
+2. Paginated audit retrieval:
+   - stable run ID
+   - page or cursor
+   - configurable page size
+   - maximum page size
+   - total record count
+   - filters for decision, date, setup, patience state, and ambiguity
+
+3. A bounded short-lived server-side cache for backtest results:
+   - TTL
+   - maximum runs
+   - maximum memory/record count
+   - no unbounded growth
+
+4. Server-side aggregation rather than transferring thousands of records for frontend counting.
+
+5. Request timeout and maximum permitted date/session range.
+
+The UI must load additional audit pages only when requested.
+
+Performance acceptance criteria:
+
+- Initial response should remain reasonably small and must not contain thousands of complete audit objects.
+- The UI must remain responsive during a 20+2-session run.
+- Pagination must return stable, nonduplicated records.
+- Metrics must remain identical before and after pagination.
+- Repeated identical runs may use a safe deterministic cache.
+- Rate limits must return a clear 429 response.
+
+PRIORITY 2 — CORRECT AUDIT TIMESTAMPS
+
+The trade audit currently records the patience candle’s opening time under a field named entryCandleOpenTime.
+
+Store these separately:
+
+- patienceCandleOpenTime
+- patienceCandleCloseTime
+- triggerCandleOpenTime
+- triggerCandleCloseTime
+- modeledEntryTime or entryObservationTime
+- exitCandleOpenTime
+- exitCandleCloseTime
+
+Do not imply the exact intraminute execution time is known from OHLCV.
+
+Label it as a modeled fill observed within the trigger candle.
+
+PRIORITY 2 — ADD THE COMPLETE DISCLAIMER
+
+Display this prominently above historical results:
+
+“Historical results use conservative OHLCV-based modeled fills. They do not represent actual bid/ask quotes, queue position, or guaranteed executions.”
+
+Keep:
+
+“Modeled OHLCV Fill — Not a Quote-Based Fill”
+
+Do not place the disclaimer only in a hidden assumptions section.
+
+VERIFICATION
+
+Run:
+
+- complete API tests
+- complete frontend tests
+- API typecheck
+- frontend typecheck
+- API production build
+- frontend production build
+- security access tests
+- historical integration tests
+
+Re-run:
+
+1. Default 5 in-sample + 2 holdout sessions
+2. Extended 20 in-sample + 2 holdout sessions
+
+For each run, report:
+
+- selected dates
+- execution mode
+- setups detected
+- patience candles
+- entry triggers
+- modeled fills
+- normal stop exits
+- genuinely ambiguous exits
+- targets
+- runners
+- session-close exits
+- gross P&L
+- fees
+- slippage
+- net P&L
+- selected-range gap statistics
+- response size
+- execution time
+
+Specifically verify that the August 14, 2026 strategy-stop trade is not called ambiguous unless its one-minute exit candle genuinely touched conflicting barriers.
+
+Final response must include:
+
+- files changed
+- security controls added
+- exact URLs tested without exposing secret paths unnecessarily
+- HTTP results for blocked filesystem/CSV requests
+- tests added
+- test totals
+- build results
+- before/after response sizes and timings
+- any remaining limitations
+
+Do not add live trading, paper trading, broker authentication, or order placement.
+
+Do not claim completion while the paid CSV or API-server source remains publicly retrievable.
+```
