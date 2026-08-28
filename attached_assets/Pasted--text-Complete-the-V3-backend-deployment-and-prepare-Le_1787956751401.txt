@@ -1,0 +1,109 @@
+```text
+Complete the V3 backend deployment and prepare LevelStory for human visual validation. This is primarily an operational verification task—do not add features or change strategy rules.
+
+1. Deploy the V3 calendar
+
+The source already contains:
+
+CME_EQUITY_INDEX_2025_2026_V3
+
+Restart the API workflow once so the V3 calendar becomes active.
+
+Allow the calendar-versioned multi-contract historical index to rebuild once. Do not repeatedly restart the workflow or rebuild the index.
+
+Wait until:
+
+GET /api/historical-data/status
+
+returns:
+
+- state: ready
+- progress: 100
+- indexedFileCount equals discoveredFileCount
+- a new index key different from the previous V2 key:
+  8805c3403fab122afc4bcbee6eec5ce20492d5d591eb56062c659537d3b008f4
+
+2. Verify the deployed calendar
+
+After indexing completes, verify that the deployed historical summary includes these early-close dates:
+
+- 2025-09-01
+- 2026-01-19
+- 2026-02-16
+- 2026-05-25
+- 2026-06-19
+
+Confirm specifically that January 19, February 16, and June 19 are now:
+
+- Available historical dates
+- Eligible scheduled replay dates
+- Classified as 1:00 p.m. ET early closes
+- Associated with their correct scheduled contracts
+- Not classified as full holidays
+- Not treated as unexpected missing-data sessions
+
+Expected scheduled contracts:
+
+- 2026-01-19 — MESH6
+- 2026-02-16 — MESH6
+- 2026-05-25 — MESM6
+- 2026-06-19 — MESU6
+
+3. Verify the visual-review deployment
+
+Verify:
+
+- `/visual-review` returns HTTP 200.
+- All 12 review categories load.
+- The source is clearly labeled Simulated.
+- The evaluation cursor marks the last candle visible to the machine.
+- Shaded candles are labeled “Human-only outcome context.”
+- Machine evidence and human judgments remain separate.
+- Review buttons and optional notes are available.
+- Discrepancy export remains functional.
+- No live or paper execution path exists.
+
+Do not create fake human reviews. Leave all review judgments for the user.
+
+4. Compute limits
+
+Keep this lightweight:
+
+- Do not run a cold 20+2 backtest.
+- Do not run a full qualification batch.
+- Do not rebuild the historical index more than once.
+- Do not change performance architecture.
+- Do not add infrastructure or paid services.
+- Do not change the formula.
+- Do not modify backtest execution behavior.
+- Do not fabricate quotes, candles, fills, or review labels.
+
+A cached 5+2 smoke test is optional, not required.
+
+5. Safeguards
+
+Preserve:
+
+- Shadow Mode only
+- No broker integration
+- No live orders
+- No paper orders
+- Existing 22-session interactive limit
+- Deterministic caching
+- OHLCV-modeled execution disclaimers
+- Human reviews stored separately from immutable machine evidence
+
+Report:
+
+1. Whether the API restarted successfully
+2. Old and new historical index keys
+3. Index build duration
+4. Index readiness and file counts
+5. All deployed early-close dates
+6. Contract mapping for each corrected 2026 date
+7. `/visual-review` verification results
+8. Any errors or warnings
+9. Confirmation that no cold 20+2 run or qualification batch was performed
+
+Do not claim completion while the deployed API still reports the old V2 index key or excludes any of the corrected dates.
+```
