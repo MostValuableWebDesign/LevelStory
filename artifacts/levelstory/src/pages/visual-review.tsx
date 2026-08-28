@@ -1,0 +1,533 @@
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Download,
+  FileSearch,
+  Fingerprint,
+  Info,
+  Layers3,
+  LoaderCircle,
+  LockKeyhole,
+  ScanLine,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  X,
+} from "lucide-react";
+import {
+  useCreateVisualValidationSet,
+  useExportVisualValidationDiscrepancies,
+  useGetVisualValidationSet,
+  useRecordVisualValidationReview,
+} from "@workspace/api-client-react";
+import type {
+  VisualValidationAnnotation,
+  VisualValidationCategory,
+  VisualValidationCandle,
+  VisualValidationDiscrepancyReport,
+  VisualValidationRequest,
+  VisualValidationReviewStatus,
+  VisualValidationSet,
+  VisualValidationSnapshot,
+} from "@workspace/api-client-react";
+import { LevelStoryShell } from "@/components/levelstory-shell";
+import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
+
+const CATEGORIES: Array<{ value: VisualValidationCategory; label: string; short: string }> = [
+  { value: "qualified_trade", label: "Qualified trade", short: "Qualified" },
+  { value: "rejected_setup", label: "Rejected setup", short: "Rejected" },
+  { value: "bullish_patience_candle", label: "Bullish patience candle", short: "Bullish patience" },
+  { value: "bearish_patience_candle", label: "Bearish patience candle", short: "Bearish patience" },
+  { value: "weak_orb_probe", label: "Weak ORB probe", short: "Weak ORB" },
+  { value: "strong_breakout", label: "Strong breakout", short: "Breakout" },
+  { value: "pullback", label: "Pullback", short: "Pullback" },
+  { value: "consolidation", label: "Consolidation", short: "Consolidation" },
+  { value: "ambiguous_candle", label: "Ambiguous candle", short: "Ambiguous" },
+  { value: "stop_exit", label: "Stop exit", short: "Stop exit" },
+  { value: "target_exit", label: "Target exit", short: "Target exit" },
+  { value: "runner_exit", label: "Runner exit", short: "Runner exit" },
+];
+
+const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unreviewed">; label: string; detail: string }> = [
+  { value: "correct", label: "Correct", detail: "Machine story matches the candles." },
+  { value: "incorrect", label: "Incorrect", detail: "The machine label does not hold up." },
+  { value: "uncertain", label: "Uncertain", detail: "Evidence is not decisive." },
+  { value: "rule_needs_clarification", label: "Rule needs clarification", detail: "The rule or annotation needs a sharper definition." },
+];
+
+const INITIAL_REQUEST: VisualValidationRequest = {
+  symbol: "MES",
+  endDate: "2026-08-26",
+  inSampleDays: 5,
+  outOfSampleDays: 2,
+  seed: 11,
+  premarketAvailable: true,
+};
+
+function storedReviewSetId(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem("levelstory.visualReviewSetId") ?? "";
+}
+
+function prettyCategory(category: string): string {
+  return category.replaceAll("_", " ");
+}
+
+function formatReviewTime(value: string): string {
+  if (!value) return "—";
+  return value.replace("T", " ").replace("Z", " UTC");
+}
+
+function safeValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(3) : "—";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return JSON.stringify(value);
+}
+
+function annotationTone(color: VisualValidationAnnotation["color"]): string {
+  const tones: Record<VisualValidationAnnotation["color"], string> = {
+    accent: "hsl(var(--accent))",
+    positive: "hsl(var(--positive))",
+    negative: "hsl(var(--negative))",
+    muted: "hsl(var(--muted-foreground))",
+    blue: "hsl(204 54% 43%)",
+  };
+  return tones[color];
+}
+
+export default function VisualReview() {
+  const [request, setRequest] = useState<VisualValidationRequest>(INITIAL_REQUEST);
+  const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
+  const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(null);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [message, setMessage] = useState("");
+  const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  const setQuery = useGetVisualValidationSet(
+    reviewSetId ? { reviewSetId } : undefined,
+    { query: { enabled: true, staleTime: 30_000, queryKey: ["visual-validation-set", reviewSetId || "latest"] } },
+  );
+  const createSet = useCreateVisualValidationSet();
+  const recordReview = useRecordVisualValidationReview();
+  const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
+  const exportQuery = useExportVisualValidationDiscrepancies(
+    { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
+    { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
+  );
+
+  const data = localSet ?? setQuery.data;
+  const coverage = data?.categoryCoverage ?? [];
+  const snapshots = data?.snapshots ?? [];
+  const availableCategories = useMemo(() => coverage.filter((item) => item.available && item.count > 0).map((item) => item.category), [coverage]);
+  const categorySnapshots = useMemo(
+    () => snapshots.filter((snapshot) => snapshot.category === selectedCategory),
+    [selectedCategory, snapshots],
+  );
+  const activeSnapshot = categorySnapshots.find((snapshot) => snapshot.snapshotId === selectedSnapshotId) ?? categorySnapshots[0];
+
+  useEffect(() => {
+    if (data && !reviewSetId && typeof window !== "undefined") {
+      window.localStorage.setItem("levelstory.visualReviewSetId", data.reviewSetId);
+    }
+  }, [data, reviewSetId]);
+
+  useEffect(() => {
+    if (!availableCategories.length) {
+      setSelectedCategory(null);
+      return;
+    }
+    if (!selectedCategory || !availableCategories.includes(selectedCategory)) {
+      setSelectedCategory(availableCategories[0]);
+    }
+  }, [availableCategories, selectedCategory]);
+
+  useEffect(() => {
+    if (!activeSnapshot) {
+      setSelectedSnapshotId("");
+      setReviewNote("");
+      return;
+    }
+    setSelectedSnapshotId(activeSnapshot.snapshotId);
+    setReviewNote(activeSnapshot.review.note ?? "");
+  }, [activeSnapshot]);
+
+  const selectCategory = (category: VisualValidationCategory) => {
+    const item = coverage.find((entry) => entry.category === category);
+    if (!item?.available || item.count === 0) return;
+    setSelectedCategory(category);
+    setSelectedSnapshotId("");
+    setReport(null);
+  };
+
+  const submitGeneration = (event: FormEvent) => {
+    event.preventDefault();
+    setMessage("");
+    setReport(null);
+    createSet.mutate({ data: request }, {
+      onSuccess: (nextSet) => {
+        setLocalSet(nextSet);
+        setReviewSetId(nextSet.reviewSetId);
+        if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
+        setMessage(`Generated ${nextSet.snapshots.length} causal snapshots.`);
+      },
+      onError: () => setMessage("The deterministic set could not be generated. Check the date window and try again."),
+    });
+  };
+
+  const saveReview = (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => {
+    if (!data || !activeSnapshot) return;
+    setMessage("");
+    recordReview.mutate({
+      data: {
+        reviewSetId: data.reviewSetId,
+        snapshotId: activeSnapshot.snapshotId,
+        status,
+        note: reviewNote.trim() || null,
+      },
+    }, {
+      onSuccess: (saved) => {
+        setLocalSet((current) => {
+          const base = current ?? data;
+          return {
+            ...base,
+            snapshots: base.snapshots.map((snapshot) => snapshot.snapshotId === saved.snapshotId
+              ? { ...snapshot, review: { status: saved.status, note: saved.note, reviewedAt: saved.reviewedAt } }
+              : snapshot),
+          };
+        });
+        setMessage(`Saved ${status.replaceAll("_", " ")} judgment.`);
+      },
+      onError: () => setMessage("The human judgment was not saved. Try again."),
+    });
+  };
+
+  const exportReport = () => {
+    if (!exportId) return;
+    setReportOpen(true);
+    exportQuery.refetch().then((result) => {
+      if (!result.data) return;
+      setReport(result.data);
+      const file = new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `levelstory-discrepancies-${result.data.reviewSetId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    });
+  };
+
+  return (
+    <LevelStoryShell>
+      <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
+        <div className="mx-auto max-w-[1560px]">
+          <PageIntro
+            eyebrow="Phase 12 / human-machine alignment"
+            title="Look before you trust."
+            description="A causal visual review room for checking whether deterministic setup rules tell the same story as the candles. Generate a simulation-only set, inspect one decision at a time, then leave a human judgment."
+            action={<ShadowBadge />}
+          />
+
+          <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
+            <GenerationPanel request={request} setRequest={setRequest} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
+            <SetManifest data={data} loading={setQuery.isLoading} />
+          </div>
+
+          {setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? (
+            <Panel accent><QueryError onRetry={() => setQuery.refetch()} message="The visual-validation set could not be loaded." /></Panel>
+          ) : !data ? (
+            <Panel><EmptyReview /></Panel>
+          ) : (
+            <>
+              <CoverageRail data={data} selectedCategory={selectedCategory} onSelect={selectCategory} />
+              {activeSnapshot ? (
+                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,.65fr)]">
+                  <div className="space-y-5">
+                    <SnapshotHeader snapshot={activeSnapshot} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, setSelectedSnapshotId)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, setSelectedSnapshotId)} />
+                    <Panel accent>
+                      <PanelTitle eyebrow="Raw market evidence / causal only" title="Annotated candle story" right={<CausalTag />} />
+                      <CausalChart snapshot={activeSnapshot} />
+                    </Panel>
+                    <MachineEvidence snapshot={activeSnapshot} />
+                  </div>
+                  <div className="space-y-5">
+                    <ReviewPanel snapshot={activeSnapshot} note={reviewNote} setNote={setReviewNote} pending={recordReview.isPending} onSave={saveReview} message={message} />
+                    <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={setSelectedSnapshotId} />
+                    <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                  </div>
+                </div>
+              ) : <UnavailableWorkspace coverage={coverage} />}
+            </>
+          )}
+        </div>
+      </div>
+    </LevelStoryShell>
+  );
+}
+
+function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; pending: boolean; message: string }) {
+  const update = (key: keyof VisualValidationRequest, value: string | number | boolean) => setRequest({ ...request, [key]: value });
+  const hasError = message.toLowerCase().includes("could not") || message.toLowerCase().includes("not saved");
+  return <Panel accent>
+    <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
+    <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
+        <Field label="Seed"><input className="field mono" type="number" min="0" max="1000000" value={request.seed ?? ""} onChange={(event) => update("seed", Number(event.target.value))} /></Field>
+      </div>
+      <Field label="End date · New York trading date"><input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="In-sample days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
+        <Field label="Out-of-sample days"><select className="field mono" value={request.outOfSampleDays} onChange={(event) => update("outOfSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
+      </div>
+      <label className="flex cursor-pointer items-start gap-3 border border-border bg-muted/35 p-3">
+        <input type="checkbox" className="mt-0.5 accent-[hsl(var(--accent))]" checked={request.premarketAvailable ?? true} onChange={(event) => update("premarketAvailable", event.target.checked)} />
+        <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
+      </label>
+      {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
+      <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
+        {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating causal set..." : "Generate simulation-only set"}
+      </button>
+      <LockedNote>Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here.</LockedNote>
+    </form>
+  </Panel>;
+}
+
+function SetManifest({ data, loading }: { data?: VisualValidationSet; loading: boolean }) {
+  if (loading && !data) return <Panel><QuerySkeleton rows={3} /></Panel>;
+  if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
+  return <Panel>
+    <PanelTitle eyebrow="Set manifest / immutable inputs" title="What this room is looking at" right={<span className="mono text-[10px] text-muted-foreground">{data.snapshots.length} samples</span>} />
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
+      <ManifestItem label="Source" value="Simulated" icon={<ShieldCheck size={14} />} />
+      <ManifestItem label="Symbol" value={data.symbol} icon={<Layers3 size={14} />} />
+      <ManifestItem label="Formula version" value={data.formulaVersion} icon={<Fingerprint size={14} />} />
+      <ManifestItem label="Formula hash" value={`${data.formulaHash.slice(0, 18)}…`} icon={<ScanLine size={14} />} />
+      <ManifestItem label="Request window" value={`${data.request.inSampleDays} IS / ${data.request.outOfSampleDays} OOS`} />
+      <ManifestItem label="Created" value={formatReviewTime(data.createdAt)} />
+    </div>
+    <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5">
+      <div className="flex items-center gap-2 font-semibold"><FileSearch size={14} className="text-accent" />Read the cursor, not the future.</div>
+      <p className="mt-1 text-muted-foreground">The shaded boundary is the last candle available to the deterministic evaluation. Candles after that boundary are intentionally withheld.</p>
+    </div>
+  </Panel>;
+}
+
+function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValidationSet; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
+  return <Panel>
+    <PanelTitle eyebrow="Coverage / category samples" title="Choose the story to inspect" right={<span className="text-[10px] text-muted-foreground">Unavailable means unavailable</span>} />
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      {CATEGORIES.map((category) => {
+        const item = data.categoryCoverage.find((entry) => entry.category === category.value);
+        const available = Boolean(item?.available && item.count > 0);
+        const selected = selectedCategory === category.value;
+        return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[82px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
+          <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{item?.count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
+          <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : "Unavailable"}</span>
+        </button>;
+      })}
+    </div>
+  </Panel>;
+}
+
+function SnapshotHeader({ snapshot, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
+  return <Panel>
+    <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div className="min-w-0">
+        <div className="eyebrow mb-2 text-muted-foreground">Sample {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period.replaceAll("_", "-")}</div>
+        <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">{snapshot.categoryLabel}</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{snapshot.machineLabel}</span></div>
+        <p className="mt-2 text-xs text-muted-foreground"><span className="mono">{snapshot.contractSymbol}</span> · {snapshot.tradingDate} · Formula evidence is machine-owned</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button type="button" onClick={onPrevious} disabled={index <= 0} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Previous sample"><ChevronLeft size={17} /></button>
+        <button type="button" onClick={onNext} disabled={index < 0 || index >= total - 1} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Next sample"><ChevronRight size={17} /></button>
+      </div>
+    </div>
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">
+      <Metric label="Evaluation cursor" value={snapshot.evaluationCursor.newYork} sub={snapshot.evaluationCursor.utc} />
+      <Metric label="Review cursor" value={snapshot.reviewCursor.newYork} sub={snapshot.reviewCursor.utc} />
+      <Metric label="Visible to machine" value={`${snapshot.evaluationCursor.visibleCandleCount} candles`} sub={snapshot.evaluationCursor.futureCandleAccess ? "Future access detected" : "Future access: false"} />
+    </div>
+  </Panel>;
+}
+
+function CausalTag() {
+  return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
+}
+
+function CausalChart({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  return <div className="chart-frame border-t border-border p-3 sm:p-5" data-testid="visual-review-chart">
+    <CausalSvg snapshot={snapshot} />
+     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
+      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
+      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full border border-accent bg-accent/20" />annotation</span>
+      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-px border-l border-dashed border-foreground" />evaluation cursor</span>
+       <span className="mono ml-auto">5m · raw OHLCV · NY / UTC · review-bounded</span>
+    </div>
+  </div>;
+}
+
+function CausalSvg({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  const allCandles = snapshot.rawCandles;
+  const cursor = Date.parse(snapshot.evaluationCursor.closeTime);
+  const reviewCursor = Date.parse(snapshot.reviewCursor.closeTime);
+  const candles = allCandles.filter((candle) => Date.parse(candle.openTime) <= reviewCursor);
+  if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
+  const width = 1040;
+  const height = 390;
+  const left = 54;
+  const right = 30;
+  const top = 24;
+  const bottom = 52;
+  const volumeTop = 318;
+  const plotBottom = 300;
+  const plotWidth = width - left - right;
+  const step = plotWidth / Math.max(candles.length, 1);
+  const annotations = snapshot.annotations.filter((annotation) => annotation.available);
+  const prices = [...candles.flatMap((candle) => [candle.high, candle.low]), ...annotations.flatMap((annotation) => annotation.price == null ? [] : [annotation.price])];
+  const max = Math.max(...prices);
+  const min = Math.min(...prices);
+  const span = Math.max(max - min, 0.01);
+  const y = (price: number) => plotBottom - ((price - min) / span) * (plotBottom - top);
+  const x = (index: number) => left + index * step + step / 2;
+  const timeX = (value: string | null) => {
+    if (!value) return null;
+    const target = Date.parse(value);
+    const nearest = candles.findIndex((candle) => Date.parse(candle.openTime) >= target);
+    return x(nearest < 0 ? candles.length - 1 : nearest);
+  };
+  const visibleAtEvaluation = candles.filter((candle) => Date.parse(candle.closeTime) <= cursor).length;
+  const boundaryX = left + Math.min(visibleAtEvaluation, candles.length) * step;
+  const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
+  const gridPrices = [max, max - span / 2, min];
+  return <div className="w-full overflow-x-auto">
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[330px] min-w-[700px] w-full" role="img" aria-label={`Causal annotated OHLCV chart for ${snapshot.categoryLabel}. Candles after the evaluation cursor are hidden.`}>
+      <title>Causal annotated chart. Future candles are hidden.</title>
+      {gridPrices.map((price) => <g key={price}><line x1={left} x2={width - right} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="3 6" /><text x="4" y={y(price) + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{price.toFixed(2)}</text></g>)}
+      <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={plotBottom - top} fill="hsl(var(--foreground) / .035)" />
+      {annotations.filter((annotation) => annotation.price !== null).slice(0, 18).map((annotation) => <g key={annotation.id}><line x1={left} x2={width - right} y1={y(annotation.price as number)} y2={y(annotation.price as number)} stroke={annotationTone(annotation.color)} strokeWidth={annotation.kind === "price" ? 1.5 : 1} strokeDasharray={annotation.kind === "indicator" ? "2 5" : "6 4"} opacity=".76" /><text x={width - right - 4} y={y(annotation.price as number) - 4} textAnchor="end" fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{annotation.label}</text></g>)}
+      {candles.map((candle, index) => {
+        const up = candle.close >= candle.open;
+        const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))";
+        const bodyTop = Math.min(y(candle.open), y(candle.close));
+        const bodyHeight = Math.max(Math.abs(y(candle.close) - y(candle.open)), 2);
+        const volumeHeight = Math.max((candle.volume / volumeMax) * 30, 2);
+        return <g key={`${candle.openTime}-${index}`}><title>{`${formatReviewTime(candle.openTime)} · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={x(index)} x2={x(index)} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.4" /><rect x={x(index) - Math.max(step * .3, 2)} y={bodyTop} width={Math.max(step * .6, 4)} height={bodyHeight} fill={color} rx="1" /><rect x={x(index) - Math.max(step * .25, 2)} y={volumeTop + 30 - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
+      })}
+      {annotations.filter((annotation) => annotation.kind === "candle" && annotation.openTime).map((annotation) => {
+        const markerX = timeX(annotation.openTime);
+        if (markerX == null || markerX > boundaryX) return null;
+        return <g key={`marker-${annotation.id}`}><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={annotationTone(annotation.color)} strokeDasharray="2 4" opacity=".88" /><circle cx={markerX} cy={top + 8} r="3" fill={annotationTone(annotation.color)} /><text x={markerX + 5} y={top + 12} fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{annotation.label}</text></g>;
+      })}
+      <line x1={boundaryX} x2={boundaryX} y1={12} y2={plotBottom + 12} stroke="hsl(var(--foreground))" strokeWidth="1.5" strokeDasharray="5 4" />
+      <rect x={Math.min(boundaryX - 62, width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(boundaryX, width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
+      <line x1={left} x2={width - right} y1={volumeTop + 32} y2={volumeTop + 32} stroke="hsl(var(--border))" />
+      <text x={left} y={height - 19} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{formatReviewTime(candles[0].openTime)}</text>
+      <text x={width - right} y={height - 19} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{formatReviewTime(candles.at(-1)?.closeTime ?? "")}</text>
+      <text x={left} y={height - 4} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">OHLC</text>
+      <text x={left + 36} y={height - 4} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME</text>
+    </svg>
+  </div>;
+}
+
+function MachineEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  const evidence = snapshot.machineEvidence;
+  const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
+  const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
+  const fields: Array<[string, unknown]> = [
+    ["Decision", audit.decision ?? snapshot.machineLabel],
+    ["Setup", audit.setupType],
+    ["Direction", audit.direction],
+    ["Evaluation", audit.evaluatedCandleOpenTime],
+    ["Breakout", typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null],
+    ["Patience", typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null],
+    ["Formula", `${snapshot.formulaVersion} · ${snapshot.formulaHash.slice(0, 16)}…`],
+    ["Future access", snapshot.evaluationCursor.futureCandleAccess],
+  ];
+  return <Panel>
+    <PanelTitle eyebrow="Machine evidence / read-only" title="What the deterministic engine said" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Immutable formula trace</span>} />
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+      {fields.map(([label, value]) => <div key={label} className="min-h-[74px] bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 break-words text-[11px]">{safeValue(value)}</div></div>)}
+    </div>
+    <details className="border-t border-border px-5 py-4 sm:px-6">
+      <summary className="cursor-pointer text-xs font-semibold">Open complete machine payload</summary>
+      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
+    </details>
+    <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">Machine evidence is not a human judgment. Do not use this panel to silently correct a rule; leave a labeled review below.</div>
+  </Panel>;
+}
+
+function ReviewPanel({ snapshot, note, setNote, pending, onSave, message }: { snapshot: VisualValidationSnapshot; note: string; setNote: (note: string) => void; pending: boolean; onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => void; message: string }) {
+  const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
+  return <Panel accent>
+    <PanelTitle eyebrow="Human judgment / persisted review" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
+    <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
+    <div className="space-y-4 border-t border-border p-5 sm:p-6">
+      <div className="grid gap-2">
+        {REVIEW_OPTIONS.map((option) => <button type="button" key={option.value} onClick={() => onSave(option.value)} disabled={pending} className={`flex items-start gap-3 border p-3 text-left transition hover:bg-muted/50 disabled:opacity-55 ${savedStatus === option.value ? "border-accent bg-accent/10" : "border-border"}`} aria-pressed={savedStatus === option.value} data-testid={`button-review-${option.value}`}>
+          <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${savedStatus === option.value ? "border-accent bg-accent text-accent-foreground" : "border-muted-foreground/50"}`}>{savedStatus === option.value && <Check size={11} />}</span><span><span className="block text-xs font-bold">{option.label}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{option.detail}</span></span>
+        </button>)}
+      </div>
+      <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">Reviewer note · optional</span><textarea maxLength={2000} rows={5} value={note} onChange={(event) => setNote(event.target.value)} className="field resize-none" placeholder="Name the exact candle, level, or rule ambiguity you observed." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{note.length} / 2000</span></label>
+      {message && <div className="border border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] p-3 text-xs text-[hsl(var(--positive))]" role="status">{message}</div>}
+      <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting a judgment persists the current note with this snapshot. It does not modify the strategy.</div>
+    </div>
+  </Panel>;
+}
+
+function SnapshotNavigator({ snapshots, active, onSelect }: { snapshots: VisualValidationSnapshot[]; active: VisualValidationSnapshot; onSelect: (id: string) => void }) {
+  return <Panel>
+    <PanelTitle eyebrow="Same category / sample index" title="Other samples" right={<span className="mono text-[10px] text-muted-foreground">{snapshots.length}</span>} />
+    {snapshots.length > 1 ? <div className="divide-y divide-border border-t border-border">{snapshots.map((snapshot) => <button type="button" key={snapshot.snapshotId} onClick={() => onSelect(snapshot.snapshotId)} className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition hover:bg-muted/40 ${active.snapshotId === snapshot.snapshotId ? "bg-accent/10" : ""}`}><span className="min-w-0"><span className="mono block text-[10px] text-muted-foreground">sample {String(snapshot.sampleIndex).padStart(2, "0")} · {snapshot.tradingDate}</span><span className="mt-1 block truncate text-xs font-semibold">{snapshot.machineLabel}</span></span><ReviewDot status={snapshot.review.status} /></button>)}</div> : <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">Only one generated sample is available for this category.</div>}
+  </Panel>;
+}
+
+function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
+  return <Panel>
+    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Discrepancy report</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-discrepancies">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
+    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Export the current set as machine-readable evidence for rule review. The report contains only persisted human judgments and their causal cursors.</div>
+    {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.discrepancies.length ? report.discrepancies.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No discrepancies have been labeled yet.</p>}</div>}</div>}
+  </Panel>;
+}
+
+function UnavailableWorkspace({ coverage }: { coverage: VisualValidationSet["categoryCoverage"] }) {
+  return <Panel accent><div className="flex min-h-[280px] flex-col items-center justify-center px-8 py-12 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><AlertTriangle size={22} /></div><h2 className="display text-xl font-bold">No category sample is available.</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">This set did not produce an available category. The room will not fabricate a chart. Generate another deterministic set or select an available category above.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{coverage.filter((item) => item.count > 0).map((item) => <span key={item.category} className="border border-border bg-muted/35 px-2.5 py-1.5 text-[10px] font-bold uppercase">{prettyCategory(item.category)}</span>)}</div></div></Panel>;
+}
+
+function EmptyReview() {
+  return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">The review room is empty.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic simulation-only set to begin inspecting machine evidence against raw candles.</p></div>;
+}
+
+function moveSnapshot(snapshots: VisualValidationSnapshot[], active: VisualValidationSnapshot, direction: -1 | 1, setSelected: (id: string) => void) {
+  const index = snapshots.findIndex((snapshot) => snapshot.snapshotId === active.snapshotId);
+  const next = snapshots[index + direction];
+  if (next) setSelected(next.snapshotId);
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">{label}</span>{children}</label>;
+}
+
+function ManifestItem({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
+  return <div className="bg-card px-4 py-4"><div className="flex items-center gap-2 text-[10px] text-muted-foreground">{icon}{label}</div><div className="mono mt-2 break-words text-[11px]">{value}</div></div>;
+}
+
+function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return <div className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-xs font-medium">{value}</div>{sub && <div className="mono mt-1 text-[9px] text-muted-foreground">{sub}</div>}</div>;
+}
+
+function ReviewDot({ status }: { status: VisualValidationReviewStatus }) {
+  if (status === "unreviewed") return <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/50" aria-label="Unreviewed" />;
+  const tone = status === "correct" ? "bg-[hsl(var(--positive))]" : status === "incorrect" ? "bg-[hsl(var(--negative))]" : "bg-accent";
+  return <span className={`h-2 w-2 shrink-0 rounded-full ${tone}`} aria-label={status.replaceAll("_", " ")} />;
+}

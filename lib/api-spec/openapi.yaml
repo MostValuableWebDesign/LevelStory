@@ -375,6 +375,120 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation:
+    get:
+      operationId: getVisualValidationSet
+      tags: [backtest]
+      summary: Generate or retrieve deterministic visual-validation snapshots
+      description: Creates a bounded, simulation-only set of annotated setup snapshots. Each snapshot contains only candles visible at its causal evaluation cursor.
+      parameters:
+        - name: reviewSetId
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        - name: symbol
+          in: query
+          required: false
+          schema: { type: string, enum: [MES], default: MES }
+        - name: endDate
+          in: query
+          required: false
+          schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$', default: "2026-08-26" }
+        - name: inSampleDays
+          in: query
+          required: false
+          schema: { type: number, minimum: 1, maximum: 10, default: 5 }
+        - name: outOfSampleDays
+          in: query
+          required: false
+          schema: { type: number, minimum: 1, maximum: 10, default: 2 }
+        - name: seed
+          in: query
+          required: false
+          schema: { type: number, minimum: 0, maximum: 1000000, default: 11 }
+      responses:
+        "200":
+          description: Visual-validation snapshot set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationSet"
+        "404":
+          description: Review set not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createVisualValidationSet
+      tags: [backtest]
+      summary: Create a deterministic visual-validation snapshot set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisualValidationRequest"
+      responses:
+        "200":
+          description: Visual-validation snapshot set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationSet"
+        "400":
+          description: Invalid visual-validation request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/reviews:
+    post:
+      operationId: recordVisualValidationReview
+      tags: [backtest]
+      summary: Record a human visual-validation label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisualValidationReviewRequest"
+      responses:
+        "200":
+          description: Stored review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationReview"
+        "404":
+          description: Review set or snapshot not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/discrepancies:
+    get:
+      operationId: exportVisualValidationDiscrepancies
+      tags: [backtest]
+      summary: Export human-machine discrepancy evidence
+      parameters:
+        - name: reviewSetId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Discrepancy report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationDiscrepancyReport"
+        "404":
+          description: Review set not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data:
     get:
       operationId: getHistoricalData
@@ -2585,4 +2699,159 @@ components:
           items:
             $ref: "#/components/schemas/QualificationCandidate"
       required: [batchId, stage, page, pageSize, total, hasMore, candidates]
+    VisualValidationRequest:
+      type: object
+      properties:
+        symbol: { type: string, enum: [MES], default: MES }
+        endDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$', default: "2026-08-26" }
+        inSampleDays: { type: number, minimum: 1, maximum: 10, default: 5 }
+        outOfSampleDays: { type: number, minimum: 1, maximum: 10, default: 2 }
+        seed: { type: number, minimum: 0, maximum: 1000000, default: 11 }
+        premarketAvailable: { type: boolean, default: true }
+      required: [symbol, endDate, inSampleDays, outOfSampleDays]
+    VisualValidationReviewStatus:
+      type: string
+      enum: [unreviewed, correct, incorrect, uncertain, rule_needs_clarification]
+    VisualValidationCategory:
+      type: string
+      enum: [qualified_trade, rejected_setup, bullish_patience_candle, bearish_patience_candle, weak_orb_probe, strong_breakout, pullback, consolidation, ambiguous_candle, stop_exit, target_exit, runner_exit]
+    VisualValidationCandle:
+      type: object
+      properties:
+        openTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time }
+        timestamp: { type: string, format: date-time }
+        open: { type: number }
+        high: { type: number }
+        low: { type: number }
+        close: { type: number }
+        volume: { type: number }
+        bid: { type: number }
+        ask: { type: number }
+        bidSize: { type: number }
+        askSize: { type: number }
+        contractSymbol: { type: string }
+        isComplete: { type: boolean, enum: [true] }
+      required: [openTime, closeTime, timestamp, open, high, low, close, volume, bid, ask, bidSize, askSize, contractSymbol, isComplete]
+    VisualValidationAnnotation:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [level, indicator, fibonacci, candle, price] }
+        price: { type: ["number", "null"] }
+        openTime: { type: ["string", "null"], format: date-time }
+        closeTime: { type: ["string", "null"], format: date-time }
+        available: { type: boolean }
+        color: { type: string, enum: [accent, positive, negative, muted, blue] }
+        detail: { type: string }
+      required: [id, label, kind, price, openTime, closeTime, available, color, detail]
+    VisualValidationCursor:
+      type: object
+      properties:
+        openTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time }
+        newYork: { type: string }
+        utc: { type: string }
+        visibleCandleCount: { type: number, minimum: 0 }
+        futureCandleAccess: { type: boolean, enum: [false] }
+      required: [openTime, closeTime, newYork, utc, visibleCandleCount, futureCandleAccess]
+    VisualValidationReviewCursor:
+      type: object
+      properties:
+        closeTime: { type: string, format: date-time }
+        newYork: { type: string }
+        utc: { type: string }
+      required: [closeTime, newYork, utc]
+    VisualValidationSnapshot:
+      type: object
+      properties:
+        snapshotId: { type: string }
+        sampleIndex: { type: number, minimum: 1 }
+        category: { $ref: "#/components/schemas/VisualValidationCategory" }
+        categoryLabel: { type: string }
+        machineLabel: { type: string }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        formulaVersion: { type: string }
+        symbol: { type: string }
+        contractSymbol: { type: string }
+        contractMonth: { type: string }
+        tradingDate: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        evaluationCursor: { $ref: "#/components/schemas/VisualValidationCursor" }
+        reviewCursor: { $ref: "#/components/schemas/VisualValidationReviewCursor" }
+        rawCandles:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationCandle" }
+        annotations:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationAnnotation" }
+        machineEvidence:
+          type: object
+          additionalProperties: true
+        review:
+          type: object
+          properties:
+            status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
+            note: { type: ["string", "null"] }
+            reviewedAt: { type: ["string", "null"], format: date-time }
+          required: [status, note, reviewedAt]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, rawCandles, annotations, machineEvidence, review]
+    VisualValidationCategoryCoverage:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/VisualValidationCategory" }
+        label: { type: string }
+        count: { type: number, minimum: 0 }
+        available: { type: boolean }
+      required: [category, label, count, available]
+    VisualValidationSet:
+      type: object
+      properties:
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        createdAt: { type: string, format: date-time }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        formulaVersion: { type: string }
+        source: { type: string, enum: [simulated] }
+        symbol: { type: string }
+        request: { $ref: "#/components/schemas/VisualValidationRequest" }
+        snapshots:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationSnapshot" }
+        categoryCoverage:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
+      required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, snapshots, categoryCoverage]
+    VisualValidationReviewRequest:
+      type: object
+      properties:
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        snapshotId: { type: string }
+        status: { type: string, enum: [correct, incorrect, uncertain, rule_needs_clarification] }
+        note: { type: ["string", "null"], maxLength: 2000 }
+      required: [reviewSetId, snapshotId, status]
+    VisualValidationReview:
+      type: object
+      properties:
+        reviewId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        snapshotId: { type: string }
+        status: { type: string, enum: [correct, incorrect, uncertain, rule_needs_clarification] }
+        note: { type: ["string", "null"] }
+        reviewedAt: { type: string, format: date-time }
+      required: [reviewId, reviewSetId, snapshotId, status, note, reviewedAt]
+    VisualValidationDiscrepancyReport:
+      type: object
+      properties:
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        generatedAt: { type: string, format: date-time }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        totalSnapshots: { type: number, minimum: 0 }
+        reviewedSnapshots: { type: number, minimum: 0 }
+        discrepancies:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, discrepancies]
 

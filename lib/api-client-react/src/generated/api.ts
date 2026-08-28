@@ -29,6 +29,7 @@ import type {
   CancelBatchBacktestParams,
   DashboardOverview,
   ErrorResponse,
+  ExportVisualValidationDiscrepanciesParams,
   FuturesContractSpecification,
   GetBacktestAuditPageParams,
   GetBatchBacktestStatusParams,
@@ -37,6 +38,7 @@ import type {
   GetHistoricalDataParams,
   GetMarketDataStatusParams,
   GetMarketSnapshotParams,
+  GetVisualValidationSetParams,
   HealthStatus,
   HistoricalImportSummary,
   JournalEntry,
@@ -45,7 +47,12 @@ import type {
   MarketDataStatus,
   MarketSnapshot,
   RiskSettings,
-  RiskSettingsUpdate
+  RiskSettingsUpdate,
+  VisualValidationDiscrepancyReport,
+  VisualValidationRequest,
+  VisualValidationReview,
+  VisualValidationReviewRequest,
+  VisualValidationSet
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -948,6 +955,317 @@ export function useGetBacktestAuditPage<TData = Awaited<ReturnType<typeof getBac
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetBacktestAuditPageQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetVisualValidationSetUrl = (params?: GetVisualValidationSetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/visual-validation?${stringifiedParams}` : `/api/backtest/visual-validation`
+}
+
+/**
+ * Creates a bounded, simulation-only set of annotated setup snapshots. Each snapshot contains only candles visible at its causal evaluation cursor.
+ * @summary Generate or retrieve deterministic visual-validation snapshots
+ */
+export const getVisualValidationSet = async (params?: GetVisualValidationSetParams, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationSet> => {
+
+  return customFetch<VisualValidationSet>(getGetVisualValidationSetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVisualValidationSetQueryKey = (params?: GetVisualValidationSetParams,) => {
+    return [
+    `/api/backtest/visual-validation`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetVisualValidationSetQueryOptions = <TData = Awaited<ReturnType<typeof getVisualValidationSet>>, TError = ErrorType<ErrorResponse>>(params?: GetVisualValidationSetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVisualValidationSetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVisualValidationSet>>> = ({ signal }) => getVisualValidationSet(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVisualValidationSetQueryResult = NonNullable<Awaited<ReturnType<typeof getVisualValidationSet>>>
+export type GetVisualValidationSetQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Generate or retrieve deterministic visual-validation snapshots
+ */
+
+export function useGetVisualValidationSet<TData = Awaited<ReturnType<typeof getVisualValidationSet>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetVisualValidationSetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVisualValidationSetQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateVisualValidationSetUrl = () => {
+
+
+
+
+  return `/api/backtest/visual-validation`
+}
+
+/**
+ * @summary Create a deterministic visual-validation snapshot set
+ */
+export const createVisualValidationSet = async (visualValidationRequest: VisualValidationRequest, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationSet> => {
+
+  return customFetch<VisualValidationSet>(getCreateVisualValidationSetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(visualValidationRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateVisualValidationSetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVisualValidationSet>>, TError,{data: BodyType<VisualValidationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVisualValidationSet>>, TError,{data: BodyType<VisualValidationRequest>}, TContext> => {
+
+const mutationKey = ['createVisualValidationSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVisualValidationSet>>, {data: BodyType<VisualValidationRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createVisualValidationSet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVisualValidationSetMutationResult = NonNullable<Awaited<ReturnType<typeof createVisualValidationSet>>>
+    export type CreateVisualValidationSetMutationBody = BodyType<VisualValidationRequest>
+    export type CreateVisualValidationSetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a deterministic visual-validation snapshot set
+ */
+export const useCreateVisualValidationSet = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVisualValidationSet>>, TError,{data: BodyType<VisualValidationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVisualValidationSet>>,
+        TError,
+        {data: BodyType<VisualValidationRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateVisualValidationSetMutationOptions(options));
+    }
+
+export const getRecordVisualValidationReviewUrl = () => {
+
+
+
+
+  return `/api/backtest/visual-validation/reviews`
+}
+
+/**
+ * @summary Record a human visual-validation label
+ */
+export const recordVisualValidationReview = async (visualValidationReviewRequest: VisualValidationReviewRequest, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationReview> => {
+
+  return customFetch<VisualValidationReview>(getRecordVisualValidationReviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(visualValidationReviewRequest)
+  }
+);}
+
+
+
+
+
+export const getRecordVisualValidationReviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordVisualValidationReview>>, TError,{data: BodyType<VisualValidationReviewRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordVisualValidationReview>>, TError,{data: BodyType<VisualValidationReviewRequest>}, TContext> => {
+
+const mutationKey = ['recordVisualValidationReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordVisualValidationReview>>, {data: BodyType<VisualValidationReviewRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  recordVisualValidationReview(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordVisualValidationReviewMutationResult = NonNullable<Awaited<ReturnType<typeof recordVisualValidationReview>>>
+    export type RecordVisualValidationReviewMutationBody = BodyType<VisualValidationReviewRequest>
+    export type RecordVisualValidationReviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record a human visual-validation label
+ */
+export const useRecordVisualValidationReview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordVisualValidationReview>>, TError,{data: BodyType<VisualValidationReviewRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordVisualValidationReview>>,
+        TError,
+        {data: BodyType<VisualValidationReviewRequest>},
+        TContext
+      > => {
+      return useMutation(getRecordVisualValidationReviewMutationOptions(options));
+    }
+
+export const getExportVisualValidationDiscrepanciesUrl = (params: ExportVisualValidationDiscrepanciesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/visual-validation/discrepancies?${stringifiedParams}` : `/api/backtest/visual-validation/discrepancies`
+}
+
+/**
+ * @summary Export human-machine discrepancy evidence
+ */
+export const exportVisualValidationDiscrepancies = async (params: ExportVisualValidationDiscrepanciesParams, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationDiscrepancyReport> => {
+
+  return customFetch<VisualValidationDiscrepancyReport>(getExportVisualValidationDiscrepanciesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportVisualValidationDiscrepanciesQueryKey = (params?: ExportVisualValidationDiscrepanciesParams,) => {
+    return [
+    `/api/backtest/visual-validation/discrepancies`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportVisualValidationDiscrepanciesQueryOptions = <TData = Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>, TError = ErrorType<ErrorResponse>>(params: ExportVisualValidationDiscrepanciesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportVisualValidationDiscrepanciesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>> = ({ signal }) => exportVisualValidationDiscrepancies(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportVisualValidationDiscrepanciesQueryResult = NonNullable<Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>>
+export type ExportVisualValidationDiscrepanciesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Export human-machine discrepancy evidence
+ */
+
+export function useExportVisualValidationDiscrepancies<TData = Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>, TError = ErrorType<ErrorResponse>>(
+ params: ExportVisualValidationDiscrepanciesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVisualValidationDiscrepancies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportVisualValidationDiscrepanciesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

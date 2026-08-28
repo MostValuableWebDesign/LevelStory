@@ -3886,6 +3886,333 @@ export const GetBacktestAuditPageResponse = zod.object({
 
 
 /**
+ * Creates a bounded, simulation-only set of annotated setup snapshots. Each snapshot contains only candles visible at its causal evaluation cursor.
+ * @summary Generate or retrieve deterministic visual-validation snapshots
+ */
+export const getVisualValidationSetQueryReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetQuerySymbolDefault = `MES`;
+export const getVisualValidationSetQueryEndDateDefault = `2026-08-26`;
+export const getVisualValidationSetQueryEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationSetQueryInSampleDaysDefault = 5;
+export const getVisualValidationSetQueryInSampleDaysMax = 10;
+
+export const getVisualValidationSetQueryOutOfSampleDaysDefault = 2;
+export const getVisualValidationSetQueryOutOfSampleDaysMax = 10;
+
+export const getVisualValidationSetQuerySeedDefault = 11;
+export const getVisualValidationSetQuerySeedMin = 0;
+export const getVisualValidationSetQuerySeedMax = 1000000;
+
+
+
+export const GetVisualValidationSetQueryParams = zod.object({
+  "reviewSetId": zod.coerce.string().regex(getVisualValidationSetQueryReviewSetIdRegExp).optional(),
+  "symbol": zod.enum(['MES']).default(getVisualValidationSetQuerySymbolDefault),
+  "endDate": zod.coerce.string().regex(getVisualValidationSetQueryEndDateRegExp).default(getVisualValidationSetQueryEndDateDefault),
+  "inSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryInSampleDaysMax).default(getVisualValidationSetQueryInSampleDaysDefault),
+  "outOfSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryOutOfSampleDaysMax).default(getVisualValidationSetQueryOutOfSampleDaysDefault),
+  "seed": zod.coerce.number().min(getVisualValidationSetQuerySeedMin).max(getVisualValidationSetQuerySeedMax).default(getVisualValidationSetQuerySeedDefault)
+})
+
+export const getVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseRequestSymbolDefault = `MES`;
+export const getVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
+export const getVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationSetResponseRequestInSampleDaysDefault = 5;
+export const getVisualValidationSetResponseRequestInSampleDaysMax = 10;
+
+export const getVisualValidationSetResponseRequestOutOfSampleDaysDefault = 2;
+export const getVisualValidationSetResponseRequestOutOfSampleDaysMax = 10;
+
+export const getVisualValidationSetResponseRequestSeedDefault = 11;
+export const getVisualValidationSetResponseRequestSeedMin = 0;
+export const getVisualValidationSetResponseRequestSeedMax = 1000000;
+
+export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
+export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
+
+export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
+
+
+
+export const GetVisualValidationSetResponse = zod.object({
+  "reviewSetId": zod.string().regex(getVisualValidationSetResponseReviewSetIdRegExp),
+  "createdAt": zod.coerce.date(),
+  "formulaHash": zod.string().regex(getVisualValidationSetResponseFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "source": zod.enum(['simulated']),
+  "symbol": zod.string(),
+  "request": zod.object({
+  "symbol": zod.enum(['MES']).default(getVisualValidationSetResponseRequestSymbolDefault),
+  "endDate": zod.string().regex(getVisualValidationSetResponseRequestEndDateRegExp).default(getVisualValidationSetResponseRequestEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestInSampleDaysMax).default(getVisualValidationSetResponseRequestInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault),
+  "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
+  "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault)
+}),
+  "snapshots": zod.array(zod.object({
+  "snapshotId": zod.string(),
+  "sampleIndex": zod.number().min(1),
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "categoryLabel": zod.string(),
+  "machineLabel": zod.string(),
+  "formulaHash": zod.string().regex(getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "symbol": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "tradingDate": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluationCursor": zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string(),
+  "visibleCandleCount": zod.number().min(getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "reviewCursor": zod.object({
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string()
+}),
+  "rawCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "annotations": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
+  "price": zod.number().nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "available": zod.boolean(),
+  "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
+  "detail": zod.string()
+})),
+  "machineEvidence": zod.record(zod.string(), zod.unknown()),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+})),
+  "categoryCoverage": zod.array(zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "label": zod.string(),
+  "count": zod.number().min(getVisualValidationSetResponseCategoryCoverageItemCountMin),
+  "available": zod.boolean()
+}))
+})
+
+
+/**
+ * @summary Create a deterministic visual-validation snapshot set
+ */
+export const createVisualValidationSetBodySymbolDefault = `MES`;
+export const createVisualValidationSetBodyEndDateDefault = `2026-08-26`;
+export const createVisualValidationSetBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createVisualValidationSetBodyInSampleDaysDefault = 5;
+export const createVisualValidationSetBodyInSampleDaysMax = 10;
+
+export const createVisualValidationSetBodyOutOfSampleDaysDefault = 2;
+export const createVisualValidationSetBodyOutOfSampleDaysMax = 10;
+
+export const createVisualValidationSetBodySeedDefault = 11;
+export const createVisualValidationSetBodySeedMin = 0;
+export const createVisualValidationSetBodySeedMax = 1000000;
+
+export const createVisualValidationSetBodyPremarketAvailableDefault = true;
+
+export const CreateVisualValidationSetBody = zod.object({
+  "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
+  "endDate": zod.string().regex(createVisualValidationSetBodyEndDateRegExp).default(createVisualValidationSetBodyEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(createVisualValidationSetBodyInSampleDaysMax).default(createVisualValidationSetBodyInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault),
+  "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
+  "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault)
+})
+
+export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const createVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseRequestSymbolDefault = `MES`;
+export const createVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
+export const createVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createVisualValidationSetResponseRequestInSampleDaysDefault = 5;
+export const createVisualValidationSetResponseRequestInSampleDaysMax = 10;
+
+export const createVisualValidationSetResponseRequestOutOfSampleDaysDefault = 2;
+export const createVisualValidationSetResponseRequestOutOfSampleDaysMax = 10;
+
+export const createVisualValidationSetResponseRequestSeedDefault = 11;
+export const createVisualValidationSetResponseRequestSeedMin = 0;
+export const createVisualValidationSetResponseRequestSeedMax = 1000000;
+
+export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
+export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
+
+export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
+
+
+
+export const CreateVisualValidationSetResponse = zod.object({
+  "reviewSetId": zod.string().regex(createVisualValidationSetResponseReviewSetIdRegExp),
+  "createdAt": zod.coerce.date(),
+  "formulaHash": zod.string().regex(createVisualValidationSetResponseFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "source": zod.enum(['simulated']),
+  "symbol": zod.string(),
+  "request": zod.object({
+  "symbol": zod.enum(['MES']).default(createVisualValidationSetResponseRequestSymbolDefault),
+  "endDate": zod.string().regex(createVisualValidationSetResponseRequestEndDateRegExp).default(createVisualValidationSetResponseRequestEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestInSampleDaysMax).default(createVisualValidationSetResponseRequestInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault),
+  "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
+  "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault)
+}),
+  "snapshots": zod.array(zod.object({
+  "snapshotId": zod.string(),
+  "sampleIndex": zod.number().min(1),
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "categoryLabel": zod.string(),
+  "machineLabel": zod.string(),
+  "formulaHash": zod.string().regex(createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "symbol": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "tradingDate": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluationCursor": zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string(),
+  "visibleCandleCount": zod.number().min(createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "reviewCursor": zod.object({
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string()
+}),
+  "rawCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "annotations": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
+  "price": zod.number().nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "available": zod.boolean(),
+  "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
+  "detail": zod.string()
+})),
+  "machineEvidence": zod.record(zod.string(), zod.unknown()),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+})),
+  "categoryCoverage": zod.array(zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "label": zod.string(),
+  "count": zod.number().min(createVisualValidationSetResponseCategoryCoverageItemCountMin),
+  "available": zod.boolean()
+}))
+})
+
+
+/**
+ * @summary Record a human visual-validation label
+ */
+export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewBodyNoteMax = 2000;
+
+
+
+export const RecordVisualValidationReviewBody = zod.object({
+  "reviewSetId": zod.string().regex(recordVisualValidationReviewBodyReviewSetIdRegExp),
+  "snapshotId": zod.string(),
+  "status": zod.enum(['correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "note": zod.string().max(recordVisualValidationReviewBodyNoteMax).nullish()
+})
+
+export const recordVisualValidationReviewResponseReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RecordVisualValidationReviewResponse = zod.object({
+  "reviewId": zod.string().regex(recordVisualValidationReviewResponseReviewIdRegExp),
+  "reviewSetId": zod.string().regex(recordVisualValidationReviewResponseReviewSetIdRegExp),
+  "snapshotId": zod.string(),
+  "status": zod.enum(['correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Export human-machine discrepancy evidence
+ */
+export const exportVisualValidationDiscrepanciesQueryReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ExportVisualValidationDiscrepanciesQueryParams = zod.object({
+  "reviewSetId": zod.coerce.string().regex(exportVisualValidationDiscrepanciesQueryReviewSetIdRegExp)
+})
+
+export const exportVisualValidationDiscrepanciesResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const exportVisualValidationDiscrepanciesResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const exportVisualValidationDiscrepanciesResponseTotalSnapshotsMin = 0;
+
+export const exportVisualValidationDiscrepanciesResponseReviewedSnapshotsMin = 0;
+
+
+
+export const ExportVisualValidationDiscrepanciesResponse = zod.object({
+  "reviewSetId": zod.string().regex(exportVisualValidationDiscrepanciesResponseReviewSetIdRegExp),
+  "generatedAt": zod.coerce.date(),
+  "formulaHash": zod.string().regex(exportVisualValidationDiscrepanciesResponseFormulaHashRegExp),
+  "totalSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseTotalSnapshotsMin),
+  "reviewedSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseReviewedSnapshotsMin),
+  "discrepancies": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
  * Returns validation and aggregation statistics for the server-side MESU6 OHLCV-1m import. The file is processed without requiring a Databento API key.
  * @summary Get the imported historical Databento CSV result
  */

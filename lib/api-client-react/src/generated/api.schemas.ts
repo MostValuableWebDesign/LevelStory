@@ -2516,6 +2516,263 @@ export interface BatchFunnelPage {
   candidates: QualificationCandidate[];
 }
 
+export type VisualValidationRequestSymbol = typeof VisualValidationRequestSymbol[keyof typeof VisualValidationRequestSymbol];
+
+
+export const VisualValidationRequestSymbol = {
+  MES: 'MES',
+} as const;
+
+export interface VisualValidationRequest {
+  symbol: VisualValidationRequestSymbol;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  endDate: string;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  inSampleDays: number;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  outOfSampleDays: number;
+  /**
+     * @minimum 0
+     * @maximum 1000000
+     */
+  seed?: number;
+  premarketAvailable?: boolean;
+}
+
+export type VisualValidationReviewStatus = typeof VisualValidationReviewStatus[keyof typeof VisualValidationReviewStatus];
+
+
+export const VisualValidationReviewStatus = {
+  unreviewed: 'unreviewed',
+  correct: 'correct',
+  incorrect: 'incorrect',
+  uncertain: 'uncertain',
+  rule_needs_clarification: 'rule_needs_clarification',
+} as const;
+
+export type VisualValidationCategory = typeof VisualValidationCategory[keyof typeof VisualValidationCategory];
+
+
+export const VisualValidationCategory = {
+  qualified_trade: 'qualified_trade',
+  rejected_setup: 'rejected_setup',
+  bullish_patience_candle: 'bullish_patience_candle',
+  bearish_patience_candle: 'bearish_patience_candle',
+  weak_orb_probe: 'weak_orb_probe',
+  strong_breakout: 'strong_breakout',
+  pullback: 'pullback',
+  consolidation: 'consolidation',
+  ambiguous_candle: 'ambiguous_candle',
+  stop_exit: 'stop_exit',
+  target_exit: 'target_exit',
+  runner_exit: 'runner_exit',
+} as const;
+
+export interface VisualValidationCandle {
+  openTime: string;
+  closeTime: string;
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  bid: number;
+  ask: number;
+  bidSize: number;
+  askSize: number;
+  contractSymbol: string;
+  isComplete: true;
+}
+
+export type VisualValidationAnnotationKind = typeof VisualValidationAnnotationKind[keyof typeof VisualValidationAnnotationKind];
+
+
+export const VisualValidationAnnotationKind = {
+  level: 'level',
+  indicator: 'indicator',
+  fibonacci: 'fibonacci',
+  candle: 'candle',
+  price: 'price',
+} as const;
+
+export type VisualValidationAnnotationColor = typeof VisualValidationAnnotationColor[keyof typeof VisualValidationAnnotationColor];
+
+
+export const VisualValidationAnnotationColor = {
+  accent: 'accent',
+  positive: 'positive',
+  negative: 'negative',
+  muted: 'muted',
+  blue: 'blue',
+} as const;
+
+export interface VisualValidationAnnotation {
+  id: string;
+  label: string;
+  kind: VisualValidationAnnotationKind;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  openTime: string | null;
+  /** @nullable */
+  closeTime: string | null;
+  available: boolean;
+  color: VisualValidationAnnotationColor;
+  detail: string;
+}
+
+export interface VisualValidationCursor {
+  openTime: string;
+  closeTime: string;
+  newYork: string;
+  utc: string;
+  /** @minimum 0 */
+  visibleCandleCount: number;
+  futureCandleAccess: false;
+}
+
+export interface VisualValidationReviewCursor {
+  closeTime: string;
+  newYork: string;
+  utc: string;
+}
+
+export type VisualValidationSnapshotPeriod = typeof VisualValidationSnapshotPeriod[keyof typeof VisualValidationSnapshotPeriod];
+
+
+export const VisualValidationSnapshotPeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type VisualValidationSnapshotMachineEvidence = { [key: string]: unknown };
+
+export type VisualValidationSnapshotReview = {
+  status: VisualValidationReviewStatus;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  reviewedAt: string | null;
+};
+
+export interface VisualValidationSnapshot {
+  snapshotId: string;
+  /** @minimum 1 */
+  sampleIndex: number;
+  category: VisualValidationCategory;
+  categoryLabel: string;
+  machineLabel: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  formulaVersion: string;
+  symbol: string;
+  contractSymbol: string;
+  contractMonth: string;
+  tradingDate: string;
+  period: VisualValidationSnapshotPeriod;
+  evaluationCursor: VisualValidationCursor;
+  reviewCursor: VisualValidationReviewCursor;
+  rawCandles: VisualValidationCandle[];
+  annotations: VisualValidationAnnotation[];
+  machineEvidence: VisualValidationSnapshotMachineEvidence;
+  review: VisualValidationSnapshotReview;
+}
+
+export interface VisualValidationCategoryCoverage {
+  category: VisualValidationCategory;
+  label: string;
+  /** @minimum 0 */
+  count: number;
+  available: boolean;
+}
+
+export type VisualValidationSetSource = typeof VisualValidationSetSource[keyof typeof VisualValidationSetSource];
+
+
+export const VisualValidationSetSource = {
+  simulated: 'simulated',
+} as const;
+
+export interface VisualValidationSet {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  createdAt: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  formulaVersion: string;
+  source: VisualValidationSetSource;
+  symbol: string;
+  request: VisualValidationRequest;
+  snapshots: VisualValidationSnapshot[];
+  categoryCoverage: VisualValidationCategoryCoverage[];
+}
+
+export type VisualValidationReviewRequestStatus = typeof VisualValidationReviewRequestStatus[keyof typeof VisualValidationReviewRequestStatus];
+
+
+export const VisualValidationReviewRequestStatus = {
+  correct: 'correct',
+  incorrect: 'incorrect',
+  uncertain: 'uncertain',
+  rule_needs_clarification: 'rule_needs_clarification',
+} as const;
+
+export interface VisualValidationReviewRequest {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  snapshotId: string;
+  status: VisualValidationReviewRequestStatus;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export type VisualValidationReviewStatusProperty = typeof VisualValidationReviewStatusProperty[keyof typeof VisualValidationReviewStatusProperty];
+
+
+export const VisualValidationReviewStatusProperty = {
+  correct: 'correct',
+  incorrect: 'incorrect',
+  uncertain: 'uncertain',
+  rule_needs_clarification: 'rule_needs_clarification',
+} as const;
+
+export interface VisualValidationReview {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewId: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  snapshotId: string;
+  status: VisualValidationReviewStatusProperty;
+  /** @nullable */
+  note: string | null;
+  reviewedAt: string;
+}
+
+export type VisualValidationDiscrepancyReportDiscrepanciesItem = { [key: string]: unknown };
+
+export interface VisualValidationDiscrepancyReport {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  generatedAt: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  /** @minimum 0 */
+  totalSnapshots: number;
+  /** @minimum 0 */
+  reviewedSnapshots: number;
+  discrepancies: VisualValidationDiscrepancyReportDiscrepanciesItem[];
+}
+
 export type GetMarketSnapshotParams = {
 /**
  * @minLength 1
@@ -2700,6 +2957,47 @@ export const GetBacktestAuditPageCategory = {
   POSITION_ACTIVE: 'POSITION_ACTIVE',
   QUALIFIED: 'QUALIFIED',
 } as const;
+
+export type GetVisualValidationSetParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+reviewSetId?: string;
+symbol?: GetVisualValidationSetSymbol;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+endDate?: string;
+/**
+ * @minimum 1
+ * @maximum 10
+ */
+inSampleDays?: number;
+/**
+ * @minimum 1
+ * @maximum 10
+ */
+outOfSampleDays?: number;
+/**
+ * @minimum 0
+ * @maximum 1000000
+ */
+seed?: number;
+};
+
+export type GetVisualValidationSetSymbol = typeof GetVisualValidationSetSymbol[keyof typeof GetVisualValidationSetSymbol];
+
+
+export const GetVisualValidationSetSymbol = {
+  MES: 'MES',
+} as const;
+
+export type ExportVisualValidationDiscrepanciesParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+reviewSetId: string;
+};
 
 export type GetHistoricalDataParams = {
 symbol?: GetHistoricalDataSymbol;
