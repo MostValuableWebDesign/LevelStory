@@ -12,7 +12,7 @@ paths = [ "/" ]
 localPort = 26250
 
 [services.development]
-run = "pnpm --filter @workspace/levelstory run dev"
+run = "pnpm --filter @workspace/levelstory run build && pnpm --filter @workspace/levelstory run serve"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/levelstory", "run", "build" ]

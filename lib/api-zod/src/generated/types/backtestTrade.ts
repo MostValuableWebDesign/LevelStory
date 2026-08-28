@@ -22,8 +22,10 @@ export interface BacktestTrade {
   period: BacktestTradePeriod;
   setupType: string;
   direction: BacktestTradeDirection;
-  entryTime: string;
-  exitTime: string;
+  /** Modeled or observed entry event time in UTC. */
+  entryTime: Date;
+  /** Modeled or observed exit event time in UTC. */
+  exitTime: Date;
   entryPrice: number;
   exitPrice: number;
   contracts: number;

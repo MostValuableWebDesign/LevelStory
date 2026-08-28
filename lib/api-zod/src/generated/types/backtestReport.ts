@@ -5,8 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestAuditRecord } from './backtestAuditRecord';
 import type { BacktestMetricSet } from './backtestMetricSet';
-import type { BacktestReportAuditItem } from './backtestReportAuditItem';
+import type { BacktestReportAuditPage } from './backtestReportAuditPage';
 import type { BacktestReportDataResolution } from './backtestReportDataResolution';
 import type { BacktestReportDataset } from './backtestReportDataset';
 import type { BacktestReportDataSource } from './backtestReportDataSource';
@@ -32,7 +33,8 @@ export interface BacktestReport {
   outOfSample: BacktestMetricSet;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
-  audit: BacktestReportAuditItem[];
+  audit: BacktestAuditRecord[];
+  auditPage: BacktestReportAuditPage;
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;
   fillLabel: string;

@@ -6,4 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type BacktestReportAuditItem = { [key: string]: unknown };
+export type BacktestAuditPageFilters = { [key: string]: unknown };

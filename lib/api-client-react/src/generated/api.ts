@@ -20,11 +20,13 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BacktestAuditPage,
   BacktestReport,
   BacktestRequest,
   DashboardOverview,
   ErrorResponse,
   FuturesContractSpecification,
+  GetBacktestAuditPageParams,
   GetDashboardOverviewParams,
   GetHistoricalDataParams,
   GetMarketDataStatusParams,
@@ -549,6 +551,90 @@ export const useRunBacktest = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRunBacktestMutationOptions(options));
     }
+
+export const getGetBacktestAuditPageUrl = (params: GetBacktestAuditPageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/audit?${stringifiedParams}` : `/api/backtest/audit`
+}
+
+/**
+ * @summary Read a bounded page of a causal backtest audit
+ */
+export const getBacktestAuditPage = async (params: GetBacktestAuditPageParams, options?: Parameters<typeof customFetch>[1]): Promise<BacktestAuditPage> => {
+
+  return customFetch<BacktestAuditPage>(getGetBacktestAuditPageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacktestAuditPageQueryKey = (params?: GetBacktestAuditPageParams,) => {
+    return [
+    `/api/backtest/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetBacktestAuditPageQueryOptions = <TData = Awaited<ReturnType<typeof getBacktestAuditPage>>, TError = ErrorType<ErrorResponse>>(params: GetBacktestAuditPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktestAuditPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacktestAuditPageQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacktestAuditPage>>> = ({ signal }) => getBacktestAuditPage(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacktestAuditPage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacktestAuditPageQueryResult = NonNullable<Awaited<ReturnType<typeof getBacktestAuditPage>>>
+export type GetBacktestAuditPageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read a bounded page of a causal backtest audit
+ */
+
+export function useGetBacktestAuditPage<TData = Awaited<ReturnType<typeof getBacktestAuditPage>>, TError = ErrorType<ErrorResponse>>(
+ params: GetBacktestAuditPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktestAuditPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacktestAuditPageQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetHistoricalDataUrl = (params?: GetHistoricalDataParams,) => {
   const normalizedParams = new URLSearchParams();

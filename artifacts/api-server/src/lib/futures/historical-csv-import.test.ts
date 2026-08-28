@@ -129,3 +129,19 @@ test("classifies regular-session and overnight gaps without counting maintenance
     assert.equal(imported.summary.expectedClosedMarketMinutes, 119);
   });
 });
+
+test("discloses inactive, missing, complete, and early-close session coverage", async () => {
+  const regularStart = Date.parse("2026-07-02T13:30:00.000Z");
+  const rows = Array.from({ length: 391 }, (_, index) => row(regularStart + index * 60_000, index));
+  rows.push(row(Date.parse("2026-07-03T13:30:00.000Z"), 900));
+  await withCsv(rows, async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.coverageScope, "full_file");
+    assert.equal(imported.summary.inactiveContractThresholdPercent, 50);
+    assert.equal(imported.summary.inactiveContractDays, 1);
+    assert.deepEqual(imported.summary.completeRegularSessionDates, ["2026-07-02"]);
+    assert.deepEqual(imported.summary.missingRegularSessionDates, ["2026-07-03"]);
+    assert.deepEqual(imported.summary.earlyCloseDates, ["2026-07-03"]);
+    assert.equal(imported.summary.overnightCoverageObserved, false);
+  });
+});

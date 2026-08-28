@@ -740,6 +740,23 @@ export const RunBacktestBody = zod.object({
   "ohlcvCommissionPerContract": zod.number().min(runBacktestBodyOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 })
 
+export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+export const runBacktestResponseAuditPagePageSizeMax = 100;
+
+export const runBacktestResponseAuditPageTotalMin = 0;
+
+export const runBacktestResponseGapReportInactiveContractThresholdPercentMin = 0;
+export const runBacktestResponseGapReportInactiveContractThresholdPercentMax = 100;
+
+export const runBacktestResponseGapReportInactiveContractDaysMin = 0;
+
+export const runBacktestResponseGapReportMaintenanceGapMinutesMin = 0;
+
+export const runBacktestResponseGapReportWeekendHolidayGapMinutesMin = 0;
+
+
+
 export const RunBacktestResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
   "dataSource": zod.enum(['simulated', 'historical_databento']),
@@ -922,8 +939,8 @@ export const RunBacktestResponse = zod.object({
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "setupType": zod.string(),
   "direction": zod.enum(['long', 'short']),
-  "entryTime": zod.string(),
-  "exitTime": zod.string(),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().describe('Modeled or observed exit event time in UTC.'),
   "entryPrice": zod.number(),
   "exitPrice": zod.number(),
   "contracts": zod.number(),
@@ -984,7 +1001,55 @@ export const RunBacktestResponse = zod.object({
 }))
 }).optional()
 })),
-  "audit": zod.array(zod.record(zod.string(), zod.unknown())),
+  "audit": zod.array(zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluatedCandleOpenTime": zod.coerce.date(),
+  "setupType": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "decision": zod.string(),
+  "alertOnly": zod.boolean(),
+  "rejectionReason": zod.string().nullable(),
+  "rejectionCategory": zod.enum(['WAITING', 'FAILURE', 'EXPIRED', 'AMBIGUITY', 'RISK_REJECTION', 'POSITION_ACTIVE', 'QUALIFIED']),
+  "rejectionSummary": zod.string().nullable(),
+  "ruleEvidence": zod.array(zod.string()),
+  "orbState": zod.string(),
+  "breakoutEvidence": zod.string(),
+  "volumeEvidence": zod.string(),
+  "pullbackEvidence": zod.string(),
+  "criticalLevelEvidence": zod.string(),
+  "trendEvidence": zod.string(),
+  "patienceState": zod.string(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "triggerCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceCandleOpenTime": zod.coerce.date().nullable(),
+  "patienceCandleCloseTime": zod.coerce.date().nullable(),
+  "triggerCandleOpenTime": zod.coerce.date().nullable(),
+  "triggerCandleCloseTime": zod.coerce.date().nullable(),
+  "modeledFillObservationTime": zod.coerce.date().nullable(),
+  "exitCandleOpenTime": zod.coerce.date().nullable(),
+  "entryTriggerPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "ambiguityLabels": zod.array(zod.string()),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "grossPnl": zod.number().nullable(),
+  "netPnl": zod.number().nullable(),
+  "exitReason": zod.string().nullable()
+})),
+  "auditPage": zod.object({
+  "runId": zod.string().regex(runBacktestResponseAuditPageRunIdRegExp),
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1).max(runBacktestResponseAuditPagePageSizeMax),
+  "total": zod.number().min(runBacktestResponseAuditPageTotalMin),
+  "hasMore": zod.boolean()
+}),
   "assumptions": zod.array(zod.string()),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']),
   "fillLabel": zod.string(),
@@ -1007,8 +1072,108 @@ export const RunBacktestResponse = zod.object({
   "overnightGapSegments": zod.number(),
   "regularSessionMissingMinutes": zod.number(),
   "expectedClosedMarketMinutes": zod.number(),
-  "lowLiquidityInactiveMinutes": zod.number()
+  "lowLiquidityInactiveMinutes": zod.number(),
+  "coverageScope": zod.enum(['full_file', 'selected_dates']),
+  "inactiveContractThresholdPercent": zod.number().min(runBacktestResponseGapReportInactiveContractThresholdPercentMin).max(runBacktestResponseGapReportInactiveContractThresholdPercentMax),
+  "inactiveContractDays": zod.number().min(runBacktestResponseGapReportInactiveContractDaysMin),
+  "missingRegularSessionDates": zod.array(zod.string()),
+  "missingOvernightSessionDates": zod.array(zod.string()),
+  "completeRegularSessionDates": zod.array(zod.string()),
+  "maintenanceGapMinutes": zod.number().min(runBacktestResponseGapReportMaintenanceGapMinutesMin),
+  "weekendHolidayGapMinutes": zod.number().min(runBacktestResponseGapReportWeekendHolidayGapMinutesMin),
+  "earlyCloseDates": zod.array(zod.string()),
+  "overnightCoverageObserved": zod.boolean()
 })
+})
+
+
+/**
+ * @summary Read a bounded page of a causal backtest audit
+ */
+export const getBacktestAuditPageQueryRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getBacktestAuditPageQueryPageDefault = 1;
+
+export const getBacktestAuditPageQueryPageSizeDefault = 50;
+export const getBacktestAuditPageQueryPageSizeMax = 100;
+
+export const getBacktestAuditPageQueryDecisionMax = 80;
+
+export const getBacktestAuditPageQueryDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getBacktestAuditPageQuerySetupMax = 100;
+
+export const getBacktestAuditPageQueryPatienceMax = 80;
+
+
+
+export const GetBacktestAuditPageQueryParams = zod.object({
+  "runId": zod.coerce.string().regex(getBacktestAuditPageQueryRunIdRegExp),
+  "page": zod.coerce.number().min(1).default(getBacktestAuditPageQueryPageDefault),
+  "pageSize": zod.coerce.number().min(1).max(getBacktestAuditPageQueryPageSizeMax).default(getBacktestAuditPageQueryPageSizeDefault),
+  "decision": zod.coerce.string().max(getBacktestAuditPageQueryDecisionMax).optional(),
+  "date": zod.coerce.string().regex(getBacktestAuditPageQueryDateRegExp).optional(),
+  "setup": zod.coerce.string().max(getBacktestAuditPageQuerySetupMax).optional(),
+  "patience": zod.coerce.string().max(getBacktestAuditPageQueryPatienceMax).optional(),
+  "category": zod.enum(['WAITING', 'FAILURE', 'EXPIRED', 'AMBIGUITY', 'RISK_REJECTION', 'POSITION_ACTIVE', 'QUALIFIED']).optional(),
+  "ambiguity": zod.coerce.boolean().optional()
+})
+
+export const getBacktestAuditPageResponseRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+export const getBacktestAuditPageResponsePageSizeMax = 100;
+
+export const getBacktestAuditPageResponseTotalMin = 0;
+
+
+
+export const GetBacktestAuditPageResponse = zod.object({
+  "runId": zod.string().regex(getBacktestAuditPageResponseRunIdRegExp),
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1).max(getBacktestAuditPageResponsePageSizeMax),
+  "total": zod.number().min(getBacktestAuditPageResponseTotalMin),
+  "hasMore": zod.boolean(),
+  "filters": zod.record(zod.string(), zod.unknown()),
+  "audit": zod.array(zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluatedCandleOpenTime": zod.coerce.date(),
+  "setupType": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "decision": zod.string(),
+  "alertOnly": zod.boolean(),
+  "rejectionReason": zod.string().nullable(),
+  "rejectionCategory": zod.enum(['WAITING', 'FAILURE', 'EXPIRED', 'AMBIGUITY', 'RISK_REJECTION', 'POSITION_ACTIVE', 'QUALIFIED']),
+  "rejectionSummary": zod.string().nullable(),
+  "ruleEvidence": zod.array(zod.string()),
+  "orbState": zod.string(),
+  "breakoutEvidence": zod.string(),
+  "volumeEvidence": zod.string(),
+  "pullbackEvidence": zod.string(),
+  "criticalLevelEvidence": zod.string(),
+  "trendEvidence": zod.string(),
+  "patienceState": zod.string(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "triggerCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceCandleOpenTime": zod.coerce.date().nullable(),
+  "patienceCandleCloseTime": zod.coerce.date().nullable(),
+  "triggerCandleOpenTime": zod.coerce.date().nullable(),
+  "triggerCandleCloseTime": zod.coerce.date().nullable(),
+  "modeledFillObservationTime": zod.coerce.date().nullable(),
+  "exitCandleOpenTime": zod.coerce.date().nullable(),
+  "entryTriggerPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "ambiguityLabels": zod.array(zod.string()),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "grossPnl": zod.number().nullable(),
+  "netPnl": zod.number().nullable(),
+  "exitReason": zod.string().nullable()
+}))
 })
 
 
@@ -1021,6 +1186,17 @@ export const getHistoricalDataQuerySymbolDefault = `MES`;
 export const GetHistoricalDataQueryParams = zod.object({
   "symbol": zod.enum(['MES']).default(getHistoricalDataQuerySymbolDefault)
 })
+
+export const getHistoricalDataResponseInactiveContractThresholdPercentMin = 0;
+export const getHistoricalDataResponseInactiveContractThresholdPercentMax = 100;
+
+export const getHistoricalDataResponseInactiveContractDaysMin = 0;
+
+export const getHistoricalDataResponseMaintenanceGapMinutesMin = 0;
+
+export const getHistoricalDataResponseWeekendHolidayGapMinutesMin = 0;
+
+
 
 export const GetHistoricalDataResponse = zod.object({
   "source": zod.enum(['historical_databento']),
@@ -1042,6 +1218,16 @@ export const GetHistoricalDataResponse = zod.object({
   "regularSessionMissingMinutes": zod.number(),
   "expectedClosedMarketMinutes": zod.number(),
   "lowLiquidityInactiveMinutes": zod.number(),
+  "coverageScope": zod.enum(['full_file']),
+  "inactiveContractThresholdPercent": zod.number().min(getHistoricalDataResponseInactiveContractThresholdPercentMin).max(getHistoricalDataResponseInactiveContractThresholdPercentMax),
+  "inactiveContractDays": zod.number().min(getHistoricalDataResponseInactiveContractDaysMin),
+  "missingRegularSessionDates": zod.array(zod.string()),
+  "missingOvernightSessionDates": zod.array(zod.string()),
+  "completeRegularSessionDates": zod.array(zod.string()),
+  "maintenanceGapMinutes": zod.number().min(getHistoricalDataResponseMaintenanceGapMinutesMin),
+  "weekendHolidayGapMinutes": zod.number().min(getHistoricalDataResponseWeekendHolidayGapMinutesMin),
+  "earlyCloseDates": zod.array(zod.string()),
+  "overnightCoverageObserved": zod.boolean(),
   "regularSessionCandleCount": zod.number(),
   "overnightCandleCount": zod.number(),
   "availableTradingDates": zod.array(zod.string()),

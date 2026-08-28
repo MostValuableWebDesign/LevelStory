@@ -1468,6 +1468,13 @@ export const HistoricalImportSummarySource = {
   historical_databento: 'historical_databento',
 } as const;
 
+export type HistoricalImportSummaryCoverageScope = typeof HistoricalImportSummaryCoverageScope[keyof typeof HistoricalImportSummaryCoverageScope];
+
+
+export const HistoricalImportSummaryCoverageScope = {
+  full_file: 'full_file',
+} as const;
+
 export type HistoricalImportSummaryRejectionReasons = {[key: string]: number};
 
 export type HistoricalImportSummaryErrorsItem = {
@@ -1505,6 +1512,23 @@ export interface HistoricalImportSummary {
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
+  coverageScope: HistoricalImportSummaryCoverageScope;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  inactiveContractThresholdPercent: number;
+  /** @minimum 0 */
+  inactiveContractDays: number;
+  missingRegularSessionDates: string[];
+  missingOvernightSessionDates: string[];
+  completeRegularSessionDates: string[];
+  /** @minimum 0 */
+  maintenanceGapMinutes: number;
+  /** @minimum 0 */
+  weekendHolidayGapMinutes: number;
+  earlyCloseDates: string[];
+  overnightCoverageObserved: boolean;
   regularSessionCandleCount: number;
   overnightCandleCount: number;
   availableTradingDates: string[];
@@ -1546,6 +1570,136 @@ export interface BacktestMetricSet {
   catastropheStopExits: number;
   sessionCloseExits: number;
   partialTargetExits: number;
+}
+
+export type BacktestAuditRecordPeriod = typeof BacktestAuditRecordPeriod[keyof typeof BacktestAuditRecordPeriod];
+
+
+export const BacktestAuditRecordPeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BacktestAuditRecordDirection = typeof BacktestAuditRecordDirection[keyof typeof BacktestAuditRecordDirection] | null;
+
+
+export const BacktestAuditRecordDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type BacktestAuditRecordRejectionCategory = typeof BacktestAuditRecordRejectionCategory[keyof typeof BacktestAuditRecordRejectionCategory];
+
+
+export const BacktestAuditRecordRejectionCategory = {
+  WAITING: 'WAITING',
+  FAILURE: 'FAILURE',
+  EXPIRED: 'EXPIRED',
+  AMBIGUITY: 'AMBIGUITY',
+  RISK_REJECTION: 'RISK_REJECTION',
+  POSITION_ACTIVE: 'POSITION_ACTIVE',
+  QUALIFIED: 'QUALIFIED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BacktestAuditRecordPatienceCandle = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type BacktestAuditRecordTriggerCandle = { [key: string]: unknown } | null;
+
+export type BacktestAuditRecordExecutionMode = typeof BacktestAuditRecordExecutionMode[keyof typeof BacktestAuditRecordExecutionMode];
+
+
+export const BacktestAuditRecordExecutionMode = {
+  quote_based_shadow: 'quote_based_shadow',
+  ohlcv_modeled: 'ohlcv_modeled',
+} as const;
+
+export interface BacktestAuditRecord {
+  id: string;
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  period: BacktestAuditRecordPeriod;
+  evaluatedCandleOpenTime: string;
+  setupType: string;
+  /** @nullable */
+  direction: BacktestAuditRecordDirection;
+  decision: string;
+  alertOnly: boolean;
+  /** @nullable */
+  rejectionReason: string | null;
+  rejectionCategory: BacktestAuditRecordRejectionCategory;
+  /** @nullable */
+  rejectionSummary: string | null;
+  ruleEvidence: string[];
+  orbState: string;
+  breakoutEvidence: string;
+  volumeEvidence: string;
+  pullbackEvidence: string;
+  criticalLevelEvidence: string;
+  trendEvidence: string;
+  patienceState: string;
+  /** @nullable */
+  patienceCandle: BacktestAuditRecordPatienceCandle;
+  /** @nullable */
+  triggerCandle: BacktestAuditRecordTriggerCandle;
+  /** @nullable */
+  patienceCandleOpenTime: string | null;
+  /** @nullable */
+  patienceCandleCloseTime: string | null;
+  /** @nullable */
+  triggerCandleOpenTime: string | null;
+  /** @nullable */
+  triggerCandleCloseTime: string | null;
+  /** @nullable */
+  modeledFillObservationTime: string | null;
+  /** @nullable */
+  exitCandleOpenTime: string | null;
+  /** @nullable */
+  entryTriggerPrice: number | null;
+  /** @nullable */
+  strategyStopPrice: number | null;
+  /** @nullable */
+  catastropheStopPrice: number | null;
+  /** @nullable */
+  targetPrice: number | null;
+  ambiguityLabels: string[];
+  executionMode: BacktestAuditRecordExecutionMode;
+  fees: number;
+  slippage: number;
+  /** @nullable */
+  grossPnl: number | null;
+  /** @nullable */
+  netPnl: number | null;
+  /** @nullable */
+  exitReason: string | null;
+}
+
+export type BacktestAuditPageFilters = { [key: string]: unknown };
+
+export interface BacktestAuditPage {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  runId: string;
+  /** @minimum 1 */
+  page: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  hasMore: boolean;
+  filters: BacktestAuditPageFilters;
+  audit: BacktestAuditRecord[];
 }
 
 export type BacktestSegmentationDirection = typeof BacktestSegmentationDirection[keyof typeof BacktestSegmentationDirection];
@@ -1796,7 +1950,9 @@ export interface BacktestTrade {
   period: BacktestTradePeriod;
   setupType: string;
   direction: BacktestTradeDirection;
+  /** Modeled or observed entry event time in UTC. */
   entryTime: string;
+  /** Modeled or observed exit event time in UTC. */
   exitTime: string;
   entryPrice: number;
   exitPrice: number;
@@ -1870,7 +2026,20 @@ export type BacktestReportReplay = {
   futureCandleAccess: false;
 };
 
-export type BacktestReportAuditItem = { [key: string]: unknown };
+export type BacktestReportAuditPage = {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  runId: string;
+  /** @minimum 1 */
+  page: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  hasMore: boolean;
+};
 
 export type BacktestReportExecutionMode = typeof BacktestReportExecutionMode[keyof typeof BacktestReportExecutionMode];
 
@@ -1890,6 +2059,14 @@ export type BacktestReportExecutionPolicy = {
   commissionPerContract: number;
 };
 
+export type BacktestReportGapReportCoverageScope = typeof BacktestReportGapReportCoverageScope[keyof typeof BacktestReportGapReportCoverageScope];
+
+
+export const BacktestReportGapReportCoverageScope = {
+  full_file: 'full_file',
+  selected_dates: 'selected_dates',
+} as const;
+
 export type BacktestReportGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
@@ -1901,6 +2078,23 @@ export type BacktestReportGapReport = {
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
+  coverageScope: BacktestReportGapReportCoverageScope;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  inactiveContractThresholdPercent: number;
+  /** @minimum 0 */
+  inactiveContractDays: number;
+  missingRegularSessionDates: string[];
+  missingOvernightSessionDates: string[];
+  completeRegularSessionDates: string[];
+  /** @minimum 0 */
+  maintenanceGapMinutes: number;
+  /** @minimum 0 */
+  weekendHolidayGapMinutes: number;
+  earlyCloseDates: string[];
+  overnightCoverageObserved: boolean;
 };
 
 export interface BacktestReport {
@@ -1916,7 +2110,8 @@ export interface BacktestReport {
   outOfSample: BacktestMetricSet;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
-  audit: BacktestReportAuditItem[];
+  audit: BacktestAuditRecord[];
+  auditPage: BacktestReportAuditPage;
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;
   fillLabel: string;
@@ -2011,6 +2206,53 @@ export type GetDashboardOverviewParams = {
  */
 tradingDate?: string;
 };
+
+export type GetBacktestAuditPageParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+runId: string;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
+/**
+ * @maxLength 80
+ */
+decision?: string;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+date?: string;
+/**
+ * @maxLength 100
+ */
+setup?: string;
+/**
+ * @maxLength 80
+ */
+patience?: string;
+category?: GetBacktestAuditPageCategory;
+ambiguity?: boolean;
+};
+
+export type GetBacktestAuditPageCategory = typeof GetBacktestAuditPageCategory[keyof typeof GetBacktestAuditPageCategory];
+
+
+export const GetBacktestAuditPageCategory = {
+  WAITING: 'WAITING',
+  FAILURE: 'FAILURE',
+  EXPIRED: 'EXPIRED',
+  AMBIGUITY: 'AMBIGUITY',
+  RISK_REJECTION: 'RISK_REJECTION',
+  POSITION_ACTIVE: 'POSITION_ACTIVE',
+  QUALIFIED: 'QUALIFIED',
+} as const;
 
 export type GetHistoricalDataParams = {
 symbol?: GetHistoricalDataSymbol;

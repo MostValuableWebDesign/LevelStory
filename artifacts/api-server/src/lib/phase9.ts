@@ -19,7 +19,7 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
-import { MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
+import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
@@ -96,6 +96,16 @@ export type BacktestGapReport = {
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
+  coverageScope: "full_file" | "selected_dates";
+  inactiveContractThresholdPercent: number;
+  inactiveContractDays: number;
+  missingRegularSessionDates: string[];
+  missingOvernightSessionDates: string[];
+  completeRegularSessionDates: string[];
+  maintenanceGapMinutes: number;
+  weekendHolidayGapMinutes: number;
+  earlyCloseDates: string[];
+  overnightCoverageObserved: boolean;
 };
 
 export type ReplayDatasetOptions = {
@@ -178,6 +188,8 @@ export type BacktestAuditRecord = {
   decision: string;
   alertOnly: boolean;
   rejectionReason: string | null;
+  rejectionCategory: "WAITING" | "FAILURE" | "EXPIRED" | "AMBIGUITY" | "RISK_REJECTION" | "POSITION_ACTIVE" | "QUALIFIED";
+  rejectionSummary: string | null;
   ruleEvidence: string[];
   orbState: string;
   breakoutEvidence: string;
@@ -188,6 +200,12 @@ export type BacktestAuditRecord = {
   patienceState: string;
   patienceCandle: Record<string, number | boolean> | null;
   triggerCandle: Record<string, number | boolean> | null;
+  patienceCandleOpenTime: string | null;
+  patienceCandleCloseTime: string | null;
+  triggerCandleOpenTime: string | null;
+  triggerCandleCloseTime: string | null;
+  modeledFillObservationTime: string | null;
+  exitCandleOpenTime: string | null;
   entryTriggerPrice: number | null;
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
@@ -282,6 +300,13 @@ export type BacktestReport = {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   audit: BacktestAuditRecord[];
+  auditPage?: {
+    runId: string;
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+  };
   assumptions: string[];
   executionMode: "quote_based_shadow" | "ohlcv_modeled";
   fillLabel: string;
@@ -683,6 +708,23 @@ function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Reco
   };
 }
 
+function classifyRejection(reason: string | null, decision: string): BacktestAuditRecord["rejectionCategory"] {
+  if (decision === "SETUP QUALIFIED" && reason === null) return "QUALIFIED";
+  if (!reason) return "FAILURE";
+  if (reason === "POSITION_ACTIVE") return "POSITION_ACTIVE";
+  if (reason.startsWith("AMBIGUOUS")) return "AMBIGUITY";
+  if (reason.includes("EXPIRED")) return "EXPIRED";
+  if (reason.includes("WAIT") || reason.includes("NOT_COMPLETED") || reason.includes("NOT_AT_CURSOR")) return "WAITING";
+  if (reason.includes("RISK") || reason.includes("CONTRACT") || reason.includes("DAILY")) return "RISK_REJECTION";
+  return "FAILURE";
+}
+
+function setAuditRejection(record: BacktestAuditRecord, reason: string | null, summary = reason): void {
+  record.rejectionReason = reason;
+  record.rejectionCategory = classifyRejection(reason, record.decision);
+  record.rejectionSummary = summary;
+}
+
 function auditForEvaluation(
   evaluation: MarketSnapshot["setupAnalysis"]["evaluations"][number],
   snapshot: MarketSnapshot,
@@ -693,6 +735,7 @@ function auditForEvaluation(
   contractSymbol: string,
   contractMonth: string,
 ): BacktestAuditRecord {
+  const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -704,7 +747,11 @@ function auditForEvaluation(
     direction: evaluation.direction,
     decision: evaluation.decision,
     alertOnly: evaluation.alertOnly,
-    rejectionReason: evaluation.decision === "SETUP QUALIFIED" ? null : evaluation.explanation,
+    rejectionReason,
+    rejectionCategory: classifyRejection(rejectionReason, evaluation.decision),
+    rejectionSummary: evaluation.decision === "SETUP QUALIFIED"
+      ? null
+      : evaluation.rules.filter((rule) => !rule.passed).map((rule) => `${rule.key}: ${rule.detail}`).join("; ") || evaluation.explanation,
     ruleEvidence: evaluation.rules.map((rule) => `${rule.passed ? "PASS" : "FAIL"} ${rule.key}: ${rule.detail}`),
     orbState: snapshot.breakout.state,
     breakoutEvidence: snapshot.breakout.detail,
@@ -716,6 +763,12 @@ function auditForEvaluation(
     patienceState: snapshot.patience.state,
     patienceCandle: evidenceCandle(snapshot.patience.patienceCandle as SimulatedFuturesCandle | null),
     triggerCandle: evidenceCandle(snapshot.patience.triggerCandle as SimulatedFuturesCandle | null),
+    patienceCandleOpenTime: snapshot.patience.patienceCandle?.openTime ?? null,
+    patienceCandleCloseTime: snapshot.patience.patienceCandle?.closeTime ?? null,
+    triggerCandleOpenTime: snapshot.patience.triggerCandle?.openTime ?? null,
+    triggerCandleCloseTime: snapshot.patience.triggerCandle?.closeTime ?? null,
+    modeledFillObservationTime: null,
+    exitCandleOpenTime: null,
     entryTriggerPrice: snapshot.patience.entryBufferPrice,
     strategyStopPrice: snapshot.riskPlan.strategyStop,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
@@ -821,13 +874,17 @@ export function runCausalBacktest(
       ? evaluationAudits.find((record) => record.setupType === selected.setupType)
       : undefined;
     if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) {
-      if (selectedAudit) selectedAudit.rejectionReason = selected
-        ? snapshot.riskPlan.reasons.join(" ") || "Risk plan rejected the qualified setup."
-        : "No non-alert qualified setup was available.";
+      if (selectedAudit) setAuditRejection(
+        selectedAudit,
+        selected ? "RISK_REJECTED" : "NO_QUALIFIED_SETUP",
+        selected
+          ? snapshot.riskPlan.reasons.join(" ") || "Risk plan rejected the qualified setup."
+          : "No non-alert qualified setup was available.",
+      );
       continue;
     }
      if (positionActive) {
-       if (selectedAudit) selectedAudit.rejectionReason = "POSITION_ACTIVE";
+       if (selectedAudit) setAuditRejection(selectedAudit, "POSITION_ACTIVE", "An earlier position remains active; this candle was audited but cannot open an overlapping entry.");
        rejectedByPeriod[period] += 1;
        continue;
      }
@@ -841,12 +898,12 @@ export function runCausalBacktest(
         ? candles.find((item) => item.openTime === Date.parse(patienceSummary.openTime) && item.isComplete)
         : undefined;
       if (!trigger || !patienceCandle || trigger.closeTime > candle.closeTime) {
-        if (selectedAudit) selectedAudit.rejectionReason = "PATIENCE_TRIGGER_NOT_COMPLETED";
+        if (selectedAudit) setAuditRejection(selectedAudit, "PATIENCE_TRIGGER_NOT_COMPLETED", "The required patience trigger was not complete at this candle.");
         rejectedByPeriod[period] += 1;
         continue;
       }
       if (trigger.closeTime !== candle.closeTime) {
-        if (selectedAudit) selectedAudit.rejectionReason = "PATIENCE_TRIGGER_NOT_AT_CURSOR";
+        if (selectedAudit) setAuditRejection(selectedAudit, "PATIENCE_TRIGGER_NOT_AT_CURSOR", "The immediate-next-candle trigger was not the candle currently being evaluated.");
         rejectedByPeriod[period] += 1;
         continue;
       }
@@ -859,7 +916,7 @@ export function runCausalBacktest(
       });
       if (entryResolution.status === "ambiguous") {
         if (selectedAudit) {
-          selectedAudit.rejectionReason = entryResolution.label;
+          setAuditRejection(selectedAudit, entryResolution.label, entryResolution.detail);
           selectedAudit.ambiguityLabels = [entryResolution.label ?? "AMBIGUOUS_ENTRY_INVALIDATION"];
         }
         rejectedByPeriod[period] += 1;
@@ -904,7 +961,7 @@ export function runCausalBacktest(
           : { commission: request.ohlcvCommissionPerContract / 2 },
       });
       if (modeled.modeledFill === null || modeled.exitPrice === null || !modeled.legs.length) {
-        if (selectedAudit) selectedAudit.rejectionReason = "NO_MODELED_EXIT";
+        if (selectedAudit) setAuditRejection(selectedAudit, "NO_MODELED_EXIT", "No modeled fill and exit pair satisfied the bounded execution policy.");
         rejectedByPeriod[period] += 1;
         continue;
       }
@@ -914,7 +971,7 @@ export function runCausalBacktest(
         : modeled.exitReason === "stop"
           ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
           : modeled.exitReason === "session_close" ? "session close" : "manual";
-      const ambiguityLabel = modeled.ambiguityLabels.length ? "AMBIGUOUS_STOP_FIRST" : null;
+      const ambiguityLabel = modeled.ambiguityLabels.some(isExecutionAmbiguityLabel) ? "AMBIGUOUS_STOP_FIRST" : null;
       const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, historicalContractSymbol, dataset.contractMonth);
       trades.push({
         id: `${tradingDate}-${triggerIndex}-${selected.setupType}-ohlcv`,
@@ -963,8 +1020,10 @@ export function runCausalBacktest(
         },
       });
       if (selectedAudit) {
-        selectedAudit.rejectionReason = null;
+        setAuditRejection(selectedAudit, null);
         selectedAudit.ambiguityLabels = modeled.ambiguityLabels;
+        selectedAudit.modeledFillObservationTime = new Date(trigger.closeTime).toISOString();
+        selectedAudit.exitCandleOpenTime = exitCandle.openTime === undefined ? null : new Date(exitCandle.openTime).toISOString();
         selectedAudit.fees = modeled.accounting.fees;
         selectedAudit.slippage = modeled.accounting.slippage;
         selectedAudit.grossPnl = modeled.accounting.grossPnl;
@@ -983,6 +1042,12 @@ export function runCausalBacktest(
       sequenceKnown: true,
     });
     if (entryResolution.status === "ambiguous") {
+      if (selectedAudit) {
+        selectedAudit.rejectionReason = entryResolution.label;
+        selectedAudit.rejectionCategory = "AMBIGUITY";
+        selectedAudit.rejectionSummary = entryResolution.detail;
+        selectedAudit.ambiguityLabels = [entryResolution.label ?? "AMBIGUOUS_ENTRY_INVALIDATION"];
+      }
       rejectedByPeriod[period] += 1;
       continue;
     }
@@ -1145,6 +1210,16 @@ export function runCausalBacktest(
       regularSessionMissingMinutes: 0,
       expectedClosedMarketMinutes: 0,
       lowLiquidityInactiveMinutes: 0,
+      coverageScope: "selected_dates",
+      inactiveContractThresholdPercent: 50,
+      inactiveContractDays: 0,
+      missingRegularSessionDates: [],
+      missingOvernightSessionDates: [],
+      completeRegularSessionDates: [],
+      maintenanceGapMinutes: 0,
+      weekendHolidayGapMinutes: 0,
+      earlyCloseDates: [],
+      overnightCoverageObserved: false,
     },
   };
 }

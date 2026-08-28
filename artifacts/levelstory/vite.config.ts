@@ -27,6 +27,19 @@ if (!basePath) {
   );
 }
 
+const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? 'localhost,127.0.0.1')
+  .split(',')
+  .map((host) => host.trim())
+  .filter(Boolean);
+const privateFileDeny = [
+  '**/attached_assets/**',
+  '**/*.csv',
+  '**/manifest.json',
+  '**/metadata.json',
+  '**/artifacts/api-server/src/**',
+  '**/.env*',
+];
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -68,14 +81,28 @@ export default defineConfig({
     port,
     strictPort: true,
     host: '0.0.0.0',
-    allowedHosts: true,
+    allowedHosts,
     fs: {
       strict: true,
+      allow: [path.resolve(import.meta.dirname)],
+      deny: privateFileDeny,
+    },
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
+      'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; frame-ancestors 'none'; base-uri 'self'",
     },
   },
   preview: {
     port,
     host: '0.0.0.0',
-    allowedHosts: true,
+    allowedHosts,
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
+      'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+    },
   },
 });

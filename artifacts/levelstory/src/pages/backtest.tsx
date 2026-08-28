@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { useGetHistoricalData, useRunBacktest } from "@workspace/api-client-react";
-import type { BacktestMetricSet, BacktestReport, HistoricalImportSummary } from "@workspace/api-client-react";
+import { useGetBacktestAuditPage, useGetHistoricalData, useRunBacktest } from "@workspace/api-client-react";
+import type { BacktestAuditRecord, BacktestMetricSet, BacktestReport, HistoricalImportSummary } from "@workspace/api-client-react";
 import { BarChart3, Check, Database, FileCheck2, LockKeyhole, Play, ShieldCheck } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
@@ -21,6 +21,9 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
     ["Regular-session gaps", `${data.regularSessionMissingMinutes.toLocaleString()} min`],
     ["Expected closed time", `${data.expectedClosedMarketMinutes.toLocaleString()} min`],
     ["Low-liquidity / inactive", `${data.lowLiquidityInactiveMinutes.toLocaleString()} min`],
+    ["Inactive contract days", `${data.inactiveContractDays} at <${data.inactiveContractThresholdPercent}% RTH coverage`],
+    ["Missing RTH dates", String(data.missingRegularSessionDates.length)],
+    ["Missing overnight dates", data.overnightCoverageObserved ? String(data.missingOvernightSessionDates.length) : "not observed"],
     ["Regular session", data.regularSessionCandleCount.toLocaleString()],
     ["Overnight", data.overnightCandleCount.toLocaleString()],
   ];
@@ -66,10 +69,22 @@ function MetricGrid({ metrics, accent = false }: { metrics: BacktestMetricSet; a
 }
 
 function ReportBody({ report }: { report: BacktestReport }) {
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditFilter, setAuditFilter] = useState<"all" | "AMBIGUITY" | "FAILURE" | "WAITING" | "EXPIRED" | "RISK_REJECTION" | "POSITION_ACTIVE">("all");
+  const [auditDate, setAuditDate] = useState("");
+  const runId = report.auditPage?.runId ?? "";
+  const auditQuery = useGetBacktestAuditPage({
+    runId,
+    page: auditPage,
+    pageSize: 50,
+    ...(auditFilter === "all" ? {} : { category: auditFilter }),
+    ...(auditDate ? { date: auditDate } : {}),
+  });
   const segmentRows = report.segments.filter((segment) => segment.tradeCount > 0 || segment.rejectedSetupCount > 0).slice(0, 24);
-  const auditRows = report.audit as Array<Record<string, unknown>>;
-  const rejectedAuditRows = auditRows.filter((item) => typeof item.rejectionReason === "string" && item.rejectionReason.length > 0);
-  const ambiguousAuditRows = auditRows.filter((item) => Array.isArray(item.ambiguityLabels) && item.ambiguityLabels.length > 0);
+  const auditRows: BacktestAuditRecord[] = auditQuery.data?.audit ?? report.audit;
+  const auditTotal = auditQuery.data?.total ?? report.auditPage?.total ?? auditRows.length;
+  const rejectedAuditRows = auditRows.filter((item) => item.rejectionReason !== null);
+  const ambiguousAuditRows = auditRows.filter((item) => item.rejectionCategory === "AMBIGUITY");
   return <div className="space-y-5">
     <Panel accent>
       <PanelTitle eyebrow="Run integrity / causal replay" title={`${report.symbol} · ${report.contract.fullContractSymbol}`} right={<span className="mono text-[10px] text-muted-foreground">{report.dataResolution}</span>} />
@@ -85,6 +100,9 @@ function ReportBody({ report }: { report: BacktestReport }) {
          ["Modeled fills", String(report.metrics.modeledFills)],
         ].map(([label, value]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
       </div>
+       <div className="border-t border-border bg-accent/5 px-5 py-4 text-xs leading-5 text-foreground">
+         Historical results use conservative OHLCV-based modeled fills. They do not represent actual bid/ask quotes, queue position, or guaranteed executions.
+       </div>
        <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">
          <div className="eyebrow mb-2">Exact replay partition</div>
          <div className="flex flex-wrap gap-x-5 gap-y-2">
@@ -123,6 +141,10 @@ function ReportBody({ report }: { report: BacktestReport }) {
           ["Regular session", `${report.gapReport.regularSessionMissingMinutes.toLocaleString()} min`],
           ["Expected closed", `${report.gapReport.expectedClosedMarketMinutes.toLocaleString()} min`],
           ["Low liquidity", `${report.gapReport.lowLiquidityInactiveMinutes.toLocaleString()} min`],
+           ["Coverage scope", report.gapReport.coverageScope === "selected_dates" ? "Selected dates" : "Full file"],
+           ["Maintenance", `${report.gapReport.maintenanceGapMinutes.toLocaleString()} min`],
+           ["Missing RTH dates", String(report.gapReport.missingRegularSessionDates.length)],
+           ["Complete RTH dates", String(report.gapReport.completeRegularSessionDates.length)],
         ].map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
       </div>
     </Panel>
@@ -170,20 +192,35 @@ function ReportBody({ report }: { report: BacktestReport }) {
 
     <Panel>
       <PanelTitle eyebrow="Execution evidence" title="Trade ledger" right={<span className="mono text-[10px] text-muted-foreground">{report.trades.length} simulated fills</span>} />
-       {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[1120px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Mode / audit</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}<span className="block text-[10px] text-muted-foreground">trigger {trade.audit?.entryTriggerPrice?.toFixed(2) ?? "—"} · strategy {trade.audit?.strategyStopPrice?.toFixed(2) ?? "—"} · catastrophe {trade.audit?.catastropheStopPrice?.toFixed(2) ?? "—"} · target {trade.audit?.targetPrice?.toFixed(2) ?? "—"}</span></td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.fillLabel ?? trade.source}{trade.audit?.stopLevel && <span className="ml-2">{trade.audit.stopLevel} stop</span>}{trade.audit?.runnerExited && <span className="ml-2">runner exit</span>}{trade.audit?.exitReason === "session_close" && <span className="ml-2">session close</span>}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
+       {report.trades.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[1120px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / period</th><th className="px-4 py-3">Setup</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Entry → exit</th><th className="px-4 py-3">Result</th><th className="px-4 py-3">Costs</th><th className="px-4 py-3">Mode / audit</th></tr></thead><tbody className="divide-y divide-border">{report.trades.map((trade) => <tr key={trade.id}><td className="px-4 py-3"><span className="block">{trade.tradingDate}</span><span className="text-[10px] text-muted-foreground">{trade.period === "out_of_sample" ? "HOLDOUT" : "IN-SAMPLE"}</span><span className="mono block text-[10px] text-muted-foreground">entry {trade.entryTime} · exit {trade.exitTime} UTC</span></td><td className="max-w-[190px] px-4 py-3 text-[10px] text-muted-foreground">{trade.setupType}</td><td className="px-4 py-3 font-bold uppercase">{trade.direction}</td><td className="mono px-4 py-3">{trade.entryPrice.toFixed(2)} → {trade.exitPrice.toFixed(2)}<span className="block text-[10px] text-muted-foreground">trigger {trade.audit?.entryTriggerPrice?.toFixed(2) ?? "—"} · strategy {trade.audit?.strategyStopPrice?.toFixed(2) ?? "—"} · catastrophe {trade.audit?.catastropheStopPrice?.toFixed(2) ?? "—"} · target {trade.audit?.targetPrice?.toFixed(2) ?? "—"}</span></td><td className={`mono px-4 py-3 ${trade.netPnl >= 0 ? "status-positive" : "status-negative"}`}>{money(trade.netPnl)}<span className="ml-2 text-[10px] text-muted-foreground">{trade.outcome}</span></td><td className="mono px-4 py-3 text-muted-foreground">{money(trade.fees + trade.slippage)}</td><td className="px-4 py-3 text-[10px] text-muted-foreground">{trade.fillLabel ?? trade.source}{trade.audit?.stopLevel && <span className="ml-2">{trade.audit.stopLevel} stop</span>}{trade.audit?.runnerExited && <span className="ml-2">runner exit</span>}{trade.audit?.exitReason === "session_close" && <span className="ml-2">session close</span>}{trade.ambiguityLabel && <span className="ml-2 text-destructive">{trade.ambiguityLabel}</span>}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-8 text-center text-sm text-muted-foreground">No simulated fills. Every setup remains a rejection until all existing rules and risk gates pass.</div>}
     </Panel>
 
      <Panel>
-       <PanelTitle eyebrow="Causal setup audit" title="Detected, rejected, and ambiguous evaluations" right={<span className="mono text-[10px] text-muted-foreground">{auditRows.length} records</span>} />
+        <PanelTitle eyebrow="Causal setup audit" title="Detected, rejected, and ambiguous evaluations" right={<span className="mono text-[10px] text-muted-foreground">{auditTotal.toLocaleString()} records</span>} />
        <div className="grid grid-cols-2 divide-x divide-y border-t border-border sm:grid-cols-4">
          {[
-           ["Audited evaluations", auditRows.length],
+            ["Audited evaluations", auditTotal],
            ["Rejected evaluations", rejectedAuditRows.length],
-           ["Ambiguous entries", ambiguousAuditRows.filter((item) => item.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length],
+            ["Ambiguous entries", ambiguousAuditRows.filter((item) => item.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length],
            ["Ambiguous exits", ambiguousAuditRows.length],
          ].map(([label, value]) => <div key={label} className="px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-sm">{value}</div></div>)}
        </div>
-       {rejectedAuditRows.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Date / candle</th><th className="px-4 py-3">Setup / decision</th><th className="px-4 py-3">Patience</th><th className="px-4 py-3">Stops / target</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-border">{rejectedAuditRows.slice(0, 80).map((item) => <tr key={String(item.id)}><td className="mono px-4 py-3">{String(item.tradingDate)}<span className="block text-[10px] text-muted-foreground">{String(item.evaluatedCandleOpenTime)}</span></td><td className="px-4 py-3">{String(item.setupType)}<span className="block text-[10px] text-muted-foreground">{String(item.decision)}</span></td><td className="px-4 py-3 text-[10px] text-muted-foreground">{String(item.patienceState)}</td><td className="mono px-4 py-3 text-[10px] text-muted-foreground">{String(item.strategyStopPrice ?? "—")} / {String(item.catastropheStopPrice ?? "—")} / {String(item.targetPrice ?? "—")}</td><td className="max-w-[360px] px-4 py-3 text-[10px] text-muted-foreground">{String(item.rejectionReason)}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No rejected evaluations were recorded.</div>}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+          <label className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">Audit filter
+            <select value={auditFilter} onChange={(event) => { setAuditFilter(event.target.value as typeof auditFilter); setAuditPage(1); }} className="field ml-2 py-1 text-xs" data-testid="select-audit-filter">
+              <option value="all">All evaluations</option><option value="AMBIGUITY">Ambiguous</option><option value="FAILURE">Failures</option><option value="WAITING">Waiting</option><option value="EXPIRED">Expired</option><option value="RISK_REJECTION">Risk rejected</option><option value="POSITION_ACTIVE">Position active</option>
+            </select>
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">Trading date
+            <input type="date" value={auditDate} onChange={(event) => { setAuditDate(event.target.value); setAuditPage(1); }} className="field ml-2 py-1 text-xs" data-testid="input-audit-date" />
+          </label>
+          <span className="text-[10px] text-muted-foreground">Page {auditPage} · 50 rows max · server-filtered</span>
+          <div className="ml-auto flex gap-2">
+            <button type="button" disabled={auditPage <= 1 || auditQuery.isFetching} onClick={() => setAuditPage((page) => Math.max(1, page - 1))} className="rounded-sm border border-border px-2 py-1 text-[10px] disabled:opacity-40">Previous</button>
+            <button type="button" disabled={!auditQuery.data?.hasMore || auditQuery.isFetching} onClick={() => setAuditPage((page) => page + 1)} className="rounded-sm border border-border px-2 py-1 text-[10px] disabled:opacity-40">Next</button>
+          </div>
+        </div>
+        {auditQuery.isError ? <div className="border-t border-border p-6 text-sm text-destructive">This audit page could not be loaded. The run may have expired.</div> : rejectedAuditRows.length ? <div className="overflow-x-auto border-t border-border"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Trading date / observation (UTC)</th><th className="px-4 py-3">Setup / decision</th><th className="px-4 py-3">Patience</th><th className="px-4 py-3">Stops / target</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-border">{rejectedAuditRows.map((item) => <tr key={item.id}><td className="mono px-4 py-3">{item.tradingDate}<span className="block text-[10px] text-muted-foreground">candle {item.evaluatedCandleOpenTime}</span>{item.modeledFillObservationTime && <span className="block text-[10px] text-muted-foreground">modeled fill {item.modeledFillObservationTime}</span>}</td><td className="px-4 py-3">{item.setupType}<span className="block text-[10px] text-muted-foreground">{item.decision}</span></td><td className="px-4 py-3 text-[10px] text-muted-foreground">{item.patienceState}</td><td className="mono px-4 py-3 text-[10px] text-muted-foreground">{item.strategyStopPrice ?? "—"} / {item.catastropheStopPrice ?? "—"} / {item.targetPrice ?? "—"}</td><td className="max-w-[360px] px-4 py-3 text-[10px] text-muted-foreground"><strong className="text-foreground">{item.rejectionCategory}</strong> · {item.rejectionSummary ?? item.rejectionReason}</td></tr>)}</tbody></table></div> : <div className="border-t border-border p-6 text-sm text-muted-foreground">No rejected evaluations were recorded on this page.</div>}
      </Panel>
 
     <Panel>

@@ -3,6 +3,13 @@ import type { Direction } from "./types.js";
 export const MODELED_OHLCV_FILL_LABEL = "Modeled OHLCV Fill — Not a Quote-Based Fill";
 export const AMBIGUOUS_OHLCV_SEQUENCE_LABEL = "Ambiguous intrabar sequence — adverse-first policy applied";
 
+export function isExecutionAmbiguityLabel(label: string): boolean {
+  return label === AMBIGUOUS_OHLCV_SEQUENCE_LABEL
+    || label === "AMBIGUOUS_STOP_FIRST"
+    || label === "AMBIGUOUS_ENTRY_INVALIDATION"
+    || label === "AMBIGUOUS_RUNNER_RETRACE";
+}
+
 export type OhlcvCandle = {
   open: number;
   high: number;
@@ -245,15 +252,25 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       continue;
     }
     if (targetHit && runnerQuantity > 0) {
-      runnerBest = input.direction === "long" ? Math.max(runnerBest, candle.high) : Math.min(runnerBest, candle.low);
-      const current = tick(candle.close, size);
       const impulse = Math.abs(runnerBest - modeledFill);
-      const retracement = input.direction === "long" ? runnerBest - current : current - runnerBest;
-      if (impulse > 0 && retracement >= impulse * 0.4) {
-        const fill = tick(input.direction === "long" ? current - (input.exitSlippageTicks ?? 0) * size : current + (input.exitSlippageTicks ?? 0) * size, size);
-        legs.push(makeLeg("runner", runnerQuantity, current, fill, "runner"));
+      const retracementThreshold = input.direction === "long"
+        ? runnerBest - impulse * 0.4
+        : runnerBest + impulse * 0.4;
+      const thresholdTouched = input.direction === "long"
+        ? candle.low <= retracementThreshold
+        : candle.high >= retracementThreshold;
+      if (impulse > 0 && thresholdTouched) {
+        const gapThrough = input.direction === "long"
+          ? candle.open <= retracementThreshold
+          : candle.open >= retracementThreshold;
+        const reference = gapThrough ? candle.open : retracementThreshold;
+        const fill = tick(input.direction === "long"
+          ? reference - (input.exitSlippageTicks ?? 0) * size
+          : reference + (input.exitSlippageTicks ?? 0) * size, size);
+        legs.push(makeLeg("runner", runnerQuantity, reference, fill, "runner"));
         remaining = 0; runnerExited = true; exitPrice = fill; exitCandle = candle; exitReason = "runner"; break;
       }
+      runnerBest = input.direction === "long" ? Math.max(runnerBest, candle.high) : Math.min(runnerBest, candle.low);
     }
   }
   if (remaining > 0 && input.sessionCloseCandle) {

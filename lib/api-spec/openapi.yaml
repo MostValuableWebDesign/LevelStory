@@ -217,6 +217,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/audit:
+    get:
+      operationId: getBacktestAuditPage
+      tags: [backtest]
+      summary: Read a bounded page of a causal backtest audit
+      parameters:
+        - name: runId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        - name: page
+          in: query
+          schema: { type: number, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: number, minimum: 1, maximum: 100, default: 50 }
+        - name: decision
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: date
+          in: query
+          schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        - name: setup
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: patience
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: category
+          in: query
+          schema: { type: string, enum: [WAITING, FAILURE, EXPIRED, AMBIGUITY, RISK_REJECTION, POSITION_ACTIVE, QUALIFIED] }
+        - name: ambiguity
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: One stable page of the causal audit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestAuditPage"
+        "404":
+          description: Run expired or not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data:
     get:
       operationId: getHistoricalData
@@ -1813,6 +1860,16 @@ components:
         regularSessionMissingMinutes: { type: number }
         expectedClosedMarketMinutes: { type: number }
         lowLiquidityInactiveMinutes: { type: number }
+        coverageScope: { type: string, enum: [full_file] }
+        inactiveContractThresholdPercent: { type: number, minimum: 0, maximum: 100 }
+        inactiveContractDays: { type: number, minimum: 0 }
+        missingRegularSessionDates: { type: array, items: { type: string } }
+        missingOvernightSessionDates: { type: array, items: { type: string } }
+        completeRegularSessionDates: { type: array, items: { type: string } }
+        maintenanceGapMinutes: { type: number, minimum: 0 }
+        weekendHolidayGapMinutes: { type: number, minimum: 0 }
+        earlyCloseDates: { type: array, items: { type: string } }
+        overnightCoverageObserved: { type: boolean }
         regularSessionCandleCount: { type: number }
         overnightCandleCount: { type: number }
         availableTradingDates: { type: array, items: { type: string } }
@@ -1833,7 +1890,7 @@ components:
             fifteenMinute: { type: number }
             oneHour: { type: number }
           required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
-      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
+      required: [source, filename, detectedSymbol, earliestTimestamp, latestTimestamp, totalRows, validRows, rejectedRows, duplicateRowsRemoved, missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved, regularSessionCandleCount, overnightCandleCount, availableTradingDates, rejectionReasons, errors, aggregationCounts]
     BacktestMetricSet:
       type: object
       properties:
@@ -1866,6 +1923,63 @@ components:
         sessionCloseExits: { type: number }
         partialTargetExits: { type: number }
       required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits]
+    BacktestAuditRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        tradingDate: { type: string }
+        contractSymbol: { type: string }
+        contractMonth: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        evaluatedCandleOpenTime: { type: string, format: date-time }
+        setupType: { type: string }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        decision: { type: string }
+        alertOnly: { type: boolean }
+        rejectionReason: { type: ["string", "null"] }
+        rejectionCategory: { type: string, enum: [WAITING, FAILURE, EXPIRED, AMBIGUITY, RISK_REJECTION, POSITION_ACTIVE, QUALIFIED] }
+        rejectionSummary: { type: ["string", "null"] }
+        ruleEvidence: { type: array, items: { type: string } }
+        orbState: { type: string }
+        breakoutEvidence: { type: string }
+        volumeEvidence: { type: string }
+        pullbackEvidence: { type: string }
+        criticalLevelEvidence: { type: string }
+        trendEvidence: { type: string }
+        patienceState: { type: string }
+        patienceCandle: { type: ["object", "null"], additionalProperties: true }
+        triggerCandle: { type: ["object", "null"], additionalProperties: true }
+        patienceCandleOpenTime: { type: ["string", "null"], format: date-time }
+        patienceCandleCloseTime: { type: ["string", "null"], format: date-time }
+        triggerCandleOpenTime: { type: ["string", "null"], format: date-time }
+        triggerCandleCloseTime: { type: ["string", "null"], format: date-time }
+        modeledFillObservationTime: { type: ["string", "null"], format: date-time }
+        exitCandleOpenTime: { type: ["string", "null"], format: date-time }
+        entryTriggerPrice: { type: ["number", "null"] }
+        strategyStopPrice: { type: ["number", "null"] }
+        catastropheStopPrice: { type: ["number", "null"] }
+        targetPrice: { type: ["number", "null"] }
+        ambiguityLabels: { type: array, items: { type: string } }
+        executionMode: { type: string, enum: [quote_based_shadow, ohlcv_modeled] }
+        fees: { type: number }
+        slippage: { type: number }
+        grossPnl: { type: ["number", "null"] }
+        netPnl: { type: ["number", "null"] }
+        exitReason: { type: ["string", "null"] }
+      required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
+    BacktestAuditPage:
+      type: object
+      additionalProperties: false
+      properties:
+        runId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        page: { type: number, minimum: 1 }
+        pageSize: { type: number, minimum: 1, maximum: 100 }
+        total: { type: number, minimum: 0 }
+        hasMore: { type: boolean }
+        filters: { type: object, additionalProperties: true }
+        audit: { type: array, items: { $ref: "#/components/schemas/BacktestAuditRecord" } }
+      required: [runId, page, pageSize, total, hasMore, filters, audit]
     BacktestSegmentation:
       type: object
       properties:
@@ -1901,8 +2015,8 @@ components:
         period: { type: string, enum: [in_sample, out_of_sample] }
         setupType: { type: string }
         direction: { type: string, enum: [long, short] }
-        entryTime: { type: string }
-        exitTime: { type: string }
+        entryTime: { type: string, format: date-time, description: Modeled or observed entry event time in UTC. }
+        exitTime: { type: string, format: date-time, description: Modeled or observed exit event time in UTC. }
         entryPrice: { type: number }
         exitPrice: { type: number }
         contracts: { type: number }
@@ -1996,9 +2110,16 @@ components:
         audit:
           type: array
           items:
-            type: object
-            additionalProperties: true
-            required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
+            $ref: "#/components/schemas/BacktestAuditRecord"
+        auditPage:
+          type: object
+          properties:
+            runId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+            page: { type: number, minimum: 1 }
+            pageSize: { type: number, minimum: 1, maximum: 100 }
+            total: { type: number, minimum: 0 }
+            hasMore: { type: boolean }
+          required: [runId, page, pageSize, total, hasMore]
         assumptions: { type: array, items: { type: string } }
         executionMode: { type: string, enum: [quote_based_shadow, ohlcv_modeled] }
         fillLabel: { type: string }
@@ -2026,6 +2147,16 @@ components:
             regularSessionMissingMinutes: { type: number }
             expectedClosedMarketMinutes: { type: number }
             lowLiquidityInactiveMinutes: { type: number }
-          required: [missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes]
-      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+            coverageScope: { type: string, enum: [full_file, selected_dates] }
+            inactiveContractThresholdPercent: { type: number, minimum: 0, maximum: 100 }
+            inactiveContractDays: { type: number, minimum: 0 }
+            missingRegularSessionDates: { type: array, items: { type: string } }
+            missingOvernightSessionDates: { type: array, items: { type: string } }
+            completeRegularSessionDates: { type: array, items: { type: string } }
+            maintenanceGapMinutes: { type: number, minimum: 0 }
+            weekendHolidayGapMinutes: { type: number, minimum: 0 }
+            earlyCloseDates: { type: array, items: { type: string } }
+            overnightCoverageObserved: { type: boolean }
+          required: [missingMinuteGaps, missingGapSegments, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
+      required: [mode, dataSource, symbol, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
 

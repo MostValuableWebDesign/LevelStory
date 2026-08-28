@@ -99,3 +99,48 @@ test("uses the opening price for a gap-through stop and closes remaining quantit
   assert.equal(close.legs.at(-1)?.exitReason, "session_close");
   assert.equal(close.audit.remainingQuantity, 0);
 });
+
+test("exits a long runner when the candle low reaches the exact causal 40% threshold", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(101, 101.5, 100.6, 101), candle(101, 101.2, 100.6, 100.9)],
+    contracts: 2,
+    targetQuantity: 1,
+    target: 101,
+    stop: 98,
+  });
+  assert.equal(result.exitReason, "runner");
+  assert.equal(result.audit.runnerExited, true);
+  assert.equal(result.legs.at(-1)?.referencePrice, 100.5);
+});
+
+test("uses a short runner's high and resolves its retracement", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100, 99, 99.5),
+    subsequentCompletedCandles: [candle(99, 98.5, 97, 97.5), candle(97.5, 98.25, 97, 97.5)],
+    contracts: 2,
+    targetQuantity: 1,
+    target: 99,
+    stop: 103,
+  });
+  assert.equal(result.exitReason, "runner");
+  assert.equal(result.audit.runnerExited, true);
+  assert.equal(result.legs.at(-1)?.referencePrice, 98.25);
+});
+
+test("uses the candle open for a long runner gap-through retracement", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100, 101.25, 99.5, 100.1)],
+    contracts: 2,
+    targetQuantity: 1,
+    target: 101,
+    stop: 98,
+  });
+  assert.equal(result.exitReason, "runner");
+  assert.equal(result.legs.at(-1)?.referencePrice, 100);
+});

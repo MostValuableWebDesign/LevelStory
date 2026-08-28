@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { HistoricalImportSummaryAggregationCounts } from './historicalImportSummaryAggregationCounts';
+import type { HistoricalImportSummaryCoverageScope } from './historicalImportSummaryCoverageScope';
 import type { HistoricalImportSummaryErrorsItem } from './historicalImportSummaryErrorsItem';
 import type { HistoricalImportSummaryRejectionReasons } from './historicalImportSummaryRejectionReasons';
 import type { HistoricalImportSummarySource } from './historicalImportSummarySource';
@@ -33,6 +34,23 @@ export interface HistoricalImportSummary {
   regularSessionMissingMinutes: number;
   expectedClosedMarketMinutes: number;
   lowLiquidityInactiveMinutes: number;
+  coverageScope: HistoricalImportSummaryCoverageScope;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  inactiveContractThresholdPercent: number;
+  /** @minimum 0 */
+  inactiveContractDays: number;
+  missingRegularSessionDates: string[];
+  missingOvernightSessionDates: string[];
+  completeRegularSessionDates: string[];
+  /** @minimum 0 */
+  maintenanceGapMinutes: number;
+  /** @minimum 0 */
+  weekendHolidayGapMinutes: number;
+  earlyCloseDates: string[];
+  overnightCoverageObserved: boolean;
   regularSessionCandleCount: number;
   overnightCandleCount: number;
   availableTradingDates: string[];

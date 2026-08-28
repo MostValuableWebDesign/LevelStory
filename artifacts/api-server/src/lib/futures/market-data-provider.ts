@@ -8,6 +8,7 @@ import {
   type FuturesSessionCalendar,
 } from "./session-calendar.js";
 import type { FuturesContractSpecification } from "./contracts.js";
+import { boundedCsvPath } from "../security.js";
 
 const MINUTE = 60_000;
 const FIVE_MINUTES = 5 * MINUTE;
@@ -429,7 +430,7 @@ class CsvReplayMarketDataProvider implements MarketDataProvider {
   async getHistoricalCandles(request: HistoricalCandleRequest): Promise<NormalizedCandle[]> {
     const path = process.env["LEVELSTORY_CSV_REPLAY_PATH"];
     if (!path) throw new Error("CSV replay is not configured. Set LEVELSTORY_CSV_REPLAY_PATH on the server.");
-    const contents = await readFile(path, "utf8");
+    const contents = await readFile(boundedCsvPath(path), "utf8");
     const candles = parseCsvCandles(contents, this.specification, request.intervalMinutes ?? 5);
     return candles.filter((candle) => candle.openTime >= request.startTime && candle.closeTime <= request.endTime);
   }

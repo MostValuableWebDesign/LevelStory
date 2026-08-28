@@ -6,15 +6,25 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './backtestAuditPage';
+export * from './backtestAuditPageFilters';
+export * from './backtestAuditRecord';
+export * from './backtestAuditRecordDirection';
+export * from './backtestAuditRecordExecutionMode';
+export * from './backtestAuditRecordPatienceCandle';
+export * from './backtestAuditRecordPeriod';
+export * from './backtestAuditRecordRejectionCategory';
+export * from './backtestAuditRecordTriggerCandle';
 export * from './backtestMetricSet';
 export * from './backtestReport';
-export * from './backtestReportAuditItem';
+export * from './backtestReportAuditPage';
 export * from './backtestReportDataResolution';
 export * from './backtestReportDataset';
 export * from './backtestReportDataSource';
 export * from './backtestReportExecutionMode';
 export * from './backtestReportExecutionPolicy';
 export * from './backtestReportGapReport';
+export * from './backtestReportGapReportCoverageScope';
 export * from './backtestReportMode';
 export * from './backtestReportReplay';
 export * from './backtestReportReplayMode';
@@ -61,6 +71,8 @@ export * from './fibonacciLevel';
 export * from './futuresContractSpecification';
 export * from './futuresSessionCalendar';
 export * from './futuresSessionCalendarEarlyCloses';
+export * from './getBacktestAuditPageCategory';
+export * from './getBacktestAuditPageParams';
 export * from './getDashboardOverviewParams';
 export * from './getHistoricalDataParams';
 export * from './getHistoricalDataSymbol';
@@ -73,6 +85,7 @@ export * from './getMarketSnapshotSlippageMode';
 export * from './healthStatus';
 export * from './historicalImportSummary';
 export * from './historicalImportSummaryAggregationCounts';
+export * from './historicalImportSummaryCoverageScope';
 export * from './historicalImportSummaryErrorsItem';
 export * from './historicalImportSummaryRejectionReasons';
 export * from './historicalImportSummarySource';
