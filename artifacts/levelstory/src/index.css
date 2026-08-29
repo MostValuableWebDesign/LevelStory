@@ -436,6 +436,35 @@
   .chart-plot-shell {
     min-width: 0;
   }
+  .event-rail-list {
+    display: none;
+    margin-top: .65rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / .18);
+    padding: .7rem;
+  }
+  .event-rail-list-overflow {
+    display: block;
+  }
+  .event-rail-list-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: .45rem;
+    border: 1px solid transparent;
+    padding: .35rem .45rem;
+    color: hsl(var(--foreground));
+    font-family: var(--app-font-mono);
+    font-size: 9px;
+    line-height: 1.25;
+    text-align: left;
+  }
+  .event-rail-list-item:hover,
+  .event-rail-list-item:focus-visible {
+    border-color: hsl(var(--accent) / .55);
+    background: hsl(var(--card));
+    outline: none;
+  }
   .candle-inspector {
     min-width: 0;
     border: 1px solid hsl(var(--border));
@@ -514,6 +543,9 @@
     }
     .chart-control {
       flex: 1 1 auto;
+    }
+    .event-rail-list {
+      display: block;
     }
   }
   @media (min-width: 1280px) {

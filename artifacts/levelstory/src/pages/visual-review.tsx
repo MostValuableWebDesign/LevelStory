@@ -52,6 +52,8 @@ import {
   CHART_RIGHT,
   CHART_TOP,
   CHART_DATE_LABEL_Y,
+  CHART_EVENT_RAIL_HEIGHT,
+  CHART_EVENT_RAIL_TOP,
   CHART_FOOTER_LABEL_Y,
   CHART_TIME_TICK_Y,
   CHART_VOLUME_HEIGHT,
@@ -917,8 +919,12 @@ function CausalSvg({
   const railMarkerIndex = (event: typeof railLayout.events[number]) => findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
   const railMarkerY = (event: typeof railLayout.events[number]) => {
     const markerIndex = railMarkerIndex(event);
-    if (markerIndex >= 0 && event.price == null) return y(candles[markerIndex]!.close);
-    return event.price == null ? top + 12 : y(event.price);
+    const rawY = markerIndex >= 0 && event.price == null
+      ? y(candles[markerIndex]!.close)
+      : event.price == null
+        ? top + 12
+        : y(event.price);
+    return Math.max(top + 5, Math.min(plotBottom - 5, rawY));
   };
   return <div className="relative w-full overflow-x-auto">
      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
@@ -949,7 +955,7 @@ function CausalSvg({
          return <g key={`rail-${event.id}`} data-testid={`event-rail-item-${event.id}`} role="button" tabIndex={0} aria-label={`${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
            <title>{`${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
            <line x1={event.labelX + event.labelWidth / 2} y1={event.labelY + 3} x2={event.markerX} y2={top - 4} stroke={color} strokeWidth="1" strokeDasharray={event.visibility === "human_only" ? "5 3" : event.overflow ? "2 3" : "none"} opacity={event.visibility === "human_only" ? ".62" : ".75"} data-testid={`event-rail-leader-${event.id}`} />
-           {!event.overflow && <rect x={event.labelX} y={event.labelY - 10} width={event.labelWidth} height="15" rx="2" fill="hsl(var(--card) / .96)" stroke={color} strokeOpacity=".42" />}
+           {!event.overflow && <rect x={event.labelX} y={event.labelY - 10} width={event.labelWidth} height="15" rx="2" fill={event.visibility === "human_only" ? "hsl(var(--muted) / .72)" : "hsl(var(--card) / .96)"} stroke={color} strokeOpacity=".42" strokeDasharray={event.visibility === "human_only" ? "4 3" : "none"} />}
            <text x={event.overflow ? event.labelX + 3 : event.labelX + 5} y={event.labelY + 1} fill={color} fontSize={event.overflow ? "8" : "8.5"} fontWeight="700" fontFamily="DM Mono">{labelText}</text>
            {markerIndex >= 0
              ? <g data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
@@ -1019,49 +1025,6 @@ function CausalSvg({
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}><title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" /><rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" /><rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
       })}
-       {(() => {
-         const anchorIndex = findCandleIndexAtTimestamp(candles, snapshot.categoryAnchor.openTime);
-         if (anchorIndex < 0) return null;
-         const anchorCandle = candles[anchorIndex]!;
-         const markerSlot = getCandleSlotIndex(anchorCandle, sessionView);
-         const markerX = x(markerSlot);
-         const markerY = snapshot.categoryAnchor.price == null ? top + 28 : y(snapshot.categoryAnchor.price);
-         const color = snapshot.categoryAnchor.visibility === "human_only" ? "hsl(var(--muted-foreground))" : "hsl(var(--positive))";
-         return <g data-testid="category-anchor-marker"><title>{`${snapshot.categoryAnchor.label} · ${snapshot.categoryAnchor.detail} · ${formatCandleTime(snapshot.categoryAnchor.openTime, "America/New_York")} NY`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeWidth="2" strokeDasharray={snapshot.categoryAnchor.visibility === "human_only" ? "7 4" : "3 3"} opacity=".9" /><circle cx={markerX} cy={markerY} r="5" fill={color} stroke="hsl(var(--card))" strokeWidth="2" /><text x={markerX + 7} y={top + 31} fill={color} fontSize="9" fontWeight="700" fontFamily="DM Mono">FOUND · {snapshot.categoryAnchor.category.replaceAll("_", " ").toUpperCase()}</text></g>;
-       })()}
-       {snapshot.categoryAnchor.relatedCandles.map((related, relatedIndex) => {
-         const markerIndex = findCandleIndexAtTimestamp(candles, related.openTime);
-         if (markerIndex < 0) return null;
-         const markerX = x(getCandleSlotIndex(candles[markerIndex]!, sessionView));
-         const color = anchorTone(related.role);
-         const markerY = top + 45 + Math.min(relatedIndex, 5) * 13;
-         const markerPriceY = related.price == null ? markerY : y(related.price);
-         return <g key={`anchor-related-${related.role}`} data-testid={`category-anchor-marker-${related.role}`}><title>{`${anchorRoleLabel(related.role)} candle · ${formatInterval(related.openTime, related.closeTime)} · ${related.visibility}`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeDasharray={related.visibility === "human_only" ? "7 4" : "2 4"} opacity=".72" /><circle cx={markerX} cy={markerPriceY} r="3.5" fill={color} /><text x={markerX + 5} y={markerY} fill={color} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{related.visibility === "human_only" ? "HUMAN · " : ""}{anchorRoleLabel(related.role).toUpperCase()}</text></g>;
-       })}
-       {invalidationLevels.map((annotation) => {
-         const markerX = plotRight - 7;
-         const markerY = y(annotation.price as number);
-         const color = "hsl(var(--negative))";
-         return <g key={`invalidation-${annotation.id}`} data-testid={`invalidation-marker-${annotation.id}`}><title>{`${annotation.label} · ${formatPriceAxisValue(annotation.price as number)}`}</title><path d={`M ${markerX - 7} ${markerY} l 7 -5 l 0 10 z`} fill={color} /><text x={markerX - 11} y={markerY + 3} textAnchor="end" fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">INVALIDATION</text></g>;
-       })}
-          {eventMarkers.map(({ annotation, markerSlot }, markerOrder) => {
-           const markerX = x(markerSlot);
-          const humanOnly = annotation.visibility === "human_only";
-           const markerY = top + 15 + Math.min(markerOrder, 5) * 12;
-          const markerPriceY = annotation.price == null ? markerY : y(annotation.price);
-          const label = humanOnly ? `Human-only · ${annotation.label}` : annotation.label;
-          const markerTime = annotation.openTime ?? annotation.closeTime;
-          return <g key={`marker-${annotation.id}`} data-testid={`event-marker-${annotation.id}`}><title>{`${label} · ${markerTime ? `${formatCandleTime(markerTime, "America/New_York")} NY · ${formatCandleTime(markerTime, "UTC")} UTC` : "timestamp unavailable"}`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={annotationTone(annotation.color)} strokeDasharray={humanOnly ? "7 4" : "2 4"} opacity={humanOnly ? ".62" : ".88"} /><circle cx={markerX} cy={markerPriceY} r={humanOnly ? "4" : "3.5"} fill={annotationTone(annotation.color)} /><text x={markerX + 5} y={markerY} fill={annotationTone(annotation.color)} fontSize="9" fontWeight="700" fontFamily="DM Mono">{label}</text></g>;
-      })}
-       {tradeEventMarkers.map(({ event, markerSlot }, markerOrder) => {
-         const markerX = x(markerSlot);
-         const humanOnly = event.visibility === "human_only";
-         const markerY = top + 68 + Math.min(markerOrder, 7) * 12;
-         const markerPriceY = event.modeledPrice == null ? markerY : y(event.modeledPrice);
-         const color = event.event === "stop" || event.event === "ambiguity" ? "hsl(var(--negative))" : event.event === "entry" ? "hsl(var(--accent))" : "hsl(var(--positive))";
-         const markerTime = event.openTime ?? event.closeTime;
-         return <g key={`trade-event-${event.id}`} data-testid={`trade-event-marker-${event.event}`}><title>{`${event.label} · ${event.detail} · ${markerTime ? `${formatCandleTime(markerTime, "America/New_York")} NY · ${formatCandleTime(markerTime, "UTC")} UTC` : "timestamp unavailable"}`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeDasharray={humanOnly ? "7 4" : "2 4"} opacity={humanOnly ? ".62" : ".92"} /><circle cx={markerX} cy={markerPriceY} r={humanOnly ? "4" : "3.5"} fill={color} /><text x={markerX + 5} y={markerY} fill={color} fontSize="9" fontWeight="700" fontFamily="DM Mono">{humanOnly ? `HUMAN · ${event.label}` : event.label}</text></g>;
-       })}
        <line x1={boundaryX} x2={boundaryX} y1={12} y2={plotBottom + 12} stroke="hsl(var(--foreground))" strokeWidth="1.5" strokeDasharray="5 4" data-testid="evaluation-cursor" />
        <rect x={Math.min(Math.max(boundaryX - 62, left), width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(Math.max(boundaryX, left + 62), width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
@@ -1080,6 +1043,21 @@ function CausalSvg({
           onKeyDown={setIndexFromKeyboard}
         />
      </svg>
+     <div className={`event-rail-list ${railLayout.hasOverflow ? "event-rail-list-overflow" : ""}`} data-testid="event-rail-ordered-list">
+       <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
+         <span className="eyebrow text-muted-foreground">{railLayout.hasOverflow ? "Dense rail · numbered event index" : "Ordered event index"}</span>
+         <span className="mono text-[9px] text-muted-foreground">{railLayout.events.length} events · timestamp / priority / ID</span>
+       </div>
+       <ol className="mt-2 grid gap-1 sm:grid-cols-2">
+         {railLayout.events.map((event) => <li key={`event-list-${event.id}`}>
+           <button type="button" className="event-rail-list-item" onMouseEnter={() => focusRailEvent(event)} onFocus={() => focusRailEvent(event)} onClick={() => focusRailEvent(event)} data-testid={`event-list-item-${event.id}`}>
+             <span className={`mono shrink-0 ${event.visibility === "human_only" ? "text-muted-foreground" : "text-foreground"}`}>{event.order + 1}.</span>
+             <span className="truncate text-left">{event.visibility === "human_only" ? "HUMAN · " : ""}{event.label}</span>
+             <span className="mono ml-auto shrink-0 text-muted-foreground">{event.shortLabel}</span>
+           </button>
+         </li>)}
+       </ol>
+     </div>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
        {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
      </div>

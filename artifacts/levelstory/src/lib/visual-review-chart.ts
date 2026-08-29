@@ -766,13 +766,19 @@ export function layoutEventRail(
     const markerX = event.markerSlot == null
       ? right
       : left + ((event.markerSlot + 0.5) / slotCount) * (right - left);
-    const labelWidth = eventLabelWidth(event);
-    const labelX = Math.max(left, Math.min(markerX - labelWidth / 2, right - labelWidth));
+    const labelWidth = event.visibility === "human_only" && cursorX != null && right - cursorX - labelGap >= 44
+      ? Math.min(eventLabelWidth(event), right - cursorX - labelGap)
+      : eventLabelWidth(event);
+    const centeredLabelX = Math.max(left, Math.min(markerX - labelWidth / 2, right - labelWidth));
+    const humanSideLabelX = cursorX == null
+      ? centeredLabelX
+      : Math.max(centeredLabelX, Math.min(cursorX + labelGap, right - labelWidth));
+    const labelX = event.visibility === "human_only" ? humanSideLabelX : centeredLabelX;
     const labelStart = labelX;
     const labelEnd = labelX + labelWidth;
     let lane = -1;
     for (let candidate = 0; candidate < laneCount; candidate += 1) {
-      const cursorConflict = cursorX != null && intervalsOverlap(labelStart, labelEnd, cursorStart, cursorEnd, labelGap);
+      const cursorConflict = candidate === 0 && cursorX != null && intervalsOverlap(labelStart, labelEnd, cursorStart, cursorEnd, labelGap);
       const labelConflict = occupied[candidate]!.some((interval) => intervalsOverlap(labelStart, labelEnd, interval.start, interval.end, labelGap));
       if (!cursorConflict && !labelConflict) {
         lane = candidate;

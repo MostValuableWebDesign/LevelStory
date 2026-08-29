@@ -5,6 +5,7 @@ import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
   DOJI_BODY_HEIGHT,
+  layoutEventRail,
   getCandleSlotIndex,
   formatAxisDate,
   formatInterval,
@@ -31,6 +32,7 @@ import {
   snapPrice,
   stackLabelPositions,
   summarizeCategoryCoverage,
+  type EventRailEvent,
 } from "../src/lib/visual-review-chart.ts";
 
 const baseTime = Date.parse("2026-08-26T13:30:00.000Z");
@@ -73,6 +75,24 @@ function makeAnnotation(id: string, price: number | null, overrides: Partial<Vis
   };
 }
 
+function makeRailEvent(id: string, index: number, overrides: Partial<EventRailEvent> = {}): EventRailEvent {
+  const candle = makeCandle(index);
+  return {
+    id,
+    kind: "supporting",
+    label: `Event ${id}`,
+    shortLabel: "·",
+    detail: `detail for ${id}`,
+    openTime: candle.openTime,
+    closeTime: candle.closeTime,
+    price: candle.close,
+    visibility: "machine",
+    priority: 6,
+    markerSlot: index,
+    ...overrides,
+  };
+}
+
 test("candle domain uses candle extremes and padding, never distant annotation prices", () => {
   const candles = [makeCandle(0), makeCandle(1)];
   const domain = getCandleDomain(candles);
@@ -81,6 +101,49 @@ test("candle domain uses candle extremes and padding, never distant annotation p
   assert.ok(domain.max < 110);
   assert.ok(domain.min > 90);
   assert.equal(domain.padding, (domain.rawMax - domain.rawMin) * 0.08);
+});
+
+test("event rail sorting is deterministic by timestamp, priority, then stable ID", () => {
+  const events = [
+    makeRailEvent("zeta", 2, { priority: 4 }),
+    makeRailEvent("alpha", 1, { priority: 8 }),
+    makeRailEvent("beta", 1, { priority: 2 }),
+    makeRailEvent("aardvark", 1, { priority: 2 }),
+  ];
+  const layout = layoutEventRail(events, { left: 0, right: 300, slotCount: 10 });
+  assert.deepEqual(layout.events.map((event) => event.id), ["aardvark", "beta", "alpha", "zeta"]);
+  assert.deepEqual(layout.events.map((event) => event.order), [0, 1, 2, 3]);
+});
+
+test("event rail uses four collision-aware lanes and preserves dense events as numbered overflow", () => {
+  const events = Array.from({ length: 6 }, (_, index) => makeRailEvent(`same-${index}`, 4, {
+    label: `Same candle event ${index} with a descriptive label`,
+  }));
+  const layout = layoutEventRail(events, { left: 0, right: 220, slotCount: 10, laneCount: 4, labelGap: 4 });
+  assert.equal(layout.laneCount, 4);
+  assert.equal(layout.events.filter((event) => !event.overflow).length, 4);
+  assert.equal(layout.events.filter((event) => event.overflow).length, 2);
+  assert.equal(layout.hasOverflow, true);
+  const visible = layout.events.filter((event) => !event.overflow);
+  for (const first of visible) {
+    for (const second of visible) {
+      if (first.id >= second.id || first.lane !== second.lane) continue;
+      assert.ok(first.labelX + first.labelWidth + 4 <= second.labelX || second.labelX + second.labelWidth + 4 <= first.labelX);
+    }
+  }
+});
+
+test("human-only rail labels are dashed and routed to the cursor's outcome side", () => {
+  const layout = layoutEventRail([
+    makeRailEvent("human", 8, { visibility: "human_only", label: "Later observed outcome" }),
+    makeRailEvent("machine", 2, { visibility: "machine" }),
+  ], { left: 0, right: 300, slotCount: 10, cursorX: 150 });
+  const human = layout.events.find((event) => event.id === "human");
+  const machine = layout.events.find((event) => event.id === "machine");
+  assert.ok(human && machine);
+  assert.ok(human.labelX >= 158);
+  assert.notEqual(human.lane, undefined);
+  assert.equal(machine?.overflow, false);
 });
 
 test("out-of-range primary levels receive edge indicators with their actual prices", () => {
