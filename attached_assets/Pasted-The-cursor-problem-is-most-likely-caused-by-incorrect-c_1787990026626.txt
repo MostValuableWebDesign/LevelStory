@@ -1,0 +1,278 @@
+The cursor problem is most likely caused by incorrect coordinate conversion between the responsive SVG and the fixed five-minute timestamp slots. Hover selection should be based on the pointer’s X position inside one transparent chart interaction layer—not on whether the pointer touches a candle body.
+
+Use this focused prompt:
+
+```text
+Fix LevelStory visual-review chart pointer accuracy, full-chart hover behavior, key-level price labels and Candle Inspector stability.
+
+This is a frontend interaction and rendering task only.
+
+Do not change:
+- formula logic
+- historical OHLCV
+- fixed timestamp slots
+- category anchors
+- machine decisions
+- event timestamps or prices
+- causal visibility
+- historical index
+
+Relevant files:
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/src/lib/visual-review-chart.ts
+- artifacts/levelstory/tests/visual-review-chart.test.ts
+
+1. Fix inaccurate mouse-to-candle selection
+
+Current defect:
+Hovering a candle or chart location can select the wrong five-minute candle in the Candle Inspector.
+
+Implement one authoritative coordinate-conversion function.
+
+The calculation must account for:
+- SVG `viewBox`
+- rendered `getBoundingClientRect()`
+- responsive scaling
+- chart plot-left and plot-right margins
+- reserved right-side price-axis gutter
+- current zoom
+- current horizontal pan
+- fixed five-minute timestamp slots
+- full-session versus primary-window mode
+
+Required mapping:
+
+1. Read pointer `clientX`.
+2. Convert it to local rendered-chart X.
+3. Convert rendered X into SVG/user-space X using the actual scale ratio.
+4. Subtract the plot-left boundary.
+5. Apply the current zoom/pan transform exactly once.
+6. Divide by the fixed slot width.
+7. select the nearest valid five-minute slot
+8. clamp only to the visible timestamp domain
+
+Do not:
+- use the candle body’s DOM bounding box
+- infer the candle from event target
+- calculate against the entire SVG width including the price axis
+- apply zoom or pan twice
+- assume CSS pixels equal SVG viewBox units
+
+2. Add a transparent full-chart interaction layer
+
+Place one transparent interaction rectangle over the complete interactive plot:
+
+- price plot
+- empty areas above and below candles
+- blank timestamp slots
+- volume region
+
+Use:
+- transparent fill
+- `pointer-events: all`
+- stable bounding dimensions matching the plot only
+- no overlap with chart controls or right-side price labels
+
+The user must be able to hover anywhere vertically in a candle’s five-minute column—not only directly over its body or wick.
+
+Selection is determined by nearest X-axis timestamp slot.
+
+Examples:
+- hovering above the 10:35 candle selects 10:35–10:40
+- hovering below it in the volume area selects the same candle
+- hovering beside the body but inside its slot still selects it
+- hovering a missing timestamp slot reports that interval as missing
+
+3. Use a slot highlight instead of a dashed cursor line
+
+When a candle is selected:
+
+- highlight its entire five-minute column with a subtle translucent band
+- outline the selected candle slightly
+- highlight its volume bar
+- do not render a vertical dashed line
+- do not move event markers
+- do not cover candle bodies
+
+The band must align exactly with the selected fixed timestamp slot.
+
+4. Stabilize pointer behavior
+
+Use pointer events consistently:
+- `pointermove`
+- `pointerenter`
+- `pointerleave`
+- `pointerdown` when click selection is supported
+
+Use requestAnimationFrame or equivalent throttling for pointer movement.
+
+Prevent:
+- selection flicker between adjacent candles
+- inspector changes caused by moving over event markers
+- hover loss when crossing indicator lines
+- marker elements intercepting the interaction layer
+- repeated state changes when the selected slot has not changed
+
+Indicators, grid lines, markers and shading should use `pointer-events: none` unless independently interactive.
+
+Interactive numbered events may remain focusable, but their hover must select their exact associated candle.
+
+5. Fix Candle Inspector dropdown/glitch behavior
+
+Current defect:
+Hovering near the top of the chart can make the Candle Inspector glitch into a dropdown/collapsed state.
+
+Required behavior:
+
+- Candle Inspector remains a stable horizontal panel.
+- Hovering the chart must never expand, collapse or reposition it.
+- Remove hover-driven open/close CSS.
+- Do not use native `<details>` hover behavior for the inspector.
+- If collapsible, use an explicit click-only button:
+  - `Collapse inspector`
+  - `Expand inspector`
+- Keep its height stable while moving between candles.
+- Do not remount the inspector on every pointer movement.
+- Update only its values.
+- Preserve selected candle when the pointer crosses the top chart boundary.
+- Clear selection only when intentionally leaving the entire interaction region, or keep the last selected candle visible.
+
+Check:
+- z-index
+- overflow
+- pointer-events
+- focus handling
+- accidental interaction with the collapse chevron
+- event bubbling from the chart into the inspector controls
+
+6. Display a price on every visible key level
+
+Every visible structural level or indicator must have a numeric price tag in the right-side price rail.
+
+Required:
+
+ORB / NTZ:
+- `ORB / NTZ High · 7828.00`
+- `ORB / NTZ Low · 7819.25`
+- orange
+
+Premarket:
+- `Premarket High · 7832.00`
+- `Premarket Low · 7821.00`
+- green
+
+EMA 200:
+- `EMA 200 · [current visible value]`
+- light green
+
+VWAP:
+- `VWAP · [current visible value]`
+- red
+
+Support/resistance:
+- `Support · price`
+- `Resistance · price`
+- black
+
+Critical/confluence:
+- name plus exact price
+- black
+
+Fibonacci:
+- ratio plus exact price
+- muted gray unless active
+
+Target:
+- exact target price when applicable
+
+Rules:
+- align MES prices to 0.25
+- show two decimal places
+- combine exact-price confluences into one tag
+- use deterministic collision-aware stacking
+- draw a small connector to the real Y position when a label is displaced
+- keep tags inside the reserved price rail
+- never allow the Candle Inspector to cover the tags
+
+Previous preference must remain:
+- entry and stop events use numbered/symbol markers only
+- do not restore persistent Entry, Strategy Stop or Catastrophe Stop chart labels by default
+- their exact prices remain in the event strip and inspector
+- optional `Show risk levels` may expose planned risk lines
+
+7. Indicator price values
+
+VWAP and EMA 200 are curved series.
+
+Their right-axis price tags should show the value at:
+- the selected candle when one is selected
+- otherwise the final visible candle
+
+The tag must update as the user moves across chart slots.
+
+Do not convert these indicators into horizontal lines.
+
+8. Missing intervals
+
+When hovering a timestamp slot with no candle:
+
+Candle Inspector should display:
+
+`10:35–10:40 AM ET`
+`No historical candle available for this interval`
+
+Do not snap across a missing interval to another candle.
+
+9. Keyboard behavior
+
+- Left/right arrows move exactly one five-minute slot.
+- Movement includes missing slots.
+- Home selects the first visible slot.
+- End selects the final visible slot.
+- Selecting a numbered event moves to its exact slot.
+- Keyboard and mouse must use the same coordinate/slot-selection function.
+
+10. Focused tests
+
+Add deterministic tests proving:
+
+- left chart edge maps to the first timestamp slot
+- right plot edge maps to the final timestamp slot
+- the right-side price gutter is excluded from candle selection
+- hovering above, on and below a candle selects the same slot
+- volume-region hover selects the correct candle
+- responsive SVG scaling preserves selection accuracy
+- zoomed and panned charts select the correct slot
+- missing slots do not snap to neighboring candles
+- pointer selection does not flicker across indicators or event markers
+- Candle Inspector does not open, close or reposition during hover
+- every visible key level has a price tag
+- MES price tags align to 0.25
+- EMA/VWAP tags update at the selected timestamp
+- no vertical dashed cursor line returns
+- mouse and keyboard navigation select identical slots
+
+Verification limits:
+
+Run only:
+- focused visual-review chart tests
+- frontend typecheck
+- frontend build if required
+
+Do not:
+- restart the API
+- rebuild the historical index
+- regenerate review sets
+- run backtests
+- modify human judgments
+
+Provide verification screenshots showing:
+1. Hover above a candle
+2. Hover on its body
+3. Hover in its volume column
+4. All three selecting the same five-minute interval
+5. Stable Candle Inspector
+6. Every visible key level displaying its price
+```
+
+The key implementation detail is the **single transparent interaction rectangle mapped to fixed five-minute X-axis slots**. That should eliminate most of the cursor inaccuracies and hover glitches at once.

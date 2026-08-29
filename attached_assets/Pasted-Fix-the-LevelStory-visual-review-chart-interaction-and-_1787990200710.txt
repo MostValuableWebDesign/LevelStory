@@ -1,0 +1,469 @@
+Fix the LevelStory visual-review chart interaction and enforce the corrected patience-candle entry sequence.
+
+This task includes:
+
+1. Accurate mouse-to-candle selection
+2. Hovering anywhere within a five-minute chart column
+3. Stable Candle Inspector behavior
+4. Numeric prices on every visible structural level
+5. Correct patience-candle entry sequencing
+
+Do not change unrelated trading rules, historical OHLCV, session calendars, contract rollover handling, fees, slippage, causal visibility or the historical index.
+
+Relevant files may include:
+
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/src/lib/visual-review-chart.ts
+- artifacts/levelstory/tests/visual-review-chart.test.ts
+- the existing patience/entry strategy implementation
+- its focused deterministic tests
+- shared audit types only if required
+
+PART 1 — CORRECT PATIENCE-CANDLE ENTRY RULE
+
+The entry candle must be the immediate next completed five-minute candle following the patience candle.
+
+Canonical sequence:
+
+[P · Patience candle]
+→
+[E · Immediate-next entry candle]
+
+Do not create a separate trigger candle between P and E.
+
+The entry candle and trigger candle are the same immediate-next five-minute candle.
+
+1. Patience candle completes first
+
+A trade cannot qualify without a valid completed patience candle.
+
+Bullish patience setup:
+- active trend must be bullish
+- the patience candle’s trend-side high remains within the previous candle’s high under the existing formula definition
+
+Bearish patience setup:
+- active trend must be bearish
+- the patience candle’s trend-side low remains within the previous candle’s low under the existing formula definition
+
+Preserve the existing finalized patience-candle definition everywhere else.
+
+2. Immediate-next candle only
+
+After the patience candle closes:
+
+- only the immediate next scheduled five-minute candle is eligible for entry
+- a later candle cannot trigger the expired patience setup
+- if the immediate-next candle is missing from the historical data, the setup cannot use a later candle
+- mark the setup as unresolved or rejected because the immediate-next candle was unavailable
+
+Required timestamp relationship:
+
+`entryCandleOpenTime === patienceCandleCloseTime`
+
+For normal completed five-minute candles:
+
+`entryCandleOpenTime === patienceCandleOpenTime + 5 minutes`
+
+3. Buffered entry
+
+Bullish:
+- the immediate-next candle must reach 3–4 MES ticks above the patience candle’s high
+- place the long entry at the configured buffered price
+
+Bearish:
+- the immediate-next candle must reach 3–4 MES ticks below the patience candle’s low
+- place the short entry at the configured buffered price
+
+MES tick size:
+- 0.25 points
+- 3 ticks = 0.75 points
+- 4 ticks = 1.00 point
+
+Use the configured 3- or 4-tick setting. Do not introduce a new arbitrary buffer.
+
+4. Expiration
+
+If the immediate-next five-minute candle does not reach the buffered entry price:
+
+- no entry occurs
+- the patience setup expires
+- no later candle can trigger that patience setup
+- a new entry requires a new valid patience candle
+
+5. Visual event markers
+
+Use:
+
+- `P` or the relevant numbered marker on the patience candle
+- `E` or the relevant numbered marker on the immediate-next entry candle only when entry actually occurred
+
+Do not display a separate `T` candle between P and E.
+
+If the immediate-next candle fails:
+
+- show the patience event
+- do not show an entry marker
+- show in the event index:
+  `No entry · Immediate-next candle did not reach the buffered price`
+
+If the immediate-next candle is missing:
+
+- show:
+  `No entry · Immediate-next five-minute candle unavailable`
+
+If no valid patience candle exists:
+
+- no entry marker may exist
+- the trade must not qualify
+
+6. Entry audit requirements
+
+Every entry must record:
+
+- patience candle open time
+- patience candle close time
+- entry candle open time
+- entry candle close time
+- patience candle high
+- patience candle low
+- direction
+- buffer ticks
+- buffered entry trigger price
+- modeled fill price
+- modeled fill observation time
+- patience audit ID
+- associated trade ID
+
+Reject any trade whose audit cannot prove that its entry candle was the immediate-next five-minute candle.
+
+7. Patience/entry tests
+
+Add deterministic tests proving:
+
+- no entry can exist without a valid patience candle
+- the entry candle is exactly the immediate next five-minute candle
+- bullish entry requires the configured buffer above the patience high
+- bearish entry requires the configured buffer below the patience low
+- a later candle cannot trigger an expired patience setup
+- a missing immediate-next interval cannot be skipped
+- a new patience candle can create a new independent setup
+- P and E chart markers use the exact audited candles
+- no separate trigger candle is inserted between P and E
+- visual-review trade association uses the exact patience and entry timestamps
+
+PART 2 — FIX MOUSE-TO-CANDLE ACCURACY
+
+Current defect:
+
+Hovering a candle or chart location may select the wrong five-minute candle in the Candle Inspector.
+
+Implement one authoritative pointer-to-slot conversion function.
+
+The conversion must account for:
+
+- SVG viewBox
+- rendered `getBoundingClientRect()`
+- responsive browser scaling
+- plot-left boundary
+- plot-right boundary
+- right-side price-axis gutter
+- current zoom
+- current pan
+- fixed five-minute timestamp slots
+- primary-window versus full-session mode
+
+Required mapping:
+
+1. Read pointer `clientX`.
+2. Convert to local rendered-chart X.
+3. Convert rendered X to SVG/user-space X.
+4. Subtract the plot-left boundary.
+5. Apply the current zoom/pan transform exactly once.
+6. Divide by the fixed timestamp-slot width.
+7. Select the nearest corresponding five-minute slot.
+8. Clamp only to the visible timestamp domain.
+
+Do not:
+
+- use the individual candle body’s DOM bounding box
+- infer the candle from `event.target`
+- include the right-side price gutter in candle selection
+- apply zoom or pan twice
+- assume CSS pixels equal SVG viewBox coordinates
+- snap across a missing slot to a different candle
+
+PART 3 — HOVER ANYWHERE IN THE CHART COLUMN
+
+Add one transparent full-chart interaction rectangle covering:
+
+- price plot
+- space above candle highs
+- space below candle lows
+- blank timestamp slots
+- volume region
+
+Requirements:
+
+- transparent fill
+- `pointer-events: all`
+- exactly match the interactive plot boundaries
+- exclude controls and right-side price labels
+- render above noninteractive chart shapes
+- preserve independent keyboard-accessible numbered event markers
+
+The selected candle must depend on the nearest X-axis five-minute slot regardless of vertical mouse position.
+
+Examples:
+
+- hovering above the 10:35 candle selects 10:35–10:40
+- hovering over its body selects 10:35–10:40
+- hovering below it in the volume region selects 10:35–10:40
+- hovering beside the body but inside the same slot selects 10:35–10:40
+
+When hovering an empty fixed slot, show:
+
+`10:35–10:40 AM ET`
+`No historical candle available for this interval`
+
+Do not select a neighboring candle.
+
+PART 4 — SLOT HIGHLIGHT
+
+When a slot is selected:
+
+- shade its complete five-minute column subtly
+- outline the candle slightly when a candle exists
+- emphasize the corresponding volume bar
+- do not render a vertical dashed cursor line
+- do not move numbered audit markers
+- do not cover candle bodies
+
+The highlighted column must align precisely with the selected fixed timestamp slot.
+
+PART 5 — STABLE POINTER BEHAVIOR
+
+Use pointer events consistently:
+
+- pointerenter
+- pointermove
+- pointerleave
+- pointerdown when click selection is supported
+
+Use requestAnimationFrame or equivalent throttling.
+
+Prevent:
+
+- flickering between adjacent candles
+- inspector changes caused by moving over indicator lines
+- marker elements blocking chart hover
+- duplicate state updates when the selected slot has not changed
+- selection loss while crossing VWAP, EMA or level lines
+
+Set noninteractive chart elements to `pointer-events: none`, including:
+
+- grid lines
+- VWAP
+- EMA 200
+- structural price levels
+- causal shading
+- volume bars when not independently interactive
+
+Numbered event markers may remain interactive, but selecting one must resolve to its exact audited slot.
+
+PART 6 — FIX THE CANDLE INSPECTOR GLITCH
+
+Current defect:
+
+Hovering near the upper portion of the chart can make the Candle Inspector behave like a dropdown, collapse, expand or reposition.
+
+Required behavior:
+
+- Candle Inspector remains a stable horizontal panel outside the plot
+- chart hover only updates its displayed values
+- hovering must never open, close, resize or reposition it
+- do not remount the inspector during pointer movement
+- remove hover-controlled expand/collapse behavior
+- do not use a native details element that reacts incorrectly to hover
+- use an explicit click-only button if collapse is supported
+- maintain a stable minimum height
+- allow automatic height for wrapped content
+- do not clip the bottom row
+- preserve the last selected candle when leaving individual candle shapes
+- clear selection only when intentionally leaving the full interaction region, or retain the last selection
+
+Inspect and correct:
+
+- z-index
+- overflow rules
+- pointer-events
+- accidental event bubbling
+- collapse-button hit area
+- focus handling
+- CSS hover selectors
+- conditional mounting
+
+PART 7 — NUMERIC PRICES FOR EVERY VISIBLE KEY LEVEL
+
+Every visible structural price level must have an exact numeric price in the right-side price rail.
+
+ORB and NTZ are the same first-15-minute range in this formula.
+
+Display only:
+
+- `ORB / NTZ High · price`
+- `ORB / NTZ Low · price`
+
+Do not render duplicate ORB and NTZ lines.
+
+Colors and labels:
+
+ORB / NTZ:
+- orange
+- exact price
+
+Premarket High/Low:
+- green
+- exact price
+
+EMA 200:
+- light-green curved series
+- selected-candle or final-visible value
+
+VWAP:
+- red curved series
+- selected-candle or final-visible value
+
+Support/resistance:
+- black
+- label as Support or Resistance
+- exact price
+
+Critical/confluence:
+- black
+- meaningful name
+- exact price
+
+Fibonacci:
+- muted gray unless active
+- ratio and exact price
+
+Target:
+- exact target price when applicable
+
+Rules:
+
+- align MES prices to 0.25
+- display two decimals
+- combine exact-price confluences into one tag
+- use deterministic collision-aware stacking
+- use short connectors when tags are displaced
+- keep tags inside the reserved price rail
+- do not allow the Candle Inspector to cover price tags
+
+Entry and stop preference remains:
+
+- entry and stops are event markers, not persistent chart labels
+- do not show Entry, Strategy Stop or Catastrophe Stop right-axis labels by default
+- exact entry/stop prices remain in the event index and Candle Inspector
+- optional `Show risk levels` may reveal planned horizontal risk lines
+- default `Show risk levels` to off
+
+PART 8 — VWAP AND EMA VALUE UPDATES
+
+VWAP and EMA 200 remain curved per-candle series.
+
+Their right-side tags show:
+
+- the value at the selected candle when a candle is selected
+- otherwise the final visible candle’s value
+
+Do not convert them into horizontal snapshot lines.
+
+Machine-visible indicator segments remain solid.
+
+Post-decision human-only indicator segments remain muted or dashed.
+
+PART 9 — KEYBOARD NAVIGATION
+
+Mouse and keyboard must use the same slot-selection implementation.
+
+- Left arrow: previous five-minute slot
+- Right arrow: next five-minute slot
+- Home: first visible slot
+- End: final visible slot
+- Missing slots remain selectable
+- Selecting a numbered audit event selects its exact slot
+- keyboard selection updates the same Candle Inspector and slot highlight
+
+PART 10 — FOCUSED TESTS
+
+Add deterministic frontend tests proving:
+
+Pointer mapping:
+- left plot edge selects the first slot
+- right plot edge selects the final slot
+- price gutter is excluded
+- SVG responsive scaling remains accurate
+- zoom and pan remain accurate
+- hover above, on and below one candle selects the same slot
+- volume-region hover selects the same slot
+- missing slots do not snap to neighbors
+
+Inspector:
+- hover does not open, close or reposition the inspector
+- inspector content is not clipped
+- selected values update without remounting
+- crossing indicator lines does not lose selection
+
+Levels:
+- every visible structural key level has a numeric price tag
+- ORB/NTZ render as one pair
+- MES price tags align to 0.25
+- EMA/VWAP values update with the selected candle
+- entry/stop labels remain hidden by default
+
+Patience and entry:
+- every entry has a valid patience candle
+- entry occurs only on the immediate-next five-minute candle
+- entry buffer is correctly applied
+- a later candle cannot trigger the setup
+- missing next candle cannot be skipped
+- P and E markers correspond to exact audited timestamps
+- no separate T candle appears between P and E
+
+Causality:
+- no future candle enters machine evidence
+- human-only events remain human-only
+- removing dashed cursor lines does not change causal classification
+
+VERIFICATION LIMITS
+
+Run only:
+
+- focused visual-review frontend tests
+- focused patience/entry strategy tests
+- frontend typecheck
+- API typecheck only if shared audit types change
+- frontend build if required
+
+Do not:
+
+- rebuild the historical index
+- run 20+2
+- run qualification batches
+- regenerate historical review sets unless required to verify the corrected P→E audit relationship
+- modify existing human judgments
+- add live or paper order execution
+
+Restart the API only once if a required shared audit-schema change makes it necessary.
+
+REPORT
+
+Provide:
+
+1. Root cause of the inaccurate pointer selection
+2. Root cause of the Candle Inspector dropdown glitch
+3. Files changed
+4. Focused test totals
+5. Confirmation that every entry now uses:
+   `Patience candle → immediate-next entry candle`
