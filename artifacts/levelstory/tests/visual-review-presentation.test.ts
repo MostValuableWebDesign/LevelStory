@@ -74,5 +74,7 @@ test("human judgment teaches only from an explicitly locked causal candle pair",
   assert.match(page, /Selecting an option only creates a draft/);
   assert.match(page, /beforeunload/);
   assert.match(page, /data-testid="calculated-mes-entry"/);
+  assert.match(page, /Qualifying pullback level/);
+  assert.match(page, /availableLevels\.map/);
   assert.match(page, /Human judgments never mutate executable formula behavior/);
 });

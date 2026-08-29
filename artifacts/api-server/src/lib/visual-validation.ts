@@ -867,6 +867,9 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   const addLevel = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"] = "accent") => {
     lines.push(annotation(id, label, "level", price, color, detail));
   };
+  const addIndicator = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"]) => {
+    lines.push(annotation(id, label, "indicator", price, color, detail));
+  };
   addLevel("premarket-high", "Premarket high", snapshot.levels.premarketHigh, "Premarket high available at the evaluation cursor.");
   addLevel("premarket-low", "Premarket low", snapshot.levels.premarketLow, "Premarket low available at the evaluation cursor.");
   addLevel("previous-session-high", "PDH", snapshot.levels.previousDayHigh, "Previous completed regular-session high.");
@@ -875,6 +878,8 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   addLevel("two-sessions-low", "2DL", snapshot.levels.dayBeforeYesterdayLow, "Low from two completed regular sessions back.");
   addLevel("ntz-high", "NTZ high", snapshot.levels.ntzHigh, "No-trade zone upper boundary.");
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
+  addIndicator("ema-200", "200 MA", snapshot.indicators.ema200, "Causal 200-period exponential moving average available at the evaluation cursor.", "positive");
+  addIndicator("vwap", "VWAP", snapshot.indicators.vwap, "Causal regular-session volume-weighted average price available at the evaluation cursor.", "negative");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
   lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
   for (const level of snapshot.levels.critical) addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");

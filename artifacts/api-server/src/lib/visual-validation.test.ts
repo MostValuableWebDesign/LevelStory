@@ -593,6 +593,9 @@ test("category gates use explicit trend, mapped-level, and measured-state eviden
 test("exit annotations expose explicit machine and human-only event markers", () => {
   const set = buildVisualValidationSet(request);
   const labels = set.snapshots.flatMap((snapshot) => snapshot.annotations.map((item) => item.label));
+  const qualifyingLevels = set.snapshots.flatMap((snapshot) => snapshot.annotations.filter((item) => item.id === "ema-200" || item.id === "vwap"));
+  assert.ok(qualifyingLevels.some((item) => item.id === "ema-200" && item.label === "200 MA"));
+  assert.ok(qualifyingLevels.some((item) => item.id === "vwap" && item.label === "VWAP"));
   assert.ok(labels.includes("Entry candle (E)"));
   assert.ok(labels.includes("Modeled fill"));
   assert.ok(labels.some((label) => ["Strategy stop hit", "Catastrophe stop hit", "Target hit", "Runner activation", "Runner exit"].includes(label)));
