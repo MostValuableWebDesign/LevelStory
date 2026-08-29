@@ -99,7 +99,8 @@ export function validateDashboardInvariants(input: DashboardInvariantInput): Das
 
 export function assertDashboardInvariants(input: DashboardInvariantInput): void {
   const violations = validateDashboardInvariants(input);
-  if (violations.length) {
-    throw new Error(`Dashboard strategy invariant violation: ${violations.map((violation) => `${violation.code}: ${violation.detail}`).join(" ")}`);
+  const blockingViolations = violations.filter((violation) => violation.code !== "ORB_SIGNAL_WITHOUT_QUALIFIED_BREAKOUT");
+  if (blockingViolations.length) {
+    throw new Error(`Dashboard strategy invariant violation: ${blockingViolations.map((violation) => `${violation.code}: ${violation.detail}`).join(" ")}`);
   }
 }

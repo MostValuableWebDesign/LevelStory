@@ -316,6 +316,16 @@ test("dashboard invariant validator flags every blocked or contradictory state",
     },
   }));
   assert.ok(orbContradiction.some((violation) => violation.code === "ORB_SIGNAL_WITHOUT_QUALIFIED_BREAKOUT"));
+  assert.doesNotThrow(() => assertDashboardInvariants(invariantFixture({
+    breakout: {
+      detected: false,
+      failed: false,
+      state: "WEAK_BREAK_WAIT",
+      volumeSupported: false,
+      continuationConfirmed: false,
+      direction: "long",
+    },
+  })));
 
   const blockedRisk = validateDashboardInvariants(invariantFixture({
     riskPlan: { allowed: false, contracts: 0, direction: "short" },

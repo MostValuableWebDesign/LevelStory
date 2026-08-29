@@ -7,4 +7,4 @@ Visual review should preserve and render raw historical audit evidence even when
 
 **Why:** A date-range review is an evidence and diagnosis surface; aborting the entire generated set hides the exact contradictory state the reviewer needs to inspect and prevents the new chart from being stored.
 
-**How to apply:** Keep invariant validation enabled by default for live market snapshots. Use an explicit review-only opt-out when the visual-validation builder reconstructs a snapshot from historical prefixes, while retaining the immutable audit and raw candle evidence.
+**How to apply:** Keep invariant validation enabled by default for live market snapshots. Use an explicit review-only opt-out when the visual-validation builder reconstructs a snapshot from historical prefixes, while retaining the immutable audit and raw candle evidence. Treat the ORB-signal consistency code as diagnostic rather than fatal so a transient display mismatch cannot hide the entire dashboard; keep risk, direction, patience, and shadow-execution contradictions fatal.
