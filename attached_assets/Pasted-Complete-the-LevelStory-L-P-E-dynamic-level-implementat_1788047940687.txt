@@ -1,0 +1,183 @@
+Complete the LevelStory L/P/E dynamic-level implementation and correct the remaining related safety defects. Do not run historical indexing, cold backtests, or qualification batches.
+
+1. Introduce one authoritative level resolver
+
+Create a shared deterministic function:
+
+resolveQualifyingLevelAtCandle(snapshot, levelCandle, levelId)
+
+Return:
+
+{
+  levelId,
+  levelType,
+  label,
+  valueAtInteraction,
+  rangeLow,
+  rangeHigh,
+  sourceTimestamp,
+  machineVisible,
+  distancePoints,
+  distanceTicks,
+  toleranceTicks,
+  qualifies,
+  reason
+}
+
+For dynamic indicators:
+
+- vwap → use indicatorSeries VWAP at L
+- ema-200 → use indicatorSeries EMA 200 at L
+
+For fixed levels:
+
+- Resolve from the causally available fixed level annotation.
+
+Use this resolver for:
+
+- Indicators at L
+- Qualifying-level cards
+- Checkbox eligibility
+- Client preview
+- Server validation
+- Persistence
+- Validation messages
+
+Delete the separate static calculation that causes the indicator panel and checkbox cards to disagree.
+
+Regression case:
+
+L high: 6857.50
+L low: 6851.25
+VWAP at L: 6851.508
+Final VWAP: 6867.25
+Tolerance: 4 ticks
+
+Expected:
+
+- VWAP card displays 6851.508
+- Distance is 0 ticks
+- VWAP is selectable
+- 6867.25 is never used for L qualification
+
+2. Do not require indicators to align to MES ticks
+
+VWAP and EMA 200 may contain fractional values.
+
+Do not apply `tickAligned()` to dynamic indicators.
+
+Continue requiring executable entry, stop, target, and fill prices to align to the MES 0.25 tick.
+
+Calculate distance using full indicator precision. Round only for display.
+
+3. Replace price-only teaching selections
+
+Replace:
+
+qualifyingLevelId?: string
+pullbackLevels: number[]
+
+with:
+
+qualifyingLevels: Array<{
+  levelId: string
+  levelType: "dynamic_indicator" | "fixed_level" | "level_range"
+  valueAtInteraction: number
+  sourceTimestamp: string
+  rangeLow: number | null
+  rangeHigh: number | null
+}>
+
+Support multiple independently identified qualifying levels.
+
+Do not match VWAP or EMA back to an annotation using approximate price comparison.
+
+4. Server must be authoritative
+
+The server must:
+
+- Read L from immutable snapshot candles.
+- Resolve the level again using levelId.
+- Resolve VWAP/EMA from the indicator series at L.
+- Ignore client-submitted indicator prices and ranges for validation.
+- Confirm the indicator point is machine-visible.
+- Recalculate distance and qualification.
+- Reject any submitted evidence that disagrees with the server result.
+
+Client-submitted ranges must never be able to widen a valid level zone.
+
+5. Clarify consolidation validation
+
+Keep:
+
+- L at or before P.
+- P immediately before E.
+- Maximum L-to-P duration of 30 minutes.
+- Same contract and trading date.
+- Contiguous completed five-minute candles.
+- No future access.
+
+Define the maximum consistently:
+
+- Elapsed time from L open to P open must be <= 30 minutes.
+- Persist elapsed minutes.
+- Persist the number of candles strictly between L and P.
+- Avoid an inclusive-count off-by-one discrepancy.
+
+Do not invalidate consolidation merely because a later candle crosses L’s wick unless that is an explicitly governed strategy rule. Use the selected level zone or an existing governed invalidation rule.
+
+6. Fix the remaining governance blockers
+
+Add a dedicated validatorVersion database column.
+
+Do not test a SHA-256 validationConfigFingerprint using:
+
+includes(PROPOSAL_VALIDATOR_VERSION)
+
+Compare the dedicated validatorVersion using strict equality. Keep the hash separately.
+
+For false-positive exact-trade matching, do not compare:
+
+teaching.entryCandleOpenTime === machineTrade.entryTime
+
+Machine trade entryTime is based on the entry candle close/event time. Match the teaching entry candle close time or verify that the machine entry event belongs to the exact selected entry interval. Also verify contract, direction, strategy, and trade ID.
+
+7. Database migration
+
+Create and apply an explicit migration for all Main 16 teaching fields and validatorVersion.
+
+Do not rely only on editing the Drizzle schema.
+
+8. Focused tests
+
+Add tests for:
+
+- L-time VWAP replaces final VWAP.
+- L-time EMA replaces final EMA.
+- Fractional indicators are valid.
+- Executable prices remain tick-aligned.
+- VWAP inside L has distance 0.
+- Multiple qualifying levels retain separate IDs and values.
+- Client-submitted dynamic prices/ranges cannot override the server.
+- L/P/E causal ordering.
+- Exact 30-minute consolidation boundary.
+- Missing L-to-P candle fails.
+- Current validator version passes.
+- Legacy validator version is blocked.
+- Repeated validation reuses its cached run.
+- False-positive entry matches the correct candle interval.
+- Invalid submissions create no persistent mutation.
+
+Run only focused visual-validation, governance, persistence, schema, and UI tests plus typechecks and production builds.
+
+Do not activate Shadow Mode.
+Do not change the active strategy.
+Do not add live or paper trading.
+
+Report:
+- Files changed
+- Migration applied
+- Shared resolver location
+- Regression result for VWAP 6851.508 versus final 6867.25
+- Focused test totals
+- Confirmation that no strategy was activated
