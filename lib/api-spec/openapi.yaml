@@ -1015,6 +1015,107 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/StrategyVersion" }
+  /strategy-catalog:
+    get:
+      operationId: listStrategyCatalog
+      tags: [governance]
+      summary: List the four canonical strategies and their readiness
+      responses:
+        "200":
+          description: Strategy catalog and independent readiness records
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}:
+    get:
+      operationId: getStrategyReadiness
+      tags: [governance]
+      summary: Get readiness for one canonical strategy
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      responses:
+        "200":
+          description: Strategy readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}/thresholds:
+    patch:
+      operationId: approveStrategyFitnessThresholds
+      tags: [governance]
+      summary: Set owner-approved fitness thresholds for one strategy
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StrategyThresholdsInput" }
+      responses:
+        "200":
+          description: Updated strategy readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}/validate:
+    post:
+      operationId: validateStrategyReadiness
+      tags: [governance]
+      summary: Validate one strategy against its approved fitness thresholds
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}/activate-shadow:
+    post:
+      operationId: activateStrategyShadow
+      tags: [governance]
+      summary: Enable one FIT_AVAILABLE strategy in Shadow Mode
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      responses:
+        "200":
+          description: Activated strategy readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}/pause:
+    post:
+      operationId: pauseStrategy
+      tags: [governance]
+      summary: Pause one strategy without changing other strategies
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GovernanceReasonInput" }
+      responses:
+        "200":
+          description: Paused strategy readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-catalog/{strategyKey}/resume:
+    post:
+      operationId: resumeStrategy
+      tags: [governance]
+      summary: Resume one paused strategy
+      parameters:
+        - { name: strategyKey, in: path, required: true, schema: { $ref: "#/components/schemas/StrategyId" } }
+      responses:
+        "200":
+          description: Resumed strategy readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyCatalogItem" }
 components:
   parameters:
     IdempotencyKey:
@@ -1790,7 +1891,7 @@ components:
       properties:
         setupType:
           type: string
-          enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL]
+          enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
         direction:
           type: ["string", "null"]
           enum: [long, short, null]
@@ -1824,7 +1925,7 @@ components:
           enum: ["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "EXPIRED", "AMBIGUOUS"]
         primarySetup:
           type: ["string", "null"]
-          enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL, null]
+          enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL, null]
         explanation:
           type: string
         evaluations:
@@ -2012,6 +2113,62 @@ components:
         netPnl:
           type: number
       required: [setupType, reviewCount, triggeredCount, closedCount, wins, losses, breakeven, winRate, netPnl]
+    StrategyId:
+      type: string
+      enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
+    StrategyThresholdsInput:
+      type: object
+      properties:
+        minSetupCount: { type: number, minimum: 1 }
+        minCompletedTrades: { type: number, minimum: 1 }
+        minHoldoutCount: { type: number, minimum: 1 }
+        minExpectancy: { type: number }
+        maxDrawdown: { type: number, minimum: 0 }
+        maxAmbiguityRate: { type: number, minimum: 0, maximum: 1 }
+        minReviewedExampleAgreement: { type: number, minimum: 0, maximum: 1 }
+      required: [minSetupCount, minCompletedTrades, minHoldoutCount, minExpectancy, maxDrawdown, maxAmbiguityRate, minReviewedExampleAgreement]
+    StrategyDefinition:
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/StrategyId" }
+        name: { type: string }
+        description: { type: string }
+        components: { type: array, items: { type: string } }
+        alertOnly: { type: boolean }
+      required: [id, name, description, components, alertOnly]
+    StrategyReadiness:
+      type: object
+      additionalProperties: true
+      properties:
+        strategyKey: { $ref: "#/components/schemas/StrategyId" }
+        status: { type: string, enum: [NOT_ENOUGH_EVIDENCE, COLLECTING_EVIDENCE, READY_FOR_VALIDATION, VALIDATION_FAILED, SHADOW_CANDIDATE, FIT_AVAILABLE, PAUSED] }
+        thresholdsApproved: { type: boolean }
+        setupCount: { type: number }
+        completedTradeCount: { type: number }
+        holdoutCount: { type: number }
+        expectancy: { type: number }
+        drawdown: { type: number }
+        ambiguityRate: { type: number }
+        reviewedExampleAgreement: { type: number }
+        deterministicComplete: { type: boolean }
+        leakageFree: { type: boolean }
+        patienceEntryCompliant: { type: boolean }
+        dataCoverageComplete: { type: boolean }
+        formulaVersion: { type: string }
+        validationDate: { type: ["string", "null"], format: date-time }
+        pauseReason: { type: ["string", "null"] }
+        shadowEnabled: { type: boolean }
+        fitnessReport: { type: object, additionalProperties: true }
+        updatedAt: { type: string, format: date-time }
+      required: [strategyKey, status, thresholdsApproved, setupCount, completedTradeCount, holdoutCount, expectancy, drawdown, ambiguityRate, reviewedExampleAgreement, deterministicComplete, leakageFree, patienceEntryCompliant, dataCoverageComplete, formulaVersion, validationDate, pauseReason, shadowEnabled, fitnessReport, updatedAt]
+    StrategyCatalogItem:
+      type: object
+      properties:
+        definition: { $ref: "#/components/schemas/StrategyDefinition" }
+        readiness: { $ref: "#/components/schemas/StrategyReadiness" }
+        thresholds: { $ref: "#/components/schemas/StrategyThresholdsInput" }
+        message: { type: string }
+      required: [definition, readiness, thresholds, message]
     Phase8TimelineEvent:
       type: object
       properties:
@@ -3176,7 +3333,7 @@ components:
       enum: [low, medium, high]
     VisualValidationTeachingSetup:
       type: string
-      enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL]
+      enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
     VisualValidationTeachingValidation:
       type: object
       properties:
@@ -3341,6 +3498,7 @@ components:
         category: { $ref: "#/components/schemas/VisualValidationCategory" }
         categoryLabel: { type: string }
         machineLabel: { type: string }
+        strategyKey: { $ref: "#/components/schemas/StrategyId" }
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         formulaVersion: { type: string }
         symbol: { type: string }
@@ -3385,7 +3543,7 @@ components:
             reviewedAt: { type: ["string", "null"], format: date-time }
             teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
           required: [status, note, reviewedAt]
-      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, strategyKey, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
       properties:
@@ -3593,6 +3751,7 @@ components:
       additionalProperties: true
       properties:
         id: { type: string }
+        strategyKey: { $ref: "#/components/schemas/StrategyId" }
         title: { type: string }
         hypothesis: { type: string }
         rationale: { type: string }
@@ -3626,7 +3785,7 @@ components:
         approvedAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, title, hypothesis, rationale, status, createdBy, proposalType, plainLanguageSummary, currentRule, proposedRule, deterministicRuleDiff, affectedRuleIds, expectedBehaviorChange, risks, sourceTeachingIds, supportingExampleIds, conflictingExampleIds, sourceFormulaVersion, candidateFormulaVersion, proposalPayload, validationRunId, candidateVersionId, rejectionReason, clarificationRequest, approvedBy, approvedAt, createdAt, updatedAt]
+      required: [id, strategyKey, title, hypothesis, rationale, status, createdBy, proposalType, plainLanguageSummary, currentRule, proposedRule, deterministicRuleDiff, affectedRuleIds, expectedBehaviorChange, risks, sourceTeachingIds, supportingExampleIds, conflictingExampleIds, sourceFormulaVersion, candidateFormulaVersion, proposalPayload, validationRunId, candidateVersionId, rejectionReason, clarificationRequest, approvedBy, approvedAt, createdAt, updatedAt]
     RuleProposalAuditEvent:
       type: object
       additionalProperties: true

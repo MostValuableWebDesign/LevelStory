@@ -18,6 +18,7 @@ import type {
   VisualValidationSnapshot,
   VisualValidationTeachingExample,
 } from "./visual-validation.js";
+import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
 
 export const PROPOSAL_STATUSES = [
   "draft",
@@ -277,8 +278,17 @@ export async function createProposal(args: {
   if (teachings.length !== args.sourceTeachingIds.length) {
     throw new GovernanceError(400, "Every source teaching example must be persisted before creating a proposal.");
   }
+  const requestedStrategy = typeof args.proposalPayload.strategyKey === "string"
+    ? canonicalStrategyId(args.proposalPayload.strategyKey)
+    : null;
+  const sourceStrategies = [...new Set(teachings.map((item) => canonicalStrategyId(item.setupClassification)).filter((item): item is NonNullable<typeof item> => item !== null))];
+  const strategyKey = requestedStrategy ?? (sourceStrategies.length === 1 ? sourceStrategies[0] : null);
+  if (!strategyKey || !isStrategyId(strategyKey)) {
+    throw new GovernanceError(400, "A proposal must link to exactly one canonical strategy.");
+  }
   const [created] = await db.insert(advisoryRuleProposalsTable).values({
     id: randomUUID(),
+    strategyKey,
     title: args.title.trim().slice(0, 200),
     hypothesis: args.hypothesis.trim().slice(0, 2000),
     rationale: args.rationale.trim().slice(0, 4000),
@@ -435,13 +445,16 @@ export async function rejectProposal(id: string, actor: GovernanceActor, reason:
 
 export async function publishCandidate(id: string, actor: GovernanceActor, idempotencyKey: string): Promise<{ proposal: AdvisoryRuleProposal; version: StrategyVersion }> {
   const proposal = await transition({ id, actor, action: "published_candidate", toStatus: "candidate", fromStatuses: ["approved"], idempotencyKey });
+  if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey)) {
+    throw new GovernanceError(409, "Only proposals linked to one canonical strategy can publish a candidate.");
+  }
   const [existingVersion] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
   if (existingVersion) return { proposal, version: existingVersion };
   const [current] = await db.select({ id: strategyVersionsTable.id, versionNumber: strategyVersionsTable.versionNumber }).from(strategyVersionsTable)
-    .where(eq(strategyVersionsTable.strategyKey, "MES_SHADOW")).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
+    .where(eq(strategyVersionsTable.strategyKey, proposal.strategyKey)).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
   const [version] = await db.insert(strategyVersionsTable).values({
     id: randomUUID(),
-    strategyKey: "MES_SHADOW",
+    strategyKey: proposal.strategyKey,
     versionNumber: (current?.versionNumber ?? 0) + 1,
     status: "candidate",
     proposalId: id,

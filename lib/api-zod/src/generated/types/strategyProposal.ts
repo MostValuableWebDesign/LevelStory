@@ -5,12 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StrategyId } from './strategyId';
 import type { StrategyProposalDeterministicRuleDiff } from './strategyProposalDeterministicRuleDiff';
 import type { StrategyProposalProposalPayload } from './strategyProposalProposalPayload';
 import type { StrategyProposalStatus } from './strategyProposalStatus';
 
 export interface StrategyProposal {
   id: string;
+  strategyKey: StrategyId;
   title: string;
   hypothesis: string;
   rationale: string;

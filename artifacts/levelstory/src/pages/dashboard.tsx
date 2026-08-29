@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetDashboardOverviewQueryKey, getGetMarketDataStatusQueryKey, getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketDataStatus, useGetMarketSnapshot, useGetRiskSettings } from "@workspace/api-client-react";
-import type { MarketSnapshot, Signal } from "@workspace/api-client-react";
+import { getGetDashboardOverviewQueryKey, getGetMarketDataStatusQueryKey, getGetMarketSnapshotQueryKey, useGetDashboardOverview, useGetMarketDataStatus, useGetMarketSnapshot, useGetRiskSettings, useListStrategyCatalog } from "@workspace/api-client-react";
+import type { MarketSnapshot, Signal, StrategyCatalogItem } from "@workspace/api-client-react";
 import { ArrowUpRight, Check, Clock3, Crosshair, RefreshCw, ShieldAlert, Target } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, MiniCandleChart, Panel, PanelTitle, PageIntro, PriceChange, QueryError, QuerySkeleton, ShadowBadge, SignalSummary, StatusBadge } from "@/components/levelstory-ui";
@@ -28,6 +28,7 @@ export default function Dashboard() {
     query: { queryKey: getGetMarketDataStatusQueryKey({ provider: dataProvider, symbol }), refetchInterval: 30_000 },
   });
   const risk = useGetRiskSettings();
+  const strategyCatalog = useListStrategyCatalog();
   const snapshot = market.data;
   const overviewParams = snapshot ? { tradingDate: snapshot.sessionCalendar.tradingDate } : undefined;
   const overview = useGetDashboardOverview(
@@ -130,8 +131,10 @@ export default function Dashboard() {
 
           <Panel>
             <PanelTitle eyebrow="Shadow review history" title="Performance by setup" right={<span className="text-[10px] uppercase text-muted-foreground">Never blended</span>} />
-             {overview.isLoading ? <QuerySkeleton rows={3} /> : overview.isError || !overviewData ? <QueryError onRetry={() => overview.refetch()} /> : <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">{overviewData.setupPerformance.map((item) => <div key={item.setupType} className="bg-card p-5" data-testid={`setup-performance-${item.setupType}`}><div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{formatSetupName(item.setupType)}</div><div className="mono mt-3 text-xl font-medium">{item.netPnl >= 0 ? "+" : ""}${item.netPnl.toFixed(2)}</div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{item.reviewCount} reviews · {item.triggeredCount} triggered · {item.closedCount} closed</span><span>{item.closedCount ? `${item.winRate.toFixed(1)}% win · ${item.breakeven} BE` : "No closed trades"}</span></div></div>)}</div>}
+              {overview.isLoading ? <QuerySkeleton rows={3} /> : overview.isError || !overviewData ? <QueryError onRetry={() => overview.refetch()} /> : <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-4">{overviewData.setupPerformance.map((item) => <div key={item.setupType} className="bg-card p-5" data-testid={`setup-performance-${item.setupType}`}><div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{formatSetupName(item.setupType)}</div><div className="mono mt-3 text-xl font-medium">{item.netPnl >= 0 ? "+" : ""}${item.netPnl.toFixed(2)}</div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{item.reviewCount} reviews · {item.triggeredCount} triggered · {item.closedCount} closed</span><span>{item.closedCount ? `${item.winRate.toFixed(1)}% win · ${item.breakeven} BE` : "No closed trades"}</span></div></div>)}</div>}
           </Panel>
+
+           <StrategyReadinessPanel items={strategyCatalog.data} isLoading={strategyCatalog.isLoading} isError={strategyCatalog.isError} onRetry={() => strategyCatalog.refetch()} />
 
           <Panel>
             <PanelTitle eyebrow="Session ledger" title="Recent shadow reviews" right={<Link href="/journal" className="text-xs font-bold underline decoration-accent decoration-2 underline-offset-4" data-testid="link-view-journal">Open journal</Link>} />
@@ -326,6 +329,29 @@ function SetupEnginesPanel({ snapshot }: { snapshot: MarketSnapshot }) {
 
 function formatSetupName(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+function StrategyReadinessPanel({ items, isLoading, isError, onRetry }: { items?: StrategyCatalogItem[]; isLoading: boolean; isError: boolean; onRetry: () => void }) {
+  return <Panel accent>
+    <PanelTitle eyebrow="Governance / independent readiness" title="Four actual strategies" right={<Link href="/strategy-proposals" className="text-[10px] font-bold uppercase underline decoration-accent decoration-2 underline-offset-4">Governance</Link>} />
+    {isLoading ? <div className="p-5"><QuerySkeleton rows={4} /></div> : isError || !items ? <div className="flex items-center justify-between border-t border-border px-5 py-5 text-xs text-muted-foreground"><span>Readiness records unavailable.</span><button type="button" onClick={onRetry} className="font-bold underline">Retry</button></div> : <div className="grid gap-px border-t border-border bg-border md:grid-cols-2 xl:grid-cols-4">{items.map((item) => <StrategyReadinessCard key={item.definition.id} item={item} />)}</div>}
+  </Panel>;
+}
+
+function StrategyReadinessCard({ item }: { item: StrategyCatalogItem }) {
+  const readiness = item.readiness;
+  const statusClass = readiness.status === "FIT_AVAILABLE" ? "status-positive" : readiness.status === "PAUSED" || readiness.status === "VALIDATION_FAILED" ? "status-negative" : readiness.status === "NOT_ENOUGH_EVIDENCE" ? "text-accent-foreground" : "text-muted-foreground";
+  return <article className="bg-card p-4" data-testid={`strategy-readiness-${item.definition.id}`}>
+    <div className="flex items-start justify-between gap-2"><h3 className="text-xs font-bold leading-4">{item.definition.name}</h3><span className={`shrink-0 text-[9px] font-bold uppercase ${statusClass}`}>{readiness.status.replaceAll("_", " ")}</span></div>
+    <p className="mt-2 min-h-8 text-[10px] leading-4 text-muted-foreground">{item.definition.description}</p>
+    <div className="mt-4 grid grid-cols-2 gap-2 text-[10px]"><MetricLine label="Setups" value={readiness.setupCount} /><MetricLine label="Completed" value={readiness.completedTradeCount} /><MetricLine label="Holdout" value={readiness.holdoutCount} /><MetricLine label="Expectancy" value={`$${readiness.expectancy.toFixed(2)}`} /><MetricLine label="Drawdown" value={`$${readiness.drawdown.toFixed(2)}`} /><MetricLine label="Agreement" value={`${(readiness.reviewedExampleAgreement * 100).toFixed(0)}%`} /></div>
+    <div className="mt-4 border-t border-border pt-3 text-[9px] leading-4 text-muted-foreground">{item.message}</div>
+    <div className="mt-2 flex flex-wrap justify-between gap-2 text-[9px] text-muted-foreground"><span>Formula {readiness.formulaVersion || "pending"}</span><span>{readiness.validationDate ? `Validated ${new Date(readiness.validationDate).toLocaleDateString()}` : "Not validated"}</span></div>
+  </article>;
+}
+
+function MetricLine({ label, value }: { label: string; value: string | number }) {
+  return <div className="rounded-sm bg-secondary/60 px-2 py-2"><div className="text-muted-foreground">{label}</div><div className="mono mt-0.5 font-medium text-foreground">{value}</div></div>;
 }
 
 function Phase4Panel({ snapshot, fibHigh, fibLow, onFibHighChange, onFibLowChange, onApplyFib }: {

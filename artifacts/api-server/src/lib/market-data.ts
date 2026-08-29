@@ -29,6 +29,7 @@ import {
   type Phase8TimelineEvent,
   assertDashboardInvariants,
 } from "./strategy/index.js";
+import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import {
   getFuturesContractSpecification,
   roundToTick,
@@ -574,7 +575,7 @@ export function createMarketSnapshot(
   const publicSetupAnalysis = { ...setupAnalysis, explanation: `${setupAnalysis.explanation}${riskExplanation}` };
   const passedRules = phase8Record.passedRules.map(({ key, label, detail }) => ({ key, label, detail }));
   const failedRules = phase8Record.failedRules.map(({ key, label, detail }) => ({ key, label, detail }));
-  const reversalEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === "BONUS_REVERSAL");
+  const reversalEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === "EQUIVALENT_CANDLE_REVERSAL");
   const reversalEvidence = reversalEvaluation?.reversalEvidence;
   const reversal = {
     doji: reversalEvidence?.dojiAtMajorLevel ?? false,
@@ -900,7 +901,7 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
     primarySetup: analysis.primarySetup,
     explanation: analysis.explanation,
     evaluations: analysis.evaluations.map((evaluation) => ({
-      setupType: evaluation.setupType,
+      setupType: canonicalStrategyId(evaluation.setupType) ?? "PATIENCE_CANDLE_CONTINUATION",
       direction: evaluation.direction,
       decision: evaluation.decision,
       mandatoryPassed: evaluation.mandatoryPassed,

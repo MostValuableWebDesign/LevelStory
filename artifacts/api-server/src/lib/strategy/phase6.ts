@@ -9,11 +9,16 @@ import type { MajorLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
 import type { StrategyConfig } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
+import { canonicalStrategyId } from "./taxonomy.js";
 
 export type SetupType =
+  | "PATIENCE_CANDLE_CONTINUATION"
+  | "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
   | "ORB_BREAK_PULLBACK_CONTINUATION"
-  | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-  | "BONUS_REVERSAL";
+  | "EQUIVALENT_CANDLE_REVERSAL";
+
+/** Accepted only at legacy input boundaries; new machine output never emits these IDs. */
+export type LegacySetupType = "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | "BONUS_REVERSAL";
 
 export type Phase6Decision =
   | "NO TRADE"
@@ -57,7 +62,7 @@ export type ExtendedConsolidation = {
 };
 
 export type SetupEvaluation = {
-  setupType: SetupType;
+  setupType: SetupType | LegacySetupType;
   direction: Direction | null;
   decision: Phase6Decision;
   mandatoryPassed: boolean;
@@ -92,23 +97,24 @@ export type Phase6Context = {
 export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   const evaluations = [
     evaluateOrbBreakPullbackContinuation(context),
-    evaluateExtendedNtzConsolidationBreakout(context),
-    evaluateBonusReversal(context),
+    evaluateStrongBreakoutAfterConsolidation(context),
+    evaluatePatienceCandleContinuation(context),
+    evaluateEquivalentCandleReversal(context),
   ];
   const qualified = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
-  const reversalQualified = evaluations.find((evaluation) => evaluation.setupType === "BONUS_REVERSAL" && evaluation.decision === "SETUP QUALIFIED");
+  const reversalQualified = evaluations.find((evaluation) => evaluation.setupType === "EQUIVALENT_CANDLE_REVERSAL" && evaluation.decision === "SETUP QUALIFIED");
   const possibleReversal = evaluations.find((evaluation) => evaluation.decision === "POSSIBLE REVERSAL");
   const ambiguous = evaluations.find((evaluation) => evaluation.decision === "AMBIGUOUS");
   const expired = evaluations.find((evaluation) => evaluation.decision === "EXPIRED");
   const forming = evaluations.find((evaluation) => evaluation.decision === "SETUP FORMING");
   if (qualified || reversalQualified) {
     const selected = qualified ?? reversalQualified!;
-    return { decision: "SETUP QUALIFIED", primarySetup: selected.setupType, evaluations, explanation: `${selected.setupType} passed every mandatory rule. This is shadow analysis only.` };
+    return { decision: "SETUP QUALIFIED", primarySetup: canonicalStrategyId(selected.setupType), evaluations, explanation: `${selected.setupType} passed every mandatory rule. This is shadow analysis only.` };
   }
-  if (possibleReversal) return { decision: "POSSIBLE REVERSAL", primarySetup: "BONUS_REVERSAL", evaluations, explanation: possibleReversal.explanation };
-  if (ambiguous) return { decision: "AMBIGUOUS", primarySetup: ambiguous.setupType, evaluations, explanation: ambiguous.explanation };
-  if (expired) return { decision: "EXPIRED", primarySetup: expired.setupType, evaluations, explanation: expired.explanation };
-  if (forming) return { decision: "SETUP FORMING", primarySetup: forming.setupType, evaluations, explanation: forming.explanation };
+  if (possibleReversal) return { decision: "POSSIBLE REVERSAL", primarySetup: "EQUIVALENT_CANDLE_REVERSAL", evaluations, explanation: possibleReversal.explanation };
+  if (ambiguous) return { decision: "AMBIGUOUS", primarySetup: canonicalStrategyId(ambiguous.setupType), evaluations, explanation: ambiguous.explanation };
+  if (expired) return { decision: "EXPIRED", primarySetup: canonicalStrategyId(expired.setupType), evaluations, explanation: expired.explanation };
+  if (forming) return { decision: "SETUP FORMING", primarySetup: canonicalStrategyId(forming.setupType), evaluations, explanation: forming.explanation };
   const hasContext = evaluations.some((evaluation) => evaluation.rules.some((rule) => rule.passed));
   return {
     decision: hasContext ? "WAITING" : "NO TRADE",
@@ -134,7 +140,21 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
   return buildEvaluation("ORB_BREAK_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
 }
 
-export function evaluateExtendedNtzConsolidationBreakout(context: Phase6Context): SetupEvaluation {
+export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
+  const direction = directionFromTrend(context.trend.direction);
+  const eligible = context.patience.eligible && context.patience.patienceCandle !== null;
+  const validState = ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state);
+  const rules: SetupRuleEvidence[] = [
+    rule("directionalTrend", "Directional 15-minute trend", direction !== null, direction ? `${direction} continuation follows the ${context.trend.direction} trend.` : "A bullish or bearish 15-minute trend is required."),
+    rule("eligiblePatience", "Patience candle is eligible", eligible, eligible ? `Patience eligibility recorded from ${context.patience.eligibilityReason}.` : "No causal patience-candle eligibility is recorded."),
+    rule("validPatienceCandle", "Valid patience candle formed", validState, context.patience.detail),
+    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
+    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
+  ];
+  return buildEvaluation("PATIENCE_CANDLE_CONTINUATION", direction, rules, false, context.patience.state);
+}
+
+export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
   const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio);
   const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
   const patienceNearLevel = context.patience.patienceCandle !== null
@@ -149,10 +169,12 @@ export function evaluateExtendedNtzConsolidationBreakout(context: Phase6Context)
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
-  return buildEvaluation("EXTENDED_NTZ_CONSOLIDATION_BREAKOUT", direction, rules, false, context.patience.state, consolidation);
+  return buildEvaluation("STRONG_BREAKOUT_AFTER_CONSOLIDATION", direction, rules, false, context.patience.state, consolidation);
 }
 
-export function evaluateBonusReversal(context: Phase6Context): SetupEvaluation {
+export const evaluateExtendedNtzConsolidationBreakout = evaluateStrongBreakoutAfterConsolidation;
+
+export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupEvaluation {
   const completed = completedCandles(context.candles);
   const latest = completed.at(-1);
   const reversalDirection = reverseDirection(context.breakout.direction ?? directionFromTrend(context.trend.direction));
@@ -173,7 +195,7 @@ export function evaluateBonusReversal(context: Phase6Context): SetupEvaluation {
         ? "EXPIRED"
         : mandatoryPassed ? "SETUP QUALIFIED" : "POSSIBLE REVERSAL";
   return {
-    setupType: "BONUS_REVERSAL",
+    setupType: "EQUIVALENT_CANDLE_REVERSAL",
     direction: reversalDirection,
     decision,
     mandatoryPassed,
@@ -188,6 +210,8 @@ export function evaluateBonusReversal(context: Phase6Context): SetupEvaluation {
         : "No reversal evidence currently meets the configured detection defaults.",
   };
 }
+
+export const evaluateBonusReversal = evaluateEquivalentCandleReversal;
 
 export function detectReversalEvidence(
   context: Phase6Context,

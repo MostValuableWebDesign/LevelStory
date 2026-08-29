@@ -44,6 +44,7 @@ export const teachingExamplesTable = pgTable("levelstory_teaching_examples", {
 
 export const advisoryRuleProposalsTable = pgTable("levelstory_advisory_rule_proposals", {
   id: text("id").primaryKey(),
+  strategyKey: text("strategy_key"),
   title: text("title").notNull(),
   hypothesis: text("hypothesis").notNull(),
   rationale: text("rationale").notNull(),

@@ -40,6 +40,7 @@ import type {
   VisualValidationProposedRuleAnalysis,
   VisualValidationSet,
   VisualValidationSnapshot,
+  StrategyId,
 } from "@workspace/api-client-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
@@ -112,6 +113,12 @@ const TRADE_CATEGORY_VALUES = new Set<VisualValidationCategory>([
   "target_exit",
   "runner_exit",
 ]);
+const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
+  { id: "PATIENCE_CANDLE_CONTINUATION", label: "Patience continuation" },
+  { id: "STRONG_BREAKOUT_AFTER_CONSOLIDATION", label: "Strong breakout" },
+  { id: "ORB_BREAK_PULLBACK_CONTINUATION", label: "ORB pullback" },
+  { id: "EQUIVALENT_CANDLE_REVERSAL", label: "Equivalent reversal" },
+];
 
 const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unreviewed">; label: string; detail: string }> = [
   { value: "correct", label: "Correct", detail: "Machine story matches the candles." },
@@ -231,6 +238,7 @@ export default function VisualReview() {
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
+  const [selectedStrategyKey, setSelectedStrategyKey] = useState<StrategyId | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewStatus, setReviewStatus] = useState<Exclude<VisualValidationReviewStatus, "unreviewed"> | null>(null);
@@ -258,12 +266,20 @@ export default function VisualReview() {
   const data = localSet ?? setQuery.data;
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
+  const strategySnapshots = useMemo(
+    () => selectedStrategyKey ? snapshots.filter((snapshot) => snapshot.strategyKey === selectedStrategyKey) : snapshots,
+    [selectedStrategyKey, snapshots],
+  );
+  const availableStrategyKeys = useMemo(
+    () => STRATEGY_TABS.filter((strategy) => snapshots.some((snapshot) => snapshot.strategyKey === strategy.id)).map((strategy) => strategy.id),
+    [snapshots],
+  );
   const availableCategories = useMemo(() => coverage
-    .filter((item) => item.available && item.count > 0 && TRADE_CATEGORY_VALUES.has(item.category))
+    .filter((item) => item.available && strategySnapshots.some((snapshot) => snapshot.category === item.category) && TRADE_CATEGORY_VALUES.has(item.category))
     .map((item) => item.category), [coverage, data?.request.reviewMode]);
   const categorySnapshots = useMemo(
-    () => snapshots.filter((snapshot) => snapshot.category === selectedCategory),
-    [selectedCategory, snapshots],
+    () => strategySnapshots.filter((snapshot) => snapshot.category === selectedCategory),
+    [selectedCategory, strategySnapshots],
   );
   const activeSnapshot = categorySnapshots.find((snapshot) => snapshot.snapshotId === selectedSnapshotId) ?? categorySnapshots[0];
 
@@ -276,6 +292,9 @@ export default function VisualReview() {
   useEffect(() => {
     if (!data) return;
     setRequest(data.request);
+    if (!selectedStrategyKey || !availableStrategyKeys.includes(selectedStrategyKey)) {
+      setSelectedStrategyKey(availableStrategyKeys[0] ?? null);
+    }
     if (!availableCategories.length) {
       setSelectedCategory(null);
       return;
@@ -287,7 +306,7 @@ export default function VisualReview() {
     if (!selectedCategory || (!availableCategories.includes(selectedCategory) && !selectedIsExplicitDiagnostic)) {
       setSelectedCategory(availableCategories[0]);
     }
-  }, [availableCategories, data, selectedCategory, snapshots]);
+  }, [availableCategories, availableStrategyKeys, data, selectedCategory, selectedStrategyKey]);
 
   useEffect(() => {
     if (!activeSnapshot) {
@@ -471,10 +490,17 @@ export default function VisualReview() {
              <CoverageRail
                data={data}
                loading={setQuery.isLoading}
+               selectedStrategyKey={selectedStrategyKey}
                selectedCategory={selectedCategory}
                selectedSnapshot={activeSnapshot}
                selectedSnapshotIndex={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
                selectedSnapshotTotal={categorySnapshots.length}
+               onSelectStrategy={(key) => {
+                 if (!confirmDiscardReview()) return;
+                 setSelectedStrategyKey(key);
+                 setSelectedCategory(null);
+                 setSelectedSnapshotId("");
+               }}
                onSelect={selectCategory}
                onPrevious={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)}
                onNext={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)}
@@ -596,30 +622,38 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelect, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelect: (category: VisualValidationCategory) => void; onPrevious: () => void; onNext: () => void }) {
+function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelect, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelect: (category: VisualValidationCategory) => void; onPrevious: () => void; onNext: () => void }) {
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
   const historical = data.source === "historical_databento";
+  const strategySnapshots = selectedStrategyKey ? data.snapshots.filter((snapshot) => snapshot.strategyKey === selectedStrategyKey) : data.snapshots;
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
   const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
   const isAvailable = (category: VisualValidationCategory) => {
-    const item = coverageFor(category);
-    return Boolean(item?.available && item.count > 0);
+    return strategySnapshots.some((snapshot) => snapshot.category === category);
   };
   const renderCategory = (category: (typeof CATEGORIES)[number]) => {
     const item = coverageFor(category.value);
+    const count = strategySnapshots.filter((snapshot) => snapshot.category === category.value).length;
     const available = isAvailable(category.value);
     const selected = selectedCategory === category.value;
     return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[76px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
-      <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{item?.count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
+      <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
       <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : historical ? "No trade-linked sample." : "Unavailable"}</span>
     </button>;
   };
   const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
   const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-     <PanelTitle eyebrow="Coverage / trade-linked samples" title="Select an available example" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+     <PanelTitle eyebrow="Coverage / strategy-linked samples" title="Select an available example" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+    <div className="flex flex-wrap gap-1 border-t border-border bg-muted/20 p-2" role="tablist" aria-label="Strategy review tabs">
+      <button type="button" onClick={() => onSelectStrategy(null)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === null} role="tab">All strategies</button>
+      {STRATEGY_TABS.map((strategy) => {
+        const count = data.snapshots.filter((snapshot) => snapshot.strategyKey === strategy.id).length;
+        return <button type="button" key={strategy.id} onClick={() => onSelectStrategy(strategy.id)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === strategy.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === strategy.id} role="tab">{strategy.label} · {count}</button>;
+      })}
+    </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
     </div>

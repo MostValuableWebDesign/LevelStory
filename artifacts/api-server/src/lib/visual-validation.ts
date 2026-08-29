@@ -27,6 +27,7 @@ import {
 } from "./futures/session-calendar.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
+import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -48,7 +49,7 @@ export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect
 export type VisualValidationReviewMode = "trades_only" | "confirmed_signals" | "trades_and_diagnostics";
 export type VisualValidationTeachingJudgment = "missed_trade" | "false_positive_trade";
 export type VisualValidationTeachingConfidence = "low" | "medium" | "high";
-export type VisualValidationTeachingSetup = "ORB_BREAK_PULLBACK_CONTINUATION" | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | "BONUS_REVERSAL";
+export type VisualValidationTeachingSetup = StrategyId;
 
 export type VisualValidationRequest = {
   symbol: string;
@@ -150,6 +151,7 @@ export type VisualValidationSnapshot = {
   category: VisualValidationCategory;
   categoryLabel: string;
   machineLabel: string;
+  strategyKey: StrategyId;
   formulaHash: string;
   formulaVersion: string;
   symbol: string;
@@ -1171,7 +1173,8 @@ function buildMachineSnapshot(
     sampleIndex,
     category,
     categoryLabel: categoryLabels[category],
-    machineLabel: audit.rejectionCategory === "QUALIFIED" ? `${audit.setupType} qualified` : audit.rejectionSummary ?? audit.decision,
+    machineLabel: audit.rejectionCategory === "QUALIFIED" ? `${canonicalStrategyId(audit.setupType) ?? audit.setupType} qualified` : audit.rejectionSummary ?? audit.decision,
+    strategyKey: canonicalStrategyId(audit.setupType) ?? "PATIENCE_CANDLE_CONTINUATION",
     formulaHash: report.formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
     symbol: report.symbol,

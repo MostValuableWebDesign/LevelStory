@@ -19,6 +19,17 @@ import {
   rollbackProposal,
   supersedeTeachingEvidence,
 } from "../lib/governance-store.js";
+import {
+  activateStrategyShadow,
+  getStrategyReadiness,
+  listStrategyCatalog,
+  pauseStrategy,
+  resumeStrategy,
+  setStrategyThresholds,
+  validateStrategyReadiness,
+  type StrategyThresholds,
+} from "../lib/strategy/readiness.js";
+import { isStrategyId } from "../lib/strategy/taxonomy.js";
 
 const router: IRouter = Router();
 const idempotency = (value: unknown) => typeof value === "string" && value.trim().length > 0 ? value.trim().slice(0, 200) : null;
@@ -34,6 +45,16 @@ const supersedeTeachingInput = z.object({
   judgment: z.string().min(1).max(100),
   explanation: z.string().min(10).max(4000),
 });
+const strategyThresholds = z.object({
+  minSetupCount: z.number().int().min(1),
+  minCompletedTrades: z.number().int().min(1),
+  minHoldoutCount: z.number().int().min(1),
+  minExpectancy: z.number(),
+  maxDrawdown: z.number().min(0),
+  maxAmbiguityRate: z.number().min(0).max(1),
+  minReviewedExampleAgreement: z.number().min(0).max(1),
+});
+const pauseInput = z.object({ reason: z.string().min(1).max(4000) });
 
 function actor(req: Request) {
   return { id: req.user!.id };
@@ -79,6 +100,39 @@ export function createGovernanceRouter(): IRouter {
   });
   router.get("/strategy-versions", requireAuth, async (_req, res) => {
     res.json(await listStrategyVersions());
+  });
+  router.get("/strategy-catalog", async (_req, res) => {
+    try { res.json(await listStrategyCatalog()); } catch (error) { respondError(res, error); }
+  });
+  router.get("/strategy-catalog/:strategyKey", async (req, res) => {
+    try { res.json(await getStrategyReadiness(param(req, "strategyKey"))); } catch (error) { respondError(res, error); }
+  });
+  router.patch("/strategy-catalog/:strategyKey/thresholds", requireRole("owner"), async (req, res) => {
+    const key = param(req, "strategyKey");
+    const parsed = strategyThresholds.safeParse(req.body);
+    if (!isStrategyId(key) || !parsed.success) { res.status(400).json({ error: "A canonical strategy key and complete owner-approved fitness thresholds are required." }); return; }
+    try { res.json(await setStrategyThresholds(key, parsed.data as StrategyThresholds)); } catch (error) { respondError(res, error); }
+  });
+  router.post("/strategy-catalog/:strategyKey/validate", requireRole("reviewer"), async (req, res) => {
+    const key = param(req, "strategyKey");
+    if (!isStrategyId(key)) { res.status(400).json({ error: "A canonical strategy key is required." }); return; }
+    try { res.json(await validateStrategyReadiness(key)); } catch (error) { respondError(res, error); }
+  });
+  router.post("/strategy-catalog/:strategyKey/activate-shadow", requireRole("activator"), async (req, res) => {
+    const key = param(req, "strategyKey");
+    if (!isStrategyId(key)) { res.status(400).json({ error: "A canonical strategy key is required." }); return; }
+    try { res.json(await activateStrategyShadow(key)); } catch (error) { respondError(res, error); }
+  });
+  router.post("/strategy-catalog/:strategyKey/pause", requireRole("activator"), async (req, res) => {
+    const key = param(req, "strategyKey");
+    const parsed = pauseInput.safeParse(req.body);
+    if (!isStrategyId(key) || !parsed.success) { res.status(400).json({ error: "A canonical strategy key and pause reason are required." }); return; }
+    try { res.json(await pauseStrategy(key, parsed.data.reason)); } catch (error) { respondError(res, error); }
+  });
+  router.post("/strategy-catalog/:strategyKey/resume", requireRole("activator"), async (req, res) => {
+    const key = param(req, "strategyKey");
+    if (!isStrategyId(key)) { res.status(400).json({ error: "A canonical strategy key is required." }); return; }
+    try { res.json(await resumeStrategy(key)); } catch (error) { respondError(res, error); }
   });
   router.post("/strategy-proposals", requireRole("reviewer"), async (req, res) => {
     const parsed = proposalInput.safeParse(req.body);

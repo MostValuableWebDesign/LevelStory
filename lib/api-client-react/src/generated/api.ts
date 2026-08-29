@@ -52,9 +52,12 @@ import type {
   MarketSnapshot,
   RiskSettings,
   RiskSettingsUpdate,
+  StrategyCatalogItem,
+  StrategyId,
   StrategyProposal,
   StrategyProposalDetail,
   StrategyProposalInput,
+  StrategyThresholdsInput,
   StrategyVersion,
   SupersedeTeachingExampleInput,
   TeachingExample,
@@ -3467,4 +3470,515 @@ export function useListStrategyVersions<TData = Awaited<ReturnType<typeof listSt
 
 
 
+
+export const getListStrategyCatalogUrl = () => {
+
+
+
+
+  return `/api/strategy-catalog`
+}
+
+/**
+ * @summary List the four canonical strategies and their readiness
+ */
+export const listStrategyCatalog = async ( options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem[]> => {
+
+  return customFetch<StrategyCatalogItem[]>(getListStrategyCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStrategyCatalogQueryKey = () => {
+    return [
+    `/api/strategy-catalog`
+    ] as const;
+    }
+
+
+export const getListStrategyCatalogQueryOptions = <TData = Awaited<ReturnType<typeof listStrategyCatalog>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStrategyCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStrategyCatalog>>> = ({ signal }) => listStrategyCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStrategyCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStrategyCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof listStrategyCatalog>>>
+export type ListStrategyCatalogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the four canonical strategies and their readiness
+ */
+
+export function useListStrategyCatalog<TData = Awaited<ReturnType<typeof listStrategyCatalog>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStrategyCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStrategyReadinessUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}`
+}
+
+/**
+ * @summary Get readiness for one canonical strategy
+ */
+export const getStrategyReadiness = async (strategyKey: StrategyId, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getGetStrategyReadinessUrl(strategyKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStrategyReadinessQueryKey = (strategyKey: StrategyId,) => {
+    return [
+    `/api/strategy-catalog/${strategyKey}`
+    ] as const;
+    }
+
+
+export const getGetStrategyReadinessQueryOptions = <TData = Awaited<ReturnType<typeof getStrategyReadiness>>, TError = ErrorType<unknown>>(strategyKey: StrategyId, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStrategyReadinessQueryKey(strategyKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStrategyReadiness>>> = ({ signal }) => getStrategyReadiness(strategyKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: strategyKey !== null && strategyKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStrategyReadiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStrategyReadinessQueryResult = NonNullable<Awaited<ReturnType<typeof getStrategyReadiness>>>
+export type GetStrategyReadinessQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get readiness for one canonical strategy
+ */
+
+export function useGetStrategyReadiness<TData = Awaited<ReturnType<typeof getStrategyReadiness>>, TError = ErrorType<unknown>>(
+ strategyKey: StrategyId, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStrategyReadinessQueryOptions(strategyKey,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApproveStrategyFitnessThresholdsUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}/thresholds`
+}
+
+/**
+ * @summary Set owner-approved fitness thresholds for one strategy
+ */
+export const approveStrategyFitnessThresholds = async (strategyKey: StrategyId,
+    strategyThresholdsInput: StrategyThresholdsInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getApproveStrategyFitnessThresholdsUrl(strategyKey),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(strategyThresholdsInput)
+  }
+);}
+
+
+
+
+
+export const getApproveStrategyFitnessThresholdsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>, TError,{strategyKey: StrategyId;data: BodyType<StrategyThresholdsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>, TError,{strategyKey: StrategyId;data: BodyType<StrategyThresholdsInput>}, TContext> => {
+
+const mutationKey = ['approveStrategyFitnessThresholds'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>, {strategyKey: StrategyId;data: BodyType<StrategyThresholdsInput>}> = (props) => {
+          const {strategyKey,data} = props ?? {};
+
+          return  approveStrategyFitnessThresholds(strategyKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveStrategyFitnessThresholdsMutationResult = NonNullable<Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>>
+    export type ApproveStrategyFitnessThresholdsMutationBody = BodyType<StrategyThresholdsInput>
+    export type ApproveStrategyFitnessThresholdsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set owner-approved fitness thresholds for one strategy
+ */
+export const useApproveStrategyFitnessThresholds = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>, TError,{strategyKey: StrategyId;data: BodyType<StrategyThresholdsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveStrategyFitnessThresholds>>,
+        TError,
+        {strategyKey: StrategyId;data: BodyType<StrategyThresholdsInput>},
+        TContext
+      > => {
+      return useMutation(getApproveStrategyFitnessThresholdsMutationOptions(options));
+    }
+
+export const getValidateStrategyReadinessUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}/validate`
+}
+
+/**
+ * @summary Validate one strategy against its approved fitness thresholds
+ */
+export const validateStrategyReadiness = async (strategyKey: StrategyId, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getValidateStrategyReadinessUrl(strategyKey),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getValidateStrategyReadinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateStrategyReadiness>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof validateStrategyReadiness>>, TError,{strategyKey: StrategyId}, TContext> => {
+
+const mutationKey = ['validateStrategyReadiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof validateStrategyReadiness>>, {strategyKey: StrategyId}> = (props) => {
+          const {strategyKey} = props ?? {};
+
+          return  validateStrategyReadiness(strategyKey,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ValidateStrategyReadinessMutationResult = NonNullable<Awaited<ReturnType<typeof validateStrategyReadiness>>>
+
+    export type ValidateStrategyReadinessMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Validate one strategy against its approved fitness thresholds
+ */
+export const useValidateStrategyReadiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateStrategyReadiness>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof validateStrategyReadiness>>,
+        TError,
+        {strategyKey: StrategyId},
+        TContext
+      > => {
+      return useMutation(getValidateStrategyReadinessMutationOptions(options));
+    }
+
+export const getActivateStrategyShadowUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}/activate-shadow`
+}
+
+/**
+ * @summary Enable one FIT_AVAILABLE strategy in Shadow Mode
+ */
+export const activateStrategyShadow = async (strategyKey: StrategyId, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getActivateStrategyShadowUrl(strategyKey),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getActivateStrategyShadowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateStrategyShadow>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateStrategyShadow>>, TError,{strategyKey: StrategyId}, TContext> => {
+
+const mutationKey = ['activateStrategyShadow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateStrategyShadow>>, {strategyKey: StrategyId}> = (props) => {
+          const {strategyKey} = props ?? {};
+
+          return  activateStrategyShadow(strategyKey,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateStrategyShadowMutationResult = NonNullable<Awaited<ReturnType<typeof activateStrategyShadow>>>
+
+    export type ActivateStrategyShadowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Enable one FIT_AVAILABLE strategy in Shadow Mode
+ */
+export const useActivateStrategyShadow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateStrategyShadow>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateStrategyShadow>>,
+        TError,
+        {strategyKey: StrategyId},
+        TContext
+      > => {
+      return useMutation(getActivateStrategyShadowMutationOptions(options));
+    }
+
+export const getPauseStrategyUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}/pause`
+}
+
+/**
+ * @summary Pause one strategy without changing other strategies
+ */
+export const pauseStrategy = async (strategyKey: StrategyId,
+    governanceReasonInput: GovernanceReasonInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getPauseStrategyUrl(strategyKey),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(governanceReasonInput)
+  }
+);}
+
+
+
+
+
+export const getPauseStrategyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseStrategy>>, TError,{strategyKey: StrategyId;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof pauseStrategy>>, TError,{strategyKey: StrategyId;data: BodyType<GovernanceReasonInput>}, TContext> => {
+
+const mutationKey = ['pauseStrategy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof pauseStrategy>>, {strategyKey: StrategyId;data: BodyType<GovernanceReasonInput>}> = (props) => {
+          const {strategyKey,data} = props ?? {};
+
+          return  pauseStrategy(strategyKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PauseStrategyMutationResult = NonNullable<Awaited<ReturnType<typeof pauseStrategy>>>
+    export type PauseStrategyMutationBody = BodyType<GovernanceReasonInput>
+    export type PauseStrategyMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Pause one strategy without changing other strategies
+ */
+export const usePauseStrategy = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseStrategy>>, TError,{strategyKey: StrategyId;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof pauseStrategy>>,
+        TError,
+        {strategyKey: StrategyId;data: BodyType<GovernanceReasonInput>},
+        TContext
+      > => {
+      return useMutation(getPauseStrategyMutationOptions(options));
+    }
+
+export const getResumeStrategyUrl = (strategyKey: StrategyId,) => {
+
+
+
+
+  return `/api/strategy-catalog/${strategyKey}/resume`
+}
+
+/**
+ * @summary Resume one paused strategy
+ */
+export const resumeStrategy = async (strategyKey: StrategyId, options?: Parameters<typeof customFetch>[1]): Promise<StrategyCatalogItem> => {
+
+  return customFetch<StrategyCatalogItem>(getResumeStrategyUrl(strategyKey),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResumeStrategyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeStrategy>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resumeStrategy>>, TError,{strategyKey: StrategyId}, TContext> => {
+
+const mutationKey = ['resumeStrategy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resumeStrategy>>, {strategyKey: StrategyId}> = (props) => {
+          const {strategyKey} = props ?? {};
+
+          return  resumeStrategy(strategyKey,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResumeStrategyMutationResult = NonNullable<Awaited<ReturnType<typeof resumeStrategy>>>
+
+    export type ResumeStrategyMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Resume one paused strategy
+ */
+export const useResumeStrategy = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeStrategy>>, TError,{strategyKey: StrategyId}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resumeStrategy>>,
+        TError,
+        {strategyKey: StrategyId},
+        TContext
+      > => {
+      return useMutation(getResumeStrategyMutationOptions(options));
+    }
 

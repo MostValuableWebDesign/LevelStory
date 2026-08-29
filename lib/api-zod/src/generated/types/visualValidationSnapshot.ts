@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StrategyId } from './strategyId';
 import type { VisualValidationAnnotation } from './visualValidationAnnotation';
 import type { VisualValidationCandle } from './visualValidationCandle';
 import type { VisualValidationCategory } from './visualValidationCategory';
@@ -25,6 +26,7 @@ export interface VisualValidationSnapshot {
   category: VisualValidationCategory;
   categoryLabel: string;
   machineLabel: string;
+  strategyKey: StrategyId;
   /** @pattern ^[0-9a-f]{64}$ */
   formulaHash: string;
   formulaVersion: string;

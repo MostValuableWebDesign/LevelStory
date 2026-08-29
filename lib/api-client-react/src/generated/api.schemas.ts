@@ -789,9 +789,10 @@ export type SetupEvaluationSetupType = typeof SetupEvaluationSetupType[keyof typ
 
 
 export const SetupEvaluationSetupType = {
+  PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
+  STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
   ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
-  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
-  BONUS_REVERSAL: 'BONUS_REVERSAL',
+  EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
 } as const;
 
 /**
@@ -851,9 +852,10 @@ export type SetupAnalysisPrimarySetup = typeof SetupAnalysisPrimarySetup[keyof t
 
 
 export const SetupAnalysisPrimarySetup = {
+  PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
+  STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
   ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
-  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
-  BONUS_REVERSAL: 'BONUS_REVERSAL',
+  EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
 } as const;
 
 export interface SetupAnalysis {
@@ -1263,6 +1265,94 @@ export interface DashboardOverview {
   checklistCompleted: number;
   checklistTotal: number;
   recentEntries: JournalEntry[];
+}
+
+export type StrategyId = typeof StrategyId[keyof typeof StrategyId];
+
+
+export const StrategyId = {
+  PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
+  STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
+  ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
+  EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+} as const;
+
+export interface StrategyThresholdsInput {
+  /** @minimum 1 */
+  minSetupCount: number;
+  /** @minimum 1 */
+  minCompletedTrades: number;
+  /** @minimum 1 */
+  minHoldoutCount: number;
+  minExpectancy: number;
+  /** @minimum 0 */
+  maxDrawdown: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  maxAmbiguityRate: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  minReviewedExampleAgreement: number;
+}
+
+export interface StrategyDefinition {
+  id: StrategyId;
+  name: string;
+  description: string;
+  components: string[];
+  alertOnly: boolean;
+}
+
+export type StrategyReadinessStatus = typeof StrategyReadinessStatus[keyof typeof StrategyReadinessStatus];
+
+
+export const StrategyReadinessStatus = {
+  NOT_ENOUGH_EVIDENCE: 'NOT_ENOUGH_EVIDENCE',
+  COLLECTING_EVIDENCE: 'COLLECTING_EVIDENCE',
+  READY_FOR_VALIDATION: 'READY_FOR_VALIDATION',
+  VALIDATION_FAILED: 'VALIDATION_FAILED',
+  SHADOW_CANDIDATE: 'SHADOW_CANDIDATE',
+  FIT_AVAILABLE: 'FIT_AVAILABLE',
+  PAUSED: 'PAUSED',
+} as const;
+
+export type StrategyReadinessFitnessReport = { [key: string]: unknown };
+
+export interface StrategyReadiness {
+  strategyKey: StrategyId;
+  status: StrategyReadinessStatus;
+  thresholdsApproved: boolean;
+  setupCount: number;
+  completedTradeCount: number;
+  holdoutCount: number;
+  expectancy: number;
+  drawdown: number;
+  ambiguityRate: number;
+  reviewedExampleAgreement: number;
+  deterministicComplete: boolean;
+  leakageFree: boolean;
+  patienceEntryCompliant: boolean;
+  dataCoverageComplete: boolean;
+  formulaVersion: string;
+  /** @nullable */
+  validationDate: string | null;
+  /** @nullable */
+  pauseReason: string | null;
+  shadowEnabled: boolean;
+  fitnessReport: StrategyReadinessFitnessReport;
+  updatedAt: string;
+  [key: string]: unknown;
+ }
+
+export interface StrategyCatalogItem {
+  definition: StrategyDefinition;
+  readiness: StrategyReadiness;
+  thresholds: StrategyThresholdsInput;
+  message: string;
 }
 
 export interface Phase8Excursions {
@@ -2877,9 +2967,10 @@ export type VisualValidationTeachingSetup = typeof VisualValidationTeachingSetup
 
 
 export const VisualValidationTeachingSetup = {
+  PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
+  STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
   ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
-  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
-  BONUS_REVERSAL: 'BONUS_REVERSAL',
+  EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
 } as const;
 
 export interface VisualValidationTeachingValidation {
@@ -3211,6 +3302,7 @@ export interface VisualValidationSnapshot {
   category: VisualValidationCategory;
   categoryLabel: string;
   machineLabel: string;
+  strategyKey: StrategyId;
   /** @pattern ^[0-9a-f]{64}$ */
   formulaHash: string;
   formulaVersion: string;
@@ -3547,6 +3639,7 @@ export type StrategyProposalProposalPayload = { [key: string]: unknown };
 
 export interface StrategyProposal {
   id: string;
+  strategyKey: StrategyId;
   title: string;
   hypothesis: string;
   rationale: string;

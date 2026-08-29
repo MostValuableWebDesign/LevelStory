@@ -68,7 +68,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
-export function requireRole(role: "reviewer" | "approver" | "activator") {
+export function requireRole(role: "reviewer" | "approver" | "activator" | "owner") {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.isAuthenticated()) {
       res.status(401).json({ error: "Authentication is required for this action." });

@@ -19,4 +19,5 @@
 
 export * from "./levelstory";
 export * from "./teaching-governance";
+export * from "./strategy-readiness";
 export * from "./auth";

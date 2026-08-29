@@ -6,13 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-/**
- * @nullable
- */
-export type SetupAnalysisPrimarySetup = typeof SetupAnalysisPrimarySetup[keyof typeof SetupAnalysisPrimarySetup] | null;
+export type StrategyId = typeof StrategyId[keyof typeof StrategyId];
 
 
-export const SetupAnalysisPrimarySetup = {
+export const StrategyId = {
   PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
   STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
   ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',

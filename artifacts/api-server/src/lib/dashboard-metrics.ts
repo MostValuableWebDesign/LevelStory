@@ -33,12 +33,13 @@ export function summarizeDashboardEntries(
   const breakeven = closedTrades.filter((entry) => pnlFor(entry) === 0);
   const pnl = closedTrades.reduce((total, entry) => total + pnlFor(entry), 0);
   const setupTypes = [
+    "PATIENCE_CANDLE_CONTINUATION",
+    "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
     "ORB_BREAK_PULLBACK_CONTINUATION",
-    "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
-    "BONUS_REVERSAL",
+    "EQUIVALENT_CANDLE_REVERSAL",
   ];
   const setupPerformance: DashboardSetupPerformance[] = setupTypes.map((setupType) => {
-    const setupEntries = scopedEntries.filter((entry) => entry.setup === setupType);
+    const setupEntries = scopedEntries.filter((entry) => canonicalSetupType(entry.setup) === setupType);
     const setupTriggered = setupEntries.filter(isTriggeredTrade);
     const setupClosed = setupTriggered.filter((entry) => entry.pnl !== null);
     const setupPnl = setupClosed.reduce((total, entry) => total + pnlFor(entry), 0);
@@ -70,4 +71,10 @@ export function summarizeDashboardEntries(
     winRate: closedTrades.length ? Number(((wins.length / closedTrades.length) * 100).toFixed(1)) : 0,
     setupPerformance,
   };
+}
+
+function canonicalSetupType(value: string): string {
+  if (value === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT") return "STRONG_BREAKOUT_AFTER_CONSOLIDATION";
+  if (value === "BONUS_REVERSAL") return "EQUIVALENT_CANDLE_REVERSAL";
+  return value;
 }
