@@ -1,0 +1,211 @@
+Yes. That is the best place for it.
+
+The existing **Human judgment / explicit submission** panel should become the entry point for “Teach the Formula.” Keep ordinary chart review and trade correction in one workflow, but store them as distinct judgments.
+
+Use this focused follow-up prompt:
+
+```text
+Integrate “Teach the Formula” into LevelStory’s existing Visual Review → Human judgment / explicit submission workflow.
+
+Do not create a separate page. Extend the current Human Judgment panel.
+
+WORKFLOW
+
+1. I hover over the chart to inspect candles.
+2. I click a completed five-minute candle to lock it.
+3. In Human Judgment, I choose one of these judgments:
+
+- Correct — the machine interpretation is correct.
+- Incorrect — the machine interpretation is wrong.
+- Uncertain — the evidence is inconclusive.
+- Rule needs clarification.
+- Missed trade — an entry should have been taken on the selected candle.
+
+When “Missed trade” is selected, expand a “Teach the Formula” section inside the Human Judgment panel.
+
+MISSED-TRADE FORM
+
+Require:
+
+- Direction: Long or Short.
+- Selected entry candle: automatically populated from the locked chart candle.
+- Patience candle: default to the immediately preceding completed five-minute candle.
+- Entry buffer: 3 or 4 MES ticks.
+- Qualifying pullback level.
+- Setup classification.
+- Reviewer confidence.
+- Explanation of why the trade should have been taken.
+
+Show the exact proposed entry price:
+
+- Long: patience-candle high plus 3 or 4 ticks.
+- Short: patience-candle low minus 3 or 4 ticks.
+- MES tick size: 0.25.
+
+VALIDATION
+
+A missed-trade correction is valid only when:
+
+- The selected entry candle is the immediate next five-minute candle after the patience candle.
+- The selected entry candle reaches the buffered entry price.
+- The candle is completed.
+- It is inside the configured 9:30 a.m.–1:00 p.m. ET entry window.
+- It was visible to the machine at the decision time.
+- The correction does not use future candles.
+- The patience-candle direction and containment rules are satisfied.
+
+Bullish patience:
+- The trend is bullish.
+- The patience candle’s high does not exceed the preceding comparison candle’s high.
+- Entry is on the immediate-next candle, 3–4 ticks above the patience high.
+
+Bearish patience:
+- The trend is bearish.
+- The patience candle’s low does not fall below the preceding comparison candle’s low.
+- Entry is on the immediate-next candle, 3–4 ticks below the patience low.
+
+If validation fails, explain the exact failed condition. Allow the submission to be saved as “Rule needs clarification,” but do not label it as a valid missed trade.
+
+SUBMISSION BEHAVIOR
+
+Keep the existing explicit Submit Review behavior.
+
+Selecting an option creates only a draft. Nothing is persisted until Submit Review is pressed.
+
+On submission:
+
+- Preserve the original immutable machine judgment.
+- Store the human judgment separately.
+- Store the selected candle, patience candle, direction, buffer, entry price, explanation, and confidence.
+- Freeze the complete causal market state available at the selected entry.
+- Diagnose the first rule that caused the machine and human decisions to diverge.
+- Do not automatically change the active strategy.
+- Do not run a full backtest.
+- Do not rebuild the historical index.
+
+After successful submission, show:
+
+“Teaching example saved. The active formula has not changed.”
+
+Then provide two separate actions:
+
+- Inspect next example.
+- Analyze as proposed rule change.
+
+ANALYZE AS PROPOSED RULE CHANGE
+
+This action should:
+
+- Compare the human correction with the machine audit.
+- Identify whether the disagreement is likely:
+  - A chart/UI issue.
+  - Incorrect market-state data.
+  - A software defect.
+  - A parameter difference.
+  - A genuine formula-rule change.
+- Find supporting and conflicting reviewed examples.
+- Propose the smallest deterministic rule change.
+- Warn when the proposal is based on too few examples.
+- Require explicit approval and historical comparison before creating a new strategy version.
+
+Never translate one human correction directly into executable trading logic.
+
+CHART CONNECTION
+
+When “Missed trade” is selected:
+
+- Require a locked candle selection.
+- Highlight the patience candle with a compact P marker.
+- Highlight the selected immediate-next entry candle with a compact E marker.
+- Do not place large text labels over the chart.
+- Keep the Candle Inspector synchronized with hover.
+- Keep the locked entry candle selected while the form is being completed.
+- Clicking another candle should ask for confirmation before replacing an unsaved correction.
+
+HUMAN-JUDGMENT RECORD TYPES
+
+Support these explicit record types:
+
+- MACHINE_CORRECT
+- MACHINE_INCORRECT
+- UNCERTAIN
+- RULE_NEEDS_CLARIFICATION
+- MISSED_TRADE
+- FALSE_POSITIVE_TRADE
+- WRONG_ENTRY_CANDLE
+- WRONG_DIRECTION
+
+For a trade the machine took but should not have taken, allow “False-positive trade” and link it to the exact machine trade audit.
+
+AUDIT AND VERSIONING
+
+Every submitted judgment must include:
+
+- Review ID.
+- Reviewer.
+- Submission timestamp.
+- Historical set ID.
+- Category and example ID.
+- Contract and trading date.
+- Selected candle ID.
+- Formula version and hash.
+- Source-data fingerprint.
+- Machine judgment.
+- Human judgment.
+- Reviewer explanation.
+- Immutable causal-state snapshot.
+- Edit/supersession history.
+
+Never overwrite a prior submission. A correction to a review must supersede it with a new record.
+
+COMPUTE AND RATE LIMITS
+
+Human Judgment actions must not consume the visual-review generation limit.
+
+Do not count:
+
+- Candle hovering.
+- Candle selection.
+- Saving a draft.
+- Submitting a human review.
+- Opening an existing review.
+- Analyzing an already-frozen example.
+- Reusing cached results.
+
+Only creation of a genuinely new generated review set should count against the generation limiter.
+
+TESTS
+
+Add deterministic tests covering:
+
+- Missed Trade appears in Human Judgment.
+- Locked entry candle is required.
+- Previous candle is selected as the default patience candle.
+- Immediate-next rule is enforced.
+- Three- and four-tick calculations.
+- Long and short workflows.
+- Future and incomplete candles are rejected.
+- Invalid correction can be submitted only as Rule Needs Clarification.
+- Draft is not persisted before Submit Review.
+- Submitted teaching example does not modify the active formula.
+- Original machine evidence remains immutable.
+- False-positive trade workflow.
+- Unsaved-change confirmation.
+- Human submission does not consume generation rate limits.
+- No historical-index rebuild, broker connection, or order path is triggered.
+
+DELIVERY REPORT
+
+Report:
+
+- Files and schemas changed.
+- How the existing Human Judgment panel was extended.
+- Exact submission states and validations.
+- One demonstrated long example and one short example.
+- Proof that no future candle was used.
+- Proof that the active formula was not automatically changed.
+- Tests, typechecks, and builds.
+- Confirmation that Shadow Mode and no-live-orders protections remain intact.
+```
+
+One important addition: include both **Missed trade** and **False-positive trade**. Teaching the app when it should have entered is only half the job; identifying trades it should have avoided is equally important for improving the formula without making it overly permissive.
