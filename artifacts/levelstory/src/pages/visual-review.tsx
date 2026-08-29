@@ -657,6 +657,10 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full border border-accent bg-accent/20" />primary level</span>
+       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
+       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
+       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-trigger"><i className="h-2 w-2 rounded-full bg-accent" />immediate trigger</span>
+       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-invalidation"><i className="h-px w-4 bg-[hsl(var(--negative))]" />invalidation / stop</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-px border-l border-dashed border-foreground" />evaluation cursor</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />Human-only outcome context</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(204_72%_48%)]" />VWAP · causal</span>
@@ -853,6 +857,12 @@ function CausalSvg({
   const primaryLevels = allLevels.filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-")).concat(relevantCritical);
   const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const inRangeLevels = primaryLevels.filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max);
+  const invalidationLevels = annotations.filter((annotation) =>
+    (annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop")
+    && annotation.price != null
+    && annotation.price >= domain.min
+    && annotation.price <= domain.max,
+  );
   const labelPositions = stackLabelPositions(inRangeLevels.map((annotation) => ({ id: annotation.id, y: y(annotation.price as number) })), top + 9, plotBottom - 5, 16);
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
@@ -860,6 +870,7 @@ function CausalSvg({
   const eventMarkers = annotations.flatMap((annotation) => {
     if (snapshot.tradeEvents.length > 0) return [];
     if (annotation.kind !== "candle") return [];
+    if (["patience-candle", "immediate-trigger", "entry-trigger", "modeled-fill"].includes(annotation.id)) return [];
     const markerIndex = findCandleIndexAtTimestamp(candles, annotation.openTime ?? annotation.closeTime);
     if (markerIndex < 0) return [];
     const machineVisible = candles[markerIndex].machineVisible;
@@ -1008,6 +1019,12 @@ function CausalSvg({
          const markerY = top + 45 + Math.min(relatedIndex, 5) * 13;
          const markerPriceY = related.price == null ? markerY : y(related.price);
          return <g key={`anchor-related-${related.role}`} data-testid={`category-anchor-marker-${related.role}`}><title>{`${anchorRoleLabel(related.role)} candle · ${formatInterval(related.openTime, related.closeTime)} · ${related.visibility}`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeDasharray={related.visibility === "human_only" ? "7 4" : "2 4"} opacity=".72" /><circle cx={markerX} cy={markerPriceY} r="3.5" fill={color} /><text x={markerX + 5} y={markerY} fill={color} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{related.visibility === "human_only" ? "HUMAN · " : ""}{anchorRoleLabel(related.role).toUpperCase()}</text></g>;
+       })}
+       {invalidationLevels.map((annotation) => {
+         const markerX = plotRight - 7;
+         const markerY = y(annotation.price as number);
+         const color = "hsl(var(--negative))";
+         return <g key={`invalidation-${annotation.id}`} data-testid={`invalidation-marker-${annotation.id}`}><title>{`${annotation.label} · ${formatPriceAxisValue(annotation.price as number)}`}</title><path d={`M ${markerX - 7} ${markerY} l 7 -5 l 0 10 z`} fill={color} /><text x={markerX - 11} y={markerY + 3} textAnchor="end" fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">INVALIDATION</text></g>;
        })}
           {eventMarkers.map(({ annotation, markerSlot }, markerOrder) => {
            const markerX = x(markerSlot);

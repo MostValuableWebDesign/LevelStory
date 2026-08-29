@@ -360,14 +360,13 @@ type AnchorEvent = {
   price: number | null;
 };
 
-function rawCandleForTimestamp(
+function rawCandleForCloseTime(
   candles: readonly SimulatedFuturesCandle[],
   value: string | null | undefined,
 ): SimulatedFuturesCandle | null {
   const target = value ? Date.parse(value) : Number.NaN;
   if (!Number.isFinite(target)) return null;
-  return candles.find((candle) => candle.contractSymbol
-    && (candle.openTime === target || candle.closeTime === target)) ?? null;
+  return candles.find((candle) => candle.closeTime === target) ?? null;
 }
 
 function rawCandleForOpenTime(
@@ -442,8 +441,9 @@ function resolvedAnchorCandle(
   event: AnchorEvent,
   candles: readonly SimulatedFuturesCandle[],
 ): SimulatedFuturesCandle | null {
-  return rawCandleForOpenTime(candles, event.openTime)
-    ?? rawCandleForTimestamp(candles, event.closeTime);
+  return event.openTime
+    ? rawCandleForOpenTime(candles, event.openTime)
+    : rawCandleForCloseTime(candles, event.closeTime);
 }
 
 export function buildCategoryAnchor(

@@ -135,6 +135,64 @@ test("visual-validation exposes separate premarket, causal indicator, coverage, 
   assert.equal(rejected.futureCandleAccess, false);
 });
 
+test("every simulated category exposes an exact audit-derived anchor and related candle chain", () => {
+  const set = buildVisualValidationSet(request);
+  for (const snapshot of set.snapshots) {
+    const anchor = snapshot.categoryAnchor;
+    assert.equal(anchor.category, snapshot.category);
+    assert.equal(anchor.auditId, snapshot.machineEvidence.audit.id);
+    assert.equal(anchor.contractSymbol, snapshot.contractSymbol);
+    assert.ok(snapshot.reviewCandles.some((candle) => candle.openTime === anchor.openTime));
+    assert.ok(anchor.relatedCandles.some((candle) => candle.role === "evaluation"));
+    assert.ok(anchor.relatedCandles.some((candle) => candle.role === "patience"));
+    assert.ok(anchor.relatedCandles.some((candle) => candle.role === "trigger"));
+    assert.ok(anchor.relatedCandles.every((related) => snapshot.reviewCandles.some((candle) => candle.openTime === related.openTime)));
+    if (snapshot.machineEvidence.trade) assert.equal(anchor.tradeId, snapshot.machineEvidence.trade.id);
+  }
+  const patience = set.snapshots.find((snapshot) => snapshot.category === "bullish_patience_candle");
+  const breakout = set.snapshots.find((snapshot) => snapshot.category === "strong_breakout");
+  assert.ok(patience);
+  assert.ok(breakout);
+  assert.equal(patience.categoryAnchor.openTime, patience.machineEvidence.audit.patienceCandleOpenTime);
+  assert.equal(breakout.categoryAnchor.openTime, breakout.machineEvidence.audit.triggerCandleOpenTime);
+});
+
+test("historical category availability fails closed when its canonical anchor candle is absent", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  assert.ok(fixture.audit.triggerCandleOpenTime);
+  const triggerOpen = Date.parse(fixture.audit.triggerCandleOpenTime);
+  const dataset = {
+    ...fixture.dataset,
+    source: "historical_databento_multicontract" as const,
+    candles: fixture.dataset.candles.filter((candle) => candle.openTime !== triggerOpen),
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento" },
+    dataset,
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [fixture.audit],
+      trades: fixture.trade ? [fixture.trade] : [],
+    },
+  );
+  assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.available, false);
+  assert.equal(set.snapshots.some((snapshot) => snapshot.category === "strong_breakout"), false);
+});
+
+test("primary review context keeps all 42 slots while full context reaches the 78-slot boundary", () => {
+  const set = buildVisualValidationSet(request);
+  const snapshot = set.snapshots[0];
+  assert.ok(snapshot);
+  assert.ok(snapshot.reviewCandles.some((candle) => candle.closeTime.endsWith("T20:00:00.000Z")));
+  assert.equal(snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount, 42);
+  assert.equal(snapshot.coverage.find((item) => item.session === "full_regular")?.observedCandleCount, 78);
+  assert.equal(snapshot.coverage.find((item) => item.session === "primary")?.complete, true);
+  assert.equal(snapshot.coverage.find((item) => item.session === "full_regular")?.complete, true);
+});
+
 test("visual-validation can explicitly omit premarket candles without changing primary evidence", () => {
   const withPremarket = buildVisualValidationSet(request);
   const withoutPremarket = buildVisualValidationSet({ ...request, premarketAvailable: false });
