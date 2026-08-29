@@ -418,7 +418,7 @@ export default function VisualReview() {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
             }} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
-            <SetManifest data={data} loading={setQuery.isLoading} />
+            <CoverageRail data={data} loading={setQuery.isLoading} selectedCategory={selectedCategory} onSelect={selectCategory} />
           </div>
 
           {setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? (
@@ -427,7 +427,6 @@ export default function VisualReview() {
             <Panel><EmptyReview /></Panel>
           ) : (
             <>
-              <CoverageRail data={data} selectedCategory={selectedCategory} onSelect={selectCategory} />
               {activeSnapshot ? (
                 <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
@@ -512,27 +511,9 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
   </Panel>;
 }
 
-function SetManifest({ data, loading }: { data?: VisualValidationSet; loading: boolean }) {
-  if (loading && !data) return <Panel><QuerySkeleton rows={3} /></Panel>;
+function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: VisualValidationSet; loading: boolean; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
+  if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
-  return <Panel>
-    <PanelTitle eyebrow="Set manifest / immutable inputs" title="What this room is looking at" right={<span className="mono text-[10px] text-muted-foreground">{data.snapshots.length} samples</span>} />
-    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
-       <ManifestItem label="Source" value={formatDataSource(data.source, data.symbol)} icon={<ShieldCheck size={14} />} />
-      <ManifestItem label="Symbol" value={data.symbol} icon={<Layers3 size={14} />} />
-      <ManifestItem label="Formula version" value={data.formulaVersion} icon={<Fingerprint size={14} />} />
-      <ManifestItem label="Formula hash" value={`${data.formulaHash.slice(0, 18)}…`} icon={<ScanLine size={14} />} />
-      <ManifestItem label="Request window" value={`${data.request.inSampleDays} IS / ${data.request.outOfSampleDays} OOS`} />
-      <ManifestItem label="Created" value={formatReviewTime(data.createdAt)} />
-    </div>
-    <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5">
-      <div className="flex items-center gap-2 font-semibold"><FileSearch size={14} className="text-accent" />Read the cursor, not the future.</div>
-       <p className="mt-1 text-muted-foreground">The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context and were never available to the strategy.</p>
-    </div>
-  </Panel>;
-}
-
-function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValidationSet; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
   const historical = data.source === "historical_databento";
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
@@ -553,7 +534,7 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
   const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
   const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Choose the story to inspect" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="generated-sample-date">Generated sample date · {formatReviewTime(data.createdAt)}</span>} />
+    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Coverage / trade-linked samples & formula-development sample" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
     </div>
@@ -563,6 +544,19 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
         {diagnostics.map(renderCategory)}
       </div>
     </details>}
+    <div className="border-t border-border bg-muted/20 px-5 py-4 sm:px-6" data-testid="formula-development-sample">
+      <div className="eyebrow text-muted-foreground">Formula-development sample</div>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        <ManifestItem label="Source" value={formatDataSource(data.source, data.symbol)} icon={<ShieldCheck size={14} />} />
+        <ManifestItem label="Formula version" value={data.formulaVersion} icon={<Fingerprint size={14} />} />
+        <ManifestItem label="Formula hash" value={`${data.formulaHash.slice(0, 18)}…`} icon={<ScanLine size={14} />} />
+        <ManifestItem label="Generated" value={formatReviewTime(data.createdAt)} />
+      </div>
+      <div className="mt-3 flex items-start gap-2 border-t border-border/70 pt-3 text-[11px] leading-4 text-muted-foreground">
+        <FileSearch size={14} className="mt-0.5 shrink-0 text-accent" />
+        <span>The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.</span>
+      </div>
+    </div>
   </Panel>;
 }
 

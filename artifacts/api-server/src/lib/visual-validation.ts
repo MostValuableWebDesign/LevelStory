@@ -205,6 +205,11 @@ export type VisualValidationCategoryCoverage = {
   available: boolean;
 };
 
+export type VisualValidationReviewPeriod = {
+  startDate: string;
+  endDate: string;
+};
+
 export type VisualValidationSet = {
   reviewSetId: string;
   createdAt: string;
@@ -213,6 +218,7 @@ export type VisualValidationSet = {
   source: "simulated" | "historical_databento";
   symbol: string;
   request: VisualValidationRequest;
+  reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
 };
@@ -231,6 +237,17 @@ export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCatego
 
 export function visualValidationReviewMode(request: Pick<VisualValidationRequest, "reviewMode">): VisualValidationReviewMode {
   return request.reviewMode ?? "trades_only";
+}
+
+function reviewPeriodForDataset(
+  dataset: Pick<CausalReplayDataset, "inSampleDates" | "outOfSampleDates" | "requestedStartDate" | "requestedEndDate">,
+  fallbackDate: string,
+): VisualValidationReviewPeriod {
+  const selectedDates = [...new Set([...dataset.inSampleDates, ...dataset.outOfSampleDates])].sort();
+  return {
+    startDate: selectedDates[0] ?? dataset.requestedStartDate ?? fallbackDate,
+    endDate: selectedDates.at(-1) ?? dataset.requestedEndDate ?? fallbackDate,
+  };
 }
 
 export type VisualValidationReview = {
@@ -972,6 +989,10 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     executionMode: "quote_based_shadow",
   };
   const fixtures = createVisualValidationFixtures(request);
+  const reviewPeriod = reviewPeriodForDataset(fixtures[0]?.dataset ?? {
+    inSampleDates: [],
+    outOfSampleDates: [],
+  }, request.endDate);
   const snapshots = fixtures.map((fixture, index) => buildMachineSnapshot(
       fixtureReport,
       fixture.dataset,
@@ -988,6 +1009,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     source: "simulated",
     symbol: request.symbol,
     request: { ...request, source: "simulated" },
+    reviewPeriod,
     snapshots,
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,
@@ -1074,6 +1096,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     source: "historical_databento",
     symbol: request.symbol,
     request: { ...request, source: "historical_databento" },
+    reviewPeriod: reviewPeriodForDataset(dataset, request.endDate),
     snapshots,
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,

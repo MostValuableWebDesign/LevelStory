@@ -7,6 +7,7 @@
  */
 import type { VisualValidationCategoryCoverage } from './visualValidationCategoryCoverage';
 import type { VisualValidationRequest } from './visualValidationRequest';
+import type { VisualValidationReviewPeriod } from './visualValidationReviewPeriod';
 import type { VisualValidationSetSource } from './visualValidationSetSource';
 import type { VisualValidationSnapshot } from './visualValidationSnapshot';
 
@@ -20,6 +21,7 @@ export interface VisualValidationSet {
   source: VisualValidationSetSource;
   symbol: string;
   request: VisualValidationRequest;
+  reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
 }

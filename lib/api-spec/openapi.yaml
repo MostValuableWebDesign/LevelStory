@@ -3026,6 +3026,12 @@ components:
         count: { type: number, minimum: 0 }
         available: { type: boolean }
       required: [category, label, count, available]
+    VisualValidationReviewPeriod:
+      type: object
+      properties:
+        startDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        endDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+      required: [startDate, endDate]
     VisualValidationSet:
       type: object
       properties:
@@ -3036,13 +3042,14 @@ components:
         source: { type: string, enum: [simulated, historical_databento] }
         symbol: { type: string }
         request: { $ref: "#/components/schemas/VisualValidationRequest" }
+        reviewPeriod: { $ref: "#/components/schemas/VisualValidationReviewPeriod" }
         snapshots:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationSnapshot" }
         categoryCoverage:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
-      required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, snapshots, categoryCoverage]
+      required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
     VisualValidationReviewRequest:
       type: object
       properties:

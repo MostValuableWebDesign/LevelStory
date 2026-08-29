@@ -3148,6 +3148,13 @@ export interface VisualValidationCategoryCoverage {
   available: boolean;
 }
 
+export interface VisualValidationReviewPeriod {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  startDate: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  endDate: string;
+}
+
 export type VisualValidationSetSource = typeof VisualValidationSetSource[keyof typeof VisualValidationSetSource];
 
 
@@ -3166,6 +3173,7 @@ export interface VisualValidationSet {
   source: VisualValidationSetSource;
   symbol: string;
   request: VisualValidationRequest;
+  reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
 }

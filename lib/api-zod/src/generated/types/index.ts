@@ -261,6 +261,7 @@ export * from './visualValidationRequestSource';
 export * from './visualValidationRequestSymbol';
 export * from './visualValidationReview';
 export * from './visualValidationReviewCursor';
+export * from './visualValidationReviewPeriod';
 export * from './visualValidationReviewRequest';
 export * from './visualValidationReviewRequestStatus';
 export * from './visualValidationReviewStatus';
