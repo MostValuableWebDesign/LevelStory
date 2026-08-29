@@ -34,11 +34,6 @@ const defaultRequest = {
 
 export function createVisualValidationRouter(): IRouter {
   const router: IRouter = Router();
-  const generationRateLimit = requestRateLimit({
-    windowMs: 120_000,
-    max: 3,
-    message: "Visual-validation generation is temporarily limited. Try again shortly.",
-  });
   const reviewRateLimit = requestRateLimit({
     windowMs: 60_000,
     max: 120,
@@ -85,7 +80,7 @@ export function createVisualValidationRouter(): IRouter {
     }
   });
 
-  router.post("/backtest/visual-validation", generationRateLimit, async (req, res): Promise<void> => {
+  router.post("/backtest/visual-validation", async (req, res): Promise<void> => {
     const parsed = CreateVisualValidationSetBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
