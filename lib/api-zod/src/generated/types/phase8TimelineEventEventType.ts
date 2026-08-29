@@ -19,7 +19,7 @@ export const Phase8TimelineEventEventType = {
   Fibonacci_depth: 'Fibonacci depth',
   Volume_warning: 'Volume warning',
   Patience_candle: 'Patience candle',
-  Immediate_trigger: 'Immediate trigger',
+  Entry_candle: 'Entry candle',
   Shadow_entry: 'Shadow entry',
   Partial_profit: 'Partial profit',
   Runner_activation: 'Runner activation',

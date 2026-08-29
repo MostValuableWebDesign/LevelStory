@@ -109,7 +109,7 @@ export type VisualValidationTradeEvent = {
 };
 
 export type VisualValidationRelatedCandle = {
-  role: "evaluation" | "patience" | "trigger" | "fill" | "exit";
+  role: "evaluation" | "patience" | "entry" | "fill" | "exit";
   openTime: string;
   closeTime: string;
   price: number | null;
@@ -395,14 +395,14 @@ function categoryAnchorEvent(
   const evaluationClose = new Date(Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000).toISOString();
   const evaluation = auditEvent("evaluation", audit.evaluatedCandleOpenTime, evaluationClose, audit.entryTriggerPrice);
   const patience = auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close"));
-  const trigger = auditEvent("trigger", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice);
+  const entry = auditEvent("entry", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice);
   const fillTime = audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime ?? null;
   const fill = auditEvent("fill", fillTime, fillTime, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null);
   const exitOpen = audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime ?? null;
   const exitClose = audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime ?? null;
   const exit = auditEvent("exit", exitOpen, exitClose, trade?.exitPrice ?? audit.targetPrice);
   if (category === "bullish_patience_candle" || category === "bearish_patience_candle") return patience;
-  if (category === "strong_breakout" || category === "qualified_trade") return trigger;
+  if (category === "strong_breakout" || category === "qualified_trade") return entry;
   if (category === "stop_exit" || category === "target_exit" || category === "runner_exit") return exit;
   return evaluation;
 }
@@ -459,7 +459,7 @@ export function buildCategoryAnchor(
   const relatedEvents = [
     auditEvent("evaluation", audit.evaluatedCandleOpenTime, null, audit.entryTriggerPrice),
     auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close")),
-    auditEvent("trigger", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice),
+    auditEvent("entry", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice),
     auditEvent("fill", audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime, null, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null),
     auditEvent("exit", audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime, audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime, trade?.exitPrice ?? audit.targetPrice),
   ];
@@ -606,13 +606,12 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
 
   const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
   const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
-  const triggerOpen = evidenceTime(audit.triggerCandle, "openTime");
-  const triggerClose = evidenceTime(audit.triggerCandle, "closeTime");
+  const entryOpen = evidenceTime(audit.triggerCandle, "openTime");
+  const entryClose = evidenceTime(audit.triggerCandle, "closeTime");
   const patiencePrice = evidenceNumber(audit.patienceCandle, "close");
-  const triggerPrice = evidenceNumber(audit.triggerCandle, "close");
+  const entryPrice = evidenceNumber(audit.triggerCandle, "close");
   lines.push(annotation("patience-candle", "Patience candle", "candle", patiencePrice, "positive", snapshot.patience.detail, patienceOpen, patienceClose));
-  lines.push(annotation("immediate-trigger", "Immediate trigger candle", "candle", triggerPrice, "positive", "The immediate-next-candle confirmation used by the machine.", triggerOpen, triggerClose));
-  lines.push(annotation("entry-trigger", "Entry trigger", "candle", audit.entryTriggerPrice, "accent", "The buffered price trigger that authorizes the modeled entry.", triggerOpen, triggerClose));
+  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", "The immediate-next candle after P; its buffered move authorizes the modeled entry.", entryOpen, entryClose));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
@@ -745,8 +744,8 @@ function buildTradeEvents(
   const tradeAudit = trade.audit;
   const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
   const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
-  const triggerOpen = evidenceTime(audit.triggerCandle, "openTime");
-  const triggerClose = evidenceTime(audit.triggerCandle, "closeTime");
+  const entryOpen = evidenceTime(audit.triggerCandle, "openTime");
+  const entryClose = evidenceTime(audit.triggerCandle, "closeTime");
   const fillTime = tradeAudit?.modeledFillObservationTime
     ? Date.parse(tradeAudit.modeledFillObservationTime)
     : Date.parse(trade.entryTime);
@@ -754,8 +753,8 @@ function buildTradeEvents(
   const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : Date.parse(trade.exitTime);
   const events: VisualValidationTradeEvent[] = [
     tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
-    tradeEvent("trigger", "trigger", "T", audit.direction, triggerOpen, triggerClose, audit.entryTriggerPrice, evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next-candle confirmation.", evaluationCloseTime),
-    tradeEvent("entry", "entry", `ENTRY ${trade.entryPrice.toFixed(2)}`, trade.direction, fillTime, fillTime, audit.entryTriggerPrice, trade.entryPrice, trade.contracts, "Modeled shadow entry; no live order was created.", evaluationCloseTime),
+    tradeEvent("entry", "entry", "E", audit.direction, entryOpen, entryClose, audit.entryTriggerPrice, evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next entry candle after P; no later candle can authorize entry.", evaluationCloseTime),
+    tradeEvent("fill", "fill", `FILL ${trade.entryPrice.toFixed(2)}`, trade.direction, fillTime, fillTime, audit.entryTriggerPrice, trade.entryPrice, trade.contracts, "Modeled shadow entry observation; no live order was created.", evaluationCloseTime),
   ];
   if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
     events.push(tradeEvent("stop", "stop", "STOP", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.exitPrice, trade.contracts, `${trade.outcome} exit.`, evaluationCloseTime));

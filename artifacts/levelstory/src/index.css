@@ -582,21 +582,8 @@
     background: hsl(var(--card));
     padding: .85rem;
   }
-  .candle-inspector > summary {
-    list-style: none;
-  }
-  .candle-inspector > summary::-webkit-details-marker {
-    display: none;
-  }
-  .inspector-chevron {
-    display: inline-block;
-    font-size: 1rem;
-    line-height: 1;
-    transform: rotate(0deg);
-    transition: transform .2s ease;
-  }
-  .candle-inspector[open] .inspector-chevron {
-    transform: rotate(180deg);
+  .candle-inspector.is-collapsed {
+    padding-block: .55rem;
   }
   .inspector-content {
     min-width: 0;

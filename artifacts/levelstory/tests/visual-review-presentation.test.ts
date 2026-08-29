@@ -7,11 +7,14 @@ const styles = readFileSync(new URL("../src/index.css", import.meta.url), "utf8"
 const chart = readFileSync(new URL("../src/lib/visual-review-chart.ts", import.meta.url), "utf8");
 
 test("visual review presentation keeps the inspector and event strip outside the plot", () => {
-  assert.match(page, /<details open className="candle-inspector"/);
+  assert.match(page, /<section className=\{`candle-inspector/);
   assert.ok(page.includes("inspector-meta"));
+  assert.match(page, /data-testid="toggle-candle-inspector"/);
+  assert.match(page, /No historical candle available/);
+  assert.match(page, /selected .* final/);
   assert.match(page, /data-testid="event-strip"/);
   assert.ok(page.indexOf('data-testid="event-strip"') < page.indexOf('className="visual-review-svg'));
-  assert.match(styles, /\.candle-inspector \{[\s\S]*?height: auto|\.candle-inspector > summary/);
+  assert.match(styles, /\.candle-inspector \{/);
 });
 
 test("visual review presentation uses the full-session default and compact causal boundary", () => {

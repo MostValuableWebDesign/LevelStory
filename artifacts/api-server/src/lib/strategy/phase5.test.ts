@@ -50,6 +50,16 @@ test("a closed patience candle with no next candle waits for the trigger window"
   assert.equal(result.triggerCandle, null);
 });
 
+test("a later candle cannot be stored as the immediate-next entry candle", () => {
+  const candles = setup("long", candle(2, 10.8, 11, 9.2, 10.6)).slice(0, 2);
+  candles.push(candle(4, 10.8, 12.1, 10.2, 12));
+  const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() });
+  assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.triggerCandle, null);
+  assert.match(result.detail, /immediate-next entry candle is missing/i);
+  assert.match(result.detail, /00:10:00\.000Z.*00:15:00\.000Z/);
+});
+
 test("a failed immediate trigger expires and a later candle cannot trigger it", () => {
   const candles = setup("long", candle(2, 10.8, 11.2, 10.1, 10.4));
   candles.push(candle(4, 10.4, 12.2, 10.1, 12.1));

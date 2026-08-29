@@ -9,7 +9,7 @@ export type PatienceState =
   | "PATIENCE_CANDLE_FORMING"
   | "PATIENCE_CANDLE_VALID"
   | "PATIENCE_TREND_MISMATCH"
-  | "TRIGGER_CANDLE_ACTIVE"
+  | "TRIGGER_CANDLE_ACTIVE" // Compatibility state name: the immediate-next entry candle is active.
   | "BREAK_DETECTED_WAITING_FOR_BUFFER"
   | "ENTRY_BUFFER_REACHED"
   | "ENTRY_TRIGGERED"
@@ -141,11 +141,11 @@ export function patienceCandleEngine(
         ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: patience,
-        triggerCandle: snapshot(next),
+        triggerCandle: null,
         entryBufferPrice,
         strategyStopPrice,
         stateTime: next.openTime,
-        detail: "The immediate next five-minute candle is missing; later candles cannot reuse this patience pattern.",
+        detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       };
     }
     return evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
@@ -273,14 +273,14 @@ function evaluateTrigger(
   };
   if ((bufferReached && oppositeTouched) || (gapBuffer && gapOpposite) || (intendedTouched && oppositeTouched)) {
     if (sequence === "opposite-first") {
-      return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate trigger candle broke the opposite patience extreme first; the confirmation buffer cannot restore this setup." };
+      return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) broke the opposite patience extreme first; the confirmation buffer cannot restore this setup." };
     }
     if (!(sequence === "intended-first" && bufferReached)) {
-      return { ...base, state: "AMBIGUOUS_EVENT_ORDER", triggerPrice: null, detail: "The immediate trigger candle reached both the confirmation buffer and the opposite patience extreme, but available candle data cannot prove which occurred first; the setup is rejected." };
+      return { ...base, state: "AMBIGUOUS_EVENT_ORDER", triggerPrice: null, detail: "The immediate-next entry candle (E) reached both the confirmation buffer and the opposite patience extreme, but available candle data cannot prove which occurred first; the setup is rejected." };
     }
   }
   if (gapOpposite || (oppositeTouched && !bufferReached) || sequence === "opposite-first") {
-    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate trigger candle crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
+    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
   }
   if (bufferReached || gapBuffer) {
     return {
@@ -288,8 +288,8 @@ function evaluateTrigger(
       state: trigger.isComplete ? "ENTRY_TRIGGERED" : "ENTRY_BUFFER_REACHED",
       triggerPrice: entryBufferPrice,
       detail: trigger.isComplete
-        ? `The immediate next candle reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is triggered at ${entryBufferPrice}.`
-        : `The immediate next candle reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is pending the completed-candle record.`,
+        ? `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is triggered at ${entryBufferPrice}.`
+        : `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is pending the completed-candle record.`,
     };
   }
   if (intendedTouched) {
@@ -298,14 +298,14 @@ function evaluateTrigger(
       state: trigger.isComplete ? "PATIENCE_CANDLE_EXPIRED" : "BREAK_DETECTED_WAITING_FOR_BUFFER",
       triggerPrice: null,
       detail: trigger.isComplete
-        ? `The immediate next candle crossed the patience extreme but closed before reaching the full ${entryBufferTicks}-tick confirmation buffer; the setup expired.`
+        ? `The immediate-next entry candle (E) crossed the patience extreme but closed before reaching the full ${entryBufferTicks}-tick confirmation buffer; the setup expired.`
         : `BREAK DETECTED — WAITING FOR CONFIRMATION BUFFER. The raw patience extreme was crossed, but the full ${entryBufferTicks}-tick buffer is not reached.`,
     };
   }
   if (!trigger.isComplete) {
-    return { ...base, state: "TRIGGER_CANDLE_ACTIVE", triggerPrice: null, detail: "The immediate five-minute trigger candle is active and has not crossed the patience extreme or opposite invalidation." };
+    return { ...base, state: "TRIGGER_CANDLE_ACTIVE", triggerPrice: null, detail: "The immediate-next entry candle (E) is active and has not crossed the patience extreme or opposite invalidation." };
   }
-  return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "The immediate next candle closed without reaching the patience confirmation buffer; later candles cannot reuse this pattern." };
+  return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "The immediate-next entry candle (E) closed without reaching the patience confirmation buffer; later candles cannot reuse this pattern." };
 }
 
 function patienceShape(candle: Candle, previous: Candle, direction: Direction): boolean {
@@ -324,6 +324,10 @@ function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferT
 
 function roundPrice(price: number, tickSize: number): number {
   return Number((Math.round(price / tickSize) * tickSize).toFixed(10));
+}
+
+function formatFiveMinuteWindow(openTime: number): string {
+  return `${new Date(openTime).toISOString()}–${new Date(openTime + 5 * 60_000).toISOString()}`;
 }
 
 function latestEligibilityBefore(events: readonly PatienceEligibilityEvent[], time: number): PatienceEligibilityEvent | undefined {

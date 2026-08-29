@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
   Check,
@@ -79,6 +79,7 @@ import {
   isPrimaryLevel,
   mergeOrbNtzAnnotations,
   priceToY,
+  resolveFixedSlotFromClientPoint,
   selectSessionCandles,
   type SessionCandle,
   type SessionView,
@@ -196,7 +197,7 @@ function annotationTone(color: VisualValidationAnnotation["color"]): string {
 
 function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][number]["role"]): string {
   if (role === "patience") return "hsl(var(--positive))";
-  if (role === "trigger") return "hsl(var(--accent))";
+  if (role === "entry") return "hsl(var(--accent))";
   if (role === "fill") return "hsl(204 72% 48%)";
   if (role === "exit") return "hsl(var(--negative))";
   return "hsl(var(--muted-foreground))";
@@ -666,7 +667,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t border-dashed border-muted-foreground" />Fibonacci</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-trigger"><i className="h-2 w-2 rounded-full bg-accent" />immediate trigger</span>
+       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />entry candle (E)</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-invalidation"><i className="h-px w-4 bg-[hsl(var(--negative))]" />invalidation / stop</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />shaded candles · human-only outcome context</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 border border-foreground bg-card" />numbered markers · exact event occurrence</span>
@@ -677,7 +678,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
 
 function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnchor }) {
   const patience = anchor.relatedCandles.find((candle) => candle.role === "patience");
-  const trigger = anchor.relatedCandles.find((candle) => candle.role === "trigger");
+  const entry = anchor.relatedCandles.find((candle) => candle.role === "entry");
   return <div className="mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3 sm:p-4" data-testid="category-anchor-banner">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
@@ -692,7 +693,7 @@ function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnch
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[hsl(var(--positive)/.2)] pt-3 text-[10px]">
       {patience && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Patience · {formatInterval(patience.openTime, patience.closeTime)} · {patience.price == null ? "—" : formatPriceAxisValue(patience.price)}</span>}
-      {trigger && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />Trigger · {formatInterval(trigger.openTime, trigger.closeTime)} · {trigger.price == null ? "—" : formatPriceAxisValue(trigger.price)}</span>}
+      {entry && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />Entry (E) · {formatInterval(entry.openTime, entry.closeTime)} · {entry.price == null ? "—" : formatPriceAxisValue(entry.price)}</span>}
       <details className="ml-auto">
         <summary className="cursor-pointer text-[10px] font-bold text-muted-foreground">Technical details</summary>
         <span className="mono mt-2 block text-muted-foreground">audit {anchor.auditId}{anchor.tradeId ? ` · trade ${anchor.tradeId}` : ""} · {anchor.contractSymbol}</span>
@@ -705,29 +706,45 @@ function formatExactVolume(value: number): string {
   return Number.isFinite(value) ? Math.round(value).toLocaleString("en-US") : "—";
 }
 
-function CandleInspector({ inspection, activeEvents }: { inspection: CandleInspection | null; activeEvents: string[] }) {
-  return <details open className="candle-inspector" aria-label="Selected candle inspector" data-testid="candle-inspector">
-    <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-      <span>
-        <span className="eyebrow block text-muted-foreground">Candle inspector</span>
-        <span className="mt-1 block text-xs font-bold">{inspection ? inspection.interval : "Select a five-minute candle"}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {inspection && <span className={`text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
-        <span className="inspector-chevron text-muted-foreground" aria-hidden="true">⌄</span>
-      </span>
-    </summary>
-    {inspection ? <div className="inspector-content">
-      <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
-        {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
+function CandleInspector({
+  inspection,
+  activeEvents,
+  selectedSlot,
+  selectedIndicators,
+  finalIndicators,
+}: {
+  inspection: CandleInspection | null;
+  activeEvents: string[];
+  selectedSlot: number | null;
+  selectedIndicators: { vwap: number | null; ema200: number | null } | null;
+  finalIndicators: { vwap: number | null; ema200: number | null } | null;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const selectedLabel = selectedSlot == null ? "Select a five-minute candle" : `Fixed slot ${String(selectedSlot + 1).padStart(2, "0")}`;
+  const indicatorValue = (value: number | null | undefined) => value == null ? "—" : formatPriceAxisValue(value);
+  return <section className={`candle-inspector ${collapsed ? "is-collapsed" : ""}`} aria-label="Selected candle inspector" data-testid="candle-inspector">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <span className="eyebrow block text-muted-foreground">Candle inspector · click or keyboard selection</span>
+        <span className="mt-1 block text-xs font-bold">{inspection ? inspection.interval : selectedLabel}</span>
       </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {inspection && <span className={`text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
+        <button type="button" className="chart-control" onClick={() => setCollapsed((current) => !current)} aria-expanded={!collapsed} aria-controls="candle-inspector-content" data-testid="toggle-candle-inspector">{collapsed ? "Expand" : "Collapse"}</button>
+      </div>
+    </div>
+    {!collapsed && <div id="candle-inspector-content" className="inspector-content">
+      {inspection ? <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
+        {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
+      </div> : <p className="mt-3 border border-accent/25 bg-accent/5 px-3 py-2 text-[10px] leading-4 text-muted-foreground">No historical candle available for this fixed timestamp slot. The gap is preserved; no neighboring candle was substituted.</p>}
       <div className="inspector-meta mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground">
-        <span><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET</span>
-        <span>{inspection.utc} UTC · Exact raw OHLCV</span>
+        {inspection && <span><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET · {inspection.utc} UTC · Exact raw OHLCV</span>}
+        <span><span className="font-semibold text-foreground">EMA 200</span> selected {indicatorValue(selectedIndicators?.ema200)} · final {indicatorValue(finalIndicators?.ema200)}</span>
+        <span><span className="font-semibold text-foreground">VWAP</span> selected {indicatorValue(selectedIndicators?.vwap)} · final {indicatorValue(finalIndicators?.vwap)}</span>
         <span><span className="font-semibold text-foreground">Events:</span> {activeEvents.length ? activeEvents.join(" · ") : "none on this candle"}</span>
       </div>
-    </div> : <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Hover a candle or focus the chart and use the arrow keys. The inspector stays outside the plot so exact prices remain readable.</p>}
-  </details>;
+    </div>}
+  </section>;
 }
 
 function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; snapshot: VisualValidationSnapshot }) {
@@ -801,21 +818,28 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   focusOpenTime: string;
   onReturnPrimary: () => void;
 }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
   const [showRiskLevels, setShowRiskLevels] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
-  const interactionRef = useRef<SVGRectElement>(null);
+  const interactionRef = useRef<SVGSVGElement>(null);
+  const pointerFrameRef = useRef<number | null>(null);
+  const pendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   useEffect(() => {
     const focusedIndex = findCandleIndexAtTimestamp(candles, focusOpenTime);
-    setHoveredIndex(focusedIndex >= 0 ? focusedIndex : null);
+    setSelectedSlot(focusedIndex >= 0 ? getCandleSlotIndex(candles[focusedIndex]!, sessionView) : null);
+    setHoveredSlot(null);
     setZoom(1);
     setPan(0);
     const timer = window.setTimeout(() => interactionRef.current?.focus({ preventScroll: true }), 0);
     return () => window.clearTimeout(timer);
   }, [candles.length, focusOpenTime, sessionView, premarketCandles.length]);
+  useEffect(() => () => {
+    if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
   const height = CHART_HEIGHT;
@@ -876,41 +900,71 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
-  const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
-  const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
-  const hoveredSlot = hoveredCandle ? getCandleSlotIndex(hoveredCandle, sessionView, premarketCandles.length > 0) : 0;
-  const hoveredEvents = hoveredCandle
+  const selectedCandle = selectedSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === selectedSlot) ?? null;
+  const selectedDetails = selectedCandle ? getCandleInspection(selectedCandle) : null;
+  const activeSlot = hoveredSlot ?? selectedSlot;
+  const activeCandle = activeSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === activeSlot) ?? null;
+  const activeEvents = activeCandle
     ? chartEvents
-      .filter((event) => [event.openTime, event.closeTime].includes(hoveredCandle.openTime) || [event.openTime, event.closeTime].includes(hoveredCandle.closeTime))
+      .filter((event) => [event.openTime, event.closeTime].includes(activeCandle.openTime) || [event.openTime, event.closeTime].includes(activeCandle.closeTime))
       .map((event) => `${event.label}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`)
     : [];
-  const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
-    const svgX = (clientX - rect.left) * (width / rect.width);
-    const slot = Math.floor((svgX - left) / step);
-    const nextIndex = candles.reduce((best, candle, index) => {
-      const distance = Math.abs(getCandleSlotIndex(candle, sessionView, premarketCandles.length > 0) - slot);
-      const bestDistance = best < 0 ? Number.POSITIVE_INFINITY : Math.abs(getCandleSlotIndex(candles[best], sessionView, premarketCandles.length > 0) - slot);
-      return distance < bestDistance ? index : best;
-    }, -1);
-    if (nextIndex < 0) return;
-    setHoveredIndex(nextIndex);
+  const selectedIndicators = selectedCandle
+    ? indicatorByOpenTime.get(selectedCandle.openTime) ?? null
+    : null;
+  const finalCandle = candles.at(-1);
+  const finalIndicators = finalCandle ? indicatorByOpenTime.get(finalCandle.openTime) ?? null : null;
+  const resolvePointer = (clientX: number, clientY: number) => resolveFixedSlotFromClientPoint(
+    clientX,
+    clientY,
+    interactionRef.current?.getBoundingClientRect() ?? new DOMRect(),
+    {
+      viewBoxX: pan,
+      viewBoxWidth: width / zoom,
+      viewBoxHeight: height,
+      plotLeft: left,
+      plotRight,
+      plotTop: top,
+      plotBottom: volumeTop + CHART_VOLUME_HEIGHT,
+      slotCount,
+    },
+  );
+  const updateHoveredSlot = (clientX: number, clientY: number) => {
+    const slot = resolvePointer(clientX, clientY);
+    setHoveredSlot(slot);
   };
-  const setIndexFromKeyboard = (event: KeyboardEvent<SVGRectElement>) => {
+  const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    pendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (pointerFrameRef.current !== null) return;
+    pointerFrameRef.current = window.requestAnimationFrame(() => {
+      pointerFrameRef.current = null;
+      const pointer = pendingPointerRef.current;
+      if (pointer) updateHoveredSlot(pointer.clientX, pointer.clientY);
+    });
+  };
+  const selectPointerSlot = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const slot = resolvePointer(event.clientX, event.clientY);
+    if (slot !== null) {
+      setSelectedSlot(slot);
+      setHoveredSlot(slot);
+    }
+  };
+  const setIndexFromKeyboard = (event: KeyboardEvent<SVGSVGElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const current = hoveredIndex ?? Math.max(0, visibleAtEvaluation - 1);
-    const nextIndex = event.key === "ArrowLeft"
+    const current = selectedSlot ?? Math.max(0, boundarySlot - 1);
+    const nextSlot = event.key === "ArrowLeft"
       ? Math.max(0, current - 1)
       : event.key === "ArrowRight"
-        ? Math.min(candles.length - 1, current + 1)
+        ? Math.min(slotCount - 1, current + 1)
         : event.key === "Home"
           ? 0
-          : candles.length - 1;
-    setHoveredIndex(nextIndex);
+          : slotCount - 1;
+    setSelectedSlot(nextSlot);
+    setHoveredSlot(null);
   };
   const focusChartEvent = (event: typeof chartEvents[number]) => {
-    const index = findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
-    if (index >= 0) setHoveredIndex(index);
+    if (event.markerSlot !== null) setSelectedSlot(event.markerSlot);
     setActiveEventId(event.id);
   };
   const markerIndex = (event: typeof chartEvents[number]) => findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
@@ -959,7 +1013,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           {chartEvents.length > 0 && <div className="event-strip-scroll" role="list">
             {chartEvents.map((event) => {
               const index = markerIndex(event);
-              const selected = activeEventId === event.id || hoveredIndex === index;
+              const selected = activeEventId === event.id || selectedSlot === event.markerSlot;
               const time = event.openTime && event.closeTime
                 ? formatInterval(event.openTime, event.closeTime)
                 : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
@@ -968,7 +1022,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                 type="button"
                 role="listitem"
                 className={`event-strip-item ${selected ? "is-selected" : ""} ${event.visibility === "human_only" ? "is-human" : ""}`}
-                onMouseEnter={() => focusChartEvent(event)}
+                onMouseEnter={() => setActiveEventId(event.id)}
                 onFocus={() => focusChartEvent(event)}
                 onClick={() => focusChartEvent(event)}
                 aria-pressed={selected}
@@ -984,10 +1038,12 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             })}
           </div>}
         </section>
-        <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
+        <CandleInspector inspection={selectedDetails} activeEvents={activeEvents} selectedSlot={selectedSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} />
        <div className="chart-plot-shell mt-3">
-        <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The boundary notch identifies the last candle visible to the machine; shaded candles after it are human-only context.`}>
+         <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => setHoveredSlot(null)} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
+         <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" pointerEvents="none" data-testid="chart-interaction-layer" />
+         {activeSlot !== null && <rect x={left + activeSlot * step} y={top} width={step} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="3 3" pointerEvents="none" data-testid="selected-slot-column" />}
         {chartEvents.map((event) => {
           const index = markerIndex(event);
           if (index < 0) return null;
@@ -998,11 +1054,12 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             ? "hsl(var(--muted-foreground))"
             : event.kind === "found" ? "hsl(var(--positive))"
               : event.kind === "invalidation" || event.kind === "stop" || event.kind === "exit" ? "hsl(var(--negative))"
-                : event.kind === "trigger" || event.kind === "entry" ? "hsl(var(--accent))"
+                : event.kind === "entry" ? "hsl(var(--accent))"
                   : "hsl(var(--foreground))";
-          const active = activeEventId === event.id || hoveredIndex === index;
-          const eventFocus = () => focusChartEvent(event);
-          return <g key={`marker-${event.id}`} data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onClick={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
+           const active = activeEventId === event.id || selectedSlot === event.markerSlot;
+           const previewEvent = () => setActiveEventId(event.id);
+           const eventFocus = () => focusChartEvent(event);
+           return <g key={`marker-${event.id}`} data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={previewEvent} onFocus={eventFocus} onClick={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
             <title>{`#${event.number} ${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
             <circle cx={eventX} cy={eventY} r={active ? "6" : "4.5"} fill={event.visibility === "human_only" ? "hsl(var(--muted))" : "hsl(var(--card))"} stroke={color} strokeWidth={active ? "2" : "1.3"} />
             <text x={eventX} y={eventY + 3} textAnchor="middle" fill={color} fontSize="7.5" fontWeight="700" fontFamily="DM Mono">{event.number}</text>
@@ -1066,25 +1123,20 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       })}
         <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
-        {hoveredCandle && <g pointerEvents="none" data-testid="chart-crosshair">
-          <line x1={left} x2={plotRight} y1={y(hoveredCandle.close)} y2={y(hoveredCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
-           <circle cx={x(hoveredSlot)} cy={y(hoveredCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
+         {activeCandle && activeSlot !== null && <g pointerEvents="none" data-testid="chart-crosshair">
+           <line x1={left} x2={plotRight} y1={y(activeCandle.close)} y2={y(activeCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
+            <circle cx={x(activeSlot)} cy={y(activeCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
         </g>}
         <line x1={left} x2={plotRight} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
          <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
         <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
         <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
-         <rect ref={interactionRef} x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" tabIndex={0} role="application" aria-label="Interactive five-minute candle crosshair. Use left and right arrow keys to select a candle." data-testid="chart-interaction-layer"
-          onMouseMove={(event) => setIndexFromClientX(event.clientX, event.currentTarget.ownerSVGElement?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect())}
-          onMouseLeave={() => setHoveredIndex(null)}
-          onKeyDown={setIndexFromKeyboard}
-        />
       </svg>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
-       {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
+        {selectedDetails ? `Selected ${selectedDetails.interval}. Open ${selectedDetails.open.toFixed(2)}, high ${selectedDetails.high.toFixed(2)}, low ${selectedDetails.low.toFixed(2)}, close ${selectedDetails.close.toFixed(2)}, volume ${formatExactVolume(selectedDetails.volume)}. ${selectedDetails.machineVisible ? "Machine visible." : "Human-only context."}` : selectedSlot === null ? "No candle selected." : `Selected fixed slot ${selectedSlot + 1}; no historical candle is available.`}
      </div>
        </div>
-     {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
+      {activeSlot == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover the plot or volume column, click to keep a selection, or focus the chart and use ← / → to inspect fixed five-minute slots.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
       <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Additional levels ({additionalLevels.length})</summary>
        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{additionalLevels.map((annotation) => <div key={annotation.id} className="flex items-center justify-between gap-3 border border-border bg-muted/25 px-3 py-2 text-[10px]"><span className="truncate text-muted-foreground">{annotation.label}</span><span className="mono shrink-0">{annotation.price == null ? "—" : formatPriceAxisValue(annotation.price)}</span></div>)}</div>

@@ -29,6 +29,7 @@ import {
   isPrimaryLevel,
   mergeOrbNtzAnnotations,
   priceToY,
+  resolveFixedSlotFromClientPoint,
   selectSessionCandles,
   selectChartEvents,
   selectFocusedCandles,
@@ -289,6 +290,44 @@ test("fixed slot geometry leaves gaps empty instead of compressing observed cand
   const firstGeometry = getCandleGeometry(first, getCandleSlotIndex(first, "primary"), step, domain);
   const thirdGeometry = getCandleGeometry(third, getCandleSlotIndex(third, "primary"), step, domain);
   assert.equal(thirdGeometry.x - firstGeometry.x, step * 2);
+});
+
+test("fixed slot pointer resolver inverts SVG scaling and keeps empty slots addressable", () => {
+  const rect = { left: 20, top: 10, width: 1600, height: 900 };
+  const options = {
+    viewBoxX: 0,
+    viewBoxWidth: 1600,
+    viewBoxHeight: 900,
+    plotLeft: 140,
+    plotRight: 1510,
+    plotTop: 70,
+    plotBottom: 700,
+    slotCount: 78,
+  };
+  const step = (options.plotRight - options.plotLeft) / options.slotCount;
+  const slotCenter = options.plotLeft + step * 20.5;
+  assert.equal(resolveFixedSlotFromClientPoint(rect.left + slotCenter, rect.top + 200, rect, options), 20);
+  assert.equal(resolveFixedSlotFromClientPoint(rect.left + slotCenter / 2, rect.top + 100, { ...rect, width: 800, height: 450 }, options), 20);
+  assert.equal(resolveFixedSlotFromClientPoint(rect.left + options.plotRight + 1, rect.top + 200, rect, options), null);
+  assert.equal(resolveFixedSlotFromClientPoint(rect.left + slotCenter, rect.top + options.plotBottom, rect, options), null);
+});
+
+test("fixed slot pointer resolver accounts for zoom and pan without snapping to observed candles", () => {
+  const rect = { left: 0, top: 0, width: 800, height: 900 };
+  const options = {
+    viewBoxX: 300,
+    viewBoxWidth: 800,
+    viewBoxHeight: 900,
+    plotLeft: 140,
+    plotRight: 1510,
+    plotTop: 70,
+    plotBottom: 700,
+    slotCount: 42,
+  };
+  const step = (options.plotRight - options.plotLeft) / options.slotCount;
+  const selectedSvgX = options.plotLeft + step * 31.5;
+  assert.equal(resolveFixedSlotFromClientPoint(selectedSvgX - options.viewBoxX, 200, rect, options), 31);
+  assert.equal(resolveFixedSlotFromClientPoint(1500, 200, rect, options), null);
 });
 
 test("premarket remains separate and hidden by default while its levels stay primary references", () => {

@@ -145,7 +145,7 @@ test("every simulated category exposes an exact audit-derived anchor and related
     assert.ok(snapshot.reviewCandles.some((candle) => candle.openTime === anchor.openTime));
     assert.ok(anchor.relatedCandles.some((candle) => candle.role === "evaluation"));
     assert.ok(anchor.relatedCandles.some((candle) => candle.role === "patience"));
-    assert.ok(anchor.relatedCandles.some((candle) => candle.role === "trigger"));
+    assert.ok(anchor.relatedCandles.some((candle) => candle.role === "entry"));
     assert.ok(anchor.relatedCandles.every((related) => snapshot.reviewCandles.some((candle) => candle.openTime === related.openTime)));
     if (snapshot.machineEvidence.trade) assert.equal(anchor.tradeId, snapshot.machineEvidence.trade.id);
   }
@@ -457,7 +457,7 @@ test("category gates use explicit trend, mapped-level, and measured-state eviden
 test("exit annotations expose explicit machine and human-only event markers", () => {
   const set = buildVisualValidationSet(request);
   const labels = set.snapshots.flatMap((snapshot) => snapshot.annotations.map((item) => item.label));
-  assert.ok(labels.includes("Entry trigger"));
+  assert.ok(labels.includes("Entry candle (E)"));
   assert.ok(labels.includes("Modeled fill"));
   assert.ok(labels.some((label) => ["Strategy stop hit", "Catastrophe stop hit", "Target hit", "Runner activation", "Runner exit"].includes(label)));
   for (const snapshot of set.snapshots) {

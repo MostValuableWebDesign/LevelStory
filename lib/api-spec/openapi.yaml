@@ -1699,7 +1699,7 @@ components:
           type: string
         eventType:
           type: string
-          enum: ["NTZ completion", "ORB quality", "Breakout", "Pullback", "Level touch or proximity", "Consolidation", "Fibonacci depth", "Volume warning", "Patience candle", "Immediate trigger", "Shadow entry", "Partial profit", "Runner activation", "Runner exit", "Stop", "Failed setup"]
+          enum: ["NTZ completion", "ORB quality", "Breakout", "Pullback", "Level touch or proximity", "Consolidation", "Fibonacci depth", "Volume warning", "Patience candle", "Entry candle", "Shadow entry", "Partial profit", "Runner activation", "Runner exit", "Stop", "Failed setup"]
         label:
           type: string
         detail:
@@ -2909,7 +2909,7 @@ components:
     VisualValidationRelatedCandle:
       type: object
       properties:
-        role: { type: string, enum: [evaluation, patience, trigger, fill, exit] }
+        role: { type: string, enum: [evaluation, patience, entry, fill, exit] }
         openTime: { type: string, format: date-time }
         closeTime: { type: string, format: date-time }
         price: { type: ["number", "null"] }

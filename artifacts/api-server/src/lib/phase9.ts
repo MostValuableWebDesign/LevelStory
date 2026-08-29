@@ -1244,7 +1244,7 @@ export function buildQualificationFunnel(
           criticalLevel: record.criticalLevelEvidence,
           trend: record.trendEvidence,
           patience: record.patienceState,
-          trigger: record.triggerCandle ? "Trigger candle completed." : "No completed trigger candle.",
+          trigger: record.triggerCandle ? "Entry candle (E) completed." : "No completed immediate-next entry candle.",
           patienceCandle: record.patienceCandle,
           triggerCandle: record.triggerCandle,
           patienceCandleOpenTime: record.patienceCandleOpenTime,

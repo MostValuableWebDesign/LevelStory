@@ -16,7 +16,7 @@ export type Phase8EventType =
   | "Fibonacci depth"
   | "Volume warning"
   | "Patience candle"
-  | "Immediate trigger"
+  | "Entry candle"
   | "Shadow entry"
   | "Partial profit"
   | "Runner activation"
@@ -386,7 +386,7 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
     event(events, context.patience.patienceCandle.closeTime, "Patience candle", context.patience.detail, context.patience.state === "PATIENCE_CANDLE_VALID" || context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "observed");
   }
   if (context.patience.triggerCandle) {
-    event(events, context.patience.triggerCandle.closeTime, "Immediate trigger", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
+    event(events, context.patience.triggerCandle.closeTime, "Entry candle", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
   }
 
   const execution = context.evaluation.decision === "SETUP QUALIFIED" && !context.evaluation.alertOnly && context.riskPlan.allowed && context.direction !== null

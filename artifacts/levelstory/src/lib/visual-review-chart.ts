@@ -122,11 +122,67 @@ export type CandleInspection = {
   machineVisible: boolean;
 };
 
+export type FixedSlotPointerOptions = {
+  viewBoxX: number;
+  viewBoxY?: number;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+  plotLeft?: number;
+  plotRight?: number;
+  plotTop?: number;
+  plotBottom?: number;
+  slotCount: number;
+};
+
+/**
+ * Resolve a pointer against the fixed timestamp grid, not against observed
+ * candles. The caller passes the SVG viewBox currently in use so zoom and pan
+ * are inverted before plot/gutter bounds are checked.
+ */
+export function resolveFixedSlotFromClientPoint(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  options: FixedSlotPointerOptions,
+): number | null {
+  const viewBoxY = options.viewBoxY ?? 0;
+  const plotLeft = options.plotLeft ?? CHART_LEFT;
+  const plotRight = options.plotRight ?? CHART_WIDTH - CHART_RIGHT;
+  const plotTop = options.plotTop ?? CHART_TOP;
+  const plotBottom = options.plotBottom ?? CHART_VOLUME_TOP + CHART_VOLUME_HEIGHT;
+  if (
+    !Number.isFinite(clientX)
+    || !Number.isFinite(clientY)
+    || !Number.isFinite(rect.width)
+    || !Number.isFinite(rect.height)
+    || rect.width <= 0
+    || rect.height <= 0
+    || options.viewBoxWidth <= 0
+    || options.viewBoxHeight <= 0
+    || options.slotCount <= 0
+  ) return null;
+
+  // preserveAspectRatio="xMidYMid meet" letterboxes the viewBox when the
+  // rendered SVG and viewBox have different aspect ratios.
+  const scale = Math.min(rect.width / options.viewBoxWidth, rect.height / options.viewBoxHeight);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const renderedWidth = options.viewBoxWidth * scale;
+  const renderedHeight = options.viewBoxHeight * scale;
+  const offsetX = (rect.width - renderedWidth) / 2;
+  const offsetY = (rect.height - renderedHeight) / 2;
+  const svgX = options.viewBoxX + (clientX - rect.left - offsetX) / scale;
+  const svgY = viewBoxY + (clientY - rect.top - offsetY) / scale;
+  if (svgX < plotLeft || svgX >= plotRight || svgY < plotTop || svgY >= plotBottom) return null;
+
+  const step = (plotRight - plotLeft) / options.slotCount;
+  const slot = Math.floor((svgX - plotLeft) / step);
+  return slot >= 0 && slot < options.slotCount ? slot : null;
+}
+
 export type EventRailEventKind =
   | "found"
   | "evaluation"
   | "patience"
-  | "trigger"
   | "entry"
   | "fill"
   | "invalidation"
@@ -604,11 +660,10 @@ export function findCandleIndexAtTimestamp(
 
 const EVENT_RAIL_PRIORITY: Record<EventRailEventKind, number> = {
   found: 1,
-  entry: 2,
+  entry: 4,
   fill: 2,
   exit: 2,
   patience: 3,
-  trigger: 4,
   invalidation: 5,
   stop: 5,
   target: 5,
@@ -631,7 +686,6 @@ function railShortLabel(kind: EventRailEventKind, eventName?: string): string {
   if (kind === "found") return "F";
   if (kind === "evaluation") return "EVAL";
   if (kind === "patience") return "P";
-  if (kind === "trigger") return "T";
   if (kind === "entry" || kind === "fill") return "E";
   if (kind === "invalidation") return "X";
   if (kind === "stop") return "S";
@@ -708,7 +762,7 @@ export function buildEventRailEvents(
   for (const annotation of snapshot.annotations) {
     if (!annotation.available) continue;
     if (!hasExactCandleAnchor(annotation)) continue;
-    const duplicateEventIds = ["patience-candle", "immediate-trigger", "entry-trigger", "modeled-fill"];
+    const duplicateEventIds = ["patience-candle", "entry-candle", "immediate-trigger", "entry-trigger", "modeled-fill"];
     if (duplicateEventIds.includes(annotation.id)) continue;
     const kind: EventRailEventKind = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop"
       ? "invalidation"
@@ -737,13 +791,13 @@ export function buildEventRailEvents(
 }
 
 const CATEGORY_EVENT_KINDS: Record<string, readonly EventRailEventKind[]> = {
-  qualified_trade: ["found", "evaluation", "patience", "trigger", "entry", "fill", "invalidation", "stop", "target", "runner", "exit"],
-  rejected_setup: ["found", "evaluation", "patience", "trigger", "invalidation", "supporting"],
-  bullish_patience_candle: ["found", "evaluation", "patience", "trigger", "supporting"],
-  bearish_patience_candle: ["found", "evaluation", "patience", "trigger", "supporting"],
-  weak_orb_probe: ["found", "evaluation", "trigger", "invalidation", "supporting"],
-  strong_breakout: ["found", "evaluation", "trigger", "supporting"],
-  pullback: ["found", "evaluation", "trigger", "supporting"],
+  qualified_trade: ["found", "evaluation", "patience", "entry", "fill", "invalidation", "stop", "target", "runner", "exit"],
+  rejected_setup: ["found", "evaluation", "patience", "entry", "invalidation", "supporting"],
+  bullish_patience_candle: ["found", "evaluation", "patience", "entry", "supporting"],
+  bearish_patience_candle: ["found", "evaluation", "patience", "entry", "supporting"],
+  weak_orb_probe: ["found", "evaluation", "entry", "invalidation", "supporting"],
+  strong_breakout: ["found", "evaluation", "entry", "supporting"],
+  pullback: ["found", "evaluation", "entry", "supporting"],
   consolidation: ["found", "evaluation", "supporting"],
   ambiguous_candle: ["found", "evaluation", "supporting"],
   stop_exit: ["found", "evaluation", "stop", "exit", "invalidation"],

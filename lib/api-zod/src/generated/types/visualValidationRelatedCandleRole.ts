@@ -12,7 +12,7 @@ export type VisualValidationRelatedCandleRole = typeof VisualValidationRelatedCa
 export const VisualValidationRelatedCandleRole = {
   evaluation: 'evaluation',
   patience: 'patience',
-  trigger: 'trigger',
+  entry: 'entry',
   fill: 'fill',
   exit: 'exit',
 } as const;
