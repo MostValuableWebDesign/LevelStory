@@ -1,0 +1,222 @@
+Replit’s recommendation is valid, and the screenshots show why it is needed. The underlying evidence now looks much better, but the event area around 12:00–12:15 is still crowded:
+
+- FOUND, evaluation, patience, trigger, fill, stop and exit labels overlap.
+- The causal-cursor label competes with event labels.
+- “Human-only outcome context” runs through the annotations.
+- Several right-side level labels remain tightly stacked.
+- The word “invalidation” overlaps its price lines.
+
+The canonical anchor summary above the chart is good and should remain. The candle inspector is also correctly outside the plot now.
+
+The cleanest solution is an **event-label rail above the candle plot**, with small symbols remaining on the exact candles.
+
+Use this prompt:
+
+```text
+Implement the dense causal-annotation layout improvement proposed for LevelStory.
+
+The current screenshot demonstrates that FOUND, patience, trigger, fill, stop, exit, evaluation and invalidation labels overlap near 12:00–12:15.
+
+This is strictly a frontend chart-layout task.
+
+Do not change:
+- formula logic
+- category anchors
+- audit evidence
+- marker timestamps or prices
+- trade associations
+- historical OHLCV
+- causal visibility
+- human-only classification
+- API schemas
+- historical index
+
+Relevant files:
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/src/lib/visual-review-chart.ts
+- artifacts/levelstory/tests/visual-review-chart.test.ts
+
+1. Add a dedicated event-label rail
+
+Create a fixed event-label area between the chart controls and the candle plot.
+
+- Reserve approximately 60–100px above the price plot.
+- Place descriptive event labels in this rail.
+- Keep only compact marker symbols at their exact candle positions.
+- Connect each label to its exact marker using a thin leader line.
+- Do not place full event descriptions directly over candle bodies.
+
+Example chart markers:
+- F = category found
+- P = patience candle
+- T = immediate trigger
+- E = entry/fill
+- X = invalidation
+- S = stop
+- TP = target
+- RA = runner activation
+- RX = runner exit
+
+The existing canonical-anchor summary above the chart must remain unchanged.
+
+2. Deterministic lane assignment
+
+Assign event labels to deterministic lanes.
+
+Suggested algorithm:
+
+- sort by event timestamp
+- then sort by priority
+- then sort by stable event ID
+- attempt placement in lane 1
+- if its bounding box conflicts with an existing label, try lane 2
+- continue through a fixed maximum of four lanes
+- maintain at least 8px horizontal and 4px vertical separation
+
+Use the same inputs to produce exactly the same label positions every time.
+
+Do not base layout on random values.
+
+3. Event priority
+
+Use this placement priority:
+
+1. FOUND/category anchor
+2. Entry or exit
+3. Patience candle
+4. Immediate trigger
+5. Invalidation or stop
+6. Breakout or pullback
+7. Supporting evidence
+
+Priority affects lane placement only. It must never hide or remove evidence.
+
+4. Same-candle stacking
+
+When several events share one five-minute interval:
+
+- keep each exact marker independently focusable
+- stack compact marker symbols beside the candle
+- place their labels in separate event-rail lanes
+- route separate leader lines to the same candle
+- do not merge patience, trigger, entry and invalidation into one generic event
+
+If four lanes are insufficient:
+- use numbered chart markers
+- show the full ordered event list in a compact legend beside the rail
+- preserve individual hover and keyboard focus
+
+5. Separate machine and human event styling
+
+Machine-visible:
+- solid marker and leader line
+- normal label opacity
+
+Human-only:
+- dashed marker and leader line
+- muted label
+- include `HUMAN ONLY`
+- remain inside the shaded outcome region
+
+Label routing must never visually move a human-only event to the machine-visible side of the causal cursor.
+
+6. Keep reserved areas clear
+
+Labels and connectors must not overlap:
+
+- candle inspector
+- causal-cursor badge
+- price axis
+- right-side level tags
+- opening-range label
+- human-only context heading
+- chart controls
+- volume panel
+- candle bodies
+- chart boundaries
+
+Reserve explicit exclusion rectangles for these areas before assigning lanes.
+
+7. Simplify the causal cursor
+
+- Keep the vertical causal-cursor line.
+- Move its `CAUSAL CURSOR` label into a dedicated top lane.
+- Do not allow event labels to overlap it.
+- If an event occurs on the cursor candle, offset the event label into the nearest available lane while keeping its marker at the exact candle.
+
+8. Fix invalidation labeling
+
+- Replace the long word drawn across price lines with a compact `X` marker.
+- Put `Invalidation` in the event-label rail.
+- Show the exact invalidation price in its tooltip or label.
+- Do not render text directly over stop/invalidation lines.
+
+9. Preserve right-side price readability
+
+The right-side price rail is separate from the event rail.
+
+- Continue collision-aware price-label stacking.
+- Merge exact-price confluences.
+- Do not allow event leader lines to pass through price tags.
+- Reserve sufficient right-axis width for numeric prices.
+
+10. Interaction
+
+Hovering or focusing a rail label must:
+
+- highlight its exact candle
+- emphasize its compact marker
+- emphasize its connector
+- update the docked candle inspector
+- display event name, time, price and visibility status
+
+Hovering a candle marker must highlight its matching rail label.
+
+11. Responsive behavior
+
+Desktop:
+- use up to four event-label lanes
+
+Smaller screens:
+- use compact numbered markers and an event list below the chart
+- never shrink labels until unreadable
+
+Fullscreen:
+- preserve the same deterministic layout
+- use additional space without changing event order
+
+12. Focused tests
+
+Add tests proving:
+
+- identical inputs produce identical lane assignments
+- FOUND, patience, trigger, entry, invalidation, stop and exit remain individually identifiable
+- same-candle events receive separate labels
+- labels do not overlap each other
+- labels do not overlap the candle inspector
+- labels do not overlap the causal-cursor badge
+- labels stay out of the price rail and volume panel
+- human-only events remain visually on the human-only side
+- markers retain their exact timestamps and prices
+- dense fallback uses numbered markers without hiding evidence
+- keyboard focus connects marker, label and candle inspector
+- normal, expanded and fullscreen layouts preserve event identity
+
+Verification limits:
+
+Run only:
+- focused visual-review chart tests
+- frontend typecheck
+- frontend build if required
+
+Do not:
+- restart the API
+- rebuild the historical index
+- regenerate historical review sets
+- run backtests
+- modify human judgments
+
+Provide before-and-after screenshots of the qualified-trade example around 12:00–12:15 showing all dense events individually readable.
+```
+
+This is a useful next change because it affects readability, not formula correctness or compute-heavy processing.
