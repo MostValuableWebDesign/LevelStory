@@ -1,0 +1,148 @@
+Update LevelStory’s missed-trade teaching validation so qualifying levels are treated as proximity zones rather than exact hard prices.
+
+Current problem:
+The validator requires every qualifying level to be fully contained inside the patience candle’s high-low range. This incorrectly rejects valid setups where the patience candle approaches, touches, slightly overshoots, or rejects near a level.
+
+Implement the following deterministic rule.
+
+1. Level proximity zone
+
+For MES:
+
+MES_TICK_SIZE = 0.25
+DEFAULT_LEVEL_TOLERANCE_TICKS = 4
+DEFAULT_LEVEL_TOLERANCE_POINTS = 1.00
+
+Make the tick tolerance configurable and persist the actual tolerance used with each teaching record and validation result.
+
+For a single-price level L, create:
+
+levelZoneLow = L - tolerancePoints
+levelZoneHigh = L + tolerancePoints
+
+The patience candle interacts with the level when its completed high-low range intersects this zone:
+
+patienceCandle.high >= levelZoneLow
+AND
+patienceCandle.low <= levelZoneHigh
+
+Equivalent distance calculation:
+
+distance =
+  0 when the candle contains or crosses the level;
+  level - candle.high when the candle is below the level;
+  candle.low - level when the candle is above the level.
+
+The interaction passes when:
+
+distance <= tolerancePoints
+
+Do not require the exact level price to be contained inside the candle.
+
+2. Existing level ranges
+
+If the qualifying level is already represented as a support/resistance range, expand both sides by the tolerance:
+
+expandedLow = rangeLow - tolerancePoints
+expandedHigh = rangeHigh + tolerancePoints
+
+The completed patience candle must intersect the expanded range.
+
+Do not require the entire level range to fit inside the candle.
+
+3. Preserve causal visibility
+
+Do not remove or weaken the requirement that the qualifying level was available to the machine at the evaluation time.
+
+If the selected level is rejected as “not visible in the machine snapshot,” distinguish between:
+
+A. The level genuinely did not exist in the machine’s causal state.
+Reject it and explain that the strategy did not know the level at that time.
+
+B. The level was calculated before the evaluation cursor but omitted from the serialized snapshot.
+Fix the snapshot to include the level, its price/range, type, calculation timestamp, source candles, and provenance.
+
+Never manufacture a level after the fact or use future candles.
+
+4. Supported qualifying levels
+
+Apply proximity-zone logic consistently to:
+
+- ORB/NTZ high and low
+- Premarket high and low
+- Previous-day high and low
+- Day-before-previous-day high and low
+- Established support/resistance
+- VWAP
+- 200 EMA
+- Approved Fibonacci retracement levels, but only when Fibonacci context was validly established before the evaluation cursor
+
+For curved indicators such as VWAP and 200 EMA, use the indicator value at the patience candle’s timestamp, not its final session value.
+
+5. Validation messages
+
+Replace the existing message:
+
+“Every selected qualifying level must be contained by the patience candle range.”
+
+With specific results such as:
+
+Passed:
+“Patience candle came within 3 ticks of Previous Day Low. Allowed tolerance: 4 ticks.”
+
+Failed:
+“Patience candle remained 7 ticks from VWAP. Allowed tolerance: 4 ticks.”
+
+Not causal:
+“Previous Day Low was not present in the machine-visible snapshot at the evaluation time.”
+
+Show:
+
+- Level name
+- Level price or range
+- Candle high and low
+- Distance in ticks and points
+- Allowed tolerance
+- Machine-visible status
+- Pass/fail reason
+
+6. Teaching workflow
+
+In Human Judgment / Explicit Submission:
+
+- Default tolerance to 4 MES ticks.
+- Allow the reviewer to choose a smaller tolerance from 0–4 ticks.
+- Do not allow a reviewer to exceed the configured maximum without creating a separate governed rule proposal.
+- Save the chosen tolerance as immutable teaching evidence.
+- Do not directly mutate the active strategy.
+- Generate an advisory proposal if repeated accepted examples suggest changing the default tolerance.
+
+7. Focused tests
+
+Add deterministic tests for:
+
+- Exact level touch passes.
+- Candle crossing the level passes.
+- One tick away passes.
+- Four ticks away passes.
+- More than four ticks away fails.
+- Slight overshoot passes.
+- Support/resistance range intersection passes.
+- VWAP uses its value at the patience-candle timestamp.
+- EMA 200 uses its value at the patience-candle timestamp.
+- A visible level omitted from serialization is restored with valid provenance.
+- A level created using future candles remains rejected.
+- Invalid submissions produce no persistent teaching or review mutation.
+- Distance and validation messages use correct MES tick rounding.
+
+Run only focused teaching-validation, visual-review, persistence, and governance tests plus typechecks. Do not run historical indexing, cold backtests, or qualification batches.
+
+Do not activate Shadow Mode, change the active strategy, or add live/paper execution.
+
+Report:
+- Files changed
+- Exact proximity formula
+- Default and maximum tolerance
+- Focused test totals
+- Evidence that causal visibility remains enforced
+- Evidence that no strategy was automatically changed
