@@ -1,0 +1,72 @@
+Now correct only the `/visual-review` chart renderer using the corrected deterministic fixtures.
+
+Do not modify the formula, fixture evidence, qualification decisions, fills, outcomes or historical infrastructure.
+
+Required chart behavior:
+
+1. Display 35–50 candles surrounding the evaluated setup.
+2. Preserve enough pre-event candles to judge the 15-minute trend, ORB breakout, pullback and patience candle.
+3. Include later candles only through the review/exit cursor.
+4. Shade every post-evaluation candle as “Human-only outcome context.”
+5. Compute the primary Y-axis from visible candle highs and lows with 5–10% padding.
+6. Do not expand the candle scale for distant annotations.
+7. Show out-of-range levels as labeled top/bottom edge indicators with their actual prices.
+8. Render exact OHLC:
+   - wick from high to low
+   - body from open to close
+   - minimum visual body height for dojis without changing data
+9. Add hover information:
+   - New York time
+   - UTC time
+   - open, high, low, close
+   - volume
+10. Use prioritized level styles:
+   - ORB High/Low: bold orange
+   - VWAP: blue
+   - EMA 200: purple
+   - relevant critical level: emphasized gray
+   - entry: green
+   - stops: red
+   - target: green dashed
+   - Fibonacci: muted
+11. Hide secondary levels behind an “Additional levels” control.
+12. Prevent label overlap using collision-aware stacking or a numbered legend.
+13. Add exact candle/event markers:
+   - patience candle
+   - immediate-next trigger
+   - buffered entry
+   - modeled fill
+   - stop hit
+   - target hit
+   - runner activation
+   - runner exit
+   - ambiguity collision
+14. Outcome events after the causal cursor may appear only in the shaded human-only region.
+15. Prominently show:
+   - “Simulated fixture data,” or
+   - “Historical Databento data — [contract]”
+16. Never imply simulated candles are historical market data.
+17. Make the chart readable on desktop and mobile.
+
+Add focused frontend tests proving:
+- distant levels do not compress candles
+- OHLC coordinates are correct
+- dojis remain visible
+- out-of-range indicators work
+- labels do not collide in a dense fixture
+- causal and human-only regions remain separated
+- markers use exact timestamps
+- source labels are accurate
+
+Run:
+- focused visual-review frontend tests
+- frontend typecheck
+- API typecheck only if shared types changed
+
+Do not restart the API or rebuild the historical index.
+
+Report files changed, test results and before/after screenshots for:
+- Qualified trade
+- Weak ORB probe
+- Stop exit
+- Runner exit
