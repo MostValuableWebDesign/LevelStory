@@ -1,0 +1,220 @@
+This is significantly better. The regular-session chart now has readable candles, fixed time slots, crosshair data, volume, opening-range marking, expansion and fullscreen.
+
+You are correct about the remaining problems.
+
+### What still needs correction
+
+1. **VWAP and EMA 200 should be curved lines.**
+
+Currently, VWAP and EMA 200 appear to be single horizontal snapshot values.
+
+- VWAP: changing line calculated for every completed five-minute candle.
+- EMA 200: changing line calculated for every completed five-minute candle, using sufficient earlier candles for warm-up.
+- ORB, NTZ, premarket levels and Fibonacci levels should remain horizontal.
+
+2. **Premarket should not compress the regular session.**
+
+Checking premarket adds 66 candles to the same chart, squeezing 9:30–1:00 and causing overlapping time labels. Premarket should be a separate collapsible mini-chart or panel. The primary chart should remain fixed at full width from 9:30–1:00.
+
+3. **Entry markers are needed.**
+
+For actual trades:
+
+- Long entry: small green upward arrow below the entry candle.
+- Short entry: small red downward arrow above the entry candle.
+- Label: `ENTRY 7730.25`.
+- Tooltip: time, direction, trigger price, fill price and contracts.
+
+For rejected setups, display `NO ENTRY` rather than inventing a marker.
+
+4. **Time labels still collide.**
+
+The chart should automatically skip labels when space is limited. Always preserve 9:30, 9:45, 10:00, 11:00, noon and 1:00.
+
+5. **Full-session coverage is incomplete.**
+
+The fullscreen screenshot says **54 regular candles**, but 9:30–4:00 requires **78 five-minute candles**. It should either load all 78 or clearly report incomplete coverage. It must not silently call 54 candles a full session.
+
+6. **Human-only shading needs to be stronger.**
+
+Candles after the causal cursor should have an obvious gray background or reduced opacity. Presently, the difference is easy to miss.
+
+7. **Level labels still collide.**
+
+Premarket High and Critical Premarket High overlap. Nearby levels should combine into a confluence group or use stacked label positions.
+
+Use this prompt:
+
+```text
+Complete the remaining LevelStory visual-review chart corrections.
+
+Do not change the trading formula, historical OHLCV, qualification decisions, fills or causal evaluation.
+
+1. Render VWAP and EMA 200 as true indicator series
+
+VWAP and EMA 200 must not be horizontal snapshot levels.
+
+For every displayed completed five-minute candle, provide:
+- timestamp
+- VWAP value
+- EMA 200 value
+- machine-visible or human-only status
+
+VWAP:
+- calculate causally for every five-minute candle
+- use the formula’s configured session-reset behavior
+- clearly display the reset definition in the legend
+- never use future volume or prices
+
+EMA 200:
+- calculate causally for every five-minute candle
+- use sufficient earlier historical candles for warm-up
+- warm-up candles may be used for calculation without being displayed
+- do not restart the EMA calculation at 9:30 unless that is explicitly part of the formula
+
+Rendering:
+- VWAP: curved blue polyline
+- EMA 200: curved purple polyline
+- break the line across missing data
+- do not interpolate through data gaps
+- use dashed/muted lines after the causal cursor to identify human-only indicator context
+
+Keep these horizontal:
+- ORB High/Low
+- NTZ High/Low
+- premarket High/Low
+- Fibonacci levels
+- critical levels
+- entry, stop and target prices
+
+2. Separate premarket from the primary chart
+
+Do not insert 66 premarket candles into the same X-axis as the 42-candle primary window.
+
+When “Show premarket candles” is checked:
+- open a collapsible premarket mini-chart above the primary chart
+- use its own time axis from 4:00–9:30 AM ET
+- use approximately 20–25% of the total chart height
+- visually mute premarket candles
+- keep the primary 9:30–1:00 chart at full width
+- preserve premarket High/Low on the primary chart
+
+Provide an optional “Expand premarket” control.
+
+3. Add trade-event markers
+
+For a real qualified trade, add:
+
+Entry:
+- long: green upward arrow below the entry candle
+- short: red downward arrow above the entry candle
+- label: `ENTRY` plus fill price
+
+Patience candle:
+- small `P` marker
+
+Immediate trigger:
+- small `T` marker
+
+Stop:
+- red `STOP` marker at the exact exit candle and price
+
+Target:
+- green `TARGET` marker
+
+Runner activation:
+- blue `RUNNER` marker
+
+Runner exit:
+- blue `RUNNER EXIT` marker
+
+Ambiguity:
+- warning marker showing both barriers were touched without known order
+
+Marker tooltip must contain:
+- New York time
+- direction
+- event
+- trigger price
+- modeled fill or exit price
+- contracts
+- whether it was machine-visible or human-only
+
+If no trade occurred, show a small `NO ENTRY` badge outside the candle plot. Never fabricate an entry marker.
+
+4. Fix time-label collision
+
+- Use collision-aware tick selection.
+- Hide lower-priority time labels when they overlap.
+- Never render text on top of other time text.
+- Preserve these anchors when present:
+  9:30 AM, 9:45 AM, 10:00 AM, 11:00 AM, 12:00 PM and 1:00 PM.
+- Full-session view should also preserve 2:00 PM, 3:00 PM and 4:00 PM.
+- Use New York time as the visible default.
+
+5. Validate session coverage
+
+Primary 9:30–1:00:
+- expected 42 five-minute candles
+
+Full 9:30–4:00:
+- expected 78 five-minute candles
+
+If fewer candles are available:
+- show `Incomplete session coverage: 54 of 78 candles`
+- identify the missing intervals
+- do not label the coverage as complete
+- preserve blank gaps instead of fabricating candles
+
+6. Strengthen the causal boundary
+
+- Use a clearly visible shaded background after the causal cursor.
+- Reduce human-only candle opacity slightly.
+- Add a persistent `HUMAN-ONLY OUTCOME CONTEXT` label.
+- Machine evidence must remain limited to candles at or before the cursor.
+- Indicator values after the cursor must also be classified human-only.
+
+7. Fix level-label collisions
+
+When nearby levels overlap:
+- stack labels with connector lines, or
+- combine them into a confluence group such as:
+  `Premarket High + Critical Level · 7739.00`
+
+Always show the numeric price.
+
+Do not allow the opening-range label to overlap premarket labels.
+
+8. Category coverage
+
+Replace `Generated 5 causal snapshots` with:
+`5 of 12 historical categories found`
+
+List the seven missing categories. Do not fabricate them.
+
+Focused tests:
+- VWAP and EMA produce changing time series
+- no indicator point uses future candles
+- premarket toggle does not change primary-chart candle width
+- entry markers appear only for actual trades
+- rejected setups show no entry
+- exit markers use exact trade timestamps
+- time labels never overlap
+- 42 and 78 session expectations are enforced
+- incomplete coverage is disclosed
+- causal shading includes future candles and future indicator segments
+
+Verification limits:
+- Run focused visual-validation tests and typechecks.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not modify human judgments.
+
+Provide screenshots of:
+1. Primary chart without premarket
+2. Primary chart with separate premarket panel
+3. Qualified trade with entry and target markers
+4. Fullscreen chart showing curved VWAP and EMA 200
+```
+
+The main chart is now on the right track. The biggest remaining functional issue is that **VWAP and EMA 200 are being rendered as levels instead of indicator curves**.
