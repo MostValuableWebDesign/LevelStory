@@ -1,0 +1,459 @@
+Apply the following LevelStory visual-review and formula corrections.
+
+This task includes:
+
+1. Previous-day and two-days-back session levels
+2. Trade-only historical categories by default
+3. Separate no-entry diagnostics
+4. Removal of unnecessary coverage panels and Opening Range text
+5. Fibonacci eligibility only after pullback-to-level confirmation
+6. Live hover updates without clicking
+
+Do not change unrelated trading rules, historical OHLCV, contract rollover handling, session calendars, fees, slippage or causal visibility.
+
+PART 1 — ADD PREVIOUS SESSION LEVELS
+
+Add the completed regular-session high and low from:
+
+1. Previous trading session
+2. Two completed trading sessions ago
+
+Definitions:
+
+Previous Day High/Low:
+- use the immediately previous completed CME regular trading session
+- calculate from regular-session candles only
+- exclude premarket and overnight candles
+- carry the completed levels horizontally through the current intraday chart
+- color: green
+- line style: solid
+
+Display:
+
+- `PDH · price`
+- `PDL · price`
+
+Two Days Back High/Low:
+- use the completed regular session immediately before the previous session
+- exclude premarket and overnight candles
+- carry levels horizontally through the current intraday chart
+- color: purple
+- line style: solid
+
+Display:
+
+- `2DH · price`
+- `2DL · price`
+
+Requirements:
+
+- align prices to MES 0.25
+- display two decimals
+- use America/New_York trading dates
+- remain DST-safe
+- skip weekends and verified full market closures
+- respect shortened sessions
+- preserve exact contract/schedule identity across rollover
+- do not fabricate a level when the required prior session is incomplete
+
+Existing premarket levels remain green but must be visually distinguishable:
+
+- Premarket High/Low: green dashed
+- Previous Day High/Low: green solid
+- Two Days Back High/Low: purple solid
+- EMA 200: light-green curved series
+
+Add a compact legend explaining the distinction.
+
+When levels share an exact price:
+- show a confluence label
+- preserve each level’s identity in the tooltip
+- do not render duplicate overlapping labels
+
+PART 2 — REQUIRE ENTRIES FOR THE DEFAULT HISTORICAL REVIEW
+
+Add two review modes:
+
+Default:
+`Trades only`
+
+Optional:
+`No-entry diagnostics`
+
+TRADES ONLY
+
+An example may appear in the default Trades-only category list only when it is linked to a genuine deterministic simulated trade with:
+
+- valid patience candle
+- immediate-next entry candle
+- exact entry timestamp
+- buffered entry price
+- modeled fill
+- trade ID
+- audit ID
+
+Every displayed trade example must satisfy:
+
+`entryCandleOpenTime === patienceCandleCloseTime`
+
+The entry candle is the immediate next completed five-minute candle after the patience candle.
+
+A later candle cannot trigger the setup.
+
+Required category behavior in Trades-only mode:
+
+Qualified Trade:
+- requires a linked entry
+
+Bullish Patience Candle:
+- requires that the patience candle produced an entry on its immediate-next candle
+
+Bearish Patience Candle:
+- requires that the patience candle produced an entry on its immediate-next candle
+
+Strong Breakout:
+- requires a later qualifying pullback, patience candle and linked entry
+
+Pullback:
+- requires a qualifying level interaction, patience candle and linked entry
+
+Consolidation:
+- requires the consolidation sequence to lead to a patience candle and linked entry
+
+Ambiguous Candle:
+- show only when the ambiguity belongs to an entered trade
+
+Stop Exit:
+- requires a linked entry and exact stop exit
+
+Target Exit:
+- requires a linked entry and exact target exit
+
+Runner Exit:
+- requires a linked entry and exact runner exit
+
+If a category has no linked qualifying trade:
+- show `No entered historical example found`
+- do not display a misleading category sample
+- do not fabricate an entry
+
+NO-ENTRY DIAGNOSTICS
+
+Move these into the optional No-entry diagnostics section:
+
+- Rejected Setup
+- Weak ORB Probe
+- Expired Patience Setup
+- Breakout Without Pullback
+- Pullback Without Patience
+- Immediate-next Candle Failed to Trigger
+- Risk Rejection
+
+Clearly label this section:
+
+`No-entry diagnostics · Why the app stayed out`
+
+Default it to collapsed/off.
+
+Do not mix no-entry examples with entered-trade examples.
+
+PART 3 — STRICT PATIENCE-TO-ENTRY ASSOCIATION
+
+For every trade example:
+
+1. Mark the valid patience candle.
+2. The immediate next five-minute candle is the entry candle.
+3. The immediate-next candle must reach the configured 3–4 tick buffered price.
+4. If it does not reach the price, no entry occurs.
+5. A later candle cannot trigger the expired patience setup.
+
+Bullish:
+- entry 3–4 ticks above patience high
+
+Bearish:
+- entry 3–4 ticks below patience low
+
+Visual event index:
+
+- `P · Patience candle`
+- `E · Immediate-next entry candle`
+
+Do not display a separate trigger candle between P and E.
+
+Every category sample in Trades-only mode must expose:
+
+- patience candle time
+- entry candle time
+- direction
+- buffer ticks
+- entry trigger price
+- modeled fill price
+- trade ID
+
+PART 4 — REMOVE COVERAGE PANELS
+
+Remove the two large panels:
+
+- `Primary Window`
+- `Full Regular Session`
+
+Do not display these as separate cards above the chart.
+
+Replace them with one compact line near the chart controls:
+
+`Full session · 78/78 five-minute candles`
+
+or, when incomplete:
+
+`Full session · 76/78 candles · 2 gaps`
+
+Keep complete gap details inside a collapsed:
+
+`Coverage details`
+
+Do not remove coverage validation or fabricate missing candles.
+
+PART 5 — REMOVE OPENING RANGE TEXT
+
+Remove the visible:
+
+`OPENING RANGE`
+
+label from the chart.
+
+Preserve:
+
+- first three five-minute candles from 9:30–9:45
+- ORB / NTZ High
+- ORB / NTZ Low
+- orange horizontal boundaries
+- optional subtle opening-range background shading
+
+Do not print an Opening Range label over the candles.
+
+PART 6 — FIBONACCI ELIGIBILITY RULE
+
+Correction:
+
+Do not calculate, apply, display or use Fibonacci retracement as confluence unless price has first completed a qualifying pullback interaction with a recognized key level.
+
+Recognized key levels:
+
+- ORB / NTZ High or Low
+- VWAP
+- EMA 200
+- Premarket High or Low
+- Previous Day High or Low
+- Two Days Back High or Low
+- validated support or resistance
+- validated critical/confluence level
+
+Required order:
+
+1. Valid breakout or directional impulse exists.
+2. Price begins a pullback.
+3. Pullback reaches or comes within the configured tolerance of a recognized key level.
+4. The key-level interaction is causally confirmed.
+5. Only then freeze the impulse anchors and calculate Fibonacci retracement.
+6. Use Fibonacci as supporting confluence—not as the initial reason for recognizing the pullback.
+7. Then wait for the patience candle and immediate-next entry candle.
+
+If no key-level interaction occurred:
+
+- `fibonacciEligible = false`
+- do not display Fib levels
+- do not use Fibonacci in qualification
+- do not record Fibonacci confluence
+- explain:
+  `Fibonacci not evaluated because no qualifying pullback-to-level interaction occurred.`
+
+If the interaction occurred:
+
+- freeze causal swing anchors
+- calculate Fibonacci
+- display only the relevant retracement levels
+- record the touched key level and retracement percentage
+- never recalculate anchors using later candles
+
+This changes formula behavior.
+
+Therefore:
+
+- increment the fixed formula version
+- regenerate the formula hash
+- invalidate only formula-dependent deterministic caches
+- do not rebuild the historical candle index
+
+Add focused strategy tests proving:
+
+- Fib is unavailable before a key-level pullback
+- Fib is unavailable for an arbitrary retracement in open space
+- Fib becomes eligible after a qualifying level interaction
+- later candles cannot alter frozen anchors
+- Fib cannot independently qualify a setup
+- entry still requires patience → immediate-next entry candle
+
+PART 7 — LIVE HOVER WITHOUT CLICKING
+
+Current defect:
+
+The Candle Inspector says `Click or keyboard selection`, and moving the mouse across candles does not continuously update it.
+
+Correct behavior:
+
+- pointer hover updates the Candle Inspector immediately
+- clicking is not required
+- use the nearest fixed five-minute X-axis slot
+- hover anywhere vertically inside a candle’s column
+- price area, wick area, blank space and volume area all select the same slot
+- update OHLCV, EMA 200, VWAP and events continuously
+
+Rename:
+
+`Candle Inspector · Click or keyboard selection`
+
+to:
+
+`Candle Inspector · Hover or use arrow keys`
+
+Pointer behavior:
+
+- use one transparent interaction rectangle over the complete plot
+- listen to `pointerenter` and `pointermove`
+- use requestAnimationFrame throttling
+- update when the selected timestamp slot changes
+- do not require pointerdown or click
+- numbered event markers must not block pointer movement
+- indicator lines and levels use `pointer-events: none`
+- retain the last hovered candle when the pointer leaves the plot
+
+Optional click behavior:
+
+- clicking may pin a selected candle
+- clearly display `Pinned`
+- Escape or `Unpin` returns to live hover
+- clicking must not be required for normal inspection
+
+PART 8 — ACCURATE POINTER MAPPING
+
+Use one authoritative pointer-to-slot function accounting for:
+
+- rendered chart bounding rectangle
+- SVG viewBox scale
+- plot-left boundary
+- plot-right boundary
+- price-axis gutter
+- zoom
+- pan
+- selected session window
+- fixed five-minute timestamp slots
+
+Do not:
+
+- select from individual candle DOM targets
+- include the price gutter
+- snap over a missing timestamp
+- apply pan/zoom twice
+- assume CSS pixels equal SVG units
+
+Highlight the selected five-minute slot with:
+
+- subtle vertical background band
+- slight candle outline
+- emphasized volume bar
+
+Do not restore a vertical dashed cursor line.
+
+PART 9 — KEY-LEVEL PRICE TAGS
+
+Ensure every visible structural level has a numeric price tag:
+
+- ORB / NTZ High and Low: orange
+- Premarket High and Low: green dashed
+- PDH and PDL: green solid
+- 2DH and 2DL: purple solid
+- EMA 200: light green
+- VWAP: red
+- Support/resistance: black
+- Critical/confluence: black
+- Eligible Fibonacci levels: muted gray
+- Target when applicable
+
+Rules:
+
+- MES 0.25 alignment
+- two decimal places
+- collision-aware stacking
+- exact-price confluence grouping
+- price tags remain visible in normal, expanded and fullscreen modes
+
+Entry and stop events remain markers only by default.
+
+Do not restore persistent Entry, Strategy Stop or Catastrophe Stop right-axis labels.
+
+PART 10 — FOCUSED TESTS
+
+Add tests proving:
+
+Previous-session levels:
+- PDH/PDL use the previous completed regular session
+- 2DH/2DL use two sessions back
+- weekends, closures and shortened sessions are handled
+- premarket and overnight candles are excluded
+- colors and line styles match requirements
+
+Historical-category filtering:
+- Trades-only is the default
+- every Trades-only sample has a linked entry
+- patience categories require a resulting entry
+- strong breakout and pullback examples require linked trades
+- no-entry cases appear only in diagnostics
+- missing entries are never fabricated
+
+Fibonacci:
+- unavailable until qualifying pullback-to-level
+- unavailable in open-space retracements
+- anchors freeze causally
+- Fib cannot replace patience/entry requirements
+
+Chart:
+- Primary/Full coverage cards are removed
+- compact coverage line remains
+- Opening Range text is absent
+- hover updates without clicking
+- anywhere in a slot selects the correct candle
+- indicators and event markers do not block hover
+- price tags exist for every visible structural level
+- entry remains the immediate-next candle after patience
+
+VERIFICATION LIMITS
+
+Run only:
+
+- focused strategy-rule tests
+- focused visual-review API tests if category filtering changes
+- focused frontend chart tests
+- API and frontend typechecks
+- frontend build if required
+
+Do not:
+
+- rebuild the historical index
+- run 20+2
+- run qualification batches
+- fabricate historical examples
+- modify existing human judgments
+- add live or paper trading
+
+Restart the API only once if formula-version or response-schema changes require it.
+
+REPORT
+
+Provide:
+
+1. New formula version and hash
+2. Files changed
+3. Focused test totals
+4. Confirmation that default historical categories contain entered trades only
+5. List of no-entry diagnostic categories
+6. Confirmation that Fib is gated behind pullback-to-level interaction
