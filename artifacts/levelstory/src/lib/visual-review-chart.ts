@@ -151,16 +151,16 @@ export function getEdgeIndicators(
   annotations: readonly VisualValidationAnnotation[],
   domain: ChartDomain,
 ): EdgeIndicator[] {
-  return annotations.flatMap((annotation) => {
-    if (!annotation.available || annotation.price == null) return [];
-    if (annotation.price > domain.max) return [{ annotation, edge: "top" }];
-    if (annotation.price < domain.min) return [{ annotation, edge: "bottom" }];
-    return [];
-  });
+  return annotations.reduce<EdgeIndicator[]>((indicators, annotation) => {
+    if (!annotation.available || annotation.price == null) return indicators;
+    if (annotation.price > domain.max) indicators.push({ annotation, edge: "top" });
+    if (annotation.price < domain.min) indicators.push({ annotation, edge: "bottom" });
+    return indicators;
+  }, []);
 }
 
 export function stackLabelPositions(
-  labels: readonly Array<{ id: string; y: number }>,
+  labels: ReadonlyArray<{ id: string; y: number }>,
   minY = CHART_TOP + 10,
   maxY = CHART_PLOT_BOTTOM - 4,
   gap = 15,
@@ -169,15 +169,13 @@ export function stackLabelPositions(
   const ordered = labels
     .map((label) => ({ id: label.id, y: Math.max(minY, Math.min(maxY, label.y)) }))
     .sort((first, second) => first.y - second.y);
-  const positioned: LabelPosition[] = [];
-  let nextY = minY;
-  for (const label of ordered) {
-    const y = Math.max(label.y, nextY);
-    positioned.push({ id: label.id, y });
-    nextY = y + gap;
-  }
-  const overflow = Math.max(0, (positioned.at(-1)?.y ?? maxY) - maxY);
-  return positioned.map((label) => ({ ...label, y: Math.max(minY, label.y - overflow) }));
+  const effectiveGap = ordered.length > 1
+    ? Math.min(gap, (maxY - minY) / (ordered.length - 1))
+    : gap;
+  return ordered.map((label, index) => ({
+    id: label.id,
+    y: minY + index * effectiveGap,
+  }));
 }
 
 export function findCandleIndexAtTimestamp(
@@ -186,9 +184,9 @@ export function findCandleIndexAtTimestamp(
 ): number {
   const target = timestamp(value);
   if (!Number.isFinite(target)) return -1;
-  return candles.findIndex((candle) => (
-    timestamp(candle.openTime) === target || timestamp(candle.closeTime) === target
-  ));
+  const openIndex = candles.findIndex((candle) => timestamp(candle.openTime) === target);
+  if (openIndex >= 0) return openIndex;
+  return candles.findIndex((candle) => timestamp(candle.closeTime) === target);
 }
 
 export function hasRepetitiveFixtureData(candles: readonly VisualValidationCandle[]): boolean {

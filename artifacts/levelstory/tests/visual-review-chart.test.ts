@@ -128,7 +128,7 @@ test("focused window stays bounded and includes post-cursor candles only through
 test("event markers resolve only exact candle timestamps", () => {
   const candles = Array.from({ length: 4 }, (_, index) => makeCandle(index));
   assert.equal(findCandleIndexAtTimestamp(candles, candles[2].openTime), 2);
-  assert.equal(findCandleIndexAtTimestamp(candles, candles[2].closeTime), 2);
+  assert.equal(findCandleIndexAtTimestamp(candles, candles[2].closeTime), 3);
   assert.equal(findCandleIndexAtTimestamp(candles, new Date(baseTime + 1).toISOString()), -1);
 });
 

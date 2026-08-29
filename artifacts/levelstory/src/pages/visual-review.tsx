@@ -94,6 +94,12 @@ function storedReviewSetId(): string {
   return window.localStorage.getItem("levelstory.visualReviewSetId") ?? "";
 }
 
+function requestedReviewCategory(): VisualValidationCategory | null {
+  if (typeof window === "undefined") return null;
+  const candidate = new URLSearchParams(window.location.search).get("category");
+  return CATEGORIES.some((category) => category.value === candidate) ? candidate as VisualValidationCategory : null;
+}
+
 function prettyCategory(category: string): string {
   return category.replaceAll("_", " ");
 }
@@ -126,7 +132,7 @@ export default function VisualReview() {
   const [request, setRequest] = useState<VisualValidationRequest>(INITIAL_REQUEST);
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [message, setMessage] = useState("");
@@ -435,8 +441,15 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
   const gridPrices = [domain.max, (domain.rawMax + domain.rawMin) / 2, domain.min];
   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null);
-  const primaryLevels = allLevels.filter(isPrimaryLevel);
-  const additionalLevels = allLevels.filter((annotation) => !isPrimaryLevel(annotation));
+  const criticalLevels = allLevels.filter((annotation) => annotation.id.startsWith("critical-"));
+  const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
+  const relevantCritical = [...criticalLevels]
+    .sort((first, second) => entryReference == null
+      ? 0
+      : Math.abs((first.price ?? entryReference) - entryReference) - Math.abs((second.price ?? entryReference) - entryReference))
+    .slice(0, 1);
+  const primaryLevels = allLevels.filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-")).concat(relevantCritical);
+  const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const inRangeLevels = primaryLevels.filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max);
   const labelPositions = stackLabelPositions(inRangeLevels.map((annotation) => ({ id: annotation.id, y: y(annotation.price as number) })), top + 9, plotBottom - 5, 16);
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
