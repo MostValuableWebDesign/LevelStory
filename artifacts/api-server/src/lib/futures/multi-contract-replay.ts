@@ -1110,6 +1110,34 @@ export async function getHistoricalMultiContractIndexStatus(): Promise<MultiCont
   }
 }
 
+/**
+ * Read only the already-persisted multi-contract index. Unlike
+ * getHistoricalMultiContractIndexStatus/importHistoricalMultiContract this
+ * accessor never starts discovery or indexing, which keeps visual review
+ * generation from rebuilding the historical source.
+ */
+export async function getReadyHistoricalMultiContractIndex(): Promise<HistoricalMultiContractImport | null> {
+  try {
+    const identity = await resolveMultiContractIdentity();
+    if (cachedImport?.indexKey === identity.indexKey) return cachedImport.value;
+    const persisted = await readPersistedIndex(identity);
+    if (!persisted) return null;
+    cachedImport = { indexKey: identity.indexKey, value: persisted };
+    updateIndexStatus({
+      state: "ready",
+      indexKey: identity.indexKey,
+      progress: 100,
+      discoveredFileCount: identity.resolved.accepted.length,
+      indexedFileCount: identity.resolved.accepted.length,
+      message: "Historical MES index loaded from the persistent cache.",
+      error: null,
+    });
+    return persisted;
+  } catch {
+    return null;
+  }
+}
+
 export async function importHistoricalMultiContract(): Promise<HistoricalMultiContractImport> {
   const identity = await resolveMultiContractIdentity();
   if (cachedImport?.indexKey === identity.indexKey) return cachedImport.value;

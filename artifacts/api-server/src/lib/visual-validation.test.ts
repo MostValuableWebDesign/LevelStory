@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildVisualValidationSet,
+  buildHistoricalVisualValidationSetFromReport,
   categoriesFor,
   matchingTrade,
   type VisualValidationRequest,
   type VisualValidationCategory,
 } from "./visual-validation.js";
+import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 import type { BacktestAuditRecord, BacktestTrade } from "./phase9.js";
 import {
   buildVisualValidationDiscrepancyReport,
@@ -30,6 +32,43 @@ test("visual-validation sample selection is deterministic", () => {
   assert.deepEqual(first, second);
   assert.ok(first.snapshots.length > 0);
   assert.equal(first.formulaHash, second.formulaHash);
+});
+
+test("simulated visual-validation requests default their persisted source", () => {
+  const set = buildVisualValidationSet(request);
+  assert.equal(set.source, "simulated");
+  assert.equal(set.request.source, "simulated");
+});
+
+test("historical projection keeps contract-local candles and truthful category gaps", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  const firstCandle = fixture.dataset.candles[0];
+  assert.ok(firstCandle);
+  const foreignContractCandle = { ...firstCandle, contractSymbol: "MESH6" };
+  const dataset = {
+    ...fixture.dataset,
+    source: "historical_databento_multicontract" as const,
+    candles: [...fixture.dataset.candles, foreignContractCandle],
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento" },
+    dataset,
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [fixture.audit],
+      trades: fixture.trade ? [fixture.trade] : [],
+    },
+  );
+  assert.equal(set.source, "historical_databento");
+  assert.ok(set.snapshots.length >= 1);
+  assert.ok(set.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
+  assert.ok(set.snapshots.every((snapshot) => snapshot.rawCandles.every((candle) => candle.contractSymbol === fixture.audit.contractSymbol)));
+  assert.equal(set.categoryCoverage.find((item) => item.category === "qualified_trade")?.available, false);
+  assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 1);
+  assert.equal(set.snapshots[0]?.evaluationCursor.futureCandleAccess, false);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {

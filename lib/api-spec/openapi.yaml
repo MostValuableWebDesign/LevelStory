@@ -442,6 +442,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Historical visual-review source is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/visual-validation/reviews:
     post:
       operationId: recordVisualValidationReview
@@ -2836,6 +2842,7 @@ components:
         outOfSampleDays: { type: number, minimum: 1, maximum: 10, default: 2 }
         seed: { type: number, minimum: 0, maximum: 1000000, default: 11 }
         premarketAvailable: { type: boolean, default: true }
+        source: { type: string, enum: [simulated, historical_databento], default: simulated }
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:
       type: string
@@ -2941,7 +2948,7 @@ components:
         createdAt: { type: string, format: date-time }
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         formulaVersion: { type: string }
-        source: { type: string, enum: [simulated] }
+        source: { type: string, enum: [simulated, historical_databento] }
         symbol: { type: string }
         request: { $ref: "#/components/schemas/VisualValidationRequest" }
         snapshots:

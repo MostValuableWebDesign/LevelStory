@@ -4030,6 +4030,7 @@ export const getVisualValidationSetResponseRequestSeedMin = 0;
 export const getVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
+export const getVisualValidationSetResponseRequestSourceDefault = `simulated`;
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4042,7 +4043,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "formulaHash": zod.string().regex(getVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
-  "source": zod.enum(['simulated']),
+  "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
   "symbol": zod.enum(['MES']).default(getVisualValidationSetResponseRequestSymbolDefault),
@@ -4050,7 +4051,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "inSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestInSampleDaysMax).default(getVisualValidationSetResponseRequestInSampleDaysDefault),
   "outOfSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
-  "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault)
+  "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault)
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
@@ -4139,6 +4141,7 @@ export const createVisualValidationSetBodySeedMin = 0;
 export const createVisualValidationSetBodySeedMax = 1000000;
 
 export const createVisualValidationSetBodyPremarketAvailableDefault = true;
+export const createVisualValidationSetBodySourceDefault = `simulated`;
 
 export const CreateVisualValidationSetBody = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
@@ -4146,7 +4149,8 @@ export const CreateVisualValidationSetBody = zod.object({
   "inSampleDays": zod.number().min(1).max(createVisualValidationSetBodyInSampleDaysMax).default(createVisualValidationSetBodyInSampleDaysDefault),
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
-  "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault)
+  "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault)
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4165,6 +4169,7 @@ export const createVisualValidationSetResponseRequestSeedMin = 0;
 export const createVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
+export const createVisualValidationSetResponseRequestSourceDefault = `simulated`;
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4177,7 +4182,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "formulaHash": zod.string().regex(createVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
-  "source": zod.enum(['simulated']),
+  "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetResponseRequestSymbolDefault),
@@ -4185,7 +4190,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "inSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestInSampleDaysMax).default(createVisualValidationSetResponseRequestInSampleDaysDefault),
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
-  "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault)
+  "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault)
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationRequestSource } from './visualValidationRequestSource';
 import type { VisualValidationRequestSymbol } from './visualValidationRequestSymbol';
 
 export interface VisualValidationRequest {
@@ -27,4 +28,5 @@ export interface VisualValidationRequest {
      */
   seed?: number;
   premarketAvailable?: boolean;
+  source?: VisualValidationRequestSource;
 }

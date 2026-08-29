@@ -5,6 +5,7 @@ import {
 } from "./market-data.js";
 import {
   visibleReplayPrefix,
+  runCausalBacktest,
   type BacktestAuditRecord,
   type BacktestReport,
   type BacktestTrade,
@@ -13,6 +14,11 @@ import {
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
+import {
+  getReadyHistoricalMultiContractIndex,
+  multiContractImportToReplayDataset,
+  MULTI_CONTRACT_SOURCE,
+} from "./futures/multi-contract-replay.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -39,6 +45,7 @@ export type VisualValidationRequest = {
   outOfSampleDays: number;
   seed?: number;
   premarketAvailable?: boolean;
+  source?: "simulated" | "historical_databento";
 };
 
 export type VisualValidationCandle = {
@@ -132,7 +139,7 @@ export type VisualValidationSet = {
   createdAt: string;
   formulaHash: string;
   formulaVersion: string;
-  source: "simulated";
+  source: "simulated" | "historical_databento";
   symbol: string;
   request: VisualValidationRequest;
   snapshots: VisualValidationSnapshot[];
@@ -536,7 +543,87 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     formulaVersion: FIXED_FORMULA_VERSION,
     source: "simulated",
     symbol: request.symbol,
-    request,
+    request: { ...request, source: "simulated" },
+    snapshots,
+    categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
+      category,
+      label: categoryLabels[category],
+      count: snapshots.filter((snapshot) => snapshot.category === category).length,
+      available: snapshots.some((snapshot) => snapshot.category === category),
+    })),
+  };
+}
+
+export async function buildHistoricalVisualValidationSet(
+  request: VisualValidationRequest,
+): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> {
+  if (request.symbol !== "MES") {
+    throw new Error("Historical Databento visual review supports MES only.");
+  }
+  const imported = await getReadyHistoricalMultiContractIndex();
+  if (!imported) {
+    throw new Error("Historical Databento visual review is unavailable because the ready multi-contract index was not found. Load the existing historical index before generating a review set.");
+  }
+  const firstEligibleDate = imported.summary.eligibleTradingDates[0];
+  if (!firstEligibleDate) {
+    throw new Error("Historical Databento visual review is unavailable because the ready index contains no eligible MES trading dates.");
+  }
+  const dataset = multiContractImportToReplayDataset(
+    imported,
+    firstEligibleDate,
+    request.endDate,
+    request.inSampleDays,
+    request.outOfSampleDays,
+  );
+  const report = runCausalBacktest({
+    symbol: request.symbol,
+    endDate: request.endDate,
+    inSampleDays: request.inSampleDays,
+    outOfSampleDays: request.outOfSampleDays,
+    premarketAvailable: request.premarketAvailable,
+    source: MULTI_CONTRACT_SOURCE,
+    executionMode: "ohlcv_modeled",
+  }, undefined, dataset);
+  return buildHistoricalVisualValidationSetFromReport(request, dataset, report);
+}
+
+export function buildHistoricalVisualValidationSetFromReport(
+  request: VisualValidationRequest,
+  dataset: CausalReplayDataset,
+  report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">,
+): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
+  const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
+    symbol: request.symbol,
+    formulaHash: formulaConfigurationHash({ symbol: request.symbol }),
+    executionMode: "ohlcv_modeled",
+  };
+  const candidates = report.audit.flatMap((audit) => {
+    const trade = matchingTrade(audit, report.trades);
+    return categoriesFor(audit, trade).map((category) => ({ audit, trade, category }));
+  });
+  const snapshots = VISUAL_VALIDATION_CATEGORIES.flatMap((category, categoryIndex) => {
+    const candidate = candidates.find((item) => item.category === category);
+    if (!candidate) return [];
+    const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
+      ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
+      : Date.parse(candidate.audit.evaluatedCandleOpenTime) + 5 * 60_000;
+    return [buildMachineSnapshot(
+      fixtureReport,
+      dataset,
+      candidate.audit,
+      candidate.trade,
+      categoryIndex + 1,
+      category,
+      reviewCloseTime,
+      request.premarketAvailable !== false,
+    )];
+  });
+  return {
+    formulaHash: fixtureReport.formulaHash,
+    formulaVersion: FIXED_FORMULA_VERSION,
+    source: "historical_databento",
+    symbol: request.symbol,
+    request: { ...request, source: "historical_databento" },
     snapshots,
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,

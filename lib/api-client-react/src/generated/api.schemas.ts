@@ -2794,6 +2794,14 @@ export const VisualValidationRequestSymbol = {
   MES: 'MES',
 } as const;
 
+export type VisualValidationRequestSource = typeof VisualValidationRequestSource[keyof typeof VisualValidationRequestSource];
+
+
+export const VisualValidationRequestSource = {
+  simulated: 'simulated',
+  historical_databento: 'historical_databento',
+} as const;
+
 export interface VisualValidationRequest {
   symbol: VisualValidationRequestSymbol;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
@@ -2814,6 +2822,7 @@ export interface VisualValidationRequest {
      */
   seed?: number;
   premarketAvailable?: boolean;
+  source?: VisualValidationRequestSource;
 }
 
 export type VisualValidationReviewStatus = typeof VisualValidationReviewStatus[keyof typeof VisualValidationReviewStatus];
@@ -2978,6 +2987,7 @@ export type VisualValidationSetSource = typeof VisualValidationSetSource[keyof t
 
 export const VisualValidationSetSource = {
   simulated: 'simulated',
+  historical_databento: 'historical_databento',
 } as const;
 
 export interface VisualValidationSet {

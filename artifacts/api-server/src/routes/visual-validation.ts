@@ -9,7 +9,10 @@ import {
   ExportVisualValidationDiscrepanciesResponse,
 } from "@workspace/api-zod";
 import { requestRateLimit } from "../lib/security.js";
-import { buildVisualValidationSet } from "../lib/visual-validation.js";
+import {
+  buildHistoricalVisualValidationSet,
+  buildVisualValidationSet,
+} from "../lib/visual-validation.js";
 import {
   buildVisualValidationDiscrepancyReport,
   getLatestVisualValidationSet,
@@ -25,6 +28,7 @@ const defaultRequest = {
   outOfSampleDays: 2,
   seed: 11,
   premarketAvailable: true,
+  source: "simulated" as const,
 };
 
 export function createVisualValidationRouter(): IRouter {
@@ -69,21 +73,27 @@ export function createVisualValidationRouter(): IRouter {
     res.json(GetVisualValidationSetResponse.parse(set));
   });
 
-  router.post("/backtest/visual-validation", generationRateLimit, (req, res): void => {
+  router.post("/backtest/visual-validation", generationRateLimit, async (req, res): Promise<void> => {
     const parsed = CreateVisualValidationSetBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
     try {
-      const set = storeVisualValidationSet(buildVisualValidationSet({
+      const request = {
         ...parsed.data,
         premarketAvailable: parsed.data.premarketAvailable ?? true,
-      }));
+      };
+      const built = request.source === "historical_databento"
+        ? await buildHistoricalVisualValidationSet(request)
+        : buildVisualValidationSet(request);
+      const set = storeVisualValidationSet(built);
       res.json(GetVisualValidationSetResponse.parse(set));
     } catch (error) {
       req.log?.error({ error: error instanceof Error ? error.message : "unknown" }, "Visual-validation generation failed");
-      res.status(500).json({ error: "Unable to generate the visual-validation set." });
+      const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
+      const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
+      res.status(unavailable ? 503 : 500).json({ error: detail });
     }
   });
 

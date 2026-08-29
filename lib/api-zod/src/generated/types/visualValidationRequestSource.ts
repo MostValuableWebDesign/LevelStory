@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type VisualValidationSetSource = typeof VisualValidationSetSource[keyof typeof VisualValidationSetSource];
+export type VisualValidationRequestSource = typeof VisualValidationRequestSource[keyof typeof VisualValidationRequestSource];
 
 
-export const VisualValidationSetSource = {
+export const VisualValidationRequestSource = {
   simulated: 'simulated',
   historical_databento: 'historical_databento',
 } as const;

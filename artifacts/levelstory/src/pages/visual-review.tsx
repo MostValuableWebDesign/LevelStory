@@ -87,6 +87,7 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   outOfSampleDays: 2,
   seed: 11,
   premarketAvailable: true,
+  source: "simulated",
 };
 
 function storedReviewSetId(): string {
@@ -115,6 +116,13 @@ function safeValue(value: unknown): string {
   if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(3) : "—";
   if (typeof value === "boolean") return value ? "yes" : "no";
   return JSON.stringify(value);
+}
+
+function apiErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("data" in error)) return null;
+  const data = error.data;
+  if (!data || typeof data !== "object" || !("error" in data) || typeof data.error !== "string") return null;
+  return data.error;
 }
 
 function annotationTone(color: VisualValidationAnnotation["color"]): string {
@@ -219,7 +227,7 @@ export default function VisualReview() {
         if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
         setMessage(`Generated ${nextSet.snapshots.length} causal snapshots.`);
       },
-      onError: () => setMessage("The deterministic set could not be generated. Check the date window and try again."),
+       onError: (error) => setMessage(apiErrorMessage(error) ?? "The deterministic set could not be generated. Check the date window and try again."),
     });
   };
 
@@ -273,7 +281,7 @@ export default function VisualReview() {
           <PageIntro
             eyebrow="Phase 12 / human-machine alignment"
             title="Look before you trust."
-            description="A causal visual review room for checking whether deterministic setup rules tell the same story as the candles. Generate a simulation-only set, inspect one decision at a time, then leave a human judgment."
+             description="A causal visual review room for checking whether deterministic setup rules tell the same story as the candles. Compare simulated fixtures or actual historical MES candles, inspect one decision at a time, then leave a human judgment."
             action={<ShadowBadge />}
           />
 
@@ -305,7 +313,7 @@ export default function VisualReview() {
                     <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
                   </div>
                 </div>
-              ) : <UnavailableWorkspace coverage={coverage} />}
+              ) : <UnavailableWorkspace coverage={coverage} source={data.source} />}
             </>
           )}
         </div>
@@ -316,10 +324,21 @@ export default function VisualReview() {
 
 function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; pending: boolean; message: string }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean) => setRequest({ ...request, [key]: value });
-  const hasError = message.toLowerCase().includes("could not") || message.toLowerCase().includes("not saved");
+  const hasError = ["could not", "not saved", "unavailable", "not found"].some((term) => message.toLowerCase().includes(term));
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
+      <Field label="Data source">
+        <select
+          className="field"
+          value={request.source ?? "simulated"}
+          onChange={(event) => update("source", event.target.value as "simulated" | "historical_databento")}
+          data-testid="select-visual-review-source"
+        >
+          <option value="simulated">Simulated fixture data</option>
+          <option value="historical_databento">Historical Databento data</option>
+        </select>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
         <Field label="Seed"><input className="field mono" type="number" min="0" max="1000000" value={request.seed ?? ""} onChange={(event) => update("seed", Number(event.target.value))} /></Field>
@@ -334,10 +353,10 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
         <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
       </label>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
-      <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
-        {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating causal set..." : "Generate simulation-only set"}
+       <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
+         {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating causal set..." : request.source === "historical_databento" ? "Generate historical set" : "Generate simulated set"}
       </button>
-      <LockedNote>Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here.</LockedNote>
+       <LockedNote>{request.source === "historical_databento" ? "Historical mode reads the existing indexed MES contract candles only. It never rebuilds the index, connects to a broker, creates orders, or produces live execution." : "Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here."}</LockedNote>
     </form>
   </Panel>;
 }
@@ -372,7 +391,7 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
         const selected = selectedCategory === category.value;
         return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[82px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
           <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{item?.count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
-          <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : "Unavailable"}</span>
+           <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : data.source === "historical_databento" ? "No qualifying historical example found." : "Unavailable"}</span>
         </button>;
       })}
     </div>
@@ -419,7 +438,7 @@ function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot;
       </div>
       <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
     </div>
-    {repetitive && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
+     {repetitive && source === "simulated" && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
     <CausalSvg snapshot={snapshot} candles={focusedCandles} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
@@ -593,12 +612,13 @@ function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report
   </Panel>;
 }
 
-function UnavailableWorkspace({ coverage }: { coverage: VisualValidationSet["categoryCoverage"] }) {
-  return <Panel accent><div className="flex min-h-[280px] flex-col items-center justify-center px-8 py-12 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><AlertTriangle size={22} /></div><h2 className="display text-xl font-bold">No category sample is available.</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">This set did not produce an available category. The room will not fabricate a chart. Generate another deterministic set or select an available category above.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{coverage.filter((item) => item.count > 0).map((item) => <span key={item.category} className="border border-border bg-muted/35 px-2.5 py-1.5 text-[10px] font-bold uppercase">{prettyCategory(item.category)}</span>)}</div></div></Panel>;
+function UnavailableWorkspace({ coverage, source }: { coverage: VisualValidationSet["categoryCoverage"]; source: VisualValidationSet["source"] }) {
+  const historical = source === "historical_databento";
+  return <Panel accent><div className="flex min-h-[280px] flex-col items-center justify-center px-8 py-12 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><AlertTriangle size={22} /></div><h2 className="display text-xl font-bold">No category sample is available.</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{historical ? "No qualifying historical example found. The room will not fabricate a chart." : "This set did not produce an available category. The room will not fabricate a chart."} Generate another set or select an available category above.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{coverage.filter((item) => item.count > 0).map((item) => <span key={item.category} className="border border-border bg-muted/35 px-2.5 py-1.5 text-[10px] font-bold uppercase">{prettyCategory(item.category)}</span>)}</div></div></Panel>;
 }
 
 function EmptyReview() {
-  return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">The review room is empty.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic simulation-only set to begin inspecting machine evidence against raw candles.</p></div>;
+  return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">The review room is empty.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Choose a simulated fixture or Historical Databento source to begin inspecting machine evidence against raw candles.</p></div>;
 }
 
 function moveSnapshot(snapshots: VisualValidationSnapshot[], active: VisualValidationSnapshot, direction: -1 | 1, setSelected: (id: string) => void) {

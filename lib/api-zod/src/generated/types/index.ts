@@ -245,6 +245,7 @@ export * from './visualValidationDiscrepancyReport';
 export * from './visualValidationDiscrepancyReportDiscrepanciesItem';
 export * from './visualValidationDiscrepancyReportReviewsItem';
 export * from './visualValidationRequest';
+export * from './visualValidationRequestSource';
 export * from './visualValidationRequestSymbol';
 export * from './visualValidationReview';
 export * from './visualValidationReviewCursor';
