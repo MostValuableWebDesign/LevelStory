@@ -1,0 +1,372 @@
+I agree. The current event-label rail added more visual noise than value. The numbered event index already provides the explanation; the chart itself should contain only candles, levels, indicators, boundaries and small numbered event markers.
+
+The candle inspector should also move completely outside the chart’s horizontal space so the plot can use the full screen width.
+
+Use this prompt:
+
+```text
+Simplify the LevelStory `/visual-review` page and make the chart the primary full-width workspace.
+
+Do not change:
+- formula logic
+- category selection
+- canonical anchors
+- event timestamps or prices
+- historical OHLCV
+- machine decisions
+- causal boundaries
+- human-only classifications
+- historical index
+
+1. Simplify “Raw market evidence / causal only”
+
+Rename the section:
+
+`Chart evidence`
+
+Replace the current technical presentation with a concise summary:
+
+Historical MESU6 · August 14, 2026
+5-minute candles · 9:30 AM–1:00 PM ET
+Machine evaluated through 12:05 PM
+Later candles are human-only outcome context
+
+Show only these items by default:
+- data source
+- contract
+- chart date
+- timeframe
+- machine evaluation time
+- coverage status
+- category found
+- trade decision
+
+Move these into a collapsed `Technical details` section:
+- audit ID
+- trade ID
+- formula hash
+- formula version
+- raw rule trace
+- immutable payload identifiers
+- machine/review candle counts
+- UTC timestamps
+- full coverage diagnostics
+
+Do not remove technical evidence; hide it until requested.
+
+2. Rewrite category descriptions in plain language
+
+For every selected category, display three concise sections:
+
+What the app found
+Why it matches this category
+What the app decided
+
+Example — Bearish patience candle:
+
+What the app found:
+“Bearish patience candle at 11:50–11:55 AM.”
+
+Why:
+“The 15-minute trend was bearish. The patience candle’s low stayed within the previous candle’s low.”
+
+Decision:
+“The immediate next candle did not confirm an entry.”
+or:
+“The next candle broke 3 ticks below the patience candle and triggered a short entry.”
+
+Example — Strong breakout:
+
+What the app found:
+“Price closed above ORB High with increased volume.”
+
+Why:
+“The breakout agreed with the 15-minute trend and continued beyond the opening range.”
+
+Decision:
+“No entry—the required pullback and patience candle had not occurred.”
+
+Example — Pullback:
+
+What the app found:
+“Price pulled back to VWAP at 11:55 AM.”
+
+Why:
+“The retracement reached a mapped level with lower pullback volume.”
+
+Decision:
+“No entry—a valid patience candle had not formed.”
+
+Example — Stop exit:
+
+What the app found:
+“The strategy stop was reached at 12:15 PM.”
+
+Why:
+“Price broke the formula-defined invalidation level.”
+
+Decision:
+“The simulated position was closed at 7808.50.”
+
+Keep the raw deterministic explanation under:
+`Show complete rule trace`
+
+Do not show uppercase internal property names as the primary description.
+
+3. Remove descriptive event labels from the chart
+
+Remove the entire:
+`Event label rail · deterministic lanes`
+
+Do not draw text labels such as these inside or above the chart:
+- Patience candle
+- Trigger candle
+- Qualified trade found
+- Pullback interaction found
+- Evaluation candle
+- Fill candle
+- Human stop
+- Human exit
+- Invalidation
+
+If an item is not a price level, moving average, indicator, session boundary or chart region, its descriptive text should not appear on the chart.
+
+Allowed chart labels:
+- ORB High/Low
+- NTZ High/Low
+- Premarket High/Low
+- VWAP
+- EMA 200
+- Fibonacci levels
+- critical/confluence levels
+- entry price
+- stop price
+- target price
+- runner threshold
+- Opening Range
+- Causal Cursor
+- Human-only outcome context
+
+4. Use only numbered event markers
+
+Keep the `Dense rail · numbered event index`.
+
+On the chart:
+- render small numbered circles only
+- position each number at its exact candle/event anchor
+- do not display descriptive text beside the marker
+- avoid covering the candle body when possible
+- use a short connector only when necessary
+
+In the numbered event index:
+- show number
+- event name
+- New York time
+- price when applicable
+- machine-visible or human-only
+- short explanation
+
+Interaction:
+- clicking or hovering an index row highlights its numbered chart marker and candle
+- clicking a chart marker highlights and scrolls to its index row
+- keyboard focus must work in both directions
+- selected events should update the candle inspector
+
+5. Show category-relevant markers by default
+
+Do not display every audit event for every category.
+
+Bearish/Bullish patience:
+- previous comparison candle
+- patience candle
+- immediate next trigger
+- entry/invalidation only if applicable
+
+Strong breakout:
+- breakout candle
+- first continuation candle
+- pullback start when applicable
+
+Weak ORB probe:
+- probe candle
+- ORB boundary
+- volume comparison
+
+Pullback:
+- pullback start
+- deepest retracement
+- touched critical level
+- patience candle if one followed
+
+Consolidation:
+- consolidation start
+- consolidation completion
+- breakout from consolidation when applicable
+
+Qualified trade:
+- patience
+- trigger
+- entry
+- stop/target
+- exit
+
+Stop/target/runner:
+- entry
+- relevant exit event
+- runner activation when applicable
+
+Add:
+`Show all audit events`
+
+Default it to off.
+
+6. Give the chart the full screen width
+
+Desktop:
+- chart container spans the entire available content width
+- remove the permanent right-side candle-inspector column
+- reserve only a narrow right gutter for numeric price-axis labels
+- default chart height: approximately 650–750px
+- keep normal, expanded and fullscreen modes
+- use at least 90–95% of available viewport width for the chart section
+
+Move Human Judgment below the chart or into a collapsible drawer.
+
+Do not allow the review panel to reduce chart width.
+
+7. Move the candle inspector completely outside the plot
+
+Replace the current right-side price/candle panel with an opaque horizontal inspector above the chart.
+
+Example:
+
+Selected candle · 11:55–12:00 PM ET
+O 7731.00 | H 7735.50 | L 7729.00 | C 7731.00 | Volume 17,167
+Machine visible · Events: #1 Pullback
+
+Requirements:
+- full-width horizontal strip
+- outside the chart SVG/canvas
+- never overlaps the price axis
+- never reduces the plotting width
+- fixed height so hovering does not move the layout
+- updates on hover, click and keyboard navigation
+- collapsible when the user wants maximum chart space
+
+In fullscreen, place the inspector in a compact toolbar above the chart.
+
+8. Keep chart labels limited to actual chart data
+
+Price levels:
+- horizontal line
+- compact right-axis label
+- numeric price
+- collision-aware placement
+
+Moving indicators:
+- VWAP remains a curved blue series
+- EMA 200 remains a curved purple series
+- show only a compact right-axis value label
+
+Event markers:
+- numbered circle only
+- no event description printed on the plot
+
+Boundaries:
+- causal cursor may retain a compact top badge
+- human-only region may retain one subtle background label
+- do not repeat either label multiple times
+
+9. Simplify the canonical anchor panel
+
+Replace:
+
+`FOUND · CANONICAL AUDIT ANCHOR`
+
+with:
+
+`Category found`
+
+Example:
+
+Qualified trade
+Short entry confirmed at 12:05 PM
+Patience: 12:00 PM
+Trigger: 12:05 PM
+Entry: 7803.25
+
+Hide audit and trade IDs under `Technical details`.
+
+10. Simplify the numbered event index
+
+Rename:
+
+`Dense rail · numbered event index`
+
+to:
+
+`Events on this chart`
+
+Each event should be a selectable compact row or chip.
+
+Example:
+
+1. Patience candle · 12:00 PM
+2. Trigger candle · 12:05 PM
+3. Short entry · 7803.25
+4. Human-only stop · 12:15 PM
+
+Clearly differentiate:
+- Machine-visible
+- Human-only
+
+Avoid internal labels such as `EVAL`, `HUMAN`, or raw audit codes unless technical details are expanded.
+
+11. Preserve evidence rules
+
+- Numbered markers must retain exact timestamps and prices.
+- Human-only events must stay in the shaded region.
+- Hiding descriptive chart labels must not remove evidence.
+- The event index must still expose every relevant event.
+- No future event may enter machine reasoning.
+- No candle, event or level may be fabricated.
+
+12. Focused tests
+
+Add tests proving:
+- the event-label rail is removed
+- chart events render as numbered markers only
+- price levels and indicator labels remain visible
+- category-relevant filtering works
+- Show all audit events restores the full event list
+- selecting an index item highlights the exact candle
+- candle inspector is outside the plot
+- chart uses at least 90% of available desktop width
+- Human Judgment does not reduce chart width
+- plain-language category descriptions match machine evidence
+- technical identifiers remain available under Technical details
+- causal and human-only rules remain unchanged
+
+Verification limits:
+
+Run only:
+- focused visual-review frontend tests
+- frontend typecheck
+- frontend build if required
+
+Do not:
+- restart the API unless absolutely required
+- rebuild the historical index
+- regenerate review sets
+- run backtests
+- modify human judgments
+
+Provide before-and-after screenshots of:
+1. Qualified trade
+2. Patience candle
+3. Pullback
+4. Stop exit
+5. Full-width chart with horizontal candle inspector
+```
+
+This should make the page feel like a trading chart again: **the chart shows price; the numbered index explains the events.**
