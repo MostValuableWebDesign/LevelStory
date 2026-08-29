@@ -352,6 +352,7 @@ export function selectExecutableDirection(
 }
 
 export type ReplaySnapshotOptions = {
+  strategyConfigOverrides?: Partial<StrategyConfig>;
   tradingDate?: string;
   cursor?: number;
   allCandles?: readonly SimulatedFuturesCandle[];
@@ -382,6 +383,7 @@ export function createMarketSnapshot(
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
   const config = strategyConfig({
+    ...(replayOptions?.strategyConfigOverrides ?? {}),
     ...(replayOptions?.ohlcvEntryBufferTicks === undefined ? {} : { patienceEntryBufferTicks: replayOptions.ohlcvEntryBufferTicks }),
     ...(replayOptions?.ohlcvStopBufferTicks === undefined ? {} : { patienceStopBufferTicks: replayOptions.ohlcvStopBufferTicks }),
   });

@@ -3807,7 +3807,9 @@ components:
         id: { type: string }
         proposalId: { type: string }
         requestFingerprint: { type: string }
-        status: { type: string, enum: [queued, running, passed, failed] }
+        status: { type: string, enum: [queued, running, passed, failed, cancelled] }
+        progressStage: { type: string, enum: [queued, recovered, loading_evidence, focused_comparison, holdout_comparison, completed, failed] }
+        progressPercent: { type: number, minimum: 0, maximum: 100 }
         beforeMetrics: { type: ["object", "null"], additionalProperties: true }
         afterMetrics: { type: ["object", "null"], additionalProperties: true }
         regressions: { type: array, items: { type: string } }
@@ -3816,10 +3818,16 @@ components:
         formulaFingerprint: { type: string }
         sourceFingerprint: { type: string }
         errorMessage: { type: ["string", "null"] }
+        parentFormulaHash: { type: ["string", "null"] }
+        candidateFormulaHash: { type: ["string", "null"] }
+        validationConfigFingerprint: { type: ["string", "null"] }
+        holdoutCompleted: { type: number, enum: [0, 1] }
+        evidenceIds: { type: array, items: { type: string } }
+        startedAt: { type: ["string", "null"], format: date-time }
         requestedBy: { type: string }
         createdAt: { type: string, format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
-      required: [id, proposalId, requestFingerprint, status, regressions, conflicts, warnings, formulaFingerprint, sourceFingerprint, requestedBy, createdAt]
+      required: [id, proposalId, requestFingerprint, status, progressStage, progressPercent, regressions, conflicts, warnings, formulaFingerprint, sourceFingerprint, evidenceIds, requestedBy, createdAt]
     StrategyVersion:
       type: object
       additionalProperties: true

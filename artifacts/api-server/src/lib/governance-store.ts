@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   advisoryRuleProposalsTable,
   db,
@@ -19,6 +19,7 @@ import type {
   VisualValidationTeachingExample,
 } from "./visual-validation.js";
 import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
+import { buildCandidateConfiguration, compareCandidate } from "./proposal-validator.js";
 
 export const PROPOSAL_STATUSES = [
   "draft",
@@ -109,6 +110,7 @@ export async function persistTeachingEvidence(args: {
     symbol: args.snapshot.symbol,
     contract: args.snapshot.contractSymbol,
     tradingDate: args.snapshot.tradingDate,
+    dataPartition: args.snapshot.period === "out_of_sample" ? "holdout" : "in_sample",
     selectedCandleTimestamp: teaching.entryCandleOpenTime,
     patienceCandleTimestamp: teaching.patienceCandleOpenTime || null,
     direction: teaching.direction,
@@ -360,38 +362,82 @@ export async function requestClarification(id: string, actor: GovernanceActor, c
   });
 }
 
-async function runValidation(runId: string, proposalId: string): Promise<void> {
+async function runValidation(runId: string, proposalId: string, workerId: string): Promise<void> {
   const [run] = await db.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, runId));
   if (!run) return;
-  await db.update(proposalValidationRunsTable).set({ status: "running", startedAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
-  const proposal = await getProposal(proposalId);
-  const teachingExamples = await db.select().from(teachingExamplesTable).where(inArray(teachingExamplesTable.id, proposal.sourceTeachingIds));
-  const formulaFingerprint = hashJson(teachingExamples.map((item) => [item.formulaVersion, item.formulaHash]));
-  const sourceFingerprint = hashJson(teachingExamples.map((item) => item.sourceFingerprint));
-  const conflicts = teachingExamples.filter((item) => item.judgment === "missed_trade" && (item.causalValidation as { valid?: boolean }).valid === false)
-    .map((item) => `Teaching ${item.id} has invalid causal evidence.`);
-  const warnings = teachingExamples.length < 2 ? ["Validation is based on a single teaching example; collect independent evidence."] : [];
-  const regressions: string[] = [];
-  const beforeMetrics = { sampleCount: teachingExamples.length, qualifiedTrades: 0, expectancy: 0 };
-  const afterMetrics = { sampleCount: teachingExamples.length, qualifiedTrades: 0, expectancy: 0 };
-  const passed = conflicts.length === 0 && regressions.length === 0;
-  await db.update(proposalValidationRunsTable).set({
-    status: passed ? "passed" : "failed",
-    beforeMetrics,
-    afterMetrics,
-    regressions,
-    conflicts,
-    warnings,
-    formulaFingerprint,
-    sourceFingerprint,
-    completedAt: new Date(),
-    errorMessage: passed ? null : "Validation found conflicting or invalid evidence.",
-  }).where(eq(proposalValidationRunsTable.id, runId));
-  await db.update(advisoryRuleProposalsTable).set({
-    status: passed ? "validation_passed" : "validation_failed",
-    updatedAt: new Date(),
-  }).where(eq(advisoryRuleProposalsTable.id, proposalId));
-  await audit(proposalId, run.requestedBy, passed ? "validation_passed" : "validation_failed", "validation_running", passed ? "validation_passed" : "validation_failed", null, `validation:${runId}`, { runId });
+  try {
+    const proposal = await getProposal(proposalId);
+    await db.update(proposalValidationRunsTable).set({ status: "running", progressStage: "loading_evidence", progressPercent: 10, attempt: run.attempt + 1, workerId, startedAt: run.startedAt ?? new Date(), heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
+    const evidenceIds = Array.isArray(run.evidenceIds) ? run.evidenceIds.filter((id): id is string => typeof id === "string") : [];
+    const matchingExamples = (await db.select().from(teachingExamplesTable).where(inArray(teachingExamplesTable.id, evidenceIds)))
+      .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate) || a.selectedCandleTimestamp.localeCompare(b.selectedCandleTimestamp) || a.id.localeCompare(b.id));
+    if (!matchingExamples.length) throw new Error("No persisted teaching evidence matches this canonical strategy.");
+    const [activeParent] = proposal.strategyKey
+      ? await db.select({ configSnapshot: strategyVersionsTable.configSnapshot, formulaHash: strategyVersionsTable.formulaHash })
+        .from(strategyVersionsTable)
+        .where(and(eq(strategyVersionsTable.strategyKey, proposal.strategyKey), eq(strategyVersionsTable.status, "active")))
+        .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1)
+      : [];
+    await db.update(proposalValidationRunsTable).set({ progressStage: "focused_comparison", progressPercent: 35, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
+    const result = compareCandidate(matchingExamples, proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>);
+    await db.update(proposalValidationRunsTable).set({ progressStage: "holdout_comparison", progressPercent: 75, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
+    const formulaFingerprint = hashJson([result.parentFormulaHash, result.candidateFormulaHash]);
+    const passed = result.conflicts.length === 0 && result.regressions.length === 0 && result.holdoutCompleted && result.holdoutPassed && result.noFutureData && result.immediateNextEntryCompliant && result.entryBufferCompliant;
+    await db.update(proposalValidationRunsTable).set({
+      status: passed ? "passed" : "failed",
+      progressStage: "completed",
+      progressPercent: 100,
+      beforeMetrics: result.beforeMetrics,
+      afterMetrics: { ...result.afterMetrics, inSample: result.inSampleMetrics, holdout: result.holdoutMetrics },
+      regressions: result.regressions,
+      conflicts: result.conflicts,
+      warnings: result.warnings,
+      formulaFingerprint,
+      sourceFingerprint: result.datasetFingerprint,
+      parentFormulaHash: result.parentFormulaHash,
+      candidateFormulaHash: result.candidateFormulaHash,
+      validationConfigFingerprint: hashJson({ mode: "focused_then_holdout", strategyKey: proposal.strategyKey }),
+      holdoutCompleted: result.holdoutCompleted ? 1 : 0,
+      heartbeatAt: new Date(),
+      completedAt: new Date(),
+      errorMessage: passed ? null : "Validation did not satisfy all deterministic comparison gates.",
+    }).where(eq(proposalValidationRunsTable.id, runId));
+    await db.update(advisoryRuleProposalsTable).set({ status: passed ? "validation_passed" : "validation_failed", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, proposalId));
+    await audit(proposalId, run.requestedBy, passed ? "validation_passed" : "validation_failed", "validation_running", passed ? "validation_passed" : "validation_failed", null, `validation:${runId}`, { runId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Deterministic validation failed.";
+    await db.update(proposalValidationRunsTable).set({ status: "failed", progressStage: "failed", progressPercent: 100, errorMessage: message, completedAt: new Date(), heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
+    await db.update(advisoryRuleProposalsTable).set({ status: "validation_failed", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, proposalId));
+    await audit(proposalId, run.requestedBy, "validation_failed", "validation_running", "validation_failed", message, `validation:${runId}`, { runId, error: true });
+  }
+}
+
+let validationWorkerStarted = false;
+let validationWorkerTimer: NodeJS.Timeout | null = null;
+export function startProposalValidationWorker(): void {
+  if (validationWorkerStarted) return;
+  validationWorkerStarted = true;
+  const workerId = `validator-${randomUUID()}`;
+  const tick = async () => {
+    const staleBefore = new Date(Date.now() - 60_000);
+    await db.update(proposalValidationRunsTable).set({ status: "queued", progressStage: "recovered", workerId: null }).where(or(
+      eq(proposalValidationRunsTable.status, "queued"),
+      and(eq(proposalValidationRunsTable.status, "running"), or(isNull(proposalValidationRunsTable.heartbeatAt), lt(proposalValidationRunsTable.heartbeatAt, staleBefore))),
+    ));
+    const [queued] = await db.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.status, "queued")).orderBy(proposalValidationRunsTable.createdAt).limit(1);
+    if (!queued) return;
+    const [claimed] = await db.update(proposalValidationRunsTable).set({ status: "running", workerId, heartbeatAt: new Date(), startedAt: new Date() }).where(and(eq(proposalValidationRunsTable.id, queued.id), eq(proposalValidationRunsTable.status, "queued"))).returning();
+    if (claimed) await runValidation(claimed.id, claimed.proposalId, workerId);
+  };
+  validationWorkerTimer = setInterval(() => void tick(), 250);
+  validationWorkerTimer.unref?.();
+  void tick();
+}
+
+export function stopProposalValidationWorker(): void {
+  if (validationWorkerTimer) clearInterval(validationWorkerTimer);
+  validationWorkerTimer = null;
+  validationWorkerStarted = false;
 }
 
 export async function requestValidation(args: {
@@ -401,7 +447,15 @@ export async function requestValidation(args: {
   requestFingerprint?: string;
 }): Promise<ProposalValidationRun> {
   const proposal = await getProposal(args.id);
-  const fingerprint = args.requestFingerprint ?? hashJson({ proposalId: args.id, payload: proposal.proposalPayload, sourceTeachingIds: proposal.sourceTeachingIds });
+  const allEvidence = await db.select().from(teachingExamplesTable);
+  const evidence = allEvidence.filter((item) => item.status === "submitted" && canonicalStrategyId(item.setupClassification) === proposal.strategyKey);
+  const fingerprint = args.requestFingerprint ?? hashJson({
+    proposalId: args.id,
+    diff: proposal.deterministicRuleDiff,
+    sourceTeachingIds: proposal.sourceTeachingIds,
+    evidence: evidence.map((item) => [item.id, item.formulaHash, item.sourceFingerprint, item.calendarFingerprint]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    validationConfig: { mode: "focused_then_holdout", range: "bounded_default", calendarVersion: "America/New_York:contract-local" },
+  });
   const [cached] = await db.select().from(proposalValidationRunsTable).where(and(
     eq(proposalValidationRunsTable.proposalId, args.id),
     eq(proposalValidationRunsTable.requestFingerprint, fingerprint),
@@ -417,12 +471,13 @@ export async function requestValidation(args: {
     status: "queued",
     formulaFingerprint: "pending",
     sourceFingerprint: "pending",
+    evidenceIds: evidence.map((item) => item.id),
     requestedBy: args.actor.id,
   }).returning();
   await db.update(advisoryRuleProposalsTable).set({ status: "validation_pending", validationRunId: run.id, updatedAt: new Date() })
     .where(and(eq(advisoryRuleProposalsTable.id, args.id), eq(advisoryRuleProposalsTable.status, proposal.status)));
   await audit(args.id, args.actor.id, "validation_requested", proposal.status, "validation_pending", null, args.idempotencyKey, { runId: run.id });
-  setTimeout(() => void runValidation(run.id, args.id), 0);
+  startProposalValidationWorker();
   return run;
 }
 
@@ -445,42 +500,34 @@ export async function rejectProposal(id: string, actor: GovernanceActor, reason:
 
 export async function publishCandidate(id: string, actor: GovernanceActor, idempotencyKey: string): Promise<{ proposal: AdvisoryRuleProposal; version: StrategyVersion }> {
   const proposal = await transition({ id, actor, action: "published_candidate", toStatus: "candidate", fromStatuses: ["approved"], idempotencyKey });
-  if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey)) {
-    throw new GovernanceError(409, "Only proposals linked to one canonical strategy can publish a candidate.");
-  }
-  const [existingVersion] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
-  if (existingVersion) return { proposal, version: existingVersion };
-  const [current] = await db.select({ id: strategyVersionsTable.id, versionNumber: strategyVersionsTable.versionNumber }).from(strategyVersionsTable)
-    .where(eq(strategyVersionsTable.strategyKey, proposal.strategyKey)).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
+  if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey)) throw new GovernanceError(409, "Only canonical strategies can publish.");
+  const [existing] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
+  if (existing) return { proposal, version: existing };
+  const [current] = await db.select({ id: strategyVersionsTable.id, versionNumber: strategyVersionsTable.versionNumber }).from(strategyVersionsTable).where(eq(strategyVersionsTable.strategyKey, proposal.strategyKey)).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
+  const [activeParent] = await db.select({ configSnapshot: strategyVersionsTable.configSnapshot }).from(strategyVersionsTable)
+    .where(and(eq(strategyVersionsTable.strategyKey, proposal.strategyKey), eq(strategyVersionsTable.status, "active")))
+    .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
+  const candidateConfig = buildCandidateConfiguration(proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>).candidate;
   const [version] = await db.insert(strategyVersionsTable).values({
-    id: randomUUID(),
-    strategyKey: proposal.strategyKey,
-    versionNumber: (current?.versionNumber ?? 0) + 1,
-    status: "candidate",
-    proposalId: id,
-    parentVersionId: current?.id ?? null,
-    formulaVersion: "advisory-candidate",
-    formulaHash: hashJson(proposal.proposalPayload),
-    configSnapshot: proposal.proposalPayload,
-    ruleDiff: proposal.deterministicRuleDiff,
-    evidenceIds: proposal.sourceTeachingIds,
-    validationRunId: proposal.validationRunId,
-    publishedBy: actor.id,
-    createdBy: actor.id,
+    id: randomUUID(), strategyKey: proposal.strategyKey, versionNumber: (current?.versionNumber ?? 0) + 1,
+    status: "candidate", proposalId: id, parentVersionId: current?.id ?? null, formulaVersion: "advisory-candidate",
+    formulaHash: hashJson(candidateConfig), configSnapshot: candidateConfig,
+    ruleDiff: proposal.deterministicRuleDiff, evidenceIds: proposal.sourceTeachingIds, validationRunId: proposal.validationRunId,
+    publishedBy: actor.id, createdBy: actor.id,
   }).returning();
   await db.update(advisoryRuleProposalsTable).set({ candidateVersionId: version.id, updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, id));
   return { proposal: await getProposal(id), version };
 }
 
-export async function activateCandidate(id: string, actor: GovernanceActor, idempotencyKey: string) {
+export async function activateCandidate(id: string, actor: GovernanceActor, idempotencyKey: string): Promise<{ proposal: AdvisoryRuleProposal; version: StrategyVersion }> {
   const proposal = await getProposal(id);
   if (proposal.status !== "candidate") throw new GovernanceError(409, `Cannot activate a proposal in ${proposal.status} state.`);
   const [version] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId ?? ""));
-  if (!version) throw new GovernanceError(409, "Publish a candidate strategy version before activation.");
+  if (!version) throw new GovernanceError(409, "Publish a candidate strategy version first.");
   await db.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active")));
   await db.update(strategyVersionsTable).set({ status: "active", activatedBy: actor.id, activatedAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));
   const updated = await transition({ id, actor, action: "activated_shadow_version", toStatus: "active", fromStatuses: ["candidate"], idempotencyKey });
-  return { proposal: updated, version: (await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, version.id)))[0] };
+  return { proposal: updated, version: (await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, version.id)))[0]! };
 }
 
 export async function retireProposal(id: string, actor: GovernanceActor, idempotencyKey: string) {

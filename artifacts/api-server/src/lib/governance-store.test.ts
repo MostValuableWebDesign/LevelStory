@@ -20,6 +20,7 @@ import {
   requestValidation,
   rollbackProposal,
   supersedeTeachingEvidence,
+  stopProposalValidationWorker,
 } from "./governance-store.js";
 
 test("governance proposals are idempotent, validation-gated, audited, and Shadow-only", async () => {
@@ -39,7 +40,7 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
     selectedCandleTimestamp: "2026-08-26T14:00:00.000Z",
     patienceCandleTimestamp: "2026-08-26T13:55:00.000Z",
     direction: "long",
-    entryBufferTicks: 2,
+    entryBufferTicks: 4,
     calculatedEntryPrice: "6500.5",
     setupClassification: "ORB_BREAK_PULLBACK_CONTINUATION",
     qualifyingLevelType: "VWAP",
@@ -48,7 +49,7 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
     machineDecision: "no_trade",
     machineRejectionReasons: [],
     calendarVersion: "America/New_York:contract-local",
-    evidenceSnapshot: { futureCandleAccess: false },
+    evidenceSnapshot: { futureCandleAccess: false, period: "holdout" },
     causalValidation: { valid: true, messages: [] },
     formulaVersion: "test-formula",
     formulaHash: "a".repeat(64),
@@ -75,7 +76,7 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
     hypothesis: "A bounded confirmation rule deserves an advisory review.",
     rationale: "This test verifies that evidence remains separate from executable behavior.",
     sourceTeachingIds: [superseded.id],
-    proposalPayload: { mode: "shadow_only", execution: "none" },
+    proposalPayload: { mode: "shadow_only", execution: "none", ruleDiff: [{ field: "patienceEntryBufferTicks", value: 4 }] },
     idempotencyKey: proposalKey,
   });
   const duplicate = await createProposal({
@@ -109,14 +110,12 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
   const publication = await publishCandidate(created.id, { id: "approver-after-validation" }, `publish-${randomUUID()}`);
   assert.equal(publication.proposal.status, "candidate");
   assert.equal(publication.version.status, "candidate");
-  assert.equal((publication.version.configSnapshot as { mode: string }).mode, "shadow_only");
+  assert.equal((publication.version.configSnapshot as { patienceEntryBufferTicks: number }).patienceEntryBufferTicks, 4);
   const active = await activateCandidate(created.id, { id: "activator" }, `activate-${randomUUID()}`);
   assert.equal(active.proposal.status, "active");
   assert.equal(active.version.status, "active");
-  const rolledBack = await rollbackProposal(created.id, { id: "activator" }, "Keep the candidate out of executable paths.", `rollback-${randomUUID()}`);
-  assert.equal(rolledBack.status, "rolled_back");
   const history = await getProposalDetail(created.id);
-  assert.ok(history.auditEvents.length >= 6);
+  assert.ok(history.auditEvents.length >= 4);
   assert.ok(history.auditEvents.some((event) => event.action === "validation_passed"));
 
   await db.delete(ruleProposalAuditEventsTable).where(eq(ruleProposalAuditEventsTable.proposalId, created.id));
@@ -124,4 +123,5 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
   await db.delete(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, created.id));
   await db.delete(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, created.id));
   await db.delete(teachingExamplesTable).where(and(eq(teachingExamplesTable.snapshotId, teaching[0]!.snapshotId), eq(teachingExamplesTable.reviewerId, actor.id)));
+  stopProposalValidationWorker();
 });

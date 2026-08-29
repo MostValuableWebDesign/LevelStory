@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startProposalValidationWorker } from "./lib/governance-store";
 
 const rawPort = process.env["PORT"];
 
@@ -15,6 +16,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+startProposalValidationWorker();
 app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");

@@ -294,6 +294,7 @@ export type VisualValidationTeachingExample = VisualValidationTeachingInput & {
   machineEvidenceSnapshot: {
     machineEvidence: VisualValidationSnapshot["machineEvidence"];
     machineCandles: VisualValidationSnapshot["machineCandles"];
+    premarketCandles: VisualValidationSnapshot["premarketCandles"];
     evaluationCursor: VisualValidationSnapshot["evaluationCursor"];
     reviewCursor: VisualValidationSnapshot["reviewCursor"];
   };
@@ -426,6 +427,7 @@ export function createVisualValidationTeachingExample(
   const machineEvidenceSnapshot = structuredClone({
     machineEvidence: snapshot.machineEvidence,
     machineCandles: snapshot.machineCandles,
+    premarketCandles: snapshot.premarketCandles,
     evaluationCursor: snapshot.evaluationCursor,
     reviewCursor: snapshot.reviewCursor,
   });
