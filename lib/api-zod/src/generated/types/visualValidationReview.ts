@@ -5,7 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { VisualValidationReviewStatusProperty } from './visualValidationReviewStatusProperty';
+import type { VisualValidationReviewStatus } from './visualValidationReviewStatus';
+import type { VisualValidationTeachingExample } from './visualValidationTeachingExample';
 
 export interface VisualValidationReview {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -13,8 +14,16 @@ export interface VisualValidationReview {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
   snapshotId: string;
-  status: VisualValidationReviewStatusProperty;
+  status: VisualValidationReviewStatus;
   /** @nullable */
   note: string | null;
   reviewedAt: Date;
+  teaching?: VisualValidationTeachingExample;
+  /**
+     * @nullable
+     * @pattern ^[0-9a-fA-F-]{36}$
+     */
+  supersedesReviewId: string | null;
+  /** @minimum 1 */
+  revision: number;
 }

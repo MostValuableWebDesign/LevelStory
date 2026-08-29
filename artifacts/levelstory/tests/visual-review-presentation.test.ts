@@ -59,3 +59,17 @@ test("visual review keeps no-entry diagnostics collapsed behind an explicit mode
   assert.match(page, /data-testid="diagnostic-categories"/);
   assert.match(page, /No-entry diagnostics/);
 });
+
+test("human judgment teaches only from an explicitly locked causal candle pair", () => {
+  for (const label of ["Correct", "Incorrect", "Uncertain", "Rule needs clarification", "Missed trade", "False-positive trade"]) {
+    assert.ok(page.includes(`label: "${label}"`) || page.includes(`>${label}<`) || page.includes(`>${label}`), `missing ${label}`);
+  }
+  assert.match(page, /data-testid="button-lock-entry-candle"/);
+  assert.match(page, /data-testid="locked-entry-candle"/);
+  assert.match(page, /data-testid="locked-patience-candle"/);
+  assert.match(page, /immediately preceding/);
+  assert.match(page, /Selecting an option only creates a draft/);
+  assert.match(page, /beforeunload/);
+  assert.match(page, /data-testid="calculated-mes-entry"/);
+  assert.match(page, /Human judgments never mutate executable formula behavior/);
+});

@@ -15,4 +15,6 @@ export const VisualValidationReviewStatus = {
   incorrect: 'incorrect',
   uncertain: 'uncertain',
   rule_needs_clarification: 'rule_needs_clarification',
+  missed_trade: 'missed_trade',
+  false_positive_trade: 'false_positive_trade',
 } as const;

@@ -2852,7 +2852,92 @@ export const VisualValidationReviewStatus = {
   incorrect: 'incorrect',
   uncertain: 'uncertain',
   rule_needs_clarification: 'rule_needs_clarification',
+  missed_trade: 'missed_trade',
+  false_positive_trade: 'false_positive_trade',
 } as const;
+
+export type VisualValidationTeachingJudgment = typeof VisualValidationTeachingJudgment[keyof typeof VisualValidationTeachingJudgment];
+
+
+export const VisualValidationTeachingJudgment = {
+  missed_trade: 'missed_trade',
+  false_positive_trade: 'false_positive_trade',
+} as const;
+
+export type VisualValidationTeachingConfidence = typeof VisualValidationTeachingConfidence[keyof typeof VisualValidationTeachingConfidence];
+
+
+export const VisualValidationTeachingConfidence = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export type VisualValidationTeachingSetup = typeof VisualValidationTeachingSetup[keyof typeof VisualValidationTeachingSetup];
+
+
+export const VisualValidationTeachingSetup = {
+  ORB_BREAK_PULLBACK_CONTINUATION: 'ORB_BREAK_PULLBACK_CONTINUATION',
+  EXTENDED_NTZ_CONSOLIDATION_BREAKOUT: 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT',
+  BONUS_REVERSAL: 'BONUS_REVERSAL',
+} as const;
+
+export interface VisualValidationTeachingValidation {
+  valid: boolean;
+  messages: string[];
+  checkedAt: string;
+}
+
+export type VisualValidationTeachingExampleDirection = typeof VisualValidationTeachingExampleDirection[keyof typeof VisualValidationTeachingExampleDirection];
+
+
+export const VisualValidationTeachingExampleDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type VisualValidationTeachingExampleEntryBufferTicks = typeof VisualValidationTeachingExampleEntryBufferTicks[keyof typeof VisualValidationTeachingExampleEntryBufferTicks];
+
+
+export const VisualValidationTeachingExampleEntryBufferTicks = {
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+export type VisualValidationTeachingExampleMachineEvidenceSnapshot = { [key: string]: unknown };
+
+export interface VisualValidationTeachingExample {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  teachingId: string;
+  judgment: VisualValidationTeachingJudgment;
+  direction: VisualValidationTeachingExampleDirection;
+  entryCandleOpenTime: string;
+  entryCandleCloseTime: string;
+  patienceCandleOpenTime: string;
+  patienceCandleCloseTime: string;
+  entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
+  pullbackLevel: number;
+  setupType: VisualValidationTeachingSetup;
+  confidence: VisualValidationTeachingConfidence;
+  /** @maxLength 4000 */
+  explanation: string;
+  calculatedEntryPrice: number;
+  validation: VisualValidationTeachingValidation;
+  machineEvidenceSnapshot: VisualValidationTeachingExampleMachineEvidenceSnapshot;
+  /** @pattern ^[0-9a-f]{64}$ */
+  machineEvidenceHash: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
+  formulaVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  sourceFingerprint: string;
+  /**
+     * @nullable
+     * @pattern ^[0-9a-fA-F-]{36}$
+     */
+  supersedesReviewId: string | null;
+  createdAt: string;
+}
 
 export type VisualValidationCategory = typeof VisualValidationCategory[keyof typeof VisualValidationCategory];
 
@@ -3107,6 +3192,7 @@ export type VisualValidationSnapshotReview = {
   note: string | null;
   /** @nullable */
   reviewedAt: string | null;
+  teaching?: VisualValidationTeachingExample;
 };
 
 export interface VisualValidationSnapshot {
@@ -3178,37 +3264,49 @@ export interface VisualValidationSet {
   categoryCoverage: VisualValidationCategoryCoverage[];
 }
 
-export type VisualValidationReviewRequestStatus = typeof VisualValidationReviewRequestStatus[keyof typeof VisualValidationReviewRequestStatus];
+export type VisualValidationReviewRequestTeachingDirection = typeof VisualValidationReviewRequestTeachingDirection[keyof typeof VisualValidationReviewRequestTeachingDirection];
 
 
-export const VisualValidationReviewRequestStatus = {
-  correct: 'correct',
-  incorrect: 'incorrect',
-  uncertain: 'uncertain',
-  rule_needs_clarification: 'rule_needs_clarification',
+export const VisualValidationReviewRequestTeachingDirection = {
+  long: 'long',
+  short: 'short',
 } as const;
+
+export type VisualValidationReviewRequestTeachingEntryBufferTicks = typeof VisualValidationReviewRequestTeachingEntryBufferTicks[keyof typeof VisualValidationReviewRequestTeachingEntryBufferTicks];
+
+
+export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+export type VisualValidationReviewRequestTeaching = {
+  judgment: VisualValidationTeachingJudgment;
+  direction: VisualValidationReviewRequestTeachingDirection;
+  entryCandleOpenTime: string;
+  entryCandleCloseTime: string;
+  patienceCandleOpenTime: string;
+  patienceCandleCloseTime: string;
+  entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
+  pullbackLevel: number;
+  setupType: VisualValidationTeachingSetup;
+  confidence: VisualValidationTeachingConfidence;
+  /** @maxLength 4000 */
+  explanation: string;
+};
 
 export interface VisualValidationReviewRequest {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
   snapshotId: string;
-  status: VisualValidationReviewRequestStatus;
+  status: VisualValidationReviewStatus;
   /**
      * @maxLength 2000
      * @nullable
      */
   note?: string | null;
+  teaching?: VisualValidationReviewRequestTeaching;
 }
-
-export type VisualValidationReviewStatusProperty = typeof VisualValidationReviewStatusProperty[keyof typeof VisualValidationReviewStatusProperty];
-
-
-export const VisualValidationReviewStatusProperty = {
-  correct: 'correct',
-  incorrect: 'incorrect',
-  uncertain: 'uncertain',
-  rule_needs_clarification: 'rule_needs_clarification',
-} as const;
 
 export interface VisualValidationReview {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -3216,15 +3314,61 @@ export interface VisualValidationReview {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
   snapshotId: string;
-  status: VisualValidationReviewStatusProperty;
+  status: VisualValidationReviewStatus;
   /** @nullable */
   note: string | null;
   reviewedAt: string;
+  teaching?: VisualValidationTeachingExample;
+  /**
+     * @nullable
+     * @pattern ^[0-9a-fA-F-]{36}$
+     */
+  supersedesReviewId: string | null;
+  /** @minimum 1 */
+  revision: number;
+}
+
+export interface VisualValidationProposedRuleAnalysisRequest {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  teachingId?: string;
+}
+
+export type VisualValidationProposedRuleAnalysisStatus = typeof VisualValidationProposedRuleAnalysisStatus[keyof typeof VisualValidationProposedRuleAnalysisStatus];
+
+
+export const VisualValidationProposedRuleAnalysisStatus = {
+  advisory: 'advisory',
+} as const;
+
+export type VisualValidationProposedRuleAnalysisSupportingExamplesItem = { [key: string]: unknown };
+
+export type VisualValidationProposedRuleAnalysisConflictingExamplesItem = { [key: string]: unknown };
+
+export interface VisualValidationProposedRuleAnalysis {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  analysisId: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  activeFormulaHash: string;
+  activeFormulaVersion: string;
+  status: VisualValidationProposedRuleAnalysisStatus;
+  hypothesis: string;
+  likelyCauses: string[];
+  supportingExamples: VisualValidationProposedRuleAnalysisSupportingExamplesItem[];
+  conflictingExamples: VisualValidationProposedRuleAnalysisConflictingExamplesItem[];
+  insufficientEvidence: boolean;
+  approvalRequired: true;
+  generatedAt: string;
 }
 
 export type VisualValidationDiscrepancyReportReviewsItem = { [key: string]: unknown };
 
 export type VisualValidationDiscrepancyReportDiscrepanciesItem = { [key: string]: unknown };
+
+export type VisualValidationDiscrepancyReportReviewHistoryItem = { [key: string]: unknown };
 
 export interface VisualValidationDiscrepancyReport {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -3238,6 +3382,7 @@ export interface VisualValidationDiscrepancyReport {
   reviewedSnapshots: number;
   reviews: VisualValidationDiscrepancyReportReviewsItem[];
   discrepancies: VisualValidationDiscrepancyReportDiscrepanciesItem[];
+  reviewHistory: VisualValidationDiscrepancyReportReviewHistoryItem[];
 }
 
 export type GetMarketSnapshotParams = {

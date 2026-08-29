@@ -7,6 +7,8 @@ import {
   RecordVisualValidationReviewResponse,
   ExportVisualValidationDiscrepanciesQueryParams,
   ExportVisualValidationDiscrepanciesResponse,
+  AnalyzeVisualValidationTeachingBody,
+  AnalyzeVisualValidationTeachingResponse,
 } from "@workspace/api-zod";
 import { requestRateLimit } from "../lib/security.js";
 import {
@@ -17,6 +19,7 @@ import {
   buildVisualValidationDiscrepancyReport,
   getLatestVisualValidationSet,
   getVisualValidationSet,
+  analyzeVisualValidationTeaching,
   recordVisualValidationReview,
   storeVisualValidationSet,
 } from "../lib/visual-validation-store.js";
@@ -110,17 +113,49 @@ export function createVisualValidationRouter(): IRouter {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const review = recordVisualValidationReview(
-      parsed.data.reviewSetId,
-      parsed.data.snapshotId,
-      parsed.data.status,
-      parsed.data.note ?? null,
-    );
-    if (!review) {
-      res.status(404).json({ error: "Visual-validation set or snapshot not found." });
+    if (parsed.data.status === "unreviewed") {
+      res.status(400).json({ error: "Choose a human judgment before saving a review." });
       return;
     }
-    res.json(RecordVisualValidationReviewResponse.parse(review));
+    try {
+      const teaching = parsed.data.teaching
+        ? {
+            ...parsed.data.teaching,
+            entryCandleOpenTime: parsed.data.teaching.entryCandleOpenTime.toISOString(),
+            entryCandleCloseTime: parsed.data.teaching.entryCandleCloseTime.toISOString(),
+            patienceCandleOpenTime: parsed.data.teaching.patienceCandleOpenTime.toISOString(),
+            patienceCandleCloseTime: parsed.data.teaching.patienceCandleCloseTime.toISOString(),
+          }
+        : undefined;
+      const review = recordVisualValidationReview(
+        parsed.data.reviewSetId,
+        parsed.data.snapshotId,
+        parsed.data.status,
+        parsed.data.note ?? null,
+        teaching,
+      );
+      if (!review) {
+        res.status(404).json({ error: "Visual-validation set or snapshot not found." });
+        return;
+      }
+      res.json(RecordVisualValidationReviewResponse.parse(review));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save this teaching judgment." });
+    }
+  });
+
+  router.post("/backtest/visual-validation/proposed-rule-analysis", reviewRateLimit, (req, res): void => {
+    const parsed = AnalyzeVisualValidationTeachingBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const analysis = analyzeVisualValidationTeaching(parsed.data.reviewSetId, parsed.data.teachingId);
+    if (!analysis) {
+      res.status(404).json({ error: "Visual-validation set not found or expired." });
+      return;
+    }
+    res.json(AnalyzeVisualValidationTeachingResponse.parse(analysis));
   });
 
   router.get("/backtest/visual-validation/discrepancies", reviewRateLimit, (req, res): void => {

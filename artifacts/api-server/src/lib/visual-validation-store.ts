@@ -1,15 +1,22 @@
 import { randomUUID } from "node:crypto";
 import type {
+  VisualValidationProposedRuleAnalysis,
   VisualValidationDiscrepancyReport,
   VisualValidationReview,
   VisualValidationReviewStatus,
   VisualValidationSet,
   VisualValidationSnapshot,
+  VisualValidationTeachingInput,
+} from "./visual-validation.js";
+import {
+  buildProposedRuleAnalysis,
+  createVisualValidationTeachingExample,
 } from "./visual-validation.js";
 
 type StoredVisualValidationSet = {
   set: VisualValidationSet;
   reviews: Map<string, VisualValidationReview>;
+  reviewHistory: VisualValidationReview[];
   lastAccessedAt: number;
 };
 
@@ -38,7 +45,7 @@ function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualVali
   return {
     ...snapshot,
     review: review
-      ? { status: review.status, note: review.note, reviewedAt: review.reviewedAt }
+      ? { status: review.status, note: review.note, reviewedAt: review.reviewedAt, ...(review.teaching ? { teaching: review.teaching } : {}) }
       : { status: "unreviewed", note: null, reviewedAt: null },
   };
 }
@@ -48,6 +55,7 @@ export function storeVisualValidationSet(set: Omit<VisualValidationSet, "reviewS
   const stored: StoredVisualValidationSet = {
     set: { ...set, reviewSetId: randomUUID(), createdAt: new Date().toISOString() },
     reviews: new Map(),
+    reviewHistory: [],
     lastAccessedAt: Date.now(),
   };
   sets.set(stored.set.reviewSetId, stored);
@@ -65,9 +73,10 @@ export function getVisualValidationSet(reviewSetId: string): VisualValidationSet
   const stored = sets.get(reviewSetId);
   if (!stored) return null;
   stored.lastAccessedAt = Date.now();
+  const clonedSet = structuredClone(stored.set);
   return {
-    ...stored.set,
-    snapshots: stored.set.snapshots.map((snapshot) => hydratedSnapshot(snapshot, stored.reviews.get(snapshot.snapshotId))),
+    ...clonedSet,
+    snapshots: clonedSet.snapshots.map((snapshot) => hydratedSnapshot(snapshot, stored.reviews.get(snapshot.snapshotId))),
   };
 }
 
@@ -76,21 +85,56 @@ export function recordVisualValidationReview(
   snapshotId: string,
   status: Exclude<VisualValidationReviewStatus, "unreviewed">,
   note: string | null,
+  teachingInput?: VisualValidationTeachingInput,
 ): VisualValidationReview | null {
   prune();
   const stored = sets.get(reviewSetId);
-  if (!stored || !stored.set.snapshots.some((snapshot) => snapshot.snapshotId === snapshotId)) return null;
+  const snapshot = stored?.set.snapshots.find((item) => item.snapshotId === snapshotId);
+  if (!stored || !snapshot) return null;
+  if (status === "missed_trade" && !teachingInput) throw new Error("A missed-trade teaching form is required before submission.");
+  if (teachingInput && teachingInput.judgment !== "missed_trade" && teachingInput.judgment !== "false_positive_trade") {
+    throw new Error("Teaching judgment must be missed_trade or false_positive_trade.");
+  }
+  if (status === "missed_trade" && teachingInput?.judgment !== "missed_trade") {
+    throw new Error("Missed trade submissions must include a missed_trade teaching judgment.");
+  }
+  const previous = stored.reviews.get(snapshotId);
+  const reviewId = randomUUID();
+  const teaching = teachingInput
+    ? createVisualValidationTeachingExample(snapshot, teachingInput, previous?.reviewId ?? null)
+    : undefined;
+  if (status === "missed_trade" && teaching && !teaching.validation.valid) {
+    throw new Error(`This missed-trade correction is invalid. Submit Rule needs clarification instead: ${teaching.validation.messages.join(" ")}`);
+  }
+  if (status === "false_positive_trade" && !snapshot.machineEvidence.trade) {
+    throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
+  }
   const review: VisualValidationReview = {
-    reviewId: randomUUID(),
+    reviewId,
     reviewSetId,
     snapshotId,
     status,
     note: note?.trim() ? note.trim().slice(0, 2000) : null,
     reviewedAt: new Date().toISOString(),
+    ...(teaching ? { teaching } : {}),
+    supersedesReviewId: previous?.reviewId ?? null,
+    revision: (previous?.revision ?? 0) + 1,
   };
   stored.reviews.set(snapshotId, review);
+  stored.reviewHistory.push(structuredClone(review));
   stored.lastAccessedAt = Date.now();
   return review;
+}
+
+export function analyzeVisualValidationTeaching(
+  reviewSetId: string,
+  teachingId?: string,
+): VisualValidationProposedRuleAnalysis | null {
+  prune();
+  const stored = sets.get(reviewSetId);
+  if (!stored) return null;
+  stored.lastAccessedAt = Date.now();
+  return buildProposedRuleAnalysis(reviewSetId, stored.set.formulaHash, stored.set.formulaVersion, [...stored.reviews.values()], teachingId);
 }
 
 export function buildVisualValidationDiscrepancyReport(reviewSetId: string): VisualValidationDiscrepancyReport | null {
@@ -129,5 +173,6 @@ export function buildVisualValidationDiscrepancyReport(reviewSetId: string): Vis
     reviewedSnapshots: stored.reviews.size,
     reviews,
     discrepancies,
+    reviewHistory: structuredClone(stored.reviewHistory),
   };
 }

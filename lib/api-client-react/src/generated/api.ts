@@ -50,6 +50,8 @@ import type {
   RiskSettings,
   RiskSettingsUpdate,
   VisualValidationDiscrepancyReport,
+  VisualValidationProposedRuleAnalysis,
+  VisualValidationProposedRuleAnalysisRequest,
   VisualValidationRequest,
   VisualValidationReview,
   VisualValidationReviewRequest,
@@ -1278,6 +1280,78 @@ export function useExportVisualValidationDiscrepancies<TData = Awaited<ReturnTyp
 
 
 
+
+export const getAnalyzeVisualValidationTeachingUrl = () => {
+
+
+
+
+  return `/api/backtest/visual-validation/proposed-rule-analysis`
+}
+
+/**
+ * Returns non-mutating support and conflict analysis. It never changes the active formula or starts a backtest.
+ * @summary Analyze teaching examples as an advisory rule hypothesis
+ */
+export const analyzeVisualValidationTeaching = async (visualValidationProposedRuleAnalysisRequest: VisualValidationProposedRuleAnalysisRequest, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationProposedRuleAnalysis> => {
+
+  return customFetch<VisualValidationProposedRuleAnalysis>(getAnalyzeVisualValidationTeachingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(visualValidationProposedRuleAnalysisRequest)
+  }
+);}
+
+
+
+
+
+export const getAnalyzeVisualValidationTeachingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>, TError,{data: BodyType<VisualValidationProposedRuleAnalysisRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>, TError,{data: BodyType<VisualValidationProposedRuleAnalysisRequest>}, TContext> => {
+
+const mutationKey = ['analyzeVisualValidationTeaching'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>, {data: BodyType<VisualValidationProposedRuleAnalysisRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  analyzeVisualValidationTeaching(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeVisualValidationTeachingMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>>
+    export type AnalyzeVisualValidationTeachingMutationBody = BodyType<VisualValidationProposedRuleAnalysisRequest>
+    export type AnalyzeVisualValidationTeachingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Analyze teaching examples as an advisory rule hypothesis
+ */
+export const useAnalyzeVisualValidationTeaching = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>, TError,{data: BodyType<VisualValidationProposedRuleAnalysisRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeVisualValidationTeaching>>,
+        TError,
+        {data: BodyType<VisualValidationProposedRuleAnalysisRequest>},
+        TContext
+      > => {
+      return useMutation(getAnalyzeVisualValidationTeachingMutationOptions(options));
+    }
 
 export const getGetHistoricalDataUrl = (params?: GetHistoricalDataParams,) => {
   const normalizedParams = new URLSearchParams();

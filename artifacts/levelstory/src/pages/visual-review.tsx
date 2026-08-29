@@ -27,6 +27,7 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useRecordVisualValidationReview,
+  useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
 import type {
   VisualValidationAnnotation,
@@ -35,6 +36,8 @@ import type {
   VisualValidationDiscrepancyReport,
   VisualValidationRequest,
   VisualValidationReviewStatus,
+  VisualValidationReviewRequest,
+  VisualValidationProposedRuleAnalysis,
   VisualValidationSet,
   VisualValidationSnapshot,
 } from "@workspace/api-client-react";
@@ -115,6 +118,8 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
   { value: "incorrect", label: "Incorrect", detail: "The machine label does not hold up." },
   { value: "uncertain", label: "Uncertain", detail: "Evidence is not decisive." },
   { value: "rule_needs_clarification", label: "Rule needs clarification", detail: "The rule or annotation needs a sharper definition." },
+  { value: "missed_trade", label: "Missed trade", detail: "The candles contain a valid, causal trade the machine did not capture." },
+  { value: "false_positive_trade", label: "False-positive trade", detail: "The machine trade is not supported by the raw causal candle story." },
 ];
 
 const INITIAL_REQUEST: VisualValidationRequest = {
@@ -238,10 +243,13 @@ export default function VisualReview() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewStatus, setReviewStatus] = useState<Exclude<VisualValidationReviewStatus, "unreviewed"> | null>(null);
+  const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
+  const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
   const [message, setMessage] = useState("");
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
+  const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
 
   const setQuery = useGetVisualValidationSet(
     reviewSetId ? { reviewSetId } : undefined,
@@ -249,6 +257,7 @@ export default function VisualReview() {
   );
   const createSet = useCreateVisualValidationSet();
   const recordReview = useRecordVisualValidationReview();
+  const analyzeRule = useAnalyzeVisualValidationTeaching();
   const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
   const exportQuery = useExportVisualValidationDiscrepancies(
     { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
@@ -294,16 +303,52 @@ export default function VisualReview() {
       setSelectedSnapshotId("");
       setReviewNote("");
       setReviewStatus(null);
+      setLockedEntryCandle(null);
+      setTeachingDraft(null);
       return;
     }
     setSelectedSnapshotId(activeSnapshot.snapshotId);
     setReviewNote(activeSnapshot.review.note ?? "");
     setReviewStatus(activeSnapshot.review.status === "unreviewed" ? null : activeSnapshot.review.status);
+    const savedTeaching = activeSnapshot.review.teaching;
+    const savedEntry = savedTeaching ? activeSnapshot.reviewCandles.find((candle) => candle.openTime === savedTeaching.entryCandleOpenTime && candle.closeTime === savedTeaching.entryCandleCloseTime) : undefined;
+    setLockedEntryCandle(savedEntry ? {
+      ...savedEntry,
+      session: "regular",
+      machineVisible: Date.parse(savedEntry.closeTime) <= Date.parse(activeSnapshot.evaluationCursor.closeTime),
+    } : null);
+    setTeachingDraft(savedTeaching ? {
+      judgment: savedTeaching.judgment,
+      direction: savedTeaching.direction,
+      entryCandleOpenTime: savedTeaching.entryCandleOpenTime,
+      entryCandleCloseTime: savedTeaching.entryCandleCloseTime,
+      patienceCandleOpenTime: savedTeaching.patienceCandleOpenTime,
+      patienceCandleCloseTime: savedTeaching.patienceCandleCloseTime,
+      entryBufferTicks: savedTeaching.entryBufferTicks,
+      pullbackLevel: savedTeaching.pullbackLevel,
+      setupType: savedTeaching.setupType,
+      confidence: savedTeaching.confidence,
+      explanation: savedTeaching.explanation,
+    } : null);
   }, [activeSnapshot]);
 
   const savedStatus = activeSnapshot?.review.status === "unreviewed" ? null : activeSnapshot?.review.status ?? null;
   const savedNote = activeSnapshot?.review.note ?? "";
-  const reviewDirty = Boolean(activeSnapshot && (reviewStatus !== savedStatus || reviewNote.trim() !== savedNote.trim()));
+  const savedTeachingKey = activeSnapshot?.review.teaching ? JSON.stringify({
+    judgment: activeSnapshot.review.teaching.judgment,
+    direction: activeSnapshot.review.teaching.direction,
+    entryCandleOpenTime: activeSnapshot.review.teaching.entryCandleOpenTime,
+    entryCandleCloseTime: activeSnapshot.review.teaching.entryCandleCloseTime,
+    patienceCandleOpenTime: activeSnapshot.review.teaching.patienceCandleOpenTime,
+    patienceCandleCloseTime: activeSnapshot.review.teaching.patienceCandleCloseTime,
+    entryBufferTicks: activeSnapshot.review.teaching.entryBufferTicks,
+    pullbackLevel: activeSnapshot.review.teaching.pullbackLevel,
+    setupType: activeSnapshot.review.teaching.setupType,
+    confidence: activeSnapshot.review.teaching.confidence,
+    explanation: activeSnapshot.review.teaching.explanation,
+  }) : "";
+  const draftTeachingKey = teachingDraft ? JSON.stringify(teachingDraft) : "";
+  const reviewDirty = Boolean(activeSnapshot && (reviewStatus !== savedStatus || reviewNote.trim() !== savedNote.trim() || draftTeachingKey !== savedTeachingKey));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -343,6 +388,7 @@ export default function VisualReview() {
         setReviewSetId(nextSet.reviewSetId);
          setReviewStatus(null);
          setReviewNote("");
+         setAnalysis(null);
         if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
         setMessage(`Generated ${nextSet.snapshots.length} causal snapshots.`);
       },
@@ -359,6 +405,7 @@ export default function VisualReview() {
         snapshotId: activeSnapshot.snapshotId,
         status,
         note: reviewNote.trim() || null,
+        ...((status === "missed_trade" || status === "rule_needs_clarification") && teachingDraft ? { teaching: teachingDraft } : {}),
       },
     }, {
       onSuccess: (saved) => {
@@ -367,12 +414,25 @@ export default function VisualReview() {
           return {
             ...base,
             snapshots: base.snapshots.map((snapshot) => snapshot.snapshotId === saved.snapshotId
-              ? { ...snapshot, review: { status: saved.status, note: saved.note, reviewedAt: saved.reviewedAt } }
+              ? { ...snapshot, review: { status: saved.status, note: saved.note, reviewedAt: saved.reviewedAt, ...(saved.teaching ? { teaching: saved.teaching } : {}) } }
               : snapshot),
           };
         });
-        setReviewStatus(saved.status);
+        if (saved.status !== "unreviewed") setReviewStatus(saved.status);
         setReviewNote(saved.note ?? "");
+        setTeachingDraft(saved.teaching ? {
+          judgment: saved.teaching.judgment,
+          direction: saved.teaching.direction,
+          entryCandleOpenTime: saved.teaching.entryCandleOpenTime,
+          entryCandleCloseTime: saved.teaching.entryCandleCloseTime,
+          patienceCandleOpenTime: saved.teaching.patienceCandleOpenTime,
+          patienceCandleCloseTime: saved.teaching.patienceCandleCloseTime,
+          entryBufferTicks: saved.teaching.entryBufferTicks,
+          pullbackLevel: saved.teaching.pullbackLevel,
+          setupType: saved.teaching.setupType,
+          confidence: saved.teaching.confidence,
+          explanation: saved.teaching.explanation,
+        } : teachingDraft);
         setMessage(`${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
         if (moveNext) {
           const next = categorySnapshots[categorySnapshots.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
@@ -430,14 +490,40 @@ export default function VisualReview() {
                     <SnapshotHeader snapshot={activeSnapshot} request={data.request} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)} />
                      <Panel>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
-                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} />
+                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
+                        setLockedEntryCandle(candle);
+                        if (!candle) return;
+                        const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
+                        const patience = entryIndex > 0 ? activeSnapshot.reviewCandles[entryIndex - 1] : null;
+                        const direction = activeSnapshot.categoryAnchor.direction === "short" ? "short" : "long";
+                        const pullbackLevel = activeSnapshot.annotations.find((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")?.price ?? candle.close;
+                        setTeachingDraft((current) => ({
+                          judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
+                          direction: current?.direction ?? direction,
+                          entryCandleOpenTime: candle.openTime,
+                          entryCandleCloseTime: candle.closeTime,
+                          patienceCandleOpenTime: patience?.openTime ?? "",
+                          patienceCandleCloseTime: patience?.closeTime ?? "",
+                          entryBufferTicks: current?.entryBufferTicks ?? 4,
+                          pullbackLevel: current?.pullbackLevel ?? pullbackLevel,
+                          setupType: current?.setupType ?? "ORB_BREAK_PULLBACK_CONTINUATION",
+                          confidence: current?.confidence ?? "low",
+                          explanation: current?.explanation ?? "",
+                        }));
+                      }} />
                     </Panel>
                     <ChartEvidence snapshot={activeSnapshot} />
                     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
-                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} />
+                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} />
                       <div className="space-y-5">
                         <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
                         <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                         <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
+                           if (!data) return;
+                           analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
+                             onSuccess: setAnalysis,
+                           });
+                         }} />
                       </div>
                     </div>
                   </div>
@@ -585,7 +671,7 @@ function CausalTag() {
   return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
 }
 
-function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; onToggleExpanded: () => void }) {
+function CausalChart({ snapshot, source, expanded, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
   const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(requestedPremarket);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -685,7 +771,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
         {fullCoverage && <span className="mono">Full {fullCoverage.observedCandleCount}/{fullCoverage.expectedCandleCount}</span>}
         <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
       </div>
-       <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} />
+        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -742,12 +828,16 @@ function CandleInspector({
   selectedSlot,
   selectedIndicators,
   finalIndicators,
+  activeCandle,
+  onLockCandle,
 }: {
   inspection: CandleInspection | null;
   activeEvents: string[];
   selectedSlot: number | null;
   selectedIndicators: { vwap: number | null; ema200: number | null } | null;
   finalIndicators: { vwap: number | null; ema200: number | null } | null;
+  activeCandle: SessionCandle | null;
+  onLockCandle: (candle: SessionCandle | null) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const selectedLabel = selectedSlot == null ? "Select a five-minute candle" : `Fixed slot ${String(selectedSlot + 1).padStart(2, "0")}`;
@@ -760,6 +850,7 @@ function CandleInspector({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {inspection && <span className={`text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
+        {activeCandle && <button type="button" className="chart-control" disabled={!activeCandle.isComplete || !activeCandle.machineVisible} onClick={() => onLockCandle(activeCandle)} data-testid="button-lock-entry-candle"><LockKeyhole size={12} />{!activeCandle.machineVisible ? "Human-only candle" : activeCandle.isComplete ? "Lock as entry (E)" : "Candle incomplete"}</button>}
         <button type="button" className="chart-control" onClick={() => setCollapsed((current) => !current)} aria-expanded={!collapsed} aria-controls="candle-inspector-content" data-testid="toggle-candle-inspector">{collapsed ? "Expand" : "Collapse"}</button>
       </div>
     </div>
@@ -839,6 +930,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   sessionView,
   focusOpenTime,
   onReturnPrimary,
+  onLockCandle,
 }: {
   snapshot: VisualValidationSnapshot;
   candles: SessionCandle[];
@@ -847,6 +939,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   sessionView: SessionView;
   focusOpenTime: string;
   onReturnPrimary: () => void;
+  onLockCandle: (candle: SessionCandle | null) => void;
 }) {
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
@@ -1067,7 +1160,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             })}
           </div>}
         </section>
-       <CandleInspector inspection={activeDetails} activeEvents={activeEvents} selectedSlot={activeSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} />
+        <CandleInspector inspection={activeDetails} activeEvents={activeEvents} selectedSlot={activeSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} activeCandle={activeCandle} onLockCandle={onLockCandle} />
        <div className="chart-plot-shell mt-3">
          <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
@@ -1212,9 +1305,44 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   </Panel>;
 }
 
-function ReviewPanel({ snapshot, status, setStatus, note, setNote, dirty, pending, onSave, message }: { snapshot: VisualValidationSnapshot; status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null; setStatus: (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => void; note: string; setNote: (note: string) => void; dirty: boolean; pending: boolean; onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext?: boolean) => void; message: string }) {
+function ReviewPanel({
+  snapshot,
+  status,
+  setStatus,
+  note,
+  setNote,
+  dirty,
+  pending,
+  onSave,
+  message,
+  lockedEntryCandle,
+  teaching,
+  setTeaching,
+}: {
+  snapshot: VisualValidationSnapshot;
+  status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null;
+  setStatus: (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => void;
+  note: string;
+  setNote: (note: string) => void;
+  dirty: boolean;
+  pending: boolean;
+  onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext?: boolean) => void;
+  message: string;
+  lockedEntryCandle: SessionCandle | null;
+  teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
+  setTeaching: (teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null) => void;
+}) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   const hasSavedReview = savedStatus !== null;
+  const needsTeaching = status === "missed_trade" || status === "rule_needs_clarification";
+  const patience = teaching ? snapshot.reviewCandles.find((candle) => candle.openTime === teaching.patienceCandleOpenTime && candle.closeTime === teaching.patienceCandleCloseTime) : null;
+  const calculatedEntryPrice = teaching && patience
+    ? (teaching.direction === "long" ? patience.high + teaching.entryBufferTicks * 0.25 : patience.low - teaching.entryBufferTicks * 0.25).toFixed(2)
+    : "—";
+  const availableLevels = snapshot.annotations.filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle");
+  const updateTeaching = (patch: Partial<NonNullable<VisualValidationReviewRequest["teaching"]>>) => {
+    if (teaching) setTeaching({ ...teaching, ...patch });
+  };
   return <Panel accent>
      <PanelTitle eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
     <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
@@ -1224,13 +1352,31 @@ function ReviewPanel({ snapshot, status, setStatus, note, setNote, dirty, pendin
            <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${status === option.value ? "border-accent bg-accent text-accent-foreground" : "border-muted-foreground/50"}`}>{status === option.value && <Check size={11} />}</span><span><span className="block text-xs font-bold">{option.label}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{option.detail}</span></span>
         </button>)}
       </div>
+       {needsTeaching && <div className="space-y-3 border border-accent/35 bg-accent/5 p-4" data-testid="teaching-example-form">
+         <div className="flex items-start gap-2"><LockKeyhole size={14} className="mt-0.5 shrink-0 text-accent" /><div><div className="text-xs font-bold">Teach the formula from a locked candle pair</div><p className="mt-1 text-[10px] leading-4 text-muted-foreground">Select a completed E candle on the chart, then the immediately preceding completed candle is locked as P. This form never reads beyond the machine evaluation cursor.</p></div></div>
+         {lockedEntryCandle && teaching ? <div className="grid gap-2 sm:grid-cols-2">
+           <div className="border border-accent/30 bg-card px-3 py-2" data-testid="locked-entry-candle"><div className="eyebrow text-accent">Entry candle · E · locked</div><div className="mono mt-1 text-[10px]">{formatInterval(lockedEntryCandle.openTime, lockedEntryCandle.closeTime)}</div><div className="mono mt-1 text-[10px] text-muted-foreground">O {lockedEntryCandle.open.toFixed(2)} · H {lockedEntryCandle.high.toFixed(2)} · L {lockedEntryCandle.low.toFixed(2)} · C {lockedEntryCandle.close.toFixed(2)}</div></div>
+           <div className="border border-[hsl(var(--positive)/.3)] bg-card px-3 py-2" data-testid="locked-patience-candle"><div className="eyebrow text-[hsl(var(--positive))]">Immediately preceding · P · locked</div><div className="mono mt-1 text-[10px]">{patience ? formatInterval(patience.openTime, patience.closeTime) : "Unavailable"}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{patience ? `O ${patience.open.toFixed(2)} · H ${patience.high.toFixed(2)} · L ${patience.low.toFixed(2)} · C ${patience.close.toFixed(2)}` : "Choose an entry with a preceding candle."}</div></div>
+         </div> : <div className="border border-dashed border-accent/40 px-3 py-3 text-[10px] text-muted-foreground">No completed entry candle is locked. Use the chart inspector's <strong>Lock as entry (E)</strong> control.</div>}
+         {teaching && <div className="grid gap-3 sm:grid-cols-2">
+           <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
+           <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
+           <Field label="Qualifying pullback level"><select className="field mono" value={teaching.pullbackLevel} onChange={(event) => updateTeaching({ pullbackLevel: Number(event.target.value) })}>{availableLevels.map((level) => <option key={`${level.id}-${level.price}`} value={level.price as number}>{level.label} · {formatPriceAxisValue(level.price as number)}</option>)}</select></Field>
+           <Field label="Setup"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EXTENDED_NTZ_CONSOLIDATION_BREAKOUT">Extended NTZ consolidation breakout</option><option value="BONUS_REVERSAL">Bonus reversal</option></select></Field>
+           <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
+           <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>
+           <label className="block sm:col-span-2"><span className="eyebrow mb-1.5 block text-muted-foreground">Teaching explanation · required</span><textarea maxLength={4000} rows={4} value={teaching.explanation} onChange={(event) => updateTeaching({ explanation: event.target.value })} className="field resize-none" placeholder="Explain what the formula missed or why this correction needs clarification." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{teaching.explanation.length} / 4000</span></label>
+         </div>}
+         {status === "rule_needs_clarification" && <div className="text-[10px] leading-4 text-muted-foreground">If the candle pair fails validation, save this as <strong>Rule needs clarification</strong>. A direct Missed trade submission is accepted only when timing, direction, level, causal visibility, containment, and buffer checks all pass.</div>}
+       </div>}
+       {status === "false_positive_trade" && <div className="border border-[hsl(var(--negative)/.35)] bg-[hsl(var(--negative)/.06)] p-3 text-[10px] leading-4 text-muted-foreground" data-testid="false-positive-guidance"><strong className="text-foreground">Machine trade locked.</strong> Explain which raw candle or causal rule disproves this exact trade. The formula remains unchanged.</div>}
       <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">Reviewer note · optional</span><textarea maxLength={2000} rows={5} value={note} onChange={(event) => setNote(event.target.value)} className="field resize-none" placeholder="Name the exact candle, level, or rule ambiguity you observed." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{note.length} / 2000</span></label>
        {message && <div className="border border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] p-3 text-xs text-[hsl(var(--positive))]" role="status">{message}</div>}
        <div className="flex flex-wrap gap-2">
          <button type="button" onClick={() => status && onSave(status)} disabled={pending || !status || !dirty} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-review">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <ClipboardCheck size={13} />}{hasSavedReview ? "Update review" : "Submit review"}</button>
          <button type="button" onClick={() => status && onSave(status, true)} disabled={pending || !status || !dirty} className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-next">Submit & inspect next <ChevronRight size={13} /></button>
        </div>
-       <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it.</div>
+        <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it. Human judgments never mutate executable formula behavior.</div>
        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
     </div>
   </Panel>;
@@ -1248,6 +1394,22 @@ function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report
     <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Review export</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-reviews">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
     <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Export the current set as machine-readable evidence for rule review. The report contains only persisted human judgments and their causal cursors.</div>
     {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.reviews.length ? report.reviews.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No human reviews have been labeled yet.</p>}{report.discrepancies.length > 0 && <p className="text-muted-foreground">{report.discrepancies.length} incorrect or uncertain review{report.discrepancies.length === 1 ? "" : "s"} require attention.</p>}</div>}</div>}
+  </Panel>;
+}
+
+function ProposedRulePanel({ analysis, pending, onAnalyze }: { analysis: VisualValidationProposedRuleAnalysis | null; pending: boolean; onAnalyze: () => void }) {
+  return <Panel>
+    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+      <div><div className="eyebrow text-muted-foreground">Advisory / teaching patterns</div><h2 className="mt-1 text-[14px] font-bold">Propose a rule review</h2></div>
+      <button type="button" onClick={onAnalyze} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-analyze-teaching">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />}Analyze</button>
+    </div>
+    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Compare persisted teaching examples for support, conflict, and likely disagreement causes. This output is advisory only and cannot approve a formula change or start a backtest.</div>
+    {analysis && <div className="space-y-3 border-t border-border bg-accent/5 px-5 py-4 text-[10px] sm:px-6" data-testid="proposed-rule-analysis">
+      <div className="flex items-start gap-2"><Sparkles size={14} className="mt-0.5 shrink-0 text-accent" /><div><div className="font-bold">{analysis.hypothesis}</div><div className="mt-1 text-muted-foreground">Formula {analysis.activeFormulaVersion} · {analysis.supportingExamples.length} supporting · {analysis.conflictingExamples.length} conflicting</div></div></div>
+      <div><div className="eyebrow text-muted-foreground">Likely causes</div><ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">{analysis.likelyCauses.map((cause) => <li key={cause}>{cause}</li>)}</ul></div>
+      <div className="border border-accent/30 bg-card px-3 py-2 font-semibold text-accent-foreground">Approval required. No executable rule was changed.</div>
+      {analysis.insufficientEvidence && <div className="text-muted-foreground">Evidence remains insufficient; collect more structured examples before considering any approved rule change.</div>}
+    </div>}
   </Panel>;
 }
 

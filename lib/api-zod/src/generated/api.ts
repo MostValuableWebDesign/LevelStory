@@ -4045,6 +4045,13 @@ export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCand
 
 export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
+
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 
@@ -4207,9 +4214,36 @@ export const GetVisualValidationSetResponse = zod.object({
 })),
   "machineEvidence": zod.record(zod.string(), zod.unknown()),
   "review": zod.object({
-  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
-  "reviewedAt": zod.coerce.date().nullable()
+  "reviewedAt": zod.coerce.date().nullable(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "pullbackLevel": zod.number(),
+  "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date()
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional()
 })
 })),
   "categoryCoverage": zod.array(zod.object({
@@ -4282,6 +4316,13 @@ export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedC
 
 export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
+
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 
@@ -4444,9 +4485,36 @@ export const CreateVisualValidationSetResponse = zod.object({
 })),
   "machineEvidence": zod.record(zod.string(), zod.unknown()),
   "review": zod.object({
-  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
-  "reviewedAt": zod.coerce.date().nullable()
+  "reviewedAt": zod.coerce.date().nullable(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "pullbackLevel": zod.number(),
+  "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date()
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional()
 })
 })),
   "categoryCoverage": zod.array(zod.object({
@@ -4464,26 +4532,79 @@ export const CreateVisualValidationSetResponse = zod.object({
 export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewBodyNoteMax = 2000;
 
+export const recordVisualValidationReviewBodyTeachingExplanationMax = 4000;
+
 
 
 export const RecordVisualValidationReviewBody = zod.object({
   "reviewSetId": zod.string().regex(recordVisualValidationReviewBodyReviewSetIdRegExp),
   "snapshotId": zod.string(),
-  "status": zod.enum(['correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
-  "note": zod.string().max(recordVisualValidationReviewBodyNoteMax).nullish()
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
+  "note": zod.string().max(recordVisualValidationReviewBodyNoteMax).nullish(),
+  "teaching": zod.object({
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "pullbackLevel": zod.number(),
+  "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(recordVisualValidationReviewBodyTeachingExplanationMax)
+}).optional()
 })
 
 export const recordVisualValidationReviewResponseReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseTeachingExplanationMax = 4000;
+
+export const recordVisualValidationReviewResponseTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const recordVisualValidationReviewResponseTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const recordVisualValidationReviewResponseTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const recordVisualValidationReviewResponseTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 
 
 export const RecordVisualValidationReviewResponse = zod.object({
   "reviewId": zod.string().regex(recordVisualValidationReviewResponseReviewIdRegExp),
   "reviewSetId": zod.string().regex(recordVisualValidationReviewResponseReviewSetIdRegExp),
   "snapshotId": zod.string(),
-  "status": zod.enum(['correct', 'incorrect', 'uncertain', 'rule_needs_clarification']),
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
-  "reviewedAt": zod.coerce.date()
+  "reviewedAt": zod.coerce.date(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(recordVisualValidationReviewResponseTeachingTeachingIdRegExp),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "pullbackLevel": zod.number(),
+  "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(recordVisualValidationReviewResponseTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date()
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(recordVisualValidationReviewResponseTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(recordVisualValidationReviewResponseTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(recordVisualValidationReviewResponseTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(recordVisualValidationReviewResponseTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional(),
+  "supersedesReviewId": zod.string().regex(recordVisualValidationReviewResponseSupersedesReviewIdRegExp).nullable(),
+  "revision": zod.number().min(1)
 })
 
 
@@ -4512,7 +4633,42 @@ export const ExportVisualValidationDiscrepanciesResponse = zod.object({
   "totalSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseTotalSnapshotsMin),
   "reviewedSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseReviewedSnapshotsMin),
   "reviews": zod.array(zod.record(zod.string(), zod.unknown())),
-  "discrepancies": zod.array(zod.record(zod.string(), zod.unknown()))
+  "discrepancies": zod.array(zod.record(zod.string(), zod.unknown())),
+  "reviewHistory": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * Returns non-mutating support and conflict analysis. It never changes the active formula or starts a backtest.
+ * @summary Analyze teaching examples as an advisory rule hypothesis
+ */
+export const analyzeVisualValidationTeachingBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const analyzeVisualValidationTeachingBodyTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const AnalyzeVisualValidationTeachingBody = zod.object({
+  "reviewSetId": zod.string().regex(analyzeVisualValidationTeachingBodyReviewSetIdRegExp),
+  "teachingId": zod.string().regex(analyzeVisualValidationTeachingBodyTeachingIdRegExp).optional()
+})
+
+export const analyzeVisualValidationTeachingResponseAnalysisIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const analyzeVisualValidationTeachingResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const analyzeVisualValidationTeachingResponseActiveFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
+export const AnalyzeVisualValidationTeachingResponse = zod.object({
+  "analysisId": zod.string().regex(analyzeVisualValidationTeachingResponseAnalysisIdRegExp),
+  "reviewSetId": zod.string().regex(analyzeVisualValidationTeachingResponseReviewSetIdRegExp),
+  "activeFormulaHash": zod.string().regex(analyzeVisualValidationTeachingResponseActiveFormulaHashRegExp),
+  "activeFormulaVersion": zod.string(),
+  "status": zod.enum(['advisory']),
+  "hypothesis": zod.string(),
+  "likelyCauses": zod.array(zod.string()),
+  "supportingExamples": zod.array(zod.record(zod.string(), zod.unknown())),
+  "conflictingExamples": zod.array(zod.record(zod.string(), zod.unknown())),
+  "insufficientEvidence": zod.boolean(),
+  "approvalRequired": zod.literal(true),
+  "generatedAt": zod.coerce.date()
 })
 
 

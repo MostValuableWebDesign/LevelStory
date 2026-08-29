@@ -5,16 +5,18 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { VisualValidationReviewRequestStatus } from './visualValidationReviewRequestStatus';
+import type { VisualValidationReviewRequestTeaching } from './visualValidationReviewRequestTeaching';
+import type { VisualValidationReviewStatus } from './visualValidationReviewStatus';
 
 export interface VisualValidationReviewRequest {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
   snapshotId: string;
-  status: VisualValidationReviewRequestStatus;
+  status: VisualValidationReviewStatus;
   /**
      * @maxLength 2000
      * @nullable
      */
   note?: string | null;
+  teaching?: VisualValidationReviewRequestTeaching;
 }

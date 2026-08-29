@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { VisualValidationReviewStatus } from './visualValidationReviewStatus';
+import type { VisualValidationTeachingExample } from './visualValidationTeachingExample';
 
 export type VisualValidationSnapshotReview = {
   status: VisualValidationReviewStatus;
@@ -13,4 +14,5 @@ export type VisualValidationSnapshotReview = {
   note: string | null;
   /** @nullable */
   reviewedAt: Date | null;
+  teaching?: VisualValidationTeachingExample;
 };

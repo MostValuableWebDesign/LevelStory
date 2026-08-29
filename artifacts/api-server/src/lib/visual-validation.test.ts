@@ -5,6 +5,8 @@ import {
   buildHistoricalVisualValidationSetFromReport,
   categoriesFor,
   matchingTrade,
+  validateVisualValidationTeaching,
+  type VisualValidationTeachingInput,
   type VisualValidationRequest,
   type VisualValidationCategory,
 } from "./visual-validation.js";
@@ -15,6 +17,7 @@ import {
   getVisualValidationSet,
   recordVisualValidationReview,
   storeVisualValidationSet,
+  analyzeVisualValidationTeaching,
 } from "./visual-validation-store.js";
 
 const request: VisualValidationRequest = {
@@ -353,6 +356,106 @@ test("review export contains the full ledger and filters discrepancies to incorr
   assert.equal(report.reviews[0]?.note, "Clarify the pullback tolerance.");
   assert.equal(report.discrepancies.length, 0);
   assert.ok(second);
+});
+
+function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["snapshots"][number], direction: "long" | "short"): VisualValidationTeachingInput {
+  const base = direction === "long"
+    ? {
+        previous: { openTime: "2026-08-26T13:25:00.000Z", closeTime: "2026-08-26T13:30:00.000Z", open: 100, high: 101.5, low: 99.5, close: 100.5 },
+        patience: { openTime: "2026-08-26T13:30:00.000Z", closeTime: "2026-08-26T13:35:00.000Z", open: 100.5, high: 101.5, low: 100, close: 101 },
+        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 101, high: 102.75, low: 100.75, close: 102 },
+        level: 101,
+      }
+    : {
+        previous: { openTime: "2026-08-26T13:25:00.000Z", closeTime: "2026-08-26T13:30:00.000Z", open: 103, high: 104, low: 101.5, close: 103 },
+        patience: { openTime: "2026-08-26T13:30:00.000Z", closeTime: "2026-08-26T13:35:00.000Z", open: 103, high: 103.5, low: 101.5, close: 102 },
+        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 102, high: 102.5, low: 100, close: 100.5 },
+        level: 102,
+      };
+  snapshot.reviewCandles = [base.previous, base.patience, base.entry].map((candle) => ({
+    ...candle,
+    timestamp: candle.openTime,
+    volume: 1000,
+    bid: candle.close - 0.25,
+    ask: candle.close,
+    bidSize: 10,
+    askSize: 10,
+    contractSymbol: snapshot.contractSymbol,
+    isComplete: true,
+  }));
+  snapshot.evaluationCursor = {
+    ...snapshot.evaluationCursor,
+    openTime: base.entry.openTime,
+    closeTime: base.entry.closeTime,
+  };
+  snapshot.annotations = [
+    ...snapshot.annotations,
+    { id: `teaching-level-${direction}`, kind: "level", label: "Teaching level", price: base.level, available: true, color: "blue", detail: "Deterministic teaching level.", visibility: "machine", openTime: null, closeTime: null },
+  ];
+  return {
+    judgment: "missed_trade",
+    direction,
+    entryCandleOpenTime: base.entry.openTime,
+    entryCandleCloseTime: base.entry.closeTime,
+    patienceCandleOpenTime: base.patience.openTime,
+    patienceCandleCloseTime: base.patience.closeTime,
+    entryBufferTicks: 4,
+    pullbackLevel: base.level,
+    setupType: "ORB_BREAK_PULLBACK_CONTINUATION",
+    confidence: "medium",
+    explanation: `${direction} example has an exact patience pair and buffered continuation.`,
+  };
+}
+
+test("teaching validation accepts deterministic long and short buffered examples", () => {
+  for (const direction of ["long", "short"] as const) {
+    const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+    const input = teachingInput(snapshot, direction);
+    const result = validateVisualValidationTeaching(snapshot, input);
+    assert.equal(result.valid, true, `${direction}: ${result.messages.join("; ")}`);
+    assert.equal(result.calculatedEntryPrice, direction === "long" ? 102.5 : 100.5);
+  }
+});
+
+test("teaching validation rejects future, non-adjacent, and non-MES-buffer corrections", () => {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const input = teachingInput(snapshot, "long");
+  const invalid = {
+    ...input,
+    entryBufferTicks: 3 as 3,
+    patienceCandleCloseTime: "2026-08-26T13:34:00.000Z",
+    entryCandleCloseTime: "2026-08-26T14:40:00.000Z",
+    explanation: "invalid teaching case",
+  };
+  const result = validateVisualValidationTeaching(snapshot, invalid);
+  assert.equal(result.valid, false);
+  assert.ok(result.messages.some((message) => message.includes("Choose both") || message.includes("immediate-next")));
+  assert.ok(result.messages.some((message) => message.includes("causal") || message.includes("future")));
+  assert.ok(result.messages.length >= 3);
+});
+
+test("teaching revisions preserve immutable evidence and analysis stays advisory", () => {
+  const baseSet = buildVisualValidationSet(request);
+  const firstSnapshot = structuredClone(baseSet.snapshots[0]!);
+  const secondSnapshot = structuredClone(baseSet.snapshots[1]!);
+  const firstTeaching = teachingInput(firstSnapshot, "long");
+  const secondTeaching = teachingInput(secondSnapshot, "short");
+  const stored = storeVisualValidationSet({ ...baseSet, snapshots: [firstSnapshot, secondSnapshot] });
+  const machineEvidenceBefore = structuredClone(firstSnapshot.machineEvidence);
+  const firstReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "incorrect", "Initial machine disagreement.");
+  assert.ok(firstReview);
+  const secondReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "missed_trade", null, firstTeaching);
+  assert.ok(secondReview?.teaching);
+  assert.equal(secondReview?.revision, 2);
+  assert.equal(secondReview?.supersedesReviewId, firstReview?.reviewId);
+  assert.deepEqual(getVisualValidationSet(stored.reviewSetId)?.snapshots[0]?.machineEvidence, machineEvidenceBefore);
+  recordVisualValidationReview(stored.reviewSetId, secondSnapshot.snapshotId, "rule_needs_clarification", "Second example needs review.", secondTeaching);
+  const analysis = analyzeVisualValidationTeaching(stored.reviewSetId);
+  assert.ok(analysis);
+  assert.equal(analysis?.status, "advisory");
+  assert.equal(analysis?.approvalRequired, true);
+  assert.equal(analysis?.activeFormulaHash, baseSet.formulaHash);
+  assert.equal(getVisualValidationSet(stored.reviewSetId)?.formulaHash, baseSet.formulaHash);
 });
 
 function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecord {

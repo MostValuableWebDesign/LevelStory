@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   createMarketSnapshot,
   type MarketSnapshot,
@@ -44,8 +44,11 @@ export const VISUAL_VALIDATION_CATEGORIES = [
 ] as const;
 
 export type VisualValidationCategory = typeof VISUAL_VALIDATION_CATEGORIES[number];
-export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain" | "rule_needs_clarification";
+export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain" | "rule_needs_clarification" | "missed_trade" | "false_positive_trade";
 export type VisualValidationReviewMode = "trades_only" | "confirmed_signals" | "trades_and_diagnostics";
+export type VisualValidationTeachingJudgment = "missed_trade" | "false_positive_trade";
+export type VisualValidationTeachingConfidence = "low" | "medium" | "high";
+export type VisualValidationTeachingSetup = "ORB_BREAK_PULLBACK_CONTINUATION" | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | "BONUS_REVERSAL";
 
 export type VisualValidationRequest = {
   symbol: string;
@@ -257,7 +260,240 @@ export type VisualValidationReview = {
   status: Exclude<VisualValidationReviewStatus, "unreviewed">;
   note: string | null;
   reviewedAt: string;
+  teaching?: VisualValidationTeachingExample;
+  supersedesReviewId: string | null;
+  revision: number;
 };
+
+export type VisualValidationTeachingInput = {
+  judgment: VisualValidationTeachingJudgment;
+  direction: "long" | "short";
+  entryCandleOpenTime: string;
+  entryCandleCloseTime: string;
+  patienceCandleOpenTime: string;
+  patienceCandleCloseTime: string;
+  entryBufferTicks: 3 | 4;
+  pullbackLevel: number;
+  setupType: VisualValidationTeachingSetup;
+  confidence: VisualValidationTeachingConfidence;
+  explanation: string;
+};
+
+export type VisualValidationTeachingValidation = {
+  valid: boolean;
+  messages: string[];
+  checkedAt: string;
+};
+
+export type VisualValidationTeachingExample = VisualValidationTeachingInput & {
+  teachingId: string;
+  calculatedEntryPrice: number;
+  validation: VisualValidationTeachingValidation;
+  machineEvidenceSnapshot: {
+    machineEvidence: VisualValidationSnapshot["machineEvidence"];
+    machineCandles: VisualValidationSnapshot["machineCandles"];
+    evaluationCursor: VisualValidationSnapshot["evaluationCursor"];
+    reviewCursor: VisualValidationSnapshot["reviewCursor"];
+  };
+  machineEvidenceHash: string;
+  formulaHash: string;
+  formulaVersion: string;
+  sourceFingerprint: string;
+  supersedesReviewId: string | null;
+  createdAt: string;
+};
+
+export type VisualValidationProposedRuleAnalysis = {
+  analysisId: string;
+  reviewSetId: string;
+  activeFormulaHash: string;
+  activeFormulaVersion: string;
+  status: "advisory";
+  hypothesis: string;
+  likelyCauses: string[];
+  supportingExamples: Array<{ reviewId: string; status: string; snapshotId: string; explanation: string }>;
+  conflictingExamples: Array<{ reviewId: string; status: string; snapshotId: string; explanation: string }>;
+  insufficientEvidence: boolean;
+  approvalRequired: true;
+  generatedAt: string;
+};
+
+const TEACHING_TICK_SIZE = 0.25;
+const TEACHING_ENTRY_WINDOW_START = 9 * 60 + 30;
+const TEACHING_ENTRY_WINDOW_END = 13 * 60;
+
+function hashJson(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function localMinute(value: string): number | null {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null;
+}
+
+function tickAligned(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value / TEACHING_TICK_SIZE - Math.round(value / TEACHING_TICK_SIZE)) < 1e-8;
+}
+
+function sameCandle(candidate: VisualValidationCandle | undefined, openTime: string, closeTime: string): boolean {
+  return candidate?.openTime === openTime && candidate.closeTime === closeTime;
+}
+
+export function validateVisualValidationTeaching(
+  snapshot: VisualValidationSnapshot,
+  input: VisualValidationTeachingInput,
+): VisualValidationTeachingValidation & { calculatedEntryPrice: number } {
+  const messages: string[] = [];
+  const evaluationClose = Date.parse(snapshot.evaluationCursor.closeTime);
+  const entry = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
+  const patience = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
+  const entryIndex = snapshot.reviewCandles.findIndex((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
+  const patienceIndex = snapshot.reviewCandles.findIndex((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
+  const previous = patienceIndex > 0 ? snapshot.reviewCandles[patienceIndex - 1] : undefined;
+  const calculatedEntryPrice = patience
+    ? input.direction === "long"
+      ? Number((patience.high + input.entryBufferTicks * TEACHING_TICK_SIZE).toFixed(2))
+      : Number((patience.low - input.entryBufferTicks * TEACHING_TICK_SIZE).toFixed(2))
+    : Number.NaN;
+
+  if (!entry || !patience) messages.push("Choose both a locked entry candle and its patience candle from this snapshot.");
+  if (entry && !entry.isComplete) messages.push("The locked entry candle must be completed.");
+  if (patience && !patience.isComplete) messages.push("The patience candle must be completed.");
+  if (entry && patience && Date.parse(entry.openTime) !== Date.parse(patience.closeTime)) {
+    messages.push("The entry candle must be the immediate-next candle after patience (E opens when P closes).");
+  }
+  if (entryIndex < 0 || patienceIndex < 0) messages.push("The selected candles must be exact observed candles, not a reconstructed or future slot.");
+  if (entry && (!Number.isFinite(evaluationClose) || Date.parse(entry.closeTime) > evaluationClose)) {
+    messages.push("The entry candle is beyond the machine evaluation boundary and is not causally visible.");
+  }
+  if (patience && (!Number.isFinite(evaluationClose) || Date.parse(patience.closeTime) > evaluationClose)) {
+    messages.push("The patience candle is beyond the machine evaluation boundary and uses future data.");
+  }
+  const entryMinute = entry ? localMinute(entry.openTime) : null;
+  const entryCloseMinute = entry ? localMinute(entry.closeTime) : null;
+  if (entryMinute === null || entryCloseMinute === null || entryMinute < TEACHING_ENTRY_WINDOW_START || entryCloseMinute > TEACHING_ENTRY_WINDOW_END) {
+    messages.push("The entry candle must be inside the 9:30 AM–1:00 PM ET primary entry window.");
+  }
+  if (entry && entry.contractSymbol !== snapshot.contractSymbol) messages.push("The entry candle must belong to the snapshot's active MES contract.");
+  if (patience && previous && input.direction === "long" && patience.high > previous.high) messages.push("Long patience must contain its high within the preceding completed candle.");
+  if (patience && previous && input.direction === "short" && patience.low < previous.low) messages.push("Short patience must contain its low within the preceding completed candle.");
+  if (!previous) messages.push("A preceding completed candle is required to validate patience containment.");
+  if (!tickAligned(input.pullbackLevel)) messages.push("The qualifying pullback level must be aligned to the MES 0.25 tick.");
+  const mappedLevel = snapshot.annotations.find((annotation) =>
+    annotation.available
+    && annotation.price !== null
+    && annotation.kind !== "candle"
+    && Math.abs(annotation.price - input.pullbackLevel) <= TEACHING_TICK_SIZE + 1e-8,
+  );
+  if (!mappedLevel) messages.push("Choose a qualifying level that is visible in the machine snapshot.");
+  if (patience && (input.pullbackLevel < patience.low - TEACHING_TICK_SIZE || input.pullbackLevel > patience.high + TEACHING_TICK_SIZE)) {
+    messages.push("The qualifying level must be contained by the patience candle range.");
+  }
+  if (entry && Number.isFinite(calculatedEntryPrice)) {
+    const buffered = input.direction === "long" ? entry.high >= calculatedEntryPrice : entry.low <= calculatedEntryPrice;
+    if (!buffered) messages.push(`The immediate-next candle did not reach the calculated ${input.entryBufferTicks}-tick MES entry buffer.`);
+  }
+  if (!Number.isInteger(input.entryBufferTicks) || ![3, 4].includes(input.entryBufferTicks)) messages.push("The entry buffer must be three or four ticks.");
+  if (!input.explanation.trim() || input.explanation.trim().length < 10) messages.push("Explain the teaching example in at least 10 characters.");
+
+  return {
+    valid: messages.length === 0,
+    messages,
+    calculatedEntryPrice,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+export function createVisualValidationTeachingExample(
+  snapshot: VisualValidationSnapshot,
+  input: VisualValidationTeachingInput,
+  supersedesReviewId: string | null,
+): VisualValidationTeachingExample {
+  const validation = validateVisualValidationTeaching(snapshot, input);
+  const machineEvidenceSnapshot = structuredClone({
+    machineEvidence: snapshot.machineEvidence,
+    machineCandles: snapshot.machineCandles,
+    evaluationCursor: snapshot.evaluationCursor,
+    reviewCursor: snapshot.reviewCursor,
+  });
+  return {
+    ...input,
+    teachingId: randomUUID(),
+    calculatedEntryPrice: validation.calculatedEntryPrice,
+    validation: {
+      valid: validation.valid,
+      messages: validation.messages,
+      checkedAt: validation.checkedAt,
+    },
+    machineEvidenceSnapshot,
+    machineEvidenceHash: hashJson(machineEvidenceSnapshot),
+    formulaHash: snapshot.formulaHash,
+    formulaVersion: snapshot.formulaVersion,
+    sourceFingerprint: hashJson({
+      symbol: snapshot.symbol,
+      contractSymbol: snapshot.contractSymbol,
+      tradingDate: snapshot.tradingDate,
+      machineCandles: snapshot.machineCandles,
+    }),
+    supersedesReviewId,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function buildProposedRuleAnalysis(
+  reviewSetId: string,
+  formulaHash: string,
+  formulaVersion: string,
+  reviews: readonly VisualValidationReview[],
+  focusTeachingId?: string,
+): VisualValidationProposedRuleAnalysis {
+  const teachingReviews = reviews.filter((review) => review.teaching || review.status === "false_positive_trade");
+  const focus = focusTeachingId ? teachingReviews.find((review) => review.teaching?.teachingId === focusTeachingId) : teachingReviews.at(-1);
+  const focusTeaching = focus?.teaching;
+  const likelyCauses = new Set<string>();
+  for (const review of teachingReviews) {
+    if (review.teaching && !review.teaching.validation.valid) likelyCauses.add("The proposed sequence does not satisfy the immediate-next or causal visibility boundary.");
+    if (review.teaching?.entryBufferTicks === 3) likelyCauses.add("Reviewers are testing a three-tick confirmation buffer against the active four-tick formula.");
+    if (review.teaching?.entryBufferTicks === 4) likelyCauses.add("Reviewers are testing the active four-tick confirmation buffer at a different qualifying level.");
+    if (review.status === "false_positive_trade") likelyCauses.add("A machine-qualified trade may be over-inclusive around level interaction or candle containment.");
+  }
+  if (!likelyCauses.size) likelyCauses.add("There are not yet enough structured teaching examples to isolate a rule difference.");
+  const examples = teachingReviews.map((review) => ({
+    reviewId: review.reviewId,
+    status: review.status,
+    snapshotId: review.snapshotId,
+    explanation: review.teaching?.explanation ?? review.note ?? "No explanation supplied.",
+  }));
+  const supportingExamples = examples.filter((example) =>
+    focusTeaching ? example.status === focus?.status && example.status !== "false_positive_trade" : example.status === "missed_trade",
+  ).slice(0, 12);
+  const conflictingExamples = examples.filter((example) => !supportingExamples.some((item) => item.reviewId === example.reviewId)).slice(0, 12);
+  return {
+    analysisId: randomUUID(),
+    reviewSetId,
+    activeFormulaHash: formulaHash,
+    activeFormulaVersion: formulaVersion,
+    status: "advisory",
+    hypothesis: focusTeaching
+      ? `${focusTeaching.judgment.replaceAll("_", " ")} examples suggest reviewing ${focusTeaching.direction} confirmation at ${focusTeaching.entryBufferTicks} ticks around ${focusTeaching.setupType}.`
+      : "Review structured teaching examples before proposing a rule change.",
+    likelyCauses: [...likelyCauses],
+    supportingExamples,
+    conflictingExamples,
+    insufficientEvidence: teachingReviews.length < 2 || supportingExamples.length === 0,
+    approvalRequired: true,
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 export type VisualValidationDiscrepancyReport = {
   reviewSetId: string;
@@ -301,6 +537,7 @@ export type VisualValidationDiscrepancyReport = {
       ambiguityLabels: string[];
     };
   }>;
+  reviewHistory: VisualValidationReview[];
 };
 
 const categoryLabels: Record<VisualValidationCategory, string> = {

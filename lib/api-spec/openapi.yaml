@@ -499,6 +499,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/proposed-rule-analysis:
+    post:
+      operationId: analyzeVisualValidationTeaching
+      tags: [backtest]
+      summary: Analyze teaching examples as an advisory rule hypothesis
+      description: Returns non-mutating support and conflict analysis. It never changes the active formula or starts a backtest.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisualValidationProposedRuleAnalysisRequest"
+      responses:
+        "200":
+          description: Advisory proposed-rule analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationProposedRuleAnalysis"
+        "404":
+          description: Review set not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data:
     get:
       operationId: getHistoricalData
@@ -2851,7 +2876,52 @@ components:
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:
       type: string
-      enum: [unreviewed, correct, incorrect, uncertain, rule_needs_clarification]
+      enum: [unreviewed, correct, incorrect, uncertain, rule_needs_clarification, missed_trade, false_positive_trade]
+    VisualValidationTeachingJudgment:
+      type: string
+      enum: [missed_trade, false_positive_trade]
+    VisualValidationTeachingConfidence:
+      type: string
+      enum: [low, medium, high]
+    VisualValidationTeachingSetup:
+      type: string
+      enum: [ORB_BREAK_PULLBACK_CONTINUATION, EXTENDED_NTZ_CONSOLIDATION_BREAKOUT, BONUS_REVERSAL]
+    VisualValidationTeachingValidation:
+      type: object
+      properties:
+        valid: { type: boolean }
+        messages:
+          type: array
+          items: { type: string }
+        checkedAt: { type: string, format: date-time }
+      required: [valid, messages, checkedAt]
+    VisualValidationTeachingExample:
+      type: object
+      properties:
+        teachingId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
+        direction: { type: string, enum: [long, short] }
+        entryCandleOpenTime: { type: string, format: date-time }
+        entryCandleCloseTime: { type: string, format: date-time }
+        patienceCandleOpenTime: { type: string, format: date-time }
+        patienceCandleCloseTime: { type: string, format: date-time }
+        entryBufferTicks: { type: number, enum: [3, 4] }
+        pullbackLevel: { type: number }
+        setupType: { $ref: "#/components/schemas/VisualValidationTeachingSetup" }
+        confidence: { $ref: "#/components/schemas/VisualValidationTeachingConfidence" }
+        explanation: { type: string, maxLength: 4000 }
+        calculatedEntryPrice: { type: number }
+        validation: { $ref: "#/components/schemas/VisualValidationTeachingValidation" }
+        machineEvidenceSnapshot:
+          type: object
+          additionalProperties: true
+        machineEvidenceHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        formulaVersion: { type: string }
+        sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+        supersedesReviewId: { type: ["string", "null"], pattern: '^[0-9a-fA-F-]{36}$' }
+        createdAt: { type: string, format: date-time }
+      required: [teachingId, judgment, direction, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, pullbackLevel, setupType, confidence, explanation, calculatedEntryPrice, validation, machineEvidenceSnapshot, machineEvidenceHash, formulaHash, formulaVersion, sourceFingerprint, supersedesReviewId, createdAt]
     VisualValidationCategory:
       type: string
       enum: [qualified_trade, rejected_setup, bullish_patience_candle, bearish_patience_candle, weak_orb_probe, strong_breakout, pullback, consolidation, ambiguous_candle, stop_exit, target_exit, runner_exit]
@@ -3016,6 +3086,7 @@ components:
             status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
             note: { type: ["string", "null"] }
             reviewedAt: { type: ["string", "null"], format: date-time }
+            teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
           required: [status, note, reviewedAt]
       required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
@@ -3055,8 +3126,23 @@ components:
       properties:
         reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         snapshotId: { type: string }
-        status: { type: string, enum: [correct, incorrect, uncertain, rule_needs_clarification] }
+        status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
         note: { type: ["string", "null"], maxLength: 2000 }
+        teaching:
+          type: object
+          properties:
+            judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
+            direction: { type: string, enum: [long, short] }
+            entryCandleOpenTime: { type: string, format: date-time }
+            entryCandleCloseTime: { type: string, format: date-time }
+            patienceCandleOpenTime: { type: string, format: date-time }
+            patienceCandleCloseTime: { type: string, format: date-time }
+            entryBufferTicks: { type: number, enum: [3, 4] }
+            pullbackLevel: { type: number }
+            setupType: { $ref: "#/components/schemas/VisualValidationTeachingSetup" }
+            confidence: { $ref: "#/components/schemas/VisualValidationTeachingConfidence" }
+            explanation: { type: string, maxLength: 4000 }
+          required: [judgment, direction, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, pullbackLevel, setupType, confidence, explanation]
       required: [reviewSetId, snapshotId, status]
     VisualValidationReview:
       type: object
@@ -3064,10 +3150,41 @@ components:
         reviewId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         snapshotId: { type: string }
-        status: { type: string, enum: [correct, incorrect, uncertain, rule_needs_clarification] }
+        status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
         note: { type: ["string", "null"] }
         reviewedAt: { type: string, format: date-time }
-      required: [reviewId, reviewSetId, snapshotId, status, note, reviewedAt]
+        teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
+        supersedesReviewId: { type: ["string", "null"], pattern: '^[0-9a-fA-F-]{36}$' }
+        revision: { type: number, minimum: 1 }
+      required: [reviewId, reviewSetId, snapshotId, status, note, reviewedAt, supersedesReviewId, revision]
+    VisualValidationProposedRuleAnalysisRequest:
+      type: object
+      properties:
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        teachingId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      required: [reviewSetId]
+    VisualValidationProposedRuleAnalysis:
+      type: object
+      properties:
+        analysisId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        activeFormulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        activeFormulaVersion: { type: string }
+        status: { type: string, enum: [advisory] }
+        hypothesis: { type: string }
+        likelyCauses:
+          type: array
+          items: { type: string }
+        supportingExamples:
+          type: array
+          items: { type: object, additionalProperties: true }
+        conflictingExamples:
+          type: array
+          items: { type: object, additionalProperties: true }
+        insufficientEvidence: { type: boolean }
+        approvalRequired: { type: boolean, enum: [true] }
+        generatedAt: { type: string, format: date-time }
+      required: [analysisId, reviewSetId, activeFormulaHash, activeFormulaVersion, status, hypothesis, likelyCauses, supportingExamples, conflictingExamples, insufficientEvidence, approvalRequired, generatedAt]
     VisualValidationDiscrepancyReport:
       type: object
       properties:
@@ -3086,5 +3203,10 @@ components:
           items:
             type: object
             additionalProperties: true
-      required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, reviews, discrepancies]
+        reviewHistory:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, reviews, discrepancies, reviewHistory]
 
