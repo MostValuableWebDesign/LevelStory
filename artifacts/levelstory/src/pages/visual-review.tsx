@@ -56,7 +56,6 @@ import {
   CHART_VOLUME_TOP,
   CHART_WIDTH,
   PREMARKET_SLOT_COUNT,
-  buildChartEvents,
   selectChartEvents,
   findCandleIndexAtTimestamp,
   formatCandleTime,
@@ -76,6 +75,7 @@ import {
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
   isOpeningRangeCompleteAtEvaluation,
+  isDisplacedLabel,
   isPrimaryLevel,
   priceToY,
   selectSessionCandles,
@@ -190,10 +190,6 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
   return "hsl(var(--muted-foreground))";
 }
 
-function anchorRoleLabel(role: VisualValidationCategoryAnchor["relatedCandles"][number]["role"]): string {
-  return role === "evaluation" ? "Evaluation" : role[0]!.toUpperCase() + role.slice(1);
-}
-
 function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
   if (annotation.id === "vwap") return "hsl(204 72% 48%)";
@@ -222,7 +218,6 @@ export default function VisualReview() {
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
-  const [reviewDrawerOpen, setReviewDrawerOpen] = useState(true);
 
   const setQuery = useGetVisualValidationSet(
     reviewSetId ? { reviewSetId } : undefined,
@@ -401,30 +396,22 @@ export default function VisualReview() {
             <>
               <CoverageRail data={data} selectedCategory={selectedCategory} onSelect={selectCategory} />
               {activeSnapshot ? (
-                <div className={`visual-review-workspace mt-5 grid gap-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
+                <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
                     <SnapshotHeader snapshot={activeSnapshot} request={data.request} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)} />
                     <Panel accent>
-                      <PanelTitle eyebrow="Raw market evidence / causal only" title="Annotated candle story" right={<CausalTag />} />
+                      <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} />
                     </Panel>
-                    {workspaceExpanded ? (
-                      <details className="machine-evidence-disclosure" open data-testid="machine-evidence-disclosure">
-                        <summary className="cursor-pointer border border-border bg-card px-5 py-4 text-xs font-bold">Machine evidence · read-only</summary>
-                        <div className="mt-3"><MachineEvidence snapshot={activeSnapshot} /></div>
-                      </details>
-                    ) : <MachineEvidence snapshot={activeSnapshot} />}
-                  </div>
-                  <aside className={`visual-review-sidebar min-w-0 space-y-5 ${workspaceExpanded && !reviewDrawerOpen ? "review-drawer-collapsed" : ""}`} data-testid="visual-review-sidebar">
-                    {workspaceExpanded && <button type="button" onClick={() => setReviewDrawerOpen((current) => !current)} className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted" aria-expanded={reviewDrawerOpen} aria-controls="visual-review-drawer" data-testid="button-toggle-review-drawer">
-                      {reviewDrawerOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}{reviewDrawerOpen ? "Collapse review drawer" : "Open review drawer"}
-                    </button>}
-                    <div id="visual-review-drawer" className={workspaceExpanded && !reviewDrawerOpen ? "hidden" : "space-y-5"}>
-                       <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} />
-                       <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
-                      <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                    <ChartEvidence snapshot={activeSnapshot} />
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
+                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} />
+                      <div className="space-y-5">
+                        <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
+                        <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                      </div>
                     </div>
-                  </aside>
+                  </div>
                 </div>
               ) : <UnavailableWorkspace coverage={coverage} source={data.source} />}
             </>
@@ -675,9 +662,9 @@ function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnch
   return <div className="mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3 sm:p-4" data-testid="category-anchor-banner">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><Check size={12} />Found · canonical audit anchor</div>
+        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><Check size={12} />Category found</div>
         <div className="mt-1 text-sm font-bold">{anchor.label}</div>
-        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail}</p>
+        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail || "The selected category resolves to an observed MES candle."}</p>
       </div>
       <div className="shrink-0 text-right">
         <div className="mono text-[11px] font-bold">{formatInterval(anchor.openTime, anchor.closeTime)}</div>
@@ -687,7 +674,10 @@ function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnch
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[hsl(var(--positive)/.2)] pt-3 text-[10px]">
       {patience && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Patience · {formatInterval(patience.openTime, patience.closeTime)} · {patience.price == null ? "—" : formatPriceAxisValue(patience.price)}</span>}
       {trigger && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />Trigger · {formatInterval(trigger.openTime, trigger.closeTime)} · {trigger.price == null ? "—" : formatPriceAxisValue(trigger.price)}</span>}
-      <span className="mono text-muted-foreground">audit {anchor.auditId}{anchor.tradeId ? ` · trade ${anchor.tradeId}` : ""}</span>
+      <details className="ml-auto">
+        <summary className="cursor-pointer text-[10px] font-bold text-muted-foreground">Technical details</summary>
+        <span className="mono mt-2 block text-muted-foreground">audit {anchor.auditId}{anchor.tradeId ? ` · trade ${anchor.tradeId}` : ""} · {anchor.contractSymbol}</span>
+      </details>
     </div>
   </div>;
 }
@@ -698,7 +688,7 @@ function formatExactVolume(value: number): string {
 
 function CandleInspector({ inspection, activeEvents }: { inspection: CandleInspection | null; activeEvents: string[] }) {
   return <section className="candle-inspector" aria-label="Selected candle inspector" data-testid="candle-inspector">
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex items-center justify-between gap-3">
       <div>
         <div className="eyebrow text-muted-foreground">Candle inspector</div>
         <h3 className="mt-1 text-xs font-bold">{inspection ? inspection.interval : "Select a five-minute candle"}</h3>
@@ -706,17 +696,13 @@ function CandleInspector({ inspection, activeEvents }: { inspection: CandleInspe
       {inspection && <span className={`shrink-0 text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
     </div>
     {inspection ? <>
-      <div className="mt-3 grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3" data-testid="candle-inspector-ohlcv">
-        {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close]] as const).map(([label, value]) => <div key={label} className="bg-card px-2.5 py-2"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{value.toFixed(2)}</div></div>)}
-        <div className="bg-card px-2.5 py-2 col-span-2 sm:col-span-1"><div className="eyebrow text-muted-foreground">Volume</div><div className="mono mt-1 text-[11px] font-bold">{formatExactVolume(inspection.volume)}</div></div>
+      <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
+        {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
       </div>
-      <div className="mt-3 space-y-1 border-t border-border pt-3 text-[10px] text-muted-foreground">
-        <div><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET</div>
-        <div>{inspection.utc} UTC · Exact raw OHLCV interval</div>
-      </div>
-      <div className="mt-3 border-t border-border pt-3">
-        <div className="eyebrow text-muted-foreground">Active events</div>
-        {activeEvents.length ? <ul className="mt-1 space-y-1 text-[10px]">{activeEvents.map((event) => <li key={event} className="font-semibold">{event}</li>)}</ul> : <div className="mt-1 text-[10px] text-muted-foreground">No audit event on this candle.</div>}
+      <div className="mt-2 flex flex-nowrap items-center gap-x-4 overflow-hidden border-t border-border pt-2 text-[9px] text-muted-foreground">
+        <span><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET</span>
+        <span>{inspection.utc} UTC · Exact raw OHLCV</span>
+        <span className="ml-auto"><span className="font-semibold text-foreground">Events:</span> {activeEvents.length ? activeEvents.join(" · ") : "none on this candle"}</span>
       </div>
     </> : <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Hover a candle or focus the chart and use the arrow keys. The inspector stays outside the plot so exact prices remain readable.</p>}
   </section>;
@@ -776,7 +762,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   </details>;
 }
 
-function CausalSvg({
+ function CausalSvg({
   snapshot,
   candles,
   regularCandles,
@@ -794,6 +780,8 @@ function CausalSvg({
   onReturnPrimary: () => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const interactionRef = useRef<SVGRectElement>(null);
@@ -820,7 +808,7 @@ function CausalSvg({
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
   const annotations = snapshot.annotations.filter((annotation) => annotation.available
     && (!["orb-high", "orb-low"].includes(annotation.id) || orbCompleteAtEvaluation));
-  const railEvents = buildEventRailEvents(snapshot, candles, sessionView);
+  const chartEvents = selectChartEvents(snapshot, candles, sessionView, showAllAuditEvents);
   const domain = getCandleDomain(candles);
   const priceAxis = getPriceAxis(domain);
   const y = (price: number) => priceToY(price, domain, top, plotBottom);
@@ -861,27 +849,13 @@ function CausalSvg({
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
-  const railLayout = layoutEventRail(railEvents, {
-    left,
-    right: plotRight - 8,
-    slotCount,
-    cursorX: boundaryX,
-  });
   const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
   const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
   const hoveredSlot = hoveredCandle ? getCandleSlotIndex(hoveredCandle, sessionView, premarketCandles.length > 0) : 0;
   const hoveredEvents = hoveredCandle
-    ? snapshot.tradeEvents
+    ? chartEvents
       .filter((event) => [event.openTime, event.closeTime].includes(hoveredCandle.openTime) || [event.openTime, event.closeTime].includes(hoveredCandle.closeTime))
-      .map((event) => `${event.label}${event.modeledPrice == null ? "" : ` · ${formatPriceAxisValue(event.modeledPrice)}`}`)
-    : [];
-  const hoveredAnchorEvents = hoveredCandle
-    ? [
-      ...(snapshot.categoryAnchor.openTime === hoveredCandle.openTime ? [`FOUND · ${snapshot.categoryAnchor.label}`] : []),
-      ...snapshot.categoryAnchor.relatedCandles
-        .filter((related) => related.openTime === hoveredCandle.openTime)
-        .map((related) => `${anchorRoleLabel(related.role)} candle${related.price == null ? "" : ` · ${formatPriceAxisValue(related.price)}`}`),
-    ]
+      .map((event) => `${event.label}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`)
     : [];
   const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
     const svgX = (clientX - rect.left) * (width / rect.width);
@@ -907,15 +881,16 @@ function CausalSvg({
           : candles.length - 1;
     setHoveredIndex(nextIndex);
   };
-  const focusRailEvent = (event: typeof railLayout.events[number]) => {
+  const focusChartEvent = (event: typeof chartEvents[number]) => {
     const index = findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
     if (index >= 0) setHoveredIndex(index);
+    setActiveEventId(event.id);
   };
-  const railMarkerIndex = (event: typeof railLayout.events[number]) => findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
-  const railMarkerY = (event: typeof railLayout.events[number]) => {
-    const markerIndex = railMarkerIndex(event);
-    const rawY = markerIndex >= 0 && event.price == null
-      ? y(candles[markerIndex]!.close)
+  const markerIndex = (event: typeof chartEvents[number]) => findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
+  const markerY = (event: typeof chartEvents[number]) => {
+    const index = markerIndex(event);
+    const rawY = index >= 0 && event.price == null
+      ? y(candles[index]!.close)
       : event.price == null
         ? top + 12
         : y(event.price);
@@ -932,35 +907,36 @@ function CausalSvg({
          <button type="button" onClick={() => setPan((current) => Math.min(width - width / zoom, current + 80 / zoom))} disabled={pan >= width - width / zoom} className="chart-control" aria-label="Pan chart right" data-testid="button-pan-right"><MoveRight size={13} />Pan right</button>
          <button type="button" onClick={() => { setZoom(1); setPan(0); }} className="chart-control" aria-label="Reset chart view" data-testid="button-reset-chart"><RotateCcw size={13} />Reset</button>
          {sessionView !== "primary" && <button type="button" onClick={onReturnPrimary} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
+          <label className="ml-1 inline-flex min-h-8 items-center gap-2 border border-border bg-card px-2.5 text-[9px] font-bold uppercase tracking-[.04em]">
+            <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showAllAuditEvents} onChange={(event) => { setShowAllAuditEvents(event.target.checked); setActiveEventId(null); }} data-testid="toggle-show-all-audit-events" />
+            Show all audit events
+          </label>
        </div>
      </div>
-      <div className="chart-inspection-layout">
-      <div className="chart-plot-shell">
+       <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
+       <div className="chart-plot-shell mt-3">
        <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
-       <rect x={left} y={CHART_EVENT_RAIL_TOP} width={plotWidth} height={CHART_EVENT_RAIL_HEIGHT} fill="hsl(var(--muted) / .24)" stroke="hsl(var(--border))" data-testid="event-label-rail" />
-       <text x={left + 8} y={15} fill="hsl(var(--muted-foreground))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">EVENT LABEL RAIL · DETERMINISTIC LANES</text>
-       {railLayout.events.map((event) => {
-         const markerIndex = railMarkerIndex(event);
-         const markerY = railMarkerY(event);
-         const color = event.visibility === "human_only" ? "hsl(var(--muted-foreground))" : event.kind === "found" ? "hsl(var(--positive))" : event.kind === "invalidation" || event.kind === "stop" || event.kind === "exit" ? "hsl(var(--negative))" : event.kind === "trigger" || event.kind === "entry" ? "hsl(var(--accent))" : "hsl(var(--foreground))";
-         const labelText = event.overflow ? `#${event.order + 1} ${event.shortLabel}` : `${event.visibility === "human_only" ? "HUMAN · " : ""}${event.label}`;
-         const markerLabel = event.overflow ? `#${event.order + 1}` : event.shortLabel;
-         const eventFocus = () => focusRailEvent(event);
-         return <g key={`rail-${event.id}`} data-testid={`event-rail-item-${event.id}`} role="button" tabIndex={0} aria-label={`${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
-           <title>{`${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
-           <line x1={event.labelX + event.labelWidth / 2} y1={event.labelY + 3} x2={event.markerX} y2={top - 4} stroke={color} strokeWidth="1" strokeDasharray={event.visibility === "human_only" ? "5 3" : event.overflow ? "2 3" : "none"} opacity={event.visibility === "human_only" ? ".62" : ".75"} data-testid={`event-rail-leader-${event.id}`} />
-           {!event.overflow && <rect x={event.labelX} y={event.labelY - 10} width={event.labelWidth} height="15" rx="2" fill={event.visibility === "human_only" ? "hsl(var(--muted) / .72)" : "hsl(var(--card) / .96)"} stroke={color} strokeOpacity=".42" strokeDasharray={event.visibility === "human_only" ? "4 3" : "none"} />}
-           <text x={event.overflow ? event.labelX + 3 : event.labelX + 5} y={event.labelY + 1} fill={color} fontSize={event.overflow ? "8" : "8.5"} fontWeight="700" fontFamily="DM Mono">{labelText}</text>
-           {markerIndex >= 0
-             ? <g data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
-               <line x1={event.markerX} x2={event.markerX} y1={top - 4} y2={markerY} stroke={color} strokeWidth={hoveredIndex === markerIndex ? "1.7" : "1"} strokeDasharray={event.visibility === "human_only" ? "6 4" : "2 3"} opacity={hoveredIndex === markerIndex ? ".95" : ".58"} />
-               <circle cx={event.markerX} cy={markerY} r={hoveredIndex === markerIndex ? "5" : "3.5"} fill={color} stroke="hsl(var(--card))" strokeWidth="1.5" />
-               <text x={event.markerX + 5} y={markerY + 3} fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">{markerLabel}</text>
-             </g>
-             : <g data-testid={`event-marker-${event.id}`}><path d={`M ${event.markerX - 6} ${markerY} l 6 -5 l 0 10 z`} fill={color} /><text x={event.markerX - 10} y={markerY + 3} textAnchor="end" fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">{markerLabel}</text></g>}
-         </g>;
-       })}
+        {chartEvents.map((event) => {
+          const index = markerIndex(event);
+          const slot = event.markerSlot ?? Math.max(slotCount - 1, 0);
+          const eventX = left + slot * step + step / 2;
+          const eventY = markerY(event);
+          const color = event.visibility === "human_only"
+            ? "hsl(var(--muted-foreground))"
+            : event.kind === "found" ? "hsl(var(--positive))"
+              : event.kind === "invalidation" || event.kind === "stop" || event.kind === "exit" ? "hsl(var(--negative))"
+                : event.kind === "trigger" || event.kind === "entry" ? "hsl(var(--accent))"
+                  : "hsl(var(--foreground))";
+          const active = activeEventId === event.id || hoveredIndex === index;
+          const eventFocus = () => focusChartEvent(event);
+          return <g key={`marker-${event.id}`} data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onClick={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
+            <title>{`#${event.number} ${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
+            {index >= 0 && <line x1={eventX} x2={eventX} y1={top - 4} y2={eventY} stroke={color} strokeWidth={active ? "1.7" : "1"} strokeDasharray={event.visibility === "human_only" ? "6 4" : "2 3"} opacity={active ? ".95" : ".58"} />}
+            <circle cx={eventX} cy={eventY} r={active ? "6" : "4.5"} fill={event.visibility === "human_only" ? "hsl(var(--muted))" : "hsl(var(--card))"} stroke={color} strokeWidth={active ? "2" : "1.3"} />
+            <text x={eventX} y={eventY + 3} textAnchor="middle" fill={color} fontSize="7.5" fontWeight="700" fontFamily="DM Mono">{event.number}</text>
+          </g>;
+        })}
       {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
       {volumeAxis.map((tick) => {
         const tickY = volumeTop + CHART_VOLUME_HEIGHT - (tick.value / Math.max(volumeAxis.at(-1)?.value ?? volumeMax, 1)) * CHART_VOLUME_HEIGHT;
@@ -1038,27 +1014,43 @@ function CausalSvg({
           onKeyDown={setIndexFromKeyboard}
         />
      </svg>
-     <div className={`event-rail-list ${railLayout.hasOverflow ? "event-rail-list-overflow" : ""}`} data-testid="event-rail-ordered-list">
-       <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
-         <span className="eyebrow text-muted-foreground">{railLayout.hasOverflow ? "Dense rail · numbered event index" : "Ordered event index"}</span>
-         <span className="mono text-[9px] text-muted-foreground">{railLayout.events.length} events · timestamp / priority / ID</span>
-       </div>
-       <ol className="mt-2 grid gap-1 sm:grid-cols-2">
-         {railLayout.events.map((event) => <li key={`event-list-${event.id}`}>
-           <button type="button" className="event-rail-list-item" onMouseEnter={() => focusRailEvent(event)} onFocus={() => focusRailEvent(event)} onClick={() => focusRailEvent(event)} data-testid={`event-list-item-${event.id}`}>
-             <span className={`mono shrink-0 ${event.visibility === "human_only" ? "text-muted-foreground" : "text-foreground"}`}>{event.order + 1}.</span>
-             <span className="truncate text-left">{event.visibility === "human_only" ? "HUMAN · " : ""}{event.label}</span>
-             <span className="mono ml-auto shrink-0 text-muted-foreground">{event.shortLabel}</span>
-           </button>
-         </li>)}
-       </ol>
-     </div>
+      <section className="event-index mt-3" data-testid="event-index">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2">
+          <div>
+            <div className="eyebrow text-muted-foreground">Causal event index</div>
+            <h3 className="mt-1 text-sm font-bold">Events on this chart</h3>
+          </div>
+          <span className="mono text-[9px] text-muted-foreground">{chartEvents.length} {showAllAuditEvents ? "audit events" : "category events"}</span>
+        </div>
+        <ol className="mt-2 divide-y divide-border border border-border bg-card">
+          {chartEvents.length ? chartEvents.map((event) => {
+            const index = markerIndex(event);
+            const selected = activeEventId === event.id;
+            const time = event.openTime && event.closeTime
+              ? formatInterval(event.openTime, event.closeTime)
+              : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
+            return <li key={`event-list-${event.id}`}>
+              <button type="button" className={`event-index-row ${selected ? "is-selected" : ""}`} onMouseEnter={() => focusChartEvent(event)} onFocus={() => focusChartEvent(event)} onClick={() => focusChartEvent(event)} aria-current={selected ? "true" : undefined} data-testid={`event-index-item-${event.id}`}>
+                <span className={`event-index-number ${event.visibility === "human_only" ? "is-human" : ""}`}>{event.number}</span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-[11px] font-bold">{event.label}</span>
+                  <span className="mt-1 block truncate text-[10px] leading-4 text-muted-foreground">{event.detail}</span>
+                </span>
+                <span className="event-index-meta">
+                  <span className="mono whitespace-nowrap">{time}</span>
+                  <span className="mono whitespace-nowrap">{event.price == null ? "—" : formatPriceAxisValue(event.price)}</span>
+                  <span className={event.visibility === "human_only" ? "text-muted-foreground" : "text-[hsl(var(--positive))]"}>{event.visibility === "human_only" ? "Human-only" : "Machine-visible"}</span>
+                </span>
+              </button>
+              {index < 0 && <span className="sr-only">This event has no exact candle marker in the selected window.</span>}
+            </li>;
+          }) : <li className="px-4 py-5 text-xs text-muted-foreground">No category-relevant audit events resolve inside this chart window.</li>}
+        </ol>
+      </section>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
        {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
      </div>
-      </div>
-       <CandleInspector inspection={hoveredDetails} activeEvents={[...hoveredAnchorEvents, ...hoveredEvents]} />
-      </div>
+       </div>
      {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
       <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Additional levels ({additionalLevels.length})</summary>
@@ -1067,7 +1059,7 @@ function CausalSvg({
    </div>;
 }
 
-function MachineEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const evidence = snapshot.machineEvidence;
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
@@ -1087,22 +1079,22 @@ function MachineEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
       : typeof audit.rejectionReason === "string" && audit.rejectionReason
         ? `Trade qualification stopped at ${audit.rejectionReason}.`
         : "The machine recorded market evidence without authorizing a modeled entry.";
-  return <Panel>
-     <PanelTitle eyebrow="Machine evidence / read-only" title="Why this example was found" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Immutable formula trace</span>} />
+   return <Panel data-testid="chart-evidence">
+      <PanelTitle eyebrow="Plain-language summary / read-only" title="What the app found" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Machine-owned</span>} />
      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3" data-testid="trader-readable-reasoning">
-       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Decision</div><div className="mt-2 text-sm font-bold">{safeValue(audit.decision ?? snapshot.machineLabel)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(audit.setupType)}{audit.direction ? ` · ${safeValue(audit.direction)}` : ""}</div></div>
-       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app saw</div><div className="mt-2 text-xs leading-5">{behavior.length ? behavior.join(" ") : "No additional market-behavior description was recorded."}</div></div>
-       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Therefore</div><div className="mt-2 text-xs leading-5">{qualification}</div></div>
+        <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app found</div><div className="mt-2 text-sm font-bold">{snapshot.categoryLabel}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(audit.setupType)}{audit.direction ? ` · ${safeValue(audit.direction)}` : ""}</div></div>
+        <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Why it matches this category</div><div className="mt-2 text-xs leading-5">{behavior.length ? behavior.join(" ") : "The category anchor and related candles match this review category."}</div></div>
+        <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app decided</div><div className="mt-2 text-xs leading-5">{qualification}</div></div>
      </div>
      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
-    <details className="border-t border-border px-5 py-4 sm:px-6">
-       <summary className="cursor-pointer text-xs font-semibold">Open complete immutable technical trace</summary>
+     <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
+        <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>
       <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
     </details>
-     <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">Machine evidence is not a human judgment. Use the review panel to record whether this explanation holds up against the raw candles.</div>
+      <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
   </Panel>;
 }
 

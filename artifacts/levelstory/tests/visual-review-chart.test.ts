@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { VisualValidationAnnotation, VisualValidationCandle } from "@workspace/api-client-react";
+import type { VisualValidationAnnotation, VisualValidationCandle, VisualValidationSnapshot } from "@workspace/api-client-react";
 import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
@@ -28,6 +28,7 @@ import {
   isPrimaryLevel,
   priceToY,
   selectSessionCandles,
+  selectChartEvents,
   selectFocusedCandles,
   snapPrice,
   stackLabelPositions,
@@ -386,4 +387,46 @@ test("category coverage reports available and missing historical categories with
   ]);
   assert.deepEqual(summary.available.map((item) => item.category), ["strong_breakout"]);
   assert.deepEqual(summary.unavailable.map((item) => item.category), ["qualified_trade", "pullback"]);
+});
+
+test("default chart events are category-relevant and numbered in stable order", () => {
+  const candles = [makeCandle(0), makeCandle(1)];
+  const snapshot = {
+    category: "bullish_patience_candle",
+    categoryAnchor: {
+      category: "bullish_patience_candle",
+      auditId: "audit-1",
+      tradeId: null,
+      contractSymbol: "MESU6",
+      openTime: candles[0].openTime,
+      closeTime: candles[0].closeTime,
+      price: candles[0].close,
+      direction: "long",
+      label: "Bullish patience candle",
+      detail: "The patience candle held above the entry buffer.",
+      relatedCandles: [{ role: "patience", openTime: candles[0].openTime, closeTime: candles[0].closeTime, price: candles[0].close, visibility: "machine" }],
+      visibility: "machine",
+    },
+    tradeEvents: [{
+      id: "stop-1",
+      event: "stop",
+      label: "Strategy stop",
+      direction: "long",
+      openTime: candles[1].openTime,
+      closeTime: candles[1].closeTime,
+      triggerPrice: candles[1].close,
+      modeledPrice: candles[1].close,
+      contracts: 1,
+      visibility: "human_only",
+      detail: "Observed after the evaluation cursor.",
+    }],
+    annotations: [],
+  } as unknown as VisualValidationSnapshot;
+  const relevant = selectChartEvents(snapshot, candles, "primary");
+  assert.ok(relevant.length > 0);
+  assert.ok(relevant.every((event, index) => event.number === index + 1));
+  assert.equal(relevant.some((event) => event.kind === "stop"), false);
+  const all = selectChartEvents(snapshot, candles, "primary", true);
+  assert.equal(all.some((event) => event.kind === "stop"), true);
+  assert.deepEqual(all.map((event) => event.number), all.map((_, index) => index + 1));
 });
