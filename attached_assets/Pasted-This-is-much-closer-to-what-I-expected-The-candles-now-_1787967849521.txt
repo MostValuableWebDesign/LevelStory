@@ -1,0 +1,111 @@
+This is much closer to what I expected. The candles now have realistic bodies, wicks and volume, the chart uses 40 historical Databento candles, and the causal cursor is clear.
+
+But it is not finished. You are correct about the missing axes.
+
+Remaining issues:
+
+- The X-axis shows only the beginning and ending UTC timestamps.
+- Times should appear every 15 or 30 minutes in New York time.
+- The Y-axis has only a few irregular values instead of readable price increments.
+- Price labels should be aligned to the MES tick size.
+- A crosshair should show the exact candle time, OHLC and volume.
+- Level labels on the right still overlap.
+- The chart should show the numeric price beside ORB, VWAP, EMA and NTZ labels.
+- It generated only 5 historical snapshots, not 12. That may be honest if only five qualifying historical examples exist, but the UI should say “5 of 12 categories found.”
+
+Use this correction prompt:
+
+```text
+Improve only the axes, crosshair and annotation readability of the LevelStory `/visual-review` chart.
+
+The historical candles now look substantially better. Do not change the trading formula, historical data, category selection, machine decisions or causal boundaries.
+
+Required corrections:
+
+1. New York time axis
+- Display readable X-axis labels at adaptive 15-minute or 30-minute intervals.
+- Use America/New_York as the primary displayed timezone.
+- Example labels: 8:30 AM, 9:00 AM, 9:30 AM, 10:00 AM.
+- Show the date once instead of repeating it under every tick.
+- Keep UTC available in the hover tooltip or through an NY/UTC toggle.
+- Do not display long ISO timestamps with milliseconds on the visible axis.
+
+2. Price axis
+- Place a conventional price scale on the right side of the chart.
+- Generate approximately 6–10 evenly spaced visible price labels.
+- Derive the interval adaptively from the visible price range.
+- Align every displayed price to the instrument’s tick size from symbol metadata.
+- MES prices must align to valid 0.25 increments.
+- Use intervals such as 0.25, 0.50, 1.00, 2.00 or 5.00 depending on the visible range.
+- Do not produce arbitrary axis values such as 7740.64.
+- Keep minor grid lines subtle and major price lines readable.
+
+3. Crosshair and candle tooltip
+Add an interactive crosshair that follows the selected candle and displays:
+- New York date and time
+- UTC time
+- Open
+- High
+- Low
+- Close
+- Volume
+- Contract symbol
+- Whether the candle was visible to the machine
+
+The crosshair price must snap to the instrument’s tick size.
+
+4. Level labels
+Show each important level as a compact right-axis price tag:
+- ORB High — price
+- ORB Low — price
+- NTZ High — price
+- NTZ Low — price
+- VWAP — price
+- EMA 200 — price
+- relevant critical level — price
+- entry, stop and target — price when applicable
+
+Use collision-aware stacking when two labels are close. Draw a small connector from a displaced label to its actual level.
+
+5. Volume axis
+- Add a small volume scale using readable values such as 500, 1K or 2K.
+- Show the exact volume in the crosshair tooltip.
+- Keep volume visually secondary to price.
+
+6. Historical category coverage
+The current page reports only 5 generated causal snapshots.
+
+Display:
+- “5 of 12 historical categories found”
+- the names of available categories
+- the names of categories not found in the selected historical range
+
+Do not fabricate missing historical examples. Provide a control to expand the historical date range later.
+
+7. Accessibility and responsive layout
+- Keep axis labels readable on desktop and mobile.
+- Avoid label overlap.
+- Provide accessible text for crosshair values.
+- Preserve the causal cursor and human-only outcome shading.
+
+Add focused frontend tests proving:
+- time labels use America/New_York
+- axis timestamps do not contain ISO milliseconds
+- MES price labels align to 0.25
+- arbitrary unsnapped prices are not used for axis ticks
+- crosshair values match exact raw OHLCV
+- level-label collision handling works
+- historical coverage reports 5 of 12 without fabricating categories
+
+Verification limits:
+- Run focused visual-review frontend tests.
+- Run frontend typecheck.
+- Do not restart the API.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not modify human judgments.
+
+Provide before-and-after screenshots of Rejected Setup and Weak ORB Probe.
+```
+
+Visually, I would call the current version approximately **75% complete**: the candle data now looks useful, while the axes and interaction still need proper trading-chart behavior.
