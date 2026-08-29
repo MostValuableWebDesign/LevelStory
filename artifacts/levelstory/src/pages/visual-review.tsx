@@ -83,6 +83,7 @@ import {
   type SessionView,
   stackLabelPositions,
   summarizeCategoryCoverage,
+  type CandleInspection,
 } from "@/lib/visual-review-chart";
 
 const CATEGORIES: Array<{ value: VisualValidationCategory; label: string; short: string }> = [
@@ -112,10 +113,16 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   endDate: "2026-08-26",
   inSampleDays: 5,
   outOfSampleDays: 2,
-  seed: 11,
+  seed: undefined,
   premarketAvailable: true,
-  source: "simulated",
+  source: "historical_databento",
 };
+
+function storedReviewSource(): VisualValidationRequest["source"] {
+  if (typeof window === "undefined") return "historical_databento";
+  const source = window.localStorage.getItem("levelstory.visualReviewSource");
+  return source === "simulated" || source === "historical_databento" ? source : "historical_databento";
+}
 
 function storedReviewSetId(): string {
   if (typeof window === "undefined") return "";
@@ -188,12 +195,17 @@ function levelStroke(annotation: VisualValidationAnnotation): string {
 }
 
 export default function VisualReview() {
-  const [request, setRequest] = useState<VisualValidationRequest>(INITIAL_REQUEST);
+  const [request, setRequest] = useState<VisualValidationRequest>(() => ({
+    ...INITIAL_REQUEST,
+    source: storedReviewSource(),
+    seed: storedReviewSource() === "simulated" ? 11 : undefined,
+  }));
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<Exclude<VisualValidationReviewStatus, "unreviewed"> | null>(null);
   const [message, setMessage] = useState("");
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -244,28 +256,56 @@ export default function VisualReview() {
     if (!activeSnapshot) {
       setSelectedSnapshotId("");
       setReviewNote("");
+      setReviewStatus(null);
       return;
     }
     setSelectedSnapshotId(activeSnapshot.snapshotId);
     setReviewNote(activeSnapshot.review.note ?? "");
+    setReviewStatus(activeSnapshot.review.status === "unreviewed" ? null : activeSnapshot.review.status);
   }, [activeSnapshot]);
+
+  const savedStatus = activeSnapshot?.review.status === "unreviewed" ? null : activeSnapshot?.review.status ?? null;
+  const savedNote = activeSnapshot?.review.note ?? "";
+  const reviewDirty = Boolean(activeSnapshot && (reviewStatus !== savedStatus || reviewNote.trim() !== savedNote.trim()));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!reviewDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [reviewDirty]);
+
+  const confirmDiscardReview = () => !reviewDirty || typeof window === "undefined" || window.confirm("You have an unsaved review. Leave it without submitting?");
 
   const selectCategory = (category: VisualValidationCategory) => {
     const item = coverage.find((entry) => entry.category === category);
     if (!item?.available || item.count === 0) return;
+    if (!confirmDiscardReview()) return;
     setSelectedCategory(category);
     setSelectedSnapshotId("");
     setReport(null);
   };
 
+  const selectSnapshot = (snapshotId: string) => {
+    if (snapshotId === activeSnapshot?.snapshotId || !confirmDiscardReview()) return;
+    setSelectedSnapshotId(snapshotId);
+  };
+
   const submitGeneration = (event: FormEvent) => {
     event.preventDefault();
+    if (!confirmDiscardReview()) return;
     setMessage("");
     setReport(null);
     createSet.mutate({ data: request }, {
       onSuccess: (nextSet) => {
         setLocalSet(nextSet);
         setReviewSetId(nextSet.reviewSetId);
+         setReviewStatus(null);
+         setReviewNote("");
         if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
         setMessage(`Generated ${nextSet.snapshots.length} causal snapshots.`);
       },
@@ -273,7 +313,7 @@ export default function VisualReview() {
     });
   };
 
-  const saveReview = (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => {
+  const saveReview = (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext = false) => {
     if (!data || !activeSnapshot) return;
     setMessage("");
     recordReview.mutate({
@@ -294,7 +334,13 @@ export default function VisualReview() {
               : snapshot),
           };
         });
-        setMessage(`Saved ${status.replaceAll("_", " ")} judgment.`);
+        setReviewStatus(saved.status);
+        setReviewNote(saved.note ?? "");
+        setMessage(`${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
+        if (moveNext) {
+          const next = categorySnapshots[categorySnapshots.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
+          if (next) setSelectedSnapshotId(next.snapshotId);
+        }
       },
       onError: () => setMessage("The human judgment was not saved. Try again."),
     });
@@ -328,7 +374,10 @@ export default function VisualReview() {
           />
 
           <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-            <GenerationPanel request={request} setRequest={setRequest} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
+            <GenerationPanel request={request} setRequest={(next) => {
+              setRequest(next);
+              if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
+            }} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
             <SetManifest data={data} loading={setQuery.isLoading} />
           </div>
 
@@ -342,7 +391,7 @@ export default function VisualReview() {
               {activeSnapshot ? (
                 <div className={`visual-review-workspace mt-5 grid gap-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
-                    <SnapshotHeader snapshot={activeSnapshot} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, setSelectedSnapshotId)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, setSelectedSnapshotId)} />
+                    <SnapshotHeader snapshot={activeSnapshot} request={data.request} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)} />
                     <Panel accent>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Annotated candle story" right={<CausalTag />} />
                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} />
@@ -359,8 +408,8 @@ export default function VisualReview() {
                       {reviewDrawerOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}{reviewDrawerOpen ? "Collapse review drawer" : "Open review drawer"}
                     </button>}
                     <div id="visual-review-drawer" className={workspaceExpanded && !reviewDrawerOpen ? "hidden" : "space-y-5"}>
-                      <ReviewPanel snapshot={activeSnapshot} note={reviewNote} setNote={setReviewNote} pending={recordReview.isPending} onSave={saveReview} message={message} />
-                      <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={setSelectedSnapshotId} />
+                       <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} />
+                       <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
                       <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
                     </div>
                   </aside>
@@ -375,27 +424,37 @@ export default function VisualReview() {
 }
 
 function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; pending: boolean; message: string }) {
-  const update = (key: keyof VisualValidationRequest, value: string | number | boolean) => setRequest({ ...request, [key]: value });
+  const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
+  const updateSource = (source: VisualValidationRequest["source"]) => setRequest({
+    ...request,
+    source,
+    seed: source === "simulated" ? (request.seed ?? 11) : undefined,
+  });
   const hasError = ["could not", "not saved", "unavailable", "not found"].some((term) => message.toLowerCase().includes(term));
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
-      <Field label="Data source">
+      <Field label={<span className="inline-flex items-center gap-1.5">Data source <InfoTip label="Data source" text="Historical Databento is the default and uses indexed MES contract candles. Simulated fixtures are available only as an explicit test option." /></span>}>
         <select
           className="field"
-          value={request.source ?? "simulated"}
-          onChange={(event) => update("source", event.target.value as "simulated" | "historical_databento")}
+          value={request.source ?? "historical_databento"}
+          onChange={(event) => updateSource(event.target.value as "simulated" | "historical_databento")}
           data-testid="select-visual-review-source"
         >
-          <option value="simulated">Simulated fixture data</option>
           <option value="historical_databento">Historical Databento data</option>
+          <option value="simulated">Simulated fixture data · testing only</option>
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
-        <Field label="Seed"><input className="field mono" type="number" min="0" max="1000000" value={request.seed ?? ""} onChange={(event) => update("seed", Number(event.target.value))} /></Field>
+        <Field label={<span className="inline-flex items-center gap-1.5">Seed <InfoTip label="Seed" text="Seeds affect simulated fixture generation only. Historical mode is immutable, so this control is disabled." /></span>}>
+          <input className="field mono" type="number" min="0" max="1000000" value={request.seed ?? ""} disabled={request.source === "historical_databento"} aria-describedby="visual-review-seed-help" onChange={(event) => update("seed", event.target.value === "" ? undefined : Number(event.target.value))} />
+          <span id="visual-review-seed-help" className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Not used for historical candles." : "Used to reproduce the same fixture set."}</span>
+        </Field>
       </div>
-      <Field label="End date · New York trading date"><input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></Field>
+      <Field label={<span className="inline-flex items-center gap-1.5">Review-period end date · New York <InfoTip label="Review-period end date" text="The last requested trading date in the review period. Individual examples may be earlier because the period includes in-sample and holdout sessions." /></span>}>
+        <input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} />
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="In-sample days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
         <Field label="Out-of-sample days"><select className="field mono" value={request.outOfSampleDays} onChange={(event) => update("outOfSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
@@ -456,13 +515,13 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
   </Panel>;
 }
 
-function SnapshotHeader({ snapshot, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
+function SnapshotHeader({ snapshot, request, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
   return <Panel>
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
-        <div className="eyebrow mb-2 text-muted-foreground">Sample {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period.replaceAll("_", "-")}</div>
+        <div className="eyebrow mb-2 text-muted-foreground">Example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period === "in_sample" ? "formula-development sample" : "holdout sample"} <InfoTip label="Dataset role" text="Formula-development examples are in-sample. Holdout examples are out-of-sample and are not used to tune the rule." /></div>
         <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">{snapshot.categoryLabel}</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{snapshot.machineLabel}</span></div>
-        <p className="mt-2 text-xs text-muted-foreground"><span className="mono">{snapshot.contractSymbol}</span> · {snapshot.tradingDate} · Formula evidence is machine-owned</p>
+        <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · Formula evidence is machine-owned</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <button type="button" onClick={onPrevious} disabled={index <= 0} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Previous sample"><ChevronLeft size={17} /></button>
@@ -470,10 +529,11 @@ function SnapshotHeader({ snapshot, index, total, onPrevious, onNext }: { snapsh
       </div>
     </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+       <Metric label="Review-period end" value={request.endDate} sub="New York trading date" />
       <Metric label="Evaluation cursor" value={snapshot.evaluationCursor.newYork} sub={snapshot.evaluationCursor.utc} />
       <Metric label="Review cursor" value={snapshot.reviewCursor.newYork} sub={snapshot.reviewCursor.utc} />
-      <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
-       <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
+       <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
+        <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
   </Panel>;
 }
@@ -911,43 +971,61 @@ function MachineEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const evidence = snapshot.machineEvidence;
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
-  const fields: Array<[string, unknown]> = [
-    ["Decision", audit.decision ?? snapshot.machineLabel],
-    ["Setup", audit.setupType],
-    ["Direction", audit.direction],
-    ["Evaluation", audit.evaluatedCandleOpenTime],
-    ["Breakout", typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null],
-    ["Patience", typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null],
-    ["Formula", `${snapshot.formulaVersion} · ${snapshot.formulaHash.slice(0, 16)}…`],
-    ["Future access", snapshot.evaluationCursor.futureCandleAccess],
-  ];
+  const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
+  const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
+  const qualified = audit.rejectionCategory === "QUALIFIED" && evidence.trade;
+  const behavior = [
+    audit.trendEvidence,
+    breakout,
+    audit.pullbackEvidence,
+    audit.volumeEvidence,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).slice(0, 2);
+  const qualification = qualified
+    ? "The setup passed the trade-qualification and risk gates."
+    : typeof audit.rejectionSummary === "string" && audit.rejectionSummary
+      ? audit.rejectionSummary
+      : typeof audit.rejectionReason === "string" && audit.rejectionReason
+        ? `Trade qualification stopped at ${audit.rejectionReason}.`
+        : "The machine recorded market evidence without authorizing a modeled entry.";
   return <Panel>
-    <PanelTitle eyebrow="Machine evidence / read-only" title="What the deterministic engine said" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Immutable formula trace</span>} />
-    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-      {fields.map(([label, value]) => <div key={label} className="min-h-[74px] bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 break-words text-[11px]">{safeValue(value)}</div></div>)}
-    </div>
+     <PanelTitle eyebrow="Machine evidence / read-only" title="Why this example was found" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Immutable formula trace</span>} />
+     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3" data-testid="trader-readable-reasoning">
+       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Decision</div><div className="mt-2 text-sm font-bold">{safeValue(audit.decision ?? snapshot.machineLabel)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(audit.setupType)}{audit.direction ? ` · ${safeValue(audit.direction)}` : ""}</div></div>
+       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app saw</div><div className="mt-2 text-xs leading-5">{behavior.length ? behavior.join(" ") : "No additional market-behavior description was recorded."}</div></div>
+       <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Therefore</div><div className="mt-2 text-xs leading-5">{qualification}</div></div>
+     </div>
+     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
+       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
+       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
+     </div>
     <details className="border-t border-border px-5 py-4 sm:px-6">
-      <summary className="cursor-pointer text-xs font-semibold">Open complete machine payload</summary>
+       <summary className="cursor-pointer text-xs font-semibold">Open complete immutable technical trace</summary>
       <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
     </details>
-    <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">Machine evidence is not a human judgment. Do not use this panel to silently correct a rule; leave a labeled review below.</div>
+     <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">Machine evidence is not a human judgment. Use the review panel to record whether this explanation holds up against the raw candles.</div>
   </Panel>;
 }
 
-function ReviewPanel({ snapshot, note, setNote, pending, onSave, message }: { snapshot: VisualValidationSnapshot; note: string; setNote: (note: string) => void; pending: boolean; onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => void; message: string }) {
+function ReviewPanel({ snapshot, status, setStatus, note, setNote, dirty, pending, onSave, message }: { snapshot: VisualValidationSnapshot; status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null; setStatus: (status: Exclude<VisualValidationReviewStatus, "unreviewed">) => void; note: string; setNote: (note: string) => void; dirty: boolean; pending: boolean; onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext?: boolean) => void; message: string }) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
+  const hasSavedReview = savedStatus !== null;
   return <Panel accent>
-    <PanelTitle eyebrow="Human judgment / persisted review" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
+     <PanelTitle eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
     <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
     <div className="space-y-4 border-t border-border p-5 sm:p-6">
       <div className="grid gap-2">
-        {REVIEW_OPTIONS.map((option) => <button type="button" key={option.value} onClick={() => onSave(option.value)} disabled={pending} className={`flex items-start gap-3 border p-3 text-left transition hover:bg-muted/50 disabled:opacity-55 ${savedStatus === option.value ? "border-accent bg-accent/10" : "border-border"}`} aria-pressed={savedStatus === option.value} data-testid={`button-review-${option.value}`}>
-          <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${savedStatus === option.value ? "border-accent bg-accent text-accent-foreground" : "border-muted-foreground/50"}`}>{savedStatus === option.value && <Check size={11} />}</span><span><span className="block text-xs font-bold">{option.label}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{option.detail}</span></span>
+         {REVIEW_OPTIONS.map((option) => <button type="button" key={option.value} onClick={() => setStatus(option.value)} disabled={pending} className={`flex items-start gap-3 border p-3 text-left transition hover:bg-muted/50 disabled:opacity-55 ${status === option.value ? "border-accent bg-accent/10" : "border-border"}`} aria-pressed={status === option.value} data-testid={`button-review-${option.value}`}>
+           <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${status === option.value ? "border-accent bg-accent text-accent-foreground" : "border-muted-foreground/50"}`}>{status === option.value && <Check size={11} />}</span><span><span className="block text-xs font-bold">{option.label}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{option.detail}</span></span>
         </button>)}
       </div>
       <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">Reviewer note · optional</span><textarea maxLength={2000} rows={5} value={note} onChange={(event) => setNote(event.target.value)} className="field resize-none" placeholder="Name the exact candle, level, or rule ambiguity you observed." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{note.length} / 2000</span></label>
-      {message && <div className="border border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] p-3 text-xs text-[hsl(var(--positive))]" role="status">{message}</div>}
-      <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting a judgment persists the current note with this snapshot. It does not modify the strategy.</div>
+       {message && <div className="border border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] p-3 text-xs text-[hsl(var(--positive))]" role="status">{message}</div>}
+       <div className="flex flex-wrap gap-2">
+         <button type="button" onClick={() => status && onSave(status)} disabled={pending || !status || !dirty} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-review">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <ClipboardCheck size={13} />}{hasSavedReview ? "Update review" : "Submit review"}</button>
+         <button type="button" onClick={() => status && onSave(status, true)} disabled={pending || !status || !dirty} className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-next">Submit & inspect next <ChevronRight size={13} /></button>
+       </div>
+       <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it.</div>
+       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
     </div>
   </Panel>;
 }
