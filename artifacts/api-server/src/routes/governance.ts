@@ -19,6 +19,7 @@ import {
   rollbackProposal,
   supersedeTeachingEvidence,
 } from "../lib/governance-store.js";
+import { resolveActiveShadowStrategy } from "../lib/active-shadow-strategy.js";
 import {
   activateStrategyShadow,
   getStrategyReadiness,
@@ -100,6 +101,9 @@ export function createGovernanceRouter(): IRouter {
   });
   router.get("/strategy-versions", requireAuth, async (_req, res) => {
     res.json(await listStrategyVersions());
+  });
+  router.get("/strategy-active", requireAuth, async (_req, res) => {
+    try { res.json(await resolveActiveShadowStrategy()); } catch (error) { respondError(res, error); }
   });
   router.get("/strategy-catalog", async (_req, res) => {
     try { res.json(await listStrategyCatalog()); } catch (error) { respondError(res, error); }

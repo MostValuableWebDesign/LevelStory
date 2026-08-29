@@ -28,6 +28,7 @@ import {
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
+import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -1159,6 +1160,7 @@ function buildMachineSnapshot(
       premarketAvailable,
       executionMode: report.executionMode,
       validateDashboardInvariants: false,
+      strategyConfigOverrides: activeShadowStrategySnapshot().config,
     },
   );
   const machineCandles = visibleEvaluation.map(toRawCandle);

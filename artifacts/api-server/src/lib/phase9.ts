@@ -25,6 +25,7 @@ import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { Direction } from "./strategy/types.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { formulaConfigurationHash } from "./formula-hash.js";
+import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -1395,6 +1396,7 @@ export function runCausalBacktest(
         historicalFeed: visibleContractCandles,
         historicalHourly,
         allCandlesCompleted: true,
+        strategyConfigOverrides: activeShadowStrategySnapshot().config,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
         ohlcvEntryBufferTicks: executionMode === "ohlcv_modeled" ? entryBufferTicks : undefined,

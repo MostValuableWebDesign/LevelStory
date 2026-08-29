@@ -36,6 +36,7 @@ type Proposal = {
 };
 type ValidationRun = { id: string; status: string; progressStage?: string; progressPercent?: number; warnings: string[]; conflicts: string[]; regressions: string[]; beforeMetrics?: Record<string, unknown> | null; afterMetrics?: Record<string, unknown> | null; errorMessage?: string | null; completedAt?: string | null };
 type Detail = { proposal: Proposal; auditEvents: Array<{ id: string; actorId: string; action: string; fromStatus: string | null; toStatus: string | null; reason: string | null; createdAt: string }>; validationRuns: ValidationRun[]; strategyVersion: Record<string, unknown> | null };
+type ActiveStrategy = { formulaVersion: string; formulaHash: string; versionNumber: number | null; activatedAt: string | null; activatedBy: string | null; source: string };
 
 const statusTone: Record<string, string> = {
   draft: "border-border bg-muted/40 text-muted-foreground",
@@ -70,20 +71,23 @@ export default function StrategyProposals() {
   const [message, setMessage] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [activeStrategy, setActiveStrategy] = useState<ActiveStrategy | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [auth, nextProposals, nextTeachings, nextVersions] = await Promise.all([
+      const [auth, nextProposals, nextTeachings, nextVersions, active] = await Promise.all([
         api<{ user: { id: string; email: string | null } | null }>("/auth/user"),
         api<Proposal[]>("/strategy-proposals"),
         api<TeachingExample[]>("/teaching-examples"),
         api<Record<string, unknown>[]>("/strategy-versions"),
+        api<ActiveStrategy>("/strategy-active"),
       ]);
       setAuthUser(auth.user);
       setProposals(nextProposals);
       setTeachings(nextTeachings);
       setVersions(nextVersions);
+      setActiveStrategy(active);
       const nextId = selectedId && nextProposals.some((item) => item.id === selectedId) ? selectedId : nextProposals[0]?.id ?? "";
       setSelectedId(nextId);
       if (nextId) setDetail(await api<Detail>(`/strategy-proposals/${nextId}`));
@@ -124,7 +128,7 @@ export default function StrategyProposals() {
       else setMessage(`${action.replaceAll("_", " ")} completed.`);
       const nextProposal = "proposal" in result ? result.proposal : "status" in result ? result : null;
       if (nextProposal) setProposals((current) => current.map((item) => item.id === nextProposal.id ? nextProposal : item));
-      setTimeout(() => void selectProposal(selectedId), action === "validate" ? 500 : 0);
+       setTimeout(() => void load(), action === "validate" ? 500 : 0);
     } catch (error) { setMessage(error instanceof Error ? error.message : "The governance action could not be completed."); }
   };
   const create = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -156,6 +160,7 @@ export default function StrategyProposals() {
     <main className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1480px]">
         <PageIntro eyebrow="Phase 13 / governed change" title="Strategy proposals." description="Human teaching can suggest a rule review. It cannot change the executable formula. Every proposal is validated, approved, published as a Shadow Mode candidate, and activated through separate audited actions." action={<ShadowBadge />} />
+        {activeStrategy && <div className="mb-5 border border-accent/30 bg-accent/8 px-4 py-3 text-xs"><strong>Current active Shadow formula:</strong> {activeStrategy.formulaVersion} · hash {activeStrategy.formulaHash.slice(0, 12)}… · {activeStrategy.source === "baseline" ? "built-in baseline" : `version ${activeStrategy.versionNumber}`}<span className="ml-2 text-muted-foreground">Shadow Mode only — no live or paper orders.</span></div>}
         <div className="mb-5 grid gap-3 sm:grid-cols-4">
           <Metric label="Drafts & review" value={proposals.filter((item) => ["draft", "clarification_requested"].includes(item.status)).length} />
           <Metric label="Validation queue" value={proposals.filter((item) => ["validation_pending", "validation_running"].includes(item.status)).length} />
@@ -194,7 +199,7 @@ function ProposalDetail({ detail, latestRun, onAction, teachings }: { detail: De
         {canValidate && <ActionButton icon={<RotateCcw size={13} />} onClick={() => onAction("validate")}>Queue validation</ActionButton>}
         {canApprove && <ActionButton icon={<CheckCircle2 size={13} />} onClick={() => onAction("approve", reason || "Approved after required validation passed.")}>Approve</ActionButton>}
          {proposal.status === "approved" && <ActionButton icon={<Send size={13} />} onClick={() => onAction("publish")}>Publish candidate</ActionButton>}
-         {proposal.status === "candidate" && <ActionButton icon={<ShieldCheck size={13} />} onClick={() => onAction("activate")}>Activate Shadow Mode</ActionButton>}
+         {proposal.status === "candidate" && <ActionButton icon={<ShieldCheck size={13} />} onClick={() => { if (window.confirm("You are changing the formula used by future Shadow Mode evaluations and backtests. No live or paper order will be created.")) onAction("activate"); }}>Activate Shadow Mode</ActionButton>}
         {canRetire && <ActionButton icon={<XCircle size={13} />} onClick={() => onAction("retire")}>Retire</ActionButton>}
         {["draft", "validation_failed", "validation_passed"].includes(proposal.status) && <ActionButton icon={<AlertTriangle size={13} />} onClick={() => onAction("clarification", reason || "Please clarify the proposed causal rule boundary.")}>Request clarification</ActionButton>}
         {["active", "candidate", "retired"].includes(proposal.status) && <ActionButton icon={<RotateCcw size={13} />} onClick={() => onAction("rollback", reason || "Rollback requested for Shadow Mode review.")}>Rollback</ActionButton>}

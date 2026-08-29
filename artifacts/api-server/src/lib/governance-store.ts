@@ -20,6 +20,7 @@ import type {
 } from "./visual-validation.js";
 import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
 import { buildCandidateConfiguration, compareCandidate } from "./proposal-validator.js";
+import { refreshActiveShadowStrategy } from "./active-shadow-strategy.js";
 
 export const PROPOSAL_STATUSES = [
   "draft",
@@ -372,12 +373,10 @@ async function runValidation(runId: string, proposalId: string, workerId: string
     const matchingExamples = (await db.select().from(teachingExamplesTable).where(inArray(teachingExamplesTable.id, evidenceIds)))
       .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate) || a.selectedCandleTimestamp.localeCompare(b.selectedCandleTimestamp) || a.id.localeCompare(b.id));
     if (!matchingExamples.length) throw new Error("No persisted teaching evidence matches this canonical strategy.");
-    const [activeParent] = proposal.strategyKey
-      ? await db.select({ configSnapshot: strategyVersionsTable.configSnapshot, formulaHash: strategyVersionsTable.formulaHash })
-        .from(strategyVersionsTable)
-        .where(and(eq(strategyVersionsTable.strategyKey, proposal.strategyKey), eq(strategyVersionsTable.status, "active")))
-        .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1)
-      : [];
+    const [activeParent] = await db.select({ configSnapshot: strategyVersionsTable.configSnapshot, formulaHash: strategyVersionsTable.formulaHash })
+      .from(strategyVersionsTable)
+      .where(and(eq(strategyVersionsTable.strategyKey, "MES_SHADOW"), eq(strategyVersionsTable.status, "active")))
+      .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
     await db.update(proposalValidationRunsTable).set({ progressStage: "focused_comparison", progressPercent: 35, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
     const result = compareCandidate(matchingExamples, proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>);
     await db.update(proposalValidationRunsTable).set({ progressStage: "holdout_comparison", progressPercent: 75, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
@@ -499,35 +498,62 @@ export async function rejectProposal(id: string, actor: GovernanceActor, reason:
 }
 
 export async function publishCandidate(id: string, actor: GovernanceActor, idempotencyKey: string): Promise<{ proposal: AdvisoryRuleProposal; version: StrategyVersion }> {
-  const proposal = await transition({ id, actor, action: "published_candidate", toStatus: "candidate", fromStatuses: ["approved"], idempotencyKey });
-  if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey)) throw new GovernanceError(409, "Only canonical strategies can publish.");
-  const [existing] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
-  if (existing) return { proposal, version: existing };
-  const [current] = await db.select({ id: strategyVersionsTable.id, versionNumber: strategyVersionsTable.versionNumber }).from(strategyVersionsTable).where(eq(strategyVersionsTable.strategyKey, proposal.strategyKey)).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
-  const [activeParent] = await db.select({ configSnapshot: strategyVersionsTable.configSnapshot }).from(strategyVersionsTable)
-    .where(and(eq(strategyVersionsTable.strategyKey, proposal.strategyKey), eq(strategyVersionsTable.status, "active")))
-    .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
-  const candidateConfig = buildCandidateConfiguration(proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>).candidate;
-  const [version] = await db.insert(strategyVersionsTable).values({
-    id: randomUUID(), strategyKey: proposal.strategyKey, versionNumber: (current?.versionNumber ?? 0) + 1,
-    status: "candidate", proposalId: id, parentVersionId: current?.id ?? null, formulaVersion: "advisory-candidate",
-    formulaHash: hashJson(candidateConfig), configSnapshot: candidateConfig,
-    ruleDiff: proposal.deterministicRuleDiff, evidenceIds: proposal.sourceTeachingIds, validationRunId: proposal.validationRunId,
-    publishedBy: actor.id, createdBy: actor.id,
-  }).returning();
-  await db.update(advisoryRuleProposalsTable).set({ candidateVersionId: version.id, updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, id));
-  return { proposal: await getProposal(id), version };
+  const result = await db.transaction(async (tx) => {
+    const [replayed] = await tx.select().from(ruleProposalAuditEventsTable).where(and(eq(ruleProposalAuditEventsTable.proposalId, id), eq(ruleProposalAuditEventsTable.actorId, actor.id), eq(ruleProposalAuditEventsTable.action, "published_candidate"), eq(ruleProposalAuditEventsTable.idempotencyKey, idempotencyKey)));
+    if (replayed) {
+      const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id));
+      const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
+      if (proposal && version) return { proposal, version };
+    }
+    const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id)).for("update");
+    if (!proposal || proposal.status !== "approved") throw new GovernanceError(409, "Only approved proposals can publish.");
+    if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey) || !proposal.validationRunId) throw new GovernanceError(409, "A canonical strategy and completed validation are required.");
+    const [run] = await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
+    if (!run || run.status !== "passed") throw new GovernanceError(409, "The latest validation must still be passed.");
+    const [existing] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
+    if (existing) return { proposal, version: existing };
+    const [current] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.strategyKey, "MES_SHADOW")).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1).for("update");
+    const parentConfig = current?.configSnapshot ?? {};
+    const candidateConfig = buildCandidateConfiguration(proposal.deterministicRuleDiff, parentConfig as Record<string, unknown>).candidate;
+    const [version] = await tx.insert(strategyVersionsTable).values({
+      id: randomUUID(), strategyKey: "MES_SHADOW", versionNumber: (current?.versionNumber ?? 0) + 1,
+      status: "candidate", proposalId: id, parentVersionId: current?.id ?? null, formulaVersion: "advisory-candidate",
+      formulaHash: hashJson(candidateConfig), configSnapshot: candidateConfig, ruleDiff: proposal.deterministicRuleDiff,
+      evidenceIds: proposal.sourceTeachingIds, validationRunId: proposal.validationRunId, publishedBy: actor.id, createdBy: actor.id,
+    }).returning();
+    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "candidate", candidateVersionId: version.id, updatedAt: new Date() }).where(and(eq(advisoryRuleProposalsTable.id, id), eq(advisoryRuleProposalsTable.status, "approved"))).returning();
+    if (!updated) throw new GovernanceError(409, "Proposal changed before publication completed.");
+    await tx.insert(ruleProposalAuditEventsTable).values({ id: randomUUID(), proposalId: id, actorId: actor.id, action: "published_candidate", fromStatus: "approved", toStatus: "candidate", reason: null, idempotencyKey, metadata: { versionId: version.id } });
+    return { proposal: updated, version };
+  });
+  refreshActiveShadowStrategy();
+  return result;
 }
 
 export async function activateCandidate(id: string, actor: GovernanceActor, idempotencyKey: string): Promise<{ proposal: AdvisoryRuleProposal; version: StrategyVersion }> {
-  const proposal = await getProposal(id);
-  if (proposal.status !== "candidate") throw new GovernanceError(409, `Cannot activate a proposal in ${proposal.status} state.`);
-  const [version] = await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId ?? ""));
-  if (!version) throw new GovernanceError(409, "Publish a candidate strategy version first.");
-  await db.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active")));
-  await db.update(strategyVersionsTable).set({ status: "active", activatedBy: actor.id, activatedAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));
-  const updated = await transition({ id, actor, action: "activated_shadow_version", toStatus: "active", fromStatuses: ["candidate"], idempotencyKey });
-  return { proposal: updated, version: (await db.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, version.id)))[0]! };
+  const result = await db.transaction(async (tx) => {
+    const [replayed] = await tx.select().from(ruleProposalAuditEventsTable).where(and(eq(ruleProposalAuditEventsTable.proposalId, id), eq(ruleProposalAuditEventsTable.actorId, actor.id), eq(ruleProposalAuditEventsTable.action, "activated_shadow_version"), eq(ruleProposalAuditEventsTable.idempotencyKey, idempotencyKey)));
+    if (replayed) {
+      const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id));
+      const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal?.candidateVersionId ?? ""));
+      if (proposal && version) return { proposal, version };
+    }
+    const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id)).for("update");
+    if (!proposal || proposal.status !== "candidate") throw new GovernanceError(409, "Only a candidate proposal can activate.");
+    const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId ?? "")).for("update");
+    if (!version || version.status !== "candidate") throw new GovernanceError(409, "Candidate strategy version is unavailable.");
+    const [run] = proposal.validationRunId ? await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId)) : [];
+    if (!run || run.status !== "passed" || run.candidateFormulaHash !== version.formulaHash) throw new GovernanceError(409, "Candidate validation is stale.");
+    const active = await tx.select().from(strategyVersionsTable).where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active"))).for("update");
+    for (const previous of active) await tx.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, previous.id));
+    await tx.update(strategyVersionsTable).set({ status: "active", activatedBy: actor.id, activatedAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));
+    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "active", updatedAt: new Date() }).where(and(eq(advisoryRuleProposalsTable.id, id), eq(advisoryRuleProposalsTable.status, "candidate"))).returning();
+    if (!updated) throw new GovernanceError(409, "Proposal changed before activation completed.");
+    await tx.insert(ruleProposalAuditEventsTable).values({ id: randomUUID(), proposalId: id, actorId: actor.id, action: "activated_shadow_version", fromStatus: "candidate", toStatus: "active", reason: null, idempotencyKey, metadata: { versionId: version.id, fromVersionIds: active.map((item) => item.id) } });
+    return { proposal: updated, version: { ...version, status: "active", activatedBy: actor.id } };
+  });
+  refreshActiveShadowStrategy();
+  return result;
 }
 
 export async function retireProposal(id: string, actor: GovernanceActor, idempotencyKey: string) {
@@ -537,9 +563,24 @@ export async function retireProposal(id: string, actor: GovernanceActor, idempot
 }
 
 export async function rollbackProposal(id: string, actor: GovernanceActor, reason: string, idempotencyKey: string) {
-  const proposal = await transition({ id, actor, action: "rolled_back_shadow_version", toStatus: "rolled_back", fromStatuses: ["active", "candidate", "retired"], reason, idempotencyKey });
-  if (proposal.candidateVersionId) await db.update(strategyVersionsTable).set({ status: "rolled_back", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, proposal.candidateVersionId));
-  return proposal;
+  const result = await db.transaction(async (tx) => {
+    const [replayed] = await tx.select().from(ruleProposalAuditEventsTable).where(and(eq(ruleProposalAuditEventsTable.proposalId, id), eq(ruleProposalAuditEventsTable.actorId, actor.id), eq(ruleProposalAuditEventsTable.action, "rolled_back_shadow_version"), eq(ruleProposalAuditEventsTable.idempotencyKey, idempotencyKey)));
+    if (replayed) return getProposal(id);
+    const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id)).for("update");
+    if (!proposal || proposal.status !== "active" || !proposal.candidateVersionId) throw new GovernanceError(409, "Only the currently active strategy can roll back.");
+    const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId)).for("update");
+    if (!version?.parentVersionId) throw new GovernanceError(409, "No valid parent strategy exists for rollback.");
+    const [parent] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, version.parentVersionId)).for("update");
+    if (!parent || parent.strategyKey !== version.strategyKey || !parent.formulaHash || !parent.configSnapshot) throw new GovernanceError(409, "The parent strategy is invalid.");
+    const active = await tx.select().from(strategyVersionsTable).where(and(eq(strategyVersionsTable.strategyKey, "MES_SHADOW"), eq(strategyVersionsTable.status, "active"))).for("update");
+    for (const current of active) await tx.update(strategyVersionsTable).set({ status: "rolled_back", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, current.id));
+    await tx.update(strategyVersionsTable).set({ status: "active", activatedAt: new Date(), activatedBy: actor.id, retiredAt: null }).where(eq(strategyVersionsTable.id, parent.id));
+    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "rolled_back", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, id)).returning();
+    await tx.insert(ruleProposalAuditEventsTable).values({ id: randomUUID(), proposalId: id, actorId: actor.id, action: "rolled_back_shadow_version", fromStatus: proposal.status, toStatus: "rolled_back", reason, idempotencyKey, metadata: { fromVersionId: version.id, toVersionId: parent.id } });
+    return updated;
+  });
+  refreshActiveShadowStrategy();
+  return result;
 }
 
 export async function listStrategyVersions(): Promise<StrategyVersion[]> {

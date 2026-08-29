@@ -52,6 +52,7 @@ import {
 } from "./futures/simulated-feed.js";
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
 import type { MajorLevel } from "./strategy/major-levels.js";
+import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 
 const CONFIRMED_ORB_STATES = new Set<OrbBreakoutState>([
   "QUALIFIED_BREAKOUT",
@@ -383,6 +384,7 @@ export function createMarketSnapshot(
   const specification = getFuturesContractSpecification(symbol);
   const normalized = specification.rootSymbol;
   const config = strategyConfig({
+    ...activeShadowStrategySnapshot().config,
     ...(replayOptions?.strategyConfigOverrides ?? {}),
     ...(replayOptions?.ohlcvEntryBufferTicks === undefined ? {} : { patienceEntryBufferTicks: replayOptions.ohlcvEntryBufferTicks }),
     ...(replayOptions?.ohlcvStopBufferTicks === undefined ? {} : { patienceStopBufferTicks: replayOptions.ohlcvStopBufferTicks }),
