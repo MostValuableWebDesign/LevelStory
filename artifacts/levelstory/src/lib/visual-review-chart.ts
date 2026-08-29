@@ -1,4 +1,8 @@
-import type { VisualValidationAnnotation, VisualValidationCandle } from "@workspace/api-client-react";
+import type {
+  VisualValidationAnnotation,
+  VisualValidationCandle,
+  VisualValidationCategoryCoverage,
+} from "@workspace/api-client-react";
 
 export const CHART_WIDTH = 1040;
 export const CHART_HEIGHT = 460;
@@ -65,6 +69,24 @@ export type PriceAxis = {
 export type VolumeAxisTick = {
   value: number;
   label: string;
+};
+
+export type CategoryCoverageSummary = {
+  available: VisualValidationCategoryCoverage[];
+  unavailable: VisualValidationCategoryCoverage[];
+};
+
+export type CandleInspection = {
+  interval: string;
+  newYork: string;
+  utc: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  contractSymbol: string;
+  machineVisible: boolean;
 };
 
 function finitePrices(candles: readonly VisualValidationCandle[]): number[] {
@@ -220,11 +242,34 @@ export function getPriceAxis(
   for (let value = first; value <= last + step / 2; value += step) {
     ticks.push(snapPrice(value, tickSize));
   }
+  if (ticks.length < 6) {
+    const center = snapPrice((domain.min + domain.max) / 2, tickSize);
+    const minimumStart = center - step * 3;
+    return {
+      step,
+      ticks: Array.from({ length: 7 }, (_, index) => snapPrice(minimumStart + index * step, tickSize)),
+    };
+  }
   return { step, ticks };
 }
 
 export function formatPriceAxisValue(value: number): string {
   return snapPrice(value).toFixed(2);
+}
+
+export function getCandleInspection(candle: FocusedCandle): CandleInspection {
+  return {
+    interval: formatInterval(candle.openTime, candle.closeTime),
+    newYork: formatCandleTime(candle.openTime, "America/New_York"),
+    utc: formatCandleTime(candle.openTime, "UTC"),
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    contractSymbol: candle.contractSymbol,
+    machineVisible: candle.machineVisible,
+  };
 }
 
 function niceVolumeStep(max: number): number {
@@ -245,6 +290,19 @@ export function getVolumeAxisTicks(maxVolume: number): VolumeAxisTick[] {
 
 export function getDateLabel(candles: readonly VisualValidationCandle[], timeZone: "America/New_York" | "UTC" = "America/New_York"): string {
   return candles[0] ? formatAxisDate(candles[0].openTime, timeZone) : "";
+}
+
+export function summarizeCategoryCoverage(
+  coverage: readonly VisualValidationCategoryCoverage[],
+): CategoryCoverageSummary {
+  return {
+    available: coverage.filter((item) => item.available && item.count > 0),
+    unavailable: coverage.filter((item) => !item.available || item.count === 0),
+  };
+}
+
+export function isDisplacedLabel(labelY: number, valueY: number, threshold = 2): boolean {
+  return Math.abs(labelY - valueY) > threshold;
 }
 
 export function priceToY(price: number, domain: ChartDomain, top = CHART_TOP, bottom = CHART_PLOT_BOTTOM): number {

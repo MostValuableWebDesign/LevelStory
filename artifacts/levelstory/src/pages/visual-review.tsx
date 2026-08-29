@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
   Check,
@@ -52,6 +52,7 @@ import {
   formatInterval,
   formatPriceAxisValue,
   formatDataSource,
+  getCandleInspection,
   getDateLabel,
   getCandleDomain,
   getCandleGeometry,
@@ -61,10 +62,12 @@ import {
   getVolumeAxisTicks,
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
+  isDisplacedLabel,
   isPrimaryLevel,
   priceToY,
   selectFocusedCandles,
   stackLabelPositions,
+  summarizeCategoryCoverage,
 } from "@/lib/visual-review-chart";
 
 const CATEGORIES: Array<{ value: VisualValidationCategory; label: string; short: string }> = [
@@ -391,8 +394,14 @@ function SetManifest({ data, loading }: { data?: VisualValidationSet; loading: b
 }
 
 function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValidationSet; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
+  const summary = summarizeCategoryCoverage(data.categoryCoverage);
+  const historical = data.source === "historical_databento";
   return <Panel>
-    <PanelTitle eyebrow="Coverage / category samples" title="Choose the story to inspect" right={<span className="text-[10px] text-muted-foreground">Unavailable means unavailable</span>} />
+    <PanelTitle eyebrow="Coverage / category samples" title="Choose the story to inspect" right={<span className="mono text-[10px] text-muted-foreground">{summary.available.length} of 12 {historical ? "historical categories found" : "categories available"}</span>} />
+    <div className="grid gap-3 border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:grid-cols-2 sm:px-6" data-testid="category-coverage-summary">
+      <div><span className="font-semibold text-foreground">{summary.available.length} of 12 {historical ? "historical categories found" : "categories available"}</span><div className="mt-1 text-[11px] text-muted-foreground">{summary.available.length ? `Available: ${summary.available.map((item) => item.label).join(", ")}` : "No qualifying categories found in this range."}</div></div>
+      <div><span className="font-semibold text-foreground">{summary.unavailable.length} not found</span><div className="mt-1 text-[11px] text-muted-foreground">{summary.unavailable.length ? `Not found: ${summary.unavailable.map((item) => item.label).join(", ")}` : "All categories are represented."}</div></div>
+    </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {CATEGORIES.map((category) => {
         const item = data.categoryCoverage.find((entry) => entry.category === category.value);
@@ -461,7 +470,12 @@ function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot;
   </div>;
 }
 
+function formatExactVolume(value: number): string {
+  return Number.isFinite(value) ? Math.round(value).toLocaleString("en-US") : "—";
+}
+
 function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; candles: ReturnType<typeof selectFocusedCandles> }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
   const height = CHART_HEIGHT;
@@ -474,12 +488,15 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
   const step = plotWidth / Math.max(candles.length, 1);
   const annotations = snapshot.annotations.filter((annotation) => annotation.available);
   const domain = getCandleDomain(candles);
+  const priceAxis = getPriceAxis(domain);
   const y = (price: number) => priceToY(price, domain, top, plotBottom);
   const x = (index: number) => left + index * step + step / 2;
+  const plotRight = width - right;
   const visibleAtEvaluation = candles.filter((candle) => candle.machineVisible).length;
   const boundaryX = left + Math.min(visibleAtEvaluation, candles.length) * step;
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
-  const gridPrices = [domain.max, (domain.rawMax + domain.rawMin) / 2, domain.min];
+  const volumeAxis = getVolumeAxisTicks(volumeMax);
+  const timeAxis = getTimeAxisTicks(candles);
   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null);
   const criticalLevels = allLevels.filter((annotation) => annotation.id.startsWith("critical-"));
   const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
@@ -504,10 +521,55 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
     if (annotation.visibility === "human_only" && machineVisible) return [];
     return [{ annotation, markerIndex }];
   });
-  return <div className="w-full overflow-x-auto">
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[350px] min-w-[700px] w-full" role="img" aria-label={`Causal annotated OHLCV chart for ${snapshot.categoryLabel}. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
+  const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
+  const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
+  const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
+    const svgX = (clientX - rect.left) * (width / rect.width);
+    const nextIndex = Math.max(0, Math.min(candles.length - 1, Math.floor((svgX - left) / step)));
+    setHoveredIndex(nextIndex);
+  };
+  const setIndexFromKeyboard = (event: KeyboardEvent<SVGRectElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const current = hoveredIndex ?? Math.max(0, visibleAtEvaluation - 1);
+    const nextIndex = event.key === "ArrowLeft"
+      ? Math.max(0, current - 1)
+      : event.key === "ArrowRight"
+        ? Math.min(candles.length - 1, current + 1)
+        : event.key === "Home"
+          ? 0
+          : candles.length - 1;
+    setHoveredIndex(nextIndex);
+  };
+  return <div className="relative w-full overflow-x-auto">
+    {hoveredCandle && hoveredDetails && <div className="pointer-events-none absolute right-4 top-4 z-10 min-w-[238px] border border-foreground/20 bg-card/95 p-3 shadow-sm" role="status" aria-live="polite" data-testid="chart-crosshair-tooltip">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="eyebrow text-muted-foreground">Selected 5-minute candle</div>
+          <div className="mono mt-1 text-[11px] font-bold">{hoveredDetails.interval}</div>
+        </div>
+        <span className={`shrink-0 text-[9px] font-bold uppercase ${hoveredDetails.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{hoveredDetails.machineVisible ? "Machine visible" : "Human-only"}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 border-t border-border pt-2 text-[10px]">
+        <span>O <strong className="mono">{hoveredDetails.open.toFixed(2)}</strong></span>
+        <span>H <strong className="mono">{hoveredDetails.high.toFixed(2)}</strong></span>
+        <span>L <strong className="mono">{hoveredDetails.low.toFixed(2)}</strong></span>
+        <span>C <strong className="mono">{hoveredDetails.close.toFixed(2)}</strong></span>
+        <span className="col-span-2">V <strong className="mono">{formatExactVolume(hoveredDetails.volume)}</strong></span>
+      </div>
+      <div className="mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground">
+        <div><span className="font-semibold text-foreground">{hoveredDetails.contractSymbol}</span> · {hoveredDetails.utc} UTC</div>
+        <div>Crosshair snaps to the exact raw OHLCV interval.</div>
+      </div>
+    </div>}
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[390px] min-w-[760px] w-full" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
-      {gridPrices.map((price) => <g key={price}><line x1={left} x2={width - right} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="3 6" /><text x="6" y={y(price) + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{price.toFixed(2)}</text></g>)}
+      {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
+      {volumeAxis.map((tick) => {
+        const tickY = volumeTop + CHART_VOLUME_HEIGHT - (tick.value / Math.max(volumeAxis.at(-1)?.value ?? volumeMax, 1)) * CHART_VOLUME_HEIGHT;
+        return <g key={`volume-axis-${tick.value}`} data-testid="volume-axis-tick"><line x1={left} x2={plotRight} y1={tickY} y2={tickY} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".42" /><text x={width - 5} y={tickY + 3} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{tick.label}</text></g>;
+      })}
+      {timeAxis.map((tick) => <g key={`time-axis-${tick.index}`} data-testid="time-axis-tick"><line x1={x(tick.index)} x2={x(tick.index)} y1={plotBottom + 4} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" strokeDasharray="2 5" opacity=".45" /><text x={x(tick.index)} y={CHART_TIME_TICK_Y} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{tick.label}</text></g>)}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
        {width - right - Math.max(boundaryX, left) >= 150
          ? <text x={Math.max(boundaryX, left) + 10} y={top + 20} fill="hsl(var(--muted-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono" data-testid="human-only-label">HUMAN-ONLY OUTCOME CONTEXT</text>
@@ -520,8 +582,17 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
         const stop = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop";
         const target = annotation.id === "target";
          const stroke = levelStroke(annotation);
-        const labelY = labelYById.get(annotation.id) ?? y(annotation.price);
-         return <g key={annotation.id} data-testid={`chart-level-${annotation.id}`}><line x1={left} x2={width - right} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} /><text x={width - right - 5} y={labelY - 4} textAnchor="end" fill={stroke} fontSize={orb ? "10" : "9"} fontWeight={orb || critical ? "700" : "500"} fontFamily="DM Mono">{annotation.label}</text></g>;
+          const labelY = labelYById.get(annotation.id) ?? y(annotation.price);
+          const axisLabelX = plotRight + 7;
+          const labelWidth = width - axisLabelX - 7;
+          const displaced = isDisplacedLabel(labelY, y(annotation.price));
+          return <g key={annotation.id} data-testid={`chart-level-${annotation.id}`}>
+            <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} />
+            {displaced && <line x1={plotRight} x2={axisLabelX} y1={y(annotation.price)} y2={labelY} stroke={stroke} strokeWidth="1" opacity=".75" data-testid={`chart-level-connector-${annotation.id}`} />}
+            <rect x={axisLabelX} y={labelY - 10} width={labelWidth} height="18" rx="2" fill="hsl(var(--card) / .94)" stroke={stroke} strokeOpacity=".32" />
+            <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical ? "700" : "500"} fontFamily="DM Mono">{annotation.label}</text>
+            <text x={width - 11} y={labelY + 3} textAnchor="end" fill={stroke} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{formatPriceAxisValue(annotation.price)}</text>
+          </g>;
       })}
       {edgeIndicators.map(({ annotation, edge }) => {
          const edgeIndex = edgeCounts[edge]++;
@@ -549,14 +620,25 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
        <line x1={boundaryX} x2={boundaryX} y1={12} y2={plotBottom + 12} stroke="hsl(var(--foreground))" strokeWidth="1.5" strokeDasharray="5 4" data-testid="evaluation-cursor" />
        <rect x={Math.min(Math.max(boundaryX - 62, left), width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(Math.max(boundaryX, left + 62), width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
-       <text x={left} y={height - 20} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{formatReviewTime(candles[0].openTime)}</text>
-       <text x={width - right} y={height - 20} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{formatReviewTime(candles.at(-1)?.closeTime ?? "")}</text>
-       <text x={left} y={height - 5} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">OHLC</text>
-       <text x={left + 36} y={height - 5} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME</text>
+        {hoveredCandle && <g pointerEvents="none" data-testid="chart-crosshair">
+          <line x1={x(hoveredIndex ?? 0)} x2={x(hoveredIndex ?? 0)} y1={top} y2={volumeTop + CHART_VOLUME_HEIGHT} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1.2" />
+          <line x1={left} x2={plotRight} y1={y(hoveredCandle.close)} y2={y(hoveredCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
+          <circle cx={x(hoveredIndex ?? 0)} cy={y(hoveredCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
+        </g>}
+        <line x1={left} x2={plotRight} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
+        <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
+        <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
+        <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
+        <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" tabIndex={0} role="application" aria-label="Interactive five-minute candle crosshair. Use left and right arrow keys to select a candle." data-testid="chart-interaction-layer"
+          onMouseMove={(event) => setIndexFromClientX(event.clientX, event.currentTarget.ownerSVGElement?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect())}
+          onMouseLeave={() => setHoveredIndex(null)}
+          onKeyDown={setIndexFromKeyboard}
+        />
     </svg>
+     {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
       <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Additional levels ({additionalLevels.length})</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{additionalLevels.map((annotation) => <div key={annotation.id} className="flex items-center justify-between gap-3 border border-border bg-muted/25 px-3 py-2 text-[10px]"><span className="truncate text-muted-foreground">{annotation.label}</span><span className="mono shrink-0">{annotation.price?.toFixed(2)}</span></div>)}</div>
+       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{additionalLevels.map((annotation) => <div key={annotation.id} className="flex items-center justify-between gap-3 border border-border bg-muted/25 px-3 py-2 text-[10px]"><span className="truncate text-muted-foreground">{annotation.label}</span><span className="mono shrink-0">{annotation.price == null ? "—" : formatPriceAxisValue(annotation.price)}</span></div>)}</div>
     </details>}
    </div>;
 }

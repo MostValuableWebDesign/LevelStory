@@ -5,16 +5,26 @@ import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
   DOJI_BODY_HEIGHT,
+  formatAxisDate,
+  formatInterval,
   formatDataSource,
+  getCandleInspection,
+  getPriceAxis,
+  getTimeAxisTicks,
+  getVolumeAxisTicks,
   getCandleDomain,
   getCandleGeometry,
   getEdgeIndicators,
   hasRepetitiveFixtureData,
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
+  isDisplacedLabel,
+  isExactFiveMinuteCandle,
   priceToY,
   selectFocusedCandles,
+  snapPrice,
   stackLabelPositions,
+  summarizeCategoryCoverage,
 } from "../src/lib/visual-review-chart.ts";
 
 const baseTime = Date.parse("2026-08-26T13:30:00.000Z");
@@ -113,6 +123,11 @@ test("dense level labels are stacked without overlap", () => {
   assert.ok(positions.every((position) => position.y >= 30 && position.y <= 100));
 });
 
+test("stacked labels expose displacement for connector rendering", () => {
+  assert.equal(isDisplacedLabel(100, 100), false);
+  assert.equal(isDisplacedLabel(118, 100), true);
+});
+
 test("focused window stays bounded and includes post-cursor candles only through review cursor", () => {
   const candles = Array.from({ length: 80 }, (_, index) => makeCandle(index));
   const evaluationClose = candles[50].closeTime;
@@ -146,4 +161,73 @@ test("source labels distinguish simulation from historical Databento data", () =
   assert.equal(formatDataSource("simulated"), "Simulated fixture data");
   assert.equal(formatDataSource("historical_databento", "MESU6"), "Historical Databento data — MESU6");
   assert.equal(formatDataSource("historical_databento_multicontract", "MESU6"), "Historical Databento data — MESU6");
+});
+
+test("only completed exact five-minute candles enter the execution chart", () => {
+  const exact = makeCandle(0);
+  const tenMinute = makeCandle(1, {
+    closeTime: new Date(baseTime + 15 * 60_000).toISOString(),
+  });
+  const incomplete = makeCandle(2, { isComplete: false as true });
+  assert.equal(isExactFiveMinuteCandle(exact), true);
+  assert.equal(isExactFiveMinuteCandle(tenMinute), false);
+  assert.equal(isExactFiveMinuteCandle(incomplete), false);
+  const focused = selectFocusedCandles([exact, tenMinute, incomplete], exact.closeTime, incomplete.closeTime, 42);
+  assert.deepEqual(focused.map((candle) => candle.openTime), [exact.openTime]);
+});
+
+test("time axis uses New York 15-minute labels and keeps the date separate", () => {
+  const candles = Array.from({ length: 9 }, (_, index) => makeCandle(index));
+  const ticks = getTimeAxisTicks(candles);
+  assert.deepEqual(ticks.map((tick) => tick.index), [0, 3, 6]);
+  assert.deepEqual(ticks.map((tick) => tick.label), ["9:30 AM", "9:45 AM", "10:00 AM"]);
+  assert.equal(formatAxisDate(candles[0].openTime), "Aug 26, 2026");
+  assert.equal(formatInterval(candles[0].openTime, candles[0].closeTime), "9:30 AM–9:35 AM ET");
+  assert.equal(formatInterval(candles[0].openTime, candles[0].closeTime).match(/\d{4}-\d{2}-\d{2}T/) == null, true);
+});
+
+test("price axis is adaptive, readable, and aligned to MES ticks", () => {
+  const domain = getCandleDomain([makeCandle(0, { low: 6799.63, high: 6803.12 })]);
+  const axis = getPriceAxis(domain);
+  assert.ok(axis.ticks.length >= 6 && axis.ticks.length <= 10);
+  assert.ok(axis.ticks.every((tick) => Math.abs(tick / 0.25 - Math.round(tick / 0.25)) < 1e-9));
+  assert.ok(axis.ticks.every((tick, index) => index === 0 || tick > axis.ticks[index - 1]));
+  assert.equal(snapPrice(6800.11), 6800);
+  assert.equal(snapPrice(6800.14), 6800.25);
+  assert.ok(axis.ticks.every((tick) => !Number.isNaN(Number(tick.toFixed(2)))));
+});
+
+test("volume axis uses readable secondary units", () => {
+  const ticks = getVolumeAxisTicks(2600);
+  assert.deepEqual(ticks.map((tick) => tick.label), ["0", "1K", "2K", "3K"]);
+});
+
+test("crosshair inspection preserves exact raw OHLCV and visibility", () => {
+  const candle = makeCandle(0, {
+    open: 6800.25,
+    high: 6801.5,
+    low: 6799.75,
+    close: 6801,
+    volume: 1234,
+  });
+  const inspection = getCandleInspection({ ...candle, machineVisible: false });
+  assert.equal(inspection.interval, "9:30 AM–9:35 AM ET");
+  assert.equal(inspection.newYork.includes("Aug 26, 2026"), true);
+  assert.equal(inspection.utc.includes("Aug 26, 2026"), true);
+  assert.deepEqual(
+    [inspection.open, inspection.high, inspection.low, inspection.close, inspection.volume],
+    [candle.open, candle.high, candle.low, candle.close, candle.volume],
+  );
+  assert.equal(inspection.contractSymbol, "MESU6");
+  assert.equal(inspection.machineVisible, false);
+});
+
+test("category coverage reports available and missing historical categories without fabrication", () => {
+  const summary = summarizeCategoryCoverage([
+    { category: "strong_breakout", label: "Strong breakout", count: 1, available: true },
+    { category: "qualified_trade", label: "Qualified trade", count: 0, available: false },
+    { category: "pullback", label: "Pullback", count: 0, available: true },
+  ]);
+  assert.deepEqual(summary.available.map((item) => item.category), ["strong_breakout"]);
+  assert.deepEqual(summary.unavailable.map((item) => item.category), ["qualified_trade", "pullback"]);
 });
