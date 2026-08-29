@@ -1,0 +1,56 @@
+Fix only the correctness issues discovered in the exported LevelStory visual-review judgments. Do not change the trading formula, backtest execution engine, historical importer, calendar, or performance architecture.
+
+Required corrections:
+
+1. Replace the broad visual-validation trade matcher that uses only tradingDate, setupType, direction, and period.
+
+Match an audit record to a trade using exact causal identifiers whenever available:
+- contract symbol
+- trading date
+- patience-candle timestamp
+- immediate trigger-candle timestamp
+- entry timestamp or modeled fill observation timestamp
+
+If an exact unambiguous match cannot be established, return no matching trade. Never attach a stop, target, or runner outcome from a different setup.
+
+2. Tighten visual-review category selection:
+- Bullish patience candle requires a bullish trend and a valid bullish patience-candle condition.
+- Bearish patience candle requires a bearish trend and a valid bearish patience-candle condition.
+- Pullback requires explicit qualifying pullback evidence to ORB, VWAP, EMA 200, Fibonacci, or a recognized major/critical level.
+- Consolidation requires an explicit completed consolidation state or measured consolidation window.
+- Do not classify categories merely because words such as “pullback” or “consolidation” appear in descriptive text.
+
+3. Update deterministic runner and ambiguity fixtures so they modify only the exact originating audit/trade. Do not modify every audit sharing the same date, setup type, direction, and period.
+
+4. Add explicit chart markers for:
+- entry trigger
+- modeled entry/fill
+- strategy-stop hit
+- catastrophe-stop hit
+- target hit
+- runner activation
+- runner exit
+
+Machine-visible markers must remain on or before the causal cursor. Actual exit events after the cursor may appear only in the shaded “Human-only outcome context” region and must be visibly labeled as outcomes unavailable to the entry decision.
+
+5. Make ORB High and ORB Low visually prominent and distinguishable from secondary levels. Avoid overlapping labels where possible.
+
+6. Rename the exported `discrepancies` array to `reviews`, or make `discrepancies` contain only incorrect and uncertain judgments. Preserve backward compatibility if existing consumers require the old field.
+
+Add focused deterministic tests proving:
+- a bearish-trend audit cannot be selected as bullish patience
+- unrelated trades cannot provide stop/target/runner categories
+- pullback and consolidation require explicit qualifying states
+- exit markers appear at the correct candles in human-only outcome context
+- no future candle enters machine evidence
+
+Verification limits:
+- Run focused visual-validation API tests
+- Run frontend visual-review tests
+- Run API and frontend typechecks
+- Do not restart the API
+- Do not rebuild the historical index
+- Do not run 20+2 or qualification backtests
+- Do not create human review judgments automatically
+
+Report files changed, root causes, focused test totals, and remaining limitations.
