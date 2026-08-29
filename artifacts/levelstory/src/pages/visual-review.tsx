@@ -712,7 +712,7 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, onToggleEx
   const invalidIndices = invalidRawCandleIndices(chartCandles);
   const historical = source === "historical_databento" || source === "historical_databento_multicontract";
   const windowLabel = sessionView === "primary"
-    ? "Primary trade window · 9:30 AM–1:00 PM ET"
+    ? "Primary trade window · 9:30 AM–2:00 PM ET"
     : "Full regular session · 9:30 AM–4:00 PM ET";
   const sourceLabel = `${windowLabel} · ${historical ? "Historical Databento" : "Simulated fixture data"}`;
   const primaryCoverage = snapshot.coverage.find((item) => item.session === "primary");
@@ -733,7 +733,7 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, onToggleEx
           <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
             <span className="eyebrow">Chart window</span>
             <select className="field h-8 min-w-[190px] py-1 text-[10px]" value={sessionView} onChange={(event) => setSessionView(event.target.value as SessionView)} data-testid="select-session-view">
-              <option value="primary">Primary window: 9:30 AM–1:00 PM</option>
+              <option value="primary">Primary window: 9:30 AM–2:00 PM</option>
               <option value="full_regular">Full regular session: 9:30 AM–4:00 PM</option>
             </select>
           </label>

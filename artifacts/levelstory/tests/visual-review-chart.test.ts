@@ -249,37 +249,37 @@ test("only completed exact five-minute candles enter the execution chart", () =>
   assert.deepEqual(focused.map((candle) => candle.openTime), [exact.openTime]);
 });
 
-test("primary session view contains the exact 42 regular-session intervals", () => {
-  const regularCandles = Array.from({ length: 42 }, (_, index) => makeCandle(index));
+test("primary session view contains the exact 54 regular-session intervals through 2:00 PM", () => {
+  const regularCandles = Array.from({ length: 54 }, (_, index) => makeCandle(index));
   const selection = selectSessionCandles(
     regularCandles,
     regularCandles[2].closeTime,
     regularCandles.at(-1)!.closeTime,
   );
-  assert.equal(selection.regularCandles.length, 42);
-  assert.equal(selection.candles.length, 42);
+  assert.equal(selection.regularCandles.length, 54);
+  assert.equal(selection.candles.length, 54);
   assert.equal(formatInterval(selection.regularCandles[0].openTime, selection.regularCandles[0].closeTime), "9:30 AM–9:35 AM ET");
-  assert.equal(formatInterval(selection.regularCandles.at(-1)!.openTime, selection.regularCandles.at(-1)!.closeTime), "12:55 PM–1:00 PM ET");
+  assert.equal(formatInterval(selection.regularCandles.at(-1)!.openTime, selection.regularCandles.at(-1)!.closeTime), "1:55 PM–2:00 PM ET");
   assert.equal(selection.regularCandles.slice(0, 3).every((candle) => candle.machineVisible), true);
   assert.equal(selection.regularCandles.slice(3).every((candle) => !candle.machineVisible), true);
   assert.deepEqual(getTimeAxisTicks(selection.regularCandles, "America/New_York", true).at(-1), {
-    index: 42,
-    position: 42,
-    label: "1:00 PM",
+    index: 54,
+    position: 54,
+    label: "2:00 PM",
   });
 });
 
-test("fixed session domains preserve 42 and 78 timestamp slots", () => {
-  assert.equal(getSessionDomainSlotCount("primary"), 42);
+test("fixed session domains preserve 54 and 78 timestamp slots", () => {
+  assert.equal(getSessionDomainSlotCount("primary"), 54);
   assert.equal(getSessionDomainSlotCount("full_regular"), 78);
-  assert.equal(getSessionDomainSlotCount("primary", true), 108);
+  assert.equal(getSessionDomainSlotCount("primary", true), 120);
   assert.equal(getSessionDomainSlotCount("full_regular", true), 144);
   const first = makeCandle(0);
   assert.equal(getCandleSlotIndex(first, "primary"), 0);
   assert.equal(getCandleSlotIndex(first, "full_regular"), 0);
-  assert.equal(getFixedTimeAxisTicks("primary").at(-1)?.label, "1:00 PM");
+  assert.equal(getFixedTimeAxisTicks("primary").at(-1)?.label, "2:00 PM");
   assert.equal(getFixedTimeAxisTicks("full_regular").at(-1)?.label, "4:00 PM");
-  assert.equal(getFixedTimeAxisTicks("primary", true).at(-1)?.index, 108);
+  assert.equal(getFixedTimeAxisTicks("primary", true).at(-1)?.index, 120);
 });
 
 test("fixed slot geometry leaves gaps empty instead of compressing observed candles", () => {
@@ -359,7 +359,7 @@ test("full regular view expands only to the existing 4:00 PM boundary", () => {
   const regularCandles = Array.from({ length: 78 }, (_, index) => makeCandle(index));
   const primary = selectSessionCandles(regularCandles, regularCandles[2].closeTime, regularCandles.at(-1)!.closeTime);
   const full = selectSessionCandles(regularCandles, regularCandles[2].closeTime, regularCandles.at(-1)!.closeTime, "full_regular");
-  assert.equal(primary.regularCandles.length, 42);
+  assert.equal(primary.regularCandles.length, 54);
   assert.equal(full.regularCandles.length, 78);
   assert.equal(formatInterval(full.regularCandles.at(-1)!.openTime, full.regularCandles.at(-1)!.closeTime), "3:55 PM–4:00 PM ET");
   assert.equal(getTimeAxisTicks(full.regularCandles, "America/New_York", true).at(-1)?.label, "4:00 PM");

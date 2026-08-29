@@ -320,7 +320,7 @@ export type VisualValidationProposedRuleAnalysis = {
 
 const TEACHING_TICK_SIZE = 0.25;
 const TEACHING_ENTRY_WINDOW_START = 9 * 60 + 30;
-const TEACHING_ENTRY_WINDOW_END = 13 * 60;
+const TEACHING_ENTRY_WINDOW_END = 14 * 60;
 
 function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -381,7 +381,7 @@ export function validateVisualValidationTeaching(
   const entryMinute = entry ? localMinute(entry.openTime) : null;
   const entryCloseMinute = entry ? localMinute(entry.closeTime) : null;
   if (entryMinute === null || entryCloseMinute === null || entryMinute < TEACHING_ENTRY_WINDOW_START || entryCloseMinute > TEACHING_ENTRY_WINDOW_END) {
-    messages.push("The entry candle must be inside the 9:30 AM–1:00 PM ET primary entry window.");
+    messages.push("The entry candle must be inside the 9:30 AM–2:00 PM ET primary entry window.");
   }
   if (entry && entry.contractSymbol !== snapshot.contractSymbol) messages.push("The entry candle must belong to the snapshot's active MES contract.");
   if (patience && previous && input.direction === "long" && patience.high > previous.high) messages.push("Long patience must contain its high within the preceding completed candle.");

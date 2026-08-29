@@ -417,6 +417,49 @@ test("teaching validation accepts deterministic long and short buffered examples
   }
 });
 
+test("teaching validation allows an entry candle through the 2:00 PM ET boundary", () => {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const input = teachingInput(snapshot, "long");
+  const lateStart = Date.parse("2026-08-26T17:45:00.000Z");
+  snapshot.reviewCandles = snapshot.reviewCandles.map((candle, index) => {
+    const openTime = new Date(lateStart + index * 5 * 60_000).toISOString();
+    const closeTime = new Date(lateStart + (index + 1) * 5 * 60_000).toISOString();
+    return { ...candle, openTime, closeTime, timestamp: openTime };
+  });
+  const boundaryEntry = snapshot.reviewCandles[2]!;
+  snapshot.evaluationCursor = {
+    ...snapshot.evaluationCursor,
+    openTime: boundaryEntry.openTime,
+    closeTime: boundaryEntry.closeTime,
+  };
+  const boundaryInput = {
+    ...input,
+    entryCandleOpenTime: snapshot.reviewCandles[2]!.openTime,
+    entryCandleCloseTime: snapshot.reviewCandles[2]!.closeTime,
+    patienceCandleOpenTime: snapshot.reviewCandles[1]!.openTime,
+    patienceCandleCloseTime: snapshot.reviewCandles[1]!.closeTime,
+  };
+  const accepted = validateVisualValidationTeaching(snapshot, boundaryInput);
+  assert.equal(accepted.valid, true, accepted.messages.join("; "));
+
+  const afterBoundary = {
+    ...input,
+    entryCandleOpenTime: "2026-08-26T18:00:00.000Z",
+    entryCandleCloseTime: "2026-08-26T18:05:00.000Z",
+  };
+  snapshot.reviewCandles = snapshot.reviewCandles.map((candle, index) => index === 2
+    ? { ...candle, openTime: afterBoundary.entryCandleOpenTime, closeTime: afterBoundary.entryCandleCloseTime, timestamp: afterBoundary.entryCandleOpenTime }
+    : candle);
+  snapshot.evaluationCursor = {
+    ...snapshot.evaluationCursor,
+    openTime: afterBoundary.entryCandleOpenTime,
+    closeTime: afterBoundary.entryCandleCloseTime,
+  };
+  const rejected = validateVisualValidationTeaching(snapshot, afterBoundary);
+  assert.equal(rejected.valid, false);
+  assert.ok(rejected.messages.some((message) => message.includes("9:30 AM–2:00 PM ET")));
+});
+
 test("teaching validation rejects future, non-adjacent, and non-MES-buffer corrections", () => {
   const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
   const input = teachingInput(snapshot, "long");

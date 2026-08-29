@@ -21,6 +21,7 @@ test("visual review presentation keeps the inspector and event strip outside the
 test("visual review presentation uses the full-session default and compact causal boundary", () => {
   assert.match(page, /return "full_regular";/);
   assert.match(page, /levelstory\.visualReviewWindow/);
+  assert.match(page, /Primary window: 9:30 AM–2:00 PM/);
   assert.match(page, /Full regular session: 9:30 AM–4:00 PM/);
   assert.doesNotMatch(page, /Machine evaluated through/);
   assert.match(page, /data-testid="causal-boundary-notch"/);
