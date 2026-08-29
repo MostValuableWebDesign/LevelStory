@@ -1,0 +1,380 @@
+Implement persistent teaching storage and a separate approval/audit workflow for LevelStory advisory rule proposals.
+
+This extends the existing Visual Review → Human Judgment → Teach the Formula workflow.
+
+CORE PRINCIPLE
+
+Human teaching submissions are permanent evidence, not immediate strategy changes.
+
+Use this lifecycle:
+
+Human submission
+→ immutable teaching example
+→ advisory rule proposal
+→ historical validation
+→ human approval
+→ new strategy version
+
+Never modify the active strategy automatically.
+
+1. PERSISTENT TEACHING STORAGE
+
+Store teaching examples in the application’s persistent database, not:
+
+- React state.
+- Process memory.
+- Temporary files.
+- Browser-only localStorage.
+- Historical-index cache.
+
+Create appropriate tables or collections for:
+
+A. teaching_examples
+
+Required fields:
+
+- id
+- reviewSetId
+- snapshotId
+- reviewerId
+- createdAt
+- supersedesTeachingExampleId, nullable
+- status
+- judgmentType
+- symbol
+- contract
+- tradingDate
+- selectedCandleTimestamp
+- patienceCandleTimestamp, nullable
+- direction, nullable
+- entryBufferTicks, nullable
+- calculatedEntryPrice, nullable
+- setupClassification
+- qualifyingLevelType, nullable
+- confidence
+- reviewerExplanation
+- machineDecision
+- machineRejectionReasons
+- formulaVersion
+- formulaHash
+- sourceFingerprint
+- calendarVersion
+- causalSnapshot JSON
+- validationResults JSON
+- outcomeSnapshot JSON, nullable
+
+Supported judgment types:
+
+- MACHINE_CORRECT
+- MACHINE_INCORRECT
+- UNCERTAIN
+- RULE_NEEDS_CLARIFICATION
+- MISSED_TRADE
+- FALSE_POSITIVE_TRADE
+- WRONG_ENTRY_CANDLE
+- WRONG_DIRECTION
+
+B. advisory_rule_proposals
+
+Required fields:
+
+- id
+- createdFromTeachingExampleIds
+- createdAt
+- createdBy
+- status
+- proposalType
+- title
+- plainLanguageSummary
+- currentRule
+- proposedRule
+- deterministicRuleDiff JSON
+- affectedRuleIds
+- expectedBehaviorChange
+- risks
+- supportingExampleIds
+- conflictingExampleIds
+- sourceFormulaVersion
+- candidateFormulaVersion, nullable
+- validationRunId, nullable
+- approvedBy, nullable
+- approvedAt, nullable
+- rejectionReason, nullable
+
+Proposal statuses:
+
+- DRAFT
+- NEEDS_CLARIFICATION
+- READY_FOR_VALIDATION
+- VALIDATING
+- VALIDATED
+- REJECTED_BY_VALIDATION
+- AWAITING_APPROVAL
+- APPROVED
+- REJECTED
+- PUBLISHED_AS_CANDIDATE
+- SUPERSEDED
+
+C. rule_proposal_audit_events
+
+Append-only fields:
+
+- id
+- proposalId
+- eventType
+- actorId
+- timestamp
+- previousStatus
+- newStatus
+- comment
+- metadata JSON
+
+D. strategy_versions
+
+Required fields:
+
+- id
+- version
+- createdAt
+- createdBy
+- parentVersionId
+- formulaHash
+- configurationSnapshot
+- ruleDiff
+- evidenceIds
+- validationRunId
+- status
+- activatedAt, nullable
+- activatedBy, nullable
+
+Strategy status:
+
+- CANDIDATE
+- APPROVED_SHADOW
+- ACTIVE_SHADOW
+- REJECTED
+- RETIRED
+
+2. APPEND-ONLY HUMAN EVIDENCE
+
+Never edit or delete an existing submitted teaching example in place.
+
+If a reviewer changes a judgment:
+
+- Create a new record.
+- Link it using supersedesTeachingExampleId.
+- Preserve the original submission.
+- Mark which record is current.
+- Keep the complete history accessible.
+
+Drafts may be editable before submission. Submitted records are immutable.
+
+3. ADVISORY PROPOSALS ONLY
+
+“Analyze as proposed rule change” must create an advisory proposal.
+
+It must not:
+
+- Change executable strategy logic.
+- Change the active formula version.
+- Modify historical machine evidence.
+- Start live or paper trading.
+- Automatically publish a candidate.
+
+Classify the disagreement as one of:
+
+- UI/chart issue.
+- Data-quality issue.
+- Software defect.
+- Parameter change.
+- Formula-rule change.
+- Reviewer conflict.
+- Insufficient evidence.
+
+Only deterministic parameter or typed-rule changes can advance toward a candidate strategy.
+
+Free-form AI text must never become executable strategy code automatically.
+
+4. SEPARATE APPROVAL SCREEN
+
+Add a dedicated “Strategy Proposals” review screen.
+
+For every proposal, show:
+
+- Plain-language proposed change.
+- Current rule versus proposed rule.
+- Original teaching examples.
+- Supporting examples.
+- Conflicting examples.
+- Number of examples supporting the change.
+- Formula and dataset fingerprints.
+- Historical before/after results.
+- Trades added.
+- Trades removed.
+- Entry times changed.
+- Performance and drawdown changes.
+- Previously approved examples that regress.
+- Overfitting warning.
+- Complete audit history.
+
+Available actions:
+
+- Request clarification.
+- Approve for validation.
+- Reject.
+- Approve as candidate strategy.
+- Activate in Shadow Mode.
+- Retire candidate.
+
+Separate these permissions:
+
+- A reviewer may submit teaching evidence.
+- An approver may approve a rule proposal.
+- Strategy activation requires a separate explicit action.
+
+Even if the same person currently performs both roles, preserve the separate steps and audit events.
+
+5. VALIDATION REQUIREMENTS
+
+A proposal cannot reach AWAITING_APPROVAL until it passes:
+
+- Deterministic unit tests.
+- No-future-data validation.
+- Immediate-next patience-entry validation.
+- Historical comparison on an immutable dataset.
+- In-sample comparison.
+- Holdout comparison.
+- Regression testing against previously approved teaching examples.
+- Source and formula fingerprint verification.
+- Conflict analysis.
+
+Warn prominently when:
+
+- Only one example supports the change.
+- Holdout results decline.
+- Drawdown increases materially.
+- The change produces many additional trades.
+- Previously correct “no trade” examples become entries.
+- Supporting and conflicting judgments exist.
+
+Do not claim a proposal improves the strategy based only on improved profit.
+
+6. FORMULA VERSIONING
+
+An approved proposal creates a new candidate version; it does not overwrite the parent.
+
+Preserve:
+
+- Parent version.
+- Exact deterministic diff.
+- Evidence used.
+- Validation report.
+- Approver.
+- Approval timestamp.
+- Formula hash.
+- Dataset fingerprint.
+
+A candidate must remain Shadow Mode until separately activated.
+
+Provide rollback by selecting an earlier immutable strategy version. Do not destroy newer versions during rollback.
+
+7. API AND SECURITY
+
+Add authenticated endpoints for:
+
+- Creating drafts.
+- Submitting immutable teaching examples.
+- Superseding a judgment.
+- Listing teaching history.
+- Creating advisory proposals.
+- Adding clarification.
+- Starting validation.
+- Approving/rejecting proposals.
+- Publishing candidate versions.
+- Activating candidates in Shadow Mode.
+- Viewing the complete audit log.
+
+Use server-side authorization for all status transitions. Do not rely only on hidden frontend buttons.
+
+Reject invalid state transitions with clear structured errors.
+
+Use idempotency keys so repeated Submit clicks cannot create duplicate evidence or approvals.
+
+8. COMPUTE PROTECTION
+
+These actions must be lightweight and must not consume the visual-review generation rate limit:
+
+- Saving teaching evidence.
+- Opening proposal history.
+- Adding clarification.
+- Approval/rejection.
+- Reusing cached validation results.
+
+Historical validation must be an explicit asynchronous job.
+
+Do not:
+
+- Rebuild the historical index.
+- Run a full backtest automatically after submission.
+- Run multiple identical validation jobs.
+- Restart the API solely to save teaching evidence.
+
+Deduplicate validation using:
+
+proposal rule hash
++ parent formula hash
++ dataset fingerprint
++ validation configuration
+
+9. USER FEEDBACK
+
+After submitting a teaching example, display:
+
+“Teaching example saved permanently. The active formula has not changed.”
+
+After creating a proposal:
+
+“Advisory proposal created. It must pass validation and receive explicit approval before a candidate strategy can be created.”
+
+After approval:
+
+“Candidate strategy created in Shadow Mode. The active strategy has not changed.”
+
+After activation:
+
+“Strategy version [version] is now the active Shadow Mode formula. No live or paper orders are enabled.”
+
+10. TESTS
+
+Add tests for:
+
+- Persistence across API restart.
+- Immutable submitted evidence.
+- Superseding without overwriting.
+- Duplicate-submit idempotency.
+- Proposal creation does not modify strategy.
+- Invalid status-transition rejection.
+- Reviewer and approver separation.
+- Validation required before approval.
+- Approval creates a new candidate version.
+- Candidate activation is a separate action.
+- Rollback preserves all versions.
+- Conflicting examples remain visible.
+- Cached validation reuse.
+- Human submissions do not consume generation limits.
+- No broker, live-order, or paper-order path is added.
+
+11. DELIVERY REPORT
+
+Report:
+
+- Database migrations and tables added.
+- API endpoints and authorization rules.
+- Proposal state-transition diagram.
+- Persistence/restart verification.
+- Idempotency behavior.
+- One example progressing from teaching submission to advisory proposal.
+- One rejected/conflicting proposal example.
+- Proof the active strategy did not change during submission or proposal approval.
+- Tests, typechecks, and builds.
+- Confirmation that Shadow Mode and no-live-orders protections remain intact.
