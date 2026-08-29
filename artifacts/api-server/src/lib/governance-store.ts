@@ -481,6 +481,8 @@ export async function requestValidation(args: {
 }
 
 export async function approveProposal(id: string, actor: GovernanceActor, reason: string, idempotencyKey: string) {
+  const proposal = await getProposal(id);
+  if (proposal.createdBy === actor.id) throw new GovernanceError(403, "Proposal creators cannot approve their own proposal.");
   return transition({
     id,
     actor,
@@ -540,6 +542,7 @@ export async function activateCandidate(id: string, actor: GovernanceActor, idem
     }
     const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id)).for("update");
     if (!proposal || proposal.status !== "candidate") throw new GovernanceError(409, "Only a candidate proposal can activate.");
+    if (proposal.createdBy === actor.id) throw new GovernanceError(403, "Proposal creators cannot activate their own proposal.");
     const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId ?? "")).for("update");
     if (!version || version.status !== "candidate") throw new GovernanceError(409, "Candidate strategy version is unavailable.");
     const [run] = proposal.validationRunId ? await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId)) : [];
@@ -557,9 +560,25 @@ export async function activateCandidate(id: string, actor: GovernanceActor, idem
 }
 
 export async function retireProposal(id: string, actor: GovernanceActor, idempotencyKey: string) {
-  const proposal = await transition({ id, actor, action: "retired_shadow_version", toStatus: "retired", fromStatuses: ["active", "candidate"], idempotencyKey });
-  if (proposal.candidateVersionId) await db.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, proposal.candidateVersionId));
-  return proposal;
+  const result = await db.transaction(async (tx) => {
+    const [replayed] = await tx.select().from(ruleProposalAuditEventsTable).where(and(eq(ruleProposalAuditEventsTable.proposalId, id), eq(ruleProposalAuditEventsTable.actorId, actor.id), eq(ruleProposalAuditEventsTable.action, "retired_shadow_version"), eq(ruleProposalAuditEventsTable.idempotencyKey, idempotencyKey)));
+    if (replayed) return getProposal(id);
+    const [proposal] = await tx.select().from(advisoryRuleProposalsTable).where(eq(advisoryRuleProposalsTable.id, id)).for("update");
+    if (!proposal || !["active", "candidate"].includes(proposal.status)) throw new GovernanceError(409, "Only an active or candidate proposal can be retired.");
+    if (proposal.candidateVersionId) {
+      const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId)).for("update");
+      if (version?.status === "active") {
+        const [parent] = version.parentVersionId ? await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, version.parentVersionId)).for("update") : [];
+        await tx.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));
+        if (parent) await tx.update(strategyVersionsTable).set({ status: "active", activatedAt: new Date(), activatedBy: actor.id, retiredAt: null }).where(eq(strategyVersionsTable.id, parent.id));
+      } else await tx.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, proposal.candidateVersionId));
+    }
+    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "retired", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, id)).returning();
+    await tx.insert(ruleProposalAuditEventsTable).values({ id: randomUUID(), proposalId: id, actorId: actor.id, action: "retired_shadow_version", fromStatus: proposal.status, toStatus: "retired", reason: null, idempotencyKey, metadata: {} });
+    return updated;
+  });
+  refreshActiveShadowStrategy();
+  return result;
 }
 
 export async function rollbackProposal(id: string, actor: GovernanceActor, reason: string, idempotencyKey: string) {

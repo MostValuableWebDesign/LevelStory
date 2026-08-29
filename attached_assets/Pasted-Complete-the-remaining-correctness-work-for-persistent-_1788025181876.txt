@@ -1,0 +1,90 @@
+Complete the remaining correctness work for persistent teaching, candidate validation, and Shadow Mode activation. Keep this focused and compute-efficient. Do not run a cold 20+2 backtest, qualification batch, or historical-index rebuild.
+
+1. Persist false-positive teaching
+
+In visual-review.tsx, when status is false_positive_trade, submit a structured teaching object with judgment false_positive_trade.
+
+A false-positive teaching example must preserve:
+
+- exact machine trade ID
+- canonical strategy
+- contract and trading date
+- patience, entry, and fill candle timestamps
+- machine entry, stop, target, direction, and outcome
+- reviewer explanation
+- immutable causal candle evidence
+- formula, source, dataset, and calendar fingerprints
+- in-sample or holdout partition
+- revision and supersession history
+
+Do not convert false_positive_trade into missed_trade. Require an exact machine-qualified trade and a reviewer explanation.
+
+2. Make validation fail closed
+
+In proposal-validator.ts:
+
+- Never fall back to simulated candles when validating persisted teaching.
+- Reject evidence that does not contain immutable raw historical candles.
+- Reject missing, malformed, cross-contract, or future-visible candle evidence.
+- Do not fabricate bid, ask, bid size, or ask size from OHLC.
+- Verify that the entry candle is exactly the immediate next completed five-minute candle after the patience candle.
+- Verify the 3–4 tick entry buffer from raw MES prices and direction.
+- Verify that every example belongs to the proposal’s canonical strategy.
+
+3. Produce genuine candidate comparisons
+
+Run both parent and candidate formula configurations against the same immutable historical candles.
+
+For each example, record genuine before/after:
+
+- decision
+- canonical strategy
+- direction
+- patience candle
+- entry candle
+- calculated entry price
+- rejection reasons
+
+If P&L, win rate, profit factor, drawdown, or average trade is displayed, calculate it using a new deterministic candidate replay with the existing fee, slippage, stop, target, runner, and ambiguity policies.
+
+Do not reuse the original teaching outcome as the candidate result. If candidate execution cannot be modeled honestly, mark performance metrics unavailable and prevent approval.
+
+Validation must include at least one independent holdout example. Source teaching examples must not count as holdout evidence.
+
+4. Make activation consistent
+
+The activated strategy configuration must be authoritative for future Shadow Mode analysis, Visual Review, and backtests.
+
+Remove request-level overrides that silently replace an activated patienceEntryBufferTicks value, or explicitly expose an opt-in comparison override that is clearly labeled and excluded from ordinary active-formula runs.
+
+Make retire transactional with:
+
+- proposal status
+- strategy-version status
+- audit event
+- active-parent restoration when required
+
+Refresh and await the active-strategy resolver after activation, retirement, and rollback.
+
+5. Strengthen separation of duties
+
+Prevent the proposal creator from approving or activating their own proposal, even if that account has multiple roles. Preserve reviewer, approver, and activator role checks and record every attempted transition.
+
+6. Add focused tests only
+
+Add deterministic tests proving:
+
+- missed-trade and false-positive teaching both persist
+- false-positive evidence remains false_positive_trade
+- missing candle evidence fails instead of using simulation
+- immediate-next means exactly five minutes
+- candidate metrics come from candidate replay
+- activation changes an actual formula decision
+- ordinary OHLC backtesting reads the activated configuration
+- retire and rollback restore the correct version and cache
+- the proposal creator cannot self-approve or self-activate
+
+Run only focused governance, validator, active-strategy, Visual Review, typecheck, and build tests. Report exact results and remaining limitations.
+
+Do not activate any candidate as part of this task.
+Do not add live orders, paper orders, broker integration, or fabricated market data.

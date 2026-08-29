@@ -1370,7 +1370,7 @@ function ReviewPanel({
 }) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   const hasSavedReview = savedStatus !== null;
-  const needsTeaching = status === "missed_trade" || status === "rule_needs_clarification";
+  const needsTeaching = status === "missed_trade" || status === "false_positive_trade" || status === "rule_needs_clarification";
   const patience = teaching ? snapshot.reviewCandles.find((candle) => candle.openTime === teaching.patienceCandleOpenTime && candle.closeTime === teaching.patienceCandleCloseTime) : null;
   const calculatedEntryPrice = teaching && patience
     ? (teaching.direction === "long" ? patience.high + teaching.entryBufferTicks * 0.25 : patience.low - teaching.entryBufferTicks * 0.25).toFixed(2)
