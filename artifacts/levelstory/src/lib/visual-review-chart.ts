@@ -21,11 +21,27 @@ export const CANDLE_WINDOW_TARGET = 42;
 export const CANDLE_PADDING_RATIO = 0.08;
 export const DOJI_BODY_HEIGHT = 4;
 export const MES_TICK_SIZE = 0.25;
+export const PRIMARY_SESSION_START_MINUTES = 9 * 60 + 30;
+export const PRIMARY_SESSION_END_MINUTES = 13 * 60;
+export const REGULAR_SESSION_END_MINUTES = 16 * 60;
+export const PREMARKET_START_MINUTES = 4 * 60;
+export const PREMARKET_END_MINUTES = PRIMARY_SESSION_START_MINUTES;
 
 export type FocusedCandle = VisualValidationCandle & {
   machineVisible: boolean;
 };
 
+export type SessionView = "primary" | "full_regular";
+
+export type SessionCandle = FocusedCandle & {
+  session: "premarket" | "regular";
+};
+
+export type SessionCandleSelection = {
+  candles: SessionCandle[];
+  regularCandles: SessionCandle[];
+  premarketCandles: SessionCandle[];
+};
 export type ChartDomain = {
   min: number;
   max: number;
@@ -59,6 +75,7 @@ export type LabelPosition = {
 export type TimeAxisTick = {
   index: number;
   label: string;
+  position?: number;
 };
 
 export type PriceAxis = {
@@ -155,6 +172,59 @@ export function selectFocusedCandles(
   }));
 }
 
+function localMinutes(value: string, timeZone = "America/New_York"): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map(({ type, value: part }) => [type, part]));
+  return Number(values.hour) * 60 + Number(values.minute);
+}
+
+function sessionForCandle(candle: VisualValidationCandle): "premarket" | "regular" | null {
+  const open = localMinutes(candle.openTime);
+  const close = localMinutes(candle.closeTime);
+  if (open >= PREMARKET_START_MINUTES && close <= PREMARKET_END_MINUTES) return "premarket";
+  if (open >= PRIMARY_SESSION_START_MINUTES && close <= REGULAR_SESSION_END_MINUTES) return "regular";
+  return null;
+}
+
+export function selectSessionCandles(
+  rawCandles: readonly VisualValidationCandle[],
+  evaluationCloseTime: string,
+  reviewCloseTime: string,
+  view: SessionView = "primary",
+  showPremarket = false,
+): SessionCandleSelection {
+  const evaluation = timestamp(evaluationCloseTime);
+  const review = timestamp(reviewCloseTime);
+  const regularEnd = view === "primary" ? PRIMARY_SESSION_END_MINUTES : REGULAR_SESSION_END_MINUTES;
+  const regularCandles: SessionCandle[] = [];
+  const premarketCandles: SessionCandle[] = [];
+
+  for (const candle of rawCandles) {
+    if (!isExactFiveMinuteCandle(candle)) continue;
+    const close = timestamp(candle.closeTime);
+    if (!Number.isFinite(close) || (Number.isFinite(review) && close > review)) continue;
+    const session = sessionForCandle(candle);
+    if (session === "regular" && localMinutes(candle.closeTime) <= regularEnd) {
+      regularCandles.push({ ...candle, machineVisible: close <= evaluation, session });
+    } else if (session === "premarket" && showPremarket) {
+      premarketCandles.push({ ...candle, machineVisible: close <= evaluation, session });
+    }
+  }
+
+  regularCandles.sort((first, second) => timestamp(first.openTime) - timestamp(second.openTime));
+  premarketCandles.sort((first, second) => timestamp(first.openTime) - timestamp(second.openTime));
+  return {
+    candles: [...premarketCandles, ...regularCandles],
+    regularCandles,
+    premarketCandles,
+  };
+}
+
 export function getCandleDomain(
   candles: readonly VisualValidationCandle[],
   paddingRatio = CANDLE_PADDING_RATIO,
@@ -202,18 +272,28 @@ export function formatAxisDate(value: string, timeZone: "America/New_York" | "UT
 export function getTimeAxisTicks(
   candles: readonly VisualValidationCandle[],
   timeZone: "America/New_York" | "UTC" = "America/New_York",
+  includeCloseBoundary = false,
 ): TimeAxisTick[] {
-  return candles.reduce<TimeAxisTick[]>((ticks, candle, index) => {
+  const ticks = candles.reduce<TimeAxisTick[]>((result, candle, index) => {
     const date = new Date(candle.openTime);
     const minute = Number(new Intl.DateTimeFormat("en-US", {
       timeZone,
       minute: "numeric",
     }).format(date));
     if (minute % 15 === 0) {
-      ticks.push({ index, label: formatHourMinute(candle.openTime, timeZone) });
+      result.push({ index, position: index + 0.5, label: formatHourMinute(candle.openTime, timeZone) });
     }
-    return ticks;
+    return result;
   }, []);
+  if (includeCloseBoundary && candles.length) {
+    const last = candles[candles.length - 1];
+    ticks.push({
+      index: candles.length,
+      position: candles.length,
+      label: formatHourMinute(last.closeTime, timeZone),
+    });
+  }
+  return ticks;
 }
 
 export function snapPrice(price: number, tickSize = MES_TICK_SIZE): number {
@@ -412,5 +492,5 @@ export function formatDataSource(source: string, contractSymbol?: string): strin
 }
 
 export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean {
-  return /^(orb-high|orb-low|ntz-high|ntz-low|vwap|ema-200|critical-|entry-buffer|strategy-stop|catastrophe-stop|target$|runner-threshold)/i.test(annotation.id);
+  return /^(premarket-high|premarket-low|orb-high|orb-low|ntz-high|ntz-low|vwap|ema-200|critical-|entry-buffer|strategy-stop|catastrophe-stop|target$|runner-threshold)/i.test(annotation.id);
 }

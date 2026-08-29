@@ -65,7 +65,9 @@ import {
   isDisplacedLabel,
   isPrimaryLevel,
   priceToY,
+  selectSessionCandles,
   selectFocusedCandles,
+  type SessionView,
   stackLabelPositions,
   summarizeCategoryCoverage,
 } from "@/lib/visual-review-chart";
@@ -442,23 +444,53 @@ function CausalTag() {
 }
 
 function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot; source: string }) {
-  const focusedCandles = selectFocusedCandles(snapshot.rawCandles, snapshot.evaluationCursor.closeTime, snapshot.reviewCursor.closeTime);
-  const repetitive = hasRepetitiveFixtureData(focusedCandles);
-  const invalidIndices = invalidRawCandleIndices(focusedCandles);
+  const [sessionView, setSessionView] = useState<SessionView>("primary");
+  const [showPremarket, setShowPremarket] = useState(false);
+  const selection = selectSessionCandles(
+    snapshot.rawCandles,
+    snapshot.evaluationCursor.closeTime,
+    snapshot.reviewCursor.closeTime,
+    sessionView,
+    showPremarket,
+  );
+  const chartCandles = selection.candles;
+  const repetitive = hasRepetitiveFixtureData(chartCandles);
+  const invalidIndices = invalidRawCandleIndices(chartCandles);
+  const historical = source === "historical_databento" || source === "historical_databento_multicontract";
+  const windowLabel = sessionView === "primary"
+    ? "Primary trade window · 9:30 AM–1:00 PM ET"
+    : "Full regular session · 9:30 AM–4:00 PM ET";
+  const sourceLabel = `${windowLabel} · ${historical ? "Historical Databento" : "Simulated fixture data"}`;
   return <div className="chart-frame border-t border-border p-3 sm:p-5" data-testid="visual-review-chart">
     <div className="mb-4 flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <div className="eyebrow text-muted-foreground">Source / immutable candle bytes</div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 border border-accent/45 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.1em]" data-testid="chart-data-source"><span className="h-1.5 w-1.5 rounded-full bg-accent" />{formatDataSource(source, snapshot.contractSymbol)}</span>
-          <span className="mono text-[10px] text-muted-foreground" data-testid="chart-window-count">{focusedCandles.length} candles shown · raw OHLCV</span>
+          <span className="mono text-[10px] text-muted-foreground" data-testid="chart-window-count">{selection.regularCandles.length} regular candles shown{showPremarket ? ` · ${selection.premarketCandles.length} premarket` : ""} · raw OHLCV</span>
+        </div>
+        <div className="mt-2 text-xs font-semibold tracking-[-.01em]" data-testid="primary-trade-window-label">{sourceLabel}</div>
+      </div>
+      <div className="flex flex-col items-start gap-2 sm:items-end">
+        <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span className="eyebrow">Chart window</span>
+            <select className="field h-8 min-w-[190px] py-1 text-[10px]" value={sessionView} onChange={(event) => setSessionView(event.target.value as SessionView)} data-testid="select-session-view">
+              <option value="primary">Primary window: 9:30 AM–1:00 PM</option>
+              <option value="full_regular">Full regular session: 9:30 AM–4:00 PM</option>
+            </select>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-[10px] text-muted-foreground">
+            <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showPremarket} onChange={(event) => setShowPremarket(event.target.checked)} data-testid="toggle-show-premarket" />
+            <span>Show premarket candles</span>
+          </label>
         </div>
       </div>
-      <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
     </div>
      {repetitive && source === "simulated" && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
-    <CausalSvg snapshot={snapshot} candles={focusedCandles} />
+     <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={selection.premarketCandles} sessionView={sessionView} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
