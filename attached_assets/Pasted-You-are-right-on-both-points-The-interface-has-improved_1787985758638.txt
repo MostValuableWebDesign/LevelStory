@@ -1,0 +1,266 @@
+You are right on both points. The interface has improved, but the central purpose of visual review is still missing: **the chart must point directly to the candle or area that caused the category to be selected.**
+
+For “Bearish patience candle,” it should automatically identify the exact patience candle, highlight it, show the previous comparison candle, and indicate whether the immediate next candle triggered an entry.
+
+The selected-candle panel is also still covering the chart. Making it translucent does not solve that; it must be moved entirely outside the plotting area.
+
+Use this prompt:
+
+```text
+Correct the LevelStory visual-review chart so every category is anchored to the exact candle/event that caused the category to be selected, and make the chart full-width by default.
+
+Do not change the trading formula, historical OHLCV, machine decisions, execution engine, causal boundary or historical index.
+
+1. Require a canonical category anchor
+
+Every available historical visual-review sample must contain a canonical `categoryAnchor` derived from immutable audit evidence.
+
+Suggested structure:
+
+categoryAnchor:
+- category
+- eventType
+- openTime
+- closeTime
+- price
+- direction
+- label
+- detail
+- relatedCandleTimes
+- machineVisible
+- auditRecordId
+- tradeId, when applicable
+
+A category must not be shown as available unless its exact event can be associated with one or more historical candles.
+
+Do not infer this in the frontend by visually examining candle shapes.
+
+2. Automatically locate and highlight the selected category
+
+When the user selects a category tile:
+
+- load the correct example
+- center the chart on its category anchor
+- select the anchor candle automatically
+- scroll the chart into view
+- show a prominent category marker
+- update the fixed candle inspector
+- preserve the 9:30–1:00 session context
+
+Display a compact banner above the chart:
+
+`Found: Bearish patience candle · 11:50–11:55 AM ET`
+
+Include:
+- direction
+- associated level
+- machine decision
+- whether entry occurred
+
+3. Patience-candle visualization
+
+For a bearish patience-candle example:
+
+- outline the previous comparison candle with a muted border
+- outline the patience candle with a bold purple border
+- place a `P` marker above the patience candle
+- label it `BEARISH PATIENCE`
+- draw a small comparison bracket between the two candles
+- explain:
+  `The patience candle’s low remained within the previous candle’s low while the active trend was bearish.`
+
+For a bullish patience candle:
+
+- mark the previous comparison candle
+- outline the patience candle
+- place `P` below the candle
+- explain:
+  `The patience candle’s high remained within the previous candle’s high while the active trend was bullish.`
+
+Immediate next candle:
+- mark it `T` for trigger
+- show whether it broke 3–4 ticks in the trend direction
+- if it failed, show `NO TRIGGER`
+- if it broke the wrong side first, show the stop/invalidation marker
+
+Do not call a sample a patience-candle example unless the exact patience candle is available in evidence.
+
+4. Anchor every other category
+
+Use consistent markers:
+
+- Qualified trade: `Q`
+- Rejected setup: `X` with first blocking reason
+- Bullish patience: `P↑`
+- Bearish patience: `P↓`
+- Weak ORB probe: `WP`
+- Strong breakout: `BO`
+- Pullback: `PB`
+- Consolidation: shaded consolidation range labeled `C`
+- Ambiguous candle: `!`
+- Stop exit: `S`
+- Target exit: `TP`
+- Runner activation: `RA`
+- Runner exit: `RX`
+
+Strong breakout:
+- outline the exact breakout candle
+- mark ORB High/Low
+- show breakout close and relative volume
+- identify continuation candles when present
+
+Weak ORB probe:
+- mark the candle that slightly crossed ORB
+- show why volume or continuation was insufficient
+
+Pullback:
+- mark the pullback start and deepest retracement candle
+- highlight the touched ORB, VWAP, EMA 200, Fibonacci or critical level
+- show retracement percentage and volume classification
+
+Consolidation:
+- shade the measured candle range
+- mark its start and completion
+- show the range high, low and duration
+
+Trade events:
+- mark entry, stop, target, runner activation and runner exit at exact timestamps and prices
+
+5. Continue displaying candles after the category event
+
+The chart currently stops around the review cursor and reports only 30 of 42 primary candles.
+
+For visual review:
+
+- load every available historical candle through 1:00 PM ET
+- display all 42 five-minute timestamp slots
+- show the event at its correct location
+- keep candles completed by the evaluation cursor machine-visible
+- shade every later candle as `Human-only outcome context`
+- never pass later candles into machine evidence
+- do not move the evaluation cursor
+
+Example:
+If the patience candle is evaluated at 11:55:
+- candles through 11:55 may be machine-visible
+- candles after 11:55 through 1:00 must continue on the chart
+- later candles must be shaded and explicitly unavailable to the decision
+
+Query the existing historical dataset through 1:00 before declaring intervals missing.
+
+If real candles remain absent after querying the full window:
+- preserve blank gaps
+- list their timestamps
+- do not fabricate them
+
+6. Make the chart full-width by default
+
+Change the normal desktop layout:
+
+- chart section uses the full available page width
+- remove the permanent right-side Human Judgment column beside the chart
+- move Human Judgment below the chart, or place it in a collapsible drawer
+- chart plot should receive at least 90% of the viewport width
+- default chart height should be 600–700px
+- maintain expanded and fullscreen modes
+- keep all controls outside the candle plot
+
+The category selector and example summary may remain above the chart.
+
+Human Judgment should remain easy to reach through:
+- a sticky `Review this example` button, or
+- a collapsible panel below the full-width chart
+
+Do not overlay Human Judgment on the plot.
+
+7. Remove the floating translucent price panel
+
+The selected-candle inspector must not cover the chart.
+
+Replace it with an opaque, docked horizontal inspector above the plot:
+
+Selected candle: 11:50–11:55 AM ET
+O | H | L | C | Volume | Contract | Visibility | Active events
+
+Requirements:
+- completely outside the SVG/canvas plotting area
+- opaque background
+- fixed height so the chart does not move while hovering
+- updates on hover, click or keyboard navigation
+- never overlaps candles, levels, price axis, volume or labels
+- displays the selected category event prominently
+
+In fullscreen, dock it above the chart rather than floating over it.
+
+8. Preserve the price axis
+
+- Keep the numeric MES price scale permanently visible on the right.
+- Reserve a fixed gutter for price values and level tags.
+- Align prices to 0.25.
+- Do not let the inspector or Human Judgment cover the scale.
+- Use collision-aware level tags with numeric prices.
+
+9. Improve human-only visibility
+
+- Use a clearly visible gray background after the causal cursor.
+- Slightly reduce later-candle opacity.
+- Display `HUMAN-ONLY OUTCOME CONTEXT` across that region.
+- Render post-cursor indicator segments as muted or dashed.
+- Keep the category event visually dominant.
+
+10. Add a marker legend
+
+Display a compact legend below the chart explaining:
+
+P = patience candle
+T = immediate trigger
+BO = breakout
+WP = weak probe
+PB = pullback
+C = consolidation
+E = entry
+S = stop
+TP = target
+RA/RX = runner events
+
+Only show marker types relevant to the selected sample by default.
+
+11. Focused tests
+
+Add deterministic tests proving:
+
+- every available category has an exact categoryAnchor
+- categoryAnchor timestamp exists in raw historical candles
+- selecting Bearish Patience automatically highlights the correct candle
+- patience comparison uses the correct previous candle
+- the immediate next candle is identified correctly
+- every category marker comes from immutable audit evidence
+- chart continues through 1:00 with later candles human-only
+- later candles never enter machine evidence
+- full historical window is queried before declaring gaps
+- selected-candle inspector is outside the plot
+- default desktop chart uses at least 90% of available width
+- price axis remains visible
+- Human Judgment does not reduce or cover the chart
+- marker positions remain correct in normal, expanded and fullscreen modes
+
+Verification limits:
+
+- Run focused visual-validation API and frontend tests.
+- Run API and frontend typechecks.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not fabricate missing categories or candles.
+- Do not modify existing human judgments.
+- Restart the API only once if the response schema changes.
+
+Provide before-and-after screenshots of:
+
+1. Bearish patience candle with previous, patience and trigger candles marked
+2. Strong breakout with breakout candle marked
+3. Pullback with retracement and touched level marked
+4. Full-width chart with docked inspector
+5. Chart continuing through 1:00 with human-only candles shaded
+```
+
+The key acceptance test is simple: after selecting any category, you should immediately be able to answer, **“Where exactly did the app see that on this chart?”**
