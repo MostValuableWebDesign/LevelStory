@@ -1,0 +1,112 @@
+Use this focused Replit prompt:
+
+```text
+Correct the LevelStory `/visual-review` candlestick chart so a human trader can accurately inspect each setup.
+
+This is a frontend visualization and data-integrity task. Do not change the trading formula, strategy qualification logic, fills, backtest metrics, market-data importer, session calendar, or historical index.
+
+Problems to fix
+1. Candles are vertically compressed because distant annotations, stops, targets and major levels are included in the automatic Y-axis range.
+2. Too many labels overlap on the right side.
+3. Some snapshots show repetitive long wicks and nearly invisible candle bodies.
+4. The relevant ORB, patience candle, trigger, entry and exit are difficult to identify.
+5. Too many candles are shown for evaluating one setup.
+6. The chart does not make its simulated versus historical source prominent enough.
+
+Required implementation
+
+1. Verify candle integrity before changing presentation
+- Confirm every rendered candle uses its exact raw open, high, low and close.
+- Verify `high >= max(open, close)` and `low <= min(open, close)`.
+- Determine whether the repetitive candle shapes come from the raw simulated dataset or from SVG coordinate/rendering logic.
+- Do not normalize, smooth, fabricate or modify OHLC values to improve appearance.
+- If source candles are genuinely repetitive, show a non-blocking “repetitive simulated fixture data” warning.
+
+2. Correct Y-axis scaling
+- Calculate the primary Y-axis domain from the visible candles’ highs and lows only.
+- Add approximately 5–10% vertical padding.
+- Do not include distant stops, targets, critical levels or other annotations in the candle-domain calculation.
+- Render an out-of-range level as a labeled top/bottom edge indicator showing its actual price.
+- Never compress the candle bodies merely to include a distant level.
+
+3. Use a focused candle window
+- Display approximately 30–50 five-minute candles surrounding the evaluated setup.
+- Include enough candles before the evaluation cursor to understand trend, ORB, breakout and pullback.
+- Include post-cursor candles only through the exact review/exit cursor.
+- Keep post-cursor candles visibly shaded and labeled “Human-only outcome context.”
+- Do not expose those candles to machine evidence.
+
+4. Improve candle rendering
+- Render full OHLC wicks and bodies at accurate coordinates.
+- Use a visible minimum body height only for doji visibility, without changing the underlying price data.
+- Use consistent bullish and bearish colors.
+- Add hover/tooltips containing New York time, UTC time, OHLC and volume.
+- Ensure candle bodies do not overlap improperly at desktop or mobile widths.
+
+5. Prioritize relevant levels
+Use distinct styles for:
+- ORB High and ORB Low: bold orange lines
+- VWAP: blue
+- EMA 200: purple
+- qualifying critical level: emphasized neutral line
+- entry trigger/buffer: green
+- strategy and catastrophe stops: red
+- target: green dashed
+- Fibonacci: muted until relevant
+
+Secondary levels should be hidden by default or placed in a collapsible “Additional levels” legend.
+
+6. Prevent label collisions
+- Do not place every label directly on the right edge at the same position.
+- Use collision-aware stacking, a compact legend, or numbered chart markers connected to a legend.
+- Always keep ORB High, ORB Low and the setup’s relevant level readable.
+
+7. Add explicit event markers
+Clearly mark the exact:
+- patience candle
+- immediate-next trigger candle
+- buffered entry
+- modeled fill, if one exists
+- stop hit
+- target hit
+- runner activation
+- runner exit
+
+Machine-visible events must be on or before the causal cursor. Later exit markers may appear only inside the shaded human-only outcome region.
+
+8. Display the data source prominently
+Show one of:
+- “Simulated fixture data”
+- “Historical Databento data — [contract]”
+
+Do not imply simulated MES candles are historical market candles.
+
+9. Add focused deterministic tests proving:
+- distant annotations do not alter the candle Y-axis domain
+- out-of-range levels receive edge indicators
+- exact OHLC values produce correct wick/body coordinates
+- doji bodies remain visible
+- labels do not overlap in a dense-level fixture
+- only 30–50 relevant candles are displayed
+- post-cursor candles remain human-only
+- event markers use the correct timestamps
+- simulated and historical sources are labeled correctly
+
+Verification limits
+- Run only focused visual-review frontend tests.
+- Run frontend typecheck.
+- Run API typecheck only if shared types change.
+- Do not restart the API.
+- Do not rebuild the historical index.
+- Do not run a 20+2 backtest.
+- Do not run qualification batches.
+- Do not generate or submit human judgments.
+
+After implementation, report:
+1. Root cause of the compressed candles.
+2. Whether repetitive candle shapes came from raw data or rendering.
+3. Files changed.
+4. Focused test results.
+5. Before-and-after screenshots of Qualified Trade and Weak ORB Probe.
+6. Any remaining limitations.
+```
