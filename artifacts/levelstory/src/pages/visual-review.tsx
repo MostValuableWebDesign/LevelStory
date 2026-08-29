@@ -58,6 +58,7 @@ import {
   CHART_VOLUME_TOP,
   CHART_WIDTH,
   PREMARKET_SLOT_COUNT,
+  buildEventRailEvents,
   findCandleIndexAtTimestamp,
   formatCandleTime,
   formatInterval,
@@ -78,6 +79,7 @@ import {
   isOpeningRangeCompleteAtEvaluation,
   isDisplacedLabel,
   isPrimaryLevel,
+  layoutEventRail,
   priceToY,
   selectSessionCandles,
   type SessionCandle,
@@ -821,6 +823,7 @@ function CausalSvg({
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
   const annotations = snapshot.annotations.filter((annotation) => annotation.available
     && (!["orb-high", "orb-low"].includes(annotation.id) || orbCompleteAtEvaluation));
+  const railEvents = buildEventRailEvents(snapshot, candles, sessionView);
   const domain = getCandleDomain(candles);
   const priceAxis = getPriceAxis(domain);
   const y = (price: number) => priceToY(price, domain, top, plotBottom);
@@ -857,33 +860,15 @@ function CausalSvg({
   const primaryLevels = allLevels.filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-")).concat(relevantCritical);
   const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const inRangeLevels = primaryLevels.filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max);
-  const invalidationLevels = annotations.filter((annotation) =>
-    (annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop")
-    && annotation.price != null
-    && annotation.price >= domain.min
-    && annotation.price <= domain.max,
-  );
   const labelPositions = stackLabelPositions(inRangeLevels.map((annotation) => ({ id: annotation.id, y: y(annotation.price as number) })), top + 9, plotBottom - 5, 16);
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
-  const eventMarkers = annotations.flatMap((annotation) => {
-    if (snapshot.tradeEvents.length > 0) return [];
-    if (annotation.kind !== "candle") return [];
-    if (["patience-candle", "immediate-trigger", "entry-trigger", "modeled-fill"].includes(annotation.id)) return [];
-    const markerIndex = findCandleIndexAtTimestamp(candles, annotation.openTime ?? annotation.closeTime);
-    if (markerIndex < 0) return [];
-    const machineVisible = candles[markerIndex].machineVisible;
-    if (annotation.visibility === "machine" && !machineVisible) return [];
-    if (annotation.visibility === "human_only" && machineVisible) return [];
-    return [{ annotation, markerIndex, markerSlot: getCandleSlotIndex(candles[markerIndex], sessionView, premarketCandles.length > 0) }];
-  });
-  const tradeEventMarkers = snapshot.tradeEvents.flatMap((event) => {
-    const eventTime = event.openTime ?? event.closeTime;
-    if (!eventTime) return [];
-    const markerIndex = findCandleIndexAtTimestamp(candles, eventTime);
-    if (markerIndex < 0) return [];
-    return [{ event, markerIndex, markerSlot: getCandleSlotIndex(candles[markerIndex], sessionView) }];
+  const railLayout = layoutEventRail(railEvents, {
+    left,
+    right: plotRight - 8,
+    slotCount,
+    cursorX: boundaryX,
   });
   const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
   const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
@@ -925,6 +910,16 @@ function CausalSvg({
           : candles.length - 1;
     setHoveredIndex(nextIndex);
   };
+  const focusRailEvent = (event: typeof railLayout.events[number]) => {
+    const index = findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
+    if (index >= 0) setHoveredIndex(index);
+  };
+  const railMarkerIndex = (event: typeof railLayout.events[number]) => findCandleIndexAtTimestamp(candles, event.openTime ?? event.closeTime);
+  const railMarkerY = (event: typeof railLayout.events[number]) => {
+    const markerIndex = railMarkerIndex(event);
+    if (markerIndex >= 0 && event.price == null) return y(candles[markerIndex]!.close);
+    return event.price == null ? top + 12 : y(event.price);
+  };
   return <div className="relative w-full overflow-x-auto">
      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
        <span className="eyebrow text-muted-foreground">Inspect / fixed timestamp slots</span>
@@ -940,8 +935,31 @@ function CausalSvg({
      </div>
       <div className="chart-inspection-layout">
       <div className="chart-plot-shell">
-      <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[600px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
+       <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
+       <rect x={left} y={CHART_EVENT_RAIL_TOP} width={plotWidth} height={CHART_EVENT_RAIL_HEIGHT} fill="hsl(var(--muted) / .24)" stroke="hsl(var(--border))" data-testid="event-label-rail" />
+       <text x={left + 8} y={15} fill="hsl(var(--muted-foreground))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">EVENT LABEL RAIL · DETERMINISTIC LANES</text>
+       {railLayout.events.map((event) => {
+         const markerIndex = railMarkerIndex(event);
+         const markerY = railMarkerY(event);
+         const color = event.visibility === "human_only" ? "hsl(var(--muted-foreground))" : event.kind === "found" ? "hsl(var(--positive))" : event.kind === "invalidation" || event.kind === "stop" || event.kind === "exit" ? "hsl(var(--negative))" : event.kind === "trigger" || event.kind === "entry" ? "hsl(var(--accent))" : "hsl(var(--foreground))";
+         const labelText = event.overflow ? `#${event.order + 1} ${event.shortLabel}` : `${event.visibility === "human_only" ? "HUMAN · " : ""}${event.label}`;
+         const markerLabel = event.overflow ? `#${event.order + 1}` : event.shortLabel;
+         const eventFocus = () => focusRailEvent(event);
+         return <g key={`rail-${event.id}`} data-testid={`event-rail-item-${event.id}`} role="button" tabIndex={0} aria-label={`${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
+           <title>{`${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
+           <line x1={event.labelX + event.labelWidth / 2} y1={event.labelY + 3} x2={event.markerX} y2={top - 4} stroke={color} strokeWidth="1" strokeDasharray={event.visibility === "human_only" ? "5 3" : event.overflow ? "2 3" : "none"} opacity={event.visibility === "human_only" ? ".62" : ".75"} data-testid={`event-rail-leader-${event.id}`} />
+           {!event.overflow && <rect x={event.labelX} y={event.labelY - 10} width={event.labelWidth} height="15" rx="2" fill="hsl(var(--card) / .96)" stroke={color} strokeOpacity=".42" />}
+           <text x={event.overflow ? event.labelX + 3 : event.labelX + 5} y={event.labelY + 1} fill={color} fontSize={event.overflow ? "8" : "8.5"} fontWeight="700" fontFamily="DM Mono">{labelText}</text>
+           {markerIndex >= 0
+             ? <g data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} onMouseEnter={eventFocus} onFocus={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
+               <line x1={event.markerX} x2={event.markerX} y1={top - 4} y2={markerY} stroke={color} strokeWidth={hoveredIndex === markerIndex ? "1.7" : "1"} strokeDasharray={event.visibility === "human_only" ? "6 4" : "2 3"} opacity={hoveredIndex === markerIndex ? ".95" : ".58"} />
+               <circle cx={event.markerX} cy={markerY} r={hoveredIndex === markerIndex ? "5" : "3.5"} fill={color} stroke="hsl(var(--card))" strokeWidth="1.5" />
+               <text x={event.markerX + 5} y={markerY + 3} fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">{markerLabel}</text>
+             </g>
+             : <g data-testid={`event-marker-${event.id}`}><path d={`M ${event.markerX - 6} ${markerY} l 6 -5 l 0 10 z`} fill={color} /><text x={event.markerX - 10} y={markerY + 3} textAnchor="end" fill={color} fontSize="8" fontWeight="700" fontFamily="DM Mono">{markerLabel}</text></g>}
+         </g>;
+       })}
       {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
       {volumeAxis.map((tick) => {
         const tickY = volumeTop + CHART_VOLUME_HEIGHT - (tick.value / Math.max(volumeAxis.at(-1)?.value ?? volumeMax, 1)) * CHART_VOLUME_HEIGHT;

@@ -1,20 +1,27 @@
 import type {
   VisualValidationAnnotation,
   VisualValidationCandle,
+  VisualValidationCategoryAnchor,
   VisualValidationCategoryCoverage,
+  VisualValidationSnapshot,
+  VisualValidationTradeEvent,
 } from "@workspace/api-client-react";
 
 export const CHART_WIDTH = 1040;
-export const CHART_HEIGHT = 660;
+export const CHART_HEIGHT = 748;
 export const CHART_LEFT = 58;
 export const CHART_RIGHT = 150;
-export const CHART_TOP = 30;
-export const CHART_PLOT_BOTTOM = 476;
-export const CHART_VOLUME_TOP = 500;
+export const CHART_TOP = 112;
+export const CHART_PLOT_BOTTOM = 558;
+export const CHART_VOLUME_TOP = 582;
 export const CHART_VOLUME_HEIGHT = 64;
-export const CHART_TIME_TICK_Y = 582;
-export const CHART_DATE_LABEL_Y = 616;
-export const CHART_FOOTER_LABEL_Y = 642;
+export const CHART_TIME_TICK_Y = 668;
+export const CHART_DATE_LABEL_Y = 702;
+export const CHART_FOOTER_LABEL_Y = 730;
+export const CHART_EVENT_RAIL_TOP = 3;
+export const CHART_EVENT_RAIL_HEIGHT = 96;
+export const CHART_EVENT_RAIL_LANE_HEIGHT = 18;
+export const CHART_EVENT_RAIL_LANE_COUNT = 4;
 export const CANDLE_WINDOW_MIN = 36;
 export const CANDLE_WINDOW_MAX = 48;
 export const CANDLE_WINDOW_TARGET = 42;
@@ -113,6 +120,62 @@ export type CandleInspection = {
   volume: number;
   contractSymbol: string;
   machineVisible: boolean;
+};
+
+export type EventRailEventKind =
+  | "found"
+  | "evaluation"
+  | "patience"
+  | "trigger"
+  | "entry"
+  | "fill"
+  | "invalidation"
+  | "stop"
+  | "target"
+  | "runner"
+  | "exit"
+  | "supporting";
+
+export type EventRailEvent = {
+  id: string;
+  kind: EventRailEventKind;
+  label: string;
+  shortLabel: string;
+  detail: string;
+  openTime: string | null;
+  closeTime: string | null;
+  price: number | null;
+  visibility: "machine" | "human_only";
+  priority: number;
+  markerSlot: number | null;
+};
+
+export type EventRailPlacedEvent = EventRailEvent & {
+  order: number;
+  lane: number;
+  labelX: number;
+  labelY: number;
+  labelWidth: number;
+  markerX: number;
+  overflow: boolean;
+};
+
+export type EventRailLayout = {
+  events: EventRailPlacedEvent[];
+  laneCount: number;
+  hasOverflow: boolean;
+};
+
+export type EventRailLayoutOptions = {
+  left?: number;
+  right?: number;
+  slotCount?: number;
+  cursorX?: number;
+  cursorWidth?: number;
+  laneCount?: number;
+  laneTop?: number;
+  laneHeight?: number;
+  labelGap?: number;
 };
 
 function finitePrices(candles: readonly VisualValidationCandle[]): number[] {
@@ -532,6 +595,209 @@ export function findCandleIndexAtTimestamp(
   const openIndex = candles.findIndex((candle) => timestamp(candle.openTime) === target);
   if (openIndex >= 0) return openIndex;
   return candles.findIndex((candle) => timestamp(candle.closeTime) === target);
+}
+
+const EVENT_RAIL_PRIORITY: Record<EventRailEventKind, number> = {
+  found: 1,
+  entry: 2,
+  fill: 2,
+  exit: 2,
+  patience: 3,
+  trigger: 4,
+  invalidation: 5,
+  stop: 5,
+  target: 5,
+  runner: 5,
+  supporting: 6,
+  evaluation: 7,
+};
+
+function railKindForTradeEvent(event: VisualValidationTradeEvent): EventRailEventKind {
+  if (event.event === "entry") return "entry";
+  if (event.event === "fill") return "fill";
+  if (event.event === "stop") return "stop";
+  if (event.event === "target") return "target";
+  if (event.event.includes("runner")) return "runner";
+  if (event.event === "exit") return "exit";
+  return "supporting";
+}
+
+function railShortLabel(kind: EventRailEventKind, eventName?: string): string {
+  if (kind === "found") return "F";
+  if (kind === "evaluation") return "EVAL";
+  if (kind === "patience") return "P";
+  if (kind === "trigger") return "T";
+  if (kind === "entry" || kind === "fill") return "E";
+  if (kind === "invalidation") return "X";
+  if (kind === "stop") return "S";
+  if (kind === "target") return "TP";
+  if (kind === "runner") return eventName?.includes("exit") ? "RX" : "RA";
+  if (kind === "exit") return "X";
+  return "·";
+}
+
+function railMarkerSlot(
+  candles: readonly VisualValidationCandle[],
+  value: string | null | undefined,
+  sessionView: SessionView,
+): number | null {
+  const index = findCandleIndexAtTimestamp(candles, value);
+  return index < 0 ? null : getCandleSlotIndex(candles[index]!, sessionView);
+}
+
+export function buildEventRailEvents(
+  snapshot: VisualValidationSnapshot,
+  candles: readonly VisualValidationCandle[],
+  sessionView: SessionView,
+): EventRailEvent[] {
+  const events: EventRailEvent[] = [];
+  const add = (event: Omit<EventRailEvent, "priority" | "markerSlot">) => {
+    events.push({
+      ...event,
+      priority: EVENT_RAIL_PRIORITY[event.kind],
+      markerSlot: railMarkerSlot(candles, event.openTime ?? event.closeTime, sessionView),
+    });
+  };
+
+  add({
+    id: `anchor-${snapshot.categoryAnchor.auditId}`,
+    kind: "found",
+    label: snapshot.categoryAnchor.label,
+    shortLabel: railShortLabel("found"),
+    detail: snapshot.categoryAnchor.detail,
+    openTime: snapshot.categoryAnchor.openTime,
+    closeTime: snapshot.categoryAnchor.closeTime,
+    price: snapshot.categoryAnchor.price,
+    visibility: snapshot.categoryAnchor.visibility,
+  });
+
+  for (const related of snapshot.categoryAnchor.relatedCandles) {
+    add({
+      id: `anchor-${related.role}-${related.openTime}`,
+      kind: related.role,
+      label: `${related.role === "evaluation" ? "Evaluation" : related.role[0]!.toUpperCase() + related.role.slice(1)} candle`,
+      shortLabel: railShortLabel(related.role),
+      detail: `${related.visibility} related candle`,
+      openTime: related.openTime,
+      closeTime: related.closeTime,
+      price: related.price,
+      visibility: related.visibility,
+    });
+  }
+
+  for (const tradeEvent of snapshot.tradeEvents) {
+    const kind = railKindForTradeEvent(tradeEvent);
+    add({
+      id: `trade-${tradeEvent.id}`,
+      kind,
+      label: tradeEvent.label,
+      shortLabel: railShortLabel(kind, tradeEvent.event),
+      detail: tradeEvent.detail,
+      openTime: tradeEvent.openTime,
+      closeTime: tradeEvent.closeTime,
+      price: tradeEvent.modeledPrice ?? tradeEvent.triggerPrice,
+      visibility: tradeEvent.visibility,
+    });
+  }
+
+  for (const annotation of snapshot.annotations) {
+    if (!annotation.available) continue;
+    const duplicateEventIds = ["patience-candle", "immediate-trigger", "entry-trigger", "modeled-fill"];
+    if (duplicateEventIds.includes(annotation.id)) continue;
+    const kind: EventRailEventKind = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop"
+      ? "invalidation"
+      : annotation.id === "target"
+        ? "target"
+        : annotation.id === "runner-threshold"
+          ? "runner"
+          : annotation.kind === "candle"
+            ? "supporting"
+            : "supporting";
+    if (annotation.kind !== "candle" && !["strategy-stop", "catastrophe-stop", "target", "runner-threshold"].includes(annotation.id)) continue;
+    add({
+      id: `annotation-${annotation.id}`,
+      kind,
+      label: annotation.label,
+      shortLabel: railShortLabel(kind),
+      detail: annotation.detail,
+      openTime: annotation.openTime,
+      closeTime: annotation.closeTime,
+      price: annotation.price,
+      visibility: annotation.visibility,
+    });
+  }
+
+  return events;
+}
+
+function eventTime(event: EventRailEvent): number {
+  return timestamp(event.openTime ?? event.closeTime);
+}
+
+function eventLabelWidth(event: EventRailEvent): number {
+  return Math.max(58, Math.min(176, 25 + event.label.length * 5.4));
+}
+
+function intervalsOverlap(firstStart: number, firstEnd: number, secondStart: number, secondEnd: number, gap: number): boolean {
+  return firstStart < secondEnd + gap && secondStart < firstEnd + gap;
+}
+
+export function layoutEventRail(
+  events: readonly EventRailEvent[],
+  options: EventRailLayoutOptions = {},
+): EventRailLayout {
+  const left = options.left ?? CHART_LEFT;
+  const right = options.right ?? CHART_WIDTH - CHART_RIGHT - 8;
+  const slotCount = Math.max(options.slotCount ?? PRIMARY_SLOT_COUNT, 1);
+  const cursorWidth = options.cursorWidth ?? 124;
+  const laneCount = Math.max(options.laneCount ?? CHART_EVENT_RAIL_LANE_COUNT, 1);
+  const laneTop = options.laneTop ?? CHART_EVENT_RAIL_TOP + 23;
+  const laneHeight = options.laneHeight ?? CHART_EVENT_RAIL_LANE_HEIGHT;
+  const labelGap = options.labelGap ?? 8;
+  const cursorX = options.cursorX;
+  const cursorStart = cursorX == null ? Number.POSITIVE_INFINITY : cursorX - cursorWidth / 2;
+  const cursorEnd = cursorX == null ? Number.NEGATIVE_INFINITY : cursorX + cursorWidth / 2;
+  const occupied: Array<Array<{ start: number; end: number }>> = Array.from({ length: laneCount }, () => []);
+  const sorted = [...events].sort((first, second) =>
+    eventTime(first) - eventTime(second)
+    || first.priority - second.priority
+    || first.id.localeCompare(second.id));
+  const placed = sorted.map((event, order) => {
+    const markerX = event.markerSlot == null
+      ? right
+      : left + ((event.markerSlot + 0.5) / slotCount) * (right - left);
+    const labelWidth = eventLabelWidth(event);
+    const labelX = Math.max(left, Math.min(markerX - labelWidth / 2, right - labelWidth));
+    const labelStart = labelX;
+    const labelEnd = labelX + labelWidth;
+    let lane = -1;
+    for (let candidate = 0; candidate < laneCount; candidate += 1) {
+      const cursorConflict = cursorX != null && intervalsOverlap(labelStart, labelEnd, cursorStart, cursorEnd, labelGap);
+      const labelConflict = occupied[candidate]!.some((interval) => intervalsOverlap(labelStart, labelEnd, interval.start, interval.end, labelGap));
+      if (!cursorConflict && !labelConflict) {
+        lane = candidate;
+        break;
+      }
+    }
+    const overflow = lane < 0;
+    if (overflow) lane = laneCount - 1;
+    occupied[lane]!.push({ start: labelStart, end: labelEnd });
+    return {
+      ...event,
+      order,
+      lane,
+      labelX,
+      labelY: laneTop + lane * laneHeight,
+      labelWidth,
+      markerX,
+      overflow,
+    };
+  });
+  return {
+    events: placed,
+    laneCount,
+    hasOverflow: placed.some((event) => event.overflow),
+  };
 }
 
 export function hasRepetitiveFixtureData(candles: readonly VisualValidationCandle[]): boolean {
