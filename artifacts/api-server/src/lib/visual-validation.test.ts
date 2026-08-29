@@ -91,6 +91,12 @@ test("historical visual review defaults to trade-linked samples and opts into no
   );
   assert.equal(tradeOnly.snapshots.length, 0);
   assert.equal(tradeOnly.categoryCoverage.find((item) => item.category === "strong_breakout")?.available, false);
+  const confirmedSignals = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "confirmed_signals" },
+    dataset,
+    report,
+  );
+  assert.ok(confirmedSignals.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
   const withDiagnostics = buildHistoricalVisualValidationSetFromReport(
     { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
     dataset,

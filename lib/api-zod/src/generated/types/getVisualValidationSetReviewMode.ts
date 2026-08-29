@@ -11,5 +11,6 @@ export type GetVisualValidationSetReviewMode = typeof GetVisualValidationSetRevi
 
 export const GetVisualValidationSetReviewMode = {
   trades_only: 'trades_only',
+  confirmed_signals: 'confirmed_signals',
   trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;

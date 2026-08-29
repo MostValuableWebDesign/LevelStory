@@ -7,12 +7,13 @@
  */
 
 /**
- * Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.
+ * Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.
  */
 export type VisualValidationRequestReviewMode = typeof VisualValidationRequestReviewMode[keyof typeof VisualValidationRequestReviewMode];
 
 
 export const VisualValidationRequestReviewMode = {
   trades_only: 'trades_only',
+  confirmed_signals: 'confirmed_signals',
   trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;

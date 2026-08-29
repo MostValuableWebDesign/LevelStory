@@ -4012,7 +4012,7 @@ export const GetVisualValidationSetQueryParams = zod.object({
   "inSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryInSampleDaysMax).default(getVisualValidationSetQueryInSampleDaysDefault),
   "outOfSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryOutOfSampleDaysMax).default(getVisualValidationSetQueryOutOfSampleDaysDefault),
   "seed": zod.coerce.number().min(getVisualValidationSetQuerySeedMin).max(getVisualValidationSetQuerySeedMax).default(getVisualValidationSetQuerySeedDefault),
-  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(getVisualValidationSetQueryReviewModeDefault)
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationSetQueryReviewModeDefault)
 })
 
 export const getVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4061,7 +4061,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
@@ -4242,7 +4242,7 @@ export const CreateVisualValidationSetBody = zod.object({
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4291,7 +4291,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),

@@ -45,7 +45,7 @@ export const VISUAL_VALIDATION_CATEGORIES = [
 
 export type VisualValidationCategory = typeof VISUAL_VALIDATION_CATEGORIES[number];
 export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain" | "rule_needs_clarification";
-export type VisualValidationReviewMode = "trades_only" | "trades_and_diagnostics";
+export type VisualValidationReviewMode = "trades_only" | "confirmed_signals" | "trades_and_diagnostics";
 
 export type VisualValidationRequest = {
   symbol: string;
@@ -521,6 +521,15 @@ function isStrongBreakout(record: BacktestAuditRecord): boolean {
     "TRIGGER_CANDLE_ACTIVE",
     "ENTRY_TRIGGERED",
   ].includes(record.orbState);
+}
+
+function hasConfirmedSignal(record: BacktestAuditRecord): boolean {
+  return isStrongBreakout(record) || [
+    "PATIENCE_CANDLE_VALID",
+    "TRIGGER_CANDLE_ACTIVE",
+    "ENTRY_BUFFER_REACHED",
+    "ENTRY_TRIGGERED",
+  ].includes(record.patienceState);
 }
 
 function hasTrendAlignedPatience(record: BacktestAuditRecord): boolean {
@@ -1037,7 +1046,9 @@ export function buildHistoricalVisualValidationSetFromReport(
     const trade = matchingTrade(audit, report.trades);
     return categoriesFor(audit, trade)
       .map((category) => ({ audit, trade, category }))
-      .filter((candidate) => mode === "trades_and_diagnostics" || candidate.trade !== null)
+      .filter((candidate) => mode === "trades_and_diagnostics"
+        || candidate.trade !== null
+        || (mode === "confirmed_signals" && hasConfirmedSignal(candidate.audit)))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles) !== null);
   });
   const snapshots = VISUAL_VALIDATION_CATEGORIES.flatMap((category, categoryIndex) => {

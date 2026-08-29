@@ -38,7 +38,9 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /data-testid="no-entry-marker"/);
   assert.doesNotMatch(page, /OPENING RANGE/);
   assert.match(page, /data-testid="compact-coverage-details"/);
-  assert.match(page, /data-testid="coverage-selected-dates"/);
+  assert.match(page, /data-testid="generated-sample-date"/);
+  assert.match(page, /confirmed_signals/);
+  assert.doesNotMatch(page, /data-testid="category-coverage-summary"/);
   assert.match(page, /previous-session-high/);
   assert.match(page, /two-sessions-high/);
   assert.match(page, /pointerEvents="none"/);

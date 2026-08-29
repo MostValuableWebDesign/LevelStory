@@ -31,6 +31,6 @@ export interface VisualValidationRequest {
   premarketAvailable?: boolean;
   /** Historical Databento is the default; simulated fixtures are an explicit testing option. */
   source?: VisualValidationRequestSource;
-  /** Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence. */
+  /** Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. */
   reviewMode?: VisualValidationRequestReviewMode;
 }

@@ -478,11 +478,12 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
         </select>
       </Field>
       <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Trades-only keeps the main room focused on trade-linked evidence. The diagnostics option adds a separate, collapsed no-entry section for explicit rule inspection." /></span>}>
-        <select className="field" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value as "trades_only" | "trades_and_diagnostics")} data-testid="select-visual-review-mode">
+        <select className="field" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value as "trades_only" | "confirmed_signals" | "trades_and_diagnostics")} data-testid="select-visual-review-mode">
           <option value="trades_only">Trades only · default</option>
+          <option value="confirmed_signals">Confirmed signals · may be unfinalized</option>
           <option value="trades_and_diagnostics">Trades + no-entry diagnostics</option>
         </select>
-        <span className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Historical mode filters no-entry samples unless diagnostics are explicitly enabled." : "Simulated fixtures remain available for deterministic contract testing."}</span>
+        <span className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Historical mode filters no-entry samples unless confirmed signals or diagnostics are explicitly enabled." : "Simulated fixtures remain available for deterministic contract testing."}</span>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
@@ -535,7 +536,6 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
   const historical = data.source === "historical_databento";
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
-  const selectedDates = [...new Set(data.snapshots.map((snapshot) => snapshot.tradingDate))].sort();
   const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
   const isAvailable = (category: VisualValidationCategory) => {
     const item = coverageFor(category);
@@ -553,13 +553,7 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
   const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
   const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Choose the story to inspect" right={<span className="mono text-[10px] text-muted-foreground">{tradeCategories.filter((category) => isAvailable(category.value)).length} of {tradeCategories.length} trade categories</span>} />
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-accent/8 px-5 py-3 text-[10px] text-muted-foreground sm:px-6" data-testid="category-coverage-summary">
-      <span className="font-semibold text-foreground">{tradeCategories.filter((category) => isAvailable(category.value)).length} trade categories available</span>
-      <span>{tradeCategories.filter((category) => !isAvailable(category.value)).length} not found in this range</span>
-      <span className="mono ml-auto">{data.snapshots.length} snapshots · {historical ? "historical source" : "simulated source"}</span>
-      <span className="basis-full truncate border-t border-border/70 pt-1.5" data-testid="coverage-selected-dates"><span className="font-semibold text-foreground">Selected dates</span> · {selectedDates.length ? selectedDates.join(" · ") : "none returned"}</span>
-    </div>
+    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Choose the story to inspect" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="generated-sample-date">Generated sample date · {formatReviewTime(data.createdAt)}</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
     </div>
