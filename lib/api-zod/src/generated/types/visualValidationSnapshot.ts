@@ -8,6 +8,7 @@
 import type { VisualValidationAnnotation } from './visualValidationAnnotation';
 import type { VisualValidationCandle } from './visualValidationCandle';
 import type { VisualValidationCategory } from './visualValidationCategory';
+import type { VisualValidationCategoryAnchor } from './visualValidationCategoryAnchor';
 import type { VisualValidationCoverage } from './visualValidationCoverage';
 import type { VisualValidationCursor } from './visualValidationCursor';
 import type { VisualValidationIndicatorPoint } from './visualValidationIndicatorPoint';
@@ -42,6 +43,7 @@ export interface VisualValidationSnapshot {
   coverage: VisualValidationCoverage[];
   outcomeContextEnd: Date;
   futureCandleAccess: false;
+  categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
   machineEvidence: VisualValidationSnapshotMachineEvidence;
   review: VisualValidationSnapshotReview;

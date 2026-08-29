@@ -18,7 +18,7 @@ import type { VisualValidationCategory, VisualValidationRequest } from "./visual
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 
 const INTERVAL = 5 * 60_000;
-const CANDLE_COUNT = 40;
+const CANDLE_COUNT = 78;
 const EVALUATION_INDEX = 34;
 const PATIENCE_INDEX = 29;
 const TRIGGER_INDEX = 30;

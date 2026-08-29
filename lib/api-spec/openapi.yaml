@@ -2906,6 +2906,33 @@ components:
         visibility: { type: string, enum: [machine, human_only] }
         detail: { type: string }
       required: [id, event, label, direction, openTime, closeTime, triggerPrice, modeledPrice, contracts, visibility, detail]
+    VisualValidationRelatedCandle:
+      type: object
+      properties:
+        role: { type: string, enum: [evaluation, patience, trigger, fill, exit] }
+        openTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time }
+        price: { type: ["number", "null"] }
+        visibility: { type: string, enum: [machine, human_only] }
+      required: [role, openTime, closeTime, price, visibility]
+    VisualValidationCategoryAnchor:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/VisualValidationCategory" }
+        auditId: { type: string }
+        tradeId: { type: ["string", "null"] }
+        contractSymbol: { type: string }
+        openTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time }
+        price: { type: ["number", "null"] }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        label: { type: string }
+        detail: { type: string }
+        relatedCandles:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationRelatedCandle" }
+        visibility: { type: string, enum: [machine, human_only] }
+      required: [category, auditId, tradeId, contractSymbol, openTime, closeTime, price, direction, label, detail, relatedCandles, visibility]
     VisualValidationCoverage:
       type: object
       properties:
@@ -2971,6 +2998,7 @@ components:
           items: { $ref: "#/components/schemas/VisualValidationCoverage" }
         outcomeContextEnd: { type: string, format: date-time }
         futureCandleAccess: { type: boolean, enum: [false] }
+        categoryAnchor: { $ref: "#/components/schemas/VisualValidationCategoryAnchor" }
         annotations:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationAnnotation" }
@@ -2984,7 +3012,7 @@ components:
             note: { type: ["string", "null"] }
             reviewedAt: { type: ["string", "null"], format: date-time }
           required: [status, note, reviewedAt]
-      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, annotations, machineEvidence, review]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
       properties:

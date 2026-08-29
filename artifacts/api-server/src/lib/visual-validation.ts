@@ -108,6 +108,29 @@ export type VisualValidationTradeEvent = {
   detail: string;
 };
 
+export type VisualValidationRelatedCandle = {
+  role: "evaluation" | "patience" | "trigger" | "fill" | "exit";
+  openTime: string;
+  closeTime: string;
+  price: number | null;
+  visibility: "machine" | "human_only";
+};
+
+export type VisualValidationCategoryAnchor = {
+  category: VisualValidationCategory;
+  auditId: string;
+  tradeId: string | null;
+  contractSymbol: string;
+  openTime: string;
+  closeTime: string;
+  price: number | null;
+  direction: "long" | "short" | null;
+  label: string;
+  detail: string;
+  relatedCandles: VisualValidationRelatedCandle[];
+  visibility: "machine" | "human_only";
+};
+
 export type VisualValidationCoverage = {
   session: "primary" | "full_regular";
   expectedCandleCount: number;
@@ -150,6 +173,7 @@ export type VisualValidationSnapshot = {
   coverage: VisualValidationCoverage[];
   outcomeContextEnd: string;
   futureCandleAccess: false;
+  categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
   machineEvidence: {
     audit: BacktestAuditRecord;
@@ -327,6 +351,146 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
       && exactPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue);
   });
   return causalMatches.length === 1 ? causalMatches[0]! : null;
+}
+
+type AnchorEvent = {
+  role: VisualValidationRelatedCandle["role"];
+  openTime: string | null;
+  closeTime: string | null;
+  price: number | null;
+};
+
+function rawCandleForTimestamp(
+  candles: readonly SimulatedFuturesCandle[],
+  value: string | null | undefined,
+): SimulatedFuturesCandle | null {
+  const target = value ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(target)) return null;
+  return candles.find((candle) => candle.contractSymbol
+    && (candle.openTime === target || candle.closeTime === target)) ?? null;
+}
+
+function rawCandleForOpenTime(
+  candles: readonly SimulatedFuturesCandle[],
+  value: string | null | undefined,
+): SimulatedFuturesCandle | null {
+  const target = value ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(target)) return null;
+  return candles.find((candle) => candle.openTime === target) ?? null;
+}
+
+function auditEvent(
+  role: AnchorEvent["role"],
+  openTime: string | null | undefined,
+  closeTime: string | null | undefined,
+  price: number | null,
+): AnchorEvent {
+  return { role, openTime: openTime ?? null, closeTime: closeTime ?? null, price };
+}
+
+function categoryAnchorEvent(
+  category: VisualValidationCategory,
+  audit: BacktestAuditRecord,
+  trade: BacktestTrade | null,
+): AnchorEvent {
+  const evaluationClose = new Date(Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000).toISOString();
+  const evaluation = auditEvent("evaluation", audit.evaluatedCandleOpenTime, evaluationClose, audit.entryTriggerPrice);
+  const patience = auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close"));
+  const trigger = auditEvent("trigger", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice);
+  const fillTime = audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime ?? null;
+  const fill = auditEvent("fill", fillTime, fillTime, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null);
+  const exitOpen = audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime ?? null;
+  const exitClose = audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime ?? null;
+  const exit = auditEvent("exit", exitOpen, exitClose, trade?.exitPrice ?? audit.targetPrice);
+  if (category === "bullish_patience_candle" || category === "bearish_patience_candle") return patience;
+  if (category === "strong_breakout" || category === "qualified_trade") return trigger;
+  if (category === "stop_exit" || category === "target_exit" || category === "runner_exit") return exit;
+  return evaluation;
+}
+
+const anchorLabels: Record<VisualValidationCategory, string> = {
+  qualified_trade: "Qualified trade found",
+  rejected_setup: "Rejected setup found",
+  bullish_patience_candle: "Bullish patience candle found",
+  bearish_patience_candle: "Bearish patience candle found",
+  weak_orb_probe: "Weak ORB probe found",
+  strong_breakout: "Strong breakout found",
+  pullback: "Pullback interaction found",
+  consolidation: "Consolidation setup found",
+  ambiguous_candle: "Ambiguous candle found",
+  stop_exit: "Stop exit found",
+  target_exit: "Target exit found",
+  runner_exit: "Runner exit found",
+};
+
+function anchorDetail(category: VisualValidationCategory, audit: BacktestAuditRecord): string {
+  if (category === "bullish_patience_candle" || category === "bearish_patience_candle") {
+    return `${audit.direction === "long" ? "Bullish" : "Bearish"} patience candle from the immutable audit record.`;
+  }
+  if (category === "weak_orb_probe") return "ORB probe and wait state from the immutable audit record.";
+  if (category === "strong_breakout") return "Confirmed breakout event from the immutable audit record.";
+  if (category === "pullback") return "Mapped pullback interaction from the immutable audit record.";
+  if (category === "consolidation") return "Completed consolidation state from the immutable audit record.";
+  if (category === "ambiguous_candle") return audit.ambiguityLabels.join(", ") || "Ambiguity event from the immutable audit record.";
+  if (category === "stop_exit" || category === "target_exit" || category === "runner_exit") {
+    return `${category.replaceAll("_", " ")} outcome linked to the exact exit candle.`;
+  }
+  return audit.rejectionSummary ?? audit.decision;
+}
+
+function resolvedAnchorCandle(
+  event: AnchorEvent,
+  candles: readonly SimulatedFuturesCandle[],
+): SimulatedFuturesCandle | null {
+  return rawCandleForOpenTime(candles, event.openTime)
+    ?? rawCandleForTimestamp(candles, event.closeTime);
+}
+
+export function buildCategoryAnchor(
+  category: VisualValidationCategory,
+  audit: BacktestAuditRecord,
+  trade: BacktestTrade | null,
+  candles: readonly SimulatedFuturesCandle[],
+): VisualValidationCategoryAnchor | null {
+  const contractCandles = candles.filter((candle) => candle.contractSymbol === audit.contractSymbol && candle.isComplete);
+  const anchorEvent = categoryAnchorEvent(category, audit, trade);
+  const anchorCandle = resolvedAnchorCandle(anchorEvent, contractCandles);
+  if (!anchorCandle) return null;
+  const relatedEvents = [
+    auditEvent("evaluation", audit.evaluatedCandleOpenTime, null, audit.entryTriggerPrice),
+    auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close")),
+    auditEvent("trigger", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice),
+    auditEvent("fill", audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime, null, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null),
+    auditEvent("exit", audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime, audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime, trade?.exitPrice ?? audit.targetPrice),
+  ];
+  const evaluationClose = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
+  const relatedCandles = relatedEvents.flatMap((event) => {
+    const candle = resolvedAnchorCandle(event, contractCandles);
+    if (!candle) return [];
+    const openTime = new Date(candle.openTime).toISOString();
+    const closeTime = new Date(candle.closeTime).toISOString();
+    return [{
+      role: event.role,
+      openTime,
+      closeTime,
+      price: event.price ?? candle.close,
+      visibility: candle.openTime <= evaluationClose ? "machine" as const : "human_only" as const,
+    }];
+  }).filter((event, index, values) => values.findIndex((candidate) => candidate.role === event.role) === index);
+  return {
+    category,
+    auditId: audit.id,
+    tradeId: trade?.id ?? null,
+    contractSymbol: audit.contractSymbol,
+    openTime: new Date(anchorCandle.openTime).toISOString(),
+    closeTime: new Date(anchorCandle.closeTime).toISOString(),
+    price: anchorEvent.price ?? anchorCandle.close,
+    direction: audit.direction,
+    label: anchorLabels[category],
+    detail: anchorDetail(category, audit),
+    relatedCandles,
+    visibility: anchorCandle.openTime <= evaluationClose ? "machine" : "human_only",
+  };
 }
 
 function isStrongBreakout(record: BacktestAuditRecord): boolean {
@@ -668,7 +832,9 @@ function buildMachineSnapshot(
   const historicalCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
   const evaluationCandles = regularSessionCandlesForDate(historicalCandles, audit.tradingDate, audit.contractSymbol, calendar);
   const visibleEvaluation = visibleReplayPrefix(evaluationCandles, evaluationCloseTime);
-  const reviewTime = Math.max(evaluationCloseTime, exitTime, reviewCloseTime);
+  const regularWindow = sessionWindow(audit.tradingDate, "regular", calendar);
+  const fullRegularEnd = regularWindow?.closeTime ?? reviewCloseTime;
+  const reviewTime = Math.max(evaluationCloseTime, exitTime, reviewCloseTime, fullRegularEnd);
   const visibleReview = visibleReplayPrefix(evaluationCandles, reviewTime);
   const visiblePremarket = premarketAvailable
     ? historicalCandles
@@ -700,6 +866,8 @@ function buildMachineSnapshot(
   const machineCandles = visibleEvaluation.map(toRawCandle);
   const reviewCandles = visibleReview.map(toRawCandle);
   const premarketCandles = visiblePremarket.map(toRawCandle);
+  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles);
+  if (!categoryAnchor) throw new Error(`Category anchor could not resolve to a raw ${audit.contractSymbol} candle.`);
   const hash = createHash("sha256")
     .update(`${report.formulaHash}|${audit.id}|${category}`)
     .digest("hex")
@@ -745,6 +913,7 @@ function buildMachineSnapshot(
     coverage: buildCoverage(visibleReview, audit.tradingDate, calendar),
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
+    categoryAnchor,
     annotations: buildAnnotations(evaluationSnapshot, audit, trade),
     machineEvidence: {
       audit,
@@ -843,7 +1012,9 @@ export function buildHistoricalVisualValidationSetFromReport(
   };
   const candidates = report.audit.flatMap((audit) => {
     const trade = matchingTrade(audit, report.trades);
-    return categoriesFor(audit, trade).map((category) => ({ audit, trade, category }));
+    return categoriesFor(audit, trade)
+      .map((category) => ({ audit, trade, category }))
+      .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles) !== null);
   });
   const snapshots = VISUAL_VALIDATION_CATEGORIES.flatMap((category, categoryIndex) => {
     const candidate = candidates.find((item) => item.category === category);

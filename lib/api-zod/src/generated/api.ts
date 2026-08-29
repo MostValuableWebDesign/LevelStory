@@ -4163,6 +4163,26 @@ export const GetVisualValidationSetResponse = zod.object({
 })),
   "outcomeContextEnd": zod.coerce.date(),
   "futureCandleAccess": zod.literal(false),
+  "categoryAnchor": zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "auditId": zod.string(),
+  "tradeId": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "relatedCandles": zod.array(zod.object({
+  "role": zod.enum(['evaluation', 'patience', 'trigger', 'fill', 'exit']),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "visibility": zod.enum(['machine', 'human_only'])
+}),
   "annotations": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -4369,6 +4389,26 @@ export const CreateVisualValidationSetResponse = zod.object({
 })),
   "outcomeContextEnd": zod.coerce.date(),
   "futureCandleAccess": zod.literal(false),
+  "categoryAnchor": zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "auditId": zod.string(),
+  "tradeId": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "relatedCandles": zod.array(zod.object({
+  "role": zod.enum(['evaluation', 'patience', 'trigger', 'fill', 'exit']),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "visibility": zod.enum(['machine', 'human_only'])
+}),
   "annotations": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),

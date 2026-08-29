@@ -2978,6 +2978,71 @@ export interface VisualValidationTradeEvent {
   detail: string;
 }
 
+export type VisualValidationRelatedCandleRole = typeof VisualValidationRelatedCandleRole[keyof typeof VisualValidationRelatedCandleRole];
+
+
+export const VisualValidationRelatedCandleRole = {
+  evaluation: 'evaluation',
+  patience: 'patience',
+  trigger: 'trigger',
+  fill: 'fill',
+  exit: 'exit',
+} as const;
+
+export type VisualValidationRelatedCandleVisibility = typeof VisualValidationRelatedCandleVisibility[keyof typeof VisualValidationRelatedCandleVisibility];
+
+
+export const VisualValidationRelatedCandleVisibility = {
+  machine: 'machine',
+  human_only: 'human_only',
+} as const;
+
+export interface VisualValidationRelatedCandle {
+  role: VisualValidationRelatedCandleRole;
+  openTime: string;
+  closeTime: string;
+  /** @nullable */
+  price: number | null;
+  visibility: VisualValidationRelatedCandleVisibility;
+}
+
+/**
+ * @nullable
+ */
+export type VisualValidationCategoryAnchorDirection = typeof VisualValidationCategoryAnchorDirection[keyof typeof VisualValidationCategoryAnchorDirection] | null;
+
+
+export const VisualValidationCategoryAnchorDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type VisualValidationCategoryAnchorVisibility = typeof VisualValidationCategoryAnchorVisibility[keyof typeof VisualValidationCategoryAnchorVisibility];
+
+
+export const VisualValidationCategoryAnchorVisibility = {
+  machine: 'machine',
+  human_only: 'human_only',
+} as const;
+
+export interface VisualValidationCategoryAnchor {
+  category: VisualValidationCategory;
+  auditId: string;
+  /** @nullable */
+  tradeId: string | null;
+  contractSymbol: string;
+  openTime: string;
+  closeTime: string;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  direction: VisualValidationCategoryAnchorDirection;
+  label: string;
+  detail: string;
+  relatedCandles: VisualValidationRelatedCandle[];
+  visibility: VisualValidationCategoryAnchorVisibility;
+}
+
 export type VisualValidationCoverageSession = typeof VisualValidationCoverageSession[keyof typeof VisualValidationCoverageSession];
 
 
@@ -3055,6 +3120,7 @@ export interface VisualValidationSnapshot {
   coverage: VisualValidationCoverage[];
   outcomeContextEnd: string;
   futureCandleAccess: false;
+  categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
   machineEvidence: VisualValidationSnapshotMachineEvidence;
   review: VisualValidationSnapshotReview;

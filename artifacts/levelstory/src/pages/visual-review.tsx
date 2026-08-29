@@ -35,6 +35,7 @@ import {
 } from "@workspace/api-client-react";
 import type {
   VisualValidationAnnotation,
+  VisualValidationCategoryAnchor,
   VisualValidationCategory,
   VisualValidationDiscrepancyReport,
   VisualValidationRequest,
@@ -180,6 +181,18 @@ function annotationTone(color: VisualValidationAnnotation["color"]): string {
     blue: "hsl(204 54% 43%)",
   };
   return tones[color];
+}
+
+function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][number]["role"]): string {
+  if (role === "patience") return "hsl(var(--positive))";
+  if (role === "trigger") return "hsl(var(--accent))";
+  if (role === "fill") return "hsl(204 72% 48%)";
+  if (role === "exit") return "hsl(var(--negative))";
+  return "hsl(var(--muted-foreground))";
+}
+
+function anchorRoleLabel(role: VisualValidationCategoryAnchor["relatedCandles"][number]["role"]): string {
+  return role === "evaluation" ? "Evaluation" : role[0]!.toUpperCase() + role.slice(1);
 }
 
 function levelStroke(annotation: VisualValidationAnnotation): string {
@@ -559,6 +572,12 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
       document.removeEventListener("keydown", exitOnEscape);
     };
   }, []);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof window === "undefined") return;
+    const timer = window.setTimeout(() => frame.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    return () => window.clearTimeout(timer);
+  }, [snapshot.snapshotId]);
   const toggleFullscreen = () => {
     if (document.fullscreenElement === frameRef.current) {
       void document.exitFullscreen();
@@ -625,6 +644,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
     </div>
      {repetitive && source === "simulated" && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
+      <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}
       <div className="mb-3 grid gap-2 text-[10px] sm:grid-cols-2" data-testid="session-coverage-disclosure">
         {[primaryCoverage, fullCoverage].map((item) => item && <div key={item.session} className={`border px-3 py-2 ${item.complete ? "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.06)]" : "border-accent/30 bg-accent/8"}`}>
@@ -632,7 +652,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
           <div className="mt-1 text-muted-foreground">{item.complete ? "Complete observed coverage." : `${item.missingIntervals.length} interval${item.missingIntervals.length === 1 ? "" : "s"} missing; blank slots are intentional.`}</div>
         </div>)}
       </div>
-      <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} onReturnPrimary={() => setSessionView("primary")} />
+      <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -642,6 +662,29 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(204_72%_48%)]" />VWAP · causal</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(273_63%_58%)]" />EMA 200 · causal</span>
        <span className="mono ml-auto">5m · NY / UTC · review-bounded</span>
+    </div>
+  </div>;
+}
+
+function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnchor }) {
+  const patience = anchor.relatedCandles.find((candle) => candle.role === "patience");
+  const trigger = anchor.relatedCandles.find((candle) => candle.role === "trigger");
+  return <div className="mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3 sm:p-4" data-testid="category-anchor-banner">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><Check size={12} />Found · canonical audit anchor</div>
+        <div className="mt-1 text-sm font-bold">{anchor.label}</div>
+        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="mono text-[11px] font-bold">{formatInterval(anchor.openTime, anchor.closeTime)}</div>
+        <div className="mono mt-1 text-[10px] text-muted-foreground">{anchor.price == null ? "Price unavailable" : `${formatPriceAxisValue(anchor.price)} · ${anchor.direction ?? "direction unavailable"}`}</div>
+      </div>
+    </div>
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[hsl(var(--positive)/.2)] pt-3 text-[10px]">
+      {patience && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Patience · {formatInterval(patience.openTime, patience.closeTime)} · {patience.price == null ? "—" : formatPriceAxisValue(patience.price)}</span>}
+      {trigger && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />Trigger · {formatInterval(trigger.openTime, trigger.closeTime)} · {trigger.price == null ? "—" : formatPriceAxisValue(trigger.price)}</span>}
+      <span className="mono text-muted-foreground">audit {anchor.auditId}{anchor.tradeId ? ` · trade ${anchor.tradeId}` : ""}</span>
     </div>
   </div>;
 }
@@ -736,6 +779,7 @@ function CausalSvg({
   regularCandles,
   premarketCandles,
   sessionView,
+  focusOpenTime,
   onReturnPrimary,
 }: {
   snapshot: VisualValidationSnapshot;
@@ -743,16 +787,21 @@ function CausalSvg({
   regularCandles: SessionCandle[];
   premarketCandles: SessionCandle[];
   sessionView: SessionView;
+  focusOpenTime: string;
   onReturnPrimary: () => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
+  const interactionRef = useRef<SVGRectElement>(null);
   useEffect(() => {
-    setHoveredIndex(null);
+    const focusedIndex = findCandleIndexAtTimestamp(candles, focusOpenTime);
+    setHoveredIndex(focusedIndex >= 0 ? focusedIndex : null);
     setZoom(1);
     setPan(0);
-  }, [sessionView, premarketCandles.length]);
+    const timer = window.setTimeout(() => interactionRef.current?.focus({ preventScroll: true }), 0);
+    return () => window.clearTimeout(timer);
+  }, [candles.length, focusOpenTime, sessionView, premarketCandles.length]);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
   const height = CHART_HEIGHT;
@@ -832,6 +881,14 @@ function CausalSvg({
     ? snapshot.tradeEvents
       .filter((event) => [event.openTime, event.closeTime].includes(hoveredCandle.openTime) || [event.openTime, event.closeTime].includes(hoveredCandle.closeTime))
       .map((event) => `${event.label}${event.modeledPrice == null ? "" : ` · ${formatPriceAxisValue(event.modeledPrice)}`}`)
+    : [];
+  const hoveredAnchorEvents = hoveredCandle
+    ? [
+      ...(snapshot.categoryAnchor.openTime === hoveredCandle.openTime ? [`FOUND · ${snapshot.categoryAnchor.label}`] : []),
+      ...snapshot.categoryAnchor.relatedCandles
+        .filter((related) => related.openTime === hoveredCandle.openTime)
+        .map((related) => `${anchorRoleLabel(related.role)} candle${related.price == null ? "" : ` · ${formatPriceAxisValue(related.price)}`}`),
+    ]
     : [];
   const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
     const svgX = (clientX - rect.left) * (width / rect.width);
@@ -933,6 +990,25 @@ function CausalSvg({
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}><title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" /><rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" /><rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
       })}
+       {(() => {
+         const anchorIndex = findCandleIndexAtTimestamp(candles, snapshot.categoryAnchor.openTime);
+         if (anchorIndex < 0) return null;
+         const anchorCandle = candles[anchorIndex]!;
+         const markerSlot = getCandleSlotIndex(anchorCandle, sessionView);
+         const markerX = x(markerSlot);
+         const markerY = snapshot.categoryAnchor.price == null ? top + 28 : y(snapshot.categoryAnchor.price);
+         const color = snapshot.categoryAnchor.visibility === "human_only" ? "hsl(var(--muted-foreground))" : "hsl(var(--positive))";
+         return <g data-testid="category-anchor-marker"><title>{`${snapshot.categoryAnchor.label} · ${snapshot.categoryAnchor.detail} · ${formatCandleTime(snapshot.categoryAnchor.openTime, "America/New_York")} NY`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeWidth="2" strokeDasharray={snapshot.categoryAnchor.visibility === "human_only" ? "7 4" : "3 3"} opacity=".9" /><circle cx={markerX} cy={markerY} r="5" fill={color} stroke="hsl(var(--card))" strokeWidth="2" /><text x={markerX + 7} y={top + 31} fill={color} fontSize="9" fontWeight="700" fontFamily="DM Mono">FOUND · {snapshot.categoryAnchor.category.replaceAll("_", " ").toUpperCase()}</text></g>;
+       })()}
+       {snapshot.categoryAnchor.relatedCandles.map((related, relatedIndex) => {
+         const markerIndex = findCandleIndexAtTimestamp(candles, related.openTime);
+         if (markerIndex < 0) return null;
+         const markerX = x(getCandleSlotIndex(candles[markerIndex]!, sessionView));
+         const color = anchorTone(related.role);
+         const markerY = top + 45 + Math.min(relatedIndex, 5) * 13;
+         const markerPriceY = related.price == null ? markerY : y(related.price);
+         return <g key={`anchor-related-${related.role}`} data-testid={`category-anchor-marker-${related.role}`}><title>{`${anchorRoleLabel(related.role)} candle · ${formatInterval(related.openTime, related.closeTime)} · ${related.visibility}`}</title><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={color} strokeDasharray={related.visibility === "human_only" ? "7 4" : "2 4"} opacity=".72" /><circle cx={markerX} cy={markerPriceY} r="3.5" fill={color} /><text x={markerX + 5} y={markerY} fill={color} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{related.visibility === "human_only" ? "HUMAN · " : ""}{anchorRoleLabel(related.role).toUpperCase()}</text></g>;
+       })}
           {eventMarkers.map(({ annotation, markerSlot }, markerOrder) => {
            const markerX = x(markerSlot);
           const humanOnly = annotation.visibility === "human_only";
@@ -963,7 +1039,7 @@ function CausalSvg({
          <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
         <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
         <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
-        <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" tabIndex={0} role="application" aria-label="Interactive five-minute candle crosshair. Use left and right arrow keys to select a candle." data-testid="chart-interaction-layer"
+         <rect ref={interactionRef} x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" tabIndex={0} role="application" aria-label="Interactive five-minute candle crosshair. Use left and right arrow keys to select a candle." data-testid="chart-interaction-layer"
           onMouseMove={(event) => setIndexFromClientX(event.clientX, event.currentTarget.ownerSVGElement?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect())}
           onMouseLeave={() => setHoveredIndex(null)}
           onKeyDown={setIndexFromKeyboard}
@@ -973,7 +1049,7 @@ function CausalSvg({
        {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
      </div>
       </div>
-      <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
+       <CandleInspector inspection={hoveredDetails} activeEvents={[...hoveredAnchorEvents, ...hoveredEvents]} />
       </div>
      {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
