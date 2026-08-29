@@ -4103,7 +4103,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "closeTime": zod.coerce.date().nullable(),
   "available": zod.boolean(),
   "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
-  "detail": zod.string()
+  "detail": zod.string(),
+  "visibility": zod.enum(['machine', 'human_only'])
 })),
   "machineEvidence": zod.record(zod.string(), zod.unknown()),
   "review": zod.object({
@@ -4237,7 +4238,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "closeTime": zod.coerce.date().nullable(),
   "available": zod.boolean(),
   "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
-  "detail": zod.string()
+  "detail": zod.string(),
+  "visibility": zod.enum(['machine', 'human_only'])
 })),
   "machineEvidence": zod.record(zod.string(), zod.unknown()),
   "review": zod.object({
@@ -4308,6 +4310,7 @@ export const ExportVisualValidationDiscrepanciesResponse = zod.object({
   "formulaHash": zod.string().regex(exportVisualValidationDiscrepanciesResponseFormulaHashRegExp),
   "totalSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseTotalSnapshotsMin),
   "reviewedSnapshots": zod.number().min(exportVisualValidationDiscrepanciesResponseReviewedSnapshotsMin),
+  "reviews": zod.array(zod.record(zod.string(), zod.unknown())),
   "discrepancies": zod.array(zod.record(zod.string(), zod.unknown()))
 })
 

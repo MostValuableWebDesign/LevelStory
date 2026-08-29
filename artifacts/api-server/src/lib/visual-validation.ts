@@ -71,6 +71,7 @@ export type VisualValidationAnnotation = {
   available: boolean;
   color: "accent" | "positive" | "negative" | "muted" | "blue";
   detail: string;
+  visibility: "machine" | "human_only";
 };
 
 export type VisualValidationSnapshot = {
@@ -156,6 +157,24 @@ export type VisualValidationDiscrepancyReport = {
   formulaHash: string;
   totalSnapshots: number;
   reviewedSnapshots: number;
+  reviews: Array<{
+    snapshotId: string;
+    category: VisualValidationCategory;
+    categoryLabel: string;
+    machineLabel: string;
+    reviewerStatus: Exclude<VisualValidationReviewStatus, "unreviewed">;
+    note: string | null;
+    tradingDate: string;
+    evaluationCursor: VisualValidationSnapshot["evaluationCursor"];
+    machineEvidence: {
+      decision: string;
+      rejectionCategory: string;
+      setupType: string;
+      direction: string | null;
+      eventLabels: string[];
+      ambiguityLabels: string[];
+    };
+  }>;
   discrepancies: Array<{
     snapshotId: string;
     category: VisualValidationCategory;
@@ -235,13 +254,30 @@ function toRawCandle(candle: SimulatedFuturesCandle): VisualValidationCandle {
   };
 }
 
-function matchingTrade(record: BacktestAuditRecord, trades: readonly BacktestTrade[]): BacktestTrade | null {
-  return trades.find((trade) =>
+export function matchingTrade(record: BacktestAuditRecord, trades: readonly BacktestTrade[]): BacktestTrade | null {
+  const candidates = trades.filter((trade) =>
     trade.tradingDate === record.tradingDate
+    && trade.contractSymbol === record.contractSymbol
     && trade.setupType === record.setupType
     && trade.direction === record.direction
     && trade.period === record.period,
-  ) ?? null;
+  );
+  const causalMatches = candidates.filter((trade) => {
+    const tradeAudit = trade.audit;
+    const exactPairs: Array<[string | null, string | null]> = [
+      [record.patienceCandleOpenTime, tradeAudit?.patienceCandleOpenTime ?? null],
+      [record.patienceCandleCloseTime, tradeAudit?.patienceCandleCloseTime ?? null],
+      [record.triggerCandleOpenTime, tradeAudit?.triggerCandleOpenTime ?? null],
+      [record.triggerCandleCloseTime, tradeAudit?.triggerCandleCloseTime ?? trade.entryTime ?? null],
+      [
+        record.modeledFillObservationTime,
+        tradeAudit?.modeledFillObservationTime ?? trade.entryTime ?? null,
+      ],
+    ];
+    const sharedPairs = exactPairs.filter(([recordValue, tradeValue]) => recordValue !== null && tradeValue !== null);
+    return sharedPairs.length > 0 && sharedPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue);
+  });
+  return causalMatches.length === 1 ? causalMatches[0]! : null;
 }
 
 function isStrongBreakout(record: BacktestAuditRecord): boolean {
@@ -256,16 +292,47 @@ function isStrongBreakout(record: BacktestAuditRecord): boolean {
   ].includes(record.orbState);
 }
 
-function categoriesFor(record: BacktestAuditRecord, trade: BacktestTrade | null): VisualValidationCategory[] {
+function hasTrendAlignedPatience(record: BacktestAuditRecord): boolean {
+  const trendAligned = record.direction === "long"
+    ? /^bullish\s*:/i.test(record.trendEvidence)
+    : record.direction === "short"
+      ? /^bearish\s*:/i.test(record.trendEvidence)
+      : false;
+  return trendAligned
+    && record.patienceCandle !== null
+    && [
+      "PATIENCE_CANDLE_VALID",
+      "TRIGGER_CANDLE_ACTIVE",
+      "BREAK_DETECTED_WAITING_FOR_BUFFER",
+      "ENTRY_BUFFER_REACHED",
+      "ENTRY_TRIGGERED",
+    ].includes(record.patienceState);
+}
+
+function hasMappedPullbackEvidence(record: BacktestAuditRecord): boolean {
+  const evidence = `${record.pullbackEvidence} ${record.criticalLevelEvidence} ${record.ruleEvidence.join(" ")}`;
+  const mappedLevel = /\b(?:orb(?:\s+(?:high|low))?|vwap|(?:200\s*)?ema(?:\s*200)?|fib(?:onacci)?(?:\s+(?:0\.382|0\.5|0\.618|0\.786))?|(?:major|critical)\s+level|prior\s+(?:day|session)\s+(?:high|low)|previous\s+(?:day|session)\s+(?:high|low))\b/i.test(evidence);
+  const interaction = /\b(?:touch(?:ed)?|proxim(?:ity|al)|retest(?:ed)?|hold|reclaim(?:ed)?|consolidat(?:e|ed|ion)|interact(?:ed|ion))\b/i.test(record.pullbackEvidence);
+  return mappedLevel && interaction;
+}
+
+function hasCompletedConsolidation(record: BacktestAuditRecord): boolean {
+  const evidence = `${record.pullbackEvidence} ${record.ruleEvidence.join(" ")}`;
+  return /\bconsolidat(?:e|ed|ion)\b/i.test(evidence)
+    && /(?:\b\d+\b|completed|detected|measured|stable|expansion|window)/i.test(evidence)
+    && !/\b(?:pending|incomplete|waiting|not complete)\b/i.test(evidence);
+}
+
+export function categoriesFor(record: BacktestAuditRecord, trade: BacktestTrade | null): VisualValidationCategory[] {
   const categories: VisualValidationCategory[] = [];
   if (record.rejectionCategory === "QUALIFIED" && trade) categories.push("qualified_trade");
   if (record.rejectionReason !== null) categories.push("rejected_setup");
-  if (record.patienceCandle && record.direction === "long") categories.push("bullish_patience_candle");
-  if (record.patienceCandle && record.direction === "short") categories.push("bearish_patience_candle");
+  if (hasTrendAlignedPatience(record) && record.direction === "long") categories.push("bullish_patience_candle");
+  if (hasTrendAlignedPatience(record) && record.direction === "short") categories.push("bearish_patience_candle");
   if (record.orbState === "ORB_PROBE_WAIT" || record.orbState === "WEAK_BREAK_WAIT") categories.push("weak_orb_probe");
   if (isStrongBreakout(record)) categories.push("strong_breakout");
-  if (/pullback/i.test(record.pullbackEvidence)) categories.push("pullback");
-  if (/consolidation/i.test(`${record.pullbackEvidence} ${record.setupType} ${record.breakoutEvidence}`)) categories.push("consolidation");
+  if (hasMappedPullbackEvidence(record)) categories.push("pullback");
+  if (hasCompletedConsolidation(record)) categories.push("consolidation");
   if (record.rejectionCategory === "AMBIGUITY" || record.ambiguityLabels.length > 0) categories.push("ambiguous_candle");
   if (trade?.outcome === "strategy stop" || trade?.outcome === "catastrophe stop") categories.push("stop_exit");
   if (trade?.outcome === "target" || trade?.audit?.targetHit) categories.push("target_exit");
@@ -282,6 +349,7 @@ function annotation(
   detail: string,
   openTime: number | null = null,
   closeTime: number | null = null,
+  visibility: VisualValidationAnnotation["visibility"] = "machine",
 ): VisualValidationAnnotation {
   return {
     id,
@@ -293,11 +361,15 @@ function annotation(
     available: price !== null || openTime !== null,
     color,
     detail,
+    visibility,
   };
 }
 
 function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, trade: BacktestTrade | null): VisualValidationAnnotation[] {
   const lines: VisualValidationAnnotation[] = [];
+  const causalBoundary = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
+  const eventVisibility = (openTime: number | null): VisualValidationAnnotation["visibility"] =>
+    openTime === null || openTime <= causalBoundary ? "machine" : "human_only";
   const addLevel = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"] = "accent") => {
     lines.push(annotation(id, label, "level", price, color, detail));
   };
@@ -309,8 +381,8 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   addLevel("two-sessions-low", "Two sessions back low", snapshot.levels.dayBeforeYesterdayLow, "Low from the prior completed session.");
   addLevel("ntz-high", "NTZ high", snapshot.levels.ntzHigh, "No-trade zone upper boundary.");
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
-  addLevel("orb-high", "ORB high", snapshot.levels.openingRangeHigh, "Opening range upper boundary.");
-  addLevel("orb-low", "ORB low", snapshot.levels.openingRangeLow, "Opening range lower boundary.");
+  lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
+  lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
   addLevel("vwap", "VWAP", snapshot.indicators.vwap ?? snapshot.levels.vwap, "Session VWAP at the machine evaluation cursor.", "blue");
   addLevel("ema-200", "200 EMA", snapshot.indicators.ema200, "200-period EMA at the machine evaluation cursor.", "blue");
   for (const level of snapshot.levels.critical) addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");
@@ -329,12 +401,34 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   const triggerPrice = evidenceNumber(audit.triggerCandle, "close");
   lines.push(annotation("patience-candle", "Patience candle", "candle", patiencePrice, "positive", snapshot.patience.detail, patienceOpen, patienceClose));
   lines.push(annotation("immediate-trigger", "Immediate trigger candle", "candle", triggerPrice, "positive", "The immediate-next-candle confirmation used by the machine.", triggerOpen, triggerClose));
+  lines.push(annotation("entry-trigger", "Entry trigger", "candle", audit.entryTriggerPrice, "accent", "The buffered price trigger that authorizes the modeled entry.", triggerOpen, triggerClose));
+  const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
+  lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
   addLevel("strategy-stop", "Strategy stop", audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice, "Formula-defined thesis stop.", "negative");
   addLevel("catastrophe-stop", "Catastrophe stop", audit.catastropheStopPrice, "Hard catastrophe stop.", "negative");
   addLevel("target", "Target", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "Modeled target.", "positive");
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
+  const exitOpen = audit.exitCandleOpenTime ? Date.parse(audit.exitCandleOpenTime) : trade?.audit?.exitCandleOpenTime ? Date.parse(trade.audit.exitCandleOpenTime) : null;
+  const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade ? Date.parse(trade.exitTime) : null;
+  const eventLabels = new Set([...(audit.eventLabels ?? []), ...(trade?.audit?.eventLabels ?? [])]);
+  const stopHitTime = exitOpen ?? exitClose;
+  if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
+    lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", audit.strategyStopPrice ?? trade?.audit?.strategyStopPrice ?? null, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
+  }
+  if (eventLabels.has("CATASTROPHE_STOP_REACHED") || trade?.outcome === "catastrophe stop") {
+    lines.push(annotation("catastrophe-stop-hit", "Catastrophe stop hit", "candle", audit.catastropheStopPrice ?? trade?.audit?.catastropheStopPrice ?? null, "negative", "The catastrophe stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
+  }
+  if (eventLabels.has("TARGET_REACHED") || trade?.audit?.targetHit === true || trade?.outcome === "target") {
+    lines.push(annotation("target-hit", "Target hit", "candle", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "positive", "The modeled target was reached.", exitOpen, exitClose, eventVisibility(exitOpen)));
+  }
+  if (eventLabels.has("RUNNER_ACTIVATED") || trade?.audit?.runnerActivated === true) {
+    lines.push(annotation("runner-activation", "Runner activation", "candle", trade?.audit?.runnerReferencePrice ?? null, "positive", "The target leg completed and the runner became active.", exitOpen, exitClose, eventVisibility(exitOpen)));
+  }
+  if (eventLabels.has("RUNNER_EXITED") || trade?.audit?.runnerExited === true) {
+    lines.push(annotation("runner-exit", "Runner exit", "candle", trade?.exitPrice ?? null, "accent", "The modeled runner exited; this outcome is human-only when it occurs after the causal cursor.", exitOpen, exitClose, eventVisibility(exitOpen)));
+  }
   return lines;
 }
 
@@ -486,15 +580,16 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
   const cases = buildReportCases(request);
   const qualifiedCase = cases.find((item) => item.report.trades.length > 0);
   if (qualifiedCase?.report.trades[0]) {
+    const sourceTrade = qualifiedCase.report.trades[0];
+    const sourceAudit = qualifiedCase.report.audit.find((audit) => matchingTrade(audit, [sourceTrade])?.id === sourceTrade.id);
     for (const scenario of ["stop", "runner", "ambiguous"] as const) {
-      const dataset = mutateDeterministicScenario(qualifiedCase.dataset, qualifiedCase.report.trades[0], scenario);
+      const dataset = mutateDeterministicScenario(qualifiedCase.dataset, sourceTrade, scenario);
       const report = runCausalBacktest(
           { ...request, source: "simulated", executionMode: "quote_based_shadow" },
           undefined,
           dataset,
         );
       if (scenario === "runner") {
-        const sourceTrade = qualifiedCase.report.trades[0];
         if (!sourceTrade.audit) {
           cases.push({ dataset, report });
           continue;
@@ -519,10 +614,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
           report: {
             ...report,
             trades: report.trades.map((trade) => trade.id === sourceTrade.id ? runnerTrade : trade),
-            audit: report.audit.map((audit) => audit.tradingDate === sourceTrade.tradingDate
-              && audit.setupType === sourceTrade.setupType
-              && audit.direction === sourceTrade.direction
-              && audit.period === sourceTrade.period
+            audit: report.audit.map((audit) => audit.id === sourceAudit?.id
               ? {
                   ...audit,
                   eventLabels: [...audit.eventLabels, "RUNNER_ACTIVATED", "RUNNER_EXITED"],
@@ -531,15 +623,11 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
           },
         });
       } else if (scenario === "ambiguous") {
-        const sourceTrade = qualifiedCase.report.trades[0];
         cases.push({
           dataset,
           report: {
             ...report,
-            audit: report.audit.map((audit) => audit.tradingDate === sourceTrade.tradingDate
-              && audit.setupType === sourceTrade.setupType
-              && audit.direction === sourceTrade.direction
-              && audit.period === sourceTrade.period
+          audit: report.audit.map((audit) => audit.id === sourceAudit?.id
               ? {
                   ...audit,
                   rejectionCategory: "AMBIGUITY",

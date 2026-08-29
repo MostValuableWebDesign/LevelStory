@@ -1029,7 +1029,9 @@ function auditForEvaluation(
     breakoutEvidence: snapshot.breakout.detail,
     volumeEvidence: snapshot.volumeAnalysis.reversalWarning
       ?? (snapshot.volumeAnalysis.supportingBreakoutVolume ? "Breakout volume supported." : "Breakout volume neutral or unavailable."),
-    pullbackEvidence: snapshot.pullback.detail,
+    pullbackEvidence: snapshot.pullback.events.length
+      ? snapshot.pullback.events.map((event) => `${event.type} at ${event.level} (${event.price}): ${event.detail}`).join("; ")
+      : snapshot.pullback.detail,
     criticalLevelEvidence: snapshot.levels.critical.map((level) => `${level.name} ${level.price}`).join("; ") || "No critical level evidence.",
     trendEvidence: `${snapshot.trend.direction}: ${snapshot.trend.evidence.join("; ")}`,
     patienceState: snapshot.patience.state,

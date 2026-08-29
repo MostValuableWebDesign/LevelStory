@@ -2873,7 +2873,8 @@ components:
         available: { type: boolean }
         color: { type: string, enum: [accent, positive, negative, muted, blue] }
         detail: { type: string }
-      required: [id, label, kind, price, openTime, closeTime, available, color, detail]
+        visibility: { type: string, enum: [machine, human_only] }
+      required: [id, label, kind, price, openTime, closeTime, available, color, detail, visibility]
     VisualValidationCursor:
       type: object
       properties:
@@ -2976,10 +2977,15 @@ components:
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         totalSnapshots: { type: number, minimum: 0 }
         reviewedSnapshots: { type: number, minimum: 0 }
+        reviews:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
         discrepancies:
           type: array
           items:
             type: object
             additionalProperties: true
-      required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, discrepancies]
+      required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, reviews, discrepancies]
 

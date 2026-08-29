@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { VisualValidationDiscrepancyReportDiscrepanciesItem } from './visualValidationDiscrepancyReportDiscrepanciesItem';
+import type { VisualValidationDiscrepancyReportReviewsItem } from './visualValidationDiscrepancyReportReviewsItem';
 
 export interface VisualValidationDiscrepancyReport {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -17,5 +18,6 @@ export interface VisualValidationDiscrepancyReport {
   totalSnapshots: number;
   /** @minimum 0 */
   reviewedSnapshots: number;
+  reviews: VisualValidationDiscrepancyReportReviewsItem[];
   discrepancies: VisualValidationDiscrepancyReportDiscrepanciesItem[];
 }

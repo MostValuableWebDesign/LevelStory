@@ -7,6 +7,7 @@
  */
 import type { VisualValidationAnnotationColor } from './visualValidationAnnotationColor';
 import type { VisualValidationAnnotationKind } from './visualValidationAnnotationKind';
+import type { VisualValidationAnnotationVisibility } from './visualValidationAnnotationVisibility';
 
 export interface VisualValidationAnnotation {
   id: string;
@@ -21,4 +22,5 @@ export interface VisualValidationAnnotation {
   available: boolean;
   color: VisualValidationAnnotationColor;
   detail: string;
+  visibility: VisualValidationAnnotationVisibility;
 }

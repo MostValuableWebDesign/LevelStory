@@ -98,7 +98,7 @@ export function buildVisualValidationDiscrepancyReport(reviewSetId: string): Vis
   const stored = sets.get(reviewSetId);
   if (!stored) return null;
   stored.lastAccessedAt = Date.now();
-  const discrepancies = stored.set.snapshots.flatMap((snapshot) => {
+  const reviews = stored.set.snapshots.flatMap((snapshot) => {
     const review = stored.reviews.get(snapshot.snapshotId);
     if (!review) return [];
     return [{
@@ -120,12 +120,14 @@ export function buildVisualValidationDiscrepancyReport(reviewSetId: string): Vis
       },
     }];
   });
+  const discrepancies = reviews.filter((review) => review.reviewerStatus === "incorrect" || review.reviewerStatus === "uncertain");
   return {
     reviewSetId,
     generatedAt: new Date().toISOString(),
     formulaHash: stored.set.formulaHash,
     totalSnapshots: stored.set.snapshots.length,
     reviewedSnapshots: stored.reviews.size,
+    reviews,
     discrepancies,
   };
 }

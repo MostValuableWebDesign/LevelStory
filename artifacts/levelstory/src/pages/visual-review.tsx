@@ -220,7 +220,7 @@ export default function VisualReview() {
       const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `levelstory-discrepancies-${result.data.reviewSetId}.json`;
+      anchor.download = `levelstory-reviews-${result.data.reviewSetId}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
     });
@@ -411,13 +411,24 @@ function CausalSvg({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const boundaryX = left + Math.min(visibleAtEvaluation, candles.length) * step;
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
   const gridPrices = [max, max - span / 2, min];
+  const levelAnnotations = annotations
+    .filter((annotation) => annotation.kind !== "candle" && (annotation.visibility === "machine" || annotation.openTime === null))
+    .sort((first, second) => {
+      const firstPrimary = /^(orb-|ntz-|vwap$|ema-200$|entry-buffer|strategy-stop|catastrophe-stop|target$|runner-threshold)/i.test(first.id);
+      const secondPrimary = /^(orb-|ntz-|vwap$|ema-200$|entry-buffer|strategy-stop|catastrophe-stop|target$|runner-threshold)/i.test(second.id);
+      return Number(secondPrimary) - Number(firstPrimary);
+    })
+    .slice(0, 16);
   return <div className="w-full overflow-x-auto">
     <svg viewBox={`0 0 ${width} ${height}`} className="h-[330px] min-w-[700px] w-full" role="img" aria-label={`Causal annotated OHLCV chart for ${snapshot.categoryLabel}. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context and were never available to the strategy.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
       {gridPrices.map((price) => <g key={price}><line x1={left} x2={width - right} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="3 6" /><text x="4" y={y(price) + 4} fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{price.toFixed(2)}</text></g>)}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={plotBottom - top} fill="hsl(var(--foreground) / .035)" />
        {width - right - Math.max(boundaryX, left) >= 150 && <text x={Math.max(boundaryX, left) + 10} y={top + 18} fill="hsl(var(--muted-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono">HUMAN-ONLY OUTCOME CONTEXT</text>}
-      {annotations.filter((annotation) => annotation.price !== null).slice(0, 18).map((annotation) => <g key={annotation.id}><line x1={left} x2={width - right} y1={y(annotation.price as number)} y2={y(annotation.price as number)} stroke={annotationTone(annotation.color)} strokeWidth={annotation.kind === "price" ? 1.5 : 1} strokeDasharray={annotation.kind === "indicator" ? "2 5" : "6 4"} opacity=".76" /><text x={width - right - 4} y={y(annotation.price as number) - 4} textAnchor="end" fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{annotation.label}</text></g>)}
+       {levelAnnotations.filter((annotation) => annotation.price !== null).map((annotation) => {
+         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
+         return <g key={annotation.id}><line x1={left} x2={width - right} y1={y(annotation.price as number)} y2={y(annotation.price as number)} stroke={annotationTone(annotation.color)} strokeWidth={orb ? 2.6 : annotation.kind === "price" ? 1.6 : 1} strokeDasharray={annotation.kind === "indicator" ? "2 5" : orb ? "9 4" : "6 4"} opacity={orb ? ".98" : ".76"} /><text x={width - right - 4} y={y(annotation.price as number) - 4} textAnchor="end" fill={annotationTone(annotation.color)} fontSize={orb ? "10" : "9"} fontWeight={orb ? "700" : "400"} fontFamily="DM Mono">{annotation.label}</text></g>;
+       })}
       {candles.map((candle, index) => {
         const up = candle.close >= candle.open;
         const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))";
@@ -426,10 +437,13 @@ function CausalSvg({ snapshot }: { snapshot: VisualValidationSnapshot }) {
         const volumeHeight = Math.max((candle.volume / volumeMax) * 30, 2);
         return <g key={`${candle.openTime}-${index}`}><title>{`${formatReviewTime(candle.openTime)} · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={x(index)} x2={x(index)} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.4" /><rect x={x(index) - Math.max(step * .3, 2)} y={bodyTop} width={Math.max(step * .6, 4)} height={bodyHeight} fill={color} rx="1" /><rect x={x(index) - Math.max(step * .25, 2)} y={volumeTop + 30 - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
       })}
-      {annotations.filter((annotation) => annotation.kind === "candle" && annotation.openTime).map((annotation) => {
+       {annotations.filter((annotation) => annotation.kind === "candle" && annotation.openTime).map((annotation) => {
         const markerX = timeX(annotation.openTime);
-        if (markerX == null || markerX > boundaryX) return null;
-        return <g key={`marker-${annotation.id}`}><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={annotationTone(annotation.color)} strokeDasharray="2 4" opacity=".88" /><circle cx={markerX} cy={top + 8} r="3" fill={annotationTone(annotation.color)} /><text x={markerX + 5} y={top + 12} fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{annotation.label}</text></g>;
+         if (markerX == null) return null;
+         const humanOnly = annotation.visibility === "human_only";
+         if (humanOnly ? markerX <= boundaryX : markerX > boundaryX) return null;
+         const label = humanOnly ? `Human-only · ${annotation.label}` : annotation.label;
+         return <g key={`marker-${annotation.id}`}><line x1={markerX} x2={markerX} y1={top} y2={plotBottom} stroke={annotationTone(annotation.color)} strokeDasharray={humanOnly ? "7 4" : "2 4"} opacity={humanOnly ? ".62" : ".88"} /><circle cx={markerX} cy={top + 8} r={humanOnly ? "3.5" : "3"} fill={annotationTone(annotation.color)} /><text x={markerX + 5} y={top + 12} fill={annotationTone(annotation.color)} fontSize="9" fontFamily="DM Mono">{label}</text></g>;
       })}
       <line x1={boundaryX} x2={boundaryX} y1={12} y2={plotBottom + 12} stroke="hsl(var(--foreground))" strokeWidth="1.5" strokeDasharray="5 4" />
       <rect x={Math.min(boundaryX - 62, width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(boundaryX, width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
@@ -496,9 +510,9 @@ function SnapshotNavigator({ snapshots, active, onSelect }: { snapshots: VisualV
 
 function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
   return <Panel>
-    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Discrepancy report</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-discrepancies">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
+    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Review export</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-reviews">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
     <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Export the current set as machine-readable evidence for rule review. The report contains only persisted human judgments and their causal cursors.</div>
-    {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.discrepancies.length ? report.discrepancies.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No discrepancies have been labeled yet.</p>}</div>}</div>}
+    {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.reviews.length ? report.reviews.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No human reviews have been labeled yet.</p>}{report.discrepancies.length > 0 && <p className="text-muted-foreground">{report.discrepancies.length} incorrect or uncertain review{report.discrepancies.length === 1 ? "" : "s"} require attention.</p>}</div>}</div>}
   </Panel>;
 }
 

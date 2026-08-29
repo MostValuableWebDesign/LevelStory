@@ -2884,6 +2884,14 @@ export const VisualValidationAnnotationColor = {
   blue: 'blue',
 } as const;
 
+export type VisualValidationAnnotationVisibility = typeof VisualValidationAnnotationVisibility[keyof typeof VisualValidationAnnotationVisibility];
+
+
+export const VisualValidationAnnotationVisibility = {
+  machine: 'machine',
+  human_only: 'human_only',
+} as const;
+
 export interface VisualValidationAnnotation {
   id: string;
   label: string;
@@ -2897,6 +2905,7 @@ export interface VisualValidationAnnotation {
   available: boolean;
   color: VisualValidationAnnotationColor;
   detail: string;
+  visibility: VisualValidationAnnotationVisibility;
 }
 
 export interface VisualValidationCursor {
@@ -3029,6 +3038,8 @@ export interface VisualValidationReview {
   reviewedAt: string;
 }
 
+export type VisualValidationDiscrepancyReportReviewsItem = { [key: string]: unknown };
+
 export type VisualValidationDiscrepancyReportDiscrepanciesItem = { [key: string]: unknown };
 
 export interface VisualValidationDiscrepancyReport {
@@ -3041,6 +3052,7 @@ export interface VisualValidationDiscrepancyReport {
   totalSnapshots: number;
   /** @minimum 0 */
   reviewedSnapshots: number;
+  reviews: VisualValidationDiscrepancyReportReviewsItem[];
   discrepancies: VisualValidationDiscrepancyReportDiscrepanciesItem[];
 }
 

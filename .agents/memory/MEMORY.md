@@ -17,3 +17,4 @@
 - [Rollover acceptance windows](rollover-acceptance-windows.md) — choose the replay window around an explicit rollover boundary; latest-N date selection can otherwise hide contract isolation bugs.
 - [Constituent-minute containment](constituent-minute-containment.md) — assign multi-contract one-minute bars by contract-local enclosing candle and boundary checks, never exact five-minute opens.
 - [Sparse historical fixtures](sparse-historical-fixtures.md) — isolate synthetic trading dates when testing gap classification; inter-date gaps can be legitimately unexpected.
+- [Visual review evidence](visual-review-evidence.md) — visual labels require structured causal anchors and explicit machine versus human-only visibility.
