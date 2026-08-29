@@ -3,6 +3,8 @@ import { DEFAULT_STRATEGY_CONFIG, strategyConfig, type StrategyConfig } from "./
 import type { TeachingExample } from "@workspace/db";
 import { createMarketSnapshot } from "./market-data.js";
 
+export const PROPOSAL_VALIDATOR_VERSION = "candidate-validation-v3";
+
 type RuleField = keyof StrategyConfig;
 export type DeterministicRuleDiff = { field: RuleField; value: number | boolean };
 
@@ -36,6 +38,7 @@ export type ComparisonMetrics = {
 };
 
 export type ComparisonResult = {
+  validatorVersion: string;
   beforeMetrics: ComparisonMetrics;
   afterMetrics: ComparisonMetrics;
   inSampleMetrics: { before: ComparisonMetrics; after: ComparisonMetrics };
@@ -200,6 +203,7 @@ export function compareCandidate(teachings: TeachingExample[], diff: unknown, pa
   const datasetFingerprint = hash(teachings.map((item) => item.sourceFingerprint));
   const calendarFingerprint = hash(teachings.map((item) => item.calendarFingerprint));
   return {
+    validatorVersion: PROPOSAL_VALIDATOR_VERSION,
     beforeMetrics, afterMetrics,
     inSampleMetrics: {
       before: metrics(inSample.map(({ index }) => parentOutcomes[index]!), inSample.map(({ item }) => item)),

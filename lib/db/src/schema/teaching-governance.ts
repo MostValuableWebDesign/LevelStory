@@ -131,6 +131,7 @@ export const proposalValidationRunsTable = pgTable("levelstory_proposal_validati
   warnings: jsonb("warnings").notNull().default([]),
   formulaFingerprint: text("formula_fingerprint").notNull(),
   sourceFingerprint: text("source_fingerprint").notNull(),
+  calendarFingerprint: text("calendar_fingerprint"),
   errorMessage: text("error_message"),
   progressStage: text("progress_stage").notNull().default("queued"),
   progressPercent: integer("progress_percent").notNull().default(0),

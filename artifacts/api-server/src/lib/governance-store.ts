@@ -19,7 +19,7 @@ import type {
   VisualValidationTeachingExample,
 } from "./visual-validation.js";
 import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
-import { buildCandidateConfiguration, compareCandidate } from "./proposal-validator.js";
+import { buildCandidateConfiguration, compareCandidate, PROPOSAL_VALIDATOR_VERSION } from "./proposal-validator.js";
 import { refreshActiveShadowStrategy } from "./active-shadow-strategy.js";
 
 export const PROPOSAL_STATUSES = [
@@ -355,6 +355,22 @@ async function transition(args: {
   return updated;
 }
 
+async function requireCurrentPassedValidation(proposal: AdvisoryRuleProposal, candidateFormulaHash?: string): Promise<ProposalValidationRun> {
+  if (!proposal.validationRunId) throw new GovernanceError(409, "Revalidation required.");
+  const [run] = await db.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
+  const metrics = (run?.afterMetrics ?? {}) as { performanceMetricsAvailable?: boolean };
+  if (!run || run.status !== "passed"
+    || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+    || metrics.performanceMetricsAvailable !== true
+    || !run.candidateFormulaHash
+    || (candidateFormulaHash !== undefined && run.candidateFormulaHash !== candidateFormulaHash)
+    || !run.sourceFingerprint
+    || run.holdoutCompleted !== 1) {
+    throw new GovernanceError(409, "Revalidation required.");
+  }
+  return run;
+}
+
 export async function requestClarification(id: string, actor: GovernanceActor, clarificationRequest: string, idempotencyKey: string) {
   return transition({
     id, actor, action: "requested_clarification", toStatus: "clarification_requested",
@@ -394,21 +410,22 @@ async function runValidation(runId: string, proposalId: string, workerId: string
       warnings: result.warnings,
       formulaFingerprint,
       sourceFingerprint: result.datasetFingerprint,
+      calendarFingerprint: result.calendarFingerprint,
       parentFormulaHash: result.parentFormulaHash,
       candidateFormulaHash: result.candidateFormulaHash,
-      validationConfigFingerprint: hashJson({ mode: "focused_then_holdout", strategyKey: proposal.strategyKey }),
+      validationConfigFingerprint: hashJson({ validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", strategyKey: proposal.strategyKey }),
       holdoutCompleted: result.holdoutCompleted ? 1 : 0,
       heartbeatAt: new Date(),
       completedAt: new Date(),
       errorMessage: passed ? null : "Validation did not satisfy all deterministic comparison gates.",
     }).where(eq(proposalValidationRunsTable.id, runId));
     await db.update(advisoryRuleProposalsTable).set({ status: passed ? "validation_passed" : "validation_failed", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, proposalId));
-    await audit(proposalId, run.requestedBy, passed ? "validation_passed" : "validation_failed", "validation_running", passed ? "validation_passed" : "validation_failed", null, `validation:${runId}`, { runId });
+    await audit(proposalId, run.requestedBy, passed ? "validation_passed" : "validation_failed", "validation_running", passed ? "validation_passed" : "validation_failed", null, `validation:${runId}`, { runId, validatorVersion: PROPOSAL_VALIDATOR_VERSION, performanceMetricsAvailable: result.performanceMetricsAvailable });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Deterministic validation failed.";
     await db.update(proposalValidationRunsTable).set({ status: "failed", progressStage: "failed", progressPercent: 100, errorMessage: message, completedAt: new Date(), heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
     await db.update(advisoryRuleProposalsTable).set({ status: "validation_failed", updatedAt: new Date() }).where(eq(advisoryRuleProposalsTable.id, proposalId));
-    await audit(proposalId, run.requestedBy, "validation_failed", "validation_running", "validation_failed", message, `validation:${runId}`, { runId, error: true });
+    await audit(proposalId, run.requestedBy, "validation_failed", "validation_running", "validation_failed", message, `validation:${runId}`, { runId, validatorVersion: PROPOSAL_VALIDATOR_VERSION, error: true });
   }
 }
 
@@ -451,16 +468,17 @@ export async function requestValidation(args: {
   const evidence = allEvidence.filter((item) => item.status === "submitted" && canonicalStrategyId(item.setupClassification) === proposal.strategyKey);
   const fingerprint = args.requestFingerprint ?? hashJson({
     proposalId: args.id,
+    validatorVersion: PROPOSAL_VALIDATOR_VERSION,
     diff: proposal.deterministicRuleDiff,
     sourceTeachingIds: proposal.sourceTeachingIds,
     evidence: evidence.map((item) => [item.id, item.formulaHash, item.sourceFingerprint, item.calendarFingerprint]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    validationConfig: { mode: "focused_then_holdout", range: "bounded_default", calendarVersion: "America/New_York:contract-local" },
+    validationConfig: { validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", range: "bounded_default", calendarVersion: "America/New_York:contract-local" },
   });
   const [cached] = await db.select().from(proposalValidationRunsTable).where(and(
     eq(proposalValidationRunsTable.proposalId, args.id),
     eq(proposalValidationRunsTable.requestFingerprint, fingerprint),
   ));
-  if (cached) return cached;
+  if (cached && cached.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)) return cached;
   if (!["draft", "validation_failed", "clarification_requested"].includes(proposal.status)) {
     throw new GovernanceError(409, `Cannot validate a proposal in ${proposal.status} state.`);
   }
@@ -484,6 +502,7 @@ export async function requestValidation(args: {
 export async function approveProposal(id: string, actor: GovernanceActor, reason: string, idempotencyKey: string) {
   const proposal = await getProposal(id);
   if (proposal.createdBy === actor.id) throw new GovernanceError(403, "Proposal creators cannot approve their own proposal.");
+  await requireCurrentPassedValidation(proposal);
   return transition({
     id,
     actor,
@@ -512,7 +531,12 @@ export async function publishCandidate(id: string, actor: GovernanceActor, idemp
     if (!proposal || proposal.status !== "approved") throw new GovernanceError(409, "Only approved proposals can publish.");
     if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey) || !proposal.validationRunId) throw new GovernanceError(409, "A canonical strategy and completed validation are required.");
     const [run] = await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
-    if (!run || run.status !== "passed") throw new GovernanceError(409, "The latest validation must still be passed.");
+    if (!run || run.status !== "passed"
+      || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+      || (run.afterMetrics as { performanceMetricsAvailable?: boolean } | null)?.performanceMetricsAvailable !== true
+      || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.calendarFingerprint) {
+      throw new GovernanceError(409, "Revalidation required.");
+    }
     const [existing] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
     if (existing) return { proposal, version: existing };
     const [current] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.strategyKey, "MES_SHADOW")).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1).for("update");
@@ -547,7 +571,11 @@ export async function activateCandidate(id: string, actor: GovernanceActor, idem
     const [version] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.id, proposal.candidateVersionId ?? "")).for("update");
     if (!version || version.status !== "candidate") throw new GovernanceError(409, "Candidate strategy version is unavailable.");
     const [run] = proposal.validationRunId ? await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId)) : [];
-    if (!run || run.status !== "passed" || run.candidateFormulaHash !== version.formulaHash) throw new GovernanceError(409, "Candidate validation is stale.");
+    if (!run || run.status !== "passed"
+      || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+      || (run.afterMetrics as { performanceMetricsAvailable?: boolean } | null)?.performanceMetricsAvailable !== true
+      || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.candidateFormulaHash
+      || run.candidateFormulaHash !== version.formulaHash) throw new GovernanceError(409, "Revalidation required.");
     const active = await tx.select().from(strategyVersionsTable).where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active"))).for("update");
     for (const previous of active) await tx.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, previous.id));
     await tx.update(strategyVersionsTable).set({ status: "active", activatedBy: actor.id, activatedAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));

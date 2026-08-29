@@ -1,0 +1,86 @@
+Close the remaining governance migration and atomicity gaps. Keep this update focused and compute-efficient. Do not run a cold historical backtest, qualification batch, or index rebuild.
+
+1. Version the validator
+
+Create a constant such as:
+
+PROPOSAL_VALIDATOR_VERSION = "candidate-validation-v3"
+
+Include it in:
+
+- requestFingerprint
+- validationConfigFingerprint
+- validation result metadata
+- audit metadata
+
+Never return a cached validation run unless it was produced by the current validator version.
+
+2. Block legacy passed validations
+
+Before approve, publish, or activate, require:
+
+- validation run status is passed
+- validation version equals the current version
+- afterMetrics.performanceMetricsAvailable === true
+- candidate formula hash matches
+- source and calendar fingerprints are present
+- independent holdout completed and passed
+
+Treat older validation runs that lack these fields as stale.
+
+Do not automatically activate, publish, or delete them. Display “Revalidation required.”
+
+Existing proposals in validation_passed, approved, or candidate state must not proceed until a current validation run passes.
+
+3. Make false-positive submission atomic
+
+Move all false-positive validation into recordVisualValidationReview before mutating:
+
+- stored.reviews
+- reviewHistory
+- persistent teaching storage
+
+Require:
+
+- teaching payload exists
+- judgment is false_positive_trade
+- validation.valid is true
+- exact machine trade exists
+- strategy matches the machine trade
+- direction matches
+- entry/fill candle matches the machine trade
+- entry price matches under the applicable execution policy
+- reviewer explanation is present
+
+If any check fails, make no state change.
+
+4. Display unavailable metrics honestly
+
+When performanceMetricsAvailable is false:
+
+- show “Not evaluated” for win rate, P&L, profit factor, drawdown, completed trades, stops, targets, and runners
+- do not display numeric zero
+- show “Candidate execution replay has not been completed”
+- disable approval, publication, and activation
+
+Decision-only metrics such as trades added, removed, rejection changes, and holdout classifications may remain visible.
+
+5. Update focused tests
+
+Add/update tests proving:
+
+- legacy cached passed validation cannot approve, publish, or activate
+- validator-version changes create a new validation request
+- performanceMetricsAvailable=false blocks every governed transition
+- invalid false-positive teaching leaves no in-memory or database review
+- false-positive teaching must match the exact machine trade
+- unavailable metrics render as “Not evaluated”
+- current valid validation remains idempotent
+- activation and rollback behavior remains unchanged
+
+Update governance-store.test.ts with complete immutable candle evidence.
+
+Run only focused governance, proposal-validator, Visual Review route/store, frontend tests, typechecks, and builds.
+
+Report exact results. Do not activate a candidate during this task.
+Preserve Shadow Mode only with no live orders, paper orders, or broker integration.

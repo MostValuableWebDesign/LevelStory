@@ -91,12 +91,15 @@ export function recordVisualValidationReview(
   const stored = sets.get(reviewSetId);
   const snapshot = stored?.set.snapshots.find((item) => item.snapshotId === snapshotId);
   if (!stored || !snapshot) return null;
-  if (status === "missed_trade" && !teachingInput) throw new Error("A missed-trade teaching form is required before submission.");
+  if ((status === "missed_trade" || status === "false_positive_trade") && !teachingInput) throw new Error("A structured teaching form is required before submission.");
   if (teachingInput && teachingInput.judgment !== "missed_trade" && teachingInput.judgment !== "false_positive_trade") {
     throw new Error("Teaching judgment must be missed_trade or false_positive_trade.");
   }
   if (status === "missed_trade" && teachingInput?.judgment !== "missed_trade") {
     throw new Error("Missed trade submissions must include a missed_trade teaching judgment.");
+  }
+  if (status === "false_positive_trade" && teachingInput?.judgment !== "false_positive_trade") {
+    throw new Error("False-positive submissions must include a false_positive_trade teaching judgment.");
   }
   const previous = stored.reviews.get(snapshotId);
   const reviewId = randomUUID();
@@ -106,8 +109,16 @@ export function recordVisualValidationReview(
   if (status === "missed_trade" && teaching && !teaching.validation.valid) {
     throw new Error(`This missed-trade correction is invalid. Submit Rule needs clarification instead: ${teaching.validation.messages.join(" ")}`);
   }
-  if (status === "false_positive_trade" && !snapshot.machineEvidence.trade) {
-    throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
+  if (status === "false_positive_trade") {
+    const machineTrade = snapshot.machineEvidence.trade;
+    if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
+    if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
+    if (teaching.direction !== machineTrade.direction || teaching.entryCandleOpenTime !== machineTrade.entryTime) {
+      throw new Error("False-positive teaching must match the machine trade direction and entry candle.");
+    }
+    if (Math.abs(teaching.calculatedEntryPrice - machineTrade.entryPrice) > 0.01) {
+      throw new Error("False-positive teaching entry price must match the machine trade.");
+    }
   }
   const review: VisualValidationReview = {
     reviewId,
