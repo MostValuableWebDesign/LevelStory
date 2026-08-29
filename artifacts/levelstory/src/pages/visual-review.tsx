@@ -180,6 +180,7 @@ export default function VisualReview() {
   }, [data, reviewSetId]);
 
   useEffect(() => {
+    if (!data) return;
     if (!availableCategories.length) {
       setSelectedCategory(null);
       return;
@@ -187,7 +188,7 @@ export default function VisualReview() {
     if (!selectedCategory || !availableCategories.includes(selectedCategory)) {
       setSelectedCategory(availableCategories[0]);
     }
-  }, [availableCategories, selectedCategory]);
+  }, [availableCategories, data, selectedCategory]);
 
   useEffect(() => {
     if (!activeSnapshot) {
