@@ -1,0 +1,166 @@
+My verdict: the governance system is much improved, but I would **not use “Activate Shadow Mode” yet**. It cannot place orders, so there is no brokerage risk, but the candidate validation is not reliable enough to let it alter the formula used by future reviews and backtests.
+
+### Review verdict
+
+| Prompt | Verdict | Why |
+|---|---|---|
+| 1. Persistent teaching storage | Partial pass | Missed-trade evidence is durable, revisioned, and idempotent. False-positive teaching is still not persisted correctly. |
+| 2. Meaningful approval | Partial pass | Roles, audit records, validation states, and a persistent worker exist. The underlying comparison can still produce misleading validation results. |
+| 3. Activate Shadow Mode | Do not use yet | Activation reaches the analysis engines, but historical replay can override the activated value, and retirement can leave stale active state. |
+
+### Important findings
+
+1. False-positive teaching is lost
+
+The interface only attaches structured teaching data for `missed_trade` and `rule_needs_clarification`. Selecting `false_positive_trade` saves a review but not a permanent teaching example.
+
+See [visual-review.tsx](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/levelstory/src/pages/visual-review.tsx:409>).
+
+2. Validation can silently use simulated candles
+
+If persisted evidence lacks candle arrays, the validator calls `createMarketSnapshot` without historical candles. That function falls back to simulated data. Validation must instead fail closed with “immutable candle evidence missing.”
+
+See [proposal-validator.ts](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/proposal-validator.ts:81>).
+
+3. Performance metrics are not candidate backtest results
+
+Win rate, P&L, drawdown, and profit factor reuse the teaching example’s existing `outcomeSnapshot`. The candidate does not receive a new simulated fill and outcome replay. Therefore, these metrics do not prove what the changed rule would have produced.
+
+See [proposal-validator.ts](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/proposal-validator.ts:108>).
+
+4. The immediate-next-candle rule is not truly validated
+
+The check only confirms that both timestamps exist. It does not prove the entry candle immediately follows the patience candle by exactly five minutes.
+
+See [proposal-validator.ts](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/proposal-validator.ts:181>).
+
+5. Activated settings can be overridden during backtesting
+
+The active strategy configuration is loaded, but OHLC-mode backtests then overwrite `patienceEntryBufferTicks` with the request-level value. This means activation may affect Visual Review but not the primary historical backtest path.
+
+See [phase9.ts](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/phase9.ts:1399>).
+
+6. Retiring an active candidate is not atomic
+
+The proposal transition and strategy-version update happen separately, and the active-strategy cache is not refreshed afterward. A failure could leave inconsistent records—or the retired configuration temporarily continuing in memory.
+
+See [governance-store.ts](</Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/governance-store.ts:559>).
+
+### What is working well
+
+- Teaching records have idempotency keys, revisions, fingerprints, and supersession history.
+- Canonical strategies are attached to proposals.
+- Rule changes are typed and currently restricted to the 3-or-4-tick patience-entry buffer.
+- Validation runs are persistent and recover stale jobs.
+- Reviewer, approver, and activator routes use separate roles.
+- Publish, activation, and rollback are largely transactional and audited.
+- The active configuration is connected to market analysis and Visual Review.
+- The deployed page returned HTTP 200, while its protected API correctly returned HTTP 401 without authentication.
+- No live or paper-order path was introduced.
+
+I could not execute the archived project’s tests because `node_modules` is absent. This verdict is based on source inspection and lightweight deployment checks.
+
+### Recommended Replit prompt
+
+```text
+Complete the remaining correctness work for persistent teaching, candidate validation, and Shadow Mode activation. Keep this focused and compute-efficient. Do not run a cold 20+2 backtest, qualification batch, or historical-index rebuild.
+
+1. Persist false-positive teaching
+
+In visual-review.tsx, when status is false_positive_trade, submit a structured teaching object with judgment false_positive_trade.
+
+A false-positive teaching example must preserve:
+
+- exact machine trade ID
+- canonical strategy
+- contract and trading date
+- patience, entry, and fill candle timestamps
+- machine entry, stop, target, direction, and outcome
+- reviewer explanation
+- immutable causal candle evidence
+- formula, source, dataset, and calendar fingerprints
+- in-sample or holdout partition
+- revision and supersession history
+
+Do not convert false_positive_trade into missed_trade. Require an exact machine-qualified trade and a reviewer explanation.
+
+2. Make validation fail closed
+
+In proposal-validator.ts:
+
+- Never fall back to simulated candles when validating persisted teaching.
+- Reject evidence that does not contain immutable raw historical candles.
+- Reject missing, malformed, cross-contract, or future-visible candle evidence.
+- Do not fabricate bid, ask, bid size, or ask size from OHLC.
+- Verify that the entry candle is exactly the immediate next completed five-minute candle after the patience candle.
+- Verify the 3–4 tick entry buffer from raw MES prices and direction.
+- Verify that every example belongs to the proposal’s canonical strategy.
+
+3. Produce genuine candidate comparisons
+
+Run both parent and candidate formula configurations against the same immutable historical candles.
+
+For each example, record genuine before/after:
+
+- decision
+- canonical strategy
+- direction
+- patience candle
+- entry candle
+- calculated entry price
+- rejection reasons
+
+If P&L, win rate, profit factor, drawdown, or average trade is displayed, calculate it using a new deterministic candidate replay with the existing fee, slippage, stop, target, runner, and ambiguity policies.
+
+Do not reuse the original teaching outcome as the candidate result. If candidate execution cannot be modeled honestly, mark performance metrics unavailable and prevent approval.
+
+Validation must include at least one independent holdout example. Source teaching examples must not count as holdout evidence.
+
+4. Make activation consistent
+
+The activated strategy configuration must be authoritative for future Shadow Mode analysis, Visual Review, and backtests.
+
+Remove request-level overrides that silently replace an activated patienceEntryBufferTicks value, or explicitly expose an opt-in comparison override that is clearly labeled and excluded from ordinary active-formula runs.
+
+Make retire transactional with:
+
+- proposal status
+- strategy-version status
+- audit event
+- active-parent restoration when required
+
+Refresh and await the active-strategy resolver after activation, retirement, and rollback.
+
+5. Strengthen separation of duties
+
+Prevent the proposal creator from approving or activating their own proposal, even if that account has multiple roles. Preserve reviewer, approver, and activator role checks and record every attempted transition.
+
+6. Add focused tests only
+
+Add deterministic tests proving:
+
+- missed-trade and false-positive teaching both persist
+- false-positive evidence remains false_positive_trade
+- missing candle evidence fails instead of using simulation
+- immediate-next means exactly five minutes
+- candidate metrics come from candidate replay
+- activation changes an actual formula decision
+- ordinary OHLC backtesting reads the activated configuration
+- retire and rollback restore the correct version and cache
+- the proposal creator cannot self-approve or self-activate
+
+Run only focused governance, validator, active-strategy, Visual Review, typecheck, and build tests. Report exact results and remaining limitations.
+
+Do not activate any candidate as part of this task.
+Do not add live orders, paper orders, broker integration, or fabricated market data.
+```
+
+::code-comment{title="[P1] False-positive teaching is not persisted" body="Structured teaching is only attached for missed_trade and rule_needs_clarification. A false_positive_trade submission therefore saves a review without creating durable teaching evidence. Include false_positive_trade in this branch and preserve its original judgment." file="/Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/levelstory/src/pages/visual-review.tsx" start=409 end=419 priority=1}
+
+::code-comment{title="[P1] Validation can fall back to simulated data" body="When no candle arrays are found, createMarketSnapshot receives no historical feed and generates simulated candles. Governance validation should fail closed when immutable historical evidence is missing." file="/Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/proposal-validator.ts" start=81 end=97 priority=1}
+
+::code-comment{title="[P1] Candidate metrics reuse original outcomes" body="P&L metrics are copied from each teaching example's existing outcomeSnapshot whenever the candidate qualifies. This is not a candidate execution replay and can misrepresent win rate, profit factor, and drawdown." file="/Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/proposal-validator.ts" start=108 end=142 priority=1}
+
+::code-comment{title="[P1] Active configuration is overwritten" body="The active strategy config is supplied, but ohlcvEntryBufferTicks then overrides patienceEntryBufferTicks during normal OHLC replay. An activated candidate may therefore not govern historical backtests." file="/Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/phase9.ts" start=1399 end=1403 priority=1}
+
+::code-comment{title="[P1] Retirement is nontransactional and leaves stale cache" body="The proposal transition and strategy-version retirement are separate operations, and the active resolver is not refreshed. Make retirement one transaction and synchronously refresh the active strategy afterward." file="/Users/jawanhiggins/Downloads/LevelStory-main 11/artifacts/api-server/src/lib/governance-store.ts" start=559 end=562 priority=1}

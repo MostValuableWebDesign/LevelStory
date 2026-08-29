@@ -415,7 +415,9 @@ export default function VisualReview() {
         snapshotId: activeSnapshot.snapshotId,
         status,
         note: reviewNote.trim() || null,
-        ...((status === "missed_trade" || status === "rule_needs_clarification") && teachingDraft ? { teaching: teachingDraft } : {}),
+        ...((status === "missed_trade" || status === "false_positive_trade" || status === "rule_needs_clarification") && teachingDraft
+          ? { teaching: status === "false_positive_trade" ? { ...teachingDraft, judgment: "false_positive_trade" as const } : teachingDraft }
+          : {}),
       },
     }, {
       onSuccess: (saved) => {

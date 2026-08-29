@@ -1399,7 +1399,7 @@ export function runCausalBacktest(
         strategyConfigOverrides: activeShadowStrategySnapshot().config,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
-        ohlcvEntryBufferTicks: executionMode === "ohlcv_modeled" ? entryBufferTicks : undefined,
+        // The active Shadow configuration is authoritative for ordinary backtests.
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
       },
     );

@@ -82,13 +82,23 @@ function executeFormula(config: StrategyConfig, teaching: TeachingExample): Form
   const evidence = (teaching.evidenceSnapshot ?? {}) as { futureCandleAccess?: boolean; evaluationCursor?: { closeTime?: string }; machineEvidenceSnapshot?: { machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>>; evaluationCursor?: { closeTime?: string } }; machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>> };
   const validTiming = Boolean(teaching.selectedCandleTimestamp && teaching.patienceCandleTimestamp);
   const rawCandles = [...(evidence.machineEvidenceSnapshot?.premarketCandles ?? evidence.premarketCandles ?? []), ...(evidence.machineEvidenceSnapshot?.machineCandles ?? evidence.machineCandles ?? [])];
+  if (!rawCandles.length) throw new Error("Immutable candle evidence missing.");
+  if (rawCandles.some((candle) => !["bid", "ask", "bidSize", "askSize", "contractSymbol"].every((key) => key in candle))) {
+    throw new Error("Immutable quote evidence missing.");
+  }
   const candles = rawCandles.map((candle) => ({
     timestamp: Date.parse(String(candle.timestamp ?? candle.openTime)),
     openTime: Date.parse(String(candle.openTime)), closeTime: Date.parse(String(candle.closeTime)),
     open: Number(candle.open), high: Number(candle.high), low: Number(candle.low), close: Number(candle.close),
-    volume: Number(candle.volume ?? 0), bid: Number(candle.bid ?? candle.open), ask: Number(candle.ask ?? candle.close),
-    bidSize: Number(candle.bidSize ?? 0), askSize: Number(candle.askSize ?? 0), contractSymbol: String(candle.contractSymbol ?? teaching.contract), isComplete: candle.isComplete !== false,
+    volume: Number(candle.volume ?? 0), bid: Number(candle.bid), ask: Number(candle.ask),
+    bidSize: Number(candle.bidSize), askSize: Number(candle.askSize), contractSymbol: String(candle.contractSymbol), isComplete: candle.isComplete !== false,
   })).filter((candle) => Number.isFinite(candle.openTime) && Number.isFinite(candle.closeTime) && Number.isFinite(candle.open));
+  if (!candles.length || candles.some((candle) => candle.contractSymbol !== teaching.contract)) throw new Error("Immutable candle evidence is malformed or crosses contracts.");
+  const patienceTime = teaching.patienceCandleTimestamp ? Date.parse(teaching.patienceCandleTimestamp) : NaN;
+  const entryTime = teaching.selectedCandleTimestamp ? Date.parse(teaching.selectedCandleTimestamp) : NaN;
+  if (!Number.isFinite(patienceTime) || !Number.isFinite(entryTime) || entryTime - patienceTime !== 5 * 60 * 1000) {
+    throw new Error("Immediate-next candle must be exactly five minutes after the patience candle.");
+  }
   const snapshot = validTiming ? createMarketSnapshot("MES", "regular", undefined, undefined, undefined, {
     tradingDate: teaching.tradingDate,
     cursor: Date.parse(evidence.machineEvidenceSnapshot?.evaluationCursor?.closeTime ?? evidence.evaluationCursor?.closeTime ?? teaching.selectedCandleTimestamp),
