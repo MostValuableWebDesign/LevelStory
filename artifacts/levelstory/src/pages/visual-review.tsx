@@ -77,6 +77,7 @@ import {
   isOpeningRangeCompleteAtEvaluation,
   isDisplacedLabel,
   isPrimaryLevel,
+  mergeOrbNtzAnnotations,
   priceToY,
   selectSessionCandles,
   type SessionCandle,
@@ -138,8 +139,10 @@ function requestedReviewCategory(): VisualValidationCategory | null {
 }
 
 function requestedSessionView(): SessionView {
-  if (typeof window === "undefined") return "primary";
-  return new URLSearchParams(window.location.search).get("view") === "full_regular" ? "full_regular" : "primary";
+  if (typeof window === "undefined") return "full_regular";
+  const queryView = new URLSearchParams(window.location.search).get("view");
+  if (queryView === "primary" || queryView === "full_regular") return queryView;
+  return window.localStorage.getItem("levelstory.visualReviewWindow") === "primary" ? "primary" : "full_regular";
 }
 
 function requestedPremarket(): boolean {
@@ -154,6 +157,15 @@ function prettyCategory(category: string): string {
 function formatReviewTime(value: string): string {
   if (!value) return "—";
   return value.replace("T", " ").replace("Z", " UTC");
+}
+
+function formatBoundaryTime(value: string): string {
+  if (!value) return "time unavailable";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function safeValue(value: unknown): string {
@@ -192,9 +204,10 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
 
 function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
-  if (annotation.id === "vwap") return "hsl(204 72% 48%)";
-  if (annotation.id === "ema-200") return "hsl(273 63% 58%)";
-  if (annotation.id.startsWith("critical-")) return "hsl(var(--muted-foreground))";
+  if (annotation.id.startsWith("premarket-")) return "hsl(157 45% 35%)";
+  if (annotation.id === "vwap") return "hsl(5 58% 46%)";
+  if (annotation.id === "ema-200") return "hsl(145 45% 42%)";
+  if (annotation.id.startsWith("critical-") || annotation.id.includes("support") || annotation.id.includes("resistance")) return "hsl(214 37% 15%)";
   if (annotation.id === "entry-buffer") return "hsl(var(--positive))";
   if (annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop") return "hsl(var(--negative))";
   if (annotation.id === "target" || annotation.id === "runner-threshold") return "hsl(var(--positive))";
@@ -399,7 +412,7 @@ export default function VisualReview() {
                 <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
                     <SnapshotHeader snapshot={activeSnapshot} request={data.request} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)} />
-                    <Panel accent>
+                     <Panel>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} />
                     </Panel>
@@ -559,6 +572,9 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
     };
   }, []);
   useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewWindow", sessionView);
+  }, [sessionView]);
+  useEffect(() => {
     const frame = frameRef.current;
     if (!frame || typeof window === "undefined") return;
     const timer = window.setTimeout(() => frame.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
@@ -638,19 +654,22 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
           <div className="mt-1 text-muted-foreground">{item.complete ? "Complete observed coverage." : `${item.missingIntervals.length} interval${item.missingIntervals.length === 1 ? "" : "s"} missing; blank slots are intentional.`}</div>
         </div>)}
       </div>
-      <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} />
+       <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full border border-accent bg-accent/20" />primary level</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-orange-500" />ORB / NTZ boundary</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-700" />premarket</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-500" />EMA 200</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-red-600" />VWAP</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />support / resistance</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t border-dashed border-muted-foreground" />Fibonacci</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-trigger"><i className="h-2 w-2 rounded-full bg-accent" />immediate trigger</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-invalidation"><i className="h-px w-4 bg-[hsl(var(--negative))]" />invalidation / stop</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-px border-l border-dashed border-foreground" />evaluation cursor</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />Human-only outcome context</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(204_72%_48%)]" />VWAP · causal</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(273_63%_58%)]" />EMA 200 · causal</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />shaded candles · human-only outcome context</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 border border-foreground bg-card" />numbered markers · exact event occurrence</span>
        <span className="mono ml-auto">5m · NY / UTC · review-bounded</span>
     </div>
   </div>;
@@ -687,25 +706,28 @@ function formatExactVolume(value: number): string {
 }
 
 function CandleInspector({ inspection, activeEvents }: { inspection: CandleInspection | null; activeEvents: string[] }) {
-  return <section className="candle-inspector" aria-label="Selected candle inspector" data-testid="candle-inspector">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <div className="eyebrow text-muted-foreground">Candle inspector</div>
-        <h3 className="mt-1 text-xs font-bold">{inspection ? inspection.interval : "Select a five-minute candle"}</h3>
-      </div>
-      {inspection && <span className={`shrink-0 text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
-    </div>
-    {inspection ? <>
+  return <details open className="candle-inspector" aria-label="Selected candle inspector" data-testid="candle-inspector">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+      <span>
+        <span className="eyebrow block text-muted-foreground">Candle inspector</span>
+        <span className="mt-1 block text-xs font-bold">{inspection ? inspection.interval : "Select a five-minute candle"}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        {inspection && <span className={`text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
+        <span className="inspector-chevron text-muted-foreground" aria-hidden="true">⌄</span>
+      </span>
+    </summary>
+    {inspection ? <div className="inspector-content">
       <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
         {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
       </div>
-      <div className="mt-2 flex flex-nowrap items-center gap-x-4 overflow-hidden border-t border-border pt-2 text-[9px] text-muted-foreground">
+      <div className="inspector-meta mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground">
         <span><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET</span>
         <span>{inspection.utc} UTC · Exact raw OHLCV</span>
-        <span className="ml-auto"><span className="font-semibold text-foreground">Events:</span> {activeEvents.length ? activeEvents.join(" · ") : "none on this candle"}</span>
+        <span><span className="font-semibold text-foreground">Events:</span> {activeEvents.length ? activeEvents.join(" · ") : "none on this candle"}</span>
       </div>
-    </> : <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Hover a candle or focus the chart and use the arrow keys. The inspector stays outside the plot so exact prices remain readable.</p>}
-  </section>;
+    </div> : <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Hover a candle or focus the chart and use the arrow keys. The inspector stays outside the plot so exact prices remain readable.</p>}
+  </details>;
 }
 
 function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; snapshot: VisualValidationSnapshot }) {
@@ -782,6 +804,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
+  const [showRiskLevels, setShowRiskLevels] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const interactionRef = useRef<SVGRectElement>(null);
@@ -806,8 +829,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const step = plotWidth / Math.max(slotCount, 1);
   const orbCandles = regularCandles.slice(0, 3);
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
-  const annotations = snapshot.annotations.filter((annotation) => annotation.available
-    && (!["orb-high", "orb-low"].includes(annotation.id) || orbCompleteAtEvaluation));
+   const annotations = mergeOrbNtzAnnotations(snapshot.annotations.filter((annotation) => annotation.available
+     && (!["orb-high", "orb-low", "ntz-high", "ntz-low"].includes(annotation.id) || orbCompleteAtEvaluation)));
   const chartEvents = selectChartEvents(snapshot, candles, sessionView, showAllAuditEvents);
   const domain = getCandleDomain(candles);
   const priceAxis = getPriceAxis(domain);
@@ -842,7 +865,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       ? 0
       : Math.abs((first.price ?? entryReference) - entryReference) - Math.abs((second.price ?? entryReference) - entryReference))
     .slice(0, 1);
-  const primaryLevels = allLevels.filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-")).concat(relevantCritical);
+   const riskLevelIds = new Set(["entry-buffer", "strategy-stop", "catastrophe-stop"]);
+   const primaryLevels = allLevels
+     .filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-"))
+     .concat(relevantCritical)
+     .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
   const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const inRangeLevels = primaryLevels.filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max);
   const labelPositions = stackLabelPositions(inRangeLevels.map((annotation) => ({ id: annotation.id, y: y(annotation.price as number) })), top + 9, plotBottom - 5, 16);
@@ -911,15 +938,60 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showAllAuditEvents} onChange={(event) => { setShowAllAuditEvents(event.target.checked); setActiveEventId(null); }} data-testid="toggle-show-all-audit-events" />
             Show all audit events
           </label>
+           <label className="inline-flex min-h-8 items-center gap-2 border border-border bg-card px-2.5 text-[9px] font-bold uppercase tracking-[.04em]">
+             <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showRiskLevels} onChange={(event) => setShowRiskLevels(event.target.checked)} data-testid="toggle-show-risk-levels" />
+             Show planned risk levels
+           </label>
        </div>
      </div>
-       <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
+        <div className="causal-boundary-note" data-testid="causal-boundary-note">
+          <span className="boundary-notch-key" aria-hidden="true" />
+          <span><strong>Machine evaluated through {formatBoundaryTime(snapshot.evaluationCursor.closeTime)}</strong> · shaded candles after the boundary are human-only context.</span>
+        </div>
+        <section className="event-strip" aria-label="Causal event strip" data-testid="event-strip">
+          <div className="event-strip-heading">
+            <div>
+              <div className="eyebrow text-muted-foreground">Causal events</div>
+              <div className="mt-1 text-[11px] font-bold">{chartEvents.length ? "Select a numbered marker or event" : "No category events in this window"}</div>
+            </div>
+            <span className="mono shrink-0 text-[9px] text-muted-foreground">{chartEvents.length} {showAllAuditEvents ? "audit" : "category"} events</span>
+          </div>
+          {chartEvents.length > 0 && <div className="event-strip-scroll" role="list">
+            {chartEvents.map((event) => {
+              const index = markerIndex(event);
+              const selected = activeEventId === event.id || hoveredIndex === index;
+              const time = event.openTime && event.closeTime
+                ? formatInterval(event.openTime, event.closeTime)
+                : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
+              return <button
+                key={`event-strip-${event.id}`}
+                type="button"
+                role="listitem"
+                className={`event-strip-item ${selected ? "is-selected" : ""} ${event.visibility === "human_only" ? "is-human" : ""}`}
+                onMouseEnter={() => focusChartEvent(event)}
+                onFocus={() => focusChartEvent(event)}
+                onClick={() => focusChartEvent(event)}
+                aria-pressed={selected}
+                aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${time}. ${event.price == null ? "Price unavailable" : formatPriceAxisValue(event.price)}. ${event.visibility}.${index < 0 ? " No exact marker in this window." : ""}`}
+                data-testid={`event-strip-item-${event.id}`}
+              >
+                <span className="event-index-number">{event.number}</span>
+                <span className="event-strip-copy">
+                  <strong>{event.label}</strong>
+                  <span>{time} · {event.price == null ? "—" : formatPriceAxisValue(event.price)}</span>
+                </span>
+              </button>;
+            })}
+          </div>}
+        </section>
+        <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
        <div className="chart-plot-shell mt-3">
-       <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
-      <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
+        <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The boundary notch identifies the last candle visible to the machine; shaded candles after it are human-only context.`}>
+       <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
         {chartEvents.map((event) => {
           const index = markerIndex(event);
-          const slot = event.markerSlot ?? Math.max(slotCount - 1, 0);
+          if (index < 0) return null;
+          const slot = event.markerSlot ?? getCandleSlotIndex(candles[index]!, sessionView);
           const eventX = left + slot * step + step / 2;
           const eventY = markerY(event);
           const color = event.visibility === "human_only"
@@ -932,7 +1004,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           const eventFocus = () => focusChartEvent(event);
           return <g key={`marker-${event.id}`} data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={eventFocus} onFocus={eventFocus} onClick={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
             <title>{`#${event.number} ${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
-            {index >= 0 && <line x1={eventX} x2={eventX} y1={top - 4} y2={eventY} stroke={color} strokeWidth={active ? "1.7" : "1"} strokeDasharray={event.visibility === "human_only" ? "6 4" : "2 3"} opacity={active ? ".95" : ".58"} />}
             <circle cx={eventX} cy={eventY} r={active ? "6" : "4.5"} fill={event.visibility === "human_only" ? "hsl(var(--muted))" : "hsl(var(--card))"} stroke={color} strokeWidth={active ? "2" : "1.3"} />
             <text x={eventX} y={eventY + 3} textAnchor="middle" fill={color} fontSize="7.5" fontWeight="700" fontFamily="DM Mono">{event.number}</text>
           </g>;
@@ -953,13 +1024,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         <text x={openingRangeX + openingRangeWidth / 2} y={top + 15} textAnchor="middle" fill="hsl(var(--accent))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">OPENING RANGE</text>
       </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
-       {width - right - Math.max(boundaryX, left) >= 150
-         ? <text x={Math.max(boundaryX, left) + 10} y={top + 20} fill="hsl(var(--muted-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono" data-testid="human-only-label">HUMAN-ONLY OUTCOME CONTEXT</text>
-         : <text x={Math.min(Math.max(boundaryX + 11, left + 11), width - right - 8)} y={(top + volumeTop) / 2} transform={`rotate(90 ${Math.min(Math.max(boundaryX + 11, left + 11), width - right - 8)} ${(top + volumeTop) / 2})`} fill="hsl(var(--muted-foreground))" fontSize="8" fontWeight="700" fontFamily="DM Mono" data-testid="human-only-label">HUMAN-ONLY</text>}
-       {indicatorPath("vwap", "machine") && <path d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(204 72% 48%)" strokeWidth="2" data-testid="indicator-curve-vwap" />}
-       {indicatorPath("vwap", "human_only") && <path d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(204 72% 48%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-vwap-human-only" />}
-       {indicatorPath("ema200", "machine") && <path d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(273 63% 58%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
-       {indicatorPath("ema200", "human_only") && <path d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(273 63% 58%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
+        <path d={`M ${Math.max(boundaryX - 6, left)} ${top} L ${boundaryX} ${top - 8} L ${Math.min(boundaryX + 6, plotRight)} ${top} Z`} fill="hsl(var(--foreground))" data-testid="causal-boundary-notch" />
+        {indicatorPath("vwap", "machine") && <path d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" data-testid="indicator-curve-vwap" />}
+        {indicatorPath("vwap", "human_only") && <path d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-vwap-human-only" />}
+        {indicatorPath("ema200", "machine") && <path d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
+        {indicatorPath("ema200", "human_only") && <path d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
       {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
@@ -975,7 +1044,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           const displaced = isDisplacedLabel(labelY, y(annotation.price));
           return <g key={annotation.id} data-testid={`chart-level-${annotation.id}`}>
             <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} />
-            {displaced && <line x1={plotRight} x2={axisLabelX} y1={y(annotation.price)} y2={labelY} stroke={stroke} strokeWidth="1" opacity=".75" data-testid={`chart-level-connector-${annotation.id}`} />}
             <rect x={axisLabelX} y={labelY - 10} width={labelWidth} height="18" rx="2" fill="hsl(var(--card) / .94)" stroke={stroke} strokeOpacity=".32" />
             <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical ? "700" : "500"} fontFamily="DM Mono">{annotation.label}</text>
             <text x={width - 11} y={labelY + 3} textAnchor="end" fill={stroke} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{formatPriceAxisValue(annotation.price)}</text>
@@ -996,11 +1064,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}><title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" /><rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" /><rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
       })}
-       <line x1={boundaryX} x2={boundaryX} y1={12} y2={plotBottom + 12} stroke="hsl(var(--foreground))" strokeWidth="1.5" strokeDasharray="5 4" data-testid="evaluation-cursor" />
-       <rect x={Math.min(Math.max(boundaryX - 62, left), width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(Math.max(boundaryX, left + 62), width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
+        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
         {hoveredCandle && <g pointerEvents="none" data-testid="chart-crosshair">
-           <line x1={x(hoveredSlot)} x2={x(hoveredSlot)} y1={top} y2={volumeTop + CHART_VOLUME_HEIGHT} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1.2" />
           <line x1={left} x2={plotRight} y1={y(hoveredCandle.close)} y2={y(hoveredCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
            <circle cx={x(hoveredSlot)} cy={y(hoveredCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
         </g>}
@@ -1013,40 +1079,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           onMouseLeave={() => setHoveredIndex(null)}
           onKeyDown={setIndexFromKeyboard}
         />
-     </svg>
-      <section className="event-index mt-3" data-testid="event-index">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2">
-          <div>
-            <div className="eyebrow text-muted-foreground">Causal event index</div>
-            <h3 className="mt-1 text-sm font-bold">Events on this chart</h3>
-          </div>
-          <span className="mono text-[9px] text-muted-foreground">{chartEvents.length} {showAllAuditEvents ? "audit events" : "category events"}</span>
-        </div>
-        <ol className="mt-2 divide-y divide-border border border-border bg-card">
-          {chartEvents.length ? chartEvents.map((event) => {
-            const index = markerIndex(event);
-            const selected = activeEventId === event.id;
-            const time = event.openTime && event.closeTime
-              ? formatInterval(event.openTime, event.closeTime)
-              : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
-            return <li key={`event-list-${event.id}`}>
-              <button type="button" className={`event-index-row ${selected ? "is-selected" : ""}`} onMouseEnter={() => focusChartEvent(event)} onFocus={() => focusChartEvent(event)} onClick={() => focusChartEvent(event)} aria-current={selected ? "true" : undefined} data-testid={`event-index-item-${event.id}`}>
-                <span className={`event-index-number ${event.visibility === "human_only" ? "is-human" : ""}`}>{event.number}</span>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-[11px] font-bold">{event.label}</span>
-                  <span className="mt-1 block truncate text-[10px] leading-4 text-muted-foreground">{event.detail}</span>
-                </span>
-                <span className="event-index-meta">
-                  <span className="mono whitespace-nowrap">{time}</span>
-                  <span className="mono whitespace-nowrap">{event.price == null ? "—" : formatPriceAxisValue(event.price)}</span>
-                  <span className={event.visibility === "human_only" ? "text-muted-foreground" : "text-[hsl(var(--positive))]"}>{event.visibility === "human_only" ? "Human-only" : "Machine-visible"}</span>
-                </span>
-              </button>
-              {index < 0 && <span className="sr-only">This event has no exact candle marker in the selected window.</span>}
-            </li>;
-          }) : <li className="px-4 py-5 text-xs text-muted-foreground">No category-relevant audit events resolve inside this chart window.</li>}
-        </ol>
-      </section>
+      </svg>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
        {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
      </div>

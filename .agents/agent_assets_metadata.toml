@@ -84,3 +84,59 @@ mtime_ms = 1787971310144
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/d8351cfa-c459-4568-83d2-d3cb026de4a0/d8430d30-4d3f-4d46-808b-9dd7f1fdc119"
 storage_version_token = "1787971333631962"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "FXc34AFrLcw6n3qfbaaev"
+uri = "file://screenshots/visual-review-chart-evidence-refined-full-desktop.jpg"
+type = "image"
+title = "Refined visual review chart — desktop"
+description = "Full-session desktop verification showing the compact event strip, content-sized inspector, causal boundary notch, combined ORB / NTZ levels, and marker-only evidence."
+logical_id = "6f5d9ca3-4b87-4acd-91bb-09bf8992af43"
+content_hash = "sha256:9960068bc25acc8680fdd708fa378e2c7f9fba3ff078dc106218c790911a163c"
+size = 335981
+mtime_ms = 1787989257379
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/6f5d9ca3-4b87-4acd-91bb-09bf8992af43/ca83ea8c-8108-4b3b-b249-9672e4bb555c"
+storage_version_token = "1787989294996525"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "8yKhLr_P-5-vFsWQSJuuX"
+uri = "file://screenshots/visual-review-chart-evidence-refined-full-mobile.jpg"
+type = "image"
+title = "Refined visual review chart — mobile"
+description = "Mobile verification showing stacked inspector metadata, horizontally scrollable event strip, responsive controls, and the full-session chart."
+logical_id = "1e2d99bc-29b7-45f4-9bd5-7b5e5d6abc04"
+content_hash = "sha256:96293b341960e1c81b44ded29091cf6f214bc84ed027733e317dc5a176688a59"
+size = 160800
+mtime_ms = 1787989259387
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/1e2d99bc-29b7-45f4-9bd5-7b5e5d6abc04/a5ec8cfd-d85c-46c3-8912-322a1e7671ae"
+storage_version_token = "1787989295452714"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "EOlwdAh-I_LvEpuyVGZle"
+uri = "file://screenshots/visual-review-chart-evidence-refined-desktop.jpg"
+type = "image"
+title = "Refined visual review workspace — desktop"
+description = "Desktop workspace capture documenting the full regular session default and updated chart controls."
+logical_id = "8128f05a-2337-4e07-9258-122743eccd29"
+content_hash = "sha256:1a836070fb6889a0c92f39988c68e8ad1d94a66a692e5d8e3444e3295352585f"
+size = 136263
+mtime_ms = 1787989174566
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/8128f05a-2337-4e07-9258-122743eccd29/0537401a-3c67-4a48-9cbd-b57d1cedff83"
+storage_version_token = "1787989295878898"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "5EThAriclBYY-FHCHx0dr"
+uri = "file://screenshots/visual-review-chart-evidence-refined-mobile.jpg"
+type = "image"
+title = "Refined visual review workspace — mobile"
+description = "Mobile workspace capture documenting responsive page layout and chart controls."
+logical_id = "8ee672e4-b405-48b1-b204-30dab83f48ec"
+content_hash = "sha256:c9ae0eab8c16a2254941a1c84024ccc8bccfa30cf95065390d7a144f4bf09e23"
+size = 24961
+mtime_ms = 1787989176142
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/8ee672e4-b405-48b1-b204-30dab83f48ec/c01defdf-75c5-433b-9cc0-5981d7f24c63"
+storage_version_token = "1787989296484402"
+content_type = "image/jpeg"

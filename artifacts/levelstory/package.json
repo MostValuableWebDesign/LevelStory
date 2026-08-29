@@ -10,7 +10,7 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "test": "node --experimental-strip-types --test tests/cockpit-state.test.ts tests/backtest-state.test.ts vite-hosts.test.ts",
+    "test": "node --experimental-strip-types --test tests/cockpit-state.test.ts tests/backtest-state.test.ts tests/visual-review-chart.test.ts tests/visual-review-presentation.test.ts vite-hosts.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

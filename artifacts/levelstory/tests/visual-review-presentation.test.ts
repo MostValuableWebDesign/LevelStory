@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const page = readFileSync(new URL("../src/pages/visual-review.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
+const chart = readFileSync(new URL("../src/lib/visual-review-chart.ts", import.meta.url), "utf8");
+
+test("visual review presentation keeps the inspector and event strip outside the plot", () => {
+  assert.match(page, /<details open className="candle-inspector"/);
+  assert.ok(page.includes("inspector-meta"));
+  assert.match(page, /data-testid="event-strip"/);
+  assert.ok(page.indexOf('data-testid="event-strip"') < page.indexOf('className="visual-review-svg'));
+  assert.match(styles, /\.candle-inspector \{[\s\S]*?height: auto|\.candle-inspector > summary/);
+});
+
+test("visual review presentation uses the full-session default and compact causal boundary", () => {
+  assert.match(page, /return "full_regular";/);
+  assert.match(page, /levelstory\.visualReviewWindow/);
+  assert.match(page, /Full regular session: 9:30 AM–4:00 PM/);
+  assert.match(page, /data-testid="causal-boundary-note"/);
+  assert.match(page, /data-testid="causal-boundary-notch"/);
+  assert.doesNotMatch(page, /data-testid="evaluation-cursor"/);
+  assert.doesNotMatch(page, /data-testid="human-only-label"/);
+  assert.doesNotMatch(page, /chart-level-connector-/);
+});
+
+test("visual review presentation retains human-only shading and semantic level colors", () => {
+  assert.match(page, /data-testid="human-only-region"/);
+  assert.ok(chart.includes("label: `ORB / NTZ ${side}`"));
+  assert.match(page, /stroke="hsl\(5 58% 46%\)"/);
+  assert.match(page, /stroke="hsl\(145 45% 42%\)"/);
+  assert.match(page, /data-testid="toggle-show-risk-levels"/);
+  assert.match(page, /data-testid="no-entry-marker"/);
+});

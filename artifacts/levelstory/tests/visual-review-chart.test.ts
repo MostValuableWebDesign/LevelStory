@@ -19,6 +19,7 @@ import {
   getCandleGeometry,
   getEdgeIndicators,
   getSessionDomainSlotCount,
+  hasExactCandleAnchor,
   hasRepetitiveFixtureData,
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
@@ -26,6 +27,7 @@ import {
   isDisplacedLabel,
   isExactFiveMinuteCandle,
   isPrimaryLevel,
+  mergeOrbNtzAnnotations,
   priceToY,
   selectSessionCandles,
   selectChartEvents,
@@ -429,4 +431,27 @@ test("default chart events are category-relevant and numbered in stable order", 
   const all = selectChartEvents(snapshot, candles, "primary", true);
   assert.equal(all.some((event) => event.kind === "stop"), true);
   assert.deepEqual(all.map((event) => event.number), all.map((_, index) => index + 1));
+});
+
+test("ORB and NTZ aliases collapse to one labeled upper and lower boundary", () => {
+  const annotations = [
+    makeAnnotation("orb-high", 101, { label: "Opening range high" }),
+    makeAnnotation("ntz-high", 101, { label: "No-trade zone high" }),
+    makeAnnotation("orb-low", 99, { label: "Opening range low" }),
+    makeAnnotation("ntz-low", 99, { label: "No-trade zone low" }),
+    makeAnnotation("vwap", 100),
+  ];
+  const merged = mergeOrbNtzAnnotations(annotations);
+  assert.deepEqual(merged.filter((annotation) => annotation.id.startsWith("orb-")).map((annotation) => [annotation.id, annotation.label, annotation.price]), [
+    ["orb-high", "ORB / NTZ High", 101],
+    ["orb-low", "ORB / NTZ Low", 99],
+  ]);
+  assert.equal(merged.some((annotation) => annotation.id === "ntz-high" || annotation.id === "ntz-low"), false);
+  assert.equal(merged.find((annotation) => annotation.id === "vwap")?.price, 100);
+});
+
+test("planned levels without an exact candle anchor cannot become occurrence markers", () => {
+  assert.equal(hasExactCandleAnchor({ openTime: null, closeTime: null }), false);
+  assert.equal(hasExactCandleAnchor({ openTime: null, closeTime: makeCandle(1).closeTime }), true);
+  assert.equal(hasExactCandleAnchor({ openTime: makeCandle(1).openTime, closeTime: null }), true);
 });

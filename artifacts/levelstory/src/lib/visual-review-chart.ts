@@ -707,6 +707,7 @@ export function buildEventRailEvents(
 
   for (const annotation of snapshot.annotations) {
     if (!annotation.available) continue;
+    if (!hasExactCandleAnchor(annotation)) continue;
     const duplicateEventIds = ["patience-candle", "immediate-trigger", "entry-trigger", "modeled-fill"];
     if (duplicateEventIds.includes(annotation.id)) continue;
     const kind: EventRailEventKind = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop"
@@ -784,6 +785,34 @@ export function selectChartEvents(
     ? allEvents
     : allEvents.filter((event) => allowed.has(event.kind));
   return selected.map((event, index) => ({ ...event, number: index + 1 }));
+}
+
+/**
+ * ORB and NTZ are two engine-facing names for the same first-three-candle
+ * boundaries. Keep the source annotations intact and collapse only their
+ * chart presentation into one labeled pair.
+ */
+export function mergeOrbNtzAnnotations(
+  annotations: readonly VisualValidationAnnotation[],
+): VisualValidationAnnotation[] {
+  const aliases: Array<{ side: "High" | "Low"; ids: string[] }> = [
+    { side: "High", ids: ["orb-high", "ntz-high"] },
+    { side: "Low", ids: ["orb-low", "ntz-low"] },
+  ];
+  const merged = aliases.flatMap(({ side, ids }) => {
+    const source = annotations.find((annotation) => ids.includes(annotation.id) && annotation.available && annotation.price != null);
+    return source
+      ? [{ ...source, id: ids[0], label: `ORB / NTZ ${side}` }]
+      : [];
+  });
+  return [
+    ...annotations.filter((annotation) => !aliases.some(({ ids }) => ids.includes(annotation.id))),
+    ...merged,
+  ];
+}
+
+export function hasExactCandleAnchor(annotation: Pick<VisualValidationAnnotation, "openTime" | "closeTime">): boolean {
+  return Boolean(annotation.openTime || annotation.closeTime);
 }
 
 function eventTime(event: EventRailEvent): number {
