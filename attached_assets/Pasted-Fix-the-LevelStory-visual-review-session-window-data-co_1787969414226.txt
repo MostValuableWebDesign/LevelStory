@@ -1,0 +1,121 @@
+Fix the LevelStory visual-review session-window data contract.
+
+Current defect:
+Selecting “Full regular session: 9:30 AM–4:00 PM” displays only one regular candle. The screen says “1 regular candles shown.” A single 9:30 candle is stretched across the chart because the visual-validation payload ends at the 9:35 review cursor.
+
+This cannot be fixed only in the frontend. The backend must provide separate machine-visible candles and human-only review candles.
+
+Do not change the trading formula, machine decision, historical OHLCV, execution engine or causal evaluation.
+
+Required architecture:
+
+1. Separate causal data from visual outcome context
+
+Add explicit fields such as:
+
+- `machineCandles`: completed candles available at the evaluation cursor
+- `reviewCandles`: immutable historical candles available for human visual inspection
+- `evaluationCursor`
+- `outcomeContextEnd`
+- `futureCandleAccess: false`
+
+Machine calculations may access only `machineCandles`.
+
+The chart may display `reviewCandles`, but every candle after the evaluation cursor must be shaded and labeled “Human-only outcome context.”
+
+Never pass review-only candles back into strategy evaluation.
+
+2. Populate selected session windows from existing historical data
+
+Primary window:
+- 9:30 AM–1:00 PM ET
+- exactly 42 five-minute intervals when complete
+
+Full regular session:
+- 9:30 AM–4:00 PM ET
+- exactly 78 five-minute intervals when complete
+
+Premarket:
+- hidden by default
+- shown only when “Show premarket candles” is enabled
+- excluded from the regular-session candle count
+
+Do not fabricate missing candles. Preserve gaps and mark incomplete coverage.
+
+3. Correct early evaluations
+
+For a setup evaluated at 9:30 or 9:35:
+- machine-visible candles may contain only one or two regular-session candles
+- the chart should still display the selected session’s later historical candles
+- all later candles must be shaded as human-only
+- machine evidence must remain unchanged
+
+Do not stretch one candle across the entire chart.
+
+If only one machine-visible candle exists, its width should remain the normal width of one candle within the selected 42- or 78-slot time scale.
+
+4. Use a fixed time-domain scale
+
+Primary window X-axis:
+- fixed from 9:30 AM through 1:00 PM ET
+- 42 five-minute slots
+
+Full-session X-axis:
+- fixed from 9:30 AM through 4:00 PM ET
+- 78 five-minute slots
+
+Position candles according to their actual timestamps. Missing intervals must remain empty spaces.
+
+Do not calculate candle width solely from the number of candles returned.
+
+5. Defaults
+
+Set the default chart window to:
+
+“Primary trade window: 9:30 AM–1:00 PM”
+
+Do not default to the full 9:30–4:00 session.
+
+Keep these options:
+- Primary trade window: 9:30 AM–1:00 PM
+- Full regular session: 9:30 AM–4:00 PM
+- Show premarket candles
+
+6. Preserve review-cursor meaning
+
+Do not falsely move the review or evaluation cursor to 1:00 or 4:00.
+
+Use:
+- evaluation cursor = last candle available to the machine
+- outcome context end = final candle displayed for human review
+
+Show both concepts clearly in the UI.
+
+7. Focused tests
+
+Add deterministic tests proving:
+
+- 9:30 evaluation contains only causally available machine candles
+- primary visual window still contains 42 timestamp slots
+- full regular visual window contains 78 timestamp slots
+- later candles are marked human-only
+- future candles never enter machine evidence
+- a single candle is not stretched across the chart
+- missing five-minute intervals remain visible gaps
+- primary window is the default
+- dropdown selection changes the actual displayed time domain
+- America/New_York conversion remains DST-safe
+
+Verification limits:
+- Run focused visual-validation API and frontend tests.
+- Run API and frontend typechecks.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not change human judgments.
+- Restart the API only once if required for the new response schema.
+
+Provide before-and-after screenshots of this exact 9:30 rejected-setup snapshot in:
+1. Primary 9:30–1:00 view
+2. Full 9:30–4:00 view
+
+Report machine-visible candle count separately from human-only candle count.
