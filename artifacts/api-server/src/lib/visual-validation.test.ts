@@ -117,6 +117,35 @@ test("visual-validation provides twelve distinct valid five-minute MES fixtures"
   assert.ok(set.categoryCoverage.every((coverage) => coverage.available && coverage.count === 1));
 });
 
+test("visual-validation exposes separate premarket, causal indicator, coverage, and trade-event evidence", () => {
+  const set = buildVisualValidationSet(request);
+  const qualified = set.snapshots.find((snapshot) => snapshot.category === "qualified_trade");
+  const rejected = set.snapshots.find((snapshot) => snapshot.category === "rejected_setup");
+  assert.ok(qualified);
+  assert.ok(rejected);
+  assert.equal(qualified.premarketCandles.length, 66);
+  assert.equal(qualified.indicatorSeries.length, qualified.reviewCandles.length);
+  assert.ok(qualified.indicatorSeries.some((point) => point.visibility === "machine" && point.vwap !== null && point.ema200 !== null));
+  assert.ok(qualified.indicatorSeries.some((point) => point.visibility === "human_only"));
+  assert.ok(qualified.tradeEvents.some((event) => event.event === "entry"));
+  assert.ok(qualified.tradeEvents.some((event) => event.event === "target"));
+  assert.equal(rejected.tradeEvents.length, 0);
+  assert.equal(rejected.coverage.find((item) => item.session === "primary")?.expectedCandleCount, 42);
+  assert.equal(rejected.coverage.find((item) => item.session === "full_regular")?.expectedCandleCount, 78);
+  assert.equal(rejected.futureCandleAccess, false);
+});
+
+test("visual-validation can explicitly omit premarket candles without changing primary evidence", () => {
+  const withPremarket = buildVisualValidationSet(request);
+  const withoutPremarket = buildVisualValidationSet({ ...request, premarketAvailable: false });
+  assert.equal(withPremarket.snapshots[0]?.premarketCandles.length, 66);
+  assert.equal(withoutPremarket.snapshots[0]?.premarketCandles.length, 0);
+  assert.deepEqual(
+    withoutPremarket.snapshots[0]?.machineCandles,
+    withPremarket.snapshots[0]?.machineCandles,
+  );
+});
+
 test("patience fixtures align direction and category evidence", () => {
   const set = buildVisualValidationSet(request);
   const bullish = set.snapshots.find((snapshot) => snapshot.category === "bullish_patience_candle");

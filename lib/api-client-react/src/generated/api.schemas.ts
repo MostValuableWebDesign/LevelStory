@@ -2917,6 +2917,81 @@ export interface VisualValidationAnnotation {
   visibility: VisualValidationAnnotationVisibility;
 }
 
+export type VisualValidationIndicatorPointVisibility = typeof VisualValidationIndicatorPointVisibility[keyof typeof VisualValidationIndicatorPointVisibility];
+
+
+export const VisualValidationIndicatorPointVisibility = {
+  machine: 'machine',
+  human_only: 'human_only',
+} as const;
+
+export interface VisualValidationIndicatorPoint {
+  openTime: string;
+  closeTime: string;
+  /** @nullable */
+  vwap: number | null;
+  /** @nullable */
+  ema200: number | null;
+  visibility: VisualValidationIndicatorPointVisibility;
+}
+
+/**
+ * @nullable
+ */
+export type VisualValidationTradeEventDirection = typeof VisualValidationTradeEventDirection[keyof typeof VisualValidationTradeEventDirection] | null;
+
+
+export const VisualValidationTradeEventDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type VisualValidationTradeEventVisibility = typeof VisualValidationTradeEventVisibility[keyof typeof VisualValidationTradeEventVisibility];
+
+
+export const VisualValidationTradeEventVisibility = {
+  machine: 'machine',
+  human_only: 'human_only',
+} as const;
+
+export interface VisualValidationTradeEvent {
+  id: string;
+  event: string;
+  label: string;
+  /** @nullable */
+  direction: VisualValidationTradeEventDirection;
+  /** @nullable */
+  openTime: string | null;
+  /** @nullable */
+  closeTime: string | null;
+  /** @nullable */
+  triggerPrice: number | null;
+  /** @nullable */
+  modeledPrice: number | null;
+  /** @minimum 0 */
+  contracts: number;
+  visibility: VisualValidationTradeEventVisibility;
+  detail: string;
+}
+
+export type VisualValidationCoverageSession = typeof VisualValidationCoverageSession[keyof typeof VisualValidationCoverageSession];
+
+
+export const VisualValidationCoverageSession = {
+  primary: 'primary',
+  full_regular: 'full_regular',
+} as const;
+
+export interface VisualValidationCoverage {
+  session: VisualValidationCoverageSession;
+  /** @minimum 0 */
+  expectedCandleCount: number;
+  /** @minimum 0 */
+  observedCandleCount: number;
+  complete: boolean;
+  missingIntervals: string[];
+}
+
 export interface VisualValidationCursor {
   openTime: string;
   closeTime: string;
@@ -2970,6 +3045,10 @@ export interface VisualValidationSnapshot {
   reviewCursor: VisualValidationReviewCursor;
   machineCandles: VisualValidationCandle[];
   reviewCandles: VisualValidationCandle[];
+  premarketCandles: VisualValidationCandle[];
+  indicatorSeries: VisualValidationIndicatorPoint[];
+  tradeEvents: VisualValidationTradeEvent[];
+  coverage: VisualValidationCoverage[];
   outcomeContextEnd: string;
   futureCandleAccess: false;
   annotations: VisualValidationAnnotation[];

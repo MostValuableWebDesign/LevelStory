@@ -2882,6 +2882,41 @@ components:
         detail: { type: string }
         visibility: { type: string, enum: [machine, human_only] }
       required: [id, label, kind, price, openTime, closeTime, available, color, detail, visibility]
+    VisualValidationIndicatorPoint:
+      type: object
+      properties:
+        openTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time }
+        vwap: { type: ["number", "null"] }
+        ema200: { type: ["number", "null"] }
+        visibility: { type: string, enum: [machine, human_only] }
+      required: [openTime, closeTime, vwap, ema200, visibility]
+    VisualValidationTradeEvent:
+      type: object
+      properties:
+        id: { type: string }
+        event: { type: string }
+        label: { type: string }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        openTime: { type: ["string", "null"], format: date-time }
+        closeTime: { type: ["string", "null"], format: date-time }
+        triggerPrice: { type: ["number", "null"] }
+        modeledPrice: { type: ["number", "null"] }
+        contracts: { type: number, minimum: 0 }
+        visibility: { type: string, enum: [machine, human_only] }
+        detail: { type: string }
+      required: [id, event, label, direction, openTime, closeTime, triggerPrice, modeledPrice, contracts, visibility, detail]
+    VisualValidationCoverage:
+      type: object
+      properties:
+        session: { type: string, enum: [primary, full_regular] }
+        expectedCandleCount: { type: number, minimum: 0 }
+        observedCandleCount: { type: number, minimum: 0 }
+        complete: { type: boolean }
+        missingIntervals:
+          type: array
+          items: { type: string }
+      required: [session, expectedCandleCount, observedCandleCount, complete, missingIntervals]
     VisualValidationCursor:
       type: object
       properties:
@@ -2922,6 +2957,18 @@ components:
         reviewCandles:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCandle" }
+        premarketCandles:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationCandle" }
+        indicatorSeries:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationIndicatorPoint" }
+        tradeEvents:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationTradeEvent" }
+        coverage:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationCoverage" }
         outcomeContextEnd: { type: string, format: date-time }
         futureCandleAccess: { type: boolean, enum: [false] }
         annotations:
@@ -2937,7 +2984,7 @@ components:
             note: { type: ["string", "null"] }
             reviewedAt: { type: ["string", "null"], format: date-time }
           required: [status, note, reviewedAt]
-      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, outcomeContextEnd, futureCandleAccess, annotations, machineEvidence, review]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
       properties:

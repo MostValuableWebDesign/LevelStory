@@ -8,11 +8,14 @@
 import type { VisualValidationAnnotation } from './visualValidationAnnotation';
 import type { VisualValidationCandle } from './visualValidationCandle';
 import type { VisualValidationCategory } from './visualValidationCategory';
+import type { VisualValidationCoverage } from './visualValidationCoverage';
 import type { VisualValidationCursor } from './visualValidationCursor';
+import type { VisualValidationIndicatorPoint } from './visualValidationIndicatorPoint';
 import type { VisualValidationReviewCursor } from './visualValidationReviewCursor';
 import type { VisualValidationSnapshotMachineEvidence } from './visualValidationSnapshotMachineEvidence';
 import type { VisualValidationSnapshotPeriod } from './visualValidationSnapshotPeriod';
 import type { VisualValidationSnapshotReview } from './visualValidationSnapshotReview';
+import type { VisualValidationTradeEvent } from './visualValidationTradeEvent';
 
 export interface VisualValidationSnapshot {
   snapshotId: string;
@@ -33,6 +36,10 @@ export interface VisualValidationSnapshot {
   reviewCursor: VisualValidationReviewCursor;
   machineCandles: VisualValidationCandle[];
   reviewCandles: VisualValidationCandle[];
+  premarketCandles: VisualValidationCandle[];
+  indicatorSeries: VisualValidationIndicatorPoint[];
+  tradeEvents: VisualValidationTradeEvent[];
+  coverage: VisualValidationCoverage[];
   outcomeContextEnd: Date;
   futureCandleAccess: false;
   annotations: VisualValidationAnnotation[];

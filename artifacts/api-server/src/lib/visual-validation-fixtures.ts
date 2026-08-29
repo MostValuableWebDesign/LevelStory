@@ -106,15 +106,19 @@ function buildCandles(
   calendar: FuturesSessionCalendar,
   tradingDate: string,
   seed: number,
+  session: "regular" | "premarket" = "regular",
 ): SimulatedFuturesCandle[] {
-  const regular = sessionWindow(tradingDate, "regular", calendar);
-  if (!regular) throw new Error(`No regular session window for ${tradingDate}.`);
+  const window = sessionWindow(tradingDate, session, calendar);
+  if (!window) throw new Error(`No ${session} session window for ${tradingDate}.`);
   const base = 6_800 + categoryIndex(category) * 3 + (Math.abs(Math.floor(seed)) % 4) * 0.25;
   const candles: SimulatedFuturesCandle[] = [];
   let previousClose = base;
-  for (let index = 0; index < CANDLE_COUNT; index += 1) {
-    const openTime = regular.openTime + index * INTERVAL;
-    const target = scenarioTarget(category, index, base);
+  const candleCount = session === "premarket" ? 66 : CANDLE_COUNT;
+  for (let index = 0; index < candleCount; index += 1) {
+    const openTime = window.openTime + index * INTERVAL;
+    const target = session === "premarket"
+      ? base + Math.sin(index * 0.37 + categoryIndex(category)) * 0.65 + (index % 9) * 0.08
+      : scenarioTarget(category, index, base);
     const open = tick(previousClose, specification);
     let close = tick(target + ((index + categoryIndex(category) + seed) % 3 - 1) * 0.25, specification);
     if (close === open) close = tick(close + (index % 2 === 0 ? 0.25 : -0.25), specification);
@@ -122,8 +126,8 @@ function buildCandles(
     const lowerWick = [0.5, 0.25, 0.75, 1, 0.25][(index + 2 * categoryIndex(category)) % 5];
     const high = tick(Math.max(open, close) + upperWick, specification);
     const low = tick(Math.min(open, close) - lowerWick, specification);
-    const breakoutVolume = ["strong_breakout", "qualified_trade", "target_exit", "runner_exit"].includes(category) && index >= 15 && index <= 19;
-    const weakVolume = category === "weak_orb_probe" && index >= 10 && index <= 13;
+    const breakoutVolume = session === "regular" && ["strong_breakout", "qualified_trade", "target_exit", "runner_exit"].includes(category) && index >= 15 && index <= 19;
+    const weakVolume = session === "regular" && category === "weak_orb_probe" && index >= 10 && index <= 13;
     const volume = Math.round(900 + index * 37 + ((index + categoryIndex(category) + seed) % 5) * 165 + (breakoutVolume ? 1_400 : 0) - (weakVolume ? 250 : 0));
     candles.push({
       timestamp: openTime,
@@ -408,8 +412,11 @@ export function createVisualValidationFixtures(request: VisualValidationRequest)
       ? "in_sample"
       : "out_of_sample";
     const candles = buildCandles(category, specification, calendar, tradingDate, request.seed ?? 11);
+    const premarket = request.premarketAvailable === false
+      ? []
+      : buildCandles(category, specification, calendar, tradingDate, request.seed ?? 11, "premarket");
     const dataset: CausalReplayDataset = {
-      candles,
+      candles: [...premarket, ...candles],
       contractSymbol: specification.fullContractSymbol,
       contractMonth: specification.contractMonth,
       inSampleDates: dates.slice(0, Math.max(1, request.inSampleDays)),

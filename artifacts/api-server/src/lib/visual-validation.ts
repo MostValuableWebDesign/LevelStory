@@ -19,6 +19,14 @@ import {
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
 } from "./futures/multi-contract-replay.js";
+import {
+  classifyFuturesSession,
+  sessionCalendarForContract,
+  sessionWindow,
+  tradingDateForTimestamp,
+} from "./futures/session-calendar.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
+import { strategyConfig } from "./strategy/config.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -78,6 +86,36 @@ export type VisualValidationAnnotation = {
   visibility: "machine" | "human_only";
 };
 
+export type VisualValidationIndicatorPoint = {
+  openTime: string;
+  closeTime: string;
+  vwap: number | null;
+  ema200: number | null;
+  visibility: "machine" | "human_only";
+};
+
+export type VisualValidationTradeEvent = {
+  id: string;
+  event: string;
+  label: string;
+  direction: "long" | "short" | null;
+  openTime: string | null;
+  closeTime: string | null;
+  triggerPrice: number | null;
+  modeledPrice: number | null;
+  contracts: number;
+  visibility: "machine" | "human_only";
+  detail: string;
+};
+
+export type VisualValidationCoverage = {
+  session: "primary" | "full_regular";
+  expectedCandleCount: number;
+  observedCandleCount: number;
+  complete: boolean;
+  missingIntervals: string[];
+};
+
 export type VisualValidationSnapshot = {
   snapshotId: string;
   sampleIndex: number;
@@ -106,6 +144,10 @@ export type VisualValidationSnapshot = {
   };
   machineCandles: VisualValidationCandle[];
   reviewCandles: VisualValidationCandle[];
+  premarketCandles: VisualValidationCandle[];
+  indicatorSeries: VisualValidationIndicatorPoint[];
+  tradeEvents: VisualValidationTradeEvent[];
+  coverage: VisualValidationCoverage[];
   outcomeContextEnd: string;
   futureCandleAccess: false;
   annotations: VisualValidationAnnotation[];
@@ -390,8 +432,6 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
   lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
-  addLevel("vwap", "VWAP", snapshot.indicators.vwap ?? snapshot.levels.vwap, "Session VWAP at the machine evaluation cursor.", "blue");
-  addLevel("ema-200", "200 EMA", snapshot.indicators.ema200, "200-period EMA at the machine evaluation cursor.", "blue");
   for (const level of snapshot.levels.critical) addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");
   for (const level of snapshot.majorLevels) {
     addLevel(`major-${level.name}`, level.name, level.price, `${level.kind} · ${level.confluence} confluence`, "muted");
@@ -439,6 +479,178 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   return lines;
 }
 
+function regularSessionCandlesForDate(
+  candles: readonly SimulatedFuturesCandle[],
+  tradingDate: string,
+  contractSymbol: string,
+  calendar: ReturnType<typeof sessionCalendarForContract>,
+): SimulatedFuturesCandle[] {
+  return candles
+    .filter((candle) =>
+      candle.contractSymbol === contractSymbol
+      && tradingDateForTimestamp(candle.openTime, calendar) === tradingDate
+      && classifyFuturesSession(candle.openTime, calendar) === "regular"
+      && candle.isComplete,
+    )
+    .sort((first, second) => first.closeTime - second.closeTime);
+}
+
+function buildIndicatorSeries(
+  historicalCandles: readonly SimulatedFuturesCandle[],
+  displayedCandles: readonly SimulatedFuturesCandle[],
+  evaluationCloseTime: number,
+  tradingDate: string,
+  contractSymbol: string,
+  calendar: ReturnType<typeof sessionCalendarForContract>,
+): VisualValidationIndicatorPoint[] {
+  const config = strategyConfig();
+  const orderedHistory = historicalCandles
+    .filter((candle) =>
+      candle.contractSymbol === contractSymbol
+      && candle.isComplete
+      && classifyFuturesSession(candle.openTime, calendar) === "regular",
+    )
+    .sort((first, second) => first.closeTime - second.closeTime);
+  const alpha = 2 / (config.emaPeriod + 1);
+  let emaValue: number | null = null;
+  const emaByOpenTime = new Map<number, number>();
+  for (const candle of orderedHistory) {
+    emaValue = emaValue === null ? candle.close : candle.close * alpha + emaValue * (1 - alpha);
+    emaByOpenTime.set(candle.openTime, emaValue);
+  }
+  const sessionCandles = regularSessionCandlesForDate(historicalCandles, tradingDate, contractSymbol, calendar);
+  const sessionTotals = new Map<number, { priceVolume: number; volume: number }>();
+  let priceVolume = 0;
+  let volume = 0;
+  for (const candle of sessionCandles) {
+    priceVolume += ((candle.high + candle.low + candle.close) / 3) * candle.volume;
+    volume += candle.volume;
+    sessionTotals.set(candle.openTime, { priceVolume, volume });
+  }
+  return displayedCandles.map((candle) => {
+    const totals = sessionTotals.get(candle.openTime);
+    const visible = candle.closeTime <= evaluationCloseTime;
+    return {
+      openTime: new Date(candle.openTime).toISOString(),
+      closeTime: new Date(candle.closeTime).toISOString(),
+      vwap: totals && totals.volume > 0 ? totals.priceVolume / totals.volume : null,
+      ema200: emaByOpenTime.get(candle.openTime) ?? null,
+      visibility: visible ? "machine" : "human_only",
+    };
+  });
+}
+
+function eventVisibility(openTime: number | null, evaluationCloseTime: number): VisualValidationTradeEvent["visibility"] {
+  return openTime !== null && openTime <= evaluationCloseTime ? "machine" : "human_only";
+}
+
+function tradeEvent(
+  id: string,
+  event: string,
+  label: string,
+  direction: "long" | "short" | null,
+  openTime: number | null,
+  closeTime: number | null,
+  triggerPrice: number | null,
+  modeledPrice: number | null,
+  contracts: number,
+  detail: string,
+  evaluationCloseTime: number,
+): VisualValidationTradeEvent {
+  return {
+    id,
+    event,
+    label,
+    direction,
+    openTime: safeDate(openTime),
+    closeTime: safeDate(closeTime),
+    triggerPrice,
+    modeledPrice,
+    contracts,
+    visibility: eventVisibility(openTime, evaluationCloseTime),
+    detail,
+  };
+}
+
+function buildTradeEvents(
+  audit: BacktestAuditRecord,
+  trade: BacktestTrade | null,
+  evaluationCloseTime: number,
+): VisualValidationTradeEvent[] {
+  if (!trade) return [];
+  const tradeAudit = trade.audit;
+  const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
+  const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
+  const triggerOpen = evidenceTime(audit.triggerCandle, "openTime");
+  const triggerClose = evidenceTime(audit.triggerCandle, "closeTime");
+  const fillTime = tradeAudit?.modeledFillObservationTime
+    ? Date.parse(tradeAudit.modeledFillObservationTime)
+    : Date.parse(trade.entryTime);
+  const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : Date.parse(trade.exitTime);
+  const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : Date.parse(trade.exitTime);
+  const events: VisualValidationTradeEvent[] = [
+    tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
+    tradeEvent("trigger", "trigger", "T", audit.direction, triggerOpen, triggerClose, audit.entryTriggerPrice, evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next-candle confirmation.", evaluationCloseTime),
+    tradeEvent("entry", "entry", `ENTRY ${trade.entryPrice.toFixed(2)}`, trade.direction, fillTime, fillTime, audit.entryTriggerPrice, trade.entryPrice, trade.contracts, "Modeled shadow entry; no live order was created.", evaluationCloseTime),
+  ];
+  if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
+    events.push(tradeEvent("stop", "stop", "STOP", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.exitPrice, trade.contracts, `${trade.outcome} exit.`, evaluationCloseTime));
+  }
+  if (trade.audit?.targetHit || trade.outcome === "target") {
+    events.push(tradeEvent("target", "target", "TARGET", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.audit?.targetPrice ?? audit.targetPrice, trade.contracts, "Modeled target exit.", evaluationCloseTime));
+  }
+  if (trade.audit?.runnerActivated) {
+    events.push(tradeEvent("runner", "runner_activation", "RUNNER", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.audit.runnerReferencePrice ?? null, trade.audit.remainingQuantity ?? 0, "Runner leg activated.", evaluationCloseTime));
+  }
+  if (trade.audit?.runnerExited) {
+    events.push(tradeEvent("runner-exit", "runner_exit", "RUNNER EXIT", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.exitPrice, trade.audit.remainingQuantity ?? 0, "Modeled runner exit.", evaluationCloseTime));
+  }
+  if (trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length) {
+    events.push(tradeEvent("ambiguity", "ambiguity", "AMBIGUITY", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.exitPrice, trade.contracts, trade.ambiguityLabel ?? trade.audit?.ambiguityLabels.join(", ") ?? "Barrier order is unknown.", evaluationCloseTime));
+  }
+  return events.filter((event) => event.openTime !== null || event.closeTime !== null);
+}
+
+function formatMissingInterval(openTime: number, closeTime: number): string {
+  const format = (value: number) => new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+  return `${format(openTime)}–${format(closeTime)} ET`;
+}
+
+function buildCoverage(
+  regularCandles: readonly SimulatedFuturesCandle[],
+  tradingDate: string,
+  calendar: ReturnType<typeof sessionCalendarForContract>,
+): VisualValidationCoverage[] {
+  const window = sessionWindow(tradingDate, "regular", calendar);
+  if (!window) {
+    return [
+      { session: "primary", expectedCandleCount: 42, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
+      { session: "full_regular", expectedCandleCount: 78, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
+    ];
+  }
+  const observed = new Set(regularCandles.map((candle) => candle.openTime));
+  const build = (session: "primary" | "full_regular", expected: number) => {
+    const missing: string[] = [];
+    for (let index = 0; index < expected; index += 1) {
+      const openTime = window.openTime + index * 5 * 60_000;
+      if (!observed.has(openTime)) missing.push(formatMissingInterval(openTime, openTime + 5 * 60_000));
+    }
+    return {
+      session,
+      expectedCandleCount: expected,
+      observedCandleCount: Math.min(regularCandles.length, expected),
+      complete: missing.length === 0,
+      missingIntervals: missing,
+    };
+  };
+  return [build("primary", 42), build("full_regular", 78)];
+}
+
 function buildMachineSnapshot(
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode">,
   dataset: CausalReplayDataset,
@@ -452,10 +664,23 @@ function buildMachineSnapshot(
   const evaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
   const evaluationCloseTime = evaluationTime + 5 * 60_000;
   const exitTime = trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : evaluationTime;
-  const evaluationCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
+  const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
+  const historicalCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
+  const evaluationCandles = regularSessionCandlesForDate(historicalCandles, audit.tradingDate, audit.contractSymbol, calendar);
   const visibleEvaluation = visibleReplayPrefix(evaluationCandles, evaluationCloseTime);
   const reviewTime = Math.max(evaluationCloseTime, exitTime, reviewCloseTime);
   const visibleReview = visibleReplayPrefix(evaluationCandles, reviewTime);
+  const visiblePremarket = premarketAvailable
+    ? historicalCandles
+      .filter((candle) =>
+        tradingDateForTimestamp(candle.openTime, calendar) === audit.tradingDate
+        && classifyFuturesSession(candle.openTime, calendar) === "premarket"
+        && candle.isComplete
+        && candle.closeTime <= reviewTime,
+      )
+      .sort((first, second) => first.closeTime - second.closeTime)
+    : [];
+  const analysisCandles = [...visiblePremarket, ...visibleEvaluation];
   const evaluationSnapshot = createMarketSnapshot(
     report.symbol,
     "regular",
@@ -465,8 +690,8 @@ function buildMachineSnapshot(
     {
       tradingDate: audit.tradingDate,
       cursor: evaluationCloseTime,
-      allCandles: visibleEvaluation,
-      historicalFeed: visibleEvaluation,
+      allCandles: analysisCandles,
+      historicalFeed: analysisCandles,
       allCandlesCompleted: true,
       premarketAvailable,
       executionMode: report.executionMode,
@@ -474,6 +699,7 @@ function buildMachineSnapshot(
   );
   const machineCandles = visibleEvaluation.map(toRawCandle);
   const reviewCandles = visibleReview.map(toRawCandle);
+  const premarketCandles = visiblePremarket.map(toRawCandle);
   const hash = createHash("sha256")
     .update(`${report.formulaHash}|${audit.id}|${category}`)
     .digest("hex")
@@ -506,6 +732,17 @@ function buildMachineSnapshot(
     },
     machineCandles,
     reviewCandles,
+    premarketCandles,
+    indicatorSeries: buildIndicatorSeries(
+      historicalCandles,
+      visibleReview,
+      evaluationCloseTime,
+      audit.tradingDate,
+      audit.contractSymbol,
+      calendar,
+    ),
+    tradeEvents: buildTradeEvents(audit, trade, evaluationCloseTime),
+    coverage: buildCoverage(visibleReview, audit.tradingDate, calendar),
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
     annotations: buildAnnotations(evaluationSnapshot, audit, trade),

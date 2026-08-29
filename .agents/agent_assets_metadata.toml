@@ -28,3 +28,59 @@ mtime_ms = 1787969992258
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/9b3587c8-d364-47a8-9fa9-172753b7167e/6e724ae0-7d77-44d6-9145-fa4ae4e16ff8"
 storage_version_token = "1787970014698470"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "nLRh9NOZh4tXcJyOlKBfa"
+uri = "file://screenshots/visual-review-primary-qualified.jpg"
+type = "image"
+title = "Primary qualified-trade chart"
+description = "Primary 9:30 AM–1:00 PM ET chart without premarket context, including causal indicators and exact trade markers."
+logical_id = "def2f05e-444b-4513-b489-d6aebc3b2ea5"
+content_hash = "sha256:793000505ff3a9f1ab9d7ac0ba05a250836332d7d44a59f2ac4f1f9f1cb8f064"
+size = 388935
+mtime_ms = 1787971303788
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/def2f05e-444b-4513-b489-d6aebc3b2ea5/17daabca-f6b4-40b7-ba17-0be5d07fd0f5"
+storage_version_token = "1787971332173732"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "7SCluF5_NXED3wCqI-kTy"
+uri = "file://screenshots/visual-review-premarket-qualified.jpg"
+type = "image"
+title = "Qualified trade with premarket context"
+description = "Qualified-trade review with premarket shown in its separate mini-chart and the primary chart kept independent."
+logical_id = "15152d35-5cc7-4b21-bf64-898c5f15d395"
+content_hash = "sha256:7cf49f4c8a5e640e22e09b8d51f9db1abd130cdaebbfae318e8fc239524d2093"
+size = 389380
+mtime_ms = 1787971307000
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/15152d35-5cc7-4b21-bf64-898c5f15d395/5383f045-5ed9-4894-8ac8-0446a4c07463"
+storage_version_token = "1787971332704007"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "HLYt7xbqulplKeB3LSAlb"
+uri = "file://screenshots/visual-review-rejected-premarket.jpg"
+type = "image"
+title = "Rejected setup with NO ENTRY"
+description = "Rejected setup review showing the separate premarket chart, explicit coverage disclosure, and NO ENTRY marker."
+logical_id = "1f0e5d53-fb1e-4be4-ae9e-21f1f714d436"
+content_hash = "sha256:0304359d2bb5f76cfd20cc51a13346c43dd8f089245d59727c43b0292f069926"
+size = 393533
+mtime_ms = 1787971262054
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/1f0e5d53-fb1e-4be4-ae9e-21f1f714d436/04499485-ca02-4238-a1b9-048a7f25dfaf"
+storage_version_token = "1787971333201632"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "uqCA8romKwFrFN9DrGZEZ"
+uri = "file://screenshots/visual-review-fullscreen-qualified.jpg"
+type = "image"
+title = "Full regular-session qualified chart"
+description = "Full 9:30 AM–4:00 PM ET chart showing causal VWAP and EMA 200 curves, blank uncovered slots, and trade markers."
+logical_id = "d8351cfa-c459-4568-83d2-d3cb026de4a0"
+content_hash = "sha256:60cd02918374ed104f4c1e867af1f3238dbc77e3b5d4bf2b94025684fb19d00f"
+size = 388343
+mtime_ms = 1787971310144
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/d8351cfa-c459-4568-83d2-d3cb026de4a0/d8430d30-4d3f-4d46-808b-9dd7f1fdc119"
+storage_version_token = "1787971333631962"
+content_type = "image/jpeg"

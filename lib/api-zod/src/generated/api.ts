@@ -4034,6 +4034,12 @@ export const getVisualValidationSetResponseRequestSourceDefault = `simulated`;
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
+export const getVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin = 0;
+
+export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
+
+export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
+
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 
@@ -4111,6 +4117,49 @@ export const GetVisualValidationSetResponse = zod.object({
   "askSize": zod.number(),
   "contractSymbol": zod.string(),
   "isComplete": zod.literal(true)
+})),
+  "premarketCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "indicatorSeries": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "vwap": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "tradeEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "event": zod.string(),
+  "label": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "triggerPrice": zod.number().nullable(),
+  "modeledPrice": zod.number().nullable(),
+  "contracts": zod.number().min(getVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin),
+  "visibility": zod.enum(['machine', 'human_only']),
+  "detail": zod.string()
+})),
+  "coverage": zod.array(zod.object({
+  "session": zod.enum(['primary', 'full_regular']),
+  "expectedCandleCount": zod.number().min(getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin),
+  "observedCandleCount": zod.number().min(getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin),
+  "complete": zod.boolean(),
+  "missingIntervals": zod.array(zod.string())
 })),
   "outcomeContextEnd": zod.coerce.date(),
   "futureCandleAccess": zod.literal(false),
@@ -4191,6 +4240,12 @@ export const createVisualValidationSetResponseRequestSourceDefault = `simulated`
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
+export const createVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin = 0;
+
+export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
+
+export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
+
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 
@@ -4268,6 +4323,49 @@ export const CreateVisualValidationSetResponse = zod.object({
   "askSize": zod.number(),
   "contractSymbol": zod.string(),
   "isComplete": zod.literal(true)
+})),
+  "premarketCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "indicatorSeries": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "vwap": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "tradeEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "event": zod.string(),
+  "label": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "triggerPrice": zod.number().nullable(),
+  "modeledPrice": zod.number().nullable(),
+  "contracts": zod.number().min(createVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin),
+  "visibility": zod.enum(['machine', 'human_only']),
+  "detail": zod.string()
+})),
+  "coverage": zod.array(zod.object({
+  "session": zod.enum(['primary', 'full_regular']),
+  "expectedCandleCount": zod.number().min(createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin),
+  "observedCandleCount": zod.number().min(createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin),
+  "complete": zod.boolean(),
+  "missingIntervals": zod.array(zod.string())
 })),
   "outcomeContextEnd": zod.coerce.date(),
   "futureCandleAccess": zod.literal(false),
