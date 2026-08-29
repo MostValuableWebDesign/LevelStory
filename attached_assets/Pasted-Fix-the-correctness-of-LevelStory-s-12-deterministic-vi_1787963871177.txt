@@ -1,0 +1,73 @@
+Fix the correctness of LevelStory’s 12 deterministic visual-validation stories before changing the chart design.
+
+Do not change the trading formula, execution engine, backtest metrics, historical importer, session calendar or historical index.
+
+Current defects confirmed from the latest live visual-validation payload:
+
+- Qualified trade: 64 of 84 candles are dojis.
+- Rejected setup: all 67 candles are dojis with only 2 unique OHLC shapes.
+- Bullish patience: 68 of 84 candles are dojis and the category conflicts with trend evidence.
+- Bearish patience: reuses the bullish sample’s timestamp and market sequence.
+- Weak ORB probe: all 72 candles are dojis with only 5 unique OHLC shapes.
+- Strong breakout: 69 of 84 candles are dojis.
+- Pullback and consolidation reuse the same nearly flat 9:30 fixture.
+- Ambiguous, stop, target and runner examples reuse the same 9:45 setup-forming context.
+- Exit events exist in machine evidence but are not tied to exact audit snapshots.
+
+Required corrections:
+
+1. Replace repetitive simulated candles with deterministic, realistic OHLCV fixtures.
+2. Each fixture must contain 35–50 five-minute candles with:
+   - valid OHLC relationships
+   - varied bodies and wicks
+   - nonconstant volume
+   - coherent price continuity
+   - no random or nondeterministic results
+3. Create a distinct fixture for every category:
+   - qualified trade
+   - rejected setup
+   - bullish patience candle
+   - bearish patience candle
+   - weak ORB probe
+   - strong breakout
+   - pullback
+   - consolidation
+   - ambiguous candle
+   - stop exit
+   - target exit
+   - runner exit
+4. Every fixture must demonstrate its named category visually and in machine evidence.
+5. Bullish patience requires a bullish 15-minute trend.
+6. Bearish patience requires a bearish 15-minute trend.
+7. Pullback requires an actual retracement to ORB, VWAP, EMA 200, Fibonacci or a recognized critical level.
+8. Consolidation requires a measured multi-candle range, not merely the word “consolidation” in evidence.
+9. Weak ORB probe must slightly cross ORB without convincing volume or continuation.
+10. Strong breakout must visibly close beyond ORB with increased volume and continuation.
+11. Match trades to audits using:
+   - contract symbol
+   - trading date
+   - patience-candle timestamp
+   - immediate trigger timestamp
+   - entry/fill timestamp
+12. Never associate an exit using only date, setup type, direction and test period.
+13. Stop, target and runner snapshots must come from their exact originating trade.
+14. Do not silently change OHLC values after machine evidence has been created.
+
+Add focused deterministic tests proving:
+- all OHLC relationships are valid
+- every fixture has meaningful candle and volume variation
+- fixtures are reproducible
+- each category is distinct
+- bullish/bearish trend alignment is correct
+- exact audit-to-trade matching prevents unrelated outcomes
+- pullback and consolidation require explicit qualifying states
+
+Verification limits:
+- Run focused visual-validation API tests.
+- Run API typecheck.
+- Do not restart the API.
+- Do not rebuild the historical index.
+- Do not run historical backtests or qualification batches.
+- Do not submit human judgments.
+
+Report files changed, fixture characteristics, tests passed and remaining limitations.
