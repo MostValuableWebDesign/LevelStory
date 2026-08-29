@@ -475,7 +475,17 @@ export default function VisualReview() {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
             }} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
-            <CoverageRail data={data} loading={setQuery.isLoading} selectedCategory={selectedCategory} onSelect={selectCategory} />
+             <CoverageRail
+               data={data}
+               loading={setQuery.isLoading}
+               selectedCategory={selectedCategory}
+               selectedSnapshot={activeSnapshot}
+               selectedSnapshotIndex={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
+               selectedSnapshotTotal={categorySnapshots.length}
+               onSelect={selectCategory}
+               onPrevious={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)}
+               onNext={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)}
+             />
           </div>
 
           {setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? (
@@ -487,7 +497,6 @@ export default function VisualReview() {
               {activeSnapshot ? (
                 <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
-                    <SnapshotHeader snapshot={activeSnapshot} request={data.request} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)} />
                      <Panel>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
@@ -594,16 +603,12 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: VisualValidationSet; loading: boolean; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
+function CoverageRail({ data, loading, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelect, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelect: (category: VisualValidationCategory) => void; onPrevious: () => void; onNext: () => void }) {
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
   const historical = data.source === "historical_databento";
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
-  const selectedExample = selectedCategory
-    ? data.snapshots.find((snapshot) => snapshot.category === selectedCategory)
-    : undefined;
-  const examplePeriod = selectedExample?.period === "out_of_sample" ? "holdout sample" : "formula-development sample";
   const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
   const isAvailable = (category: VisualValidationCategory) => {
     const item = coverageFor(category);
@@ -621,7 +626,7 @@ function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: Vi
   const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
   const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-    <PanelTitle eyebrow="Coverage / trade-linked samples" title={selectedExample ? `Example 01 / 01 · ${examplePeriod}` : "Select an available example"} right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+     <PanelTitle eyebrow="Coverage / trade-linked samples" title="Select an available example" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
     </div>
@@ -631,21 +636,12 @@ function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: Vi
         {diagnostics.map(renderCategory)}
       </div>
     </details>}
-    <div className="border-t border-border bg-muted/20 px-5 py-4 sm:px-6" data-testid="example-sample-summary">
-      <div className="eyebrow text-muted-foreground">Stated category</div>
-      {selectedExample ? <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold">{selectedExample.categoryLabel}</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">{selectedExample.machineLabel}</div>
-        </div>
-        <div className="mono text-right text-[10px] text-muted-foreground">{selectedExample.tradingDate}<span className="block">{selectedExample.contractSymbol}</span></div>
-      </div> : <div className="mt-2 text-xs text-muted-foreground">Choose an available category to inspect its example.</div>}
-    </div>
+     {selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
   </Panel>;
 }
 
-function SnapshotHeader({ snapshot, request, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
-  return <Panel>
+function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
+  return <div className="border-t border-border bg-muted/20" data-testid="formula-development-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
         <div className="eyebrow mb-2 text-muted-foreground">Example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period === "in_sample" ? "formula-development sample" : "holdout sample"} <InfoTip label="Dataset role" text="Formula-development examples are in-sample. Holdout examples are out-of-sample and are not used to tune the rule." /></div>
@@ -664,7 +660,7 @@ function SnapshotHeader({ snapshot, request, index, total, onPrevious, onNext }:
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
-  </Panel>;
+  </div>;
 }
 
 function CausalTag() {
