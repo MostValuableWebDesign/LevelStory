@@ -7,4 +7,4 @@ When extending a populated journal table, do not accept a schema tool's suggesti
 
 **Why:** The journal contains user-authored review history, and automatic Phase 8 records need deduplication without deleting older records.
 
-**How to apply:** Inspect existing rows before migration; use additive, idempotent development DDL or an equivalent migration path when a push command becomes interactive or destructive. This also applies when adding independent governance/auth tables alongside populated journal history.
+**How to apply:** Inspect existing rows before migration; use additive, idempotent development DDL or an equivalent migration path when a push command becomes interactive or destructive. This also applies when adding independent governance/auth tables or JSONB array fields alongside populated journal history.

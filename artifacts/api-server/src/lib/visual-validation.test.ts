@@ -4,6 +4,7 @@ import {
   buildVisualValidationSet,
   buildHistoricalVisualValidationSetFromReport,
   categoriesFor,
+  createVisualValidationTeachingExample,
   matchingTrade,
   validateVisualValidationTeaching,
   type VisualValidationTeachingInput,
@@ -415,6 +416,33 @@ test("teaching validation accepts deterministic long and short buffered examples
     assert.equal(result.valid, true, `${direction}: ${result.messages.join("; ")}`);
     assert.equal(result.calculatedEntryPrice, direction === "long" ? 102.5 : 100.5);
   }
+});
+
+test("teaching validation accepts multiple mapped pullback levels", () => {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const input = teachingInput(snapshot, "long");
+  snapshot.annotations.push({
+    id: "teaching-level-secondary",
+    kind: "level",
+    label: "Secondary teaching level",
+    price: 100.75,
+    available: true,
+    color: "blue",
+    detail: "Second deterministic teaching level.",
+    visibility: "machine",
+    openTime: null,
+    closeTime: null,
+  });
+  const result = validateVisualValidationTeaching(snapshot, {
+    ...input,
+    pullbackLevels: [101, 100.75, 101],
+  });
+  assert.equal(result.valid, true, result.messages.join("; "));
+  const example = createVisualValidationTeachingExample(snapshot, {
+    ...input,
+    pullbackLevels: [101, 100.75, 101],
+  }, null);
+  assert.deepEqual(example.pullbackLevels, [100.75, 101]);
 });
 
 test("teaching validation allows an entry candle through the 2:00 PM ET boundary", () => {
