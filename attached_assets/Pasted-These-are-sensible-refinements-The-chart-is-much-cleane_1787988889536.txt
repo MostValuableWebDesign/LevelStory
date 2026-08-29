@@ -1,0 +1,286 @@
+These are sensible refinements. The chart is much cleaner now, but the remaining vertical dashed lines and duplicate ORB/NTZ levels still create unnecessary noise.
+
+Use this prompt:
+
+```text
+Apply the following focused LevelStory visual-review chart refinements.
+
+This is a frontend presentation change only.
+
+Do not change:
+- formula logic
+- category anchors
+- audit evidence
+- historical OHLCV
+- machine decisions
+- causal calculations
+- event timestamps or prices
+- historical index
+
+Relevant files:
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/src/lib/visual-review-chart.ts
+- artifacts/levelstory/tests/visual-review-chart.test.ts
+
+1. Fix the clipped Candle Inspector
+
+The bottom portion of the horizontal Candle Inspector is currently cut off.
+
+Required behavior:
+- use automatic height based on content
+- remove fixed-height clipping and inappropriate `overflow: hidden`
+- add sufficient bottom padding
+- keep all rows visible:
+  - New York interval
+  - OHLC
+  - volume
+  - contract
+  - UTC time
+  - machine-visible or human-only status
+  - associated events
+- never overlap the chart
+- never push content underneath another section
+- use a compact two-row layout on desktop
+- stack cleanly on mobile
+- keep the inspector collapsible
+
+Add a layout test proving the inspector’s content height fits inside its container.
+
+2. Default to the full regular session
+
+Change the default chart window to:
+
+`Full regular session: 9:30 AM–4:00 PM ET`
+
+Expected window:
+- 78 completed five-minute timestamp slots
+- 9:30–9:35 through 3:55–4:00
+
+Keep available:
+- `Primary window: 9:30 AM–1:00 PM`
+- `Return to primary window`
+
+Persist the user’s latest chart-window choice locally.
+
+Do not fabricate missing candles. Preserve empty timestamp gaps and disclose incomplete coverage.
+
+3. Remove all full-height vertical dashed cursor/event lines
+
+Remove the vertical dashed lines currently drawn through the candle chart for:
+- evaluation cursor
+- causal cursor
+- category anchor
+- patience
+- trigger
+- fill
+- exit
+- event connectors
+
+Use these replacements:
+
+Causal boundary:
+- represent it with the existing background transition between machine-visible and later candles
+- add a small top-axis triangle or notch at the evaluation timestamp
+- display `Machine evaluated through 12:05 PM` outside the plot
+- do not draw a full-height line
+
+Events:
+- use small numbered circular markers anchored to the exact candle
+- no vertical stems
+- no vertical dashed connectors
+- exact event details remain available in the compact event index and Candle Inspector
+
+Preserve the causal distinction in data and accessibility. This is only removing the visual dashed lines.
+
+4. Replace the long Events pane with a compact event strip
+
+The current `Events on this chart` list requires too much vertical scrolling and separates the user from the chart.
+
+Replace it with a compact horizontal event strip directly above the chart.
+
+Example:
+
+Events: ① Patience 12:00 | ② Trigger 12:05 | ③ Entry 7803.25 | ④ Stop 12:15
+
+Requirements:
+- one compact row on desktop
+- maximum two rows when wrapping is required
+- horizontally scrollable on narrow screens
+- fixed maximum height
+- no large panel below the chart
+- clicking an event highlights its numbered candle marker
+- hovering a chart marker highlights its event chip
+- selected-event details appear in the Candle Inspector
+- provide `Show all audit events` as a compact toggle
+- show category-relevant events only by default
+
+The chart must remain in view while inspecting events.
+
+5. Apply the requested color system
+
+Use these exact semantic colors consistently in normal, expanded and fullscreen modes:
+
+ORB High/Low:
+- orange
+- preserve current orange styling
+
+Premarket High/Low:
+- green
+
+EMA 200:
+- light green curved line
+
+VWAP:
+- red curved line
+
+Support/resistance and critical price levels:
+- black or near-black
+- use solid or subtly dashed lines to distinguish support from resistance
+- keep readable in light and dark modes
+
+Fibonacci:
+- muted gray unless it is the category’s active interaction level
+
+Do not use the same color for unrelated level types.
+
+Add a small legend:
+- Orange: ORB / NTZ
+- Green: Premarket
+- Light green: EMA 200
+- Red: VWAP
+- Black: Support / Resistance
+
+6. Treat ORB and NTZ as the same levels
+
+In this formula, NTZ is the first three completed five-minute candles from 9:30–9:45, which is also the ORB.
+
+Therefore:
+
+- render one upper boundary
+- render one lower boundary
+- remove duplicate NTZ and ORB horizontal lines
+- remove duplicate right-axis labels
+- label them:
+  - `ORB / NTZ High`
+  - `ORB / NTZ Low`
+- use orange for both
+- preserve any internal compatibility fields required by the deterministic engine
+- do not change their calculated price values
+
+Add a test proving ORB and NTZ aliases produce only one visible upper line and one visible lower line.
+
+7. Entry and stops use markers, not chart labels
+
+Remove persistent chart text and right-axis labels for:
+- Entry buffer
+- Entry
+- Strategy stop
+- Catastrophe stop
+
+Do not show full horizontal entry/stop labels by default.
+
+Instead:
+
+Entry:
+- small numbered or `E` marker at the exact candle and price
+- green upward marker for long
+- red downward marker for short
+
+Strategy stop:
+- small `S` marker at the exact hit candle and price
+
+Catastrophe stop:
+- small `CS` marker at the exact hit candle and price
+
+Details belong in:
+- the compact event strip
+- Candle Inspector
+- technical details
+
+Marker interaction must reveal:
+- event
+- New York time
+- price
+- direction
+- machine-visible or human-only
+- strategy versus catastrophe stop
+
+Never show entry or stop markers when the event did not occur.
+
+Keep an optional `Show risk levels` toggle if users need to inspect planned entry/stop prices. Default it to off.
+
+8. Remove “Human-only outcome context” text from the plot
+
+Remove the text:
+`HUMAN-ONLY OUTCOME CONTEXT`
+
+Do not print it over candles.
+
+Preserve the meaning through:
+- subtle background shading after the evaluation time
+- slightly muted later candles
+- a small legend item below the chart:
+  `Shaded candles occurred after the machine decision`
+- accessibility text identifying later candles as human-only
+
+Do not change which candles are machine-visible.
+
+9. Keep the chart full width
+
+- chart uses the full available content width
+- no permanent side panel
+- Candle Inspector remains above the chart
+- compact event strip remains above the chart
+- Human Judgment remains below or in a collapsible drawer
+- preserve the numeric price axis
+- preserve expanded and fullscreen modes
+
+10. Additional cleanup
+
+- Remove duplicate premarket/critical labels when they share the exact same price; show one confluence label.
+- Keep numeric right-axis prices aligned to MES 0.25.
+- Ensure the 4:00 PM label is not clipped.
+- Ensure price and volume axes do not overlap near the bottom-right corner.
+- Keep the Opening Range bracket limited to 9:30–9:45.
+- Avoid the thick orange border around the entire plot; orange should identify ORB levels, not the chart container.
+
+11. Focused tests
+
+Add tests proving:
+- Candle Inspector content is not clipped
+- full regular session is the default
+- full session contains 78 fixed slots
+- no full-height vertical dashed event/cursor lines are rendered
+- causal shading remains correct
+- event strip stays within its maximum height
+- event selection highlights the exact numbered marker
+- ORB/NTZ render as one pair of boundaries
+- requested semantic colors are applied
+- entry and stop use markers without persistent labels
+- human-only text is absent from the plot
+- machine/human visibility behavior remains unchanged
+- chart remains full width
+
+Verification limits:
+
+Run only:
+- focused visual-review frontend tests
+- frontend typecheck
+- frontend build if required
+
+Do not:
+- restart the API
+- rebuild the historical index
+- regenerate review sets
+- run backtests
+- modify human judgments
+
+Provide before-and-after screenshots of:
+1. Full-session default chart
+2. Compact event strip
+3. Chart without vertical dashed lines
+4. ORB/NTZ combined levels with the new color system
+5. Entry and stop displayed only as markers
+```
+
+One important clarification: removing the dashed cursor line and human-only text should not remove the causal protection. The later candles should remain subtly shaded, with their status explained in the legend rather than printed across the chart.
