@@ -1,0 +1,316 @@
+Yes, “Choose the story” selects a category, and “Sample 01/01” means the first—and currently only—historical example found for that category.
+
+The date difference is expected but poorly explained: **July 28 is the end of the requested 5+2-session review window**, while the Strong Breakout example was found inside that window on **July 23**. The interface should explain this plainly.
+
+Use this Replit prompt:
+
+```text
+Improve the LevelStory `/visual-review` workflow so a trader can understand, inspect and explicitly submit each review.
+
+Do not change the trading formula, historical OHLCV, execution behavior, causal boundaries, session calendar or historical index.
+
+1. Make Historical Databento the default
+
+- Default the review-set data source to `Historical Databento data`.
+- Apply the default on first page load and when resetting the form.
+- Simulated fixtures must remain available as an explicitly selected testing option.
+- Do not silently fall back to simulated data when historical generation fails.
+- Show a clear historical-data error instead.
+- Persist the user’s chosen source locally for later visits.
+- When historical data is selected, hide or disable `Seed` because seed does not affect immutable historical candles.
+
+2. Add accessible information icons
+
+Add a small `i` icon beside these titles and controls:
+
+- Deterministic replay
+- Build a review set
+- Data source
+- Symbol
+- Review-period end date
+- In-sample days
+- Out-of-sample days
+- Include premarket context
+- Formula version
+- Formula hash
+- Choose the story to inspect
+- Example count
+- Evaluation cursor
+- Machine-visible candles
+- Human-only outcome context
+- Human judgment
+
+Information icons must:
+- open on click, keyboard activation or hover
+- use concise plain language
+- remain outside the chart plot
+- close with Escape or clicking elsewhere
+- have accessible names
+- never cover important chart candles
+
+Suggested explanations:
+
+Deterministic replay:
+“Replays completed historical candles through the fixed formula. The same inputs always produce the same result.”
+
+In-sample:
+“Sessions available while defining and checking the formula.”
+
+Out-of-sample:
+“Holdout sessions used to test the formula on candles not used while refining it.”
+
+Evaluation cursor:
+“The final completed candle the machine was allowed to use.”
+
+Human-only outcome:
+“Later candles shown only so you can judge what happened next. They were unavailable to the formula.”
+
+3. Explain the relationship between category, sample and dates
+
+Current confusing behavior:
+- The form shows an end date such as July 28.
+- A selected setup may display July 23.
+- The header says `Sample 01 / 01 · In-sample`.
+
+Correct the terminology:
+
+Rename:
+- `End date` → `Review period ending`
+- `Sample 01 / 01` → `Example 1 of 1`
+- `In-sample` → `Formula-development session`
+- `Out-of-sample` → `Holdout validation session`
+
+Display a compact context row:
+
+Category: Strong Breakout
+Example: 1 of 1
+Chart date: July 23, 2026
+Review period: July 20–July 28, 2026
+Dataset role: Formula-development session
+
+Add this explanation:
+“The selected date is the end of the search period. LevelStory found this example on July 23 within that period.”
+
+When a category tile is selected:
+- update the chart and context row together
+- never leave stale dates from a previously selected category
+- preserve the selected category after normal rerenders
+
+4. Simplify the formula explanation
+
+Replace the current uppercase concatenated technical trace with a concise trader-readable summary.
+
+Example:
+
+Machine decision: No entry
+
+What the app saw:
+- Strong breakout detected.
+- Breakout direction agreed with the 15-minute trend.
+- No qualifying pullback to a mapped level was found.
+- Pullback volume could not be confirmed.
+- No valid patience candle and immediate trigger were completed.
+- Risk controls blocked entry.
+
+Therefore:
+“Strong breakout detected, but no trade qualified.”
+
+Keep the complete technical trace inside a collapsed:
+`Show deterministic rule details`
+
+Do not discard or modify the immutable machine evidence.
+
+Make the category and decision distinction explicit:
+- Category: market behavior detected
+- Decision: whether a trade qualified
+
+A Strong Breakout example may still have a No Entry decision.
+
+5. Add a permanent numeric price axis and level prices
+
+The price scale must always remain visible on the right side of the chart.
+
+- Reserve enough right-axis width so it cannot be clipped.
+- Display approximately 6–10 adaptive price ticks.
+- Align MES ticks to 0.25.
+- Keep price values visible in normal, expanded and fullscreen modes.
+- Display numeric price tags for:
+  - Premarket High/Low
+  - ORB High/Low
+  - NTZ High/Low
+  - VWAP
+  - EMA 200
+  - Fibonacci level
+  - critical/confluence level
+  - entry
+  - strategy stop
+  - catastrophe stop
+  - target
+  - runner threshold
+- Use collision-aware stacking and connector lines.
+- Combine exact-price confluences into one label, for example:
+  `Premarket High + Critical Resistance · 7739.00`
+
+VWAP and EMA 200 must remain curved per-candle series, not horizontal snapshot lines.
+
+6. Mark where each action occurred
+
+Add small, exact timestamp-based markers:
+
+- `WB` — weak ORB probe
+- `BO` — strong breakout
+- `PB` — qualifying pullback
+- `C` — consolidation completed
+- `P` — patience candle
+- `T` — immediate-next trigger candle
+- `E` — entry/fill
+- `S` — strategy stop
+- `CS` — catastrophe stop
+- `TP` — target
+- `RA` — runner activated
+- `RX` — runner exited
+- `!` — same-candle ambiguity
+
+Entry marker:
+- long: green upward triangle below the entry candle
+- short: red downward triangle above the entry candle
+- label includes exact fill price
+
+If no entry occurred:
+- display a small `NO ENTRY` badge outside the candle plot
+- explain the first blocking rule
+- never fabricate an entry marker
+
+Marker hover/focus details:
+- event name
+- New York time
+- candle interval
+- direction
+- associated level
+- trigger/fill/exit price
+- volume context
+- machine-visible or human-only
+
+Markers must be derived from immutable audit evidence, not inferred by the frontend from visual candle shapes.
+
+7. Move the hover inspector outside the plot
+
+The current floating OHLC popup covers the candles being inspected.
+
+Desktop:
+- Replace it with a fixed `Selected candle` inspector beside or above the chart.
+- Keep the crosshair and selected-candle highlight inside the plot.
+- Update the fixed inspector as the user hovers or uses arrow keys.
+- The inspector must not overlap price, volume, labels or candles.
+
+Expanded/fullscreen:
+- Use a compact docked panel in the upper-left or upper-right chart margin.
+- Allow it to collapse.
+
+Mobile:
+- Use a compact bottom sheet below the chart.
+- Never place it directly over the selected candle.
+
+Inspector contents:
+- New York five-minute interval
+- UTC timestamp
+- OHLC
+- volume
+- contract
+- machine-visible or human-only
+- active event markers on that candle
+
+8. Add an explicit Submit Review button
+
+Current behavior persists a judgment immediately after selecting it. Replace that with an explicit submission flow.
+
+Human Judgment panel:
+- Correct
+- Incorrect
+- Uncertain
+- Rule needs clarification
+- optional reviewer note
+- `Submit review` button
+
+Behavior:
+- Require one judgment before enabling Submit.
+- Do not persist merely when a radio option is selected.
+- Persist the selected judgment and note only after Submit is pressed.
+- Show:
+  `Review submitted`
+- Display reviewed time and saved status.
+- Disable duplicate submission unless the judgment or note changes.
+- Provide `Update review` when editing an existing judgment.
+- Add an optional `Submit and inspect next` button.
+- Warn before navigating away with unsaved changes.
+
+Update the explanatory copy:
+“Choose a judgment, optionally add a note, then submit. Submitting records your review but does not change the formula.”
+
+9. Additional corrections
+
+Historical coverage:
+- Replace `Generated 5 causal snapshots` with:
+  `5 of 12 historical categories found`
+- List available and missing categories.
+- Do not fabricate missing examples.
+- Add `Search a wider date range` as an explicit user action.
+
+Coverage gaps:
+- When displaying `40 of 42 candles`, list the two missing timestamps in a collapsible coverage detail.
+- Preserve blank timestamp slots.
+- Do not fabricate candles.
+
+Premarket:
+- Keep premarket in a separate collapsible mini-chart.
+- Never compress the primary 9:30–1:00 chart.
+- Clarify that the checkbox controls premarket candles; premarket High/Low levels remain available regardless.
+
+Chart markers and labels:
+- Prevent the Opening Range label from overlapping other levels.
+- Ensure the causal-cursor label is never clipped.
+- Strengthen human-only shading after the evaluation cursor.
+- Maintain readable text in normal, expanded and fullscreen modes.
+
+Sticky review panel:
+- Keep Human Judgment visible while scrolling the chart on desktop.
+- On small screens, place it below the chart.
+
+10. Focused tests
+
+Add tests proving:
+- historical is the default source
+- seed is disabled or hidden in historical mode
+- review-period end and example date are represented separately
+- selecting a category updates its exact example and date
+- simplified reasoning preserves the immutable technical trace
+- numeric MES price ticks remain visible and align to 0.25
+- action markers use exact audit timestamps
+- entries appear only when a trade exists
+- the candle inspector never overlays the plot
+- choosing a judgment does not persist automatically
+- Submit persists exactly once
+- unsaved-change protection works
+- historical category coverage remains honest
+- missing intervals remain gaps
+- premarket does not compress the primary chart
+- no future candle enters machine evidence
+
+Verification limits:
+- Run focused visual-validation API and frontend tests.
+- Run API and frontend typechecks.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not modify existing human judgments.
+- Restart the API only once if a response-schema change requires it.
+
+Provide before-and-after screenshots of:
+1. Build a review set with information icons
+2. Strong Breakout with simplified reasoning
+3. Chart with visible price scale and action markers
+4. Docked selected-candle inspector
+5. Human Judgment with Submit Review
+6. Expanded/fullscreen view
+```
+
+One especially important correction is distinguishing **what happened** from **whether a trade qualified**. A chart can contain a strong breakout or pullback while still correctly producing “No Entry.”
