@@ -650,6 +650,32 @@ function formatExactVolume(value: number): string {
   return Number.isFinite(value) ? Math.round(value).toLocaleString("en-US") : "—";
 }
 
+function CandleInspector({ inspection, activeEvents }: { inspection: CandleInspection | null; activeEvents: string[] }) {
+  return <section className="candle-inspector" aria-label="Selected candle inspector" data-testid="candle-inspector">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="eyebrow text-muted-foreground">Candle inspector</div>
+        <h3 className="mt-1 text-xs font-bold">{inspection ? inspection.interval : "Select a five-minute candle"}</h3>
+      </div>
+      {inspection && <span className={`shrink-0 text-[9px] font-bold uppercase ${inspection.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{inspection.machineVisible ? "Machine visible" : "Human-only context"}</span>}
+    </div>
+    {inspection ? <>
+      <div className="mt-3 grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3" data-testid="candle-inspector-ohlcv">
+        {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close]] as const).map(([label, value]) => <div key={label} className="bg-card px-2.5 py-2"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{value.toFixed(2)}</div></div>)}
+        <div className="bg-card px-2.5 py-2 col-span-2 sm:col-span-1"><div className="eyebrow text-muted-foreground">Volume</div><div className="mono mt-1 text-[11px] font-bold">{formatExactVolume(inspection.volume)}</div></div>
+      </div>
+      <div className="mt-3 space-y-1 border-t border-border pt-3 text-[10px] text-muted-foreground">
+        <div><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET</div>
+        <div>{inspection.utc} UTC · Exact raw OHLCV interval</div>
+      </div>
+      <div className="mt-3 border-t border-border pt-3">
+        <div className="eyebrow text-muted-foreground">Active events</div>
+        {activeEvents.length ? <ul className="mt-1 space-y-1 text-[10px]">{activeEvents.map((event) => <li key={event} className="font-semibold">{event}</li>)}</ul> : <div className="mt-1 text-[10px] text-muted-foreground">No audit event on this candle.</div>}
+      </div>
+    </> : <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Hover a candle or focus the chart and use the arrow keys. The inspector stays outside the plot so exact prices remain readable.</p>}
+  </section>;
+}
+
 function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; snapshot: VisualValidationSnapshot }) {
   if (!candles.length) {
     return <details open className="mb-4 border border-border bg-muted/20" data-testid="premarket-mini-chart">
@@ -802,6 +828,11 @@ function CausalSvg({
   const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
   const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
   const hoveredSlot = hoveredCandle ? getCandleSlotIndex(hoveredCandle, sessionView, premarketCandles.length > 0) : 0;
+  const hoveredEvents = hoveredCandle
+    ? snapshot.tradeEvents
+      .filter((event) => [event.openTime, event.closeTime].includes(hoveredCandle.openTime) || [event.openTime, event.closeTime].includes(hoveredCandle.closeTime))
+      .map((event) => `${event.label}${event.modeledPrice == null ? "" : ` · ${formatPriceAxisValue(event.modeledPrice)}`}`)
+    : [];
   const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
     const svgX = (clientX - rect.left) * (width / rect.width);
     const slot = Math.floor((svgX - left) / step);
@@ -827,26 +858,6 @@ function CausalSvg({
     setHoveredIndex(nextIndex);
   };
   return <div className="relative w-full overflow-x-auto">
-    {hoveredCandle && hoveredDetails && <div className="pointer-events-none absolute right-4 top-4 z-10 min-w-[238px] border border-foreground/20 bg-card/95 p-3 shadow-sm" role="status" aria-live="polite" data-testid="chart-crosshair-tooltip">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="eyebrow text-muted-foreground">Selected 5-minute candle</div>
-          <div className="mono mt-1 text-[11px] font-bold">{hoveredDetails.interval}</div>
-        </div>
-        <span className={`shrink-0 text-[9px] font-bold uppercase ${hoveredDetails.machineVisible ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{hoveredDetails.machineVisible ? "Machine visible" : "Human-only"}</span>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 border-t border-border pt-2 text-[10px]">
-        <span>O <strong className="mono">{hoveredDetails.open.toFixed(2)}</strong></span>
-        <span>H <strong className="mono">{hoveredDetails.high.toFixed(2)}</strong></span>
-        <span>L <strong className="mono">{hoveredDetails.low.toFixed(2)}</strong></span>
-        <span>C <strong className="mono">{hoveredDetails.close.toFixed(2)}</strong></span>
-        <span className="col-span-2">V <strong className="mono">{formatExactVolume(hoveredDetails.volume)}</strong></span>
-      </div>
-      <div className="mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground">
-        <div><span className="font-semibold text-foreground">{hoveredDetails.contractSymbol}</span> · {hoveredDetails.utc} UTC</div>
-        <div>Crosshair snaps to the exact raw OHLCV interval.</div>
-      </div>
-    </div>}
      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
        <span className="eyebrow text-muted-foreground">Inspect / fixed timestamp slots</span>
        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Chart navigation controls">
@@ -859,7 +870,9 @@ function CausalSvg({
          {sessionView !== "primary" && <button type="button" onClick={onReturnPrimary} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
        </div>
      </div>
-     <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[600px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
+      <div className="chart-inspection-layout">
+      <div className="chart-plot-shell">
+      <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[600px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
       {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
       {volumeAxis.map((tick) => {
@@ -955,10 +968,13 @@ function CausalSvg({
           onMouseLeave={() => setHoveredIndex(null)}
           onKeyDown={setIndexFromKeyboard}
         />
-    </svg>
+     </svg>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
        {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
      </div>
+      </div>
+      <CandleInspector inspection={hoveredDetails} activeEvents={hoveredEvents} />
+      </div>
      {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
       <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Additional levels ({additionalLevels.length})</summary>
@@ -1060,7 +1076,31 @@ function moveSnapshot(snapshots: VisualValidationSnapshot[], active: VisualValid
   if (next) setSelected(next.snapshotId);
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function InfoTip({ label, text }: { label: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!tipRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+  const id = `info-tip-${label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`;
+  return <span ref={tipRef} className="relative inline-flex align-middle" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <button type="button" className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`More information about ${label}`} aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><Info size={12} /></button>
+    {open && <span id={id} role="tooltip" className="absolute bottom-full left-0 z-30 mb-2 w-56 rounded-md border border-border bg-popover p-2.5 text-[10px] font-normal normal-case leading-4 tracking-normal text-popover-foreground shadow-lg">{text}</span>}
+  </span>;
+}
+
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">{label}</span>{children}</label>;
 }
 

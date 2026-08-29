@@ -26,9 +26,9 @@ const defaultRequest = {
   endDate: "2026-08-26",
   inSampleDays: 5,
   outOfSampleDays: 2,
-  seed: 11,
+  seed: undefined,
   premarketAvailable: true,
-  source: "simulated" as const,
+  source: "historical_databento" as const,
 };
 
 export function createVisualValidationRouter(): IRouter {
@@ -44,7 +44,7 @@ export function createVisualValidationRouter(): IRouter {
     message: "Review updates are temporarily limited. Try again shortly.",
   });
 
-  router.get("/backtest/visual-validation", (req, res): void => {
+  router.get("/backtest/visual-validation", async (req, res): Promise<void> => {
     const parsed = GetVisualValidationSetQueryParams.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -69,8 +69,18 @@ export function createVisualValidationRouter(): IRouter {
       ...(parsed.data.outOfSampleDays ? { outOfSampleDays: parsed.data.outOfSampleDays } : {}),
       ...(parsed.data.seed !== undefined ? { seed: parsed.data.seed } : {}),
     };
-    const set = storeVisualValidationSet(buildVisualValidationSet(request));
-    res.json(GetVisualValidationSetResponse.parse(set));
+    try {
+      const built = request.source === "historical_databento"
+        ? await buildHistoricalVisualValidationSet(request)
+        : buildVisualValidationSet(request);
+      const set = storeVisualValidationSet(built);
+      res.json(GetVisualValidationSetResponse.parse(set));
+    } catch (error) {
+      req.log?.error({ error: error instanceof Error ? error.message : "unknown" }, "Visual-validation generation failed");
+      const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
+      const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
+      res.status(unavailable ? 503 : 500).json({ error: detail });
+    }
   });
 
   router.post("/backtest/visual-validation", generationRateLimit, async (req, res): Promise<void> => {

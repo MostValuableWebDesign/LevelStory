@@ -2794,6 +2794,9 @@ export const VisualValidationRequestSymbol = {
   MES: 'MES',
 } as const;
 
+/**
+ * Historical Databento is the default; simulated fixtures are an explicit testing option.
+ */
 export type VisualValidationRequestSource = typeof VisualValidationRequestSource[keyof typeof VisualValidationRequestSource];
 
 
@@ -2822,6 +2825,7 @@ export interface VisualValidationRequest {
      */
   seed?: number;
   premarketAvailable?: boolean;
+  /** Historical Databento is the default; simulated fixtures are an explicit testing option. */
   source?: VisualValidationRequestSource;
 }
 

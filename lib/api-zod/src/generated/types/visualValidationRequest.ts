@@ -28,5 +28,6 @@ export interface VisualValidationRequest {
      */
   seed?: number;
   premarketAvailable?: boolean;
+  /** Historical Databento is the default; simulated fixtures are an explicit testing option. */
   source?: VisualValidationRequestSource;
 }

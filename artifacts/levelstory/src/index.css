@@ -428,6 +428,20 @@
       linear-gradient(180deg, hsl(var(--card) / .28), transparent 46%),
       hsl(var(--background) / .36);
   }
+  .chart-inspection-layout {
+    display: grid;
+    gap: 1rem;
+    align-items: start;
+  }
+  .chart-plot-shell {
+    min-width: 0;
+  }
+  .candle-inspector {
+    min-width: 0;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / .22);
+    padding: .85rem;
+  }
   .visual-review-workspace {
     grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
     align-items: start;
@@ -507,6 +521,11 @@
     }
     .chart-control {
       flex: 1 1 auto;
+    }
+  }
+  @media (min-width: 1280px) {
+    .chart-inspection-layout {
+      grid-template-columns: minmax(0, 1fr) minmax(210px, 250px);
     }
   }
   .status-strip {

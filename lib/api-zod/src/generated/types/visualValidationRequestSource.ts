@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Historical Databento is the default; simulated fixtures are an explicit testing option.
+ */
 export type VisualValidationRequestSource = typeof VisualValidationRequestSource[keyof typeof VisualValidationRequestSource];
 
 

@@ -4030,7 +4030,7 @@ export const getVisualValidationSetResponseRequestSeedMin = 0;
 export const getVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
-export const getVisualValidationSetResponseRequestSourceDefault = `simulated`;
+export const getVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4058,7 +4058,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "outOfSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault)
+  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
@@ -4208,7 +4208,7 @@ export const createVisualValidationSetBodySeedMin = 0;
 export const createVisualValidationSetBodySeedMax = 1000000;
 
 export const createVisualValidationSetBodyPremarketAvailableDefault = true;
-export const createVisualValidationSetBodySourceDefault = `simulated`;
+export const createVisualValidationSetBodySourceDefault = `historical_databento`;
 
 export const CreateVisualValidationSetBody = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
@@ -4217,7 +4217,7 @@ export const CreateVisualValidationSetBody = zod.object({
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault)
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4236,7 +4236,7 @@ export const createVisualValidationSetResponseRequestSeedMin = 0;
 export const createVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
-export const createVisualValidationSetResponseRequestSourceDefault = `simulated`;
+export const createVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4264,7 +4264,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault)
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
