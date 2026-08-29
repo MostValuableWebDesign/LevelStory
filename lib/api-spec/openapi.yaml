@@ -18,6 +18,10 @@ tags:
     description: Risk guardrails
   - name: backtest
     description: Causal historical replay and shadow backtesting
+  - name: governance
+    description: Persistent teaching evidence and Shadow Mode strategy governance
+  - name: Auth
+    description: Browser session authentication
 paths:
   /healthz:
     get:
@@ -730,7 +734,294 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /auth/user:
+    get:
+      operationId: getCurrentAuthUser
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Auth state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthUserEnvelope" }
+  /login:
+    get:
+      operationId: beginBrowserLogin
+      tags: [Auth]
+      summary: Begin browser login
+      responses:
+        "302": { description: Redirect to identity provider }
+  /callback:
+    get:
+      operationId: handleBrowserLoginCallback
+      tags: [Auth]
+      summary: Complete browser login
+      responses:
+        "302": { description: Redirect to application }
+  /logout:
+    get:
+      operationId: logoutBrowserSession
+      tags: [Auth]
+      summary: End browser login
+      responses:
+        "302": { description: Redirect after logout }
+  /teaching-examples:
+    get:
+      operationId: listTeachingExamples
+      tags: [governance]
+      summary: List immutable teaching evidence
+      responses:
+        "200":
+          description: Teaching examples
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TeachingExample" }
+  /teaching-examples/{reviewSetId}/{snapshotId}/history:
+    get:
+      operationId: getTeachingExampleHistory
+      tags: [governance]
+      summary: Read teaching supersession history
+      parameters:
+        - { name: reviewSetId, in: path, required: true, schema: { type: string } }
+        - { name: snapshotId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Teaching revisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TeachingExample" }
+  /teaching-examples/{id}/supersede:
+    post:
+      operationId: supersedeTeachingExample
+      tags: [governance]
+      summary: Append a replacement teaching judgment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SupersedeTeachingExampleInput" }
+      responses:
+        "201":
+          description: Replacement teaching example
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeachingExample" }
+  /strategy-proposals:
+    get:
+      operationId: listStrategyProposals
+      tags: [governance]
+      summary: List strategy proposals
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StrategyProposal" }
+    post:
+      operationId: createStrategyProposal
+      tags: [governance]
+      summary: Create a draft strategy proposal
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StrategyProposalInput" }
+      responses:
+        "201":
+          description: Draft proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}:
+    get:
+      operationId: getStrategyProposal
+      tags: [governance]
+      summary: Get a proposal and its audit history
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Proposal detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposalDetail" }
+  /strategy-proposals/{id}/clarification:
+    post:
+      operationId: requestStrategyProposalClarification
+      tags: [governance]
+      summary: Request proposal clarification
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GovernanceReasonInput" }
+      responses:
+        "200":
+          description: Proposal with clarification request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}/validate:
+    post:
+      operationId: validateStrategyProposal
+      tags: [governance]
+      summary: Queue asynchronous proposal validation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Validation queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRun" }
+  /strategy-proposals/{id}/approve:
+    post:
+      operationId: approveStrategyProposal
+      tags: [governance]
+      summary: Approve a validated proposal
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GovernanceReasonInput" }
+      responses:
+        "200":
+          description: Approved proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}/reject:
+    post:
+      operationId: rejectStrategyProposal
+      tags: [governance]
+      summary: Reject a proposal
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GovernanceReasonInput" }
+      responses:
+        "200":
+          description: Rejected proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}/publish:
+    post:
+      operationId: publishStrategyProposalCandidate
+      tags: [governance]
+      summary: Publish an approved proposal as a Shadow Mode candidate
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Candidate publication
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidatePublication" }
+  /strategy-proposals/{id}/activate:
+    post:
+      operationId: activateStrategyProposalCandidate
+      tags: [governance]
+      summary: Activate a candidate in Shadow Mode
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Active Shadow Mode version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidatePublication" }
+  /strategy-proposals/{id}/retire:
+    post:
+      operationId: retireStrategyProposal
+      tags: [governance]
+      summary: Retire a candidate or active Shadow Mode version
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Retired proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}/rollback:
+    post:
+      operationId: rollbackStrategyProposal
+      tags: [governance]
+      summary: Roll back a Shadow Mode version without deleting history
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GovernanceReasonInput" }
+      responses:
+        "200":
+          description: Rolled-back proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposal" }
+  /strategy-proposals/{id}/audit:
+    get:
+      operationId: getStrategyProposalAudit
+      tags: [governance]
+      summary: Read the append-only proposal audit history
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Proposal detail including audit history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyProposalDetail" }
+  /strategy-versions:
+    get:
+      operationId: listStrategyVersions
+      tags: [governance]
+      summary: List Shadow Mode strategy versions
+      responses:
+        "200":
+          description: Strategy versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StrategyVersion" }
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 200 }
   schemas:
     HealthStatus:
       type: object
@@ -3209,4 +3500,197 @@ components:
             type: object
             additionalProperties: true
       required: [reviewSetId, generatedAt, formulaHash, totalSnapshots, reviewedSnapshots, reviews, discrepancies, reviewHistory]
+    AuthUser:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: ["string", "null"] }
+        firstName: { type: ["string", "null"] }
+        lastName: { type: ["string", "null"] }
+        profileImageUrl: { type: ["string", "null"] }
+      required: [id, email, firstName, lastName, profileImageUrl]
+    AuthUserEnvelope:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+      required: [user]
+    TeachingExample:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        reviewSetId: { type: string }
+        snapshotId: { type: string }
+        reviewerId: { type: string }
+        status: { type: string, enum: [submitted, superseded] }
+        judgment: { type: string, enum: [missed_trade, false_positive_trade] }
+        symbol: { type: string }
+        contract: { type: string }
+        tradingDate: { type: string }
+        selectedCandleTimestamp: { type: string, format: date-time }
+        patienceCandleTimestamp: { type: ["string", "null"], format: date-time }
+        direction: { type: ["string", "null"] }
+        entryBufferTicks: { type: ["number", "null"] }
+        calculatedEntryPrice: { type: ["string", "null"] }
+        setupClassification: { type: string }
+        qualifyingLevelType: { type: ["string", "null"] }
+        confidence: { type: string }
+        reviewerExplanation: { type: string }
+        machineDecision: { type: string }
+        machineRejectionReasons: { type: array, items: { type: string } }
+        calendarVersion: { type: string }
+        evidenceSnapshot: { type: object, additionalProperties: true }
+        causalValidation: { type: object, additionalProperties: true }
+        formulaVersion: { type: string }
+        formulaHash: { type: string }
+        sourceFingerprint: { type: string }
+        calendarFingerprint: { type: string }
+        supersedesTeachingId: { type: ["string", "null"] }
+        outcomeSnapshot: { type: ["object", "null"], additionalProperties: true }
+        revision: { type: number, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+      required: [id, reviewSetId, snapshotId, reviewerId, status, judgment, symbol, contract, tradingDate, selectedCandleTimestamp, patienceCandleTimestamp, direction, entryBufferTicks, calculatedEntryPrice, setupClassification, qualifyingLevelType, confidence, reviewerExplanation, machineDecision, machineRejectionReasons, calendarVersion, evidenceSnapshot, causalValidation, formulaVersion, formulaHash, sourceFingerprint, calendarFingerprint, supersedesTeachingId, outcomeSnapshot, revision, createdAt]
+    StrategyProposalInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        hypothesis: { type: string, minLength: 1, maxLength: 2000 }
+        rationale: { type: string, minLength: 1, maxLength: 4000 }
+        sourceTeachingIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+        proposalPayload: { type: object, additionalProperties: true }
+      required: [title, hypothesis, rationale, sourceTeachingIds]
+    SupersedeTeachingExampleInput:
+      type: object
+      properties:
+        judgment: { type: string }
+        explanation: { type: string, minLength: 10, maxLength: 4000 }
+      required: [judgment, explanation]
+    GovernanceReasonInput:
+      type: object
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+      required: [reason]
+    StrategyProposal:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        title: { type: string }
+        hypothesis: { type: string }
+        rationale: { type: string }
+        status: { type: string, enum: [draft, clarification_requested, validation_pending, validation_running, validation_passed, validation_failed, approved, rejected, candidate, active, retired, rolled_back] }
+        createdBy: { type: string }
+        proposalType: { type: string }
+        plainLanguageSummary: { type: string }
+        currentRule: { type: string }
+        proposedRule: { type: string }
+        deterministicRuleDiff: { type: object, additionalProperties: true }
+        affectedRuleIds: { type: array, items: { type: string } }
+        expectedBehaviorChange: { type: string }
+        risks: { type: array, items: { type: string } }
+        sourceTeachingIds:
+          type: array
+          items: { type: string }
+        supportingExampleIds:
+          type: array
+          items: { type: string }
+        conflictingExampleIds:
+          type: array
+          items: { type: string }
+        sourceFormulaVersion: { type: string }
+        candidateFormulaVersion: { type: ["string", "null"] }
+        proposalPayload: { type: object, additionalProperties: true }
+        validationRunId: { type: ["string", "null"] }
+        candidateVersionId: { type: ["string", "null"] }
+        rejectionReason: { type: ["string", "null"] }
+        clarificationRequest: { type: ["string", "null"] }
+        approvedBy: { type: ["string", "null"] }
+        approvedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, title, hypothesis, rationale, status, createdBy, proposalType, plainLanguageSummary, currentRule, proposedRule, deterministicRuleDiff, affectedRuleIds, expectedBehaviorChange, risks, sourceTeachingIds, supportingExampleIds, conflictingExampleIds, sourceFormulaVersion, candidateFormulaVersion, proposalPayload, validationRunId, candidateVersionId, rejectionReason, clarificationRequest, approvedBy, approvedAt, createdAt, updatedAt]
+    RuleProposalAuditEvent:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        proposalId: { type: string }
+        actorId: { type: string }
+        action: { type: string }
+        fromStatus: { type: ["string", "null"] }
+        toStatus: { type: ["string", "null"] }
+        reason: { type: ["string", "null"] }
+        idempotencyKey: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+      required: [id, proposalId, actorId, action, fromStatus, toStatus, reason, idempotencyKey, createdAt]
+    ValidationRun:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        proposalId: { type: string }
+        requestFingerprint: { type: string }
+        status: { type: string, enum: [queued, running, passed, failed] }
+        beforeMetrics: { type: ["object", "null"], additionalProperties: true }
+        afterMetrics: { type: ["object", "null"], additionalProperties: true }
+        regressions: { type: array, items: { type: string } }
+        conflicts: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+        formulaFingerprint: { type: string }
+        sourceFingerprint: { type: string }
+        errorMessage: { type: ["string", "null"] }
+        requestedBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+      required: [id, proposalId, requestFingerprint, status, regressions, conflicts, warnings, formulaFingerprint, sourceFingerprint, requestedBy, createdAt]
+    StrategyVersion:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        strategyKey: { type: string }
+        versionNumber: { type: number, minimum: 1 }
+        status: { type: string, enum: [candidate, active, retired, rolled_back] }
+        proposalId: { type: ["string", "null"] }
+        parentVersionId: { type: ["string", "null"] }
+        formulaVersion: { type: string }
+        formulaHash: { type: string }
+        configSnapshot: { type: object, additionalProperties: true }
+        ruleDiff: { type: object, additionalProperties: true }
+        evidenceIds: { type: array, items: { type: string } }
+        validationRunId: { type: ["string", "null"] }
+        publishedBy: { type: string }
+        createdBy: { type: string }
+        activatedBy: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        activatedAt: { type: ["string", "null"], format: date-time }
+        retiredAt: { type: ["string", "null"], format: date-time }
+      required: [id, strategyKey, versionNumber, status, proposalId, parentVersionId, formulaVersion, formulaHash, configSnapshot, ruleDiff, evidenceIds, validationRunId, publishedBy, createdBy, activatedBy, createdAt, activatedAt, retiredAt]
+    StrategyProposalDetail:
+      type: object
+      properties:
+        proposal: { $ref: "#/components/schemas/StrategyProposal" }
+        auditEvents:
+          type: array
+          items: { $ref: "#/components/schemas/RuleProposalAuditEvent" }
+        validationRuns:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationRun" }
+        strategyVersion:
+          oneOf:
+            - $ref: "#/components/schemas/StrategyVersion"
+            - type: "null"
+      required: [proposal, auditEvents, validationRuns, strategyVersion]
+    CandidatePublication:
+      type: object
+      properties:
+        proposal: { $ref: "#/components/schemas/StrategyProposal" }
+        version: { $ref: "#/components/schemas/StrategyVersion" }
+      required: [proposal, version]
 

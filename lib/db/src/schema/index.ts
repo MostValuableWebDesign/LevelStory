@@ -18,3 +18,5 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./levelstory";
+export * from "./teaching-governance";
+export * from "./auth";

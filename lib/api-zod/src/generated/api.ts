@@ -5381,3 +5381,941 @@ export const UpdateRiskSettingsResponse = zod.object({
 })
 
 
+/**
+ * @summary Get current authenticated user
+ */
+export const GetCurrentAuthUserResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string(),
+  "email": zod.string().nullable(),
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable(),
+  "profileImageUrl": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Begin browser login
+ */
+export const BeginBrowserLoginResponse = zod.void()
+
+
+/**
+ * @summary Complete browser login
+ */
+export const HandleBrowserLoginCallbackResponse = zod.void()
+
+
+/**
+ * @summary End browser login
+ */
+export const LogoutBrowserSessionResponse = zod.void()
+
+
+/**
+ * @summary List immutable teaching evidence
+ */
+
+
+
+export const ListTeachingExamplesResponseItem = zod.object({
+  "id": zod.string(),
+  "reviewSetId": zod.string(),
+  "snapshotId": zod.string(),
+  "reviewerId": zod.string(),
+  "status": zod.enum(['submitted', 'superseded']),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "symbol": zod.string(),
+  "contract": zod.string(),
+  "tradingDate": zod.string(),
+  "selectedCandleTimestamp": zod.coerce.date(),
+  "patienceCandleTimestamp": zod.coerce.date().nullable(),
+  "direction": zod.string().nullable(),
+  "entryBufferTicks": zod.number().nullable(),
+  "calculatedEntryPrice": zod.string().nullable(),
+  "setupClassification": zod.string(),
+  "qualifyingLevelType": zod.string().nullable(),
+  "confidence": zod.string(),
+  "reviewerExplanation": zod.string(),
+  "machineDecision": zod.string(),
+  "machineRejectionReasons": zod.array(zod.string()),
+  "calendarVersion": zod.string(),
+  "evidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "causalValidation": zod.record(zod.string(), zod.unknown()),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "calendarFingerprint": zod.string(),
+  "supersedesTeachingId": zod.string().nullable(),
+  "outcomeSnapshot": zod.record(zod.string(), zod.unknown()).nullable(),
+  "revision": zod.number().min(1),
+  "createdAt": zod.coerce.date()
+})
+export const ListTeachingExamplesResponse = zod.array(ListTeachingExamplesResponseItem)
+
+
+/**
+ * @summary Read teaching supersession history
+ */
+export const GetTeachingExampleHistoryParams = zod.object({
+  "reviewSetId": zod.coerce.string(),
+  "snapshotId": zod.coerce.string()
+})
+
+
+
+
+export const GetTeachingExampleHistoryResponseItem = zod.object({
+  "id": zod.string(),
+  "reviewSetId": zod.string(),
+  "snapshotId": zod.string(),
+  "reviewerId": zod.string(),
+  "status": zod.enum(['submitted', 'superseded']),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "symbol": zod.string(),
+  "contract": zod.string(),
+  "tradingDate": zod.string(),
+  "selectedCandleTimestamp": zod.coerce.date(),
+  "patienceCandleTimestamp": zod.coerce.date().nullable(),
+  "direction": zod.string().nullable(),
+  "entryBufferTicks": zod.number().nullable(),
+  "calculatedEntryPrice": zod.string().nullable(),
+  "setupClassification": zod.string(),
+  "qualifyingLevelType": zod.string().nullable(),
+  "confidence": zod.string(),
+  "reviewerExplanation": zod.string(),
+  "machineDecision": zod.string(),
+  "machineRejectionReasons": zod.array(zod.string()),
+  "calendarVersion": zod.string(),
+  "evidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "causalValidation": zod.record(zod.string(), zod.unknown()),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "calendarFingerprint": zod.string(),
+  "supersedesTeachingId": zod.string().nullable(),
+  "outcomeSnapshot": zod.record(zod.string(), zod.unknown()).nullable(),
+  "revision": zod.number().min(1),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeachingExampleHistoryResponse = zod.array(GetTeachingExampleHistoryResponseItem)
+
+
+/**
+ * @summary Append a replacement teaching judgment
+ */
+export const SupersedeTeachingExampleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const supersedeTeachingExampleHeaderIdempotencyKeyMax = 200;
+
+
+
+export const SupersedeTeachingExampleHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(supersedeTeachingExampleHeaderIdempotencyKeyMax)
+})
+
+export const supersedeTeachingExampleBodyExplanationMin = 10;
+export const supersedeTeachingExampleBodyExplanationMax = 4000;
+
+
+
+export const SupersedeTeachingExampleBody = zod.object({
+  "judgment": zod.string(),
+  "explanation": zod.string().min(supersedeTeachingExampleBodyExplanationMin).max(supersedeTeachingExampleBodyExplanationMax)
+})
+
+
+
+
+export const SupersedeTeachingExampleResponse = zod.object({
+  "id": zod.string(),
+  "reviewSetId": zod.string(),
+  "snapshotId": zod.string(),
+  "reviewerId": zod.string(),
+  "status": zod.enum(['submitted', 'superseded']),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "symbol": zod.string(),
+  "contract": zod.string(),
+  "tradingDate": zod.string(),
+  "selectedCandleTimestamp": zod.coerce.date(),
+  "patienceCandleTimestamp": zod.coerce.date().nullable(),
+  "direction": zod.string().nullable(),
+  "entryBufferTicks": zod.number().nullable(),
+  "calculatedEntryPrice": zod.string().nullable(),
+  "setupClassification": zod.string(),
+  "qualifyingLevelType": zod.string().nullable(),
+  "confidence": zod.string(),
+  "reviewerExplanation": zod.string(),
+  "machineDecision": zod.string(),
+  "machineRejectionReasons": zod.array(zod.string()),
+  "calendarVersion": zod.string(),
+  "evidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "causalValidation": zod.record(zod.string(), zod.unknown()),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "calendarFingerprint": zod.string(),
+  "supersedesTeachingId": zod.string().nullable(),
+  "outcomeSnapshot": zod.record(zod.string(), zod.unknown()).nullable(),
+  "revision": zod.number().min(1),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List strategy proposals
+ */
+export const ListStrategyProposalsResponseItem = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListStrategyProposalsResponse = zod.array(ListStrategyProposalsResponseItem)
+
+
+/**
+ * @summary Create a draft strategy proposal
+ */
+export const createStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const CreateStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(createStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const createStrategyProposalBodyTitleMax = 200;
+
+export const createStrategyProposalBodyHypothesisMax = 2000;
+
+export const createStrategyProposalBodyRationaleMax = 4000;
+
+
+
+
+export const CreateStrategyProposalBody = zod.object({
+  "title": zod.string().min(1).max(createStrategyProposalBodyTitleMax),
+  "hypothesis": zod.string().min(1).max(createStrategyProposalBodyHypothesisMax),
+  "rationale": zod.string().min(1).max(createStrategyProposalBodyRationaleMax),
+  "sourceTeachingIds": zod.array(zod.string()).min(1),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const CreateStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get a proposal and its audit history
+ */
+export const GetStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const GetStrategyProposalResponse = zod.object({
+  "proposal": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "auditEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "proposalId": zod.string(),
+  "actorId": zod.string(),
+  "action": zod.string(),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string().nullable(),
+  "reason": zod.string().nullable(),
+  "idempotencyKey": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "validationRuns": zod.array(zod.object({
+  "id": zod.string(),
+  "proposalId": zod.string(),
+  "requestFingerprint": zod.string(),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "regressions": zod.array(zod.string()),
+  "conflicts": zod.array(zod.string()),
+  "warnings": zod.array(zod.string()),
+  "formulaFingerprint": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "errorMessage": zod.string().nullish(),
+  "requestedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})),
+  "strategyVersion": zod.union([zod.object({
+  "id": zod.string(),
+  "strategyKey": zod.string(),
+  "versionNumber": zod.number().min(1),
+  "status": zod.enum(['candidate', 'active', 'retired', 'rolled_back']),
+  "proposalId": zod.string().nullable(),
+  "parentVersionId": zod.string().nullable(),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "configSnapshot": zod.record(zod.string(), zod.unknown()),
+  "ruleDiff": zod.record(zod.string(), zod.unknown()),
+  "evidenceIds": zod.array(zod.string()),
+  "validationRunId": zod.string().nullable(),
+  "publishedBy": zod.string(),
+  "createdBy": zod.string(),
+  "activatedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "retiredAt": zod.coerce.date().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Request proposal clarification
+ */
+export const RequestStrategyProposalClarificationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const requestStrategyProposalClarificationHeaderIdempotencyKeyMax = 200;
+
+
+
+export const RequestStrategyProposalClarificationHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(requestStrategyProposalClarificationHeaderIdempotencyKeyMax)
+})
+
+export const requestStrategyProposalClarificationBodyReasonMax = 4000;
+
+
+
+export const RequestStrategyProposalClarificationBody = zod.object({
+  "reason": zod.string().min(1).max(requestStrategyProposalClarificationBodyReasonMax)
+})
+
+export const RequestStrategyProposalClarificationResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Queue asynchronous proposal validation
+ */
+export const ValidateStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const validateStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const ValidateStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(validateStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const ValidateStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "proposalId": zod.string(),
+  "requestFingerprint": zod.string(),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "regressions": zod.array(zod.string()),
+  "conflicts": zod.array(zod.string()),
+  "warnings": zod.array(zod.string()),
+  "formulaFingerprint": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "errorMessage": zod.string().nullish(),
+  "requestedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Approve a validated proposal
+ */
+export const ApproveStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const approveStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const ApproveStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(approveStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const approveStrategyProposalBodyReasonMax = 4000;
+
+
+
+export const ApproveStrategyProposalBody = zod.object({
+  "reason": zod.string().min(1).max(approveStrategyProposalBodyReasonMax)
+})
+
+export const ApproveStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Reject a proposal
+ */
+export const RejectStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const rejectStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const RejectStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(rejectStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const rejectStrategyProposalBodyReasonMax = 4000;
+
+
+
+export const RejectStrategyProposalBody = zod.object({
+  "reason": zod.string().min(1).max(rejectStrategyProposalBodyReasonMax)
+})
+
+export const RejectStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Publish an approved proposal as a Shadow Mode candidate
+ */
+export const PublishStrategyProposalCandidateParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const publishStrategyProposalCandidateHeaderIdempotencyKeyMax = 200;
+
+
+
+export const PublishStrategyProposalCandidateHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(publishStrategyProposalCandidateHeaderIdempotencyKeyMax)
+})
+
+
+
+
+export const PublishStrategyProposalCandidateResponse = zod.object({
+  "proposal": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "version": zod.object({
+  "id": zod.string(),
+  "strategyKey": zod.string(),
+  "versionNumber": zod.number().min(1),
+  "status": zod.enum(['candidate', 'active', 'retired', 'rolled_back']),
+  "proposalId": zod.string().nullable(),
+  "parentVersionId": zod.string().nullable(),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "configSnapshot": zod.record(zod.string(), zod.unknown()),
+  "ruleDiff": zod.record(zod.string(), zod.unknown()),
+  "evidenceIds": zod.array(zod.string()),
+  "validationRunId": zod.string().nullable(),
+  "publishedBy": zod.string(),
+  "createdBy": zod.string(),
+  "activatedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "retiredAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Activate a candidate in Shadow Mode
+ */
+export const ActivateStrategyProposalCandidateParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const activateStrategyProposalCandidateHeaderIdempotencyKeyMax = 200;
+
+
+
+export const ActivateStrategyProposalCandidateHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(activateStrategyProposalCandidateHeaderIdempotencyKeyMax)
+})
+
+
+
+
+export const ActivateStrategyProposalCandidateResponse = zod.object({
+  "proposal": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "version": zod.object({
+  "id": zod.string(),
+  "strategyKey": zod.string(),
+  "versionNumber": zod.number().min(1),
+  "status": zod.enum(['candidate', 'active', 'retired', 'rolled_back']),
+  "proposalId": zod.string().nullable(),
+  "parentVersionId": zod.string().nullable(),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "configSnapshot": zod.record(zod.string(), zod.unknown()),
+  "ruleDiff": zod.record(zod.string(), zod.unknown()),
+  "evidenceIds": zod.array(zod.string()),
+  "validationRunId": zod.string().nullable(),
+  "publishedBy": zod.string(),
+  "createdBy": zod.string(),
+  "activatedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "retiredAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Retire a candidate or active Shadow Mode version
+ */
+export const RetireStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const retireStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const RetireStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(retireStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const RetireStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Roll back a Shadow Mode version without deleting history
+ */
+export const RollbackStrategyProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const rollbackStrategyProposalHeaderIdempotencyKeyMax = 200;
+
+
+
+export const RollbackStrategyProposalHeader = zod.object({
+  "Idempotency-Key": zod.string().min(1).max(rollbackStrategyProposalHeaderIdempotencyKeyMax)
+})
+
+export const rollbackStrategyProposalBodyReasonMax = 4000;
+
+
+
+export const RollbackStrategyProposalBody = zod.object({
+  "reason": zod.string().min(1).max(rollbackStrategyProposalBodyReasonMax)
+})
+
+export const RollbackStrategyProposalResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Read the append-only proposal audit history
+ */
+export const GetStrategyProposalAuditParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const GetStrategyProposalAuditResponse = zod.object({
+  "proposal": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "hypothesis": zod.string(),
+  "rationale": zod.string(),
+  "status": zod.enum(['draft', 'clarification_requested', 'validation_pending', 'validation_running', 'validation_passed', 'validation_failed', 'approved', 'rejected', 'candidate', 'active', 'retired', 'rolled_back']),
+  "createdBy": zod.string(),
+  "proposalType": zod.string(),
+  "plainLanguageSummary": zod.string(),
+  "currentRule": zod.string(),
+  "proposedRule": zod.string(),
+  "deterministicRuleDiff": zod.record(zod.string(), zod.unknown()),
+  "affectedRuleIds": zod.array(zod.string()),
+  "expectedBehaviorChange": zod.string(),
+  "risks": zod.array(zod.string()),
+  "sourceTeachingIds": zod.array(zod.string()),
+  "supportingExampleIds": zod.array(zod.string()),
+  "conflictingExampleIds": zod.array(zod.string()),
+  "sourceFormulaVersion": zod.string(),
+  "candidateFormulaVersion": zod.string().nullable(),
+  "proposalPayload": zod.record(zod.string(), zod.unknown()),
+  "validationRunId": zod.string().nullable(),
+  "candidateVersionId": zod.string().nullable(),
+  "rejectionReason": zod.string().nullable(),
+  "clarificationRequest": zod.string().nullable(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "auditEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "proposalId": zod.string(),
+  "actorId": zod.string(),
+  "action": zod.string(),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string().nullable(),
+  "reason": zod.string().nullable(),
+  "idempotencyKey": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "validationRuns": zod.array(zod.object({
+  "id": zod.string(),
+  "proposalId": zod.string(),
+  "requestFingerprint": zod.string(),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
+  "regressions": zod.array(zod.string()),
+  "conflicts": zod.array(zod.string()),
+  "warnings": zod.array(zod.string()),
+  "formulaFingerprint": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "errorMessage": zod.string().nullish(),
+  "requestedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})),
+  "strategyVersion": zod.union([zod.object({
+  "id": zod.string(),
+  "strategyKey": zod.string(),
+  "versionNumber": zod.number().min(1),
+  "status": zod.enum(['candidate', 'active', 'retired', 'rolled_back']),
+  "proposalId": zod.string().nullable(),
+  "parentVersionId": zod.string().nullable(),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "configSnapshot": zod.record(zod.string(), zod.unknown()),
+  "ruleDiff": zod.record(zod.string(), zod.unknown()),
+  "evidenceIds": zod.array(zod.string()),
+  "validationRunId": zod.string().nullable(),
+  "publishedBy": zod.string(),
+  "createdBy": zod.string(),
+  "activatedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "retiredAt": zod.coerce.date().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary List Shadow Mode strategy versions
+ */
+
+
+
+export const ListStrategyVersionsResponseItem = zod.object({
+  "id": zod.string(),
+  "strategyKey": zod.string(),
+  "versionNumber": zod.number().min(1),
+  "status": zod.enum(['candidate', 'active', 'retired', 'rolled_back']),
+  "proposalId": zod.string().nullable(),
+  "parentVersionId": zod.string().nullable(),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "configSnapshot": zod.record(zod.string(), zod.unknown()),
+  "ruleDiff": zod.record(zod.string(), zod.unknown()),
+  "evidenceIds": zod.array(zod.string()),
+  "validationRunId": zod.string().nullable(),
+  "publishedBy": zod.string(),
+  "createdBy": zod.string(),
+  "activatedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "retiredAt": zod.coerce.date().nullable()
+})
+export const ListStrategyVersionsResponse = zod.array(ListStrategyVersionsResponseItem)
+
+

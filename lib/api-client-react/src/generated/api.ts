@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuthUserEnvelope,
   BacktestAuditPage,
   BacktestReport,
   BacktestRequest,
@@ -27,6 +28,7 @@ import type {
   BatchBacktestStatus,
   BatchFunnelPage,
   CancelBatchBacktestParams,
+  CandidatePublication,
   DashboardOverview,
   ErrorResponse,
   ExportVisualValidationDiscrepanciesParams,
@@ -39,6 +41,7 @@ import type {
   GetMarketDataStatusParams,
   GetMarketSnapshotParams,
   GetVisualValidationSetParams,
+  GovernanceReasonInput,
   HealthStatus,
   HistoricalDataIndexStatus,
   HistoricalImportSummary,
@@ -49,6 +52,13 @@ import type {
   MarketSnapshot,
   RiskSettings,
   RiskSettingsUpdate,
+  StrategyProposal,
+  StrategyProposalDetail,
+  StrategyProposalInput,
+  StrategyVersion,
+  SupersedeTeachingExampleInput,
+  TeachingExample,
+  ValidationRun,
   VisualValidationDiscrepancyReport,
   VisualValidationProposedRuleAnalysis,
   VisualValidationProposedRuleAnalysisRequest,
@@ -156,12 +166,6 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
 
 export const getGetMarketSnapshotUrl = (params: GetMarketSnapshotParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1967,4 +1971,1494 @@ export const useUpdateRiskSettings = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getUpdateRiskSettingsMutationOptions(options));
     }
+
+export const getGetCurrentAuthUserUrl = () => {
+
+
+
+
+  return `/api/auth/user`
+}
+
+/**
+ * @summary Get current authenticated user
+ */
+export const getCurrentAuthUser = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthUserEnvelope> => {
+
+  return customFetch<AuthUserEnvelope>(getGetCurrentAuthUserUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentAuthUserQueryKey = () => {
+    return [
+    `/api/auth/user`
+    ] as const;
+    }
+
+
+export const getGetCurrentAuthUserQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentAuthUser>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentAuthUserQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentAuthUser>>> = ({ signal }) => getCurrentAuthUser({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentAuthUserQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentAuthUser>>>
+export type GetCurrentAuthUserQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current authenticated user
+ */
+
+export function useGetCurrentAuthUser<TData = Awaited<ReturnType<typeof getCurrentAuthUser>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentAuthUserQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getBeginBrowserLoginUrl = () => {
+
+
+
+
+  return `/api/login`
+}
+
+/**
+ * @summary Begin browser login
+ */
+export const beginBrowserLogin = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getBeginBrowserLoginUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBeginBrowserLoginQueryKey = () => {
+    return [
+    `/api/login`
+    ] as const;
+    }
+
+
+export const getBeginBrowserLoginQueryOptions = <TData = Awaited<ReturnType<typeof beginBrowserLogin>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBeginBrowserLoginQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof beginBrowserLogin>>> = ({ signal }) => beginBrowserLogin({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BeginBrowserLoginQueryResult = NonNullable<Awaited<ReturnType<typeof beginBrowserLogin>>>
+export type BeginBrowserLoginQueryError = ErrorType<void>
+
+
+/**
+ * @summary Begin browser login
+ */
+
+export function useBeginBrowserLogin<TData = Awaited<ReturnType<typeof beginBrowserLogin>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBeginBrowserLoginQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getHandleBrowserLoginCallbackUrl = () => {
+
+
+
+
+  return `/api/callback`
+}
+
+/**
+ * @summary Complete browser login
+ */
+export const handleBrowserLoginCallback = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getHandleBrowserLoginCallbackUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getHandleBrowserLoginCallbackQueryKey = () => {
+    return [
+    `/api/callback`
+    ] as const;
+    }
+
+
+export const getHandleBrowserLoginCallbackQueryOptions = <TData = Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getHandleBrowserLoginCallbackQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof handleBrowserLoginCallback>>> = ({ signal }) => handleBrowserLoginCallback({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type HandleBrowserLoginCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof handleBrowserLoginCallback>>>
+export type HandleBrowserLoginCallbackQueryError = ErrorType<void>
+
+
+/**
+ * @summary Complete browser login
+ */
+
+export function useHandleBrowserLoginCallback<TData = Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getHandleBrowserLoginCallbackQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLogoutBrowserSessionUrl = () => {
+
+
+
+
+  return `/api/logout`
+}
+
+/**
+ * @summary End browser login
+ */
+export const logoutBrowserSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getLogoutBrowserSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutBrowserSessionQueryKey = () => {
+    return [
+    `/api/logout`
+    ] as const;
+    }
+
+
+export const getLogoutBrowserSessionQueryOptions = <TData = Awaited<ReturnType<typeof logoutBrowserSession>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLogoutBrowserSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof logoutBrowserSession>>> = ({ signal }) => logoutBrowserSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LogoutBrowserSessionQueryResult = NonNullable<Awaited<ReturnType<typeof logoutBrowserSession>>>
+export type LogoutBrowserSessionQueryError = ErrorType<void>
+
+
+/**
+ * @summary End browser login
+ */
+
+export function useLogoutBrowserSession<TData = Awaited<ReturnType<typeof logoutBrowserSession>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLogoutBrowserSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListTeachingExamplesUrl = () => {
+
+
+
+
+  return `/api/teaching-examples`
+}
+
+/**
+ * @summary List immutable teaching evidence
+ */
+export const listTeachingExamples = async ( options?: Parameters<typeof customFetch>[1]): Promise<TeachingExample[]> => {
+
+  return customFetch<TeachingExample[]>(getListTeachingExamplesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTeachingExamplesQueryKey = () => {
+    return [
+    `/api/teaching-examples`
+    ] as const;
+    }
+
+
+export const getListTeachingExamplesQueryOptions = <TData = Awaited<ReturnType<typeof listTeachingExamples>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeachingExamples>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTeachingExamplesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTeachingExamples>>> = ({ signal }) => listTeachingExamples({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTeachingExamples>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTeachingExamplesQueryResult = NonNullable<Awaited<ReturnType<typeof listTeachingExamples>>>
+export type ListTeachingExamplesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List immutable teaching evidence
+ */
+
+export function useListTeachingExamples<TData = Awaited<ReturnType<typeof listTeachingExamples>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeachingExamples>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTeachingExamplesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTeachingExampleHistoryUrl = (reviewSetId: string,
+    snapshotId: string,) => {
+
+
+
+
+  return `/api/teaching-examples/${reviewSetId}/${snapshotId}/history`
+}
+
+/**
+ * @summary Read teaching supersession history
+ */
+export const getTeachingExampleHistory = async (reviewSetId: string,
+    snapshotId: string, options?: Parameters<typeof customFetch>[1]): Promise<TeachingExample[]> => {
+
+  return customFetch<TeachingExample[]>(getGetTeachingExampleHistoryUrl(reviewSetId,snapshotId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeachingExampleHistoryQueryKey = (reviewSetId: string,
+    snapshotId: string,) => {
+    return [
+    `/api/teaching-examples/${reviewSetId}/${snapshotId}/history`
+    ] as const;
+    }
+
+
+export const getGetTeachingExampleHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getTeachingExampleHistory>>, TError = ErrorType<unknown>>(reviewSetId: string,
+    snapshotId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeachingExampleHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeachingExampleHistoryQueryKey(reviewSetId,snapshotId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeachingExampleHistory>>> = ({ signal }) => getTeachingExampleHistory(reviewSetId,snapshotId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: reviewSetId !== null && reviewSetId !== undefined && snapshotId !== null && snapshotId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeachingExampleHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeachingExampleHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getTeachingExampleHistory>>>
+export type GetTeachingExampleHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read teaching supersession history
+ */
+
+export function useGetTeachingExampleHistory<TData = Awaited<ReturnType<typeof getTeachingExampleHistory>>, TError = ErrorType<unknown>>(
+ reviewSetId: string,
+    snapshotId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeachingExampleHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeachingExampleHistoryQueryOptions(reviewSetId,snapshotId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSupersedeTeachingExampleUrl = (id: string,) => {
+
+
+
+
+  return `/api/teaching-examples/${id}/supersede`
+}
+
+/**
+ * @summary Append a replacement teaching judgment
+ */
+export const supersedeTeachingExample = async (id: string,
+    supersedeTeachingExampleInput: SupersedeTeachingExampleInput, options?: Parameters<typeof customFetch>[1]): Promise<TeachingExample> => {
+
+  return customFetch<TeachingExample>(getSupersedeTeachingExampleUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(supersedeTeachingExampleInput)
+  }
+);}
+
+
+
+
+
+export const getSupersedeTeachingExampleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof supersedeTeachingExample>>, TError,{id: string;data: BodyType<SupersedeTeachingExampleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof supersedeTeachingExample>>, TError,{id: string;data: BodyType<SupersedeTeachingExampleInput>}, TContext> => {
+
+const mutationKey = ['supersedeTeachingExample'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof supersedeTeachingExample>>, {id: string;data: BodyType<SupersedeTeachingExampleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  supersedeTeachingExample(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SupersedeTeachingExampleMutationResult = NonNullable<Awaited<ReturnType<typeof supersedeTeachingExample>>>
+    export type SupersedeTeachingExampleMutationBody = BodyType<SupersedeTeachingExampleInput>
+    export type SupersedeTeachingExampleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Append a replacement teaching judgment
+ */
+export const useSupersedeTeachingExample = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof supersedeTeachingExample>>, TError,{id: string;data: BodyType<SupersedeTeachingExampleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof supersedeTeachingExample>>,
+        TError,
+        {id: string;data: BodyType<SupersedeTeachingExampleInput>},
+        TContext
+      > => {
+      return useMutation(getSupersedeTeachingExampleMutationOptions(options));
+    }
+
+export const getListStrategyProposalsUrl = () => {
+
+
+
+
+  return `/api/strategy-proposals`
+}
+
+/**
+ * @summary List strategy proposals
+ */
+export const listStrategyProposals = async ( options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal[]> => {
+
+  return customFetch<StrategyProposal[]>(getListStrategyProposalsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStrategyProposalsQueryKey = () => {
+    return [
+    `/api/strategy-proposals`
+    ] as const;
+    }
+
+
+export const getListStrategyProposalsQueryOptions = <TData = Awaited<ReturnType<typeof listStrategyProposals>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStrategyProposalsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStrategyProposals>>> = ({ signal }) => listStrategyProposals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStrategyProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStrategyProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof listStrategyProposals>>>
+export type ListStrategyProposalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List strategy proposals
+ */
+
+export function useListStrategyProposals<TData = Awaited<ReturnType<typeof listStrategyProposals>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStrategyProposalsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateStrategyProposalUrl = () => {
+
+
+
+
+  return `/api/strategy-proposals`
+}
+
+/**
+ * @summary Create a draft strategy proposal
+ */
+export const createStrategyProposal = async (strategyProposalInput: StrategyProposalInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getCreateStrategyProposalUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(strategyProposalInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStrategyProposal>>, TError,{data: BodyType<StrategyProposalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStrategyProposal>>, TError,{data: BodyType<StrategyProposalInput>}, TContext> => {
+
+const mutationKey = ['createStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStrategyProposal>>, {data: BodyType<StrategyProposalInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createStrategyProposal(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof createStrategyProposal>>>
+    export type CreateStrategyProposalMutationBody = BodyType<StrategyProposalInput>
+    export type CreateStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a draft strategy proposal
+ */
+export const useCreateStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStrategyProposal>>, TError,{data: BodyType<StrategyProposalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStrategyProposal>>,
+        TError,
+        {data: BodyType<StrategyProposalInput>},
+        TContext
+      > => {
+      return useMutation(getCreateStrategyProposalMutationOptions(options));
+    }
+
+export const getGetStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}`
+}
+
+/**
+ * @summary Get a proposal and its audit history
+ */
+export const getStrategyProposal = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposalDetail> => {
+
+  return customFetch<StrategyProposalDetail>(getGetStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStrategyProposalQueryKey = (id: string,) => {
+    return [
+    `/api/strategy-proposals/${id}`
+    ] as const;
+    }
+
+
+export const getGetStrategyProposalQueryOptions = <TData = Awaited<ReturnType<typeof getStrategyProposal>>, TError = ErrorType<unknown>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStrategyProposalQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStrategyProposal>>> = ({ signal }) => getStrategyProposal(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStrategyProposalQueryResult = NonNullable<Awaited<ReturnType<typeof getStrategyProposal>>>
+export type GetStrategyProposalQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a proposal and its audit history
+ */
+
+export function useGetStrategyProposal<TData = Awaited<ReturnType<typeof getStrategyProposal>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStrategyProposalQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestStrategyProposalClarificationUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/clarification`
+}
+
+/**
+ * @summary Request proposal clarification
+ */
+export const requestStrategyProposalClarification = async (id: string,
+    governanceReasonInput: GovernanceReasonInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getRequestStrategyProposalClarificationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(governanceReasonInput)
+  }
+);}
+
+
+
+
+
+export const getRequestStrategyProposalClarificationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestStrategyProposalClarification>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestStrategyProposalClarification>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext> => {
+
+const mutationKey = ['requestStrategyProposalClarification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestStrategyProposalClarification>>, {id: string;data: BodyType<GovernanceReasonInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  requestStrategyProposalClarification(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestStrategyProposalClarificationMutationResult = NonNullable<Awaited<ReturnType<typeof requestStrategyProposalClarification>>>
+    export type RequestStrategyProposalClarificationMutationBody = BodyType<GovernanceReasonInput>
+    export type RequestStrategyProposalClarificationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Request proposal clarification
+ */
+export const useRequestStrategyProposalClarification = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestStrategyProposalClarification>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestStrategyProposalClarification>>,
+        TError,
+        {id: string;data: BodyType<GovernanceReasonInput>},
+        TContext
+      > => {
+      return useMutation(getRequestStrategyProposalClarificationMutationOptions(options));
+    }
+
+export const getValidateStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/validate`
+}
+
+/**
+ * @summary Queue asynchronous proposal validation
+ */
+export const validateStrategyProposal = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ValidationRun> => {
+
+  return customFetch<ValidationRun>(getValidateStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getValidateStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateStrategyProposal>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof validateStrategyProposal>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['validateStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof validateStrategyProposal>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  validateStrategyProposal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ValidateStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof validateStrategyProposal>>>
+
+    export type ValidateStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Queue asynchronous proposal validation
+ */
+export const useValidateStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateStrategyProposal>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof validateStrategyProposal>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getValidateStrategyProposalMutationOptions(options));
+    }
+
+export const getApproveStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/approve`
+}
+
+/**
+ * @summary Approve a validated proposal
+ */
+export const approveStrategyProposal = async (id: string,
+    governanceReasonInput: GovernanceReasonInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getApproveStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(governanceReasonInput)
+  }
+);}
+
+
+
+
+
+export const getApproveStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext> => {
+
+const mutationKey = ['approveStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveStrategyProposal>>, {id: string;data: BodyType<GovernanceReasonInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveStrategyProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof approveStrategyProposal>>>
+    export type ApproveStrategyProposalMutationBody = BodyType<GovernanceReasonInput>
+    export type ApproveStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Approve a validated proposal
+ */
+export const useApproveStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveStrategyProposal>>,
+        TError,
+        {id: string;data: BodyType<GovernanceReasonInput>},
+        TContext
+      > => {
+      return useMutation(getApproveStrategyProposalMutationOptions(options));
+    }
+
+export const getRejectStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/reject`
+}
+
+/**
+ * @summary Reject a proposal
+ */
+export const rejectStrategyProposal = async (id: string,
+    governanceReasonInput: GovernanceReasonInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getRejectStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(governanceReasonInput)
+  }
+);}
+
+
+
+
+
+export const getRejectStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext> => {
+
+const mutationKey = ['rejectStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectStrategyProposal>>, {id: string;data: BodyType<GovernanceReasonInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectStrategyProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof rejectStrategyProposal>>>
+    export type RejectStrategyProposalMutationBody = BodyType<GovernanceReasonInput>
+    export type RejectStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reject a proposal
+ */
+export const useRejectStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectStrategyProposal>>,
+        TError,
+        {id: string;data: BodyType<GovernanceReasonInput>},
+        TContext
+      > => {
+      return useMutation(getRejectStrategyProposalMutationOptions(options));
+    }
+
+export const getPublishStrategyProposalCandidateUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/publish`
+}
+
+/**
+ * @summary Publish an approved proposal as a Shadow Mode candidate
+ */
+export const publishStrategyProposalCandidate = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CandidatePublication> => {
+
+  return customFetch<CandidatePublication>(getPublishStrategyProposalCandidateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPublishStrategyProposalCandidateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishStrategyProposalCandidate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishStrategyProposalCandidate>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['publishStrategyProposalCandidate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishStrategyProposalCandidate>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  publishStrategyProposalCandidate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishStrategyProposalCandidateMutationResult = NonNullable<Awaited<ReturnType<typeof publishStrategyProposalCandidate>>>
+
+    export type PublishStrategyProposalCandidateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Publish an approved proposal as a Shadow Mode candidate
+ */
+export const usePublishStrategyProposalCandidate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishStrategyProposalCandidate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishStrategyProposalCandidate>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getPublishStrategyProposalCandidateMutationOptions(options));
+    }
+
+export const getActivateStrategyProposalCandidateUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/activate`
+}
+
+/**
+ * @summary Activate a candidate in Shadow Mode
+ */
+export const activateStrategyProposalCandidate = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CandidatePublication> => {
+
+  return customFetch<CandidatePublication>(getActivateStrategyProposalCandidateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getActivateStrategyProposalCandidateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateStrategyProposalCandidate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateStrategyProposalCandidate>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['activateStrategyProposalCandidate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateStrategyProposalCandidate>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  activateStrategyProposalCandidate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateStrategyProposalCandidateMutationResult = NonNullable<Awaited<ReturnType<typeof activateStrategyProposalCandidate>>>
+
+    export type ActivateStrategyProposalCandidateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Activate a candidate in Shadow Mode
+ */
+export const useActivateStrategyProposalCandidate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateStrategyProposalCandidate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateStrategyProposalCandidate>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getActivateStrategyProposalCandidateMutationOptions(options));
+    }
+
+export const getRetireStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/retire`
+}
+
+/**
+ * @summary Retire a candidate or active Shadow Mode version
+ */
+export const retireStrategyProposal = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getRetireStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetireStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retireStrategyProposal>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retireStrategyProposal>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['retireStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retireStrategyProposal>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retireStrategyProposal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetireStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof retireStrategyProposal>>>
+
+    export type RetireStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Retire a candidate or active Shadow Mode version
+ */
+export const useRetireStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retireStrategyProposal>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retireStrategyProposal>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRetireStrategyProposalMutationOptions(options));
+    }
+
+export const getRollbackStrategyProposalUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/rollback`
+}
+
+/**
+ * @summary Roll back a Shadow Mode version without deleting history
+ */
+export const rollbackStrategyProposal = async (id: string,
+    governanceReasonInput: GovernanceReasonInput, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposal> => {
+
+  return customFetch<StrategyProposal>(getRollbackStrategyProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(governanceReasonInput)
+  }
+);}
+
+
+
+
+
+export const getRollbackStrategyProposalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rollbackStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext> => {
+
+const mutationKey = ['rollbackStrategyProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rollbackStrategyProposal>>, {id: string;data: BodyType<GovernanceReasonInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rollbackStrategyProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RollbackStrategyProposalMutationResult = NonNullable<Awaited<ReturnType<typeof rollbackStrategyProposal>>>
+    export type RollbackStrategyProposalMutationBody = BodyType<GovernanceReasonInput>
+    export type RollbackStrategyProposalMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Roll back a Shadow Mode version without deleting history
+ */
+export const useRollbackStrategyProposal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackStrategyProposal>>, TError,{id: string;data: BodyType<GovernanceReasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rollbackStrategyProposal>>,
+        TError,
+        {id: string;data: BodyType<GovernanceReasonInput>},
+        TContext
+      > => {
+      return useMutation(getRollbackStrategyProposalMutationOptions(options));
+    }
+
+export const getGetStrategyProposalAuditUrl = (id: string,) => {
+
+
+
+
+  return `/api/strategy-proposals/${id}/audit`
+}
+
+/**
+ * @summary Read the append-only proposal audit history
+ */
+export const getStrategyProposalAudit = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<StrategyProposalDetail> => {
+
+  return customFetch<StrategyProposalDetail>(getGetStrategyProposalAuditUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStrategyProposalAuditQueryKey = (id: string,) => {
+    return [
+    `/api/strategy-proposals/${id}/audit`
+    ] as const;
+    }
+
+
+export const getGetStrategyProposalAuditQueryOptions = <TData = Awaited<ReturnType<typeof getStrategyProposalAudit>>, TError = ErrorType<unknown>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposalAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStrategyProposalAuditQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStrategyProposalAudit>>> = ({ signal }) => getStrategyProposalAudit(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposalAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStrategyProposalAuditQueryResult = NonNullable<Awaited<ReturnType<typeof getStrategyProposalAudit>>>
+export type GetStrategyProposalAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read the append-only proposal audit history
+ */
+
+export function useGetStrategyProposalAudit<TData = Awaited<ReturnType<typeof getStrategyProposalAudit>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyProposalAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStrategyProposalAuditQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListStrategyVersionsUrl = () => {
+
+
+
+
+  return `/api/strategy-versions`
+}
+
+/**
+ * @summary List Shadow Mode strategy versions
+ */
+export const listStrategyVersions = async ( options?: Parameters<typeof customFetch>[1]): Promise<StrategyVersion[]> => {
+
+  return customFetch<StrategyVersion[]>(getListStrategyVersionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStrategyVersionsQueryKey = () => {
+    return [
+    `/api/strategy-versions`
+    ] as const;
+    }
+
+
+export const getListStrategyVersionsQueryOptions = <TData = Awaited<ReturnType<typeof listStrategyVersions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStrategyVersionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStrategyVersions>>> = ({ signal }) => listStrategyVersions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStrategyVersions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStrategyVersionsQueryResult = NonNullable<Awaited<ReturnType<typeof listStrategyVersions>>>
+export type ListStrategyVersionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Shadow Mode strategy versions
+ */
+
+export function useListStrategyVersions<TData = Awaited<ReturnType<typeof listStrategyVersions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStrategyVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStrategyVersionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

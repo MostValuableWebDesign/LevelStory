@@ -1,9 +1,11 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { rejectPrivateFilePaths, securityHeaders } from "./lib/security";
+import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
 
@@ -30,22 +32,11 @@ app.disable("x-powered-by");
 app.set("trust proxy", false);
 app.use(securityHeaders);
 app.use(rejectPrivateFilePaths);
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) {
-      callback(null, false);
-      return;
-    }
-    const allowed = (process.env.LEVELSTORY_ALLOWED_ORIGINS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-    callback(null, allowed.includes(origin) ? origin : false);
-  },
-  credentials: false,
-}));
+app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser());
 app.use(express.json({ limit: "64kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
+app.use(authMiddleware);
 
 app.use("/api", router);
 

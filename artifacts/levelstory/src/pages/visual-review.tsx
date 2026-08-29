@@ -424,7 +424,9 @@ export default function VisualReview() {
           confidence: saved.teaching.confidence,
           explanation: saved.teaching.explanation,
         } : teachingDraft);
-        setMessage(`${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
+         setMessage(saved.teaching
+           ? "Teaching example saved permanently. The active formula has not changed."
+           : `${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
         if (moveNext) {
           const next = categorySnapshots[categorySnapshots.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
           if (next) setSelectedSnapshotId(next.snapshotId);

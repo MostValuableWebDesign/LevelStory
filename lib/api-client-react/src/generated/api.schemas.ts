@@ -3385,6 +3385,308 @@ export interface VisualValidationDiscrepancyReport {
   reviewHistory: VisualValidationDiscrepancyReportReviewHistoryItem[];
 }
 
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  firstName: string | null;
+  /** @nullable */
+  lastName: string | null;
+  /** @nullable */
+  profileImageUrl: string | null;
+}
+
+export interface AuthUserEnvelope {
+  user: AuthUser | null;
+}
+
+export type TeachingExampleStatus = typeof TeachingExampleStatus[keyof typeof TeachingExampleStatus];
+
+
+export const TeachingExampleStatus = {
+  submitted: 'submitted',
+  superseded: 'superseded',
+} as const;
+
+export type TeachingExampleJudgment = typeof TeachingExampleJudgment[keyof typeof TeachingExampleJudgment];
+
+
+export const TeachingExampleJudgment = {
+  missed_trade: 'missed_trade',
+  false_positive_trade: 'false_positive_trade',
+} as const;
+
+export type TeachingExampleEvidenceSnapshot = { [key: string]: unknown };
+
+export type TeachingExampleCausalValidation = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type TeachingExampleOutcomeSnapshot = { [key: string]: unknown } | null;
+
+export interface TeachingExample {
+  id: string;
+  reviewSetId: string;
+  snapshotId: string;
+  reviewerId: string;
+  status: TeachingExampleStatus;
+  judgment: TeachingExampleJudgment;
+  symbol: string;
+  contract: string;
+  tradingDate: string;
+  selectedCandleTimestamp: string;
+  /** @nullable */
+  patienceCandleTimestamp: string | null;
+  /** @nullable */
+  direction: string | null;
+  /** @nullable */
+  entryBufferTicks: number | null;
+  /** @nullable */
+  calculatedEntryPrice: string | null;
+  setupClassification: string;
+  /** @nullable */
+  qualifyingLevelType: string | null;
+  confidence: string;
+  reviewerExplanation: string;
+  machineDecision: string;
+  machineRejectionReasons: string[];
+  calendarVersion: string;
+  evidenceSnapshot: TeachingExampleEvidenceSnapshot;
+  causalValidation: TeachingExampleCausalValidation;
+  formulaVersion: string;
+  formulaHash: string;
+  sourceFingerprint: string;
+  calendarFingerprint: string;
+  /** @nullable */
+  supersedesTeachingId: string | null;
+  /** @nullable */
+  outcomeSnapshot: TeachingExampleOutcomeSnapshot;
+  /** @minimum 1 */
+  revision: number;
+  createdAt: string;
+  [key: string]: unknown;
+ }
+
+export type StrategyProposalInputProposalPayload = { [key: string]: unknown };
+
+export interface StrategyProposalInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  hypothesis: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  rationale: string;
+  /** @minItems 1 */
+  sourceTeachingIds: string[];
+  proposalPayload?: StrategyProposalInputProposalPayload;
+}
+
+export interface SupersedeTeachingExampleInput {
+  judgment: string;
+  /**
+     * @minLength 10
+     * @maxLength 4000
+     */
+  explanation: string;
+}
+
+export interface GovernanceReasonInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  reason: string;
+}
+
+export type StrategyProposalStatus = typeof StrategyProposalStatus[keyof typeof StrategyProposalStatus];
+
+
+export const StrategyProposalStatus = {
+  draft: 'draft',
+  clarification_requested: 'clarification_requested',
+  validation_pending: 'validation_pending',
+  validation_running: 'validation_running',
+  validation_passed: 'validation_passed',
+  validation_failed: 'validation_failed',
+  approved: 'approved',
+  rejected: 'rejected',
+  candidate: 'candidate',
+  active: 'active',
+  retired: 'retired',
+  rolled_back: 'rolled_back',
+} as const;
+
+export type StrategyProposalDeterministicRuleDiff = { [key: string]: unknown };
+
+export type StrategyProposalProposalPayload = { [key: string]: unknown };
+
+export interface StrategyProposal {
+  id: string;
+  title: string;
+  hypothesis: string;
+  rationale: string;
+  status: StrategyProposalStatus;
+  createdBy: string;
+  proposalType: string;
+  plainLanguageSummary: string;
+  currentRule: string;
+  proposedRule: string;
+  deterministicRuleDiff: StrategyProposalDeterministicRuleDiff;
+  affectedRuleIds: string[];
+  expectedBehaviorChange: string;
+  risks: string[];
+  sourceTeachingIds: string[];
+  supportingExampleIds: string[];
+  conflictingExampleIds: string[];
+  sourceFormulaVersion: string;
+  /** @nullable */
+  candidateFormulaVersion: string | null;
+  proposalPayload: StrategyProposalProposalPayload;
+  /** @nullable */
+  validationRunId: string | null;
+  /** @nullable */
+  candidateVersionId: string | null;
+  /** @nullable */
+  rejectionReason: string | null;
+  /** @nullable */
+  clarificationRequest: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
+ }
+
+export interface RuleProposalAuditEvent {
+  id: string;
+  proposalId: string;
+  actorId: string;
+  action: string;
+  /** @nullable */
+  fromStatus: string | null;
+  /** @nullable */
+  toStatus: string | null;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  idempotencyKey: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+ }
+
+export type ValidationRunStatus = typeof ValidationRunStatus[keyof typeof ValidationRunStatus];
+
+
+export const ValidationRunStatus = {
+  queued: 'queued',
+  running: 'running',
+  passed: 'passed',
+  failed: 'failed',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ValidationRunBeforeMetrics = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type ValidationRunAfterMetrics = { [key: string]: unknown } | null;
+
+export interface ValidationRun {
+  id: string;
+  proposalId: string;
+  requestFingerprint: string;
+  status: ValidationRunStatus;
+  /** @nullable */
+  beforeMetrics?: ValidationRunBeforeMetrics;
+  /** @nullable */
+  afterMetrics?: ValidationRunAfterMetrics;
+  regressions: string[];
+  conflicts: string[];
+  warnings: string[];
+  formulaFingerprint: string;
+  sourceFingerprint: string;
+  /** @nullable */
+  errorMessage?: string | null;
+  requestedBy: string;
+  createdAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+  [key: string]: unknown;
+ }
+
+export type StrategyVersionStatus = typeof StrategyVersionStatus[keyof typeof StrategyVersionStatus];
+
+
+export const StrategyVersionStatus = {
+  candidate: 'candidate',
+  active: 'active',
+  retired: 'retired',
+  rolled_back: 'rolled_back',
+} as const;
+
+export type StrategyVersionConfigSnapshot = { [key: string]: unknown };
+
+export type StrategyVersionRuleDiff = { [key: string]: unknown };
+
+export interface StrategyVersion {
+  id: string;
+  strategyKey: string;
+  /** @minimum 1 */
+  versionNumber: number;
+  status: StrategyVersionStatus;
+  /** @nullable */
+  proposalId: string | null;
+  /** @nullable */
+  parentVersionId: string | null;
+  formulaVersion: string;
+  formulaHash: string;
+  configSnapshot: StrategyVersionConfigSnapshot;
+  ruleDiff: StrategyVersionRuleDiff;
+  evidenceIds: string[];
+  /** @nullable */
+  validationRunId: string | null;
+  publishedBy: string;
+  createdBy: string;
+  /** @nullable */
+  activatedBy: string | null;
+  createdAt: string;
+  /** @nullable */
+  activatedAt: string | null;
+  /** @nullable */
+  retiredAt: string | null;
+  [key: string]: unknown;
+ }
+
+export interface StrategyProposalDetail {
+  proposal: StrategyProposal;
+  auditEvents: RuleProposalAuditEvent[];
+  validationRuns: ValidationRun[];
+  strategyVersion: StrategyVersion | null;
+}
+
+export interface CandidatePublication {
+  proposal: StrategyProposal;
+  version: StrategyVersion;
+}
+
+export type IdempotencyKeyParameter = string;
+
 export type GetMarketSnapshotParams = {
 /**
  * @minLength 1

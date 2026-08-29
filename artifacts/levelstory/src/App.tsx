@@ -9,6 +9,7 @@ import Journal from '@/pages/journal';
 import Settings from '@/pages/settings';
 import Backtest from '@/pages/backtest';
 import VisualReview from '@/pages/visual-review';
+import StrategyProposals from '@/pages/strategy-proposals';
 import {
   Route,
   Switch,
@@ -29,6 +30,7 @@ function Router() {
          <Route path="/settings" component={Settings} />
           <Route path="/backtest" component={Backtest} />
          <Route path="/visual-review" component={VisualReview} />
+          <Route path="/strategy-proposals" component={StrategyProposals} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

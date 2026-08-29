@@ -11,6 +11,8 @@ import {
   AnalyzeVisualValidationTeachingResponse,
 } from "@workspace/api-zod";
 import { requestRateLimit } from "../lib/security.js";
+import { requireRole } from "../middlewares/authMiddleware.js";
+import { persistTeachingEvidence } from "../lib/governance-store.js";
 import {
   buildHistoricalVisualValidationSet,
   buildVisualValidationSet,
@@ -107,7 +109,7 @@ export function createVisualValidationRouter(): IRouter {
     }
   });
 
-  router.post("/backtest/visual-validation/reviews", reviewRateLimit, (req, res): void => {
+  router.post("/backtest/visual-validation/reviews", reviewRateLimit, requireRole("reviewer"), async (req, res): Promise<void> => {
     const parsed = RecordVisualValidationReviewBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -138,7 +140,23 @@ export function createVisualValidationRouter(): IRouter {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
         return;
       }
-      res.json(RecordVisualValidationReviewResponse.parse(review));
+       const activeSet = getVisualValidationSet(parsed.data.reviewSetId);
+       const snapshot = activeSet?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
+       if (!snapshot) {
+         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
+         return;
+       }
+       if (review.teaching) {
+         const key = req.header("Idempotency-Key") ?? `${parsed.data.reviewSetId}:${parsed.data.snapshotId}:${JSON.stringify(parsed.data.teaching)}`;
+         await persistTeachingEvidence({
+           actor: { id: req.user!.id },
+           reviewSetId: parsed.data.reviewSetId,
+           snapshot,
+           review,
+           idempotencyKey: key.slice(0, 200),
+         });
+       }
+       res.json(RecordVisualValidationReviewResponse.parse(review));
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save this teaching judgment." });
     }

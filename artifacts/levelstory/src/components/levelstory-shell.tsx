@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, BarChart3, BookOpen, ChevronRight, FileSearch, Gauge, Menu, Settings2, ShieldCheck, X } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChevronRight, FileSearch, Gauge, GitPullRequest, Menu, Settings2, ShieldCheck, X } from "lucide-react";
 import { SHADOW_MODE_LABEL } from "@/lib/shadow-mode";
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { href: "/settings", label: "Risk guardrails", detail: "Rules of engagement", icon: Settings2 },
   { href: "/backtest", label: "Replay lab", detail: "Causal reports", icon: BarChart3 },
   { href: "/visual-review", label: "Visual review", detail: "Candle validation", icon: FileSearch },
+  { href: "/strategy-proposals", label: "Strategy proposals", detail: "Governed changes", icon: GitPullRequest },
 ];
 
 export function LevelStoryShell({ children }: { children: ReactNode }) {
