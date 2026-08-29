@@ -1,0 +1,247 @@
+Correct LevelStory’s missed-trade teaching workflow so the qualifying-level interaction, patience candle, and entry candle are separate causal events.
+
+Current defect:
+
+The UI requires the patience candle itself to be within the selected level’s four-tick zone. My formula also allows price to pull back to a qualifying level, consolidate, then form a patience candle later.
+
+The current selector also appears to use a static or final-session VWAP/EMA value rather than the indicator value at the selected level-interaction candle.
+
+Implement the following model.
+
+1. Three distinct candle roles
+
+Represent:
+
+L = qualifying-level interaction candle
+P = patience candle
+E = entry candle
+
+Rules:
+
+- L must be a completed, machine-visible candle that interacts with an eligible level.
+- Zero or more completed consolidation candles may occur between L and P.
+- P must satisfy the directional patience-candle rule.
+- E must be the immediate-next completed candle after P.
+- E must reach the configured 3–4 tick confirmation buffer beyond P in the trade direction.
+- No entry is allowed without P.
+- E can never be an arbitrary later candle.
+
+Direct pullback case:
+
+L and P may be the same candle when the patience candle itself interacts with the level.
+
+Consolidation case:
+
+L may occur before P when price touches or approaches a level and then consolidates before P forms.
+
+2. Explicit level-interaction selection
+
+When the reviewer locks E:
+
+- Continue automatically locking the immediately preceding candle as P.
+- Add a separate control called:
+  “Select pullback/level-interaction candle (L)”
+- Allow the reviewer to select a completed machine-visible candle at or before P.
+- Highlight L, P, and E separately on the chart.
+- Selecting L must not change P or E.
+- P must remain immediately before E.
+
+Use compact markers only:
+
+- L = level interaction
+- P = patience
+- E = entry
+
+Do not place large labels over the candles.
+
+3. Moving indicators must use time-specific values
+
+For VWAP and 200 EMA/MA:
+
+- Resolve the indicator value at L’s timestamp.
+- Never use the final session value.
+- Never use the value at the evaluation cursor unless L is the evaluation candle.
+- Never use an indicator value calculated with candles after L.
+- Display the exact resolved value and timestamp in the selector.
+
+Example:
+
+VWAP
+Value at L: 6847.25
+L interval: 10:00–10:05 AM ET
+Distance: 2 ticks
+Allowed: 4 ticks
+Machine visible: Yes
+
+The chart curve and the qualifying-level selector must use the same indicator-series point.
+
+For fixed levels such as ORB/NTZ, premarket levels, PDH/PDL, 2DH/2DL, and support/resistance, use the causally available fixed value.
+
+4. Proximity calculation applies to L
+
+Apply the configured MES proximity zone to L, not necessarily P:
+
+tickSize = 0.25
+maximumToleranceTicks = 4
+maximumTolerancePoints = 1.00
+
+A level qualifies when L’s completed high-low range intersects the expanded level zone.
+
+For a point level:
+
+zoneLow = levelValueAtL - tolerancePoints
+zoneHigh = levelValueAtL + tolerancePoints
+
+Pass when:
+
+L.high >= zoneLow
+AND
+L.low <= zoneHigh
+
+For VWAP and EMA, levelValueAtL comes from the indicator series at L.
+
+P does not need to touch the level again if a valid consolidation sequence exists between L and P.
+
+5. Consolidation between L and P
+
+Allow consolidation candles between L and P only when:
+
+- Every candle is completed and machine-visible.
+- They are from the same contract and trading date.
+- There are no missing five-minute intervals.
+- They occur after L and before P.
+- No candle invalidates the intended setup direction.
+- The sequence stays within the configured maximum pullback/consolidation duration.
+
+Do not silently invent a duration rule. Add a configurable governed value and initially set:
+
+maximumLevelToPatienceCandles = 6
+maximumLevelToPatienceMinutes = 30
+
+Display the count and elapsed time.
+
+If this differs from an existing formula constant, retain the existing governed constant and report it instead of introducing a second conflicting value.
+
+6. Correct the current annotation architecture
+
+The existing annotation creation uses the machine audit patience candle to select VWAP and EMA values. That does not work when the reviewer selects a different L/P/E sequence.
+
+Do not use one static VWAP or EMA annotation for every teaching selection.
+
+Resolve dynamic indicators using:
+
+- selected L open/close time
+- matching indicator-series point
+- machine evaluation boundary
+- selected contract
+- selected trading date
+
+Update both frontend eligibility and server validation to use the same shared resolver.
+
+Do not implement this only in the UI. The server must independently recalculate and validate the indicator value.
+
+7. Improve the qualifying-level selector
+
+Each level should show one of:
+
+Selectable:
+“VWAP · 6847.25 at 10:05 AM · 2 ticks away”
+
+Unavailable:
+“VWAP unavailable at selected L timestamp”
+
+Outside zone:
+“VWAP · 8 ticks away · maximum 4”
+
+Not causal:
+“VWAP value was not available to the machine at L”
+
+Do not display a final-session VWAP as though it were the L-time VWAP.
+
+If VWAP qualifies at L, make its checkbox selectable even when P forms later after valid consolidation.
+
+8. Teaching evidence
+
+Persist immutable fields:
+
+- levelInteractionCandleOpenTime
+- levelInteractionCandleCloseTime
+- patienceCandleOpenTime
+- patienceCandleCloseTime
+- entryCandleOpenTime
+- entryCandleCloseTime
+- qualifyingLevelId
+- qualifyingLevelType
+- qualifyingLevelValueAtInteraction
+- qualifyingLevelRangeAtInteraction
+- levelToleranceTicks
+- levelDistanceTicks
+- consolidationCandleCount
+- consolidationDurationMinutes
+- indicatorSourceTimestamp
+- source fingerprint
+- calendar fingerprint
+- formula hash
+- contract symbol
+- trading date
+
+Do not identify dynamic levels using price alone. Use stable level IDs such as:
+- vwap
+- ema-200
+- orb-high
+- orb-low
+- premarket-high
+- premarket-low
+- previous-day-high
+- previous-day-low
+- support-resistance:<id>
+
+9. Validation
+
+Server validation must confirm:
+
+- L, P, and E are exact observed candles.
+- All are machine-visible.
+- L occurs at or before P.
+- E immediately follows P.
+- VWAP/EMA value is resolved at L.
+- L is within the allowed level zone.
+- Any L-to-P consolidation sequence is valid.
+- P satisfies directional containment.
+- E reaches the confirmation buffer.
+- No future candle was used.
+
+Invalid submissions must create no review, teaching record, proposal, or audit event.
+
+10. Tests
+
+Add focused tests for:
+
+- L = P direct VWAP pullback.
+- L before P with valid consolidation.
+- E immediately follows P.
+- A later entry candle is rejected.
+- VWAP uses its value at L, not final-session VWAP.
+- EMA 200 uses its value at L.
+- Static ORB and premarket levels remain fixed.
+- Four-tick interaction passes.
+- Five-tick interaction fails.
+- Missing candle between L and P fails.
+- Different contract/trading date fails.
+- Future L, P, E, or indicator data fails.
+- Invalid consolidation fails.
+- UI and server calculate identical level distance.
+- Rejected submission leaves persistence unchanged.
+
+Run only focused visual-validation, teaching-storage, chart, and governance tests plus typechecks and builds.
+
+Do not run historical indexing, cold backtests, or qualification batches.
+Do not activate Shadow Mode.
+Do not mutate the active formula.
+Do not add broker, live-order, or paper-order functionality.
+
+Report:
+- Root cause
+- Files changed
+- L/P/E data model
+- How VWAP and EMA values are
