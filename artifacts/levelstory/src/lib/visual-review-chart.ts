@@ -225,6 +225,16 @@ export function selectSessionCandles(
   };
 }
 
+export function isOpeningRangeCompleteAtEvaluation(
+  regularCandles: readonly Pick<VisualValidationCandle, "closeTime">[],
+  evaluationCloseTime: string,
+): boolean {
+  const evaluation = timestamp(evaluationCloseTime);
+  return regularCandles.length >= 3
+    && Number.isFinite(evaluation)
+    && regularCandles.slice(0, 3).every((candle) => timestamp(candle.closeTime) <= evaluation);
+}
+
 export function getCandleDomain(
   candles: readonly VisualValidationCandle[],
   paddingRatio = CANDLE_PADDING_RATIO,

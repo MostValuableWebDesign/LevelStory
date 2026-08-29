@@ -19,3 +19,4 @@
 - [Sparse historical fixtures](sparse-historical-fixtures.md) — isolate synthetic trading dates when testing gap classification; inter-date gaps can be legitimately unexpected.
 - [Visual review evidence](visual-review-evidence.md) — visual labels require structured causal anchors and explicit machine versus human-only visibility.
 - [Visual fixture isolation](visual-fixture-isolation.md) — category review samples need independent deterministic sequences and exact audit/trade identity, not shared replay mutation.
+- [Artifact preview base paths](artifact-preview-base-paths.md) — build previews must use the artifact manifest BASE_PATH; overriding it manually can make the proxied preview serve HTML for asset requests.

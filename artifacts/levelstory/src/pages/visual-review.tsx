@@ -62,11 +62,12 @@ import {
   getVolumeAxisTicks,
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
+  isOpeningRangeCompleteAtEvaluation,
   isDisplacedLabel,
   isPrimaryLevel,
   priceToY,
   selectSessionCandles,
-  selectFocusedCandles,
+  type SessionCandle,
   type SessionView,
   stackLabelPositions,
   summarizeCategoryCoverage,
@@ -506,7 +507,19 @@ function formatExactVolume(value: number): string {
   return Number.isFinite(value) ? Math.round(value).toLocaleString("en-US") : "—";
 }
 
-function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; candles: ReturnType<typeof selectFocusedCandles> }) {
+function CausalSvg({
+  snapshot,
+  candles,
+  regularCandles,
+  premarketCandles,
+  sessionView,
+}: {
+  snapshot: VisualValidationSnapshot;
+  candles: SessionCandle[];
+  regularCandles: SessionCandle[];
+  premarketCandles: SessionCandle[];
+  sessionView: SessionView;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
@@ -518,7 +531,10 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
   const volumeTop = CHART_VOLUME_TOP;
   const plotWidth = width - left - right;
   const step = plotWidth / Math.max(candles.length, 1);
-  const annotations = snapshot.annotations.filter((annotation) => annotation.available);
+  const orbCandles = regularCandles.slice(0, 3);
+  const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
+  const annotations = snapshot.annotations.filter((annotation) => annotation.available
+    && (!["orb-high", "orb-low"].includes(annotation.id) || orbCompleteAtEvaluation));
   const domain = getCandleDomain(candles);
   const priceAxis = getPriceAxis(domain);
   const y = (price: number) => priceToY(price, domain, top, plotBottom);
@@ -528,7 +544,11 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
   const boundaryX = left + Math.min(visibleAtEvaluation, candles.length) * step;
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
   const volumeAxis = getVolumeAxisTicks(volumeMax);
-  const timeAxis = getTimeAxisTicks(candles);
+  const timeAxis = getTimeAxisTicks(candles, "America/New_York", true);
+  const regularStartIndex = regularCandles.length ? candles.findIndex((candle) => candle.openTime === regularCandles[0].openTime) : -1;
+  const premarketEndX = premarketCandles.length ? left + premarketCandles.length * step : null;
+  const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
+  const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null);
   const criticalLevels = allLevels.filter((annotation) => annotation.id.startsWith("critical-"));
   const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
@@ -594,14 +614,28 @@ function CausalSvg({ snapshot, candles }: { snapshot: VisualValidationSnapshot; 
         <div>Crosshair snaps to the exact raw OHLCV interval.</div>
       </div>
     </div>}
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[390px] min-w-[760px] w-full" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[390px] min-w-[760px] w-full" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
       {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
       {volumeAxis.map((tick) => {
         const tickY = volumeTop + CHART_VOLUME_HEIGHT - (tick.value / Math.max(volumeAxis.at(-1)?.value ?? volumeMax, 1)) * CHART_VOLUME_HEIGHT;
         return <g key={`volume-axis-${tick.value}`} data-testid="volume-axis-tick"><line x1={left} x2={plotRight} y1={tickY} y2={tickY} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".42" /><text x={width - 5} y={tickY + 3} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">{tick.label}</text></g>;
       })}
-      {timeAxis.map((tick) => <g key={`time-axis-${tick.index}`} data-testid="time-axis-tick"><line x1={x(tick.index)} x2={x(tick.index)} y1={plotBottom + 4} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" strokeDasharray="2 5" opacity=".45" /><text x={x(tick.index)} y={CHART_TIME_TICK_Y} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{tick.label}</text></g>)}
+      {timeAxis.map((tick) => {
+        const tickX = left + (tick.position ?? tick.index + 0.5) * step;
+        const emphasized = ["9:30 AM", "9:45 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM"].includes(tick.label);
+        return <g key={`time-axis-${tick.index}-${tick.position ?? "open"}`} data-testid="time-axis-tick"><line x1={tickX} x2={tickX} y1={plotBottom + 4} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" strokeDasharray="2 5" opacity={emphasized ? ".75" : ".45"} /><text x={tickX} y={CHART_TIME_TICK_Y} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={emphasized ? "10.5" : "10"} fontWeight={emphasized ? "700" : "400"} fontFamily="DM Mono">{tick.label}</text></g>;
+      })}
+      {premarketEndX !== null && <g data-testid="premarket-region">
+        <rect x={left} y={top} width={premarketEndX - left} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--muted) / .18)" />
+        <line x1={premarketEndX} x2={premarketEndX} y1={top} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" opacity=".65" />
+        <text x={left + 8} y={top + 17} fill="hsl(var(--muted-foreground))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">PREMARKET</text>
+      </g>}
+      {openingRangeX !== null && openingRangeWidth > 0 && <g data-testid="opening-range-region">
+        <rect x={openingRangeX} y={top} width={openingRangeWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="4 3" />
+        <path d={`M ${openingRangeX} ${top + 25} v -8 h ${openingRangeWidth} v 8`} fill="none" stroke="hsl(var(--accent))" strokeWidth="1.2" />
+        <text x={openingRangeX + openingRangeWidth / 2} y={top + 15} textAnchor="middle" fill="hsl(var(--accent))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">OPENING RANGE</text>
+      </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
        {width - right - Math.max(boundaryX, left) >= 150
          ? <text x={Math.max(boundaryX, left) + 10} y={top + 20} fill="hsl(var(--muted-foreground))" fontSize="9" fontWeight="700" fontFamily="DM Mono" data-testid="human-only-label">HUMAN-ONLY OUTCOME CONTEXT</text>

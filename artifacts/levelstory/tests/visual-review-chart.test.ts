@@ -18,9 +18,12 @@ import {
   hasRepetitiveFixtureData,
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
+  isOpeningRangeCompleteAtEvaluation,
   isDisplacedLabel,
   isExactFiveMinuteCandle,
+  isPrimaryLevel,
   priceToY,
+  selectSessionCandles,
   selectFocusedCandles,
   snapPrice,
   stackLabelPositions,
@@ -174,6 +177,70 @@ test("only completed exact five-minute candles enter the execution chart", () =>
   assert.equal(isExactFiveMinuteCandle(incomplete), false);
   const focused = selectFocusedCandles([exact, tenMinute, incomplete], exact.closeTime, incomplete.closeTime, 42);
   assert.deepEqual(focused.map((candle) => candle.openTime), [exact.openTime]);
+});
+
+test("primary session view contains the exact 42 regular-session intervals", () => {
+  const regularCandles = Array.from({ length: 42 }, (_, index) => makeCandle(index));
+  const selection = selectSessionCandles(
+    regularCandles,
+    regularCandles[2].closeTime,
+    regularCandles.at(-1)!.closeTime,
+  );
+  assert.equal(selection.regularCandles.length, 42);
+  assert.equal(selection.candles.length, 42);
+  assert.equal(formatInterval(selection.regularCandles[0].openTime, selection.regularCandles[0].closeTime), "9:30 AM–9:35 AM ET");
+  assert.equal(formatInterval(selection.regularCandles.at(-1)!.openTime, selection.regularCandles.at(-1)!.closeTime), "12:55 PM–1:00 PM ET");
+  assert.equal(selection.regularCandles.slice(0, 3).every((candle) => candle.machineVisible), true);
+  assert.equal(selection.regularCandles.slice(3).every((candle) => !candle.machineVisible), true);
+  assert.deepEqual(getTimeAxisTicks(selection.regularCandles, "America/New_York", true).at(-1), {
+    index: 42,
+    position: 42,
+    label: "1:00 PM",
+  });
+});
+
+test("premarket remains separate and hidden by default while its levels stay primary references", () => {
+  const premarket = Array.from({ length: 66 }, (_, index) => makeCandle(index, {
+    openTime: new Date(baseTime - (66 - index) * 5 * 60_000).toISOString(),
+    closeTime: new Date(baseTime - (65 - index) * 5 * 60_000).toISOString(),
+  }));
+  const regular = Array.from({ length: 42 }, (_, index) => makeCandle(index));
+  const raw = [...premarket, ...regular];
+  const hidden = selectSessionCandles(raw, regular[2].closeTime, regular.at(-1)!.closeTime);
+  assert.equal(hidden.premarketCandles.length, 0);
+  assert.equal(hidden.regularCandles.length, 42);
+  const shown = selectSessionCandles(raw, regular[2].closeTime, regular.at(-1)!.closeTime, "primary", true);
+  assert.equal(shown.premarketCandles.length, 66);
+  assert.equal(shown.regularCandles.length, 42);
+  assert.equal(shown.candles.length, 108);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("premarket-high", 101), label: "Premarket high" }), true);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("premarket-low", 99), label: "Premarket low" }), true);
+});
+
+test("ORB availability begins only after the 9:40–9:45 candle closes", () => {
+  const regularCandles = Array.from({ length: 42 }, (_, index) => makeCandle(index));
+  assert.equal(isOpeningRangeCompleteAtEvaluation(regularCandles, regularCandles[1].closeTime), false);
+  assert.equal(isOpeningRangeCompleteAtEvaluation(regularCandles, regularCandles[2].openTime), false);
+  assert.equal(isOpeningRangeCompleteAtEvaluation(regularCandles, regularCandles[2].closeTime), true);
+});
+
+test("full regular view expands only to the existing 4:00 PM boundary", () => {
+  const regularCandles = Array.from({ length: 78 }, (_, index) => makeCandle(index));
+  const primary = selectSessionCandles(regularCandles, regularCandles[2].closeTime, regularCandles.at(-1)!.closeTime);
+  const full = selectSessionCandles(regularCandles, regularCandles[2].closeTime, regularCandles.at(-1)!.closeTime, "full_regular");
+  assert.equal(primary.regularCandles.length, 42);
+  assert.equal(full.regularCandles.length, 78);
+  assert.equal(formatInterval(full.regularCandles.at(-1)!.openTime, full.regularCandles.at(-1)!.closeTime), "3:55 PM–4:00 PM ET");
+  assert.equal(getTimeAxisTicks(full.regularCandles, "America/New_York", true).at(-1)?.label, "4:00 PM");
+});
+
+test("session filtering remains DST-safe in New York", () => {
+  const dstOpen = "2026-03-09T13:30:00.000Z";
+  const dstClose = "2026-03-09T13:35:00.000Z";
+  const candle = makeCandle(0, { openTime: dstOpen, closeTime: dstClose, timestamp: dstOpen });
+  const selection = selectSessionCandles([candle], dstClose, dstClose);
+  assert.equal(selection.regularCandles.length, 1);
+  assert.equal(formatInterval(dstOpen, dstClose), "9:30 AM–9:35 AM ET");
 });
 
 test("time axis uses New York 15-minute labels and keeps the date separate", () => {
