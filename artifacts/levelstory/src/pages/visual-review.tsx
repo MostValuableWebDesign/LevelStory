@@ -430,7 +430,7 @@ export default function VisualReview() {
           if (next) setSelectedSnapshotId(next.snapshotId);
         }
       },
-      onError: () => setMessage("The human judgment was not saved. Try again."),
+      onError: (error) => setMessage(`Unable to save this review: ${apiErrorMessage(error) ?? (error instanceof Error ? error.message : "The server rejected the submission.")}`),
     });
   };
 
@@ -544,7 +544,7 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
     source,
     seed: source === "simulated" ? (request.seed ?? 11) : undefined,
   });
-  const hasError = ["could not", "not saved", "unavailable", "not found"].some((term) => message.toLowerCase().includes(term));
+  const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include"].some((term) => message.toLowerCase().includes(term));
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
