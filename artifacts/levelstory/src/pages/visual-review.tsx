@@ -535,6 +535,7 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
   const historical = data.source === "historical_databento";
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
+  const selectedDates = [...new Set(data.snapshots.map((snapshot) => snapshot.tradingDate))].sort();
   const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
   const isAvailable = (category: VisualValidationCategory) => {
     const item = coverageFor(category);
@@ -557,6 +558,7 @@ function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValida
       <span className="font-semibold text-foreground">{tradeCategories.filter((category) => isAvailable(category.value)).length} trade categories available</span>
       <span>{tradeCategories.filter((category) => !isAvailable(category.value)).length} not found in this range</span>
       <span className="mono ml-auto">{data.snapshots.length} snapshots · {historical ? "historical source" : "simulated source"}</span>
+      <span className="basis-full truncate border-t border-border/70 pt-1.5" data-testid="coverage-selected-dates"><span className="font-semibold text-foreground">Selected dates</span> · {selectedDates.length ? selectedDates.join(" · ") : "none returned"}</span>
     </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
