@@ -18,3 +18,4 @@
 - [Constituent-minute containment](constituent-minute-containment.md) — assign multi-contract one-minute bars by contract-local enclosing candle and boundary checks, never exact five-minute opens.
 - [Sparse historical fixtures](sparse-historical-fixtures.md) — isolate synthetic trading dates when testing gap classification; inter-date gaps can be legitimately unexpected.
 - [Visual review evidence](visual-review-evidence.md) — visual labels require structured causal anchors and explicit machine versus human-only visibility.
+- [Visual fixture isolation](visual-fixture-isolation.md) — category review samples need independent deterministic sequences and exact audit/trade identity, not shared replay mutation.

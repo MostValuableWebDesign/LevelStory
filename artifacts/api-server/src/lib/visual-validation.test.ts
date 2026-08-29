@@ -5,6 +5,7 @@ import {
   categoriesFor,
   matchingTrade,
   type VisualValidationRequest,
+  type VisualValidationCategory,
 } from "./visual-validation.js";
 import type { BacktestAuditRecord, BacktestTrade } from "./phase9.js";
 import {
@@ -29,6 +30,100 @@ test("visual-validation sample selection is deterministic", () => {
   assert.deepEqual(first, second);
   assert.ok(first.snapshots.length > 0);
   assert.equal(first.formulaHash, second.formulaHash);
+});
+
+test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
+  const set = buildVisualValidationSet(request);
+  assert.equal(set.snapshots.length, 12);
+  assert.deepEqual(
+    set.snapshots.map((snapshot) => snapshot.category),
+    [
+      "qualified_trade",
+      "rejected_setup",
+      "bullish_patience_candle",
+      "bearish_patience_candle",
+      "weak_orb_probe",
+      "strong_breakout",
+      "pullback",
+      "consolidation",
+      "ambiguous_candle",
+      "stop_exit",
+      "target_exit",
+      "runner_exit",
+    ],
+  );
+  const fingerprints = new Set<string>();
+  for (const snapshot of set.snapshots) {
+    assert.equal(snapshot.symbol, "MES");
+    assert.ok(snapshot.rawCandles.length >= 35 && snapshot.rawCandles.length <= 50);
+    const opens = snapshot.rawCandles.map((candle) => Date.parse(candle.openTime));
+    for (let index = 0; index < snapshot.rawCandles.length; index += 1) {
+      const candle = snapshot.rawCandles[index]!;
+      assert.equal(Date.parse(candle.closeTime) - opens[index]!, 5 * 60_000);
+      if (index > 0) assert.equal(opens[index]! - opens[index - 1]!, 5 * 60_000);
+      assert.ok(candle.high >= Math.max(candle.open, candle.close));
+      assert.ok(candle.low <= Math.min(candle.open, candle.close));
+      assert.ok(candle.volume > 0);
+    }
+    assert.ok(new Set(snapshot.rawCandles.map((candle) => `${candle.open}:${candle.close}`)).size >= 12);
+    assert.ok(new Set(snapshot.rawCandles.map((candle) => candle.volume)).size >= 12);
+    fingerprints.add(snapshot.rawCandles.map((candle) => `${candle.openTime}:${candle.open}:${candle.high}:${candle.low}:${candle.close}:${candle.volume}`).join("|"));
+  }
+  assert.equal(fingerprints.size, set.snapshots.length);
+  assert.ok(set.categoryCoverage.every((coverage) => coverage.available && coverage.count === 1));
+});
+
+test("patience fixtures align direction and category evidence", () => {
+  const set = buildVisualValidationSet(request);
+  const bullish = set.snapshots.find((snapshot) => snapshot.category === "bullish_patience_candle");
+  const bearish = set.snapshots.find((snapshot) => snapshot.category === "bearish_patience_candle");
+  assert.ok(bullish);
+  assert.ok(bearish);
+  assert.equal(bullish.machineEvidence.audit.direction, "long");
+  assert.match(bullish.machineEvidence.audit.trendEvidence, /^bullish:/);
+  assert.equal(bullish.machineEvidence.audit.patienceState, "PATIENCE_CANDLE_VALID");
+  assert.equal(bearish.machineEvidence.audit.direction, "short");
+  assert.match(bearish.machineEvidence.audit.trendEvidence, /^bearish:/);
+  assert.equal(bearish.machineEvidence.audit.patienceState, "PATIENCE_CANDLE_VALID");
+  assert.notEqual(bullish.evaluationCursor.openTime, bearish.evaluationCursor.openTime);
+  assert.notDeepEqual(bullish.rawCandles, bearish.rawCandles);
+});
+
+test("ORB, pullback, consolidation, and ambiguity fixtures expose explicit machine states", () => {
+  const set = buildVisualValidationSet(request);
+  const snapshot = (category: VisualValidationCategory) => {
+    const result = set.snapshots.find((item) => item.category === category);
+    assert.ok(result);
+    return result;
+  };
+  assert.equal(snapshot("weak_orb_probe").machineEvidence.audit.orbState, "ORB_PROBE_WAIT");
+  assert.match(snapshot("weak_orb_probe").machineEvidence.audit.volumeEvidence, /below the confirmation threshold/i);
+  assert.match(snapshot("strong_breakout").machineEvidence.audit.breakoutEvidence, /closed beyond ORB/i);
+  assert.match(snapshot("pullback").machineEvidence.audit.pullbackEvidence, /ORB high/i);
+  assert.match(snapshot("pullback").machineEvidence.audit.criticalLevelEvidence, /recognized retracement level/i);
+  assert.match(snapshot("consolidation").machineEvidence.audit.pullbackEvidence, /14 completed candles consolidated/i);
+  assert.match(snapshot("ambiguous_candle").machineEvidence.audit.rejectionReason ?? "", /AMBIGUOUS_STOP_FIRST/);
+  assert.deepEqual(snapshot("ambiguous_candle").machineEvidence.audit.ambiguityLabels, ["AMBIGUOUS_STOP_FIRST"]);
+});
+
+test("exit fixtures retain exact audit identity and outcome evidence", () => {
+  const set = buildVisualValidationSet(request);
+  const expectations: Array<[VisualValidationCategory, string]> = [
+    ["stop_exit", "STRATEGY_STOP_REACHED"],
+    ["target_exit", "TARGET_REACHED"],
+    ["runner_exit", "RUNNER_EXITED"],
+  ];
+  for (const [category, eventLabel] of expectations) {
+    const snapshot = set.snapshots.find((item) => item.category === category);
+    assert.ok(snapshot);
+    const audit = snapshot.machineEvidence.audit;
+    const trade = snapshot.machineEvidence.trade;
+    assert.ok(trade);
+    assert.equal(matchingTrade(audit, [trade])?.id, trade.id);
+    assert.equal(audit.exitCandleOpenTime, trade.audit?.exitCandleOpenTime);
+    assert.equal(audit.exitCandleCloseTime, trade.audit?.exitCandleCloseTime);
+    assert.ok(trade.audit?.eventLabels.includes(eventLabel));
+  }
 });
 
 test("visual-validation snapshots never expose candles beyond their review cursor", () => {
@@ -180,6 +275,35 @@ test("trade matching requires an exact unique causal anchor", () => {
   assert.equal(matchingTrade(record, [exact])?.id, "trade-1");
   assert.equal(matchingTrade(record, [exact, { ...exact, id: "trade-2", entryTime: "2026-08-26T13:31:00.000Z" }]), null);
   assert.equal(matchingTrade(record, [{ ...exact, contractSymbol: "MESH6" }]), null);
+});
+
+test("trade matching rejects an unrelated exit or causal timestamp", () => {
+  const record = audit({
+    modeledFillObservationTime: "2026-08-26T13:35:00.000Z",
+    exitCandleOpenTime: "2026-08-26T13:55:00.000Z",
+    exitCandleCloseTime: "2026-08-26T14:00:00.000Z",
+  });
+  const exact = trade({
+    audit: {
+      patienceCandleOpenTime: record.patienceCandleOpenTime,
+      patienceCandleCloseTime: record.patienceCandleCloseTime,
+      triggerCandleOpenTime: record.triggerCandleOpenTime,
+      triggerCandleCloseTime: record.triggerCandleCloseTime,
+      modeledFillObservationTime: record.modeledFillObservationTime,
+      exitCandleOpenTime: record.exitCandleOpenTime,
+      exitCandleCloseTime: record.exitCandleCloseTime,
+    } as BacktestTrade["audit"],
+  });
+  assert.equal(matchingTrade(record, [exact])?.id, "trade-1");
+  assert.equal(matchingTrade(record, [{
+    ...exact,
+    audit: {
+      ...exact.audit!,
+      exitCandleCloseTime: "2026-08-26T14:05:00.000Z",
+    } as BacktestTrade["audit"],
+  }]), null);
+  assert.equal(matchingTrade({ ...record, modeledFillObservationTime: "2026-08-26T13:40:00.000Z" }, [exact]), null);
+  assert.equal(matchingTrade({ ...record, triggerCandleOpenTime: "2026-08-26T13:30:00.000Z" }, [exact]), null);
 });
 
 test("category gates use explicit trend, mapped-level, and measured-state evidence", () => {

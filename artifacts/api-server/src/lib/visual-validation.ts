@@ -4,18 +4,15 @@ import {
   type MarketSnapshot,
 } from "./market-data.js";
 import {
-  buildReplayDataset,
-  runCausalBacktest,
   visibleReplayPrefix,
   type BacktestAuditRecord,
   type BacktestReport,
-  type BacktestRequest,
   type BacktestTrade,
   type CausalReplayDataset,
-  type IntrabarBar,
 } from "./phase9.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
+import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -264,18 +261,18 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
   );
   const causalMatches = candidates.filter((trade) => {
     const tradeAudit = trade.audit;
+    if (!tradeAudit) return false;
     const exactPairs: Array<[string | null, string | null]> = [
       [record.patienceCandleOpenTime, tradeAudit?.patienceCandleOpenTime ?? null],
       [record.patienceCandleCloseTime, tradeAudit?.patienceCandleCloseTime ?? null],
       [record.triggerCandleOpenTime, tradeAudit?.triggerCandleOpenTime ?? null],
-      [record.triggerCandleCloseTime, tradeAudit?.triggerCandleCloseTime ?? trade.entryTime ?? null],
-      [
-        record.modeledFillObservationTime,
-        tradeAudit?.modeledFillObservationTime ?? trade.entryTime ?? null,
-      ],
+      [record.triggerCandleCloseTime, tradeAudit.triggerCandleCloseTime ?? null],
+      [record.modeledFillObservationTime, tradeAudit.modeledFillObservationTime ?? null],
+      [record.exitCandleOpenTime, tradeAudit.exitCandleOpenTime ?? null],
+      [record.exitCandleCloseTime, tradeAudit.exitCandleCloseTime ?? null],
     ];
-    const sharedPairs = exactPairs.filter(([recordValue, tradeValue]) => recordValue !== null && tradeValue !== null);
-    return sharedPairs.length > 0 && sharedPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue);
+    return exactPairs.some(([recordValue, tradeValue]) => recordValue !== null || tradeValue !== null)
+      && exactPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue);
   });
   return causalMatches.length === 1 ? causalMatches[0]! : null;
 }
@@ -433,12 +430,13 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
 }
 
 function buildMachineSnapshot(
-  report: BacktestReport,
+  report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode">,
   dataset: CausalReplayDataset,
   audit: BacktestAuditRecord,
   trade: BacktestTrade | null,
   sampleIndex: number,
   category: VisualValidationCategory,
+  reviewCloseTime: number,
   premarketAvailable: boolean,
 ): VisualValidationSnapshot {
   const evaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
@@ -446,7 +444,8 @@ function buildMachineSnapshot(
   const exitTime = trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : evaluationTime;
   const evaluationCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
   const visibleEvaluation = visibleReplayPrefix(evaluationCandles, evaluationCloseTime);
-  const visibleReview = visibleReplayPrefix(evaluationCandles, Math.max(evaluationCloseTime, exitTime));
+  const reviewTime = Math.max(evaluationCloseTime, exitTime, reviewCloseTime);
+  const visibleReview = visibleReplayPrefix(evaluationCandles, reviewTime);
   const evaluationSnapshot = createMarketSnapshot(
     report.symbol,
     "regular",
@@ -490,9 +489,9 @@ function buildMachineSnapshot(
       futureCandleAccess: false,
     },
     reviewCursor: {
-      closeTime: new Date(Math.max(evaluationCloseTime, exitTime)).toISOString(),
-      newYork: formatTime(Math.max(evaluationCloseTime, exitTime), "America/New_York"),
-      utc: formatTime(Math.max(evaluationCloseTime, exitTime), "UTC"),
+      closeTime: new Date(reviewTime).toISOString(),
+      newYork: formatTime(reviewTime, "America/New_York"),
+      utc: formatTime(reviewTime, "UTC"),
     },
     rawCandles: reviewCandles.map(toRawCandle),
     annotations: buildAnnotations(evaluationSnapshot, audit, trade),
@@ -514,153 +513,22 @@ function buildMachineSnapshot(
   };
 }
 
-function buildReportCases(request: VisualValidationRequest): Array<{ report: BacktestReport; dataset: CausalReplayDataset }> {
-  const baseRequest: BacktestRequest = {
-    ...request,
-    source: "simulated",
+export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
+  const formulaHash = formulaConfigurationHash({ symbol: request.symbol });
+  const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
+    symbol: request.symbol,
+    formulaHash,
     executionMode: "quote_based_shadow",
   };
-  return [0, 1, 2].map((offset) => {
-    const caseRequest = { ...baseRequest, seed: (request.seed ?? 11) + offset };
-    const dataset = buildReplayDataset(caseRequest.symbol, caseRequest);
-    return { dataset, report: runCausalBacktest(caseRequest, undefined, dataset) };
-  });
-}
-
-function mutateDeterministicScenario(
-  dataset: CausalReplayDataset,
-  trade: BacktestTrade,
-  scenario: "stop" | "runner" | "ambiguous",
-): CausalReplayDataset {
-  const entryTime = Date.parse(trade.entryTime);
-  const target = trade.audit?.targetPrice ?? trade.exitPrice;
-  const stop = trade.audit?.catastropheStopPrice ?? trade.audit?.strategyStopPrice ?? trade.entryPrice;
-  const contractCandles = dataset.candles
-    .filter((candle) => candle.contractSymbol === trade.contractSymbol && candle.openTime >= entryTime)
-    .sort((first, second) => first.openTime - second.openTime);
-  const entryCandle = contractCandles[0];
-  const followCandle = contractCandles[1];
-  if (!entryCandle) return dataset;
-  const mutated: CausalReplayDataset = {
-    ...dataset,
-    candles: dataset.candles.map((candle) => {
-      if (candle === entryCandle) {
-        if (scenario === "runner") {
-          return { ...candle, high: Math.max(candle.high, target + 1), low: Math.max(candle.low, trade.entryPrice - 0.25) };
-        }
-        if (scenario === "ambiguous") {
-          return { ...candle, high: Math.max(candle.high, target + 1), low: Math.min(candle.low, stop - 0.25) };
-        }
-        return { ...candle, high: Math.min(candle.high, target - 0.25), low: Math.min(candle.low, stop - 0.5) };
-      }
-      if (scenario === "runner" && candle === followCandle) {
-        return { ...candle, high: Math.max(candle.high, target + 2), low: Math.min(candle.low, target - 7) };
-      }
-      return { ...candle };
-    }),
-  };
-  if (scenario === "ambiguous") {
-    const ambiguousBar: IntrabarBar = {
-      openTime: entryCandle.openTime,
-      closeTime: Math.min(entryCandle.closeTime, entryCandle.openTime + 60_000),
-      open: entryCandle.open,
-      high: target + 1,
-      low: stop - 0.25,
-      close: entryCandle.close,
-      source: "one-minute",
-      sequenceKnown: false,
-    };
-    return { ...mutated, oneMinute: [ambiguousBar] };
-  }
-  return mutated;
-}
-
-export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
-  const selected: Array<{ category: VisualValidationCategory; report: BacktestReport; dataset: CausalReplayDataset; audit: BacktestAuditRecord; trade: BacktestTrade | null }> = [];
-  const cases = buildReportCases(request);
-  const qualifiedCase = cases.find((item) => item.report.trades.length > 0);
-  if (qualifiedCase?.report.trades[0]) {
-    const sourceTrade = qualifiedCase.report.trades[0];
-    const sourceAudit = qualifiedCase.report.audit.find((audit) => matchingTrade(audit, [sourceTrade])?.id === sourceTrade.id);
-    for (const scenario of ["stop", "runner", "ambiguous"] as const) {
-      const dataset = mutateDeterministicScenario(qualifiedCase.dataset, sourceTrade, scenario);
-      const report = runCausalBacktest(
-          { ...request, source: "simulated", executionMode: "quote_based_shadow" },
-          undefined,
-          dataset,
-        );
-      if (scenario === "runner") {
-        if (!sourceTrade.audit) {
-          cases.push({ dataset, report });
-          continue;
-        }
-        const runnerTrade = {
-          ...sourceTrade,
-          audit: {
-            ...sourceTrade.audit,
-            runnerActivated: true,
-            runnerExited: true,
-            runnerReferencePrice: sourceTrade.entryPrice,
-            runnerImpulse: Math.abs((sourceTrade.audit.targetPrice ?? sourceTrade.entryPrice) + 2 - sourceTrade.entryPrice),
-            runnerMostFavorablePrice: (sourceTrade.audit.targetPrice ?? sourceTrade.entryPrice) + 2,
-            remainingQuantity: 0,
-            exitReason: "runner" as const,
-            assumptions: [...sourceTrade.audit.assumptions, "Deterministic visual runner fixture extends the replay after target confirmation."],
-            eventLabels: [...sourceTrade.audit.eventLabels, "RUNNER_ACTIVATED", "RUNNER_EXITED"],
-          },
-        };
-        cases.push({
-          dataset,
-          report: {
-            ...report,
-            trades: report.trades.map((trade) => trade.id === sourceTrade.id ? runnerTrade : trade),
-            audit: report.audit.map((audit) => audit.id === sourceAudit?.id
-              ? {
-                  ...audit,
-                  eventLabels: [...audit.eventLabels, "RUNNER_ACTIVATED", "RUNNER_EXITED"],
-                }
-              : audit),
-          },
-        });
-      } else if (scenario === "ambiguous") {
-        cases.push({
-          dataset,
-          report: {
-            ...report,
-          audit: report.audit.map((audit) => audit.id === sourceAudit?.id
-              ? {
-                  ...audit,
-                  rejectionCategory: "AMBIGUITY",
-                  rejectionReason: "AMBIGUOUS_STOP_FIRST",
-                  rejectionSummary: "The deterministic fixture places both barriers inside one unresolved one-minute candle.",
-                  ambiguityLabels: ["AMBIGUOUS_STOP_FIRST"],
-                }
-              : audit),
-          },
-        });
-      } else {
-        cases.push({ dataset, report });
-      }
-    }
-  }
-  for (const category of VISUAL_VALIDATION_CATEGORIES) {
-    const candidates = cases.flatMap(({ report, dataset }) => report.audit
-      .map((audit) => ({ report, dataset, audit, trade: matchingTrade(audit, report.trades), categories: categoriesFor(audit, matchingTrade(audit, report.trades)) }))
-      .filter((item) => item.categories.includes(category)))
-      .sort((first, second) => `${first.audit.tradingDate}|${first.audit.id}|${first.report.formulaHash}`.localeCompare(`${second.audit.tradingDate}|${second.audit.id}|${second.report.formulaHash}`));
-    const candidate = candidates[0];
-    if (candidate) selected.push({ category, ...candidate });
-  }
-  const formulaHash = formulaConfigurationHash({ symbol: request.symbol });
-  const snapshots = selected
-    .sort((first, second) => (categoryOrder.get(first.category) ?? 0) - (categoryOrder.get(second.category) ?? 0))
-    .map((item, index) => buildMachineSnapshot(
-      item.report,
-      item.dataset,
-      item.audit,
-      item.trade,
+  const fixtures = createVisualValidationFixtures(request);
+  const snapshots = fixtures.map((fixture, index) => buildMachineSnapshot(
+      fixtureReport,
+      fixture.dataset,
+      fixture.audit,
+      fixture.trade,
       index + 1,
-      item.category,
+      fixture.category,
+      fixture.reviewCloseTime,
       request.premarketAvailable !== false,
     ));
   return {
