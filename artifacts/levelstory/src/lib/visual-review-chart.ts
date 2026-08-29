@@ -178,6 +178,11 @@ export type EventRailLayoutOptions = {
   labelGap?: number;
 };
 
+/** The compact evidence item used by the chart and its ordered index. */
+export type ChartEvent = EventRailEvent & {
+  number: number;
+};
+
 function finitePrices(candles: readonly VisualValidationCandle[]): number[] {
   return candles.flatMap((candle) => [candle.high, candle.low]).filter(Number.isFinite);
 }
@@ -728,6 +733,57 @@ export function buildEventRailEvents(
   }
 
   return events;
+}
+
+const CATEGORY_EVENT_KINDS: Record<string, readonly EventRailEventKind[]> = {
+  qualified_trade: ["found", "evaluation", "patience", "trigger", "entry", "fill", "invalidation", "stop", "target", "runner", "exit"],
+  rejected_setup: ["found", "evaluation", "patience", "trigger", "invalidation", "supporting"],
+  bullish_patience_candle: ["found", "evaluation", "patience", "trigger", "supporting"],
+  bearish_patience_candle: ["found", "evaluation", "patience", "trigger", "supporting"],
+  weak_orb_probe: ["found", "evaluation", "trigger", "invalidation", "supporting"],
+  strong_breakout: ["found", "evaluation", "trigger", "supporting"],
+  pullback: ["found", "evaluation", "trigger", "supporting"],
+  consolidation: ["found", "evaluation", "supporting"],
+  ambiguous_candle: ["found", "evaluation", "supporting"],
+  stop_exit: ["found", "evaluation", "stop", "exit", "invalidation"],
+  target_exit: ["found", "evaluation", "target", "exit"],
+  runner_exit: ["found", "evaluation", "runner", "exit"],
+};
+
+function compareChartEvents(first: EventRailEvent, second: EventRailEvent): number {
+  return eventTime(first) - eventTime(second)
+    || first.priority - second.priority
+    || first.id.localeCompare(second.id);
+}
+
+/**
+ * Build the complete event set without changing any source timestamps or prices.
+ * This remains presentation-only; the API's immutable evidence is the source of truth.
+ */
+export function buildChartEvents(
+  snapshot: VisualValidationSnapshot,
+  candles: readonly VisualValidationCandle[],
+  sessionView: SessionView,
+): EventRailEvent[] {
+  return buildEventRailEvents(snapshot, candles, sessionView).sort(compareChartEvents);
+}
+
+/**
+ * Select the category's causal story by default. The explicit all-events state is
+ * intentionally opt-in so unrelated audit noise never competes with the category.
+ */
+export function selectChartEvents(
+  snapshot: VisualValidationSnapshot,
+  candles: readonly VisualValidationCandle[],
+  sessionView: SessionView,
+  showAllAuditEvents = false,
+): ChartEvent[] {
+  const allEvents = buildChartEvents(snapshot, candles, sessionView);
+  const allowed = new Set(CATEGORY_EVENT_KINDS[snapshot.category] ?? ["found", "evaluation"]);
+  const selected = showAllAuditEvents
+    ? allEvents
+    : allEvents.filter((event) => allowed.has(event.kind));
+  return selected.map((event, index) => ({ ...event, number: index + 1 }));
 }
 
 function eventTime(event: EventRailEvent): number {
