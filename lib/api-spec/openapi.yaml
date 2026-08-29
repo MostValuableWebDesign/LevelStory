@@ -3366,12 +3366,17 @@ components:
         teachingId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
         direction: { type: string, enum: [long, short] }
+        levelCandleOpenTime: { type: string, format: date-time, description: Qualifying level-interaction candle L. }
+        levelCandleCloseTime: { type: string, format: date-time, description: Qualifying level-interaction candle L. }
         entryCandleOpenTime: { type: string, format: date-time }
         entryCandleCloseTime: { type: string, format: date-time }
         patienceCandleOpenTime: { type: string, format: date-time }
         patienceCandleCloseTime: { type: string, format: date-time }
         entryBufferTicks: { type: number, enum: [3, 4] }
         levelToleranceTicks: { type: number, minimum: 0, maximum: 4, multipleOf: 1, default: 4, description: MES ticks; integer values only. }
+        qualifyingLevelId: { type: string, maxLength: 120, description: Stable annotation ID for the qualifying level. }
+        qualifyingLevelRangeLow: { type: ["number", "null"] }
+        qualifyingLevelRangeHigh: { type: ["number", "null"] }
         pullbackLevels:
           type: array
           minItems: 1
@@ -3393,7 +3398,7 @@ components:
         sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
         supersedesReviewId: { type: ["string", "null"], pattern: '^[0-9a-fA-F-]{36}$' }
         createdAt: { type: string, format: date-time }
-      required: [teachingId, judgment, direction, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, levelToleranceTicks, pullbackLevels, setupType, confidence, explanation, calculatedEntryPrice, validation, machineEvidenceSnapshot, machineEvidenceHash, formulaHash, formulaVersion, sourceFingerprint, supersedesReviewId, createdAt]
+      required: [teachingId, judgment, direction, levelCandleOpenTime, levelCandleCloseTime, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, levelToleranceTicks, pullbackLevels, setupType, confidence, explanation, calculatedEntryPrice, validation, machineEvidenceSnapshot, machineEvidenceHash, formulaHash, formulaVersion, sourceFingerprint, supersedesReviewId, createdAt]
     VisualValidationCategory:
       type: string
       enum: [qualified_trade, rejected_setup, bullish_patience_candle, bearish_patience_candle, weak_orb_probe, strong_breakout, pullback, consolidation, ambiguous_candle, stop_exit, target_exit, runner_exit]
@@ -3608,12 +3613,17 @@ components:
           properties:
             judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
             direction: { type: string, enum: [long, short] }
+            levelCandleOpenTime: { type: string, format: date-time }
+            levelCandleCloseTime: { type: string, format: date-time }
             entryCandleOpenTime: { type: string, format: date-time }
             entryCandleCloseTime: { type: string, format: date-time }
             patienceCandleOpenTime: { type: string, format: date-time }
             patienceCandleCloseTime: { type: string, format: date-time }
             entryBufferTicks: { type: number, enum: [3, 4] }
             levelToleranceTicks: { type: number, minimum: 0, maximum: 4, multipleOf: 1, default: 4, description: MES ticks; integer values only. }
+            qualifyingLevelId: { type: string, maxLength: 120 }
+            qualifyingLevelRangeLow: { type: ["number", "null"] }
+            qualifyingLevelRangeHigh: { type: ["number", "null"] }
             pullbackLevels:
               type: array
               minItems: 1
@@ -3623,7 +3633,7 @@ components:
             setupType: { $ref: "#/components/schemas/VisualValidationTeachingSetup" }
             confidence: { $ref: "#/components/schemas/VisualValidationTeachingConfidence" }
             explanation: { type: string, maxLength: 4000 }
-          required: [judgment, direction, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, levelToleranceTicks, pullbackLevels, setupType, confidence, explanation]
+          required: [judgment, direction, levelCandleOpenTime, levelCandleCloseTime, entryCandleOpenTime, entryCandleCloseTime, patienceCandleOpenTime, patienceCandleCloseTime, entryBufferTicks, levelToleranceTicks, pullbackLevels, setupType, confidence, explanation]
       required: [reviewSetId, snapshotId, status]
     VisualValidationReview:
       type: object

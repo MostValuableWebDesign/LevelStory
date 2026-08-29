@@ -342,12 +342,17 @@ export default function VisualReview() {
     setTeachingDraft(savedTeaching ? {
       judgment: savedTeaching.judgment,
       direction: savedTeaching.direction,
+      levelCandleOpenTime: savedTeaching.levelCandleOpenTime ?? savedTeaching.patienceCandleOpenTime,
+      levelCandleCloseTime: savedTeaching.levelCandleCloseTime ?? savedTeaching.patienceCandleCloseTime,
       entryCandleOpenTime: savedTeaching.entryCandleOpenTime,
       entryCandleCloseTime: savedTeaching.entryCandleCloseTime,
       patienceCandleOpenTime: savedTeaching.patienceCandleOpenTime,
       patienceCandleCloseTime: savedTeaching.patienceCandleCloseTime,
       entryBufferTicks: savedTeaching.entryBufferTicks,
       levelToleranceTicks: savedTeaching.levelToleranceTicks ?? 4,
+      qualifyingLevelId: savedTeaching.qualifyingLevelId,
+      qualifyingLevelRangeLow: savedTeaching.qualifyingLevelRangeLow,
+      qualifyingLevelRangeHigh: savedTeaching.qualifyingLevelRangeHigh,
       pullbackLevels: savedTeaching.pullbackLevels?.length ? savedTeaching.pullbackLevels : savedTeaching.pullbackLevel !== undefined ? [savedTeaching.pullbackLevel] : [],
       setupType: savedTeaching.setupType,
       confidence: savedTeaching.confidence,
@@ -360,12 +365,17 @@ export default function VisualReview() {
   const savedTeachingKey = activeSnapshot?.review.teaching ? JSON.stringify({
     judgment: activeSnapshot.review.teaching.judgment,
     direction: activeSnapshot.review.teaching.direction,
+    levelCandleOpenTime: activeSnapshot.review.teaching.levelCandleOpenTime ?? activeSnapshot.review.teaching.patienceCandleOpenTime,
+    levelCandleCloseTime: activeSnapshot.review.teaching.levelCandleCloseTime ?? activeSnapshot.review.teaching.patienceCandleCloseTime,
     entryCandleOpenTime: activeSnapshot.review.teaching.entryCandleOpenTime,
     entryCandleCloseTime: activeSnapshot.review.teaching.entryCandleCloseTime,
     patienceCandleOpenTime: activeSnapshot.review.teaching.patienceCandleOpenTime,
     patienceCandleCloseTime: activeSnapshot.review.teaching.patienceCandleCloseTime,
     entryBufferTicks: activeSnapshot.review.teaching.entryBufferTicks,
     levelToleranceTicks: activeSnapshot.review.teaching.levelToleranceTicks ?? 4,
+    qualifyingLevelId: activeSnapshot.review.teaching.qualifyingLevelId,
+    qualifyingLevelRangeLow: activeSnapshot.review.teaching.qualifyingLevelRangeLow,
+    qualifyingLevelRangeHigh: activeSnapshot.review.teaching.qualifyingLevelRangeHigh,
     pullbackLevels: activeSnapshot.review.teaching.pullbackLevels?.length ? activeSnapshot.review.teaching.pullbackLevels : activeSnapshot.review.teaching.pullbackLevel !== undefined ? [activeSnapshot.review.teaching.pullbackLevel] : [],
     setupType: activeSnapshot.review.teaching.setupType,
     confidence: activeSnapshot.review.teaching.confidence,
@@ -449,12 +459,17 @@ export default function VisualReview() {
         setTeachingDraft(saved.teaching ? {
           judgment: saved.teaching.judgment,
           direction: saved.teaching.direction,
+          levelCandleOpenTime: saved.teaching.levelCandleOpenTime ?? saved.teaching.patienceCandleOpenTime,
+          levelCandleCloseTime: saved.teaching.levelCandleCloseTime ?? saved.teaching.patienceCandleCloseTime,
           entryCandleOpenTime: saved.teaching.entryCandleOpenTime,
           entryCandleCloseTime: saved.teaching.entryCandleCloseTime,
           patienceCandleOpenTime: saved.teaching.patienceCandleOpenTime,
           patienceCandleCloseTime: saved.teaching.patienceCandleCloseTime,
           entryBufferTicks: saved.teaching.entryBufferTicks,
           levelToleranceTicks: saved.teaching.levelToleranceTicks ?? 4,
+          qualifyingLevelId: saved.teaching.qualifyingLevelId,
+          qualifyingLevelRangeLow: saved.teaching.qualifyingLevelRangeLow,
+          qualifyingLevelRangeHigh: saved.teaching.qualifyingLevelRangeHigh,
           pullbackLevels: saved.teaching.pullbackLevels?.length ? saved.teaching.pullbackLevels : saved.teaching.pullbackLevel !== undefined ? [saved.teaching.pullbackLevel] : [],
           setupType: saved.teaching.setupType,
           confidence: saved.teaching.confidence,
@@ -535,7 +550,7 @@ export default function VisualReview() {
                   <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
-                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
+                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
                         setLockedEntryCandle(candle);
                         if (!candle) return;
                         const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
@@ -544,20 +559,25 @@ export default function VisualReview() {
                         const tolerancePoints = (teachingDraft?.levelToleranceTicks ?? 4) * 0.25;
                         const containedLevels = activeSnapshot.annotations
                           .filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")
-                          .map((annotation) => annotation.price as number)
-                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= tolerancePoints);
-                        const pullbackLevel = containedLevels[0] ?? candle.close;
+                          .filter((annotation) => !patience || Math.max(0, (annotation.rangeLow ?? annotation.price as number) - patience.high, patience.low - (annotation.rangeHigh ?? annotation.price as number)) <= tolerancePoints);
+                        const selectedLevel = containedLevels[0];
+                        const pullbackLevel = selectedLevel?.price ?? candle.close;
                         const existingLevels = (current: NonNullable<typeof teachingDraft>) => current.pullbackLevels
                           .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= (current.levelToleranceTicks ?? 4) * 0.25);
                         setTeachingDraft((current) => ({
                           judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
                           direction: current?.direction ?? direction,
+                          levelCandleOpenTime: patience?.openTime ?? candle.openTime,
+                          levelCandleCloseTime: patience?.closeTime ?? candle.closeTime,
                           entryCandleOpenTime: candle.openTime,
                           entryCandleCloseTime: candle.closeTime,
                           patienceCandleOpenTime: patience?.openTime ?? "",
                           patienceCandleCloseTime: patience?.closeTime ?? "",
                           entryBufferTicks: current?.entryBufferTicks ?? 4,
                           levelToleranceTicks: current?.levelToleranceTicks ?? 4,
+                          qualifyingLevelId: current?.qualifyingLevelId ?? selectedLevel?.id,
+                          qualifyingLevelRangeLow: current?.qualifyingLevelRangeLow ?? selectedLevel?.rangeLow,
+                          qualifyingLevelRangeHigh: current?.qualifyingLevelRangeHigh ?? selectedLevel?.rangeHigh,
                           pullbackLevels: current ? (existingLevels(current).length ? existingLevels(current) : [pullbackLevel]) : [pullbackLevel],
                           setupType: current?.setupType ?? activeSnapshot.strategyKey,
                           confidence: current?.confidence ?? "low",
@@ -719,7 +739,7 @@ function CausalTag() {
   return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
 }
 
-function CausalChart({ snapshot, source, expanded, lockedEntryCandle, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; lockedEntryCandle: SessionCandle | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
+function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; lockedEntryCandle: SessionCandle | null; teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
   const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(requestedPremarket);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -819,7 +839,7 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, onToggleEx
         {fullCoverage && <span className="mono">Full {fullCoverage.observedCandleCount}/{fullCoverage.expectedCandleCount}</span>}
         <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
       </div>
-        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
+        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -978,6 +998,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   sessionView,
   focusOpenTime,
   lockedEntryCandle,
+  teaching,
   onReturnPrimary,
   onLockCandle,
 }: {
@@ -988,6 +1009,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   sessionView: SessionView;
   focusOpenTime: string;
   lockedEntryCandle: SessionCandle | null;
+  teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
   onReturnPrimary: () => void;
   onLockCandle: (candle: SessionCandle | null) => void;
 }) {
@@ -1290,12 +1312,24 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          const geometry = getCandleGeometry(candle, slotIndex, step, domain, left);
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
           const lockedAsEntry = lockedEntryCandle?.openTime === candle.openTime && lockedEntryCandle.closeTime === candle.closeTime;
+          const lockedAsLevel = teaching?.levelCandleOpenTime === candle.openTime && teaching.levelCandleCloseTime === candle.closeTime;
+          const lockedAsPatience = teaching?.patienceCandleOpenTime === candle.openTime && teaching.patienceCandleCloseTime === candle.closeTime;
           const entryMarkerY = Math.max(top + 12, geometry.highY - 15);
+          const levelMarkerY = Math.max(top + 12, geometry.lowY + 15);
+          const patienceMarkerY = Math.max(top + 12, geometry.lowY + (lockedAsLevel ? 31 : 15));
           return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}>
             <title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title>
             <line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" />
             <rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" />
             <rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" />
+            {lockedAsLevel && <g pointerEvents="none" data-testid="locked-level-marker" aria-label="Selected level interaction candle L">
+              <circle cx={geometry.x} cy={levelMarkerY} r="8" fill="hsl(204 72% 48%)" stroke="hsl(var(--card))" strokeWidth="2" />
+              <text x={geometry.x} y={levelMarkerY + 3} textAnchor="middle" fill="white" fontSize="9" fontWeight="800" fontFamily="DM Mono">L</text>
+            </g>}
+            {lockedAsPatience && <g pointerEvents="none" data-testid="locked-patience-marker" aria-label="Selected patience candle P">
+              <circle cx={geometry.x} cy={patienceMarkerY} r="8" fill="hsl(var(--positive))" stroke="hsl(var(--card))" strokeWidth="2" />
+              <text x={geometry.x} y={patienceMarkerY + 3} textAnchor="middle" fill="hsl(var(--positive-foreground))" fontSize="9" fontWeight="800" fontFamily="DM Mono">P</text>
+            </g>}
             {lockedAsEntry && <g pointerEvents="none" data-testid="locked-entry-marker" aria-label="Selected entry candle E">
               <circle cx={geometry.x} cy={entryMarkerY} r="9" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="2" />
               <text x={geometry.x} y={entryMarkerY + 3.5} textAnchor="middle" fill="hsl(var(--accent-foreground))" fontSize="10" fontWeight="800" fontFamily="DM Mono">E</text>
@@ -1397,13 +1431,20 @@ function ReviewPanel({
   const hasSavedReview = savedStatus !== null;
   const needsTeaching = status === "missed_trade" || status === "false_positive_trade" || status === "rule_needs_clarification";
   const patience = teaching ? snapshot.reviewCandles.find((candle) => candle.openTime === teaching.patienceCandleOpenTime && candle.closeTime === teaching.patienceCandleCloseTime) : null;
+  const levelCandle = teaching ? snapshot.reviewCandles.find((candle) => candle.openTime === teaching.levelCandleOpenTime && candle.closeTime === teaching.levelCandleCloseTime) : null;
   const calculatedEntryPrice = teaching && patience
     ? (teaching.direction === "long" ? patience.high + teaching.entryBufferTicks * 0.25 : patience.low - teaching.entryBufferTicks * 0.25).toFixed(2)
     : "—";
   const availableLevels = snapshot.annotations.filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle");
   const levelToleranceTicks = teaching?.levelToleranceTicks ?? 4;
   const levelTolerancePoints = levelToleranceTicks * 0.25;
-  const containedLevels = availableLevels.filter((level) => !patience || Math.max(0, (level.rangeLow ?? level.price as number) - patience.high, patience.low - (level.rangeHigh ?? level.price as number)) <= levelTolerancePoints);
+  const containedLevels = availableLevels.filter((level) => !levelCandle || Math.max(0, (level.rangeLow ?? level.price as number) - levelCandle.high, levelCandle.low - (level.rangeHigh ?? level.price as number)) <= levelTolerancePoints);
+  const selectableLevelCandles = snapshot.reviewCandles.filter((candle) => {
+    const candleIndex = snapshot.reviewCandles.indexOf(candle);
+    const patienceIndex = patience ? snapshot.reviewCandles.indexOf(patience) : -1;
+    return candle.isComplete && Date.parse(candle.closeTime) <= Date.parse(snapshot.evaluationCursor.closeTime) && (patienceIndex < 0 || candleIndex <= patienceIndex);
+  });
+  const selectedIndicator = levelCandle ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime) : undefined;
   const updateTeaching = (patch: Partial<NonNullable<VisualValidationReviewRequest["teaching"]>>) => {
     if (teaching) setTeaching({ ...teaching, ...patch });
   };
@@ -1426,7 +1467,9 @@ function ReviewPanel({
          {teaching && <div className="grid gap-3 sm:grid-cols-2">
            <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
            <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
-           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); const contained = containedLevels.includes(level); return <label key={`${level.id}-${level.price}`} className={`flex items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)}</span>{!contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels may touch or approach the selected patience candle (P) within the configured {levelToleranceTicks}-tick MES proximity zone. Select every mapped level the pullback qualifies against.</p></fieldset>
+           <Field label="Qualifying level candle · L"><select className="field" value={levelCandle ? `${levelCandle.openTime}|${levelCandle.closeTime}` : ""} onChange={(event) => { const selected = selectableLevelCandles.find((candle) => `${candle.openTime}|${candle.closeTime}` === event.target.value); if (selected) updateTeaching({ levelCandleOpenTime: selected.openTime, levelCandleCloseTime: selected.closeTime }); }} data-testid="select-level-candle"><option value="" disabled>Select a causal L candle</option>{selectableLevelCandles.map((candle) => <option key={`${candle.openTime}|${candle.closeTime}`} value={`${candle.openTime}|${candle.closeTime}`}>{formatInterval(candle.openTime, candle.closeTime)}{patience && candle.openTime === patience.openTime ? " · direct L=P" : ""}</option>)}</select><span className="mt-1 block text-[9px] text-muted-foreground">L is the completed, machine-visible candle that qualifies the level. P and E remain locked.</span></Field>
+           <div className="border border-border bg-card px-3 py-2" data-testid="level-indicator-evidence"><div className="eyebrow text-muted-foreground">Indicators at L</div><div className="mono mt-1 text-[10px]">VWAP {selectedIndicator?.vwap?.toFixed(3) ?? "—"} · EMA 200 {selectedIndicator?.ema200?.toFixed(3) ?? "—"}</div><div className="mt-1 text-[9px] text-muted-foreground">{selectedIndicator ? `Source ${formatInterval(selectedIndicator.openTime, selectedIndicator.closeTime)}` : "No causal indicator point at L"}</div></div>
+           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); const contained = containedLevels.includes(level); return <label key={`${level.id}-${level.price}`} className={`flex items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price), ...(event.target.checked && !teaching.qualifyingLevelId ? { qualifyingLevelId: level.id, qualifyingLevelRangeLow: level.rangeLow, qualifyingLevelRangeHigh: level.rangeHigh } : {}) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)} · {level.id}</span>{!contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone at L</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels intersect L within the configured {levelToleranceTicks}-tick MES proximity zone. The stable level ID is persisted; P and E are evaluated separately.</p></fieldset>
             <Field label="Strategy"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="PATIENCE_CANDLE_CONTINUATION">Patience candle continuation</option><option value="STRONG_BREAKOUT_AFTER_CONSOLIDATION">Strong breakout after consolidation</option><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EQUIVALENT_CANDLE_REVERSAL">Equivalent candle reversal</option></select></Field>
            <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
            <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>

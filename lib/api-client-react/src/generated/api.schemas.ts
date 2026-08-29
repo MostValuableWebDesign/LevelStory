@@ -3017,6 +3017,10 @@ export interface VisualValidationTeachingExample {
   teachingId: string;
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationTeachingExampleDirection;
+  /** Qualifying level-interaction candle L. */
+  levelCandleOpenTime: string;
+  /** Qualifying level-interaction candle L. */
+  levelCandleCloseTime: string;
   entryCandleOpenTime: string;
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
@@ -3028,6 +3032,15 @@ export interface VisualValidationTeachingExample {
      * @maximum 4
      */
   levelToleranceTicks: number;
+  /**
+     * Stable annotation ID for the qualifying level.
+     * @maxLength 120
+     */
+  qualifyingLevelId?: string;
+  /** @nullable */
+  qualifyingLevelRangeLow?: number | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: number | null;
   /**
      * @minItems 1
      * @maxItems 20
@@ -3409,6 +3422,8 @@ export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
 export type VisualValidationReviewRequestTeaching = {
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationReviewRequestTeachingDirection;
+  levelCandleOpenTime: string;
+  levelCandleCloseTime: string;
   entryCandleOpenTime: string;
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
@@ -3420,6 +3435,12 @@ export type VisualValidationReviewRequestTeaching = {
      * @maximum 4
      */
   levelToleranceTicks: number;
+  /** @maxLength 120 */
+  qualifyingLevelId?: string;
+  /** @nullable */
+  qualifyingLevelRangeLow?: number | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: number | null;
   /**
      * @minItems 1
      * @maxItems 20

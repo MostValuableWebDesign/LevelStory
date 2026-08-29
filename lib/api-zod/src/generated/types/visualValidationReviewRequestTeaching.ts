@@ -14,6 +14,8 @@ import type { VisualValidationTeachingSetup } from './visualValidationTeachingSe
 export type VisualValidationReviewRequestTeaching = {
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationReviewRequestTeachingDirection;
+  levelCandleOpenTime: Date;
+  levelCandleCloseTime: Date;
   entryCandleOpenTime: Date;
   entryCandleCloseTime: Date;
   patienceCandleOpenTime: Date;
@@ -25,6 +27,12 @@ export type VisualValidationReviewRequestTeaching = {
      * @maximum 4
      */
   levelToleranceTicks: number;
+  /** @maxLength 120 */
+  qualifyingLevelId?: string;
+  /** @nullable */
+  qualifyingLevelRangeLow?: number | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: number | null;
   /**
      * @minItems 1
      * @maxItems 20

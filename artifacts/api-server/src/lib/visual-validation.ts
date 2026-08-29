@@ -275,12 +275,17 @@ export type VisualValidationReview = {
 export type VisualValidationTeachingInput = {
   judgment: VisualValidationTeachingJudgment;
   direction: "long" | "short";
+  levelCandleOpenTime?: string;
+  levelCandleCloseTime?: string;
   entryCandleOpenTime: string;
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: 3 | 4;
   levelToleranceTicks?: number;
+  qualifyingLevelId?: string;
+  qualifyingLevelRangeLow?: number | null;
+  qualifyingLevelRangeHigh?: number | null;
   pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
@@ -295,8 +300,13 @@ export type VisualValidationTeachingValidation = {
 };
 
 export type VisualValidationLevelInteraction = {
+  levelId?: string;
   levelName: string;
   levelPrice: number;
+  levelRangeLow?: number | null;
+  levelRangeHigh?: number | null;
+  candleOpenTime?: string;
+  candleCloseTime?: string;
   candleHigh: number;
   candleLow: number;
   distanceTicks: number;
@@ -402,8 +412,12 @@ export function validateVisualValidationTeaching(
   const evaluationClose = Date.parse(snapshot.evaluationCursor.closeTime);
   const entry = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
   const patience = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
+  const levelOpenTime = input.levelCandleOpenTime ?? input.patienceCandleOpenTime;
+  const levelCloseTime = input.levelCandleCloseTime ?? input.patienceCandleCloseTime;
+  const levelCandle = snapshot.reviewCandles.find((candle) => sameCandle(candle, levelOpenTime, levelCloseTime));
   const entryIndex = snapshot.reviewCandles.findIndex((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
   const patienceIndex = snapshot.reviewCandles.findIndex((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
+  const levelIndex = snapshot.reviewCandles.findIndex((candle) => sameCandle(candle, levelOpenTime, levelCloseTime));
   const previous = patienceIndex > 0 ? snapshot.reviewCandles[patienceIndex - 1] : undefined;
   const calculatedEntryPrice = patience
     ? input.direction === "long"
@@ -411,18 +425,40 @@ export function validateVisualValidationTeaching(
       : Number((patience.low - input.entryBufferTicks * TEACHING_TICK_SIZE).toFixed(2))
     : Number.NaN;
 
-  if (!entry || !patience) messages.push("Choose both a locked entry candle and its patience candle from this snapshot.");
+  if (!entry || !patience || !levelCandle) messages.push("Choose exact L (level), P (patience), and immediate-next E (entry) candles from this snapshot.");
+  if (input.levelCandleOpenTime !== undefined && input.levelCandleCloseTime === undefined) messages.push("The qualifying level candle must include both open and close timestamps.");
+  if (input.levelCandleCloseTime !== undefined && input.levelCandleOpenTime === undefined) messages.push("The qualifying level candle must include both open and close timestamps.");
+  if (levelCandle && !levelCandle.isComplete) messages.push("The qualifying level candle must be completed.");
   if (entry && !entry.isComplete) messages.push("The locked entry candle must be completed.");
   if (patience && !patience.isComplete) messages.push("The patience candle must be completed.");
   if (entry && patience && Date.parse(entry.openTime) !== Date.parse(patience.closeTime)) {
     messages.push("The entry candle must be the immediate-next candle after patience (E opens when P closes).");
   }
   if (entryIndex < 0 || patienceIndex < 0) messages.push("The selected candles must be exact observed candles, not a reconstructed or future slot.");
+  if (levelIndex < 0) messages.push("The qualifying level candle must be an exact observed candle, not a reconstructed or future slot.");
+  if (levelIndex > patienceIndex && patienceIndex >= 0) messages.push("The qualifying level candle L must occur at or before patience candle P.");
+  if (levelIndex >= 0 && patienceIndex >= 0 && patienceIndex - levelIndex > 6) messages.push("L to P consolidation cannot exceed six completed five-minute candles (30 minutes).");
+  if (levelCandle && patience && levelIndex >= 0 && patienceIndex >= 0 && levelIndex < patienceIndex) {
+    const between = snapshot.reviewCandles.slice(levelIndex, patienceIndex + 1);
+    if (between.some((candle) => !candle.isComplete)) messages.push("Every candle from L through P must be completed.");
+    for (let index = 1; index < between.length; index += 1) {
+      if (Date.parse(between[index]!.openTime) !== Date.parse(between[index - 1]!.closeTime)) {
+        messages.push("L to P consolidation must use contiguous five-minute candles; a missing candle invalidates the sequence.");
+        break;
+      }
+    }
+    if (between.some((candle) => candle.contractSymbol !== snapshot.contractSymbol)) messages.push("Every L to P consolidation candle must belong to the snapshot's active MES contract.");
+    if (input.direction === "long" && between.some((candle) => candle.low < levelCandle.low - 1e-8)) messages.push("Long L to P consolidation invalidated below the qualifying level candle low.");
+    if (input.direction === "short" && between.some((candle) => candle.high > levelCandle.high + 1e-8)) messages.push("Short L to P consolidation invalidated above the qualifying level candle high.");
+  }
   if (entry && (!Number.isFinite(evaluationClose) || Date.parse(entry.closeTime) > evaluationClose)) {
     messages.push("The entry candle is beyond the machine evaluation boundary and is not causally visible.");
   }
   if (patience && (!Number.isFinite(evaluationClose) || Date.parse(patience.closeTime) > evaluationClose)) {
     messages.push("The patience candle is beyond the machine evaluation boundary and uses future data.");
+  }
+  if (levelCandle && (!Number.isFinite(evaluationClose) || Date.parse(levelCandle.closeTime) > evaluationClose)) {
+    messages.push("The qualifying level candle is beyond the machine evaluation boundary and uses future data.");
   }
   const entryMinute = entry ? localMinute(entry.openTime) : null;
   const entryCloseMinute = entry ? localMinute(entry.closeTime) : null;
@@ -436,27 +472,43 @@ export function validateVisualValidationTeaching(
   const pullbackLevels = [...new Set(input.pullbackLevels.filter(Number.isFinite))];
   if (!pullbackLevels.length) messages.push("Choose at least one qualifying pullback level.");
   if (pullbackLevels.some((level) => !tickAligned(level))) messages.push("Every qualifying pullback level must be aligned to the MES 0.25 tick.");
+  const requestedLevelId = input.qualifyingLevelId;
+  const selectedAnnotation = requestedLevelId
+    ? snapshot.annotations.find((annotation) => annotation.id === requestedLevelId)
+    : undefined;
+  if (requestedLevelId && (!selectedAnnotation || !selectedAnnotation.available || selectedAnnotation.visibility !== "machine")) {
+    messages.push("The selected qualifying level ID is not machine-visible at the causal evaluation time.");
+  }
   const unmappedLevels = pullbackLevels.filter((level) => !snapshot.annotations.some((annotation) =>
     annotation.available
     && annotation.price !== null
     && annotation.kind !== "candle"
+    && (!requestedLevelId || annotation.id === requestedLevelId)
     && Math.abs(annotation.price - level) <= TEACHING_TICK_SIZE + 1e-8,
   ));
   if (unmappedLevels.length) messages.push("A selected qualifying level was not present in the machine-visible snapshot at the evaluation time.");
   for (const level of pullbackLevels) {
     const annotation = snapshot.annotations
       .filter((item) => item.available && item.price !== null && item.kind !== "candle" && Math.abs(item.price - level) <= TEACHING_TICK_SIZE + 1e-8)
+      .filter((item) => !requestedLevelId || item.id === requestedLevelId)
       .sort((first, second) => Math.abs(first.price! - level) - Math.abs(second.price! - level))[0];
-    if (!patience || !annotation) continue;
-    const distancePoints = distanceToLevel(level, patience.high, patience.low, annotation.rangeLow, annotation.rangeHigh);
+    if (!levelCandle || !annotation) continue;
+    const rangeLow = input.qualifyingLevelRangeLow ?? annotation.rangeLow;
+    const rangeHigh = input.qualifyingLevelRangeHigh ?? annotation.rangeHigh;
+    const distancePoints = distanceToLevel(level, levelCandle.high, levelCandle.low, rangeLow, rangeHigh);
     const distanceTicks = Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-8);
     const passed = distancePoints <= levelTolerancePoints + 1e-8;
     const levelName = annotation.label;
     levelInteractions.push({
+      levelId: annotation.id,
       levelName,
       levelPrice: level,
-      candleHigh: patience.high,
-      candleLow: patience.low,
+      levelRangeLow: rangeLow,
+      levelRangeHigh: rangeHigh,
+      candleOpenTime: levelCandle.openTime,
+      candleCloseTime: levelCandle.closeTime,
+      candleHigh: levelCandle.high,
+      candleLow: levelCandle.low,
       distanceTicks,
       distancePoints: Number(distancePoints.toFixed(2)),
       allowedToleranceTicks: levelToleranceTicks,
@@ -468,6 +520,13 @@ export function validateVisualValidationTeaching(
         : `Patience candle remained ${distanceTicks} ticks from ${levelName}. Allowed tolerance: ${levelToleranceTicks} ticks.`,
     });
     if (!passed) messages.push(levelInteractions.at(-1)!.reason);
+  }
+  const indicatorAtLevel = levelCandle
+    ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime)
+    : undefined;
+  if (input.levelCandleOpenTime !== undefined || input.levelCandleCloseTime !== undefined || input.qualifyingLevelId !== undefined) {
+    if (!indicatorAtLevel) messages.push("No causal VWAP/EMA 200 indicator point exists at the qualifying level candle.");
+    else if (indicatorAtLevel.visibility !== "machine") messages.push("VWAP and EMA 200 at L are not causally machine-visible.");
   }
   if (entry && Number.isFinite(calculatedEntryPrice)) {
     const buffered = input.direction === "long" ? entry.high >= calculatedEntryPrice : entry.low <= calculatedEntryPrice;
@@ -500,6 +559,8 @@ export function createVisualValidationTeachingExample(
   });
   return {
     ...input,
+    levelCandleOpenTime: input.levelCandleOpenTime ?? input.patienceCandleOpenTime,
+    levelCandleCloseTime: input.levelCandleCloseTime ?? input.patienceCandleCloseTime,
     levelToleranceTicks: input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
     pullbackLevels: [...new Set(input.pullbackLevels)].sort((a, b) => a - b),
     teachingId: randomUUID(),

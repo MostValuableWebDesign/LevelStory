@@ -37,6 +37,10 @@ const defaultRequest = {
   reviewMode: "trades_only" as const,
 };
 
+function isoOptional(value: string | Date | undefined): string | undefined {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 export function createVisualValidationRouter(): IRouter {
   const router: IRouter = Router();
   const reviewRateLimit = requestRateLimit({
@@ -123,6 +127,8 @@ export function createVisualValidationRouter(): IRouter {
       const teaching = parsed.data.teaching
         ? {
             ...parsed.data.teaching,
+            levelCandleOpenTime: isoOptional(parsed.data.teaching.levelCandleOpenTime),
+            levelCandleCloseTime: isoOptional(parsed.data.teaching.levelCandleCloseTime),
             entryCandleOpenTime: parsed.data.teaching.entryCandleOpenTime.toISOString(),
             entryCandleCloseTime: parsed.data.teaching.entryCandleCloseTime.toISOString(),
             patienceCandleOpenTime: parsed.data.teaching.patienceCandleOpenTime.toISOString(),

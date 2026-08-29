@@ -18,6 +18,10 @@ export interface VisualValidationTeachingExample {
   teachingId: string;
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationTeachingExampleDirection;
+  /** Qualifying level-interaction candle L. */
+  levelCandleOpenTime: Date;
+  /** Qualifying level-interaction candle L. */
+  levelCandleCloseTime: Date;
   entryCandleOpenTime: Date;
   entryCandleCloseTime: Date;
   patienceCandleOpenTime: Date;
@@ -29,6 +33,15 @@ export interface VisualValidationTeachingExample {
      * @maximum 4
      */
   levelToleranceTicks: number;
+  /**
+     * Stable annotation ID for the qualifying level.
+     * @maxLength 120
+     */
+  qualifyingLevelId?: string;
+  /** @nullable */
+  qualifyingLevelRangeLow?: number | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: number | null;
   /**
      * @minItems 1
      * @maxItems 20
