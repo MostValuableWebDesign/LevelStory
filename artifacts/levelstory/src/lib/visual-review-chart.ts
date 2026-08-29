@@ -1,18 +1,22 @@
 import type { VisualValidationAnnotation, VisualValidationCandle } from "@workspace/api-client-react";
 
 export const CHART_WIDTH = 1040;
-export const CHART_HEIGHT = 430;
+export const CHART_HEIGHT = 460;
 export const CHART_LEFT = 58;
-export const CHART_RIGHT = 34;
+export const CHART_RIGHT = 150;
 export const CHART_TOP = 30;
 export const CHART_PLOT_BOTTOM = 306;
 export const CHART_VOLUME_TOP = 326;
 export const CHART_VOLUME_HEIGHT = 34;
-export const CANDLE_WINDOW_MIN = 30;
-export const CANDLE_WINDOW_MAX = 50;
-export const CANDLE_WINDOW_TARGET = 40;
+export const CHART_TIME_TICK_Y = 382;
+export const CHART_DATE_LABEL_Y = 402;
+export const CHART_FOOTER_LABEL_Y = 424;
+export const CANDLE_WINDOW_MIN = 36;
+export const CANDLE_WINDOW_MAX = 48;
+export const CANDLE_WINDOW_TARGET = 42;
 export const CANDLE_PADDING_RATIO = 0.08;
 export const DOJI_BODY_HEIGHT = 4;
+export const MES_TICK_SIZE = 0.25;
 
 export type FocusedCandle = VisualValidationCandle & {
   machineVisible: boolean;
@@ -48,6 +52,21 @@ export type LabelPosition = {
   y: number;
 };
 
+export type TimeAxisTick = {
+  index: number;
+  label: string;
+};
+
+export type PriceAxis = {
+  step: number;
+  ticks: number[];
+};
+
+export type VolumeAxisTick = {
+  value: number;
+  label: string;
+};
+
 function finitePrices(candles: readonly VisualValidationCandle[]): number[] {
   return candles.flatMap((candle) => [candle.high, candle.low]).filter(Number.isFinite);
 }
@@ -69,6 +88,18 @@ export function invalidRawCandleIndices(candles: readonly VisualValidationCandle
   }, []);
 }
 
+export function isExactFiveMinuteCandle(candle: VisualValidationCandle): boolean {
+  const open = timestamp(candle.openTime);
+  const close = timestamp(candle.closeTime);
+  const interval = close - open;
+  return candle.isComplete
+    && Number.isFinite(open)
+    && Number.isFinite(close)
+    && open % (5 * 60_000) === 0
+    && interval === 5 * 60_000
+    && isValidRawCandle(candle);
+}
+
 export function selectFocusedCandles(
   rawCandles: readonly VisualValidationCandle[],
   evaluationCloseTime: string,
@@ -79,7 +110,9 @@ export function selectFocusedCandles(
   const review = timestamp(reviewCloseTime);
   const boundedCandles = rawCandles.filter((candle) => {
     const close = timestamp(candle.closeTime);
-    return Number.isFinite(close) && (!Number.isFinite(review) || close <= review);
+    return isExactFiveMinuteCandle(candle)
+      && Number.isFinite(close)
+      && (!Number.isFinite(review) || close <= review);
   });
 
   if (!boundedCandles.length) return [];
@@ -119,6 +152,99 @@ export function getCandleDomain(
     rawMax,
     padding,
   };
+}
+
+function formatHourMinute(value: string, timeZone: "America/New_York" | "UTC"): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+}
+
+export function formatInterval(value: string, closeValue: string, timeZone: "America/New_York" | "UTC" = "America/New_York"): string {
+  const zoneLabel = timeZone === "America/New_York" ? " ET" : " UTC";
+  return `${formatHourMinute(value, timeZone)}–${formatHourMinute(closeValue, timeZone)}${zoneLabel}`;
+}
+
+export function formatAxisDate(value: string, timeZone: "America/New_York" | "UTC" = "America/New_York"): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+export function getTimeAxisTicks(
+  candles: readonly VisualValidationCandle[],
+  timeZone: "America/New_York" | "UTC" = "America/New_York",
+): TimeAxisTick[] {
+  return candles.reduce<TimeAxisTick[]>((ticks, candle, index) => {
+    const date = new Date(candle.openTime);
+    const minute = Number(new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      minute: "numeric",
+    }).format(date));
+    if (minute % 15 === 0) {
+      ticks.push({ index, label: formatHourMinute(candle.openTime, timeZone) });
+    }
+    return ticks;
+  }, []);
+}
+
+export function snapPrice(price: number, tickSize = MES_TICK_SIZE): number {
+  return Number((Math.round(price / tickSize) * tickSize).toFixed(2));
+}
+
+const PRICE_STEPS = [0.25, 0.5, 1, 2, 5, 10, 20, 50, 100];
+
+export function getPriceAxis(
+  domain: ChartDomain,
+  tickSize = MES_TICK_SIZE,
+  targetCount = 8,
+): PriceAxis {
+  const range = Math.max(domain.max - domain.min, tickSize);
+  const candidates = PRICE_STEPS.filter((step) => step >= tickSize);
+  const step = candidates.reduce((best, candidate) => {
+    const bestCount = Math.round(range / best);
+    const candidateCount = Math.round(range / candidate);
+    const bestDistance = Math.abs(bestCount - targetCount);
+    const candidateDistance = Math.abs(candidateCount - targetCount);
+    return candidateDistance < bestDistance ? candidate : best;
+  }, candidates[0] ?? tickSize);
+  const first = Math.floor(domain.min / step) * step;
+  const last = Math.ceil(domain.max / step) * step;
+  const ticks: number[] = [];
+  for (let value = first; value <= last + step / 2; value += step) {
+    ticks.push(snapPrice(value, tickSize));
+  }
+  return { step, ticks };
+}
+
+export function formatPriceAxisValue(value: number): string {
+  return snapPrice(value).toFixed(2);
+}
+
+function niceVolumeStep(max: number): number {
+  const rough = Math.max(max / 3, 1);
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / magnitude;
+  const multiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return multiplier * magnitude;
+}
+
+export function getVolumeAxisTicks(maxVolume: number): VolumeAxisTick[] {
+  const step = niceVolumeStep(maxVolume);
+  return [0, step, step * 2, step * 3].map((value) => ({
+    value,
+    label: value >= 1000 ? `${Number((value / 1000).toFixed(1))}K` : Math.round(value).toString(),
+  }));
+}
+
+export function getDateLabel(candles: readonly VisualValidationCandle[], timeZone: "America/New_York" | "UTC" = "America/New_York"): string {
+  return candles[0] ? formatAxisDate(candles[0].openTime, timeZone) : "";
 }
 
 export function priceToY(price: number, domain: ChartDomain, top = CHART_TOP, bottom = CHART_PLOT_BOTTOM): number {
