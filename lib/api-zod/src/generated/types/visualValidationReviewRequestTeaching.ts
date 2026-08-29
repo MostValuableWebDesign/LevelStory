@@ -19,7 +19,11 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleOpenTime: Date;
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
-  pullbackLevel: number;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
   /** @maxLength 4000 */

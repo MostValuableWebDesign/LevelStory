@@ -316,7 +316,7 @@ export default function VisualReview() {
       patienceCandleOpenTime: savedTeaching.patienceCandleOpenTime,
       patienceCandleCloseTime: savedTeaching.patienceCandleCloseTime,
       entryBufferTicks: savedTeaching.entryBufferTicks,
-      pullbackLevel: savedTeaching.pullbackLevel,
+      pullbackLevels: savedTeaching.pullbackLevels?.length ? savedTeaching.pullbackLevels : savedTeaching.pullbackLevel !== undefined ? [savedTeaching.pullbackLevel] : [],
       setupType: savedTeaching.setupType,
       confidence: savedTeaching.confidence,
       explanation: savedTeaching.explanation,
@@ -333,7 +333,7 @@ export default function VisualReview() {
     patienceCandleOpenTime: activeSnapshot.review.teaching.patienceCandleOpenTime,
     patienceCandleCloseTime: activeSnapshot.review.teaching.patienceCandleCloseTime,
     entryBufferTicks: activeSnapshot.review.teaching.entryBufferTicks,
-    pullbackLevel: activeSnapshot.review.teaching.pullbackLevel,
+    pullbackLevels: activeSnapshot.review.teaching.pullbackLevels?.length ? activeSnapshot.review.teaching.pullbackLevels : activeSnapshot.review.teaching.pullbackLevel !== undefined ? [activeSnapshot.review.teaching.pullbackLevel] : [],
     setupType: activeSnapshot.review.teaching.setupType,
     confidence: activeSnapshot.review.teaching.confidence,
     explanation: activeSnapshot.review.teaching.explanation,
@@ -419,7 +419,7 @@ export default function VisualReview() {
           patienceCandleOpenTime: saved.teaching.patienceCandleOpenTime,
           patienceCandleCloseTime: saved.teaching.patienceCandleCloseTime,
           entryBufferTicks: saved.teaching.entryBufferTicks,
-          pullbackLevel: saved.teaching.pullbackLevel,
+          pullbackLevels: saved.teaching.pullbackLevels?.length ? saved.teaching.pullbackLevels : saved.teaching.pullbackLevel !== undefined ? [saved.teaching.pullbackLevel] : [],
           setupType: saved.teaching.setupType,
           confidence: saved.teaching.confidence,
           explanation: saved.teaching.explanation,
@@ -507,7 +507,7 @@ export default function VisualReview() {
                           patienceCandleOpenTime: patience?.openTime ?? "",
                           patienceCandleCloseTime: patience?.closeTime ?? "",
                           entryBufferTicks: current?.entryBufferTicks ?? 4,
-                          pullbackLevel: current?.pullbackLevel ?? pullbackLevel,
+                          pullbackLevels: current?.pullbackLevels ?? [pullbackLevel],
                           setupType: current?.setupType ?? "ORB_BREAK_PULLBACK_CONTINUATION",
                           confidence: current?.confidence ?? "low",
                           explanation: current?.explanation ?? "",
@@ -1361,7 +1361,7 @@ function ReviewPanel({
          {teaching && <div className="grid gap-3 sm:grid-cols-2">
            <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
            <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
-           <Field label="Qualifying pullback level"><select className="field mono" value={teaching.pullbackLevel} onChange={(event) => updateTeaching({ pullbackLevel: Number(event.target.value) })}>{availableLevels.map((level) => <option key={`${level.id}-${level.price}`} value={level.price as number}>{level.label} · {formatPriceAxisValue(level.price as number)}</option>)}</select></Field>
+           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); return <label key={`${level.id}-${level.price}`} className={`flex cursor-pointer items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-muted/40"}`}><input type="checkbox" checked={selected} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)}</span></span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Select every mapped level the pullback qualifies against. At least one level is required.</p></fieldset>
            <Field label="Setup"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EXTENDED_NTZ_CONSOLIDATION_BREAKOUT">Extended NTZ consolidation breakout</option><option value="BONUS_REVERSAL">Bonus reversal</option></select></Field>
            <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
            <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>

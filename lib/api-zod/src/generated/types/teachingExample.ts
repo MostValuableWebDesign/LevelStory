@@ -33,6 +33,7 @@ export interface TeachingExample {
   setupClassification: string;
   /** @nullable */
   qualifyingLevelType: string | null;
+  qualifyingPullbackLevels: number[];
   confidence: string;
   reviewerExplanation: string;
   machineDecision: string;

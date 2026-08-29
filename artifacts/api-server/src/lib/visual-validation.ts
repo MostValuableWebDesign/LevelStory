@@ -273,7 +273,7 @@ export type VisualValidationTeachingInput = {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: 3 | 4;
-  pullbackLevel: number;
+  pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
   explanation: string;
@@ -387,16 +387,18 @@ export function validateVisualValidationTeaching(
   if (patience && previous && input.direction === "long" && patience.high > previous.high) messages.push("Long patience must contain its high within the preceding completed candle.");
   if (patience && previous && input.direction === "short" && patience.low < previous.low) messages.push("Short patience must contain its low within the preceding completed candle.");
   if (!previous) messages.push("A preceding completed candle is required to validate patience containment.");
-  if (!tickAligned(input.pullbackLevel)) messages.push("The qualifying pullback level must be aligned to the MES 0.25 tick.");
-  const mappedLevel = snapshot.annotations.find((annotation) =>
+  const pullbackLevels = [...new Set(input.pullbackLevels.filter(Number.isFinite))];
+  if (!pullbackLevels.length) messages.push("Choose at least one qualifying pullback level.");
+  if (pullbackLevels.some((level) => !tickAligned(level))) messages.push("Every qualifying pullback level must be aligned to the MES 0.25 tick.");
+  const unmappedLevels = pullbackLevels.filter((level) => !snapshot.annotations.some((annotation) =>
     annotation.available
     && annotation.price !== null
     && annotation.kind !== "candle"
-    && Math.abs(annotation.price - input.pullbackLevel) <= TEACHING_TICK_SIZE + 1e-8,
-  );
-  if (!mappedLevel) messages.push("Choose a qualifying level that is visible in the machine snapshot.");
-  if (patience && (input.pullbackLevel < patience.low - TEACHING_TICK_SIZE || input.pullbackLevel > patience.high + TEACHING_TICK_SIZE)) {
-    messages.push("The qualifying level must be contained by the patience candle range.");
+    && Math.abs(annotation.price - level) <= TEACHING_TICK_SIZE + 1e-8,
+  ));
+  if (unmappedLevels.length) messages.push("Every selected qualifying level must be visible in the machine snapshot.");
+  if (patience && pullbackLevels.some((level) => level < patience.low - TEACHING_TICK_SIZE || level > patience.high + TEACHING_TICK_SIZE)) {
+    messages.push("Every selected qualifying level must be contained by the patience candle range.");
   }
   if (entry && Number.isFinite(calculatedEntryPrice)) {
     const buffered = input.direction === "long" ? entry.high >= calculatedEntryPrice : entry.low <= calculatedEntryPrice;
@@ -427,6 +429,7 @@ export function createVisualValidationTeachingExample(
   });
   return {
     ...input,
+    pullbackLevels: [...new Set(input.pullbackLevels)].sort((a, b) => a - b),
     teachingId: randomUUID(),
     calculatedEntryPrice: validation.calculatedEntryPrice,
     validation: {

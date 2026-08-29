@@ -20,6 +20,7 @@ export const teachingExamplesTable = pgTable("levelstory_teaching_examples", {
   calculatedEntryPrice: text("calculated_entry_price"),
   setupClassification: text("setup_classification").notNull(),
   qualifyingLevelType: text("qualifying_level_type"),
+  qualifyingPullbackLevels: jsonb("qualifying_pullback_levels").notNull().default([]),
   confidence: text("confidence").notNull(),
   reviewerExplanation: text("reviewer_explanation").notNull(),
   machineDecision: text("machine_decision").notNull(),

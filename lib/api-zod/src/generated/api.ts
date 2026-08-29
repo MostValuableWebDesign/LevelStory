@@ -4046,6 +4046,8 @@ export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCand
 export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
+
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -4226,7 +4228,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "pullbackLevel": zod.number(),
+  "pullbackLevels": zod.array(zod.number()).min(1).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
@@ -4317,6 +4320,8 @@ export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedC
 export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
+
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -4497,7 +4502,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "pullbackLevel": zod.number(),
+  "pullbackLevels": zod.array(zod.number()).min(1).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
@@ -4532,6 +4538,8 @@ export const CreateVisualValidationSetResponse = zod.object({
 export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewBodyNoteMax = 2000;
 
+export const recordVisualValidationReviewBodyTeachingPullbackLevelsMax = 20;
+
 export const recordVisualValidationReviewBodyTeachingExplanationMax = 4000;
 
 
@@ -4549,7 +4557,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "pullbackLevel": zod.number(),
+  "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewBodyTeachingPullbackLevelsMax),
   "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(recordVisualValidationReviewBodyTeachingExplanationMax)
@@ -4559,6 +4567,8 @@ export const RecordVisualValidationReviewBody = zod.object({
 export const recordVisualValidationReviewResponseReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseTeachingPullbackLevelsMax = 20;
+
 export const recordVisualValidationReviewResponseTeachingExplanationMax = 4000;
 
 export const recordVisualValidationReviewResponseTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -4585,7 +4595,8 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "pullbackLevel": zod.number(),
+  "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewResponseTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['ORB_BREAK_PULLBACK_CONTINUATION', 'EXTENDED_NTZ_CONSOLIDATION_BREAKOUT', 'BONUS_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(recordVisualValidationReviewResponseTeachingExplanationMax),
@@ -5436,6 +5447,7 @@ export const ListTeachingExamplesResponseItem = zod.object({
   "calculatedEntryPrice": zod.string().nullable(),
   "setupClassification": zod.string(),
   "qualifyingLevelType": zod.string().nullable(),
+  "qualifyingPullbackLevels": zod.array(zod.number()),
   "confidence": zod.string(),
   "reviewerExplanation": zod.string(),
   "machineDecision": zod.string(),
@@ -5483,6 +5495,7 @@ export const GetTeachingExampleHistoryResponseItem = zod.object({
   "calculatedEntryPrice": zod.string().nullable(),
   "setupClassification": zod.string(),
   "qualifyingLevelType": zod.string().nullable(),
+  "qualifyingPullbackLevels": zod.array(zod.number()),
   "confidence": zod.string(),
   "reviewerExplanation": zod.string(),
   "machineDecision": zod.string(),
@@ -5547,6 +5560,7 @@ export const SupersedeTeachingExampleResponse = zod.object({
   "calculatedEntryPrice": zod.string().nullable(),
   "setupClassification": zod.string(),
   "qualifyingLevelType": zod.string().nullable(),
+  "qualifyingPullbackLevels": zod.array(zod.number()),
   "confidence": zod.string(),
   "reviewerExplanation": zod.string(),
   "machineDecision": zod.string(),

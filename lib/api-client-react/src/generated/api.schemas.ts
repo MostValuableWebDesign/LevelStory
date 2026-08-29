@@ -2916,7 +2916,16 @@ export interface VisualValidationTeachingExample {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
-  pullbackLevel: number;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  pullbackLevels: number[];
+  /**
+     * Legacy single-level field retained for older saved reviews.
+     * @deprecated
+     */
+  pullbackLevel?: number;
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
   /** @maxLength 4000 */
@@ -3288,7 +3297,11 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
-  pullbackLevel: number;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
   /** @maxLength 4000 */
@@ -3448,6 +3461,7 @@ export interface TeachingExample {
   setupClassification: string;
   /** @nullable */
   qualifyingLevelType: string | null;
+  qualifyingPullbackLevels: number[];
   confidence: string;
   reviewerExplanation: string;
   machineDecision: string;

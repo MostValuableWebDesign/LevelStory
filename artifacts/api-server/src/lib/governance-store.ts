@@ -114,9 +114,10 @@ export async function persistTeachingEvidence(args: {
     entryBufferTicks: teaching.entryBufferTicks,
     calculatedEntryPrice: Number.isFinite(teaching.calculatedEntryPrice) ? String(teaching.calculatedEntryPrice) : null,
     setupClassification: teaching.setupType,
-    qualifyingLevelType: args.snapshot.annotations.find((annotation) =>
-      annotation.available && annotation.price !== null && Math.abs(annotation.price - teaching.pullbackLevel) < 0.26
-    )?.label ?? null,
+    qualifyingPullbackLevels: teaching.pullbackLevels,
+    qualifyingLevelType: teaching.pullbackLevels.map((level) => args.snapshot.annotations.find((annotation) =>
+      annotation.available && annotation.price !== null && Math.abs(annotation.price - level) < 0.26
+    )?.label).filter((label): label is string => Boolean(label)).join(", ") || null,
     confidence: teaching.confidence,
     reviewerExplanation: teaching.explanation,
     machineDecision: args.snapshot.machineEvidence.audit.decision,
@@ -179,6 +180,7 @@ export async function supersedeTeachingEvidence(args: {
     calculatedEntryPrice: existing.calculatedEntryPrice,
     setupClassification: existing.setupClassification,
     qualifyingLevelType: existing.qualifyingLevelType,
+    qualifyingPullbackLevels: existing.qualifyingPullbackLevels,
     confidence: existing.confidence,
     reviewerExplanation: args.explanation.trim().slice(0, 4000),
     machineDecision: existing.machineDecision,

@@ -23,7 +23,16 @@ export interface VisualValidationTeachingExample {
   patienceCandleOpenTime: Date;
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
-  pullbackLevel: number;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  pullbackLevels: number[];
+  /**
+     * Legacy single-level field retained for older saved reviews.
+     * @deprecated
+     */
+  pullbackLevel?: number;
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
   /** @maxLength 4000 */

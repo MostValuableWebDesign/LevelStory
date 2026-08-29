@@ -400,7 +400,7 @@ function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["sn
     patienceCandleOpenTime: base.patience.openTime,
     patienceCandleCloseTime: base.patience.closeTime,
     entryBufferTicks: 4,
-    pullbackLevel: base.level,
+    pullbackLevels: [base.level],
     setupType: "ORB_BREAK_PULLBACK_CONTINUATION",
     confidence: "medium",
     explanation: `${direction} example has an exact patience pair and buffered continuation.`,
