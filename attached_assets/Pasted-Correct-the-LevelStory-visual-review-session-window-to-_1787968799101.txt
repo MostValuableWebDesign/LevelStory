@@ -1,0 +1,89 @@
+Correct the LevelStory visual-review session window to match my actual trading process.
+
+My execution chart is a five-minute MES chart. My primary trading and review window is 9:30 a.m.–1:00 p.m. America/New_York.
+
+Do not change the formula, historical candles, machine decisions or causal engine.
+
+Required corrections:
+
+1. Primary session window
+- Display the regular-session chart from exactly 9:30 a.m. through 1:00 p.m. ET.
+- This window contains exactly 42 completed five-minute candles:
+  9:30–9:35 through 12:55–1:00.
+- Do not use a moving 42-candle window beginning around 6:30 a.m.
+- Label the chart “Primary trade window · 9:30 AM–1:00 PM ET.”
+
+2. Causal handling
+- Candles completed by the evaluation cursor are machine-visible.
+- Later candles through 1:00 p.m. may be displayed only as shaded “Human-only outcome context.”
+- Future candles must never enter machine evidence or calculations.
+- Keep the causal cursor at the exact five-minute evaluation boundary.
+- For example, an evaluation at 9:45 may use only candles completed through 9:45; every later candle must be shaded.
+
+3. Premarket handling
+- Hide premarket candles by default.
+- Preserve premarket high and premarket low as horizontal reference levels.
+- Add an optional “Show premarket candles” toggle.
+- When enabled, show premarket in a separate visually muted region.
+- Do not mix premarket candles into the primary 42-candle regular-session count.
+
+4. ORB handling
+- Clearly shade or bracket the first three five-minute candles:
+  - 9:30–9:35
+  - 9:35–9:40
+  - 9:40–9:45
+- Label this area “Opening Range.”
+- Finalize ORB High and ORB Low only after the 9:40–9:45 candle closes.
+- Show ORB High and ORB Low through the remainder of the session.
+
+5. Time axis
+- Keep every candle at five minutes.
+- Show time labels every 15 minutes.
+- Always include emphasized labels at:
+  9:30 AM, 9:45 AM, 10:00 AM, 11:00 AM, 12:00 PM and 1:00 PM.
+- Use New York time as the visible default.
+- Keep UTC only inside the tooltip.
+
+6. Price axis
+- Add a visible numeric price scale on the right side.
+- Show approximately 6–10 adaptive price labels.
+- Align every label to the MES 0.25 tick size.
+- Display numeric prices beside ORB, NTZ, VWAP, EMA 200, entry, stop and target labels.
+- Continue using collision-aware stacking for nearby level labels.
+
+7. Header correction
+The current header says “pre-market simulation” while the chart uses historical Databento data.
+
+Replace it with:
+“Primary trade window · 9:30 AM–1:00 PM ET · Historical Databento”
+
+Never call historical candles simulated.
+
+8. View controls
+Add:
+- Primary window: 9:30 AM–1:00 PM
+- Full regular session: 9:30 AM–4:00 PM
+- Show premarket candles: off by default
+
+The primary window must remain the default.
+
+Add focused tests proving:
+- primary view contains exactly 42 five-minute intervals
+- first interval is 9:30–9:35 ET
+- final interval is 12:55–1:00 ET
+- premarket candles are excluded by default
+- premarket levels remain available
+- ORB uses exactly the first three completed five-minute candles
+- future candles are human-only
+- price-axis values align to 0.25
+- New York time remains DST-safe
+
+Verification limits:
+- Run focused visual-review frontend tests.
+- Run frontend typecheck.
+- Run API typecheck only if shared types change.
+- Do not rebuild the historical index.
+- Do not run 20+2 or qualification batches.
+- Do not change or create human judgments.
+
+Provide before-and-after screenshots of Weak ORB Probe at 9:45 and one later-session setup.
