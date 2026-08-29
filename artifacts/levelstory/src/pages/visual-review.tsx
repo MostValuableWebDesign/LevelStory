@@ -249,6 +249,7 @@ export default function VisualReview() {
   const [reportOpen, setReportOpen] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
 
   const setQuery = useGetVisualValidationSet(
     reviewSetId ? { reviewSetId } : undefined,
@@ -262,6 +263,15 @@ export default function VisualReview() {
     { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
     { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
   );
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/user", { credentials: "include" })
+      .then((response) => response.ok ? response.json() as Promise<{ user?: unknown }> : { user: null })
+      .then((result) => { if (active) setAuthenticated(Boolean(result.user)); })
+      .catch(() => { if (active) setAuthenticated(false); });
+    return () => { active = false; };
+  }, []);
 
   const data = localSet ?? setQuery.data;
   const coverage = data?.categoryCoverage ?? [];
@@ -544,7 +554,7 @@ export default function VisualReview() {
                     </Panel>
                     <ChartEvidence snapshot={activeSnapshot} />
                     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
-                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} />
+                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} />
                       <div className="space-y-5">
                         <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
                         <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
@@ -1354,6 +1364,7 @@ function ReviewPanel({
   lockedEntryCandle,
   teaching,
   setTeaching,
+  authenticated,
 }: {
   snapshot: VisualValidationSnapshot;
   status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null;
@@ -1367,6 +1378,7 @@ function ReviewPanel({
   lockedEntryCandle: SessionCandle | null;
   teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
   setTeaching: (teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null) => void;
+  authenticated: boolean;
 }) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   const hasSavedReview = savedStatus !== null;
@@ -1383,8 +1395,9 @@ function ReviewPanel({
      <PanelTitle eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
     <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
     <div className="space-y-4 border-t border-border p-5 sm:p-6">
+      {!authenticated && <div className="border border-accent/35 bg-accent/10 px-3 py-3 text-xs leading-5"><strong>Log in to save reviews.</strong><span className="ml-1 text-muted-foreground">Review evidence is readable without an account, but saving requires an authenticated reviewer.</span><a className="ml-2 font-bold text-accent underline underline-offset-2" href={`/api/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Log in</a></div>}
       <div className="grid gap-2">
-         {REVIEW_OPTIONS.map((option) => <button type="button" key={option.value} onClick={() => setStatus(option.value)} disabled={pending} className={`flex items-start gap-3 border p-3 text-left transition hover:bg-muted/50 disabled:opacity-55 ${status === option.value ? "border-accent bg-accent/10" : "border-border"}`} aria-pressed={status === option.value} data-testid={`button-review-${option.value}`}>
+         {REVIEW_OPTIONS.map((option) => <button type="button" key={option.value} onClick={() => setStatus(option.value)} disabled={pending || !authenticated} className={`flex items-start gap-3 border p-3 text-left transition hover:bg-muted/50 disabled:opacity-55 ${status === option.value ? "border-accent bg-accent/10" : "border-border"}`} aria-pressed={status === option.value} data-testid={`button-review-${option.value}`}>
            <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${status === option.value ? "border-accent bg-accent text-accent-foreground" : "border-muted-foreground/50"}`}>{status === option.value && <Check size={11} />}</span><span><span className="block text-xs font-bold">{option.label}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{option.detail}</span></span>
         </button>)}
       </div>
