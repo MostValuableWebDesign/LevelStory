@@ -1,0 +1,323 @@
+You’re right. The current UI mixes four different concepts:
+
+- **Strategies:** your actual trade methods.
+- **Setup components/actions:** pullback, consolidation, patience candle confirmation.
+- **Outcomes:** qualified trade, stop, target, runner exit.
+- **Diagnostics:** rejected setup, weak ORB probe, ambiguity.
+
+Also, “available” should mean a strategy has passed defined fitness requirements—not merely that one historical example was found.
+
+Use this prompt:
+
+```text
+Correct LevelStory’s strategy taxonomy, Visual Review categories, and strategy-readiness workflow.
+
+CORE CORRECTION
+
+The following are my actual strategies:
+
+1. Patience Candle Continuation
+2. Strong Breakout After Consolidation
+3. ORB Break, Pullback, and Continuation
+4. Equivalent Candle Reversal
+
+Do not label actions, setup components, outcomes, or diagnostics as strategies.
+
+A. DEFINE THE FOUR STRATEGIES
+
+1. PATIENCE_CANDLE_CONTINUATION
+
+A continuation setup requiring:
+
+- Confirmed directional trend.
+- Pullback or consolidation at a qualifying level.
+- A completed patience candle.
+- Entry only on the immediate next five-minute candle.
+- Long entry 3–4 ticks above the patience-candle high.
+- Short entry 3–4 ticks below the patience-candle low.
+- If the immediate-next candle does not reach the entry price, the setup expires.
+
+2. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+
+Requires:
+
+- Approximately 45–60 minutes of consolidation.
+- Defined consolidation high and low.
+- Strong breakout beyond the consolidation boundary.
+- Supporting breakout volume.
+- No entry on a slight low-volume probe.
+- If the breakout is weak, wait for a stronger push.
+- Apply the required patience/pullback entry rules when the formula requires them.
+
+3. ORB_BREAK_PULLBACK_CONTINUATION
+
+Requires:
+
+- ORB/NTZ established from the first three completed five-minute candles, 9:30–9:45 a.m. ET.
+- Meaningful break beyond ORB high or low.
+- Direction agrees with the 15-minute trend.
+- Strong continuation and supporting volume.
+- Pullback to ORB/NTZ or another qualifying critical level.
+- Valid patience candle.
+- Entry only on the immediate-next candle at the 3–4 tick buffer.
+
+ORB and NTZ use the same high and low boundaries.
+
+4. EQUIVALENT_CANDLE_REVERSAL
+
+Requires:
+
+- Equivalent opposing full-body candles near a major level.
+- Similar candle body sizes within an explicit deterministic tolerance.
+- Small or absent trend-side wicks as defined by the formula.
+- Reversal context at a major support/resistance, prior-session, ORB, VWAP, or EMA level.
+- Volume confirmation when required.
+- A deterministic entry and invalidation rule.
+- Do not classify equivalent candles away from a meaningful level as a valid reversal strategy.
+
+B. SEPARATE THE TAXONOMY
+
+Use these sections:
+
+STRATEGIES
+
+- Patience Candle Continuation
+- Strong Breakout After Consolidation
+- ORB Break/Pullback/Continuation
+- Equivalent Candle Reversal
+
+SETUP COMPONENTS
+
+- Trend confirmation
+- Consolidation
+- Breakout
+- Pullback
+- Key-level interaction
+- Patience candle
+- Entry candle
+- Volume confirmation
+- Fibonacci retracement
+
+TRADE MANAGEMENT/OUTCOMES
+
+- Entry
+- Stop exit
+- Target exit
+- Runner exit
+- No fill
+- Expired setup
+- Ambiguous intrabar outcome
+
+DIAGNOSTICS
+
+- Rejected setup
+- Weak ORB probe
+- Breakout without continuation
+- Pullback without a qualifying level
+- Patience candle without immediate-next entry
+- Risk rejection
+- Missing or incomplete data
+
+“Qualified trade” is a result/status, not a strategy.
+
+“Pullback” and “Consolidation” are setup components, not independent strategies.
+
+“Stop exit,” “Target exit,” and “Runner exit” are outcomes, not strategies.
+
+C. REDESIGN VISUAL REVIEW
+
+Replace the current mixed category grid.
+
+Top section:
+
+“Choose a strategy to review”
+
+Show only the four strategy cards.
+
+Each card displays:
+
+- Strategy name.
+- Readiness status.
+- Number of detected setups.
+- Number of valid entries.
+- Number of completed trades.
+- In-sample results.
+- Holdout results.
+- Last validation date.
+- Formula version.
+
+After selecting a strategy, show tabs or filters for:
+
+- Valid trades.
+- Rejected setups.
+- Setup components.
+- Outcomes.
+- Human corrections.
+
+For example, selecting ORB should allow inspection of:
+
+- ORB finalized.
+- Strong break.
+- Pullback.
+- Patience candle.
+- Immediate-next entry.
+- Stop/target/runner result.
+
+Do not present each of those events as a separate strategy.
+
+D. STRATEGY READINESS
+
+Strategies should become available as they become fit.
+
+Introduce these statuses:
+
+1. NOT_ENOUGH_EVIDENCE
+   The strategy exists but lacks sufficient historical examples.
+
+2. COLLECTING_EVIDENCE
+   Examples are being reviewed, but the minimum qualification sample has not been reached.
+
+3. READY_FOR_VALIDATION
+   Minimum evidence exists and a deterministic historical validation can run.
+
+4. VALIDATION_FAILED
+   The strategy failed one or more fitness requirements.
+
+5. SHADOW_CANDIDATE
+   The strategy passed initial validation and may be observed in Shadow Mode.
+
+6. FIT_AVAILABLE
+   The strategy passed all required readiness gates and is available for Shadow Mode decisions.
+
+7. PAUSED
+   The strategy was manually paused or failed later monitoring.
+
+Use “available” only for FIT_AVAILABLE strategies.
+
+A strategy with one historical example is not automatically available.
+
+E. FITNESS REQUIREMENTS
+
+Make readiness criteria configurable and visible.
+
+At minimum require:
+
+- Deterministic rule definition is complete.
+- No unresolved rule ambiguity.
+- Minimum number of valid historical setups.
+- Minimum number of completed trades.
+- Separate in-sample and holdout results.
+- Positive expectancy after fees and slippage.
+- Acceptable maximum drawdown.
+- Acceptable ambiguity rate.
+- No future-data leakage.
+- No immediate-next patience-entry violations.
+- Required human-reviewed examples pass.
+- Data coverage meets quality requirements.
+
+Do not secretly choose financial thresholds.
+
+Create explicit configurable fields for:
+
+- Minimum setup count.
+- Minimum completed-trade count.
+- Minimum holdout count.
+- Minimum expectancy.
+- Maximum drawdown.
+- Maximum ambiguity rate.
+- Minimum reviewed-example agreement.
+
+Until I configure and approve these thresholds, show:
+
+“Fitness thresholds require owner approval.”
+
+Do not mark a strategy FIT_AVAILABLE based only on win rate.
+
+F. STRATEGY-SPECIFIC AVAILABILITY
+
+Each strategy becomes fit independently.
+
+Examples:
+
+- ORB may be FIT_AVAILABLE while Equivalent Candle Reversal is still COLLECTING_EVIDENCE.
+- Strong Breakout may be PAUSED without disabling Patience Candle Continuation.
+- A rule correction for one strategy must not automatically change another strategy unless the shared rule dependency is explicitly identified and approved.
+
+Track:
+
+- Strategy ID.
+- Strategy version.
+- Shared rule dependencies.
+- Fitness report.
+- Approval record.
+- Active Shadow status.
+
+G. SHADOW MODE SELECTION
+
+Rename the control to:
+
+“Enable strategy in Shadow Mode”
+
+This control should be available only when the selected strategy is FIT_AVAILABLE.
+
+Enabling it means:
+
+- The app may produce simulated decisions for that strategy.
+- No live or paper order is placed.
+- Other strategies remain independently enabled or disabled.
+- Every simulated decision records the strategy ID and version.
+
+Do not use one global Activate Shadow Mode button for every formula change.
+
+H. TEACHING AND PROPOSALS
+
+Human corrections must be linked to:
+
+- A specific strategy.
+- A specific setup component or outcome.
+- The exact candle and immutable market state.
+- The strategy version used by the machine.
+
+Examples:
+
+- “ORB strategy missed a valid entry.”
+- “Patience candle was classified incorrectly.”
+- “Strong breakout volume threshold rejected a valid setup.”
+- “Equivalent candle reversal should not have qualified.”
+
+A teaching example proposes a correction. It does not automatically make the strategy fit.
+
+I. TESTS
+
+Add tests proving:
+
+- Only four strategy cards appear in the strategy section.
+- Pullback and consolidation are not strategies.
+- Qualified trade is not a strategy.
+- Exits are outcomes.
+- Rejections and weak probes are diagnostics.
+- One example does not mark a strategy available.
+- Each strategy progresses independently.
+- Failed holdout validation blocks FIT_AVAILABLE.
+- Pausing one strategy does not pause another.
+- Only FIT_AVAILABLE strategies can be enabled in Shadow Mode.
+- Every Shadow decision records strategy ID/version.
+- No live or paper orders are created.
+
+J. DELIVERY REPORT
+
+Report:
+
+- Old category-to-new-taxonomy mapping.
+- Files changed.
+- The four strategy definitions.
+- Readiness state machine.
+- Configurable fitness thresholds.
+- Current readiness of each strategy using honest available evidence.
+- Any unresolved formula definitions.
+- Tests, typechecks, and builds.
+- Confirmation that no strategy was automatically marked fit.
+- Confirmation that Shadow Mode remains simulation-only.
+```
+
+One nuance: the **patience candle is both a strategy and a shared entry mechanism**. It can exist as “Patience Candle Continuation,” while ORB and breakout strategies can also reuse the patience-candle entry rule. LevelStory should record that shared dependency without merging all four strategies together.
