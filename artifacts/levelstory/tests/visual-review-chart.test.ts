@@ -5,16 +5,19 @@ import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
   DOJI_BODY_HEIGHT,
+  getCandleSlotIndex,
   formatAxisDate,
   formatInterval,
   formatDataSource,
   getCandleInspection,
+  getFixedTimeAxisTicks,
   getPriceAxis,
   getTimeAxisTicks,
   getVolumeAxisTicks,
   getCandleDomain,
   getCandleGeometry,
   getEdgeIndicators,
+  getSessionDomainSlotCount,
   hasRepetitiveFixtureData,
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
@@ -197,6 +200,29 @@ test("primary session view contains the exact 42 regular-session intervals", () 
     position: 42,
     label: "1:00 PM",
   });
+});
+
+test("fixed session domains preserve 42 and 78 timestamp slots", () => {
+  assert.equal(getSessionDomainSlotCount("primary"), 42);
+  assert.equal(getSessionDomainSlotCount("full_regular"), 78);
+  assert.equal(getSessionDomainSlotCount("primary", true), 108);
+  assert.equal(getSessionDomainSlotCount("full_regular", true), 144);
+  const first = makeCandle(0);
+  assert.equal(getCandleSlotIndex(first, "primary"), 0);
+  assert.equal(getCandleSlotIndex(first, "full_regular"), 0);
+  assert.equal(getFixedTimeAxisTicks("primary").at(-1)?.label, "1:00 PM");
+  assert.equal(getFixedTimeAxisTicks("full_regular").at(-1)?.label, "4:00 PM");
+  assert.equal(getFixedTimeAxisTicks("primary", true).at(-1)?.index, 108);
+});
+
+test("fixed slot geometry leaves gaps empty instead of compressing observed candles", () => {
+  const first = makeCandle(0);
+  const third = makeCandle(2);
+  const domain = getCandleDomain([first, third]);
+  const step = (1040 - 58 - 150) / 42;
+  const firstGeometry = getCandleGeometry(first, getCandleSlotIndex(first, "primary"), step, domain);
+  const thirdGeometry = getCandleGeometry(third, getCandleSlotIndex(third, "primary"), step, domain);
+  assert.equal(thirdGeometry.x - firstGeometry.x, step * 2);
 });
 
 test("premarket remains separate and hidden by default while its levels stay primary references", () => {

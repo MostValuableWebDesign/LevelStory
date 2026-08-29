@@ -428,6 +428,87 @@
       linear-gradient(180deg, hsl(var(--card) / .28), transparent 46%),
       hsl(var(--background) / .36);
   }
+  .visual-review-workspace {
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+  .visual-review-chart-column,
+  .visual-review-sidebar {
+    min-width: 0;
+  }
+  .visual-review-sidebar {
+    position: sticky;
+    top: 1rem;
+  }
+  .visual-review-workspace.is-expanded {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
+  }
+  .visual-review-chart-fullscreen {
+    min-height: 100dvh;
+    overflow: auto;
+    background: hsl(var(--background));
+    padding: 1.5rem;
+  }
+  .visual-review-chart-fullscreen .visual-review-svg {
+    min-height: min(72dvh, 760px);
+  }
+  .chart-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    min-height: 2rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: .35rem;
+    background: hsl(var(--card));
+    padding: .35rem .55rem;
+    color: hsl(var(--foreground));
+    font-family: var(--app-font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    transition: background-color .2s, border-color .2s, opacity .2s;
+  }
+  .chart-control:hover:not(:disabled) {
+    border-color: hsl(var(--accent));
+    background: hsl(var(--muted));
+  }
+  .chart-control:disabled {
+    cursor: not-allowed;
+    opacity: .4;
+  }
+  .machine-evidence-disclosure > summary {
+    list-style: none;
+  }
+  .machine-evidence-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+  .machine-evidence-disclosure > summary::before {
+    content: "＋";
+    margin-right: .5rem;
+    color: hsl(var(--accent));
+  }
+  .machine-evidence-disclosure[open] > summary::before {
+    content: "−";
+  }
+  @media (max-width: 1279px) {
+    .visual-review-workspace,
+    .visual-review-workspace.is-expanded {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .visual-review-sidebar {
+      position: static;
+    }
+  }
+  @media (max-width: 639px) {
+    .visual-review-chart-fullscreen {
+      padding: .75rem;
+    }
+    .chart-control {
+      flex: 1 1 auto;
+    }
+  }
   .status-strip {
     border-left: 2px solid hsl(var(--accent));
     background: hsl(var(--accent) / .08);

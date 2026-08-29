@@ -5,16 +5,16 @@ import type {
 } from "@workspace/api-client-react";
 
 export const CHART_WIDTH = 1040;
-export const CHART_HEIGHT = 460;
+export const CHART_HEIGHT = 660;
 export const CHART_LEFT = 58;
 export const CHART_RIGHT = 150;
 export const CHART_TOP = 30;
-export const CHART_PLOT_BOTTOM = 306;
-export const CHART_VOLUME_TOP = 326;
-export const CHART_VOLUME_HEIGHT = 34;
-export const CHART_TIME_TICK_Y = 382;
-export const CHART_DATE_LABEL_Y = 402;
-export const CHART_FOOTER_LABEL_Y = 424;
+export const CHART_PLOT_BOTTOM = 476;
+export const CHART_VOLUME_TOP = 500;
+export const CHART_VOLUME_HEIGHT = 64;
+export const CHART_TIME_TICK_Y = 582;
+export const CHART_DATE_LABEL_Y = 616;
+export const CHART_FOOTER_LABEL_Y = 642;
 export const CANDLE_WINDOW_MIN = 36;
 export const CANDLE_WINDOW_MAX = 48;
 export const CANDLE_WINDOW_TARGET = 42;
@@ -26,6 +26,9 @@ export const PRIMARY_SESSION_END_MINUTES = 13 * 60;
 export const REGULAR_SESSION_END_MINUTES = 16 * 60;
 export const PREMARKET_START_MINUTES = 4 * 60;
 export const PREMARKET_END_MINUTES = PRIMARY_SESSION_START_MINUTES;
+export const PREMARKET_SLOT_COUNT = (PREMARKET_END_MINUTES - PREMARKET_START_MINUTES) / 5;
+export const PRIMARY_SLOT_COUNT = (PRIMARY_SESSION_END_MINUTES - PRIMARY_SESSION_START_MINUTES) / 5;
+export const REGULAR_SLOT_COUNT = (REGULAR_SESSION_END_MINUTES - PRIMARY_SESSION_START_MINUTES) / 5;
 
 export type FocusedCandle = VisualValidationCandle & {
   machineVisible: boolean;
@@ -41,6 +44,12 @@ export type SessionCandleSelection = {
   candles: SessionCandle[];
   regularCandles: SessionCandle[];
   premarketCandles: SessionCandle[];
+};
+
+export type SessionSlot = {
+  index: number;
+  label: string;
+  session: "premarket" | "regular";
 };
 export type ChartDomain = {
   min: number;
@@ -223,6 +232,68 @@ export function selectSessionCandles(
     regularCandles,
     premarketCandles,
   };
+}
+
+export function getSessionSlotCount(view: SessionView): number {
+  return view === "primary" ? PRIMARY_SLOT_COUNT : REGULAR_SLOT_COUNT;
+}
+
+export function getSessionDomainSlotCount(view: SessionView, showPremarket = false): number {
+  return getSessionSlotCount(view) + (showPremarket ? PREMARKET_SLOT_COUNT : 0);
+}
+
+export function getCandleSlotIndex(
+  candle: Pick<VisualValidationCandle, "openTime">,
+  view: SessionView,
+  showPremarket = false,
+): number {
+  const minutes = localMinutes(candle.openTime);
+  if (showPremarket && minutes >= PREMARKET_START_MINUTES && minutes < PREMARKET_END_MINUTES) {
+    return Math.floor((minutes - PREMARKET_START_MINUTES) / 5);
+  }
+  return (showPremarket ? PREMARKET_SLOT_COUNT : 0) + Math.floor((minutes - PRIMARY_SESSION_START_MINUTES) / 5);
+}
+
+function formatWallClockMinute(minutes: number): string {
+  const normalized = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hour24 = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+export function getFixedTimeAxisTicks(
+  view: SessionView,
+  showPremarket = false,
+): TimeAxisTick[] {
+  const ticks: TimeAxisTick[] = [];
+  if (showPremarket) {
+    for (let minute = PREMARKET_START_MINUTES; minute < PREMARKET_END_MINUTES; minute += 60) {
+      ticks.push({
+        index: Math.floor((minute - PREMARKET_START_MINUTES) / 5),
+        position: Math.floor((minute - PREMARKET_START_MINUTES) / 5) + 0.5,
+        label: formatWallClockMinute(minute),
+      });
+    }
+  }
+  const offset = showPremarket ? PREMARKET_SLOT_COUNT : 0;
+  const sessionEnd = view === "primary" ? PRIMARY_SESSION_END_MINUTES : REGULAR_SESSION_END_MINUTES;
+  const tickInterval = view === "primary" ? 15 : 30;
+  for (let minute = PRIMARY_SESSION_START_MINUTES; minute < sessionEnd; minute += tickInterval) {
+    const slot = Math.floor((minute - PRIMARY_SESSION_START_MINUTES) / 5);
+    ticks.push({
+      index: offset + slot,
+      position: offset + slot + 0.5,
+      label: formatWallClockMinute(minute),
+    });
+  }
+  ticks.push({
+    index: offset + getSessionSlotCount(view),
+    position: offset + getSessionSlotCount(view),
+    label: formatWallClockMinute(sessionEnd),
+  });
+  return ticks;
 }
 
 export function isOpeningRangeCompleteAtEvaluation(

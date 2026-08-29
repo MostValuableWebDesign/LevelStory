@@ -1,0 +1,30 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "2Ao0mMOLaDU0YgdulqnvI"
+uri = "file://screenshots/rejected-setup-primary-930.jpg"
+type = "image"
+title = "Rejected setup — primary window"
+description = "Validated LevelStory visual-review workspace with the causal 9:30 AM–1:00 PM chart view."
+logical_id = "ced36c25-2dd1-4779-bfcb-e5c6462bb4bd"
+content_hash = "sha256:c4f7bc0f54a65b672042825e45101acfa5efe1d956535f2c171789d0da7f510d"
+size = 391611
+mtime_ms = 1787969921911
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/ced36c25-2dd1-4779-bfcb-e5c6462bb4bd/400bd6d8-eade-440e-a7c5-f0d4ce43d623"
+storage_version_token = "1787970014206097"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Q5xcTkvV9aNW1-IAT2kVS"
+uri = "file://screenshots/rejected-setup-full-regular-930.jpg"
+type = "image"
+title = "Rejected setup — full regular session"
+description = "Validated LevelStory visual-review workspace with the causal 9:30 AM–4:00 PM fixed-slot chart view."
+logical_id = "9b3587c8-d364-47a8-9fa9-172753b7167e"
+content_hash = "sha256:c09bbcc2596558ae1470f0c9f3ffcaa4c0ea41c4bac57515aeb9f0672a39bdf6"
+size = 386342
+mtime_ms = 1787969992258
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/9b3587c8-d364-47a8-9fa9-172753b7167e/6e724ae0-7d77-44d6-9145-fa4ae4e16ff8"
+storage_version_token = "1787970014698470"
+content_type = "image/jpeg"

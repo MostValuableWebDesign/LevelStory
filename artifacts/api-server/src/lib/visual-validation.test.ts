@@ -65,10 +65,12 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(set.source, "historical_databento");
   assert.ok(set.snapshots.length >= 1);
   assert.ok(set.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
-  assert.ok(set.snapshots.every((snapshot) => snapshot.rawCandles.every((candle) => candle.contractSymbol === fixture.audit.contractSymbol)));
+  assert.ok(set.snapshots.every((snapshot) => snapshot.reviewCandles.every((candle) => candle.contractSymbol === fixture.audit.contractSymbol)));
+  assert.ok(set.snapshots.every((snapshot) => snapshot.machineCandles.every((candle) => candle.contractSymbol === fixture.audit.contractSymbol)));
   assert.equal(set.categoryCoverage.find((item) => item.category === "qualified_trade")?.available, false);
   assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 1);
   assert.equal(set.snapshots[0]?.evaluationCursor.futureCandleAccess, false);
+  assert.equal(set.snapshots[0]?.futureCandleAccess, false);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
@@ -94,19 +96,22 @@ test("visual-validation provides twelve distinct valid five-minute MES fixtures"
   const fingerprints = new Set<string>();
   for (const snapshot of set.snapshots) {
     assert.equal(snapshot.symbol, "MES");
-    assert.ok(snapshot.rawCandles.length >= 35 && snapshot.rawCandles.length <= 50);
-    const opens = snapshot.rawCandles.map((candle) => Date.parse(candle.openTime));
-    for (let index = 0; index < snapshot.rawCandles.length; index += 1) {
-      const candle = snapshot.rawCandles[index]!;
+    assert.equal(snapshot.machineCandles.length, snapshot.evaluationCursor.visibleCandleCount);
+    assert.ok(snapshot.reviewCandles.length >= snapshot.machineCandles.length);
+    assert.equal(snapshot.outcomeContextEnd, snapshot.reviewCursor.closeTime);
+    assert.ok(snapshot.machineCandles.length >= 35 && snapshot.machineCandles.length <= 50);
+    const opens = snapshot.machineCandles.map((candle) => Date.parse(candle.openTime));
+    for (let index = 0; index < snapshot.machineCandles.length; index += 1) {
+      const candle = snapshot.machineCandles[index]!;
       assert.equal(Date.parse(candle.closeTime) - opens[index]!, 5 * 60_000);
       if (index > 0) assert.equal(opens[index]! - opens[index - 1]!, 5 * 60_000);
       assert.ok(candle.high >= Math.max(candle.open, candle.close));
       assert.ok(candle.low <= Math.min(candle.open, candle.close));
       assert.ok(candle.volume > 0);
     }
-    assert.ok(new Set(snapshot.rawCandles.map((candle) => `${candle.open}:${candle.close}`)).size >= 12);
-    assert.ok(new Set(snapshot.rawCandles.map((candle) => candle.volume)).size >= 12);
-    fingerprints.add(snapshot.rawCandles.map((candle) => `${candle.openTime}:${candle.open}:${candle.high}:${candle.low}:${candle.close}:${candle.volume}`).join("|"));
+    assert.ok(new Set(snapshot.machineCandles.map((candle) => `${candle.open}:${candle.close}`)).size >= 12);
+    assert.ok(new Set(snapshot.machineCandles.map((candle) => candle.volume)).size >= 12);
+    fingerprints.add(snapshot.machineCandles.map((candle) => `${candle.openTime}:${candle.open}:${candle.high}:${candle.low}:${candle.close}:${candle.volume}`).join("|"));
   }
   assert.equal(fingerprints.size, set.snapshots.length);
   assert.ok(set.categoryCoverage.every((coverage) => coverage.available && coverage.count === 1));
@@ -125,7 +130,7 @@ test("patience fixtures align direction and category evidence", () => {
   assert.match(bearish.machineEvidence.audit.trendEvidence, /^bearish:/);
   assert.equal(bearish.machineEvidence.audit.patienceState, "PATIENCE_CANDLE_VALID");
   assert.notEqual(bullish.evaluationCursor.openTime, bearish.evaluationCursor.openTime);
-  assert.notDeepEqual(bullish.rawCandles, bearish.rawCandles);
+  assert.notDeepEqual(bullish.machineCandles, bearish.machineCandles);
 });
 
 test("ORB, pullback, consolidation, and ambiguity fixtures expose explicit machine states", () => {
@@ -169,7 +174,7 @@ test("visual-validation snapshots never expose candles beyond their review curso
   const set = buildVisualValidationSet(request);
   for (const snapshot of set.snapshots) {
     const reviewCursor = Date.parse(snapshot.reviewCursor.closeTime);
-    for (const candle of snapshot.rawCandles) {
+    for (const candle of snapshot.reviewCandles) {
       assert.ok(Date.parse(candle.closeTime) <= reviewCursor, `${candle.closeTime} is after ${snapshot.reviewCursor.closeTime}`);
     }
     for (const item of snapshot.annotations) {
@@ -177,6 +182,9 @@ test("visual-validation snapshots never expose candles beyond their review curso
       if (item.closeTime) assert.ok(Date.parse(item.closeTime) <= reviewCursor);
     }
     assert.equal(snapshot.evaluationCursor.futureCandleAccess, false);
+    assert.equal(snapshot.futureCandleAccess, false);
+    assert.ok(snapshot.machineCandles.every((candle) => Date.parse(candle.closeTime) <= Date.parse(snapshot.evaluationCursor.closeTime)));
+    assert.equal(snapshot.outcomeContextEnd, snapshot.reviewCursor.closeTime);
   }
 });
 
@@ -204,7 +212,8 @@ test("human reviews remain separate from immutable machine evidence", () => {
   assert.ok(beforeSnapshot);
   assert.ok(afterSnapshot);
   assert.deepEqual(afterSnapshot.machineEvidence, beforeSnapshot.machineEvidence);
-  assert.deepEqual(afterSnapshot.rawCandles, beforeSnapshot.rawCandles);
+   assert.deepEqual(afterSnapshot.machineCandles, beforeSnapshot.machineCandles);
+   assert.deepEqual(afterSnapshot.reviewCandles, beforeSnapshot.reviewCandles);
   assert.equal(afterSnapshot.review.status, "incorrect");
   assert.equal(beforeSnapshot.review.status, "unreviewed");
 });

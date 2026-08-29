@@ -31,7 +31,10 @@ export interface VisualValidationSnapshot {
   period: VisualValidationSnapshotPeriod;
   evaluationCursor: VisualValidationCursor;
   reviewCursor: VisualValidationReviewCursor;
-  rawCandles: VisualValidationCandle[];
+  machineCandles: VisualValidationCandle[];
+  reviewCandles: VisualValidationCandle[];
+  outcomeContextEnd: Date;
+  futureCandleAccess: false;
   annotations: VisualValidationAnnotation[];
   machineEvidence: VisualValidationSnapshotMachineEvidence;
   review: VisualValidationSnapshotReview;

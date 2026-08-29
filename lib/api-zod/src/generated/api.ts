@@ -4080,7 +4080,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "newYork": zod.string(),
   "utc": zod.string()
 }),
-  "rawCandles": zod.array(zod.object({
+  "machineCandles": zod.array(zod.object({
   "openTime": zod.coerce.date(),
   "closeTime": zod.coerce.date(),
   "timestamp": zod.coerce.date(),
@@ -4096,6 +4096,24 @@ export const GetVisualValidationSetResponse = zod.object({
   "contractSymbol": zod.string(),
   "isComplete": zod.literal(true)
 })),
+  "reviewCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "outcomeContextEnd": zod.coerce.date(),
+  "futureCandleAccess": zod.literal(false),
   "annotations": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -4219,7 +4237,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "newYork": zod.string(),
   "utc": zod.string()
 }),
-  "rawCandles": zod.array(zod.object({
+  "machineCandles": zod.array(zod.object({
   "openTime": zod.coerce.date(),
   "closeTime": zod.coerce.date(),
   "timestamp": zod.coerce.date(),
@@ -4235,6 +4253,24 @@ export const CreateVisualValidationSetResponse = zod.object({
   "contractSymbol": zod.string(),
   "isComplete": zod.literal(true)
 })),
+  "reviewCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "outcomeContextEnd": zod.coerce.date(),
+  "futureCandleAccess": zod.literal(false),
   "annotations": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),

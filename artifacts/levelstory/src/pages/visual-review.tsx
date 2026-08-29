@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
   Check,
@@ -12,11 +12,20 @@ import {
   Layers3,
   LoaderCircle,
   LockKeyhole,
+  Maximize2,
+  Minimize2,
+  MoveLeft,
+  MoveRight,
+  PanelRightClose,
+  PanelRightOpen,
+  RotateCcw,
   ScanLine,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   useCreateVisualValidationSet,
@@ -47,6 +56,7 @@ import {
   CHART_VOLUME_HEIGHT,
   CHART_VOLUME_TOP,
   CHART_WIDTH,
+  PREMARKET_SLOT_COUNT,
   findCandleIndexAtTimestamp,
   formatCandleTime,
   formatInterval,
@@ -55,10 +65,12 @@ import {
   getCandleInspection,
   getDateLabel,
   getCandleDomain,
+  getCandleSlotIndex,
   getCandleGeometry,
   getEdgeIndicators,
+  getFixedTimeAxisTicks,
   getPriceAxis,
-  getTimeAxisTicks,
+  getSessionDomainSlotCount,
   getVolumeAxisTicks,
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
@@ -114,6 +126,11 @@ function requestedReviewCategory(): VisualValidationCategory | null {
   if (typeof window === "undefined") return null;
   const candidate = new URLSearchParams(window.location.search).get("category");
   return CATEGORIES.some((category) => category.value === candidate) ? candidate as VisualValidationCategory : null;
+}
+
+function requestedSessionView(): SessionView {
+  if (typeof window === "undefined") return "primary";
+  return new URLSearchParams(window.location.search).get("view") === "full_regular" ? "full_regular" : "primary";
 }
 
 function prettyCategory(category: string): string {
@@ -173,6 +190,8 @@ export default function VisualReview() {
   const [message, setMessage] = useState("");
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
+  const [reviewDrawerOpen, setReviewDrawerOpen] = useState(true);
 
   const setQuery = useGetVisualValidationSet(
     reviewSetId ? { reviewSetId } : undefined,
@@ -313,20 +332,30 @@ export default function VisualReview() {
             <>
               <CoverageRail data={data} selectedCategory={selectedCategory} onSelect={selectCategory} />
               {activeSnapshot ? (
-                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,.65fr)]">
-                  <div className="space-y-5">
+                <div className={`visual-review-workspace mt-5 grid gap-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
+                  <div className="visual-review-chart-column min-w-0 space-y-5">
                     <SnapshotHeader snapshot={activeSnapshot} index={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={categorySnapshots.length} onPrevious={() => moveSnapshot(categorySnapshots, activeSnapshot, -1, setSelectedSnapshotId)} onNext={() => moveSnapshot(categorySnapshots, activeSnapshot, 1, setSelectedSnapshotId)} />
                     <Panel accent>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Annotated candle story" right={<CausalTag />} />
-                      <CausalChart snapshot={activeSnapshot} source={data.source} />
+                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} />
                     </Panel>
-                    <MachineEvidence snapshot={activeSnapshot} />
+                    {workspaceExpanded ? (
+                      <details className="machine-evidence-disclosure" open data-testid="machine-evidence-disclosure">
+                        <summary className="cursor-pointer border border-border bg-card px-5 py-4 text-xs font-bold">Machine evidence · read-only</summary>
+                        <div className="mt-3"><MachineEvidence snapshot={activeSnapshot} /></div>
+                      </details>
+                    ) : <MachineEvidence snapshot={activeSnapshot} />}
                   </div>
-                  <div className="space-y-5">
-                    <ReviewPanel snapshot={activeSnapshot} note={reviewNote} setNote={setReviewNote} pending={recordReview.isPending} onSave={saveReview} message={message} />
-                    <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={setSelectedSnapshotId} />
-                    <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
-                  </div>
+                  <aside className={`visual-review-sidebar min-w-0 space-y-5 ${workspaceExpanded && !reviewDrawerOpen ? "review-drawer-collapsed" : ""}`} data-testid="visual-review-sidebar">
+                    {workspaceExpanded && <button type="button" onClick={() => setReviewDrawerOpen((current) => !current)} className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted" aria-expanded={reviewDrawerOpen} aria-controls="visual-review-drawer" data-testid="button-toggle-review-drawer">
+                      {reviewDrawerOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}{reviewDrawerOpen ? "Collapse review drawer" : "Open review drawer"}
+                    </button>}
+                    <div id="visual-review-drawer" className={workspaceExpanded && !reviewDrawerOpen ? "hidden" : "space-y-5"}>
+                      <ReviewPanel snapshot={activeSnapshot} note={reviewNote} setNote={setReviewNote} pending={recordReview.isPending} onSave={saveReview} message={message} />
+                      <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={setSelectedSnapshotId} />
+                      <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                    </div>
+                  </aside>
                 </div>
               ) : <UnavailableWorkspace coverage={coverage} source={data.source} />}
             </>
@@ -432,10 +461,11 @@ function SnapshotHeader({ snapshot, index, total, onPrevious, onNext }: { snapsh
         <button type="button" onClick={onNext} disabled={index < 0 || index >= total - 1} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Next sample"><ChevronRight size={17} /></button>
       </div>
     </div>
-    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="Evaluation cursor" value={snapshot.evaluationCursor.newYork} sub={snapshot.evaluationCursor.utc} />
       <Metric label="Review cursor" value={snapshot.reviewCursor.newYork} sub={snapshot.reviewCursor.utc} />
-      <Metric label="Visible to machine" value={`${snapshot.evaluationCursor.visibleCandleCount} candles`} sub={snapshot.evaluationCursor.futureCandleAccess ? "Future access detected" : "Future access: false"} />
+      <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
+      <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`Context ends ${formatReviewTime(snapshot.outcomeContextEnd)}`} />
     </div>
   </Panel>;
 }
@@ -444,11 +474,32 @@ function CausalTag() {
   return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
 }
 
-function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot; source: string }) {
-  const [sessionView, setSessionView] = useState<SessionView>("primary");
+function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; onToggleExpanded: () => void }) {
+  const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === frameRef.current);
+    const exitOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && document.fullscreenElement === frameRef.current) void document.exitFullscreen();
+    };
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("keydown", exitOnEscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("keydown", exitOnEscape);
+    };
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement === frameRef.current) {
+      void document.exitFullscreen();
+    } else {
+      void frameRef.current?.requestFullscreen();
+    }
+  };
   const selection = selectSessionCandles(
-    snapshot.rawCandles,
+    snapshot.reviewCandles,
     snapshot.evaluationCursor.closeTime,
     snapshot.reviewCursor.closeTime,
     sessionView,
@@ -462,7 +513,7 @@ function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot;
     ? "Primary trade window · 9:30 AM–1:00 PM ET"
     : "Full regular session · 9:30 AM–4:00 PM ET";
   const sourceLabel = `${windowLabel} · ${historical ? "Historical Databento" : "Simulated fixture data"}`;
-  return <div className="chart-frame border-t border-border p-3 sm:p-5" data-testid="visual-review-chart">
+  return <div ref={frameRef} className={`chart-frame border-t border-border p-3 sm:p-5 ${isFullscreen ? "visual-review-chart-fullscreen" : ""}`} data-testid="visual-review-chart">
     <div className="mb-4 flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <div className="eyebrow text-muted-foreground">Source / immutable candle bytes</div>
@@ -472,7 +523,7 @@ function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot;
         </div>
         <div className="mt-2 text-xs font-semibold tracking-[-.01em]" data-testid="primary-trade-window-label">{sourceLabel}</div>
       </div>
-      <div className="flex flex-col items-start gap-2 sm:items-end">
+       <div className="flex flex-col items-start gap-2 sm:items-end">
         <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -486,12 +537,16 @@ function CausalChart({ snapshot, source }: { snapshot: VisualValidationSnapshot;
             <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showPremarket} onChange={(event) => setShowPremarket(event.target.checked)} data-testid="toggle-show-premarket" />
             <span>Show premarket candles</span>
           </label>
+           <div className="flex flex-wrap items-center gap-1 border-l border-border pl-2" role="group" aria-label="Chart view controls">
+             <button type="button" onClick={onToggleExpanded} className="chart-control" aria-label={expanded ? "Exit expanded chart" : "Expand chart"} data-testid="button-expand-chart">{expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{expanded ? "Exit" : "Expand"}</button>
+             <button type="button" onClick={toggleFullscreen} className="chart-control" aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} data-testid="button-fullscreen-chart">{isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</button>
+           </div>
         </div>
       </div>
     </div>
      {repetitive && source === "simulated" && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
-     <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={selection.premarketCandles} sessionView={sessionView} />
+      <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={selection.premarketCandles} sessionView={sessionView} onReturnPrimary={() => setSessionView("primary")} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -513,14 +568,23 @@ function CausalSvg({
   regularCandles,
   premarketCandles,
   sessionView,
+  onReturnPrimary,
 }: {
   snapshot: VisualValidationSnapshot;
   candles: SessionCandle[];
   regularCandles: SessionCandle[];
   premarketCandles: SessionCandle[];
   sessionView: SessionView;
+  onReturnPrimary: () => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState(0);
+  useEffect(() => {
+    setHoveredIndex(null);
+    setZoom(1);
+    setPan(0);
+  }, [sessionView, premarketCandles.length]);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
   const height = CHART_HEIGHT;
@@ -530,7 +594,8 @@ function CausalSvg({
   const plotBottom = CHART_PLOT_BOTTOM;
   const volumeTop = CHART_VOLUME_TOP;
   const plotWidth = width - left - right;
-  const step = plotWidth / Math.max(candles.length, 1);
+  const slotCount = getSessionDomainSlotCount(sessionView, premarketCandles.length > 0);
+  const step = plotWidth / Math.max(slotCount, 1);
   const orbCandles = regularCandles.slice(0, 3);
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
   const annotations = snapshot.annotations.filter((annotation) => annotation.available
@@ -541,12 +606,14 @@ function CausalSvg({
   const x = (index: number) => left + index * step + step / 2;
   const plotRight = width - right;
   const visibleAtEvaluation = candles.filter((candle) => candle.machineVisible).length;
-  const boundaryX = left + Math.min(visibleAtEvaluation, candles.length) * step;
+  const machineSlots = candles.filter((candle) => candle.machineVisible).map((candle) => getCandleSlotIndex(candle, sessionView, premarketCandles.length > 0));
+  const boundarySlot = machineSlots.length ? Math.max(...machineSlots) + 1 : (premarketCandles.length > 0 ? PREMARKET_SLOT_COUNT : 0);
+  const boundaryX = left + Math.min(boundarySlot, slotCount) * step;
   const volumeMax = Math.max(...candles.map((candle) => candle.volume), 1);
   const volumeAxis = getVolumeAxisTicks(volumeMax);
-  const timeAxis = getTimeAxisTicks(candles, "America/New_York", true);
-  const regularStartIndex = regularCandles.length ? candles.findIndex((candle) => candle.openTime === regularCandles[0].openTime) : -1;
-  const premarketEndX = premarketCandles.length ? left + premarketCandles.length * step : null;
+  const timeAxis = getFixedTimeAxisTicks(sessionView, premarketCandles.length > 0);
+  const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView, premarketCandles.length > 0) : -1;
+  const premarketEndX = premarketCandles.length ? left + PREMARKET_SLOT_COUNT * step : null;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null);
@@ -571,13 +638,20 @@ function CausalSvg({
     const machineVisible = candles[markerIndex].machineVisible;
     if (annotation.visibility === "machine" && !machineVisible) return [];
     if (annotation.visibility === "human_only" && machineVisible) return [];
-    return [{ annotation, markerIndex }];
+    return [{ annotation, markerIndex, markerSlot: getCandleSlotIndex(candles[markerIndex], sessionView, premarketCandles.length > 0) }];
   });
   const hoveredCandle = hoveredIndex == null ? null : candles[hoveredIndex];
   const hoveredDetails = hoveredCandle ? getCandleInspection(hoveredCandle) : null;
+  const hoveredSlot = hoveredCandle ? getCandleSlotIndex(hoveredCandle, sessionView, premarketCandles.length > 0) : 0;
   const setIndexFromClientX = (clientX: number, rect: DOMRect) => {
     const svgX = (clientX - rect.left) * (width / rect.width);
-    const nextIndex = Math.max(0, Math.min(candles.length - 1, Math.floor((svgX - left) / step)));
+    const slot = Math.floor((svgX - left) / step);
+    const nextIndex = candles.reduce((best, candle, index) => {
+      const distance = Math.abs(getCandleSlotIndex(candle, sessionView, premarketCandles.length > 0) - slot);
+      const bestDistance = best < 0 ? Number.POSITIVE_INFINITY : Math.abs(getCandleSlotIndex(candles[best], sessionView, premarketCandles.length > 0) - slot);
+      return distance < bestDistance ? index : best;
+    }, -1);
+    if (nextIndex < 0) return;
     setHoveredIndex(nextIndex);
   };
   const setIndexFromKeyboard = (event: KeyboardEvent<SVGRectElement>) => {
@@ -614,7 +688,19 @@ function CausalSvg({
         <div>Crosshair snaps to the exact raw OHLCV interval.</div>
       </div>
     </div>}
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[390px] min-w-[760px] w-full" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
+     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
+       <span className="eyebrow text-muted-foreground">Inspect / fixed timestamp slots</span>
+       <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Chart navigation controls">
+         <button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - .25).toFixed(2))))} disabled={zoom <= 1} className="chart-control" aria-label="Zoom out" data-testid="button-zoom-out"><ZoomOut size={13} />Zoom out</button>
+         <span className="mono min-w-[42px] text-center text-[10px] text-muted-foreground" aria-live="polite">{Math.round(zoom * 100)}%</span>
+         <button type="button" onClick={() => setZoom((current) => Math.min(3, Number((current + .25).toFixed(2))))} disabled={zoom >= 3} className="chart-control" aria-label="Zoom in" data-testid="button-zoom-in"><ZoomIn size={13} />Zoom in</button>
+         <button type="button" onClick={() => setPan((current) => Math.max(0, current - 80 / zoom))} disabled={pan <= 0} className="chart-control" aria-label="Pan chart left" data-testid="button-pan-left"><MoveLeft size={13} />Pan left</button>
+         <button type="button" onClick={() => setPan((current) => Math.min(width - width / zoom, current + 80 / zoom))} disabled={pan >= width - width / zoom} className="chart-control" aria-label="Pan chart right" data-testid="button-pan-right"><MoveRight size={13} />Pan right</button>
+         <button type="button" onClick={() => { setZoom(1); setPan(0); }} className="chart-control" aria-label="Reset chart view" data-testid="button-reset-chart"><RotateCcw size={13} />Reset</button>
+         {sessionView !== "primary" && <button type="button" onClick={onReturnPrimary} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
+       </div>
+     </div>
+     <svg viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[600px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover or use the arrow keys to inspect an exact five-minute candle. The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.`}>
       <title>Causal annotated chart. The evaluation cursor marks the last machine-visible candle; shaded candles to its right are human-only outcome context.</title>
       {priceAxis.ticks.map((price) => <g key={`price-axis-${price}`} data-testid="price-axis-tick"><line x1={left} x2={plotRight} y1={y(price)} y2={y(price)} stroke="hsl(var(--border))" strokeDasharray="2 6" opacity=".8" /><text x={width - 5} y={y(price) + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="10" fontFamily="DM Mono">{formatPriceAxisValue(price)}</text></g>)}
       {volumeAxis.map((tick) => {
@@ -670,12 +756,13 @@ function CausalSvg({
       {candles.map((candle, index) => {
         const up = candle.close >= candle.open;
          const color = up ? "hsl(var(--positive))" : "hsl(var(--negative))";
-         const geometry = getCandleGeometry(candle, index, step, domain, left);
+         const slotIndex = getCandleSlotIndex(candle, sessionView, premarketCandles.length > 0);
+         const geometry = getCandleGeometry(candle, slotIndex, step, domain, left);
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}><title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" /><rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" /><rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
       })}
-         {eventMarkers.map(({ annotation, markerIndex }, markerOrder) => {
-          const markerX = x(markerIndex);
+          {eventMarkers.map(({ annotation, markerSlot }, markerOrder) => {
+           const markerX = x(markerSlot);
           const humanOnly = annotation.visibility === "human_only";
            const markerY = top + 15 + Math.min(markerOrder, 5) * 12;
           const markerPriceY = annotation.price == null ? markerY : y(annotation.price);
@@ -687,12 +774,12 @@ function CausalSvg({
        <rect x={Math.min(Math.max(boundaryX - 62, left), width - 130)} y="1" width="124" height="18" rx="2" fill="hsl(var(--foreground))" /><text x={Math.min(Math.max(boundaryX, left + 62), width - 68)} y="13" textAnchor="middle" fill="hsl(var(--background))" fontSize="9" fontWeight="700" fontFamily="DM Mono">CAUSAL CURSOR</text>
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
         {hoveredCandle && <g pointerEvents="none" data-testid="chart-crosshair">
-          <line x1={x(hoveredIndex ?? 0)} x2={x(hoveredIndex ?? 0)} y1={top} y2={volumeTop + CHART_VOLUME_HEIGHT} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1.2" />
+           <line x1={x(hoveredSlot)} x2={x(hoveredSlot)} y1={top} y2={volumeTop + CHART_VOLUME_HEIGHT} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1.2" />
           <line x1={left} x2={plotRight} y1={y(hoveredCandle.close)} y2={y(hoveredCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
-          <circle cx={x(hoveredIndex ?? 0)} cy={y(hoveredCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
+           <circle cx={x(hoveredSlot)} cy={y(hoveredCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
         </g>}
         <line x1={left} x2={plotRight} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
-        <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
+         <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
         <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
         <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
         <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" tabIndex={0} role="application" aria-label="Interactive five-minute candle crosshair. Use left and right arrow keys to select a candle." data-testid="chart-interaction-layer"
@@ -701,6 +788,9 @@ function CausalSvg({
           onKeyDown={setIndexFromKeyboard}
         />
     </svg>
+     <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
+       {hoveredDetails ? `Selected ${hoveredDetails.interval}. Open ${hoveredDetails.open.toFixed(2)}, high ${hoveredDetails.high.toFixed(2)}, low ${hoveredDetails.low.toFixed(2)}, close ${hoveredDetails.close.toFixed(2)}, volume ${formatExactVolume(hoveredDetails.volume)}. ${hoveredDetails.machineVisible ? "Machine visible." : "Human-only context."}` : "No candle selected."}
+     </div>
      {hoveredCandle == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover a candle or focus the chart and use ← / → to inspect the exact 5-minute interval.</div>}
     {additionalLevels.length > 0 && <details className="mt-3 border-t border-border pt-3" data-testid="additional-levels">
       <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Additional levels ({additionalLevels.length})</summary>

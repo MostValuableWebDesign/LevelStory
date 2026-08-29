@@ -2916,9 +2916,14 @@ components:
         period: { type: string, enum: [in_sample, out_of_sample] }
         evaluationCursor: { $ref: "#/components/schemas/VisualValidationCursor" }
         reviewCursor: { $ref: "#/components/schemas/VisualValidationReviewCursor" }
-        rawCandles:
+        machineCandles:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCandle" }
+        reviewCandles:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationCandle" }
+        outcomeContextEnd: { type: string, format: date-time }
+        futureCandleAccess: { type: boolean, enum: [false] }
         annotations:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationAnnotation" }
@@ -2932,7 +2937,7 @@ components:
             note: { type: ["string", "null"] }
             reviewedAt: { type: ["string", "null"], format: date-time }
           required: [status, note, reviewedAt]
-      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, rawCandles, annotations, machineEvidence, review]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, outcomeContextEnd, futureCandleAccess, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
       properties:

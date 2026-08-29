@@ -104,7 +104,10 @@ export type VisualValidationSnapshot = {
     newYork: string;
     utc: string;
   };
-  rawCandles: VisualValidationCandle[];
+  machineCandles: VisualValidationCandle[];
+  reviewCandles: VisualValidationCandle[];
+  outcomeContextEnd: string;
+  futureCandleAccess: false;
   annotations: VisualValidationAnnotation[];
   machineEvidence: {
     audit: BacktestAuditRecord;
@@ -469,7 +472,8 @@ function buildMachineSnapshot(
       executionMode: report.executionMode,
     },
   );
-  const reviewCandles = visibleReview.slice(-84);
+  const machineCandles = visibleEvaluation.map(toRawCandle);
+  const reviewCandles = visibleReview.map(toRawCandle);
   const hash = createHash("sha256")
     .update(`${report.formulaHash}|${audit.id}|${category}`)
     .digest("hex")
@@ -500,7 +504,10 @@ function buildMachineSnapshot(
       newYork: formatTime(reviewTime, "America/New_York"),
       utc: formatTime(reviewTime, "UTC"),
     },
-    rawCandles: reviewCandles.map(toRawCandle),
+    machineCandles,
+    reviewCandles,
+    outcomeContextEnd: new Date(reviewTime).toISOString(),
+    futureCandleAccess: false,
     annotations: buildAnnotations(evaluationSnapshot, audit, trade),
     machineEvidence: {
       audit,
