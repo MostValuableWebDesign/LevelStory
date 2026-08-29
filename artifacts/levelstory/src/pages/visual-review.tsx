@@ -266,6 +266,8 @@ export default function VisualReview() {
 
   useEffect(() => {
     let active = true;
+    const authError = new URLSearchParams(window.location.search).get("authError");
+    if (authError) setMessage("Login could not be completed. Please try Log in again.");
     fetch("/api/auth/user", { credentials: "include" })
       .then((response) => response.ok ? response.json() as Promise<{ user?: unknown }> : { user: null })
       .then((result) => { if (active) setAuthenticated(Boolean(result.user)); })

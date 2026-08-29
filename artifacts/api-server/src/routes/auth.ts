@@ -79,8 +79,9 @@ router.get("/callback", async (req, res) => {
   const callbackUrl = `${getOrigin(req)}/api/callback`;
   const codeVerifier = req.cookies?.code_verifier;
   const expectedState = req.cookies?.state;
+  const returnTo = safeReturnTo(req.cookies?.return_to);
   if (!codeVerifier || !expectedState) {
-    res.redirect("/api/login");
+    res.redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}authError=missing_login_state`);
     return;
   }
   try {
@@ -106,11 +107,15 @@ router.get("/callback", async (req, res) => {
     res.clearCookie("code_verifier", { path: "/" });
     res.clearCookie("nonce", { path: "/" });
     res.clearCookie("state", { path: "/" });
-    const returnTo = safeReturnTo(req.cookies?.return_to);
     res.clearCookie("return_to", { path: "/" });
     res.redirect(returnTo);
-  } catch {
-    res.redirect("/api/login");
+  } catch (error) {
+    req.log?.error({ error: error instanceof Error ? error.message : "unknown" }, "Authentication callback failed");
+    res.clearCookie("code_verifier", { path: "/" });
+    res.clearCookie("nonce", { path: "/" });
+    res.clearCookie("state", { path: "/" });
+    res.clearCookie("return_to", { path: "/" });
+    res.redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}authError=callback_failed`);
   }
 });
 
