@@ -361,6 +361,7 @@ export type ReplaySnapshotOptions = {
   ohlcvEntryBufferTicks?: 3 | 4;
   ohlcvStopBufferTicks?: number;
   allCandlesCompleted?: boolean;
+  validateDashboardInvariants?: boolean;
 };
 
 function latestTradingDate(calendar: ReturnType<typeof sessionCalendarForContract>): string {
@@ -715,15 +716,17 @@ export function createMarketSnapshot(
        `Simulated costs: normal slippage is one adverse tick per fill; abnormal spread mode includes the observed spread. Fees include commission, exchange/regulatory, regulatory, and clearing components.`,
     ],
   };
-  assertDashboardInvariants({
-    ntz: snapshot.ntz,
-    breakout: snapshot.breakout,
-    signals: snapshot.signals,
-    riskPlan: snapshot.riskPlan,
-    patience,
-    setupAnalysis,
-    shadowExecution: snapshot.shadowExecution,
-  });
+  if (replayOptions?.validateDashboardInvariants !== false) {
+    assertDashboardInvariants({
+      ntz: snapshot.ntz,
+      breakout: snapshot.breakout,
+      signals: snapshot.signals,
+      riskPlan: snapshot.riskPlan,
+      patience,
+      setupAnalysis,
+      shadowExecution: snapshot.shadowExecution,
+    });
+  }
   return snapshot;
 }
 

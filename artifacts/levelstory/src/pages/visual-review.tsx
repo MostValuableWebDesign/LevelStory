@@ -9,7 +9,6 @@ import {
   FileSearch,
   Fingerprint,
   Info,
-  Layers3,
   LoaderCircle,
   LockKeyhole,
   Maximize2,
@@ -17,8 +16,6 @@ import {
   MoveLeft,
   MoveRight,
   RotateCcw,
-  ScanLine,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   X,
@@ -517,6 +514,10 @@ function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: Vi
   const historical = data.source === "historical_databento";
   const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
   const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
+  const selectedExample = selectedCategory
+    ? data.snapshots.find((snapshot) => snapshot.category === selectedCategory)
+    : undefined;
+  const examplePeriod = selectedExample?.period === "out_of_sample" ? "holdout sample" : "formula-development sample";
   const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
   const isAvailable = (category: VisualValidationCategory) => {
     const item = coverageFor(category);
@@ -534,7 +535,7 @@ function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: Vi
   const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
   const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Coverage / trade-linked samples & formula-development sample" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+    <PanelTitle eyebrow="Coverage / trade-linked samples" title={selectedExample ? `Example 01 / 01 · ${examplePeriod}` : "Select an available example"} right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {tradeCategories.map(renderCategory)}
     </div>
@@ -544,18 +545,15 @@ function CoverageRail({ data, loading, selectedCategory, onSelect }: { data?: Vi
         {diagnostics.map(renderCategory)}
       </div>
     </details>}
-    <div className="border-t border-border bg-muted/20 px-5 py-4 sm:px-6" data-testid="formula-development-sample">
-      <div className="eyebrow text-muted-foreground">Formula-development sample</div>
-      <div className="mt-2 grid gap-3 sm:grid-cols-2">
-        <ManifestItem label="Source" value={formatDataSource(data.source, data.symbol)} icon={<ShieldCheck size={14} />} />
-        <ManifestItem label="Formula version" value={data.formulaVersion} icon={<Fingerprint size={14} />} />
-        <ManifestItem label="Formula hash" value={`${data.formulaHash.slice(0, 18)}…`} icon={<ScanLine size={14} />} />
-        <ManifestItem label="Generated" value={formatReviewTime(data.createdAt)} />
-      </div>
-      <div className="mt-3 flex items-start gap-2 border-t border-border/70 pt-3 text-[11px] leading-4 text-muted-foreground">
-        <FileSearch size={14} className="mt-0.5 shrink-0 text-accent" />
-        <span>The evaluation cursor marks the last candle visible to the machine. Shaded candles to its right are human-only outcome context.</span>
-      </div>
+    <div className="border-t border-border bg-muted/20 px-5 py-4 sm:px-6" data-testid="example-sample-summary">
+      <div className="eyebrow text-muted-foreground">Stated category</div>
+      {selectedExample ? <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold">{selectedExample.categoryLabel}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">{selectedExample.machineLabel}</div>
+        </div>
+        <div className="mono text-right text-[10px] text-muted-foreground">{selectedExample.tradingDate}<span className="block">{selectedExample.contractSymbol}</span></div>
+      </div> : <div className="mt-2 text-xs text-muted-foreground">Choose an available category to inspect its example.</div>}
     </div>
   </Panel>;
 }
@@ -1294,10 +1292,6 @@ function InfoTip({ label, text }: { label: string; text: string }) {
 
 function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">{label}</span>{children}</label>;
-}
-
-function ManifestItem({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
-  return <div className="bg-card px-4 py-4"><div className="flex items-center gap-2 text-[10px] text-muted-foreground">{icon}{label}</div><div className="mono mt-2 break-words text-[11px]">{value}</div></div>;
 }
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {

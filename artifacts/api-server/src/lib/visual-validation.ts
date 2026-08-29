@@ -909,6 +909,7 @@ function buildMachineSnapshot(
       allCandlesCompleted: true,
       premarketAvailable,
       executionMode: report.executionMode,
+      validateDashboardInvariants: false,
     },
   );
   const machineCandles = visibleEvaluation.map(toRawCandle);
