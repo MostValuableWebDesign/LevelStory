@@ -1,0 +1,162 @@
+Replace LevelStory’s placeholder strategy-proposal validator with a real deterministic, durable, compute-aware candidate comparison.
+
+Do not activate any strategy version in this phase.
+
+A. REMOVE PLACEHOLDER VALIDATION
+
+Delete the validation behavior that:
+
+- Hard-codes before and after metrics to zero.
+- Always returns an empty regression list.
+- Passes merely because teaching evidence is causally valid.
+
+A proposal must never become validation_passed without executing both the parent formula and candidate formula.
+
+B. BUILD CANDIDATE CONFIGURATION
+
+Create candidate configuration only from the typed, allow-listed deterministicRuleDiff.
+
+Requirements:
+
+- Start from the immutable parent strategy configuration.
+- Apply only the approved typed difference.
+- Reject unknown rules or fields.
+- Generate deterministic parent and candidate hashes.
+- Do not evaluate free-form proposal text as code.
+- Do not use eval, dynamic JavaScript, or AI-generated executable logic.
+
+C. REAL COMPARISON
+
+Run parent and candidate formulas over the same immutable candles and session schedule.
+
+At minimum compare:
+
+- Every source teaching example.
+- All previously approved teaching examples.
+- Similar machine-correct no-trade examples.
+- A bounded in-sample range.
+- A separate holdout range.
+
+Report:
+
+- Teaching examples corrected.
+- Teaching examples regressed.
+- Trades added.
+- Trades removed.
+- Entry times changed.
+- Direction changes.
+- Rejection-reason changes.
+- Win rate.
+- Net P&L.
+- Profit factor.
+- Maximum drawdown.
+- Average trade.
+- Stop, target, and runner outcomes.
+- Ambiguous same-candle outcomes.
+- In-sample results.
+- Holdout results.
+
+A validation run passes only when:
+
+- No future data was accessed.
+- Immediate-next patience-entry timing remains enforced.
+- Entry buffer is 3 or 4 ticks.
+- Dataset and formula fingerprints match.
+- Required deterministic tests pass.
+- No unresolved teaching conflicts exist.
+- Holdout evaluation completed.
+- Regression results are explicitly recorded.
+
+Do not automatically treat improved P&L as proof that a rule is correct.
+
+D. COMPUTE-AWARE EXECUTION
+
+Use an asynchronous durable job stored in PostgreSQL.
+
+Do not use setTimeout as the job system.
+
+Requirements:
+
+- Queued/running jobs survive API restart.
+- On startup, recover stale queued/running jobs safely.
+- Use a job lease/heartbeat or equivalent claim mechanism.
+- Only one worker may claim a job.
+- Persist progress, stage, timestamps, and errors.
+- Allow safe retry after failure.
+- Never run duplicate identical comparisons.
+
+Deduplication fingerprint:
+
+- proposal deterministic diff hash
+- parent formula hash
+- candidate formula hash
+- dataset/source fingerprint
+- calendar version
+- validation configuration
+
+Reuse a completed cached comparison when all fingerprints match.
+
+E. COMPUTE LIMITS
+
+Because this Replit deployment has limited compute:
+
+1. Run focused teaching/regression evaluation first.
+2. If focused evaluation fails, stop before historical comparison.
+3. Use a small configured validation range by default.
+4. Require explicit user action for a larger qualification run.
+5. Reuse historical indexes and aggregated candles.
+6. Never rebuild the historical index during proposal validation.
+7. Show progress and estimated work.
+8. Permit cancellation between deterministic stages.
+
+Do not run a cold 20+2 validation solely to demonstrate this implementation. Use focused fixtures and an already-cached small range if available.
+
+F. APPROVAL GATE
+
+Re-enable “Approve” only when the latest matching validation run:
+
+- Is completed.
+- Passed.
+- Matches the current proposal hash.
+- Matches the parent formula hash.
+- Matches the candidate formula hash.
+- Matches the dataset fingerprint.
+- Has no unresolved conflicts.
+- Includes holdout results.
+
+Editing a proposal after validation must invalidate the old validation.
+
+Publication and activation remain disabled until Phase 3.
+
+G. TESTS
+
+Add tests for:
+
+- Parent and candidate actually execute.
+- Candidate changes only the typed requested rule.
+- Different candidate produces different deterministic outcomes.
+- Future-data access fails validation.
+- Immediate-next entry regression fails validation.
+- Teaching conflict fails validation.
+- Holdout omission blocks approval.
+- Cached identical comparison is reused.
+- Changed rule hash invalidates cache.
+- Queued job survives simulated restart.
+- Two workers cannot claim the same job.
+- Failed job records error and can retry.
+- No historical-index rebuild.
+- No live or paper execution path.
+
+DELIVERY REPORT
+
+Include:
+
+- Removed placeholder code.
+- Durable job design.
+- Candidate construction method.
+- One parent-versus-candidate fixture showing a real behavioral difference.
+- Validation fingerprint.
+- Cache behavior.
+- Test/build results.
+- Any validation run performed and its compute time.
+- Confirmation that no proposal or strategy was activated.
