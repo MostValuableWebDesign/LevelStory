@@ -1,0 +1,124 @@
+Complete LevelStory strategy governance by connecting validated candidate versions to the Shadow Mode formula and making activation/rollback transactional.
+
+Do not add broker, live-order, or paper-order functionality.
+
+A. ACTIVE STRATEGY RESOLVER
+
+Create one server-side active Shadow strategy resolver.
+
+It must:
+
+- Read the single active MES_SHADOW strategy version.
+- Validate its typed configuration.
+- Verify formula hash and version.
+- Fall back safely to the built-in baseline when no active version exists.
+- Reject corrupted or unknown configuration.
+- Never use arbitrary proposal text as configuration.
+
+Use this resolver consistently in:
+
+- Historical backtesting.
+- Visual Review machine evaluation.
+- Shadow decision evaluation.
+- Formula/version evidence displayed in audit records.
+
+Every run must record the exact active formula version and hash it used.
+
+B. SINGLE ACTIVE VERSION
+
+Guarantee at the database level that only one MES_SHADOW strategy version can be active.
+
+Use a partial unique index or equivalent PostgreSQL constraint.
+
+C. TRANSACTIONAL PUBLICATION
+
+Publishing a candidate must occur in one database transaction:
+
+- Verify proposal is approved.
+- Verify latest validation fingerprints still match.
+- Lock the strategy version sequence.
+- Allocate the next version number.
+- Insert the candidate version.
+- Link it to the proposal.
+- Append the audit event.
+- Commit together.
+
+A failure must leave the proposal and versions unchanged.
+
+D. TRANSACTIONAL ACTIVATION
+
+Activation must occur in one database transaction:
+
+- Lock the current active version and candidate.
+- Reverify validation hashes.
+- Retire the previous active version.
+- Activate the candidate.
+- Update the proposal.
+- Append the audit event.
+- Commit together.
+
+If any step fails, roll back everything.
+
+Activation changes only Shadow Mode formula selection. It must not create an order.
+
+E. REAL ROLLBACK
+
+Rollback must:
+
+- Identify the candidate’s parent version.
+- Verify the parent is valid.
+- Retire or mark the current version rolled back.
+- Reactivate the parent version.
+- Update both proposal/version statuses.
+- Append an audit event containing from-version and to-version.
+- Complete atomically.
+
+If no valid parent exists, reject rollback without changing state.
+
+F. UI WORDING
+
+Display:
+
+- Current active Shadow formula.
+- Formula version/hash.
+- Activation time and actor.
+- Parent version.
+- Validation run used.
+- “Shadow Mode only — no live or paper orders.”
+
+Before activation, require a confirmation dialog:
+
+“You are changing the formula used by future Shadow Mode evaluations and backtests. No live or paper order will be created.”
+
+Do not claim historical machine evidence was changed. Previous runs remain attached to their original versions.
+
+G. TESTS
+
+Add deterministic tests for:
+
+- Backtest and Visual Review resolve the active version.
+- Existing historical audits remain immutable.
+- One active version constraint.
+- Failed publication rolls back completely.
+- Failed activation leaves previous version active.
+- Concurrent activations cannot produce two active versions.
+- Rollback reactivates the exact parent.
+- Corrupt candidate configuration is rejected.
+- Formula hash mismatch is rejected.
+- Shadow evaluation uses the new approved parameter.
+- No broker, paper order, or live order path exists.
+
+Use small deterministic fixtures. Do not run a cold extended historical job unless necessary.
+
+DELIVERY REPORT
+
+Report:
+
+- Active strategy resolver and all consumers.
+- Transaction boundaries.
+- Single-active-version enforcement.
+- Activation and rollback evidence.
+- Formula before and after a fixture activation.
+- Test/typecheck/build results.
+- Compute used.
+- Confirmation that all execution remains Shadow Mode only.
