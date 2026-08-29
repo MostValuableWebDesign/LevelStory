@@ -14,4 +14,5 @@ export const ValidationRunStatus = {
   running: 'running',
   passed: 'passed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;

@@ -18,6 +18,7 @@ export const teachingExamplesTable = pgTable("levelstory_teaching_examples", {
   patienceCandleTimestamp: text("patience_candle_timestamp"),
   direction: text("direction"),
   entryBufferTicks: integer("entry_buffer_ticks"),
+  levelToleranceTicks: integer("level_tolerance_ticks"),
   calculatedEntryPrice: text("calculated_entry_price"),
   setupClassification: text("setup_classification").notNull(),
   qualifyingLevelType: text("qualifying_level_type"),

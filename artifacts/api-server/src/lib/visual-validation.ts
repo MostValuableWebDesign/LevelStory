@@ -85,6 +85,8 @@ export type VisualValidationAnnotation = {
   label: string;
   kind: "level" | "indicator" | "fibonacci" | "candle" | "price";
   price: number | null;
+  rangeLow?: number | null;
+  rangeHigh?: number | null;
   openTime: string | null;
   closeTime: string | null;
   available: boolean;
@@ -278,6 +280,7 @@ export type VisualValidationTeachingInput = {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: 3 | 4;
+  levelToleranceTicks?: number;
   pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
@@ -288,6 +291,21 @@ export type VisualValidationTeachingValidation = {
   valid: boolean;
   messages: string[];
   checkedAt: string;
+  levelInteractions: VisualValidationLevelInteraction[];
+};
+
+export type VisualValidationLevelInteraction = {
+  levelName: string;
+  levelPrice: number;
+  candleHigh: number;
+  candleLow: number;
+  distanceTicks: number;
+  distancePoints: number;
+  allowedToleranceTicks: number;
+  allowedTolerancePoints: number;
+  machineVisible: boolean;
+  passed: boolean;
+  reason: string;
 };
 
 export type VisualValidationTeachingExample = VisualValidationTeachingInput & {
@@ -325,6 +343,8 @@ export type VisualValidationProposedRuleAnalysis = {
 };
 
 const TEACHING_TICK_SIZE = 0.25;
+export const DEFAULT_LEVEL_TOLERANCE_TICKS = 4;
+export const MAX_LEVEL_TOLERANCE_TICKS = 4;
 const TEACHING_ENTRY_WINDOW_START = 9 * 60 + 30;
 const TEACHING_ENTRY_WINDOW_END = 14 * 60;
 
@@ -350,6 +370,23 @@ function tickAligned(value: number): boolean {
   return Number.isFinite(value) && Math.abs(value / TEACHING_TICK_SIZE - Math.round(value / TEACHING_TICK_SIZE)) < 1e-8;
 }
 
+function distanceToLevel(level: number, candleHigh: number, candleLow: number, rangeLow?: number | null, rangeHigh?: number | null): number {
+  const low = rangeLow ?? level;
+  const high = rangeHigh ?? level;
+  if (candleHigh >= low && candleLow <= high) return 0;
+  if (candleHigh < low) return low - candleHigh;
+  return candleLow - high;
+}
+
+function normalizedLevelTolerance(input: VisualValidationTeachingInput, messages: string[]): number {
+  const value = input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS;
+  if (!Number.isInteger(value) || value < 0 || value > MAX_LEVEL_TOLERANCE_TICKS) {
+    messages.push(`Level tolerance must be an integer from 0 to ${MAX_LEVEL_TOLERANCE_TICKS} MES ticks.`);
+    return DEFAULT_LEVEL_TOLERANCE_TICKS;
+  }
+  return value;
+}
+
 function sameCandle(candidate: VisualValidationCandle | undefined, openTime: string, closeTime: string): boolean {
   return candidate?.openTime === openTime && candidate.closeTime === closeTime;
 }
@@ -359,6 +396,9 @@ export function validateVisualValidationTeaching(
   input: VisualValidationTeachingInput,
 ): VisualValidationTeachingValidation & { calculatedEntryPrice: number } {
   const messages: string[] = [];
+  const levelInteractions: VisualValidationLevelInteraction[] = [];
+  const levelToleranceTicks = normalizedLevelTolerance(input, messages);
+  const levelTolerancePoints = levelToleranceTicks * TEACHING_TICK_SIZE;
   const evaluationClose = Date.parse(snapshot.evaluationCursor.closeTime);
   const entry = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
   const patience = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
@@ -402,9 +442,32 @@ export function validateVisualValidationTeaching(
     && annotation.kind !== "candle"
     && Math.abs(annotation.price - level) <= TEACHING_TICK_SIZE + 1e-8,
   ));
-  if (unmappedLevels.length) messages.push("Every selected qualifying level must be visible in the machine snapshot.");
-  if (patience && pullbackLevels.some((level) => level < patience.low - TEACHING_TICK_SIZE || level > patience.high + TEACHING_TICK_SIZE)) {
-    messages.push("Every selected qualifying level must be contained by the patience candle range.");
+  if (unmappedLevels.length) messages.push("A selected qualifying level was not present in the machine-visible snapshot at the evaluation time.");
+  for (const level of pullbackLevels) {
+    const annotation = snapshot.annotations
+      .filter((item) => item.available && item.price !== null && item.kind !== "candle" && Math.abs(item.price - level) <= TEACHING_TICK_SIZE + 1e-8)
+      .sort((first, second) => Math.abs(first.price! - level) - Math.abs(second.price! - level))[0];
+    if (!patience || !annotation) continue;
+    const distancePoints = distanceToLevel(level, patience.high, patience.low, annotation.rangeLow, annotation.rangeHigh);
+    const distanceTicks = Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-8);
+    const passed = distancePoints <= levelTolerancePoints + 1e-8;
+    const levelName = annotation.label;
+    levelInteractions.push({
+      levelName,
+      levelPrice: level,
+      candleHigh: patience.high,
+      candleLow: patience.low,
+      distanceTicks,
+      distancePoints: Number(distancePoints.toFixed(2)),
+      allowedToleranceTicks: levelToleranceTicks,
+      allowedTolerancePoints: levelTolerancePoints,
+      machineVisible: annotation.visibility === "machine" && annotation.available,
+      passed,
+      reason: passed
+        ? `Patience candle came within ${distanceTicks} ticks of ${levelName}. Allowed tolerance: ${levelToleranceTicks} ticks.`
+        : `Patience candle remained ${distanceTicks} ticks from ${levelName}. Allowed tolerance: ${levelToleranceTicks} ticks.`,
+    });
+    if (!passed) messages.push(levelInteractions.at(-1)!.reason);
   }
   if (entry && Number.isFinite(calculatedEntryPrice)) {
     const buffered = input.direction === "long" ? entry.high >= calculatedEntryPrice : entry.low <= calculatedEntryPrice;
@@ -418,6 +481,7 @@ export function validateVisualValidationTeaching(
     messages,
     calculatedEntryPrice,
     checkedAt: new Date().toISOString(),
+    levelInteractions,
   };
 }
 
@@ -436,6 +500,7 @@ export function createVisualValidationTeachingExample(
   });
   return {
     ...input,
+    levelToleranceTicks: input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
     pullbackLevels: [...new Set(input.pullbackLevels)].sort((a, b) => a - b),
     teachingId: randomUUID(),
     calculatedEntryPrice: validation.calculatedEntryPrice,
@@ -443,6 +508,7 @@ export function createVisualValidationTeachingExample(
       valid: validation.valid,
       messages: validation.messages,
       checkedAt: validation.checkedAt,
+      levelInteractions: validation.levelInteractions,
     },
     machineEvidenceSnapshot,
     machineEvidenceHash: hashJson(machineEvidenceSnapshot),
@@ -869,7 +935,7 @@ function annotation(
   };
 }
 
-function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, trade: BacktestTrade | null): VisualValidationAnnotation[] {
+function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, trade: BacktestTrade | null, indicatorSeries: VisualValidationIndicatorPoint[] = []): VisualValidationAnnotation[] {
   const lines: VisualValidationAnnotation[] = [];
   const causalBoundary = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
   const eventVisibility = (openTime: number | null): VisualValidationAnnotation["visibility"] =>
@@ -877,6 +943,8 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   const addLevel = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"] = "accent") => {
     lines.push(annotation(id, label, "level", price, color, detail));
   };
+  const patienceOpenForIndicator = evidenceTime(audit.patienceCandle, "openTime");
+  const patienceIndicator = patienceOpenForIndicator === null ? undefined : indicatorSeries.find((point) => Date.parse(point.openTime) === patienceOpenForIndicator);
   const addIndicator = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"]) => {
     lines.push(annotation(id, label, "indicator", price, color, detail));
   };
@@ -888,8 +956,8 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   addLevel("two-sessions-low", "2DL", snapshot.levels.dayBeforeYesterdayLow, "Low from two completed regular sessions back.");
   addLevel("ntz-high", "NTZ high", snapshot.levels.ntzHigh, "No-trade zone upper boundary.");
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
-  addIndicator("ema-200", "200 MA", snapshot.indicators.ema200, "Causal 200-period exponential moving average available at the evaluation cursor.", "positive");
-  addIndicator("vwap", "VWAP", snapshot.indicators.vwap, "Causal regular-session volume-weighted average price available at the evaluation cursor.", "negative");
+  addIndicator("ema-200", "200 MA", patienceIndicator?.ema200 ?? snapshot.indicators.ema200, "Causal 200-period exponential moving average at the patience-candle timestamp.", "positive");
+  addIndicator("vwap", "VWAP", patienceIndicator?.vwap ?? snapshot.indicators.vwap, "Causal regular-session volume-weighted average price at the patience-candle timestamp.", "negative");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
   lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
   for (const level of snapshot.levels.critical) addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");
@@ -1169,6 +1237,14 @@ function buildMachineSnapshot(
   const reviewCandles = visibleReview.map(toRawCandle);
   const premarketCandles = visiblePremarket.map(toRawCandle);
   const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles);
+  const indicatorSeries = buildIndicatorSeries(
+    historicalCandles,
+    visibleReview,
+    evaluationCloseTime,
+    audit.tradingDate,
+    audit.contractSymbol,
+    calendar,
+  );
   if (!categoryAnchor) throw new Error(`Category anchor could not resolve to a raw ${audit.contractSymbol} candle.`);
   const hash = createHash("sha256")
     .update(`${report.formulaHash}|${audit.id}|${category}`)
@@ -1204,20 +1280,13 @@ function buildMachineSnapshot(
     machineCandles,
     reviewCandles,
     premarketCandles,
-    indicatorSeries: buildIndicatorSeries(
-      historicalCandles,
-      visibleReview,
-      evaluationCloseTime,
-      audit.tradingDate,
-      audit.contractSymbol,
-      calendar,
-    ),
+    indicatorSeries,
     tradeEvents: buildTradeEvents(audit, trade, evaluationCloseTime),
     coverage: buildCoverage(visibleReview, audit.tradingDate, calendar),
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
     categoryAnchor,
-    annotations: buildAnnotations(evaluationSnapshot, audit, trade),
+    annotations: buildAnnotations(evaluationSnapshot, audit, trade, indicatorSeries),
     machineEvidence: {
       quotesAvailable: report.executionMode === "quote_based_shadow",
       sourceSchema: report.executionMode === "quote_based_shadow" ? "quote_bbo" : "historical_ohlcv",

@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationTeachingValidationLevelInteractionsItem } from './visualValidationTeachingValidationLevelInteractionsItem';
 
 export interface VisualValidationTeachingValidation {
   valid: boolean;
   messages: string[];
   checkedAt: Date;
+  levelInteractions: VisualValidationTeachingValidationLevelInteractionsItem[];
 }

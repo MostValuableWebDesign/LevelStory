@@ -4046,6 +4046,11 @@ export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCand
 export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 4;
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin = 0;
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax = 4;
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf = 1;
+
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
@@ -4208,6 +4213,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "label": zod.string(),
   "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
   "price": zod.number().nullable(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
   "openTime": zod.coerce.date().nullable(),
   "closeTime": zod.coerce.date().nullable(),
   "available": zod.boolean(),
@@ -4229,6 +4236,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "levelToleranceTicks": zod.number().min(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax).multipleOf(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf).default(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
   "pullbackLevels": zod.array(zod.number()).min(1).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
@@ -4238,7 +4246,20 @@ export const GetVisualValidationSetResponse = zod.object({
   "validation": zod.object({
   "valid": zod.boolean(),
   "messages": zod.array(zod.string()),
-  "checkedAt": zod.coerce.date()
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
 }),
   "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
   "machineEvidenceHash": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
@@ -4321,6 +4342,11 @@ export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedC
 export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 4;
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin = 0;
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax = 4;
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf = 1;
+
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax = 4000;
@@ -4483,6 +4509,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "label": zod.string(),
   "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
   "price": zod.number().nullable(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
   "openTime": zod.coerce.date().nullable(),
   "closeTime": zod.coerce.date().nullable(),
   "available": zod.boolean(),
@@ -4504,6 +4532,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "levelToleranceTicks": zod.number().min(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax).multipleOf(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf).default(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
   "pullbackLevels": zod.array(zod.number()).min(1).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
@@ -4513,7 +4542,20 @@ export const CreateVisualValidationSetResponse = zod.object({
   "validation": zod.object({
   "valid": zod.boolean(),
   "messages": zod.array(zod.string()),
-  "checkedAt": zod.coerce.date()
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
 }),
   "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
   "machineEvidenceHash": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
@@ -4540,6 +4582,11 @@ export const CreateVisualValidationSetResponse = zod.object({
 export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewBodyNoteMax = 2000;
 
+export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault = 4;
+export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMin = 0;
+export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMax = 4;
+export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMultipleOf = 1;
+
 export const recordVisualValidationReviewBodyTeachingPullbackLevelsMax = 20;
 
 export const recordVisualValidationReviewBodyTeachingExplanationMax = 4000;
@@ -4559,6 +4606,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "levelToleranceTicks": zod.number().min(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMin).max(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMax).multipleOf(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMultipleOf).default(recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
   "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewBodyTeachingPullbackLevelsMax),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
@@ -4569,6 +4617,11 @@ export const RecordVisualValidationReviewBody = zod.object({
 export const recordVisualValidationReviewResponseReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault = 4;
+export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMin = 0;
+export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMax = 4;
+export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMultipleOf = 1;
+
 export const recordVisualValidationReviewResponseTeachingPullbackLevelsMax = 20;
 
 export const recordVisualValidationReviewResponseTeachingExplanationMax = 4000;
@@ -4597,6 +4650,7 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
+  "levelToleranceTicks": zod.number().min(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMin).max(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMax).multipleOf(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMultipleOf).default(recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
   "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewResponseTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
@@ -4606,7 +4660,20 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "validation": zod.object({
   "valid": zod.boolean(),
   "messages": zod.array(zod.string()),
-  "checkedAt": zod.coerce.date()
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
 }),
   "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
   "machineEvidenceHash": zod.string().regex(recordVisualValidationReviewResponseTeachingMachineEvidenceHashRegExp),
@@ -5686,6 +5753,9 @@ export const GetStrategyProposalParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const getStrategyProposalResponseValidationRunsItemProgressPercentMin = 0;
+export const getStrategyProposalResponseValidationRunsItemProgressPercentMax = 100;
+
 
 
 
@@ -5736,7 +5806,9 @@ export const GetStrategyProposalResponse = zod.object({
   "id": zod.string(),
   "proposalId": zod.string(),
   "requestFingerprint": zod.string(),
-  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed', 'cancelled']),
+  "progressStage": zod.enum(['queued', 'recovered', 'loading_evidence', 'focused_comparison', 'holdout_comparison', 'completed', 'failed']),
+  "progressPercent": zod.number().min(getStrategyProposalResponseValidationRunsItemProgressPercentMin).max(getStrategyProposalResponseValidationRunsItemProgressPercentMax),
   "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "regressions": zod.array(zod.string()),
@@ -5745,6 +5817,12 @@ export const GetStrategyProposalResponse = zod.object({
   "formulaFingerprint": zod.string(),
   "sourceFingerprint": zod.string(),
   "errorMessage": zod.string().nullish(),
+  "parentFormulaHash": zod.string().nullish(),
+  "candidateFormulaHash": zod.string().nullish(),
+  "validationConfigFingerprint": zod.string().nullish(),
+  "holdoutCompleted": zod.union([zod.literal(0),zod.literal(1)]).optional(),
+  "evidenceIds": zod.array(zod.string()),
+  "startedAt": zod.coerce.date().nullish(),
   "requestedBy": zod.string(),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
@@ -5843,11 +5921,18 @@ export const ValidateStrategyProposalHeader = zod.object({
   "Idempotency-Key": zod.string().min(1).max(validateStrategyProposalHeaderIdempotencyKeyMax)
 })
 
+export const validateStrategyProposalResponseProgressPercentMin = 0;
+export const validateStrategyProposalResponseProgressPercentMax = 100;
+
+
+
 export const ValidateStrategyProposalResponse = zod.object({
   "id": zod.string(),
   "proposalId": zod.string(),
   "requestFingerprint": zod.string(),
-  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed', 'cancelled']),
+  "progressStage": zod.enum(['queued', 'recovered', 'loading_evidence', 'focused_comparison', 'holdout_comparison', 'completed', 'failed']),
+  "progressPercent": zod.number().min(validateStrategyProposalResponseProgressPercentMin).max(validateStrategyProposalResponseProgressPercentMax),
   "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "regressions": zod.array(zod.string()),
@@ -5856,6 +5941,12 @@ export const ValidateStrategyProposalResponse = zod.object({
   "formulaFingerprint": zod.string(),
   "sourceFingerprint": zod.string(),
   "errorMessage": zod.string().nullish(),
+  "parentFormulaHash": zod.string().nullish(),
+  "candidateFormulaHash": zod.string().nullish(),
+  "validationConfigFingerprint": zod.string().nullish(),
+  "holdoutCompleted": zod.union([zod.literal(0),zod.literal(1)]).optional(),
+  "evidenceIds": zod.array(zod.string()),
+  "startedAt": zod.coerce.date().nullish(),
   "requestedBy": zod.string(),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
@@ -6231,6 +6322,9 @@ export const GetStrategyProposalAuditParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const getStrategyProposalAuditResponseValidationRunsItemProgressPercentMin = 0;
+export const getStrategyProposalAuditResponseValidationRunsItemProgressPercentMax = 100;
+
 
 
 
@@ -6281,7 +6375,9 @@ export const GetStrategyProposalAuditResponse = zod.object({
   "id": zod.string(),
   "proposalId": zod.string(),
   "requestFingerprint": zod.string(),
-  "status": zod.enum(['queued', 'running', 'passed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'passed', 'failed', 'cancelled']),
+  "progressStage": zod.enum(['queued', 'recovered', 'loading_evidence', 'focused_comparison', 'holdout_comparison', 'completed', 'failed']),
+  "progressPercent": zod.number().min(getStrategyProposalAuditResponseValidationRunsItemProgressPercentMin).max(getStrategyProposalAuditResponseValidationRunsItemProgressPercentMax),
   "beforeMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "afterMetrics": zod.record(zod.string(), zod.unknown()).nullish(),
   "regressions": zod.array(zod.string()),
@@ -6290,6 +6386,12 @@ export const GetStrategyProposalAuditResponse = zod.object({
   "formulaFingerprint": zod.string(),
   "sourceFingerprint": zod.string(),
   "errorMessage": zod.string().nullish(),
+  "parentFormulaHash": zod.string().nullish(),
+  "candidateFormulaHash": zod.string().nullish(),
+  "validationConfigFingerprint": zod.string().nullish(),
+  "holdoutCompleted": zod.union([zod.literal(0),zod.literal(1)]).optional(),
+  "evidenceIds": zod.array(zod.string()),
+  "startedAt": zod.coerce.date().nullish(),
   "requestedBy": zod.string(),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()

@@ -2973,10 +2973,25 @@ export const VisualValidationTeachingSetup = {
   EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
 } as const;
 
+export type VisualValidationTeachingValidationLevelInteractionsItem = {
+  levelName: string;
+  levelPrice: number;
+  candleHigh: number;
+  candleLow: number;
+  distanceTicks: number;
+  distancePoints: number;
+  allowedToleranceTicks: number;
+  allowedTolerancePoints: number;
+  machineVisible: boolean;
+  passed: boolean;
+  reason: string;
+};
+
 export interface VisualValidationTeachingValidation {
   valid: boolean;
   messages: string[];
   checkedAt: string;
+  levelInteractions: VisualValidationTeachingValidationLevelInteractionsItem[];
 }
 
 export type VisualValidationTeachingExampleDirection = typeof VisualValidationTeachingExampleDirection[keyof typeof VisualValidationTeachingExampleDirection];
@@ -3007,6 +3022,12 @@ export interface VisualValidationTeachingExample {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
+  /**
+     * MES ticks; integer values only.
+     * @minimum 0
+     * @maximum 4
+     */
+  levelToleranceTicks: number;
   /**
      * @minItems 1
      * @maxItems 20
@@ -3110,6 +3131,10 @@ export interface VisualValidationAnnotation {
   kind: VisualValidationAnnotationKind;
   /** @nullable */
   price: number | null;
+  /** @nullable */
+  rangeLow?: number | null;
+  /** @nullable */
+  rangeHigh?: number | null;
   /** @nullable */
   openTime: string | null;
   /** @nullable */
@@ -3389,6 +3414,12 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
+  /**
+     * MES ticks; integer values only.
+     * @minimum 0
+     * @maximum 4
+     */
+  levelToleranceTicks: number;
   /**
      * @minItems 1
      * @maxItems 20
@@ -3702,6 +3733,20 @@ export const ValidationRunStatus = {
   running: 'running',
   passed: 'passed',
   failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type ValidationRunProgressStage = typeof ValidationRunProgressStage[keyof typeof ValidationRunProgressStage];
+
+
+export const ValidationRunProgressStage = {
+  queued: 'queued',
+  recovered: 'recovered',
+  loading_evidence: 'loading_evidence',
+  focused_comparison: 'focused_comparison',
+  holdout_comparison: 'holdout_comparison',
+  completed: 'completed',
+  failed: 'failed',
 } as const;
 
 /**
@@ -3714,11 +3759,25 @@ export type ValidationRunBeforeMetrics = { [key: string]: unknown } | null;
  */
 export type ValidationRunAfterMetrics = { [key: string]: unknown } | null;
 
+export type ValidationRunHoldoutCompleted = typeof ValidationRunHoldoutCompleted[keyof typeof ValidationRunHoldoutCompleted];
+
+
+export const ValidationRunHoldoutCompleted = {
+  NUMBER_0: 0,
+  NUMBER_1: 1,
+} as const;
+
 export interface ValidationRun {
   id: string;
   proposalId: string;
   requestFingerprint: string;
   status: ValidationRunStatus;
+  progressStage: ValidationRunProgressStage;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progressPercent: number;
   /** @nullable */
   beforeMetrics?: ValidationRunBeforeMetrics;
   /** @nullable */
@@ -3730,6 +3789,16 @@ export interface ValidationRun {
   sourceFingerprint: string;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  parentFormulaHash?: string | null;
+  /** @nullable */
+  candidateFormulaHash?: string | null;
+  /** @nullable */
+  validationConfigFingerprint?: string | null;
+  holdoutCompleted?: ValidationRunHoldoutCompleted;
+  evidenceIds: string[];
+  /** @nullable */
+  startedAt?: string | null;
   requestedBy: string;
   createdAt: string;
   /** @nullable */

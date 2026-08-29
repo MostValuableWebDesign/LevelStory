@@ -77,6 +77,9 @@ test("human judgment teaches only from an explicitly locked causal candle pair",
   assert.match(page, /data-testid="calculated-mes-entry"/);
   assert.match(page, /Qualifying pullback level/);
   assert.match(page, /availableLevels\.map/);
+  assert.match(page, /configured \{levelToleranceTicks\}-tick MES proximity zone/);
+  assert.match(page, /Outside \{levelToleranceTicks\}-tick zone/);
+  assert.doesNotMatch(page, /Only levels contained by the selected patience candle/);
   assert.match(page, /Unable to save this review/);
   assert.match(page, /Human judgments never mutate executable formula behavior/);
 });

@@ -16,6 +16,10 @@ export interface VisualValidationAnnotation {
   /** @nullable */
   price: number | null;
   /** @nullable */
+  rangeLow?: number | null;
+  /** @nullable */
+  rangeHigh?: number | null;
+  /** @nullable */
   openTime: Date | null;
   /** @nullable */
   closeTime: Date | null;

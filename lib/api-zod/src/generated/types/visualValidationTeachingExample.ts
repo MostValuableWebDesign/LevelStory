@@ -24,6 +24,12 @@ export interface VisualValidationTeachingExample {
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
   /**
+     * MES ticks; integer values only.
+     * @minimum 0
+     * @maximum 4
+     */
+  levelToleranceTicks: number;
+  /**
      * @minItems 1
      * @maxItems 20
      */

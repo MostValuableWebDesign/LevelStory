@@ -20,6 +20,12 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
   /**
+     * MES ticks; integer values only.
+     * @minimum 0
+     * @maximum 4
+     */
+  levelToleranceTicks: number;
+  /**
      * @minItems 1
      * @maxItems 20
      */

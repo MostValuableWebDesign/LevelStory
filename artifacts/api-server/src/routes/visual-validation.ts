@@ -127,6 +127,7 @@ export function createVisualValidationRouter(): IRouter {
             entryCandleCloseTime: parsed.data.teaching.entryCandleCloseTime.toISOString(),
             patienceCandleOpenTime: parsed.data.teaching.patienceCandleOpenTime.toISOString(),
             patienceCandleCloseTime: parsed.data.teaching.patienceCandleCloseTime.toISOString(),
+            levelToleranceTicks: parsed.data.teaching.levelToleranceTicks ?? 4,
           }
         : undefined;
       if (parsed.data.status === "false_positive_trade" && (!teaching || teaching.judgment !== "false_positive_trade")) {

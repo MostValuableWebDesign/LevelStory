@@ -418,6 +418,27 @@ test("teaching validation accepts deterministic long and short buffered examples
   }
 });
 
+test("teaching validation uses a four-tick proximity zone instead of exact containment", () => {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const input = teachingInput(snapshot, "long");
+  snapshot.annotations.push({ id: "test-pdl", kind: "level", label: "Previous Day Low", price: 102.25, available: true, color: "blue", detail: "Test level.", visibility: "machine", openTime: null, closeTime: null });
+  const result = validateVisualValidationTeaching(snapshot, { ...input, pullbackLevels: [102.25] });
+  assert.equal(result.valid, true, result.messages.join("; "));
+  assert.equal(result.levelInteractions[0]?.distanceTicks, 3);
+  assert.equal(result.levelInteractions[0]?.allowedToleranceTicks, 4);
+  assert.match(result.levelInteractions[0]?.reason ?? "", /Previous Day Low/);
+});
+
+test("teaching validation rejects levels beyond the configured proximity tolerance", () => {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const input = teachingInput(snapshot, "long");
+  snapshot.annotations.push({ id: "test-vwap", kind: "indicator", label: "VWAP", price: 103, available: true, color: "blue", detail: "Test indicator.", visibility: "machine", openTime: null, closeTime: null });
+  const result = validateVisualValidationTeaching(snapshot, { ...input, pullbackLevels: [103], levelToleranceTicks: 4 });
+  assert.equal(result.valid, false);
+  assert.equal(result.levelInteractions[0]?.distanceTicks, 6);
+  assert.match(result.messages.join(" "), /remained 6 ticks from VWAP/);
+});
+
 test("teaching validation accepts multiple mapped pullback levels", () => {
   const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
   const input = teachingInput(snapshot, "long");

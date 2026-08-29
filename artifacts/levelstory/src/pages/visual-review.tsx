@@ -347,6 +347,7 @@ export default function VisualReview() {
       patienceCandleOpenTime: savedTeaching.patienceCandleOpenTime,
       patienceCandleCloseTime: savedTeaching.patienceCandleCloseTime,
       entryBufferTicks: savedTeaching.entryBufferTicks,
+      levelToleranceTicks: savedTeaching.levelToleranceTicks ?? 4,
       pullbackLevels: savedTeaching.pullbackLevels?.length ? savedTeaching.pullbackLevels : savedTeaching.pullbackLevel !== undefined ? [savedTeaching.pullbackLevel] : [],
       setupType: savedTeaching.setupType,
       confidence: savedTeaching.confidence,
@@ -364,6 +365,7 @@ export default function VisualReview() {
     patienceCandleOpenTime: activeSnapshot.review.teaching.patienceCandleOpenTime,
     patienceCandleCloseTime: activeSnapshot.review.teaching.patienceCandleCloseTime,
     entryBufferTicks: activeSnapshot.review.teaching.entryBufferTicks,
+    levelToleranceTicks: activeSnapshot.review.teaching.levelToleranceTicks ?? 4,
     pullbackLevels: activeSnapshot.review.teaching.pullbackLevels?.length ? activeSnapshot.review.teaching.pullbackLevels : activeSnapshot.review.teaching.pullbackLevel !== undefined ? [activeSnapshot.review.teaching.pullbackLevel] : [],
     setupType: activeSnapshot.review.teaching.setupType,
     confidence: activeSnapshot.review.teaching.confidence,
@@ -452,6 +454,7 @@ export default function VisualReview() {
           patienceCandleOpenTime: saved.teaching.patienceCandleOpenTime,
           patienceCandleCloseTime: saved.teaching.patienceCandleCloseTime,
           entryBufferTicks: saved.teaching.entryBufferTicks,
+          levelToleranceTicks: saved.teaching.levelToleranceTicks ?? 4,
           pullbackLevels: saved.teaching.pullbackLevels?.length ? saved.teaching.pullbackLevels : saved.teaching.pullbackLevel !== undefined ? [saved.teaching.pullbackLevel] : [],
           setupType: saved.teaching.setupType,
           confidence: saved.teaching.confidence,
@@ -538,13 +541,14 @@ export default function VisualReview() {
                         const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
                         const patience = entryIndex > 0 ? activeSnapshot.reviewCandles[entryIndex - 1] : null;
                         const direction = activeSnapshot.categoryAnchor.direction === "short" ? "short" : "long";
+                        const tolerancePoints = (teachingDraft?.levelToleranceTicks ?? 4) * 0.25;
                         const containedLevels = activeSnapshot.annotations
                           .filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")
                           .map((annotation) => annotation.price as number)
-                          .filter((price) => !patience || (price >= patience.low - 0.25 && price <= patience.high + 0.25));
+                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= tolerancePoints);
                         const pullbackLevel = containedLevels[0] ?? candle.close;
                         const existingLevels = (current: NonNullable<typeof teachingDraft>) => current.pullbackLevels
-                          .filter((price) => !patience || (price >= patience.low - 0.25 && price <= patience.high + 0.25));
+                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= (current.levelToleranceTicks ?? 4) * 0.25);
                         setTeachingDraft((current) => ({
                           judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
                           direction: current?.direction ?? direction,
@@ -553,6 +557,7 @@ export default function VisualReview() {
                           patienceCandleOpenTime: patience?.openTime ?? "",
                           patienceCandleCloseTime: patience?.closeTime ?? "",
                           entryBufferTicks: current?.entryBufferTicks ?? 4,
+                          levelToleranceTicks: current?.levelToleranceTicks ?? 4,
                           pullbackLevels: current ? (existingLevels(current).length ? existingLevels(current) : [pullbackLevel]) : [pullbackLevel],
                           setupType: current?.setupType ?? activeSnapshot.strategyKey,
                           confidence: current?.confidence ?? "low",
@@ -1396,7 +1401,9 @@ function ReviewPanel({
     ? (teaching.direction === "long" ? patience.high + teaching.entryBufferTicks * 0.25 : patience.low - teaching.entryBufferTicks * 0.25).toFixed(2)
     : "—";
   const availableLevels = snapshot.annotations.filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle");
-  const containedLevels = availableLevels.filter((level) => !patience || (level.price as number) >= patience.low - 0.25 && (level.price as number) <= patience.high + 0.25);
+  const levelToleranceTicks = teaching?.levelToleranceTicks ?? 4;
+  const levelTolerancePoints = levelToleranceTicks * 0.25;
+  const containedLevels = availableLevels.filter((level) => !patience || Math.max(0, (level.rangeLow ?? level.price as number) - patience.high, patience.low - (level.rangeHigh ?? level.price as number)) <= levelTolerancePoints);
   const updateTeaching = (patch: Partial<NonNullable<VisualValidationReviewRequest["teaching"]>>) => {
     if (teaching) setTeaching({ ...teaching, ...patch });
   };
@@ -1419,13 +1426,14 @@ function ReviewPanel({
          {teaching && <div className="grid gap-3 sm:grid-cols-2">
            <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
            <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
-           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); const contained = containedLevels.includes(level); return <label key={`${level.id}-${level.price}`} className={`flex items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)}</span>{!contained && <span className="block text-[9px] text-negative">Outside P range</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Only levels contained by the selected patience candle (P) can qualify. Select every mapped level the pullback qualifies against.</p></fieldset>
+           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); const contained = containedLevels.includes(level); return <label key={`${level.id}-${level.price}`} className={`flex items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)}</span>{!contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels may touch or approach the selected patience candle (P) within the configured {levelToleranceTicks}-tick MES proximity zone. Select every mapped level the pullback qualifies against.</p></fieldset>
             <Field label="Strategy"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="PATIENCE_CANDLE_CONTINUATION">Patience candle continuation</option><option value="STRONG_BREAKOUT_AFTER_CONSOLIDATION">Strong breakout after consolidation</option><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EQUIVALENT_CANDLE_REVERSAL">Equivalent candle reversal</option></select></Field>
            <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
            <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>
+           <Field label="Level tolerance"><select className="field" value={teaching.levelToleranceTicks ?? 4} onChange={(event) => updateTeaching({ levelToleranceTicks: Number(event.target.value) })}><option value={4}>4 ticks · 1.00 pt (default)</option><option value={3}>3 ticks · 0.75 pt</option><option value={2}>2 ticks · 0.50 pt</option><option value={1}>1 tick · 0.25 pt</option><option value={0}>0 ticks · exact touch</option></select><span className="mt-1 block text-[9px] text-muted-foreground">Maximum is 4 ticks unless a separate governed proposal changes the rule.</span></Field>
            <label className="block sm:col-span-2"><span className="eyebrow mb-1.5 block text-muted-foreground">Teaching explanation · required</span><textarea maxLength={4000} rows={4} value={teaching.explanation} onChange={(event) => updateTeaching({ explanation: event.target.value })} className="field resize-none" placeholder="Explain what the formula missed or why this correction needs clarification." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{teaching.explanation.length} / 4000</span></label>
          </div>}
-         {status === "rule_needs_clarification" && <div className="text-[10px] leading-4 text-muted-foreground">If the candle pair fails validation, save this as <strong>Rule needs clarification</strong>. A direct Missed trade submission is accepted only when timing, direction, level, causal visibility, containment, and buffer checks all pass.</div>}
+         {status === "rule_needs_clarification" && <div className="text-[10px] leading-4 text-muted-foreground">If the candle pair fails validation, save this as <strong>Rule needs clarification</strong>. A direct Missed trade submission is accepted only when timing, direction, level proximity, causal visibility, and buffer checks all pass.</div>}
        </div>}
        {status === "false_positive_trade" && <div className="border border-[hsl(var(--negative)/.35)] bg-[hsl(var(--negative)/.06)] p-3 text-[10px] leading-4 text-muted-foreground" data-testid="false-positive-guidance"><strong className="text-foreground">Machine trade locked.</strong> Explain which raw candle or causal rule disproves this exact trade. The formula remains unchanged.</div>}
       <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">Reviewer note · optional</span><textarea maxLength={2000} rows={5} value={note} onChange={(event) => setNote(event.target.value)} className="field resize-none" placeholder="Name the exact candle, level, or rule ambiguity you observed." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{note.length} / 2000</span></label>

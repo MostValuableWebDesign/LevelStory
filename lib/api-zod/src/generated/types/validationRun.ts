@@ -7,6 +7,8 @@
  */
 import type { ValidationRunAfterMetrics } from './validationRunAfterMetrics';
 import type { ValidationRunBeforeMetrics } from './validationRunBeforeMetrics';
+import type { ValidationRunHoldoutCompleted } from './validationRunHoldoutCompleted';
+import type { ValidationRunProgressStage } from './validationRunProgressStage';
 import type { ValidationRunStatus } from './validationRunStatus';
 
 export interface ValidationRun {
@@ -14,6 +16,12 @@ export interface ValidationRun {
   proposalId: string;
   requestFingerprint: string;
   status: ValidationRunStatus;
+  progressStage: ValidationRunProgressStage;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progressPercent: number;
   /** @nullable */
   beforeMetrics?: ValidationRunBeforeMetrics;
   /** @nullable */
@@ -25,6 +33,16 @@ export interface ValidationRun {
   sourceFingerprint: string;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  parentFormulaHash?: string | null;
+  /** @nullable */
+  candidateFormulaHash?: string | null;
+  /** @nullable */
+  validationConfigFingerprint?: string | null;
+  holdoutCompleted?: ValidationRunHoldoutCompleted;
+  evidenceIds: string[];
+  /** @nullable */
+  startedAt?: Date | null;
   requestedBy: string;
   createdAt: Date;
   /** @nullable */
