@@ -4003,7 +4003,7 @@ export const getVisualValidationSetQuerySeedDefault = 11;
 export const getVisualValidationSetQuerySeedMin = 0;
 export const getVisualValidationSetQuerySeedMax = 1000000;
 
-
+export const getVisualValidationSetQueryReviewModeDefault = `trades_only`;
 
 export const GetVisualValidationSetQueryParams = zod.object({
   "reviewSetId": zod.coerce.string().regex(getVisualValidationSetQueryReviewSetIdRegExp).optional(),
@@ -4011,7 +4011,8 @@ export const GetVisualValidationSetQueryParams = zod.object({
   "endDate": zod.coerce.string().regex(getVisualValidationSetQueryEndDateRegExp).default(getVisualValidationSetQueryEndDateDefault),
   "inSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryInSampleDaysMax).default(getVisualValidationSetQueryInSampleDaysDefault),
   "outOfSampleDays": zod.coerce.number().min(1).max(getVisualValidationSetQueryOutOfSampleDaysMax).default(getVisualValidationSetQueryOutOfSampleDaysDefault),
-  "seed": zod.coerce.number().min(getVisualValidationSetQuerySeedMin).max(getVisualValidationSetQuerySeedMax).default(getVisualValidationSetQuerySeedDefault)
+  "seed": zod.coerce.number().min(getVisualValidationSetQuerySeedMin).max(getVisualValidationSetQuerySeedMax).default(getVisualValidationSetQuerySeedDefault),
+  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(getVisualValidationSetQueryReviewModeDefault)
 })
 
 export const getVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4031,6 +4032,7 @@ export const getVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const getVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
+export const getVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4058,7 +4060,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "outOfSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
+  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
@@ -4229,6 +4232,7 @@ export const createVisualValidationSetBodySeedMax = 1000000;
 
 export const createVisualValidationSetBodyPremarketAvailableDefault = true;
 export const createVisualValidationSetBodySourceDefault = `historical_databento`;
+export const createVisualValidationSetBodyReviewModeDefault = `trades_only`;
 
 export const CreateVisualValidationSetBody = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
@@ -4237,7 +4241,8 @@ export const CreateVisualValidationSetBody = zod.object({
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -4257,6 +4262,7 @@ export const createVisualValidationSetResponseRequestSeedMax = 1000000;
 
 export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const createVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
+export const createVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
@@ -4284,7 +4290,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault),
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
-  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.')
+  "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.')
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),

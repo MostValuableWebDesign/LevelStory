@@ -45,6 +45,7 @@ export const VISUAL_VALIDATION_CATEGORIES = [
 
 export type VisualValidationCategory = typeof VISUAL_VALIDATION_CATEGORIES[number];
 export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain" | "rule_needs_clarification";
+export type VisualValidationReviewMode = "trades_only" | "trades_and_diagnostics";
 
 export type VisualValidationRequest = {
   symbol: string;
@@ -54,6 +55,7 @@ export type VisualValidationRequest = {
   seed?: number;
   premarketAvailable?: boolean;
   source?: "simulated" | "historical_databento";
+  reviewMode?: VisualValidationReviewMode;
 };
 
 export type VisualValidationCandle = {
@@ -214,6 +216,22 @@ export type VisualValidationSet = {
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
 };
+
+export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
+  "qualified_trade",
+  "bullish_patience_candle",
+  "bearish_patience_candle",
+  "strong_breakout",
+  "pullback",
+  "consolidation",
+  "stop_exit",
+  "target_exit",
+  "runner_exit",
+];
+
+export function visualValidationReviewMode(request: Pick<VisualValidationRequest, "reviewMode">): VisualValidationReviewMode {
+  return request.reviewMode ?? "trades_only";
+}
 
 export type VisualValidationReview = {
   reviewId: string;
@@ -588,10 +606,10 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   };
   addLevel("premarket-high", "Premarket high", snapshot.levels.premarketHigh, "Premarket high available at the evaluation cursor.");
   addLevel("premarket-low", "Premarket low", snapshot.levels.premarketLow, "Premarket low available at the evaluation cursor.");
-  addLevel("previous-session-high", "Previous session high", snapshot.levels.previousDayHigh, "Previous completed session high.");
-  addLevel("previous-session-low", "Previous session low", snapshot.levels.previousDayLow, "Previous completed session low.");
-  addLevel("two-sessions-high", "Two sessions back high", snapshot.levels.dayBeforeYesterdayHigh, "High from the prior completed session.");
-  addLevel("two-sessions-low", "Two sessions back low", snapshot.levels.dayBeforeYesterdayLow, "Low from the prior completed session.");
+  addLevel("previous-session-high", "PDH", snapshot.levels.previousDayHigh, "Previous completed regular-session high.");
+  addLevel("previous-session-low", "PDL", snapshot.levels.previousDayLow, "Previous completed regular-session low.");
+  addLevel("two-sessions-high", "2DH", snapshot.levels.dayBeforeYesterdayHigh, "High from two completed regular sessions back.");
+  addLevel("two-sessions-low", "2DL", snapshot.levels.dayBeforeYesterdayLow, "Low from two completed regular sessions back.");
   addLevel("ntz-high", "NTZ high", snapshot.levels.ntzHigh, "No-trade zone upper boundary.");
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
@@ -600,9 +618,14 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
   for (const level of snapshot.majorLevels) {
     addLevel(`major-${level.name}`, level.name, level.price, `${level.kind} · ${level.confluence} confluence`, "muted");
   }
-  addLevel("fib-low-anchor", "Fibonacci low anchor", snapshot.fibonacci.impulseLow, "Frozen impulse low anchor.", "blue");
-  addLevel("fib-high-anchor", "Fibonacci high anchor", snapshot.fibonacci.impulseHigh, "Frozen impulse high anchor.", "blue");
-  for (const level of snapshot.fibonacci.levels) addLevel(`fib-${level.name}`, `Fib ${level.label}`, level.price, `${(level.ratio * 100).toFixed(1)}% retracement`, "blue");
+  const fibonacciAvailable = snapshot.pullback.events.length > 0
+    && snapshot.fibonacci.classification !== "unavailable"
+    && snapshot.fibonacci.levels.length > 0;
+  if (fibonacciAvailable) {
+    addLevel("fib-low-anchor", "Fibonacci low anchor", snapshot.fibonacci.impulseLow, "Frozen impulse low anchor after confirmed pullback interaction.", "blue");
+    addLevel("fib-high-anchor", "Fibonacci high anchor", snapshot.fibonacci.impulseHigh, "Frozen impulse high anchor after confirmed pullback interaction.", "blue");
+    for (const level of snapshot.fibonacci.levels) addLevel(`fib-${level.name}`, `Fib ${level.label}`, level.price, `${(level.ratio * 100).toFixed(1)}% retracement`, "blue");
+  }
 
   const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
   const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
@@ -1009,10 +1032,12 @@ export function buildHistoricalVisualValidationSetFromReport(
     formulaHash: formulaConfigurationHash({ symbol: request.symbol }),
     executionMode: "ohlcv_modeled",
   };
+  const mode = visualValidationReviewMode(request);
   const candidates = report.audit.flatMap((audit) => {
     const trade = matchingTrade(audit, report.trades);
     return categoriesFor(audit, trade)
       .map((category) => ({ audit, trade, category }))
+      .filter((candidate) => mode === "trades_and_diagnostics" || candidate.trade !== null)
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles) !== null);
   });
   const snapshots = VISUAL_VALIDATION_CATEGORIES.flatMap((category, categoryIndex) => {

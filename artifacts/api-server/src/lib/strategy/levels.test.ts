@@ -30,15 +30,26 @@ function candle(
   };
 }
 
+function regularSession(date: string, high: number, low: number, lastClose: number): Candle[] {
+  const start = timestampForTradingDate(date, "09:30", calendar);
+  return Array.from({ length: 78 }, (_, index) => {
+    const openTime = start + index * 5 * 60_000;
+    return {
+      openTime,
+      closeTime: openTime + 5 * 60_000,
+      open: index === 77 ? lastClose : 104,
+      high: index === 0 ? high : 105,
+      low: index === 0 ? low : 103,
+      close: index === 77 ? lastClose : 104,
+      volume: 100,
+      isComplete: true,
+    };
+  });
+}
+
 function fixture(options: { includeThird?: boolean; includePremarket?: boolean; outsideLast?: boolean } = {}) {
-  const previous = [
-    candle("2026-08-24", "09:30", 110, 100, 105),
-    candle("2026-08-24", "09:35", 108, 101, 104),
-  ];
-  const dayBefore = [
-    candle("2026-08-21", "09:30", 120, 90, 95),
-    candle("2026-08-21", "09:35", 118, 92, 96),
-  ];
+  const previous = regularSession("2026-08-24", 110, 100, 104);
+  const dayBefore = regularSession("2026-08-21", 120, 90, 96);
   const premarket = options.includePremarket === false
     ? []
     : [candle("2026-08-25", "04:00", 101, 99, 100)];

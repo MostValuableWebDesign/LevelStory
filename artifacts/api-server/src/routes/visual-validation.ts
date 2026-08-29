@@ -29,6 +29,7 @@ const defaultRequest = {
   seed: undefined,
   premarketAvailable: true,
   source: "historical_databento" as const,
+  reviewMode: "trades_only" as const,
 };
 
 export function createVisualValidationRouter(): IRouter {
@@ -68,6 +69,7 @@ export function createVisualValidationRouter(): IRouter {
       ...(parsed.data.inSampleDays ? { inSampleDays: parsed.data.inSampleDays } : {}),
       ...(parsed.data.outOfSampleDays ? { outOfSampleDays: parsed.data.outOfSampleDays } : {}),
       ...(parsed.data.seed !== undefined ? { seed: parsed.data.seed } : {}),
+       ...(parsed.data.reviewMode ? { reviewMode: parsed.data.reviewMode } : {}),
     };
     try {
       const built = request.source === "historical_databento"

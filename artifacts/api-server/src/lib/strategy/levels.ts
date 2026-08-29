@@ -85,8 +85,9 @@ export function sessionLevels(
   const tradingDays = [...dayMap.keys()].sort((first, second) => second.localeCompare(first));
   const currentDate = currentTradingDate ?? tradingDays[0];
   const priorDays = tradingDays.filter((date) => date < (currentDate ?? ""));
-  const previousDay = priorDays[0] ? dayMap.get(priorDays[0]) ?? [] : [];
-  const dayBeforeYesterday = priorDays[1] ? dayMap.get(priorDays[1]) ?? [] : [];
+  const completedPriorDays = priorDays.filter((date) => isCompleteRegularSession(dayMap.get(date) ?? [], date, calendar));
+  const previousDay = completedPriorDays[0] ? dayMap.get(completedPriorDays[0]) ?? [] : [];
+  const dayBeforeYesterday = completedPriorDays[1] ? dayMap.get(completedPriorDays[1]) ?? [] : [];
 
   const currentSessionWindow = currentDate ? sessionWindow(currentDate, "regular", calendar) : null;
   const openingRangeStart = currentSessionWindow?.openTime;
@@ -169,6 +170,24 @@ function high(candles: readonly Candle[]): number {
 
 function low(candles: readonly Candle[]): number {
   return candles.length ? Math.min(...candles.map((candle) => candle.low)) : NaN;
+}
+
+function isCompleteRegularSession(
+  candles: readonly Candle[],
+  tradingDate: string,
+  calendar: FuturesSessionCalendar,
+): boolean {
+  const window = sessionWindow(tradingDate, "regular", calendar);
+  if (!window) return false;
+  const expectedCount = Math.round((window.closeTime - window.openTime) / FIVE_MINUTES);
+  if (candles.length !== expectedCount) return false;
+  const byOpen = new Map(candles.map((candle) => [candle.openTime, candle]));
+  for (let index = 0; index < expectedCount; index += 1) {
+    const openTime = window.openTime + index * FIVE_MINUTES;
+    const candle = byOpen.get(openTime);
+    if (!candle || candle.closeTime !== openTime + FIVE_MINUTES || !candle.isComplete) return false;
+  }
+  return true;
 }
 
 function exactOpeningCandles(candles: readonly Candle[], openingRangeStart: number): Candle[] {

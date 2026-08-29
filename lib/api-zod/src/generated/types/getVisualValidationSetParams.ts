@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GetVisualValidationSetReviewMode } from './getVisualValidationSetReviewMode';
 import type { GetVisualValidationSetSymbol } from './getVisualValidationSetSymbol';
 
 export type GetVisualValidationSetParams = {
@@ -32,4 +33,5 @@ outOfSampleDays?: number;
  * @maximum 1000000
  */
 seed?: number;
+reviewMode?: GetVisualValidationSetReviewMode;
 };

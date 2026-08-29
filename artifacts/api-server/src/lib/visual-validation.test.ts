@@ -52,7 +52,7 @@ test("historical projection keeps contract-local candles and truthful category g
     candles: [...fixture.dataset.candles, foreignContractCandle],
   };
   const set = buildHistoricalVisualValidationSetFromReport(
-    { ...request, source: "historical_databento" },
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
     dataset,
     {
       symbol: "MES",
@@ -71,6 +71,33 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 1);
   assert.equal(set.snapshots[0]?.evaluationCursor.futureCandleAccess, false);
   assert.equal(set.snapshots[0]?.futureCandleAccess, false);
+});
+
+test("historical visual review defaults to trade-linked samples and opts into no-entry diagnostics", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  const dataset = { ...fixture.dataset, source: "historical_databento_multicontract" as const };
+  const report = {
+    symbol: "MES",
+    formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+    executionMode: "ohlcv_modeled" as const,
+    audit: [fixture.audit],
+    trades: [],
+  };
+  const tradeOnly = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento" },
+    dataset,
+    report,
+  );
+  assert.equal(tradeOnly.snapshots.length, 0);
+  assert.equal(tradeOnly.categoryCoverage.find((item) => item.category === "strong_breakout")?.available, false);
+  const withDiagnostics = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    dataset,
+    report,
+  );
+  assert.ok(withDiagnostics.snapshots.length >= 1);
+  assert.ok(withDiagnostics.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {

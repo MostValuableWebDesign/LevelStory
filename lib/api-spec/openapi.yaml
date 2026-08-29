@@ -406,6 +406,10 @@ paths:
           in: query
           required: false
           schema: { type: number, minimum: 0, maximum: 1000000, default: 11 }
+        - name: reviewMode
+          in: query
+          required: false
+          schema: { type: string, enum: [trades_only, trades_and_diagnostics], default: trades_only }
       responses:
         "200":
           description: Visual-validation snapshot set
@@ -2843,6 +2847,7 @@ components:
         seed: { type: number, minimum: 0, maximum: 1000000, default: 11 }
         premarketAvailable: { type: boolean, default: true }
         source: { type: string, enum: [simulated, historical_databento], default: historical_databento, description: Historical Databento is the default; simulated fixtures are an explicit testing option. }
+        reviewMode: { type: string, enum: [trades_only, trades_and_diagnostics], default: trades_only, description: Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence. }
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:
       type: string

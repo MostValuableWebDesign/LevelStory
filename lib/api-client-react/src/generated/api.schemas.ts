@@ -2805,6 +2805,17 @@ export const VisualValidationRequestSource = {
   historical_databento: 'historical_databento',
 } as const;
 
+/**
+ * Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence.
+ */
+export type VisualValidationRequestReviewMode = typeof VisualValidationRequestReviewMode[keyof typeof VisualValidationRequestReviewMode];
+
+
+export const VisualValidationRequestReviewMode = {
+  trades_only: 'trades_only',
+  trades_and_diagnostics: 'trades_and_diagnostics',
+} as const;
+
 export interface VisualValidationRequest {
   symbol: VisualValidationRequestSymbol;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
@@ -2827,6 +2838,8 @@ export interface VisualValidationRequest {
   premarketAvailable?: boolean;
   /** Historical Databento is the default; simulated fixtures are an explicit testing option. */
   source?: VisualValidationRequestSource;
+  /** Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence. */
+  reviewMode?: VisualValidationRequestReviewMode;
 }
 
 export type VisualValidationReviewStatus = typeof VisualValidationReviewStatus[keyof typeof VisualValidationReviewStatus];
@@ -3428,6 +3441,7 @@ outOfSampleDays?: number;
  * @maximum 1000000
  */
 seed?: number;
+reviewMode?: GetVisualValidationSetReviewMode;
 };
 
 export type GetVisualValidationSetSymbol = typeof GetVisualValidationSetSymbol[keyof typeof GetVisualValidationSetSymbol];
@@ -3435,6 +3449,14 @@ export type GetVisualValidationSetSymbol = typeof GetVisualValidationSetSymbol[k
 
 export const GetVisualValidationSetSymbol = {
   MES: 'MES',
+} as const;
+
+export type GetVisualValidationSetReviewMode = typeof GetVisualValidationSetReviewMode[keyof typeof GetVisualValidationSetReviewMode];
+
+
+export const GetVisualValidationSetReviewMode = {
+  trades_only: 'trades_only',
+  trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;
 
 export type ExportVisualValidationDiscrepanciesParams = {

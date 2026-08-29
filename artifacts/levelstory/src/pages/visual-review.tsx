@@ -84,7 +84,6 @@ import {
   type SessionCandle,
   type SessionView,
   stackLabelPositions,
-  summarizeCategoryCoverage,
   type CandleInspection,
 } from "@/lib/visual-review-chart";
 
@@ -102,6 +101,17 @@ const CATEGORIES: Array<{ value: VisualValidationCategory; label: string; short:
   { value: "target_exit", label: "Target exit", short: "Target exit" },
   { value: "runner_exit", label: "Runner exit", short: "Runner exit" },
 ];
+const TRADE_CATEGORY_VALUES = new Set<VisualValidationCategory>([
+  "qualified_trade",
+  "bullish_patience_candle",
+  "bearish_patience_candle",
+  "strong_breakout",
+  "pullback",
+  "consolidation",
+  "stop_exit",
+  "target_exit",
+  "runner_exit",
+]);
 
 const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unreviewed">; label: string; detail: string }> = [
   { value: "correct", label: "Correct", detail: "Machine story matches the candles." },
@@ -118,6 +128,7 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   seed: undefined,
   premarketAvailable: true,
   source: "historical_databento",
+  reviewMode: "trades_only",
 };
 
 function storedReviewSource(): VisualValidationRequest["source"] {
@@ -206,6 +217,8 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
 function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
   if (annotation.id.startsWith("premarket-")) return "hsl(157 45% 35%)";
+  if (annotation.id === "previous-session-high" || annotation.id === "previous-session-low") return "hsl(259 55% 48%)";
+  if (annotation.id === "two-sessions-high" || annotation.id === "two-sessions-low") return "hsl(190 58% 38%)";
   if (annotation.id === "vwap") return "hsl(5 58% 46%)";
   if (annotation.id === "ema-200") return "hsl(145 45% 42%)";
   if (annotation.id.startsWith("critical-") || annotation.id.includes("support") || annotation.id.includes("resistance")) return "hsl(214 37% 15%)";
@@ -248,7 +261,9 @@ export default function VisualReview() {
   const data = localSet ?? setQuery.data;
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
-  const availableCategories = useMemo(() => coverage.filter((item) => item.available && item.count > 0).map((item) => item.category), [coverage]);
+  const availableCategories = useMemo(() => coverage
+    .filter((item) => item.available && item.count > 0 && TRADE_CATEGORY_VALUES.has(item.category))
+    .map((item) => item.category), [coverage, data?.request.reviewMode]);
   const categorySnapshots = useMemo(
     () => snapshots.filter((snapshot) => snapshot.category === selectedCategory),
     [selectedCategory, snapshots],
@@ -268,10 +283,14 @@ export default function VisualReview() {
       setSelectedCategory(null);
       return;
     }
-    if (!selectedCategory || !availableCategories.includes(selectedCategory)) {
+    const selectedIsExplicitDiagnostic = selectedCategory !== null
+      && !TRADE_CATEGORY_VALUES.has(selectedCategory)
+      && (data.source === "simulated" || data.request.reviewMode === "trades_and_diagnostics")
+      && snapshots.some((snapshot) => snapshot.category === selectedCategory);
+    if (!selectedCategory || (!availableCategories.includes(selectedCategory) && !selectedIsExplicitDiagnostic)) {
       setSelectedCategory(availableCategories[0]);
     }
-  }, [availableCategories, data, selectedCategory]);
+  }, [availableCategories, data, selectedCategory, snapshots]);
 
   useEffect(() => {
     if (!activeSnapshot) {
@@ -458,6 +477,13 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
           <option value="simulated">Simulated fixture data · testing only</option>
         </select>
       </Field>
+      <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Trades-only keeps the main room focused on trade-linked evidence. The diagnostics option adds a separate, collapsed no-entry section for explicit rule inspection." /></span>}>
+        <select className="field" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value as "trades_only" | "trades_and_diagnostics")} data-testid="select-visual-review-mode">
+          <option value="trades_only">Trades only · default</option>
+          <option value="trades_and_diagnostics">Trades + no-entry diagnostics</option>
+        </select>
+        <span className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Historical mode filters no-entry samples unless diagnostics are explicitly enabled." : "Simulated fixtures remain available for deterministic contract testing."}</span>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
         <Field label={<span className="inline-flex items-center gap-1.5">Seed <InfoTip label="Seed" text="Seeds affect simulated fixture generation only. Historical mode is immutable, so this control is disabled." /></span>}>
@@ -506,25 +532,41 @@ function SetManifest({ data, loading }: { data?: VisualValidationSet; loading: b
 }
 
 function CoverageRail({ data, selectedCategory, onSelect }: { data: VisualValidationSet; selectedCategory: VisualValidationCategory | null; onSelect: (category: VisualValidationCategory) => void }) {
-  const summary = summarizeCategoryCoverage(data.categoryCoverage);
   const historical = data.source === "historical_databento";
+  const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
+  const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
+  const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
+  const isAvailable = (category: VisualValidationCategory) => {
+    const item = coverageFor(category);
+    return Boolean(item?.available && item.count > 0);
+  };
+  const renderCategory = (category: (typeof CATEGORIES)[number]) => {
+    const item = coverageFor(category.value);
+    const available = isAvailable(category.value);
+    const selected = selectedCategory === category.value;
+    return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[76px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
+      <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{item?.count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
+      <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : historical ? "No trade-linked sample." : "Unavailable"}</span>
+    </button>;
+  };
+  const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
+  const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
   return <Panel>
-    <PanelTitle eyebrow="Coverage / category samples" title="Choose the story to inspect" right={<span className="mono text-[10px] text-muted-foreground">{summary.available.length} of 12 {historical ? "historical categories found" : "categories available"}</span>} />
-    <div className="grid gap-3 border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:grid-cols-2 sm:px-6" data-testid="category-coverage-summary">
-      <div><span className="font-semibold text-foreground">{summary.available.length} of 12 {historical ? "historical categories found" : "categories available"}</span><div className="mt-1 text-[11px] text-muted-foreground">{summary.available.length ? `Available: ${summary.available.map((item) => item.label).join(", ")}` : "No qualifying categories found in this range."}</div></div>
-      <div><span className="font-semibold text-foreground">{summary.unavailable.length} not found</span><div className="mt-1 text-[11px] text-muted-foreground">{summary.unavailable.length ? `Not found: ${summary.unavailable.map((item) => item.label).join(", ")}` : "All categories are represented."}</div></div>
+    <PanelTitle eyebrow="Coverage / trade-linked samples" title="Choose the story to inspect" right={<span className="mono text-[10px] text-muted-foreground">{tradeCategories.filter((category) => isAvailable(category.value)).length} of {tradeCategories.length} trade categories</span>} />
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-accent/8 px-5 py-3 text-[10px] text-muted-foreground sm:px-6" data-testid="category-coverage-summary">
+      <span className="font-semibold text-foreground">{tradeCategories.filter((category) => isAvailable(category.value)).length} trade categories available</span>
+      <span>{tradeCategories.filter((category) => !isAvailable(category.value)).length} not found in this range</span>
+      <span className="mono ml-auto">{data.snapshots.length} snapshots · {historical ? "historical source" : "simulated source"}</span>
     </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-      {CATEGORIES.map((category) => {
-        const item = data.categoryCoverage.find((entry) => entry.category === category.value);
-        const available = Boolean(item?.available && item.count > 0);
-        const selected = selectedCategory === category.value;
-        return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[82px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
-          <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{item?.count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
-           <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : data.source === "historical_databento" ? "No qualifying historical example found." : "Unavailable"}</span>
-        </button>;
-      })}
+      {tradeCategories.map(renderCategory)}
     </div>
+    {diagnosticAvailable && <details className="border-t border-border" data-testid="diagnostic-categories">
+      <summary className="cursor-pointer px-5 py-3 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground sm:px-6">No-entry diagnostics · {diagnostics.filter((category) => isAvailable(category.value)).length} available</summary>
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        {diagnostics.map(renderCategory)}
+      </div>
+    </details>}
   </Panel>;
 }
 
@@ -649,11 +691,11 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded }: { snapsho
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
       <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}
-      <div className="mb-3 grid gap-2 text-[10px] sm:grid-cols-2" data-testid="session-coverage-disclosure">
-        {[primaryCoverage, fullCoverage].map((item) => item && <div key={item.session} className={`border px-3 py-2 ${item.complete ? "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.06)]" : "border-accent/30 bg-accent/8"}`}>
-          <div className="flex items-center justify-between gap-3 font-bold uppercase tracking-[.08em]"><span>{item.session === "primary" ? "Primary window" : "Full regular session"}</span><span className="mono font-normal">{item.observedCandleCount}/{item.expectedCandleCount} candles</span></div>
-          <div className="mt-1 text-muted-foreground">{item.complete ? "Complete observed coverage." : `${item.missingIntervals.length} interval${item.missingIntervals.length === 1 ? "" : "s"} missing; blank slots are intentional.`}</div>
-        </div>)}
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-border bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground" data-testid="compact-coverage-details">
+        <span className="font-semibold text-foreground">Coverage</span>
+        {primaryCoverage && <span className="mono">Primary {primaryCoverage.observedCandleCount}/{primaryCoverage.expectedCandleCount}</span>}
+        {fullCoverage && <span className="mono">Full {fullCoverage.observedCandleCount}/{fullCoverage.expectedCandleCount}</span>}
+        <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
       </div>
        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
@@ -725,7 +767,7 @@ function CandleInspector({
   return <section className={`candle-inspector ${collapsed ? "is-collapsed" : ""}`} aria-label="Selected candle inspector" data-testid="candle-inspector">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <span className="eyebrow block text-muted-foreground">Candle inspector · click or keyboard selection</span>
+        <span className="eyebrow block text-muted-foreground">Candle inspector · hover or arrow-key selection</span>
         <span className="mt-1 block text-xs font-bold">{inspection ? inspection.interval : selectedLabel}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -900,17 +942,16 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
-  const selectedCandle = selectedSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === selectedSlot) ?? null;
-  const selectedDetails = selectedCandle ? getCandleInspection(selectedCandle) : null;
   const activeSlot = hoveredSlot ?? selectedSlot;
   const activeCandle = activeSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === activeSlot) ?? null;
+  const activeDetails = activeCandle ? getCandleInspection(activeCandle) : null;
   const activeEvents = activeCandle
     ? chartEvents
       .filter((event) => [event.openTime, event.closeTime].includes(activeCandle.openTime) || [event.openTime, event.closeTime].includes(activeCandle.closeTime))
       .map((event) => `${event.label}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`)
     : [];
-  const selectedIndicators = selectedCandle
-    ? indicatorByOpenTime.get(selectedCandle.openTime) ?? null
+  const selectedIndicators = activeCandle
+    ? indicatorByOpenTime.get(activeCandle.openTime) ?? null
     : null;
   const finalCandle = candles.at(-1);
   const finalIndicators = finalCandle ? indicatorByOpenTime.get(finalCandle.openTime) ?? null : null;
@@ -931,7 +972,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   );
   const updateHoveredSlot = (clientX: number, clientY: number) => {
     const slot = resolvePointer(clientX, clientY);
-    setHoveredSlot(slot);
+    if (slot !== null) setHoveredSlot(slot);
   };
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     pendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
@@ -1038,9 +1079,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             })}
           </div>}
         </section>
-        <CandleInspector inspection={selectedDetails} activeEvents={activeEvents} selectedSlot={selectedSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} />
+       <CandleInspector inspection={activeDetails} activeEvents={activeEvents} selectedSlot={activeSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} />
        <div className="chart-plot-shell mt-3">
-         <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => setHoveredSlot(null)} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
+         <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
          <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" pointerEvents="none" data-testid="chart-interaction-layer" />
          {activeSlot !== null && <rect x={left + activeSlot * step} y={top} width={step} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="3 3" pointerEvents="none" data-testid="selected-slot-column" />}
@@ -1059,7 +1100,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
            const active = activeEventId === event.id || selectedSlot === event.markerSlot;
            const previewEvent = () => setActiveEventId(event.id);
            const eventFocus = () => focusChartEvent(event);
-           return <g key={`marker-${event.id}`} data-testid={`event-marker-${event.id}`} role="button" tabIndex={0} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`} onMouseEnter={previewEvent} onFocus={eventFocus} onClick={eventFocus} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); eventFocus(); } }}>
+           return <g key={`marker-${event.id}`} pointerEvents="none" data-testid={`event-marker-${event.id}`} aria-label={`Event ${event.number}: ${event.label}. ${event.detail}. ${event.visibility}.`}>
             <title>{`#${event.number} ${event.label} · ${event.detail} · ${event.visibility}${event.openTime ? ` · ${formatCandleTime(event.openTime, "America/New_York")} NY` : ""}${event.price == null ? "" : ` · ${formatPriceAxisValue(event.price)}`}`}</title>
             <circle cx={eventX} cy={eventY} r={active ? "6" : "4.5"} fill={event.visibility === "human_only" ? "hsl(var(--muted))" : "hsl(var(--card))"} stroke={color} strokeWidth={active ? "2" : "1.3"} />
             <text x={eventX} y={eventY + 3} textAnchor="middle" fill={color} fontSize="7.5" fontWeight="700" fontFamily="DM Mono">{event.number}</text>
@@ -1078,14 +1119,13 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       {openingRangeX !== null && openingRangeWidth > 0 && <g data-testid="opening-range-region">
         <rect x={openingRangeX} y={top} width={openingRangeWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="4 3" />
         <path d={`M ${openingRangeX} ${top + 25} v -8 h ${openingRangeWidth} v 8`} fill="none" stroke="hsl(var(--accent))" strokeWidth="1.2" />
-        <text x={openingRangeX + openingRangeWidth / 2} y={top + 15} textAnchor="middle" fill="hsl(var(--accent))" fontSize="8.5" fontWeight="700" fontFamily="DM Mono">OPENING RANGE</text>
       </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
         <path d={`M ${Math.max(boundaryX - 6, left)} ${top} L ${boundaryX} ${top - 8} L ${Math.min(boundaryX + 6, plotRight)} ${top} Z`} fill="hsl(var(--foreground))" data-testid="causal-boundary-notch" />
-        {indicatorPath("vwap", "machine") && <path d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" data-testid="indicator-curve-vwap" />}
-        {indicatorPath("vwap", "human_only") && <path d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-vwap-human-only" />}
-        {indicatorPath("ema200", "machine") && <path d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
-        {indicatorPath("ema200", "human_only") && <path d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
+        {indicatorPath("vwap", "machine") && <path pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" data-testid="indicator-curve-vwap" />}
+        {indicatorPath("vwap", "human_only") && <path pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-vwap-human-only" />}
+        {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
+        {indicatorPath("ema200", "human_only") && <path pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
       {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
@@ -1099,10 +1139,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           const axisLabelX = plotRight + 7;
           const labelWidth = width - axisLabelX - 7;
           const displaced = isDisplacedLabel(labelY, y(annotation.price));
-          return <g key={annotation.id} data-testid={`chart-level-${annotation.id}`}>
-            <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} />
+          const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
+          return <g key={annotation.id} pointerEvents="none" data-testid={`chart-level-${annotation.id}`}>
+            <line pointerEvents="none" x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} />
             <rect x={axisLabelX} y={labelY - 10} width={labelWidth} height="18" rx="2" fill="hsl(var(--card) / .94)" stroke={stroke} strokeOpacity=".32" />
-            <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical ? "700" : "500"} fontFamily="DM Mono">{annotation.label}</text>
+            <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical || structural ? "700" : "500"} fontFamily="DM Mono">{structural ? `${annotation.label} ${formatPriceAxisValue(annotation.price)}` : annotation.label}</text>
             <text x={width - 11} y={labelY + 3} textAnchor="end" fill={stroke} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{formatPriceAxisValue(annotation.price)}</text>
           </g>;
       })}
@@ -1133,7 +1174,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
       </svg>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
-        {selectedDetails ? `Selected ${selectedDetails.interval}. Open ${selectedDetails.open.toFixed(2)}, high ${selectedDetails.high.toFixed(2)}, low ${selectedDetails.low.toFixed(2)}, close ${selectedDetails.close.toFixed(2)}, volume ${formatExactVolume(selectedDetails.volume)}. ${selectedDetails.machineVisible ? "Machine visible." : "Human-only context."}` : selectedSlot === null ? "No candle selected." : `Selected fixed slot ${selectedSlot + 1}; no historical candle is available.`}
+        {activeDetails ? `Active ${activeDetails.interval}. Open ${activeDetails.open.toFixed(2)}, high ${activeDetails.high.toFixed(2)}, low ${activeDetails.low.toFixed(2)}, close ${activeDetails.close.toFixed(2)}, volume ${formatExactVolume(activeDetails.volume)}. ${activeDetails.machineVisible ? "Machine visible." : "Human-only context."}` : activeSlot === null ? "No candle selected." : `Active fixed slot ${activeSlot + 1}; no historical candle is available.`}
      </div>
        </div>
       {activeSlot == null && <div className="mt-2 text-right text-[10px] text-muted-foreground">Hover the plot or volume column, click to keep a selection, or focus the chart and use ← / → to inspect fixed five-minute slots.</div>}

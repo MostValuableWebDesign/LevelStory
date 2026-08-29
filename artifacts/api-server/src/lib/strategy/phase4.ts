@@ -535,6 +535,7 @@ export function fibonacciAnalysis(
   candles: readonly Candle[],
   breakout: BreakoutEvent,
   manual?: ManualFibAnchors,
+  pullback?: PullbackAnalysis,
 ): FibonacciAnalysis {
   if (!breakout.detected || breakout.direction === null || breakout.candleOpenTime === null) {
     return {
@@ -549,6 +550,21 @@ export function fibonacciAnalysis(
       retracementPercent: null,
       classification: "unavailable",
       detail: "Fibonacci anchors are unavailable until a breakout is detected.",
+    };
+  }
+  if (!pullback || pullback.events.length === 0) {
+    return {
+      direction: null,
+      impulseLow: null,
+      impulseHigh: null,
+      breakoutTime: null,
+      frozen: false,
+      frozenAt: null,
+      manualCorrection: false,
+      levels: [],
+      retracementPercent: null,
+      classification: "unavailable",
+      detail: "Fibonacci anchors are unavailable until a confirmed pullback interacts with a qualifying key level.",
     };
   }
   const completed = completedCandles(candles);

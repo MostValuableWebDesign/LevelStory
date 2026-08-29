@@ -12,6 +12,7 @@ test("visual review presentation keeps the inspector and event strip outside the
   assert.match(page, /data-testid="toggle-candle-inspector"/);
   assert.match(page, /No historical candle available/);
   assert.match(page, /selected .* final/);
+  assert.match(page, /hover or arrow-key selection/);
   assert.match(page, /data-testid="event-strip"/);
   assert.ok(page.indexOf('data-testid="event-strip"') < page.indexOf('className="visual-review-svg'));
   assert.match(styles, /\.candle-inspector \{/);
@@ -35,4 +36,16 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /stroke="hsl\(145 45% 42%\)"/);
   assert.match(page, /data-testid="toggle-show-risk-levels"/);
   assert.match(page, /data-testid="no-entry-marker"/);
+  assert.doesNotMatch(page, /OPENING RANGE/);
+  assert.match(page, /data-testid="compact-coverage-details"/);
+  assert.match(page, /previous-session-high/);
+  assert.match(page, /two-sessions-high/);
+  assert.match(page, /pointerEvents="none"/);
+});
+
+test("visual review keeps no-entry diagnostics collapsed behind an explicit mode", () => {
+  assert.match(page, /trades_only/);
+  assert.match(page, /trades_and_diagnostics/);
+  assert.match(page, /data-testid="diagnostic-categories"/);
+  assert.match(page, /No-entry diagnostics/);
 });

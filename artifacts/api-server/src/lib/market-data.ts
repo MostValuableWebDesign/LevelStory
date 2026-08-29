@@ -450,7 +450,6 @@ export function createMarketSnapshot(
     specification,
   );
   const breakout = detectInitialBreakout(regular, levels.ntz, config, specification);
-  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors);
   const qualifyingLevels = [
     ...levels.levels,
     { name: "VWAP", price: levels.vwap, kind: "indicator" },
@@ -459,9 +458,9 @@ export function createMarketSnapshot(
     ...levels.majorLevels
       .filter((level) => level.confluence !== "normal")
       .map((level) => ({ name: `Confluence · ${level.name}`, price: level.price, kind: "confluence" })),
-    ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, kind: "fibonacci" })),
   ];
   const pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config);
+  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;

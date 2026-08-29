@@ -78,21 +78,31 @@ test("pullback uses max(two ticks, 0.10 ATR), stays bounded, and records interac
 test("Fibonacci anchors freeze at breakout, expose requested levels, allow manual correction, and classify depth independently", () => {
   const candles = breakoutFixture();
   const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
-  const automatic = fibonacciAnalysis(candles, breakout);
+  const pullback = analyzePullback(candles, breakout, [{ name: "ORB high", price: 104 }], specification, config);
+  const automatic = fibonacciAnalysis(candles, breakout, undefined, pullback);
   assert.equal(automatic.direction, "bullish");
   assert.equal(automatic.impulseLow, 101.5);
   assert.equal(automatic.impulseHigh, 105);
   assert.deepEqual(automatic.levels.map((level) => level.label), ["0%", "23.6%", "38.2%", "40.0%", "50.0%", "61.8%", "78.6%", "100%"]);
   const before = automatic.impulseHigh;
-  const later = fibonacciAnalysis([...candles, candle(11, 101, 110, 95, 100, 100)], breakout);
+  const later = fibonacciAnalysis([...candles, candle(11, 101, 110, 95, 100, 100)], breakout, undefined, pullback);
   assert.equal(later.impulseHigh, before);
-  const manual = fibonacciAnalysis(candles, breakout, { low: 100, high: 110 });
+  const manual = fibonacciAnalysis(candles, breakout, { low: 100, high: 110 }, pullback);
   assert.equal(manual.manualCorrection, true);
   assert.equal(manual.impulseLow, 100);
   assert.equal(manual.impulseHigh, 110);
   for (const [depth, expected] of [[10, "shallow"], [40, "normal"], [55, "deep"], [75, "elevated failure risk"], [100, "fully retraced"]] as const) {
     assert.equal(classifyRetracement(depth), expected);
   }
+});
+
+test("Fibonacci remains unavailable until a pullback interacts with a qualifying key level", () => {
+  const candles = breakoutFixture();
+  const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
+  const unavailable = fibonacciAnalysis(candles, breakout);
+  assert.equal(unavailable.classification, "unavailable");
+  assert.equal(unavailable.levels.length, 0);
+  assert.match(unavailable.detail, /confirmed pullback/i);
 });
 
 test("volume keeps baseline, support, impulse, pullback, and opposing-volume warning separate", () => {
@@ -210,7 +220,8 @@ test("Fibonacci anchors begin at the later strong push and pre-qualification pat
     candle(5, 104.5, 105, 103.5, 104.7, 90),
   ];
   const breakout = evaluateOrbBreakoutQuality(candles, ntz, config, specification);
-  const fibonacci = fibonacciAnalysis(candles, breakout);
+  const pullback = analyzePullback(candles, breakout, [{ name: "ORB high", price: 105 }], specification, config);
+  const fibonacci = fibonacciAnalysis(candles, breakout, undefined, pullback);
   assert.equal(breakout.detected, true);
   assert.equal(fibonacci.impulseHigh, 105);
   assert.ok((fibonacci.impulseHigh ?? 0) < 110);

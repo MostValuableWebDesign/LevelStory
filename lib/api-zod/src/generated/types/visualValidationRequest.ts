@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationRequestReviewMode } from './visualValidationRequestReviewMode';
 import type { VisualValidationRequestSource } from './visualValidationRequestSource';
 import type { VisualValidationRequestSymbol } from './visualValidationRequestSymbol';
 
@@ -30,4 +31,6 @@ export interface VisualValidationRequest {
   premarketAvailable?: boolean;
   /** Historical Databento is the default; simulated fixtures are an explicit testing option. */
   source?: VisualValidationRequestSource;
+  /** Historical review defaults to trade-linked samples; diagnostics explicitly includes no-entry evidence. */
+  reviewMode?: VisualValidationRequestReviewMode;
 }
