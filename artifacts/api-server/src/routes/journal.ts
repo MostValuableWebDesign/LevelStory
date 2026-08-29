@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db, journalEntriesTable } from "@workspace/db";
 import {
   CreateJournalEntryBody,
@@ -10,8 +10,19 @@ import {
 } from "@workspace/api-zod";
 import { getFuturesContractSpecification } from "../lib/futures/contracts";
 import { toApiJournalEntry } from "../lib/phase8-journal";
+import { canonicalStrategyId } from "../lib/strategy/taxonomy";
 
 const router: IRouter = Router();
+
+function setupFilter(value: string) {
+  if (value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION") {
+    return or(eq(journalEntriesTable.setupType, value), eq(journalEntriesTable.setupType, "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"));
+  }
+  if (value === "EQUIVALENT_CANDLE_REVERSAL") {
+    return or(eq(journalEntriesTable.setupType, value), eq(journalEntriesTable.setupType, "BONUS_REVERSAL"));
+  }
+  return eq(journalEntriesTable.setupType, value);
+}
 
 router.get("/journal", async (req, res): Promise<void> => {
   const parsed = ListJournalEntriesQueryParams.safeParse(req.query);
@@ -21,7 +32,7 @@ router.get("/journal", async (req, res): Promise<void> => {
   }
   const filters = [
     parsed.data.symbol ? eq(journalEntriesTable.symbol, parsed.data.symbol.toUpperCase()) : undefined,
-    parsed.data.setupType ? eq(journalEntriesTable.setupType, parsed.data.setupType) : undefined,
+    parsed.data.setupType ? setupFilter(parsed.data.setupType) : undefined,
     parsed.data.direction ? eq(journalEntriesTable.side, parsed.data.direction) : undefined,
     parsed.data.outcome ? eq(journalEntriesTable.outcome, parsed.data.outcome) : undefined,
     parsed.data.tradingDate ? eq(journalEntriesTable.tradingDate, parsed.data.tradingDate) : undefined,
@@ -42,11 +53,14 @@ router.post("/journal", async (req, res): Promise<void> => {
   }
   try {
     const contract = getFuturesContractSpecification(parsed.data.symbol);
+    const strategyKey = canonicalStrategyId(parsed.data.setupType ?? parsed.data.setup);
+    if (!strategyKey) throw new Error("A canonical LevelStory strategy is required.");
     const [entry] = await db.insert(journalEntriesTable).values({
       ...parsed.data,
       symbol: contract.fullContractSymbol,
       contracts: parsed.data.contracts ?? parsed.data.quantity,
-      setupType: parsed.data.setupType ?? parsed.data.setup,
+      setup: strategyKey,
+      setupType: strategyKey,
       contractMonth: parsed.data.contractMonth ?? contract.contractMonth,
     }).returning();
     res.status(201).json(CreateJournalEntryResponse.parse(toApiJournalEntry(entry)));

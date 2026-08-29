@@ -104,8 +104,8 @@ async function refreshRow(strategyKey: StrategyId): Promise<StrategyReadiness> {
   const [current] = await db.select().from(strategyReadinessTable).where(eq(strategyReadinessTable.strategyKey, strategyKey));
   if (!current) throw new Error(`Strategy readiness record not found for ${strategyKey}.`);
   const [entries, teachings] = await Promise.all([
-    db.select({ setupType: journalEntriesTable.setupType, setup: journalEntriesTable.setup, execution: journalEntriesTable.execution, pnl: journalEntriesTable.pnl, netPnl: journalEntriesTable.netPnl }).from(journalEntriesTable),
-    db.select({ setupClassification: teachingExamplesTable.setupClassification, causalValidation: teachingExamplesTable.causalValidation }).from(teachingExamplesTable),
+    db.select({ setupType: journalEntriesTable.setupType, setup: journalEntriesTable.setup, outcome: journalEntriesTable.outcome, execution: journalEntriesTable.execution, pnl: journalEntriesTable.pnl, netPnl: journalEntriesTable.netPnl }).from(journalEntriesTable),
+    db.select({ setupClassification: teachingExamplesTable.setupClassification, causalValidation: teachingExamplesTable.causalValidation, evidenceSnapshot: teachingExamplesTable.evidenceSnapshot }).from(teachingExamplesTable),
   ]);
   const matchingEntries = entries.filter((entry) => canonical(entry.setupType ?? entry.setup) === strategyKey);
   const completed = matchingEntries.filter((entry) => entry.execution !== null && entry.pnl !== null);
@@ -115,17 +115,17 @@ async function refreshRow(strategyKey: StrategyId): Promise<StrategyReadiness> {
   const agreement = reviewed.length
     ? reviewed.filter((item) => (item.causalValidation as { valid?: boolean }).valid !== false).length / reviewed.length
     : 0;
-  const holdoutCount = current.fitnessReport && typeof current.fitnessReport === "object"
-    && Number.isFinite((current.fitnessReport as { holdoutCount?: number }).holdoutCount)
-    ? Number((current.fitnessReport as { holdoutCount: number }).holdoutCount)
-    : 0;
+  const holdoutCount = reviewed.filter((item) => {
+    const evidence = item.evidenceSnapshot as { period?: string; datasetRole?: string } | null;
+    return evidence?.period === "holdout" || evidence?.datasetRole === "holdout";
+  }).length;
   const updatedValues = {
     setupCount: matchingEntries.length,
     completedTradeCount: completed.length,
     holdoutCount,
     expectancy: Number(expectancy.toFixed(4)),
     drawdown: Number((Math.max(0, -Math.min(0, ...pnl.map((value) => value))) || 0).toFixed(4)),
-    ambiguityRate: matchingEntries.length ? matchingEntries.filter((entry) => entry.setupType === "AMBIGUOUS").length / matchingEntries.length : 0,
+    ambiguityRate: matchingEntries.length ? matchingEntries.filter((entry) => entry.outcome === "ambiguous").length / matchingEntries.length : 0,
     reviewedExampleAgreement: Number(agreement.toFixed(4)),
     deterministicComplete: true,
     leakageFree: true,
@@ -163,6 +163,7 @@ export async function setStrategyThresholds(strategyKey: StrategyId, thresholds:
     fitnessReport: {},
     status: "NOT_ENOUGH_EVIDENCE",
     validationDate: null,
+    shadowEnabled: false,
     updatedAt: new Date(),
   }).where(eq(strategyReadinessTable.strategyKey, strategyKey));
   return getStrategyReadiness(strategyKey);
@@ -180,6 +181,7 @@ export async function validateStrategyReadiness(strategyKey: StrategyId): Promis
     && readiness.reviewedExampleAgreement >= (item.thresholds.minReviewedExampleAgreement ?? 2);
   await db.update(strategyReadinessTable).set({
     status: passed ? "FIT_AVAILABLE" : "VALIDATION_FAILED",
+    shadowEnabled: false,
     validationDate: new Date(),
     fitnessReport: {
       validationPassed: passed,
@@ -217,7 +219,7 @@ export async function pauseStrategy(strategyKey: StrategyId, reason: string): Pr
 }
 
 export async function resumeStrategy(strategyKey: StrategyId): Promise<StrategyCatalogItem> {
-  await db.update(strategyReadinessTable).set({ status: "NOT_ENOUGH_EVIDENCE", pauseReason: null, updatedAt: new Date() })
+  await db.update(strategyReadinessTable).set({ shadowEnabled: false, status: "NOT_ENOUGH_EVIDENCE", pauseReason: null, updatedAt: new Date() })
     .where(eq(strategyReadinessTable.strategyKey, strategyKey));
   return getStrategyReadiness(strategyKey);
 }

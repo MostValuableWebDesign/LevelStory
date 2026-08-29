@@ -276,7 +276,7 @@ export default function VisualReview() {
   );
   const availableCategories = useMemo(() => coverage
     .filter((item) => item.available && strategySnapshots.some((snapshot) => snapshot.category === item.category) && TRADE_CATEGORY_VALUES.has(item.category))
-    .map((item) => item.category), [coverage, data?.request.reviewMode]);
+    .map((item) => item.category), [coverage, strategySnapshots]);
   const categorySnapshots = useMemo(
     () => strategySnapshots.filter((snapshot) => snapshot.category === selectedCategory),
     [selectedCategory, strategySnapshots],
@@ -534,7 +534,7 @@ export default function VisualReview() {
                           patienceCandleCloseTime: patience?.closeTime ?? "",
                           entryBufferTicks: current?.entryBufferTicks ?? 4,
                           pullbackLevels: current?.pullbackLevels ?? [pullbackLevel],
-                          setupType: current?.setupType ?? "ORB_BREAK_PULLBACK_CONTINUATION",
+                          setupType: current?.setupType ?? activeSnapshot.strategyKey,
                           confidence: current?.confidence ?? "low",
                           explanation: current?.explanation ?? "",
                         }));
@@ -1396,7 +1396,7 @@ function ReviewPanel({
            <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
            <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
            <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price as number; const selected = teaching.pullbackLevels.includes(price); return <label key={`${level.id}-${level.price}`} className={`flex cursor-pointer items-center gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-muted/40"}`}><input type="checkbox" checked={selected} onChange={(event) => updateTeaching({ pullbackLevels: event.target.checked ? [...teaching.pullbackLevels, price] : teaching.pullbackLevels.filter((value) => value !== price) })} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)}</span></span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Select every mapped level the pullback qualifies against. At least one level is required.</p></fieldset>
-           <Field label="Setup"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EXTENDED_NTZ_CONSOLIDATION_BREAKOUT">Extended NTZ consolidation breakout</option><option value="BONUS_REVERSAL">Bonus reversal</option></select></Field>
+            <Field label="Strategy"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="PATIENCE_CANDLE_CONTINUATION">Patience candle continuation</option><option value="STRONG_BREAKOUT_AFTER_CONSOLIDATION">Strong breakout after consolidation</option><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EQUIVALENT_CANDLE_REVERSAL">Equivalent candle reversal</option></select></Field>
            <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
            <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>
            <label className="block sm:col-span-2"><span className="eyebrow mb-1.5 block text-muted-foreground">Teaching explanation · required</span><textarea maxLength={4000} rows={4} value={teaching.explanation} onChange={(event) => updateTeaching({ explanation: event.target.value })} className="field resize-none" placeholder="Explain what the formula missed or why this correction needs clarification." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{teaching.explanation.length} / 4000</span></label>

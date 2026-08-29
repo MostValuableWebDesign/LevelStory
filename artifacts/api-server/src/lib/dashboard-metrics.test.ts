@@ -48,7 +48,7 @@ test("descriptive evaluations stay reviews and never become trades", () => {
     entry("BONUS_REVERSAL", null, false),
     entry("BONUS_REVERSAL", null, false),
   ], "2026-08-25");
-  const reversal = summary.setupPerformance.find((item) => item.setupType === "BONUS_REVERSAL")!;
+  const reversal = summary.setupPerformance.find((item) => item.setupType === "EQUIVALENT_CANDLE_REVERSAL")!;
 
   assert.equal(summary.reviewCount, 2);
   assert.equal(summary.triggeredTradeCount, 0);

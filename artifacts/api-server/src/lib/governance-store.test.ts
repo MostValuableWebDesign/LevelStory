@@ -41,7 +41,7 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
     direction: "long",
     entryBufferTicks: 2,
     calculatedEntryPrice: "6500.5",
-    setupClassification: "trend_pullback",
+    setupClassification: "ORB_BREAK_PULLBACK_CONTINUATION",
     qualifyingLevelType: "VWAP",
     confidence: "high",
     reviewerExplanation: "The immediate next candle should qualify.",

@@ -3,6 +3,7 @@ import { db, journalEntriesTable } from "@workspace/db";
 import type { JournalEntryInput, Phase8TimelineEvent } from "@workspace/api-zod";
 import type { MarketSnapshot } from "./market-data.js";
 import { setupOutcome } from "./strategy/phase8.js";
+import { canonicalStrategyId } from "./strategy/taxonomy.js";
 
 function round(value: number): number {
   return Number(value.toFixed(2));
@@ -14,7 +15,7 @@ export function toApiJournalEntry(entry: typeof journalEntriesTable.$inferSelect
     createdAt: entry.createdAt.toISOString(),
     evaluationKey: entry.evaluationKey ?? null,
     contractMonth: entry.contractMonth ?? null,
-    setupType: entry.setupType ?? null,
+    setupType: canonicalStrategyId(entry.setupType ?? entry.setup) ?? null,
     outcome: entry.outcome ?? null,
     tradingDate: entry.tradingDate ?? null,
     trend: entry.trend ?? null,

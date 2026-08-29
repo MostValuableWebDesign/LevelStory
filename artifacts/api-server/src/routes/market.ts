@@ -4,6 +4,7 @@ import { db, journalEntriesTable, marketDataCandlesTable, riskSettingsTable } fr
 import { desc } from "drizzle-orm";
 import { createMarketSnapshot } from "../lib/market-data";
 import { recordSnapshotEvaluations, toApiJournalEntry } from "../lib/phase8-journal";
+import { getStrategyReadiness } from "../lib/strategy/readiness";
 import { summarizeDashboardEntries } from "../lib/dashboard-metrics";
 import { getFuturesContractSpecification, listFuturesContractSpecifications, type FuturesContractSpecification } from "../lib/futures/contracts";
 import { isTradingDate, previousTradingDate, sessionCalendarForContract, tradingDateForTimestamp } from "../lib/futures/session-calendar";
@@ -94,6 +95,10 @@ router.get("/market/snapshot", async (req, res): Promise<void> => {
        { targetDollars: parsed.data.targetDollars, slippageMode: parsed.data.slippageMode },
         providerReplayOptions,
       );
+       if (snapshot.setupAnalysis.primarySetup) {
+         const strategy = await getStrategyReadiness(snapshot.setupAnalysis.primarySetup);
+         if (!strategy.readiness.shadowEnabled) snapshot.shadowExecution = null;
+       }
       await recordSnapshotEvaluations(snapshot);
       res.json(GetMarketSnapshotResponse.parse(snapshot));
   } catch (error) {
