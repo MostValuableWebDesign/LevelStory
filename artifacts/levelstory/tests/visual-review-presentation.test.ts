@@ -22,7 +22,7 @@ test("visual review presentation uses the full-session default and compact causa
   assert.match(page, /return "full_regular";/);
   assert.match(page, /levelstory\.visualReviewWindow/);
   assert.match(page, /Full regular session: 9:30 AM–4:00 PM/);
-  assert.match(page, /data-testid="causal-boundary-note"/);
+  assert.doesNotMatch(page, /Machine evaluated through/);
   assert.match(page, /data-testid="causal-boundary-notch"/);
   assert.doesNotMatch(page, /data-testid="evaluation-cursor"/);
   assert.doesNotMatch(page, /data-testid="human-only-label"/);
@@ -65,6 +65,9 @@ test("human judgment teaches only from an explicitly locked causal candle pair",
     assert.ok(page.includes(`label: "${label}"`) || page.includes(`>${label}<`) || page.includes(`>${label}`), `missing ${label}`);
   }
   assert.match(page, /data-testid="button-lock-entry-candle"/);
+  assert.match(page, /data-testid="locked-entry-marker"/);
+  assert.match(page, /Selected entry candle E/);
+  assert.match(page, /onLockCandle\(selectedCandle\)/);
   assert.match(page, /data-testid="locked-entry-candle"/);
   assert.match(page, /data-testid="locked-patience-candle"/);
   assert.match(page, /immediately preceding/);

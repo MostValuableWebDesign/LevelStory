@@ -173,15 +173,6 @@ function formatReviewTime(value: string): string {
   return value.replace("T", " ").replace("Z", " UTC");
 }
 
-function formatBoundaryTime(value: string): string {
-  if (!value) return "time unavailable";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function safeValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
@@ -499,7 +490,7 @@ export default function VisualReview() {
                   <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
-                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
+                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
                         setLockedEntryCandle(candle);
                         if (!candle) return;
                         const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
@@ -667,7 +658,7 @@ function CausalTag() {
   return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
 }
 
-function CausalChart({ snapshot, source, expanded, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
+function CausalChart({ snapshot, source, expanded, lockedEntryCandle, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; lockedEntryCandle: SessionCandle | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
   const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(requestedPremarket);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -767,7 +758,7 @@ function CausalChart({ snapshot, source, expanded, onToggleExpanded, onLockCandl
         {fullCoverage && <span className="mono">Full {fullCoverage.observedCandleCount}/{fullCoverage.expectedCandleCount}</span>}
         <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
       </div>
-        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
+        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -925,6 +916,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   premarketCandles,
   sessionView,
   focusOpenTime,
+  lockedEntryCandle,
   onReturnPrimary,
   onLockCandle,
 }: {
@@ -934,6 +926,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   premarketCandles: SessionCandle[];
   sessionView: SessionView;
   focusOpenTime: string;
+  lockedEntryCandle: SessionCandle | null;
   onReturnPrimary: () => void;
   onLockCandle: (candle: SessionCandle | null) => void;
 }) {
@@ -1065,6 +1058,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     if (slot !== null) {
       setSelectedSlot(slot);
       setHoveredSlot(slot);
+      const selectedCandle = candles.find((candle) => getCandleSlotIndex(candle, sessionView) === slot);
+      if (selectedCandle?.isComplete && selectedCandle.machineVisible) onLockCandle(selectedCandle);
     }
   };
   const setIndexFromKeyboard = (event: KeyboardEvent<SVGSVGElement>) => {
@@ -1116,10 +1111,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
            </label>
        </div>
      </div>
-        <div className="causal-boundary-note" data-testid="causal-boundary-note">
-          <span className="boundary-notch-key" aria-hidden="true" />
-          <span><strong>Machine evaluated through {formatBoundaryTime(snapshot.evaluationCursor.closeTime)}</strong> · shaded candles after the boundary are human-only context.</span>
-        </div>
         <section className="event-strip" aria-label="Causal event strip" data-testid="event-strip">
           <div className="event-strip-heading">
             <div>
@@ -1237,7 +1228,18 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        const slotIndex = getCandleSlotIndex(candle, sessionView);
          const geometry = getCandleGeometry(candle, slotIndex, step, domain, left);
          const volumeHeight = Math.max((candle.volume / volumeMax) * CHART_VOLUME_HEIGHT, 2);
-         return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}><title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title><line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" /><rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" /><rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" /></g>;
+          const lockedAsEntry = lockedEntryCandle?.openTime === candle.openTime && lockedEntryCandle.closeTime === candle.closeTime;
+          const entryMarkerY = Math.max(top + 12, geometry.highY - 15);
+          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}>
+            <title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title>
+            <line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" />
+            <rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" />
+            <rect x={geometry.x - Math.max(step * .25, 2)} y={volumeTop + CHART_VOLUME_HEIGHT - volumeHeight} width={Math.max(step * .5, 3)} height={volumeHeight} fill={color} opacity=".43" />
+            {lockedAsEntry && <g pointerEvents="none" data-testid="locked-entry-marker" aria-label="Selected entry candle E">
+              <circle cx={geometry.x} cy={entryMarkerY} r="9" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="2" />
+              <text x={geometry.x} y={entryMarkerY + 3.5} textAnchor="middle" fill="hsl(var(--accent-foreground))" fontSize="10" fontWeight="800" fontFamily="DM Mono">E</text>
+            </g>}
+          </g>;
       })}
         <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
