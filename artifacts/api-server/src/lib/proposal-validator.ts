@@ -32,6 +32,7 @@ export type ComparisonMetrics = {
   ambiguousSameCandleOutcomes: number;
   inSampleCount: number;
   holdoutCount: number;
+  performanceMetricsAvailable: boolean;
 };
 
 export type ComparisonResult = {
@@ -51,6 +52,7 @@ export type ComparisonResult = {
   entryBufferCompliant: boolean;
   datasetFingerprint: string;
   calendarFingerprint: string;
+  performanceMetricsAvailable: boolean;
 };
 
 function hash(value: unknown): string {
@@ -79,21 +81,23 @@ export function buildCandidateConfiguration(diff: unknown, parentInput: Partial<
 type FormulaOutcome = { qualified: boolean; direction: string | null; entryTime: string | null; rejectionReason: string };
 
 function executeFormula(config: StrategyConfig, teaching: TeachingExample): FormulaOutcome {
-  const evidence = (teaching.evidenceSnapshot ?? {}) as { futureCandleAccess?: boolean; evaluationCursor?: { closeTime?: string }; machineEvidenceSnapshot?: { machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>>; evaluationCursor?: { closeTime?: string } }; machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>> };
+  const evidence = (teaching.evidenceSnapshot ?? {}) as { futureCandleAccess?: boolean; quotesAvailable?: boolean; sourceSchema?: string; evaluationCursor?: { closeTime?: string }; machineEvidenceSnapshot?: { machineEvidence?: { quotesAvailable?: boolean; sourceSchema?: string }; quotesAvailable?: boolean; sourceSchema?: string; machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>>; evaluationCursor?: { closeTime?: string } }; machineCandles?: Array<Record<string, unknown>>; premarketCandles?: Array<Record<string, unknown>> };
   const validTiming = Boolean(teaching.selectedCandleTimestamp && teaching.patienceCandleTimestamp);
   const rawCandles = [...(evidence.machineEvidenceSnapshot?.premarketCandles ?? evidence.premarketCandles ?? []), ...(evidence.machineEvidenceSnapshot?.machineCandles ?? evidence.machineCandles ?? [])];
   if (!rawCandles.length) throw new Error("Immutable candle evidence missing.");
-  if (rawCandles.some((candle) => !["bid", "ask", "bidSize", "askSize", "contractSymbol"].every((key) => key in candle))) {
-    throw new Error("Immutable quote evidence missing.");
-  }
+  const quotesAvailable = evidence.machineEvidenceSnapshot?.machineEvidence?.quotesAvailable
+    ?? evidence.machineEvidenceSnapshot?.quotesAvailable ?? evidence.quotesAvailable ?? false;
+  const sourceSchema = evidence.machineEvidenceSnapshot?.machineEvidence?.sourceSchema
+    ?? evidence.machineEvidenceSnapshot?.sourceSchema ?? evidence.sourceSchema ?? "historical_ohlcv";
+  if (quotesAvailable && rawCandles.some((candle) => !["bid", "ask", "bidSize", "askSize", "contractSymbol"].every((key) => key in candle))) throw new Error("Immutable quote evidence missing.");
   const candles = rawCandles.map((candle) => ({
     timestamp: Date.parse(String(candle.timestamp ?? candle.openTime)),
     openTime: Date.parse(String(candle.openTime)), closeTime: Date.parse(String(candle.closeTime)),
     open: Number(candle.open), high: Number(candle.high), low: Number(candle.low), close: Number(candle.close),
-    volume: Number(candle.volume ?? 0), bid: Number(candle.bid), ask: Number(candle.ask),
-    bidSize: Number(candle.bidSize), askSize: Number(candle.askSize), contractSymbol: String(candle.contractSymbol), isComplete: candle.isComplete !== false,
+    volume: Number(candle.volume ?? 0), bid: Number(candle.bid ?? Number.NaN), ask: Number(candle.ask ?? Number.NaN),
+    bidSize: Number(candle.bidSize ?? Number.NaN), askSize: Number(candle.askSize ?? Number.NaN), contractSymbol: String(candle.contractSymbol ?? teaching.contract), isComplete: candle.isComplete !== false,
   })).filter((candle) => Number.isFinite(candle.openTime) && Number.isFinite(candle.closeTime) && Number.isFinite(candle.open));
-  if (!candles.length || candles.some((candle) => candle.contractSymbol !== teaching.contract)) throw new Error("Immutable candle evidence is malformed or crosses contracts.");
+  if (!candles.length || candles.some((candle) => candle.contractSymbol !== teaching.contract)) throw new Error(`Immutable ${sourceSchema} candle evidence is malformed or crosses contracts.`);
   const patienceTime = teaching.patienceCandleTimestamp ? Date.parse(teaching.patienceCandleTimestamp) : NaN;
   const entryTime = teaching.selectedCandleTimestamp ? Date.parse(teaching.selectedCandleTimestamp) : NaN;
   if (!Number.isFinite(patienceTime) || !Number.isFinite(entryTime) || entryTime - patienceTime !== 5 * 60 * 1000) {
@@ -116,10 +120,10 @@ function executeFormula(config: StrategyConfig, teaching: TeachingExample): Form
 }
 
 function metrics(outcomes: FormulaOutcome[], teachings: TeachingExample[]): ComparisonMetrics {
-  const pnl = teachings.map((item, index) => {
-    const snapshot = item.outcomeSnapshot as { netPnl?: number; pnl?: number } | null;
-    return outcomes[index]?.qualified ? Number(snapshot?.netPnl ?? snapshot?.pnl ?? 0) : 0;
-  });
+  // Teaching outcomes are observations, not candidate executions. Until the
+  // deterministic modeled-fill replay is available, expose decision-only
+  // metrics rather than laundering the original outcome into the comparison.
+  const pnl = teachings.map(() => 0);
   const wins = pnl.filter((value) => value > 0);
   const losses = pnl.filter((value) => value < 0);
   let equity = 0;
@@ -135,7 +139,7 @@ function metrics(outcomes: FormulaOutcome[], teachings: TeachingExample[]): Comp
   return {
     sampleCount: teachings.length,
     qualifiedTrades: outcomes.filter((item) => item.qualified).length,
-    completedTrades: outcomes.filter((item, index) => item.qualified && (teachings[index]?.outcomeSnapshot !== null)).length,
+    completedTrades: 0,
     tradesAdded: 0, tradesRemoved: 0, entryTimesChanged: 0, directionChanges: 0, rejectionReasonChanges: 0,
     teachingCorrected: 0, teachingRegressed: 0,
     winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : 0,
@@ -143,12 +147,10 @@ function metrics(outcomes: FormulaOutcome[], teachings: TeachingExample[]): Comp
     profitFactor: grossLoss ? Number((grossProfit / grossLoss).toFixed(4)) : grossProfit ? Number.POSITIVE_INFINITY : 0,
     maximumDrawdown: Number(maximumDrawdown.toFixed(4)),
     averageTrade: outcomes.length ? Number((pnl.reduce((sum, value) => sum + value, 0) / outcomes.length).toFixed(4)) : 0,
-    stopOutcomes: teachings.filter((item) => String((item.outcomeSnapshot as { exitReason?: string } | null)?.exitReason ?? "").toLowerCase().includes("stop")).length,
-    targetOutcomes: teachings.filter((item) => String((item.outcomeSnapshot as { exitReason?: string } | null)?.exitReason ?? "").toLowerCase().includes("target")).length,
-    runnerOutcomes: teachings.filter((item) => Boolean((item.outcomeSnapshot as { runner?: unknown } | null)?.runner)).length,
-    ambiguousSameCandleOutcomes: teachings.filter((item) => item.machineDecision === "ambiguous").length,
+    stopOutcomes: 0, targetOutcomes: 0, runnerOutcomes: 0, ambiguousSameCandleOutcomes: 0,
     inSampleCount: teachings.filter((item) => ((item.evidenceSnapshot as { period?: string } | null)?.period ?? "in_sample") === "in_sample").length,
     holdoutCount: teachings.filter((item) => (item.evidenceSnapshot as { period?: string } | null)?.period === "holdout").length,
+    performanceMetricsAvailable: false,
   };
 }
 
@@ -217,6 +219,7 @@ export function compareCandidate(teachings: TeachingExample[], diff: unknown, pa
       return judgment === "missed_trade" ? outcome.qualified : !outcome.qualified;
     }),
     noFutureData, immediateNextEntryCompliant, entryBufferCompliant,
+    performanceMetricsAvailable: false,
     datasetFingerprint, calendarFingerprint,
   };
 }

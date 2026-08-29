@@ -129,6 +129,18 @@ export function createVisualValidationRouter(): IRouter {
             patienceCandleCloseTime: parsed.data.teaching.patienceCandleCloseTime.toISOString(),
           }
         : undefined;
+      if (parsed.data.status === "false_positive_trade" && (!teaching || teaching.judgment !== "false_positive_trade")) {
+        throw new Error("False-positive reviews require structured false-positive teaching evidence.");
+      }
+      const activeSet = getVisualValidationSet(parsed.data.reviewSetId);
+      const snapshot = activeSet?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
+      if (!snapshot) {
+        res.status(404).json({ error: "Visual-validation set or snapshot not found." });
+        return;
+      }
+      if (parsed.data.status === "false_positive_trade" && !snapshot.machineEvidence.trade) {
+        throw new Error("A false-positive review must link to an exact machine-qualified trade.");
+      }
       const review = recordVisualValidationReview(
         parsed.data.reviewSetId,
         parsed.data.snapshotId,
@@ -140,11 +152,8 @@ export function createVisualValidationRouter(): IRouter {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
         return;
       }
-       const activeSet = getVisualValidationSet(parsed.data.reviewSetId);
-       const snapshot = activeSet?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
-       if (!snapshot) {
-         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
-         return;
+       if (parsed.data.status === "false_positive_trade" && (!review.teaching || !review.teaching.validation.valid)) {
+         throw new Error("False-positive teaching evidence failed causal validation.");
        }
        if (review.teaching) {
          const key = req.header("Idempotency-Key") ?? `${parsed.data.reviewSetId}:${parsed.data.snapshotId}:${JSON.stringify(parsed.data.teaching)}`;

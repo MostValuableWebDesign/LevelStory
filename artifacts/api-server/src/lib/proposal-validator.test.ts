@@ -3,16 +3,36 @@ import assert from "node:assert/strict";
 import { buildCandidateConfiguration, compareCandidate } from "./proposal-validator.js";
 
 function teaching(id: string, judgment: string, buffer: number) {
+  const candle = (openTime: string, open: number, close: number) => ({
+    openTime,
+    closeTime: new Date(Date.parse(openTime) + 5 * 60_000).toISOString(),
+    open, high: Math.max(open, close) + 1, low: Math.min(open, close) - 1, close,
+    volume: 1000, contractSymbol: "MES",
+    isComplete: true,
+  });
   return {
     id,
     status: "submitted",
     judgment,
+    contract: "MES",
     selectedCandleTimestamp: "2026-08-26T14:00:00.000Z",
     patienceCandleTimestamp: "2026-08-26T13:55:00.000Z",
     entryBufferTicks: buffer,
     direction: "long",
     causalValidation: { valid: true },
-    evidenceSnapshot: { futureCandleAccess: false, period: "holdout" },
+    evidenceSnapshot: {
+      futureCandleAccess: false, period: "holdout",
+      machineEvidenceSnapshot: {
+        quotesAvailable: false,
+        sourceSchema: "historical_ohlcv",
+        machineCandles: [
+          candle("2026-08-26T13:55:00.000Z", 100, 100.5),
+          candle("2026-08-26T14:00:00.000Z", 100.5, 101),
+        ],
+        premarketCandles: [],
+        evaluationCursor: { closeTime: "2026-08-26T14:05:00.000Z" },
+      },
+    },
     outcomeSnapshot: { netPnl: judgment === "missed_trade" ? 25 : -10, exitReason: "target", runner: true },
     machineDecision: "no_trade",
     sourceFingerprint: `source-${id}`,

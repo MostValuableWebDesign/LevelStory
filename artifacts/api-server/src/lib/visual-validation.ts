@@ -184,6 +184,8 @@ export type VisualValidationSnapshot = {
   categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
   machineEvidence: {
+    quotesAvailable: boolean;
+    sourceSchema: "quote_bbo" | "historical_ohlcv";
     audit: BacktestAuditRecord;
     trade: BacktestTrade | null;
     market: {
@@ -1217,6 +1219,8 @@ function buildMachineSnapshot(
     categoryAnchor,
     annotations: buildAnnotations(evaluationSnapshot, audit, trade),
     machineEvidence: {
+      quotesAvailable: report.executionMode === "quote_based_shadow",
+      sourceSchema: report.executionMode === "quote_based_shadow" ? "quote_bbo" : "historical_ohlcv",
       audit,
       trade,
       market: {

@@ -1,0 +1,71 @@
+Finish the remaining candidate-validation correctness work. Keep this compute-efficient. Do not run a cold 20+2 backtest, historical-index rebuild, or qualification batch.
+
+1. Correct OHLCV evidence handling
+
+Historical Databento OHLCV has no genuine bid/ask quotes.
+
+Do not treat analysis-only bid=close, ask=close, bidSize=0, or askSize=0 placeholders as immutable quote evidence.
+
+Persist and inspect an explicit quotesAvailable/sourceSchema field.
+
+For formula-decision comparison, allow immutable OHLCV candles without quotes.
+
+For execution outcomes:
+
+- use the existing deterministic modeled-OHLCV execution policy, including adverse-first ambiguity, fees, slippage, stops, targets, and runners; or
+- mark P&L metrics unavailable and prevent approval.
+
+Never describe placeholder quote-shaped fields as genuine quote evidence.
+
+2. Replace reused outcome metrics
+
+Do not calculate candidate P&L from the original teaching outcomeSnapshot.
+
+Replay parent and candidate independently on the same immutable historical candle sequence.
+
+Record genuine before/after:
+
+- formula decision
+- strategy
+- direction
+- patience candle
+- entry candle and price
+- rejection reasons
+- fill status
+- stop, target, runner, and ambiguity outcome
+- fees, slippage, gross and net P&L
+
+If an honest execution replay cannot be produced, return decision-only metrics and set performanceMetricsAvailable=false. Approval must remain blocked.
+
+3. Enforce false-positive teaching server-side
+
+For status=false_positive_trade:
+
+- require a structured teaching payload;
+- require teaching.judgment=false_positive_trade;
+- require an exact linked machine trade;
+- require a reviewer explanation;
+- require valid immutable causal evidence;
+- reject invalid or missing teaching rather than persisting a review without evidence.
+
+Do not convert false_positive_trade into missed_trade.
+
+4. Update focused tests
+
+Update/add deterministic tests proving:
+
+- historical OHLCV is accepted as OHLCV, not genuine quotes;
+- placeholder quote-shaped fields cannot satisfy quote availability;
+- missing immutable candles fail closed;
+- candidate P&L is independently replayed or explicitly unavailable;
+- false-positive API submissions require valid structured teaching;
+- entry candle is exactly five minutes after patience;
+- active entry-buffer configuration changes an actual decision;
+- creator self-approval and self-activation are blocked;
+- retirement restores the parent or built-in baseline;
+- cache refresh occurs after activation, retirement, and rollback.
+
+Run only focused validator, governance, Visual Review, active-strategy, typecheck, and production-build checks.
+
+Report exact tests and results. Do not activate a candidate during this task.
+Preserve Shadow Mode only—no broker, live-order, or paper-order path.

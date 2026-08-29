@@ -373,6 +373,7 @@ async function runValidation(runId: string, proposalId: string, workerId: string
     const matchingExamples = (await db.select().from(teachingExamplesTable).where(inArray(teachingExamplesTable.id, evidenceIds)))
       .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate) || a.selectedCandleTimestamp.localeCompare(b.selectedCandleTimestamp) || a.id.localeCompare(b.id));
     if (!matchingExamples.length) throw new Error("No persisted teaching evidence matches this canonical strategy.");
+    if (matchingExamples.some((item) => canonicalStrategyId(item.setupClassification) !== proposal.strategyKey)) throw new Error("Every teaching example must belong to the proposal's canonical strategy.");
     const [activeParent] = await db.select({ configSnapshot: strategyVersionsTable.configSnapshot, formulaHash: strategyVersionsTable.formulaHash })
       .from(strategyVersionsTable)
       .where(and(eq(strategyVersionsTable.strategyKey, "MES_SHADOW"), eq(strategyVersionsTable.status, "active")))
@@ -381,7 +382,7 @@ async function runValidation(runId: string, proposalId: string, workerId: string
     const result = compareCandidate(matchingExamples, proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>);
     await db.update(proposalValidationRunsTable).set({ progressStage: "holdout_comparison", progressPercent: 75, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
     const formulaFingerprint = hashJson([result.parentFormulaHash, result.candidateFormulaHash]);
-    const passed = result.conflicts.length === 0 && result.regressions.length === 0 && result.holdoutCompleted && result.holdoutPassed && result.noFutureData && result.immediateNextEntryCompliant && result.entryBufferCompliant;
+    const passed = result.performanceMetricsAvailable && result.conflicts.length === 0 && result.regressions.length === 0 && result.holdoutCompleted && result.holdoutPassed && result.noFutureData && result.immediateNextEntryCompliant && result.entryBufferCompliant;
     await db.update(proposalValidationRunsTable).set({
       status: passed ? "passed" : "failed",
       progressStage: "completed",
