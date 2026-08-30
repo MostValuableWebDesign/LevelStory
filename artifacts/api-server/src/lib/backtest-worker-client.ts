@@ -16,8 +16,8 @@ export class BacktestRequestAbortedError extends Error {
 }
 
 export class BacktestWorkerError extends Error {
-  constructor() {
-    super("BACKTEST_WORKER_FAILED");
+  constructor(detail?: string) {
+    super(detail ? `BACKTEST_WORKER_FAILED: ${detail}` : "BACKTEST_WORKER_FAILED");
     this.name = "BacktestWorkerError";
   }
 }
@@ -128,7 +128,7 @@ export function runBacktestInWorker(
         if (message.type === "result") {
           finish(() => resolve(message.report));
         } else {
-          finish(() => reject(new BacktestWorkerError()));
+          finish(() => reject(new BacktestWorkerError(message.message)));
         }
       });
       worker.once("error", () => {

@@ -1,0 +1,108 @@
+Perform a compute-conscious Phase 2G end-to-end verification. Do not change strategy rules, candidate identity, pullback tolerance, patience rules, entry rules, risk parameters, chart UI, or historical-index contents.
+
+Goal:
+Authoritatively verify the post-Phase-2G outcomes of the July 24, 2026 long candidate and July 27, 2026 short candidate without running the full July 13–27 replay unless necessary.
+
+1. Diagnose BACKTEST_WORKER_FAILED
+
+Inspect the worker failure and report:
+
+- Whether failure occurred during historical-index loading, session preparation, candidate generation, management replay, serialization, or worker shutdown.
+- Actual elapsed time for each stage.
+- Configured worker deadline.
+- Whether the historical index was ready before the request.
+- Whether the failure was a timeout, memory failure, uncaught exception, or process termination.
+
+Do not hide the error by merely increasing every timeout.
+
+2. Run narrow deterministic verification
+
+Run separate minimal historical replays for:
+
+- July 24, 2026
+- July 27, 2026
+
+Use the existing indexed MES data and current formula/configuration hash.
+
+Do not rebuild or re-import the historical index.
+
+For each candidate report:
+
+- Candidate ID
+- Signal occurrence ID
+- Direction
+- P timestamp and OHLC
+- E timestamp and OHLC
+- Confirmation threshold
+- Whether E reached the threshold
+- Entry observation timestamp
+- Entry price
+- Frozen management-context timestamp
+- Strategy stop
+- Catastrophe stop
+- Target
+- Runner activation and exit rules
+- Source audit ID
+- First candle evaluated for exit management
+- Every resulting management event
+- Final outcome or explicit open/unscored reason
+- Realized gross P&L, fees, slippage, and net P&L if finalized
+- Ambiguity label and resolution policy, if applicable
+
+Verify that exit evaluation begins only after the E candle closes.
+
+3. Validate legacy reconciliation
+
+Prove with deterministic tests that:
+
+- A legacy trade cannot become authoritative when its candidate is ENTRY_NOT_REACHED.
+- A legacy trade cannot become authoritative when its candidate is INSUFFICIENT_CANDLE_DATA.
+- A legacy trade cannot become authoritative when its candidate is ENTRY_AMBIGUOUS.
+- A legacy trade may be authoritative only when the candidate is MODELED_TRADE_CREATED and entryReachedThreshold is true.
+- Conflicting legacy trades remain orphan diagnostics and do not affect metrics.
+
+4. Verify metric eligibility
+
+Ensure these are excluded from realized performance:
+
+- Open trades
+- Missing-management-context trades
+- ENTRY_AMBIGUOUS candidates
+- Unresolved exit ambiguity
+- Orphan legacy trades
+
+Conservatively resolved ambiguity may be included only when the existing governed policy permits it and the report clearly labels it.
+
+5. Timeout handling
+
+If the narrow replays still exceed the deadline:
+
+- Fix only the identified performance or worker-lifecycle defect.
+- Preserve deterministic results.
+- Prefer reuse of the ready historical index and session-local candle slices.
+- Do not add approximate candles, skip evidence, fabricate outcomes, or weaken validation.
+- Do not trigger a full historical-index rebuild.
+
+6. Verification
+
+Run only:
+
+- Focused Phase 5/6/7/8/9 tests
+- OHLCV execution tests
+- API typecheck
+- API build
+- git diff --check
+- The two narrow historical replay checks
+
+Deliver:
+
+- Root cause of BACKTEST_WORKER_FAILED
+- Files changed, if any
+- July 24 disposition
+- July 27 disposition
+- Candidate/trade/outcome reconciliation
+- Realized versus open/unscored metrics
+- Test totals and runtime timings
+- Remaining limitations
+
+Preserve Shadow Mode only. Do not add broker, paper-order, or live-order behavior.

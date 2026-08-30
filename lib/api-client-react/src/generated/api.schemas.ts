@@ -2258,6 +2258,8 @@ export const HistoricalOccurrenceStatus = {
   EXPIRED_NO_IMMEDIATE_CONFIRMATION: 'EXPIRED_NO_IMMEDIATE_CONFIRMATION',
   EXPIRED_MISSING_E: 'EXPIRED_MISSING_E',
   EXPIRED_INCOMPLETE_E: 'EXPIRED_INCOMPLETE_E',
+  STRUCTURALLY_INVALIDATED: 'STRUCTURALLY_INVALIDATED',
+  IMMEDIATE_CONFIRMATION_FAILED: 'IMMEDIATE_CONFIRMATION_FAILED',
 } as const;
 
 export type HistoricalOccurrenceSignalStatus = typeof HistoricalOccurrenceSignalStatus[keyof typeof HistoricalOccurrenceSignalStatus];
@@ -2854,6 +2856,16 @@ export type BacktestReportReplay = {
   futureCandleAccess: false;
 };
 
+export type BacktestReportExecutionSummary = { [key: string]: unknown };
+
+export type BacktestReportTradeCandidatesItem = { [key: string]: unknown };
+
+export type BacktestReportRejectedCandidateSignalsItem = { [key: string]: unknown };
+
+export type BacktestReportOrphanModeledTradesItem = { [key: string]: unknown };
+
+export type BacktestReportDiagnostics = { [key: string]: unknown };
+
 export type BacktestReportAuditPage = {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   runId: string;
@@ -2961,12 +2973,17 @@ export interface BacktestReport {
   dataset: BacktestReportDataset;
   replay: BacktestReportReplay;
   metrics: BacktestMetricSet;
+  executionSummary?: BacktestReportExecutionSummary;
   inSample: BacktestMetricSet;
   outOfSample: BacktestMetricSet;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
+  tradeCandidates?: BacktestReportTradeCandidatesItem[];
+  rejectedCandidateSignals?: BacktestReportRejectedCandidateSignalsItem[];
+  orphanModeledTrades?: BacktestReportOrphanModeledTradesItem[];
   audit: BacktestAuditRecord[];
   occurrences: HistoricalOccurrence[];
+  diagnostics?: BacktestReportDiagnostics;
   auditPage: BacktestReportAuditPage;
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;

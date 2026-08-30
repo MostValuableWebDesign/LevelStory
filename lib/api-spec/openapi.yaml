@@ -3004,7 +3004,7 @@ components:
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
         status:
           type: string
-          enum: [EDGE_FOUND, PATIENCE_FOUND, SIGNAL_CONFIRMED, TRADE_TAKEN, TRADE_OUTCOME, CANDIDATE, CONFIRMED, ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED, QUALIFIED_TRADE, MODELED_TRADE, RISK_REJECTED, RISK_APPROVED_EXECUTION_UNAVAILABLE, STOP_EXIT, TARGET_EXIT, RUNNER_EXIT, PATIENCE_CANDLE_EXPIRED, EXPIRED_NO_IMMEDIATE_CONFIRMATION, EXPIRED_MISSING_E, EXPIRED_INCOMPLETE_E]
+          enum: [EDGE_FOUND, PATIENCE_FOUND, SIGNAL_CONFIRMED, TRADE_TAKEN, TRADE_OUTCOME, CANDIDATE, CONFIRMED, ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED, QUALIFIED_TRADE, MODELED_TRADE, RISK_REJECTED, RISK_APPROVED_EXECUTION_UNAVAILABLE, STOP_EXIT, TARGET_EXIT, RUNNER_EXIT, PATIENCE_CANDLE_EXPIRED, EXPIRED_NO_IMMEDIATE_CONFIRMATION, EXPIRED_MISSING_E, EXPIRED_INCOMPLETE_E, STRUCTURALLY_INVALIDATED, IMMEDIATE_CONFIRMATION_FAILED]
         signalStatus: { type: string, enum: [SIGNAL_CONFIRMED, ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED] }
         eligibilityArmId: { type: string }
         eligibilityArmState: { type: string, enum: [active, consumed, invalidated, superseded] }
@@ -3265,10 +3265,14 @@ components:
             futureCandleAccess: { type: boolean, enum: [false] }
           required: [cursor, visibleCandleCount, visibleCandleCloseTime, mode, totalCandleCount, causal, futureCandleAccess]
         metrics: { $ref: "#/components/schemas/BacktestMetricSet" }
+        executionSummary: { type: object, additionalProperties: true }
         inSample: { $ref: "#/components/schemas/BacktestMetricSet" }
         outOfSample: { $ref: "#/components/schemas/BacktestMetricSet" }
         segments: { type: array, items: { $ref: "#/components/schemas/BacktestSegment" } }
         trades: { type: array, items: { $ref: "#/components/schemas/BacktestTrade" } }
+        tradeCandidates: { type: array, items: { type: object, additionalProperties: true } }
+        rejectedCandidateSignals: { type: array, items: { type: object, additionalProperties: true } }
+        orphanModeledTrades: { type: array, items: { type: object, additionalProperties: true } }
         audit:
           type: array
           items:
@@ -3277,6 +3281,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HistoricalOccurrence"
+        diagnostics: { type: object, additionalProperties: true }
         auditPage:
           type: object
           properties:

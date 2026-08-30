@@ -20,3 +20,9 @@ Candidate-driven OHLCV management must use the E candle for entry evidence only;
 **Why:** The modeled fill is observed at E close, so using E's earlier high/low would leak pre-entry movement into stop, target, or runner outcomes.
 
 **How to apply:** Keep the immediate trigger candle in the candidate audit, but pass only post-E candles to the management simulator.
+
+Historical replay response contracts must include every status and Phase 2G field emitted by the causal engine.
+
+**Why:** Strict response validation can reject an otherwise completed worker report when a newly surfaced historical status or candidate-management field is absent from the generated OpenAPI schema.
+
+**How to apply:** Update the OpenAPI source and regenerate derived validators/clients whenever replay output gains a status or report property; keep HTTP errors generic but preserve worker details in server diagnostics.

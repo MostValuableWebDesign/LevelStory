@@ -895,6 +895,7 @@ export const RunBacktestResponse = zod.object({
   "partialTargetExits": zod.number(),
   "consecutiveLosses": zod.number()
 }),
+  "executionSummary": zod.record(zod.string(), zod.unknown()).optional(),
   "inSample": zod.object({
   "tradeCount": zod.number(),
   "winRate": zod.number(),
@@ -1076,6 +1077,9 @@ export const RunBacktestResponse = zod.object({
 }))
 }).optional()
 })),
+  "tradeCandidates": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectedCandidateSignals": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "orphanModeledTrades": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "audit": zod.array(zod.object({
   "id": zod.string(),
   "tradingDate": zod.string(),
@@ -1166,7 +1170,7 @@ export const RunBacktestResponse = zod.object({
   "maxRangeTicks": zod.number().min(1),
   "maxExpansionRatio": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
 }),
-  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E']),
+  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E', 'STRUCTURALLY_INVALIDATED', 'IMMEDIATE_CONFIRMATION_FAILED']),
   "signalStatus": zod.enum(['SIGNAL_CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED']).optional(),
   "eligibilityArmId": zod.string().optional(),
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
@@ -1186,6 +1190,7 @@ export const RunBacktestResponse = zod.object({
   "patienceEntryPrice": zod.number().nullish(),
   "confirmationEntryPrice": zod.number().nullish()
 })),
+  "diagnostics": zod.record(zod.string(), zod.unknown()).optional(),
   "auditPage": zod.object({
   "runId": zod.string().regex(runBacktestResponseAuditPageRunIdRegExp),
   "page": zod.number().min(1),
@@ -1462,6 +1467,7 @@ export const StartBatchBacktestResponse = zod.object({
   "partialTargetExits": zod.number(),
   "consecutiveLosses": zod.number()
 }),
+  "executionSummary": zod.record(zod.string(), zod.unknown()).optional(),
   "inSample": zod.object({
   "tradeCount": zod.number(),
   "winRate": zod.number(),
@@ -1643,6 +1649,9 @@ export const StartBatchBacktestResponse = zod.object({
 }))
 }).optional()
 })),
+  "tradeCandidates": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectedCandidateSignals": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "orphanModeledTrades": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "audit": zod.array(zod.object({
   "id": zod.string(),
   "tradingDate": zod.string(),
@@ -1733,7 +1742,7 @@ export const StartBatchBacktestResponse = zod.object({
   "maxRangeTicks": zod.number().min(1),
   "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
 }),
-  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E']),
+  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E', 'STRUCTURALLY_INVALIDATED', 'IMMEDIATE_CONFIRMATION_FAILED']),
   "signalStatus": zod.enum(['SIGNAL_CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED']).optional(),
   "eligibilityArmId": zod.string().optional(),
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
@@ -1753,6 +1762,7 @@ export const StartBatchBacktestResponse = zod.object({
   "patienceEntryPrice": zod.number().nullish(),
   "confirmationEntryPrice": zod.number().nullish()
 })),
+  "diagnostics": zod.record(zod.string(), zod.unknown()).optional(),
   "auditPage": zod.object({
   "runId": zod.string().regex(startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp),
   "page": zod.number().min(1),
@@ -2430,6 +2440,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "partialTargetExits": zod.number(),
   "consecutiveLosses": zod.number()
 }),
+  "executionSummary": zod.record(zod.string(), zod.unknown()).optional(),
   "inSample": zod.object({
   "tradeCount": zod.number(),
   "winRate": zod.number(),
@@ -2611,6 +2622,9 @@ export const GetBatchBacktestStatusResponse = zod.object({
 }))
 }).optional()
 })),
+  "tradeCandidates": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectedCandidateSignals": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "orphanModeledTrades": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "audit": zod.array(zod.object({
   "id": zod.string(),
   "tradingDate": zod.string(),
@@ -2701,7 +2715,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "maxRangeTicks": zod.number().min(1),
   "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
 }),
-  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E']),
+  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E', 'STRUCTURALLY_INVALIDATED', 'IMMEDIATE_CONFIRMATION_FAILED']),
   "signalStatus": zod.enum(['SIGNAL_CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED']).optional(),
   "eligibilityArmId": zod.string().optional(),
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
@@ -2721,6 +2735,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "patienceEntryPrice": zod.number().nullish(),
   "confirmationEntryPrice": zod.number().nullish()
 })),
+  "diagnostics": zod.record(zod.string(), zod.unknown()).optional(),
   "auditPage": zod.object({
   "runId": zod.string().regex(getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp),
   "page": zod.number().min(1),
@@ -3398,6 +3413,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "partialTargetExits": zod.number(),
   "consecutiveLosses": zod.number()
 }),
+  "executionSummary": zod.record(zod.string(), zod.unknown()).optional(),
   "inSample": zod.object({
   "tradeCount": zod.number(),
   "winRate": zod.number(),
@@ -3579,6 +3595,9 @@ export const CancelBatchBacktestResponse = zod.object({
 }))
 }).optional()
 })),
+  "tradeCandidates": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectedCandidateSignals": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "orphanModeledTrades": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "audit": zod.array(zod.object({
   "id": zod.string(),
   "tradingDate": zod.string(),
@@ -3669,7 +3688,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "maxRangeTicks": zod.number().min(1),
   "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
 }),
-  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E']),
+  "status": zod.enum(['EDGE_FOUND', 'PATIENCE_FOUND', 'SIGNAL_CONFIRMED', 'TRADE_TAKEN', 'TRADE_OUTCOME', 'CANDIDATE', 'CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED', 'QUALIFIED_TRADE', 'MODELED_TRADE', 'RISK_REJECTED', 'RISK_APPROVED_EXECUTION_UNAVAILABLE', 'STOP_EXIT', 'TARGET_EXIT', 'RUNNER_EXIT', 'PATIENCE_CANDLE_EXPIRED', 'EXPIRED_NO_IMMEDIATE_CONFIRMATION', 'EXPIRED_MISSING_E', 'EXPIRED_INCOMPLETE_E', 'STRUCTURALLY_INVALIDATED', 'IMMEDIATE_CONFIRMATION_FAILED']),
   "signalStatus": zod.enum(['SIGNAL_CONFIRMED', 'ENTRY_CONFIRMATION_FAILED', 'ENTRY_CONFIRMED']).optional(),
   "eligibilityArmId": zod.string().optional(),
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
@@ -3689,6 +3708,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "patienceEntryPrice": zod.number().nullish(),
   "confirmationEntryPrice": zod.number().nullish()
 })),
+  "diagnostics": zod.record(zod.string(), zod.unknown()).optional(),
   "auditPage": zod.object({
   "runId": zod.string().regex(cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp),
   "page": zod.number().min(1),

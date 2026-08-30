@@ -2486,7 +2486,7 @@ function candidateDrivenEntryTrade(
     entryTime,
     exitTime: isOpen ? null : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     entryPrice,
-    exitPrice: null,
+    exitPrice: isOpen ? null : modeled?.exitPrice ?? null,
     contracts: management.contracts,
     grossPnl: accounting.grossPnl,
     fees: accounting.fees,
