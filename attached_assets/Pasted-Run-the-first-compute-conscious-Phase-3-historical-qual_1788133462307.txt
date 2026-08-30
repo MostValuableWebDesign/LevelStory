@@ -1,0 +1,101 @@
+Run the first compute-conscious Phase 3 historical qualification pilot for LevelStory.
+
+PURPOSE
+
+Test whether the current frozen strategy formula demonstrates an edge on historical MES data. This is an evaluation run, not an optimization run.
+
+DATA AND COMPUTE RULES
+
+- Use the existing ready historical Databento multi-contract index.
+- Do not rebuild the historical index.
+- Select exactly 30 chronological, eligible trading sessions with complete required data.
+- Freeze the first 20 sessions as in-sample.
+- Freeze the immediately following 10 sessions as untouched out-of-sample.
+- Persist an immutable run manifest before evaluating results.
+- Store source fingerprint, formula hash, configuration hash, contract schedule, calendar version, selected dates, and session classification.
+- Run asynchronously in small checkpointed partitions, preferably one session at a time.
+- Resume from checkpoints instead of restarting completed sessions.
+- Do not perform broad repeated cold runs.
+
+FROZEN STRATEGIES
+
+Evaluate these four independent primary edges:
+
+1. ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+2. PATIENCE_CANDLE_CONTINUATION
+3. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+4. EQUIVALENT_CANDLE_REVERSAL
+
+Patience remains the entry mechanism:
+
+- P is a completed patience candle.
+- Only the immediate next completed five-minute candle may confirm P.
+- E must cross the configured confirmation threshold in the intended direction.
+- If E fails, P expires.
+- Continue scanning for a new P2 and its own immediate E2.
+- Never allow a later candle to confirm an earlier P.
+- One physical P→E pair creates at most one candidate and one modeled trade.
+- Multiple qualifying edges or levels become supporting confluences and may improve the grade; they must not create duplicate trades.
+
+ENTRY WINDOW
+
+- Only allow entries whose confirmation observation occurs strictly before 1:00 p.m. America/New_York.
+- Do not take a trade at or after 1:00 p.m.
+- Later candles may be used only to manage an already-entered position.
+
+CAUSAL AND EXECUTION SAFEGUARDS
+
+- Use only information available at each causal evaluation time.
+- Do not use future candles to qualify an entry.
+- Do not fabricate candles, quotes, fills, stops, targets, or outcomes.
+- Preserve missing and invalid management evidence separately.
+- Exclude open, unscored, missing-management, or invalid-management trades from realized P&L.
+- Preserve them in the audit report.
+- Invalid confirmed identities must appear under INVALID_CAUSAL_IDENTITY and must never create a candidate or trade.
+
+NO TUNING
+
+- Do not change thresholds, tolerances, strategy definitions, grading, entry rules, or management rules after viewing results.
+- Do not rerun with adjusted parameters.
+- Do not optimize using the out-of-sample sessions.
+- If an implementation failure occurs, document it and stop rather than changing the formula.
+
+REQUIRED REPORT
+
+Report in-sample and out-of-sample results separately and combined:
+
+- Sessions requested, eligible, completed, skipped, and failed
+- Canonical confirmed signals
+- Authoritative candidates
+- Entered trades
+- Finalized trades
+- Open/unscored trades
+- Ambiguous entries
+- Missing management context
+- Invalid management context
+- Invalid causal identities
+- Candidate rejection reasons and counts
+- Duplicate-signal and duplicate-trade invariants
+- Trades and results by primary edge
+- Supporting confluences per trade
+- Results by grade, direction, and New York entry-time bucket
+- Wins, losses, win rate, gross P&L, net P&L, fees, slippage, profit factor, expectancy, and maximum drawdown
+- Stop, target, runner, session-close, ambiguous, and unresolved outcomes
+- Exact run ID, checkpoint IDs, manifest ID, configuration hash, formula hash, source fingerprint, calendar version, index version, and runtime
+
+QUALIFICATION VERDICT
+
+Return one of:
+
+- PROCEED TO LARGER VALIDATION
+- INSUFFICIENT SAMPLE
+- IMPLEMENTATION BLOCKED
+- NO EVIDENCE OF EDGE
+
+Do not claim that the formula works solely because the run is profitable. Explain sample-size limitations and compare in-sample versus untouched out-of-sample behavior.
+
+VERIFICATION
+
+Run focused Phase 3, candidate, identity, entry-cutoff, and outcome-accounting tests plus API typecheck. Avoid unrelated builds or historical-index work.
+
+Preserve Shadow Mode only. Add no broker, live-order, or paper-order behavior.
