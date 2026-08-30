@@ -12,6 +12,12 @@ import {
   RunBacktestResponse,
   StartBatchBacktestBody,
   StartBatchBacktestResponse,
+  StartEdgeValidationPilotBody,
+  StartEdgeValidationPilotResponse,
+  GetEdgeValidationPilotStatusQueryParams,
+  GetEdgeValidationPilotStatusResponse,
+  CancelEdgeValidationPilotQueryParams,
+  CancelEdgeValidationPilotResponse,
 } from "@workspace/api-zod";
 import { db, riskSettingsTable } from "@workspace/db";
 import { getFuturesContractSpecification } from "../lib/futures/contracts.js";
@@ -25,6 +31,7 @@ import {
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
   getHistoricalMultiContractIndexStatus,
+  getReadyHistoricalMultiContractIndex,
   assertMultiContractCoverageReconciles,
 } from "../lib/futures/multi-contract-replay.js";
 import {
@@ -55,6 +62,17 @@ import { activeShadowStrategySnapshot } from "../lib/active-shadow-strategy.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
 import type { NormalizedCandle } from "../lib/futures/market-data-provider.js";
+import {
+  buildPhase3PilotManifest,
+  buildPhase3PilotPartitions,
+  createPhase3PilotCheckpointStore,
+  PHASE3_IN_SAMPLE_DAYS,
+  PHASE3_OUT_OF_SAMPLE_DAYS,
+  PHASE3_TOTAL_DAYS,
+  runPhase3EdgePilot,
+  type Phase3PilotProgress,
+  type Phase3PilotReport,
+} from "../lib/phase3-edge-pilot.js";
 
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
@@ -152,6 +170,7 @@ export type BacktestRouteConfig = {
   loadRisk?: () => Promise<RiskSnapshot | undefined>;
   runBacktest?: BacktestRunner;
   runBatchPartition?: BatchPartitionRunner;
+  runPilotPartition?: BatchPartitionRunner;
 };
 
 type BatchRecord = {
@@ -164,6 +183,14 @@ type BatchRecord = {
 
 const batchRuns = new Map<string, BatchRecord>();
 const completedBatchCache = new Map<string, BatchBacktestReport>();
+
+type PilotRecord = {
+  controller: AbortController;
+  progress: Phase3PilotProgress;
+};
+
+const pilotRuns = new Map<string, PilotRecord>();
+const pilotCheckpointStore = createPhase3PilotCheckpointStore();
 
 type RequestDeadline = {
   signal: AbortSignal;
@@ -520,6 +547,183 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       };
     }
     res.json(CancelBatchBacktestResponse.parse(batchStatus(record)));
+  });
+
+  router.post("/backtest/edge-pilot", backtestRateLimit, async (req, res): Promise<void> => {
+    const parsed = StartEdgeValidationPilotBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const request = parsed.data;
+    const selectedDates = [...request.selectedDates];
+    if (selectedDates.some((date, index) => date !== [...selectedDates].sort()[index])) {
+      res.status(400).json({ error: "Phase 3 dates must be sorted chronologically." });
+      return;
+    }
+    const active = [...pilotRuns.values()].some((run) =>
+      run.progress.status === "queued" || run.progress.status === "running");
+    if (active) {
+      res.setHeader("Retry-After", "30");
+      res.status(409).json({ error: "A Phase 3 edge-validation pilot is already running." });
+      return;
+    }
+    const readyIndex = await getReadyHistoricalMultiContractIndex();
+    if (!readyIndex) {
+      res.status(503).json({ error: "The ready multi-contract historical index is unavailable; no pilot was started." });
+      return;
+    }
+    let dataset;
+    try {
+      dataset = multiContractImportToReplayDataset(
+        readyIndex,
+        selectedDates[0]!,
+        selectedDates.at(-1)!,
+        PHASE3_IN_SAMPLE_DAYS,
+        PHASE3_OUT_OF_SAMPLE_DAYS,
+        selectedDates,
+      );
+    } catch (error) {
+      res.status(422).json({ error: error instanceof Error ? error.message : "The selected pilot dates are not replayable." });
+      return;
+    }
+    const pilotRequest: BacktestRequest = {
+      symbol: "MES",
+      source: "historical_databento_multicontract",
+      startDate: selectedDates[0],
+      endDate: selectedDates.at(-1)!,
+      inSampleDays: PHASE3_IN_SAMPLE_DAYS,
+      outOfSampleDays: PHASE3_OUT_OF_SAMPLE_DAYS,
+      executionMode: "ohlcv_modeled",
+      ohlcvEntryBufferTicks: request.ohlcvEntryBufferTicks,
+      ohlcvStopBufferTicks: request.ohlcvStopBufferTicks,
+      ohlcvSlippageTicks: request.ohlcvSlippageTicks,
+      ohlcvCommissionPerContract: request.ohlcvCommissionPerContract,
+    };
+    let manifest;
+    try {
+      manifest = buildPhase3PilotManifest({
+        dataset,
+        request: pilotRequest,
+        indexKey: readyIndex.summary.indexKey,
+      });
+    } catch (error) {
+      res.status(422).json({ error: error instanceof Error ? error.message : "The pilot manifest could not be frozen." });
+      return;
+    }
+    const existingCheckpoint = await pilotCheckpointStore.load(manifest.manifestHash);
+    const pilotId = existingCheckpoint?.pilotId ?? randomUUID();
+    const controller = new AbortController();
+    const record: PilotRecord = {
+      controller,
+      progress: {
+        status: "queued",
+        pilotId,
+        totalPartitions: PHASE3_TOTAL_DAYS,
+        completedPartitions: existingCheckpoint?.reports.length ?? 0,
+        currentTradingDate: null,
+        currentContractSymbol: null,
+        manifestHash: manifest.manifestHash,
+        message: existingCheckpoint
+          ? "Pilot checkpoint found; resuming completed causal partitions."
+          : "Pilot accepted; preparing the immutable research manifest.",
+        report: undefined,
+        error: null,
+      },
+    };
+    pilotRuns.set(pilotId, record);
+    if (canWriteResponse(res)) res.status(202).json(StartEdgeValidationPilotResponse.parse({
+      ...record.progress,
+      report: null,
+    }));
+    void (async () => {
+      try {
+        const risk = await loadRisk();
+        const report = await runPhase3EdgePilot(
+          {
+            manifest,
+            request: pilotRequest,
+            partitions: buildPhase3PilotPartitions(dataset),
+            risk,
+          },
+          {
+            pilotId,
+            timeoutMs: workerDeadlineMs,
+            signal: controller.signal,
+            loadCheckpoint: (hash) => pilotCheckpointStore.load(hash),
+            saveCheckpoint: (checkpoint) => pilotCheckpointStore.save(checkpoint),
+            runPartition: config.runPilotPartition ?? runBacktest,
+            onProgress: (progress) => {
+              record.progress = { ...record.progress, ...progress, report: progress.report ?? record.progress.report };
+            },
+          },
+        );
+        record.progress = {
+          ...record.progress,
+          status: "completed",
+          completedPartitions: report.completedPartitions,
+          currentTradingDate: null,
+          currentContractSymbol: null,
+          message: "Phase 3 edge-validation pilot completed.",
+          report,
+          error: null,
+        };
+      } catch (error) {
+        const cancelled = controller.signal.aborted;
+        record.progress = {
+          ...record.progress,
+          status: cancelled ? "cancelled" : "failed",
+          currentTradingDate: null,
+          currentContractSymbol: null,
+          message: cancelled ? "Pilot cancellation requested." : "Phase 3 pilot failed before completion.",
+          error: error instanceof Error ? error.message : "The pilot could not be completed.",
+        };
+      }
+    })();
+  });
+
+  router.get("/backtest/edge-pilot-status", batchStatusRateLimit, (req, res): void => {
+    const parsed = GetEdgeValidationPilotStatusQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const record = pilotRuns.get(parsed.data.pilotId);
+    if (!record) {
+      res.status(404).json({ error: "Phase 3 pilot not found or expired." });
+      return;
+    }
+    res.json(GetEdgeValidationPilotStatusResponse.parse({
+      ...record.progress,
+      report: record.progress.report ?? null,
+    }));
+  });
+
+  router.delete("/backtest/edge-pilot-cancel", backtestRateLimit, (req, res): void => {
+    const parsed = CancelEdgeValidationPilotQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const record = pilotRuns.get(parsed.data.pilotId);
+    if (!record) {
+      res.status(404).json({ error: "Phase 3 pilot not found." });
+      return;
+    }
+    if (record.progress.status === "queued" || record.progress.status === "running") {
+      record.controller.abort(new BacktestRequestAbortedError());
+      record.progress = {
+        ...record.progress,
+        status: "cancelled",
+        currentTradingDate: null,
+        currentContractSymbol: null,
+        message: "Pilot cancellation requested; the active worker is being terminated.",
+      };
+    }
+    res.json(CancelEdgeValidationPilotResponse.parse({
+      ...record.progress,
+      report: record.progress.report ?? null,
+    }));
   });
 
   router.get("/backtest/batch-funnel", auditRateLimit, (req, res): void => {

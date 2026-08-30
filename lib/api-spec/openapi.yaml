@@ -3430,6 +3430,56 @@ components:
             overnightCoverageObserved: { type: boolean }
           required: [missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
       required: [mode, dataSource, symbol, formulaHash, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, occurrences, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+    EdgeValidationPilotRequest:
+      type: object
+      description: Immutable Phase 3 pilot request. Dates must be the exact 20-session in-sample and 10-session chronological holdout.
+      properties:
+        symbol: { type: string, enum: [MES], default: MES }
+        selectedDates:
+          type: array
+          minItems: 30
+          maxItems: 30
+          items: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        ohlcvEntryBufferTicks: { type: number, enum: [3, 4], default: 4 }
+        ohlcvStopBufferTicks: { type: number, minimum: 0, maximum: 12, default: 1 }
+        ohlcvSlippageTicks: { type: number, minimum: 0, maximum: 12, default: 1 }
+        ohlcvCommissionPerContract: { type: number, minimum: 0, maximum: 100, default: 3.2 }
+      required: [symbol, selectedDates]
+    EdgeValidationPilotStatus:
+      type: object
+      properties:
+        pilotId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+        totalPartitions: { type: number, minimum: 0 }
+        completedPartitions: { type: number, minimum: 0 }
+        currentTradingDate: { type: ["string", "null"] }
+        currentContractSymbol: { type: ["string", "null"] }
+        manifestHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        message: { type: string }
+        report:
+          allOf:
+            - $ref: "#/components/schemas/EdgeValidationPilotReport"
+          nullable: true
+        error: { type: ["string", "null"] }
+      required: [pilotId, status, totalPartitions, completedPartitions, currentTradingDate, currentContractSymbol, manifestHash, message, report, error]
+    EdgeValidationPilotReport:
+      type: object
+      description: Full immutable Phase 3 manifest, candidate/trade drill-down, four independent edge summaries, exclusions, timing, and compute evidence.
+      additionalProperties: true
+      properties:
+        pilotId: { type: string }
+        status: { type: string, enum: [completed] }
+        manifest: { type: object, additionalProperties: true }
+        gate: { type: object, additionalProperties: true }
+        selectedDates: { type: array, items: { type: string } }
+        completedPartitions: { type: number }
+        totalPartitions: { type: number }
+        edgeResults: { type: array, items: { type: object, additionalProperties: true } }
+        overall: { type: object, additionalProperties: true }
+        diagnostics: { type: object, additionalProperties: true }
+        timing: { type: object, additionalProperties: true }
+        compute: { type: object, additionalProperties: true }
+      required: [pilotId, status, manifest, gate, selectedDates, completedPartitions, totalPartitions, edgeResults, overall, diagnostics, timing, compute]
     BatchBacktestRequest:
       allOf:
         - $ref: "#/components/schemas/BacktestRequest"

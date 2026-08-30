@@ -2994,6 +2994,121 @@ export interface BacktestReport {
   gapReport: BacktestReportGapReport;
 }
 
+export type EdgeValidationPilotRequestSymbol = typeof EdgeValidationPilotRequestSymbol[keyof typeof EdgeValidationPilotRequestSymbol];
+
+
+export const EdgeValidationPilotRequestSymbol = {
+  MES: 'MES',
+} as const;
+
+export type EdgeValidationPilotRequestOhlcvEntryBufferTicks = typeof EdgeValidationPilotRequestOhlcvEntryBufferTicks[keyof typeof EdgeValidationPilotRequestOhlcvEntryBufferTicks];
+
+
+export const EdgeValidationPilotRequestOhlcvEntryBufferTicks = {
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+/**
+ * Immutable Phase 3 pilot request. Dates must be the exact 20-session in-sample and 10-session chronological holdout.
+ */
+export interface EdgeValidationPilotRequest {
+  symbol: EdgeValidationPilotRequestSymbol;
+  /**
+     * @minItems 30
+     * @maxItems 30
+     * @items.pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  selectedDates: string[];
+  ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
+  /**
+     * @minimum 0
+     * @maximum 12
+     */
+  ohlcvStopBufferTicks?: number;
+  /**
+     * @minimum 0
+     * @maximum 12
+     */
+  ohlcvSlippageTicks?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  ohlcvCommissionPerContract?: number;
+}
+
+export type EdgeValidationPilotStatusStatus = typeof EdgeValidationPilotStatusStatus[keyof typeof EdgeValidationPilotStatusStatus];
+
+
+export const EdgeValidationPilotStatusStatus = {
+  queued: 'queued',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type EdgeValidationPilotReportStatus = typeof EdgeValidationPilotReportStatus[keyof typeof EdgeValidationPilotReportStatus];
+
+
+export const EdgeValidationPilotReportStatus = {
+  completed: 'completed',
+} as const;
+
+export type EdgeValidationPilotReportManifest = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportGate = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportEdgeResultsItem = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportOverall = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportDiagnostics = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportTiming = { [key: string]: unknown };
+
+export type EdgeValidationPilotReportCompute = { [key: string]: unknown };
+
+/**
+ * Full immutable Phase 3 manifest, candidate/trade drill-down, four independent edge summaries, exclusions, timing, and compute evidence.
+ */
+export interface EdgeValidationPilotReport {
+  pilotId: string;
+  status: EdgeValidationPilotReportStatus;
+  manifest: EdgeValidationPilotReportManifest;
+  gate: EdgeValidationPilotReportGate;
+  selectedDates: string[];
+  completedPartitions: number;
+  totalPartitions: number;
+  edgeResults: EdgeValidationPilotReportEdgeResultsItem[];
+  overall: EdgeValidationPilotReportOverall;
+  diagnostics: EdgeValidationPilotReportDiagnostics;
+  timing: EdgeValidationPilotReportTiming;
+  compute: EdgeValidationPilotReportCompute;
+  [key: string]: unknown;
+ }
+
+export interface EdgeValidationPilotStatus {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  pilotId: string;
+  status: EdgeValidationPilotStatusStatus;
+  /** @minimum 0 */
+  totalPartitions: number;
+  /** @minimum 0 */
+  completedPartitions: number;
+  /** @nullable */
+  currentTradingDate: string | null;
+  /** @nullable */
+  currentContractSymbol: string | null;
+  /** @pattern ^[0-9a-f]{64}$ */
+  manifestHash: string;
+  message: string;
+  report: EdgeValidationPilotReport | null;
+  /** @nullable */
+  error: string | null;
+}
+
 export type BatchBacktestRequest = BacktestRequest & {
   /**
      * @maxItems 60
@@ -4591,6 +4706,20 @@ export const GetBatchFunnelStage = {
   modeled_entry: 'modeled_entry',
   final_exit: 'final_exit',
 } as const;
+
+export type GetEdgeValidationPilotStatusParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+pilotId: string;
+};
+
+export type CancelEdgeValidationPilotParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+pilotId: string;
+};
 
 export type GetBacktestAuditPageParams = {
 /**

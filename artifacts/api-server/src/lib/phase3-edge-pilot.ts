@@ -111,6 +111,7 @@ export type Phase3PilotCandidateEvidence = {
     | "entered_finalized"
     | "entered_open"
     | "entry_ambiguous"
+    | "ambiguous_outcome"
     | "missing_management_context"
     | "unscored";
   exclusionReason: string | null;
@@ -248,6 +249,7 @@ export function buildPhase3PilotManifest(input: {
   request: BacktestRequest;
   strategy?: ActiveShadowStrategy;
   createdAt?: string;
+  indexKey?: string | null;
 }): Phase3PilotManifest {
   const strategy = input.strategy ?? activeShadowStrategySnapshot();
   const inSampleDates = [...input.dataset.inSampleDates];
@@ -274,7 +276,7 @@ export function buildPhase3PilotManifest(input: {
     source: {
       kind: "historical_databento_multicontract",
       contentFingerprint: input.dataset.contentFingerprint,
-      indexKey: null,
+      indexKey: input.indexKey ?? null,
       selectedDates,
       inSampleDates,
       outOfSampleDates,
@@ -454,15 +456,18 @@ function summarizeEvidence(
     } else if (candidate.executionStatus === "INSUFFICIENT_CANDLE_DATA") {
       disposition = "unscored";
       exclusionReason = "INSUFFICIENT_CANDLE_DATA";
-    } else if (candidate.executionStatus === "MODELED_TRADE_CREATED" && trade) {
+    } else if (candidate.executionStatus === "MODELED_TRADE_CREATED") {
       if (!validManagementContext(candidate)) {
         disposition = "missing_management_context";
         exclusionReason = candidate.managementContext?.missingEvidenceReasons.join(", ") || "INVALID_MANAGEMENT_CONTEXT";
+      } else if (!trade) {
+        disposition = "unscored";
+        exclusionReason = "MODELED_TRADE_MISSING";
       } else if (trade.outcome === "open") {
         disposition = "entered_open";
         exclusionReason = "OPEN_TRADE";
       } else if (isAmbiguousTrade(trade)) {
-        disposition = "unscored";
+        disposition = "ambiguous_outcome";
         exclusionReason = trade.ambiguityLabel ?? "UNRESOLVED_EXIT_AMBIGUITY";
       } else {
         disposition = "entered_finalized";
@@ -494,10 +499,10 @@ function metricsForEvidence(evidence: readonly Phase3PilotCandidateEvidence[]): 
       if (item.exclusionReason) addReason(result, item.exclusionReason);
       continue;
     }
-    if (item.disposition === "entry_ambiguous") {
+    if (item.disposition === "entry_ambiguous" || item.disposition === "ambiguous_outcome") {
       result.ambiguousCount += 1;
       result.excludedCount += 1;
-      addReason(result, item.exclusionReason ?? "ENTRY_AMBIGUOUS");
+      addReason(result, item.exclusionReason ?? "AMBIGUOUS_OUTCOME");
       continue;
     }
     if (item.disposition === "unscored") {
@@ -527,7 +532,10 @@ function metricsForEvidence(evidence: readonly Phase3PilotCandidateEvidence[]): 
 }
 
 function matchesEdge(candidate: HistoricalTradeCandidate, edge: Phase3Edge): boolean {
-  return candidate.primaryEdge === edge || candidate.matchedEdges.includes(edge);
+  // Edge totals are independent primary-edge populations. Secondary matches
+  // remain in the candidate evidence as confluence, but must not multiply the
+  // same physical P→E sequence into every edge result.
+  return candidate.primaryEdge === edge;
 }
 
 function deduplicateCandidates(reports: readonly BacktestReport[]): {

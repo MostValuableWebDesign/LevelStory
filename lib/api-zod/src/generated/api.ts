@@ -4273,6 +4273,164 @@ export const GetBatchFunnelResponse = zod.object({
 
 
 /**
+ * Runs exactly 20 chronological in-sample and 10 later untouched out-of-sample MES sessions from the ready multi-contract historical index. The pilot is immutable, resumable, causal, and Shadow Mode only.
+ * @summary Start the bounded Phase 3 historical edge-validation pilot
+ */
+export const startEdgeValidationPilotBodySymbolDefault = `MES`;
+export const startEdgeValidationPilotBodySelectedDatesItemRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startEdgeValidationPilotBodySelectedDatesMin = 30;
+export const startEdgeValidationPilotBodySelectedDatesMax = 30;
+
+export const startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault = 4;
+export const startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault = 1;
+export const startEdgeValidationPilotBodyOhlcvStopBufferTicksMin = 0;
+export const startEdgeValidationPilotBodyOhlcvStopBufferTicksMax = 12;
+
+export const startEdgeValidationPilotBodyOhlcvSlippageTicksDefault = 1;
+export const startEdgeValidationPilotBodyOhlcvSlippageTicksMin = 0;
+export const startEdgeValidationPilotBodyOhlcvSlippageTicksMax = 12;
+
+export const startEdgeValidationPilotBodyOhlcvCommissionPerContractDefault = 3.2;
+export const startEdgeValidationPilotBodyOhlcvCommissionPerContractMin = 0;
+export const startEdgeValidationPilotBodyOhlcvCommissionPerContractMax = 100;
+
+
+
+export const StartEdgeValidationPilotBody = zod.object({
+  "symbol": zod.enum(['MES']).default(startEdgeValidationPilotBodySymbolDefault),
+  "selectedDates": zod.array(zod.string().regex(startEdgeValidationPilotBodySelectedDatesItemRegExp)).min(startEdgeValidationPilotBodySelectedDatesMin).max(startEdgeValidationPilotBodySelectedDatesMax),
+  "ohlcvEntryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]).default(startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault),
+  "ohlcvStopBufferTicks": zod.number().min(startEdgeValidationPilotBodyOhlcvStopBufferTicksMin).max(startEdgeValidationPilotBodyOhlcvStopBufferTicksMax).default(startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault),
+  "ohlcvSlippageTicks": zod.number().min(startEdgeValidationPilotBodyOhlcvSlippageTicksMin).max(startEdgeValidationPilotBodyOhlcvSlippageTicksMax).default(startEdgeValidationPilotBodyOhlcvSlippageTicksDefault),
+  "ohlcvCommissionPerContract": zod.number().min(startEdgeValidationPilotBodyOhlcvCommissionPerContractMin).max(startEdgeValidationPilotBodyOhlcvCommissionPerContractMax).default(startEdgeValidationPilotBodyOhlcvCommissionPerContractDefault)
+}).describe('Immutable Phase 3 pilot request. Dates must be the exact 20-session in-sample and 10-session chronological holdout.')
+
+export const startEdgeValidationPilotResponsePilotIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startEdgeValidationPilotResponseTotalPartitionsMin = 0;
+
+export const startEdgeValidationPilotResponseCompletedPartitionsMin = 0;
+
+export const startEdgeValidationPilotResponseManifestHashRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
+export const StartEdgeValidationPilotResponse = zod.object({
+  "pilotId": zod.string().regex(startEdgeValidationPilotResponsePilotIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed', 'cancelled']),
+  "totalPartitions": zod.number().min(startEdgeValidationPilotResponseTotalPartitionsMin),
+  "completedPartitions": zod.number().min(startEdgeValidationPilotResponseCompletedPartitionsMin),
+  "currentTradingDate": zod.string().nullable(),
+  "currentContractSymbol": zod.string().nullable(),
+  "manifestHash": zod.string().regex(startEdgeValidationPilotResponseManifestHashRegExp),
+  "message": zod.string(),
+  "report": zod.object({
+  "pilotId": zod.string(),
+  "status": zod.enum(['completed']),
+  "manifest": zod.record(zod.string(), zod.unknown()),
+  "gate": zod.record(zod.string(), zod.unknown()),
+  "selectedDates": zod.array(zod.string()),
+  "completedPartitions": zod.number(),
+  "totalPartitions": zod.number(),
+  "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
+  "overall": zod.record(zod.string(), zod.unknown()),
+  "diagnostics": zod.record(zod.string(), zod.unknown()),
+  "timing": zod.record(zod.string(), zod.unknown()),
+  "compute": zod.record(zod.string(), zod.unknown())
+}).describe('Full immutable Phase 3 manifest, candidate\/trade drill-down, four independent edge summaries, exclusions, timing, and compute evidence.').nullable(),
+  "error": zod.string().nullable()
+})
+
+
+/**
+ * @summary Read Phase 3 pilot progress or evidence
+ */
+export const getEdgeValidationPilotStatusQueryPilotIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const GetEdgeValidationPilotStatusQueryParams = zod.object({
+  "pilotId": zod.coerce.string().regex(getEdgeValidationPilotStatusQueryPilotIdRegExp)
+})
+
+export const getEdgeValidationPilotStatusResponsePilotIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getEdgeValidationPilotStatusResponseTotalPartitionsMin = 0;
+
+export const getEdgeValidationPilotStatusResponseCompletedPartitionsMin = 0;
+
+export const getEdgeValidationPilotStatusResponseManifestHashRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
+export const GetEdgeValidationPilotStatusResponse = zod.object({
+  "pilotId": zod.string().regex(getEdgeValidationPilotStatusResponsePilotIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed', 'cancelled']),
+  "totalPartitions": zod.number().min(getEdgeValidationPilotStatusResponseTotalPartitionsMin),
+  "completedPartitions": zod.number().min(getEdgeValidationPilotStatusResponseCompletedPartitionsMin),
+  "currentTradingDate": zod.string().nullable(),
+  "currentContractSymbol": zod.string().nullable(),
+  "manifestHash": zod.string().regex(getEdgeValidationPilotStatusResponseManifestHashRegExp),
+  "message": zod.string(),
+  "report": zod.object({
+  "pilotId": zod.string(),
+  "status": zod.enum(['completed']),
+  "manifest": zod.record(zod.string(), zod.unknown()),
+  "gate": zod.record(zod.string(), zod.unknown()),
+  "selectedDates": zod.array(zod.string()),
+  "completedPartitions": zod.number(),
+  "totalPartitions": zod.number(),
+  "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
+  "overall": zod.record(zod.string(), zod.unknown()),
+  "diagnostics": zod.record(zod.string(), zod.unknown()),
+  "timing": zod.record(zod.string(), zod.unknown()),
+  "compute": zod.record(zod.string(), zod.unknown())
+}).describe('Full immutable Phase 3 manifest, candidate\/trade drill-down, four independent edge summaries, exclusions, timing, and compute evidence.').nullable(),
+  "error": zod.string().nullable()
+})
+
+
+/**
+ * @summary Cancel a running Phase 3 pilot
+ */
+export const cancelEdgeValidationPilotQueryPilotIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const CancelEdgeValidationPilotQueryParams = zod.object({
+  "pilotId": zod.coerce.string().regex(cancelEdgeValidationPilotQueryPilotIdRegExp)
+})
+
+export const cancelEdgeValidationPilotResponsePilotIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const cancelEdgeValidationPilotResponseTotalPartitionsMin = 0;
+
+export const cancelEdgeValidationPilotResponseCompletedPartitionsMin = 0;
+
+export const cancelEdgeValidationPilotResponseManifestHashRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
+export const CancelEdgeValidationPilotResponse = zod.object({
+  "pilotId": zod.string().regex(cancelEdgeValidationPilotResponsePilotIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed', 'cancelled']),
+  "totalPartitions": zod.number().min(cancelEdgeValidationPilotResponseTotalPartitionsMin),
+  "completedPartitions": zod.number().min(cancelEdgeValidationPilotResponseCompletedPartitionsMin),
+  "currentTradingDate": zod.string().nullable(),
+  "currentContractSymbol": zod.string().nullable(),
+  "manifestHash": zod.string().regex(cancelEdgeValidationPilotResponseManifestHashRegExp),
+  "message": zod.string(),
+  "report": zod.object({
+  "pilotId": zod.string(),
+  "status": zod.enum(['completed']),
+  "manifest": zod.record(zod.string(), zod.unknown()),
+  "gate": zod.record(zod.string(), zod.unknown()),
+  "selectedDates": zod.array(zod.string()),
+  "completedPartitions": zod.number(),
+  "totalPartitions": zod.number(),
+  "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
+  "overall": zod.record(zod.string(), zod.unknown()),
+  "diagnostics": zod.record(zod.string(), zod.unknown()),
+  "timing": zod.record(zod.string(), zod.unknown()),
+  "compute": zod.record(zod.string(), zod.unknown())
+}).describe('Full immutable Phase 3 manifest, candidate\/trade drill-down, four independent edge summaries, exclusions, timing, and compute evidence.').nullable(),
+  "error": zod.string().nullable()
+})
+
+
+/**
  * @summary Read a bounded page of a causal backtest audit
  */
 export const getBacktestAuditPageQueryRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');

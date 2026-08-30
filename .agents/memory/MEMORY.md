@@ -29,3 +29,4 @@
 - [Ledger signal taxonomy](ledger-signal-taxonomy.md) — confirmed signals are ledger-owned P→E outcomes classified by E time; arm consumption blocks reuse while ambiguity remains recoverable.
 - [Causal direction gating](causal-direction-gating.md) — causal ORB, consolidation, and reversal directions are authoritative; only generic continuation requires confirmed 15-minute trend.
 - [Candidate-driven execution](candidate-driven-execution.md) — eligible confirmed candidates initiate deterministic Shadow Mode entry; legacy modeled trades are reconciliation evidence only.
+- [Phase 3 edge projections](phase3-edge-projection.md) — primary edge owns independent totals; secondary matches remain confluence evidence without multiplying physical candidates.

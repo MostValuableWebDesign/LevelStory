@@ -28,8 +28,11 @@ import type {
   BatchBacktestStatus,
   BatchFunnelPage,
   CancelBatchBacktestParams,
+  CancelEdgeValidationPilotParams,
   CandidatePublication,
   DashboardOverview,
+  EdgeValidationPilotRequest,
+  EdgeValidationPilotStatus,
   ErrorResponse,
   ExportVisualValidationDiscrepanciesParams,
   FuturesContractSpecification,
@@ -37,6 +40,7 @@ import type {
   GetBatchBacktestStatusParams,
   GetBatchFunnelParams,
   GetDashboardOverviewParams,
+  GetEdgeValidationPilotStatusParams,
   GetHistoricalDataParams,
   GetHistoricalEmaComparisonParams,
   GetMarketDataStatusParams,
@@ -900,6 +904,240 @@ export function useGetBatchFunnel<TData = Awaited<ReturnType<typeof getBatchFunn
 
 
 
+
+export const getStartEdgeValidationPilotUrl = () => {
+
+
+
+
+  return `/api/backtest/edge-pilot`
+}
+
+/**
+ * Runs exactly 20 chronological in-sample and 10 later untouched out-of-sample MES sessions from the ready multi-contract historical index. The pilot is immutable, resumable, causal, and Shadow Mode only.
+ * @summary Start the bounded Phase 3 historical edge-validation pilot
+ */
+export const startEdgeValidationPilot = async (edgeValidationPilotRequest: EdgeValidationPilotRequest, options?: Parameters<typeof customFetch>[1]): Promise<EdgeValidationPilotStatus> => {
+
+  return customFetch<EdgeValidationPilotStatus>(getStartEdgeValidationPilotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(edgeValidationPilotRequest)
+  }
+);}
+
+
+
+
+
+export const getStartEdgeValidationPilotMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startEdgeValidationPilot>>, TError,{data: BodyType<EdgeValidationPilotRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startEdgeValidationPilot>>, TError,{data: BodyType<EdgeValidationPilotRequest>}, TContext> => {
+
+const mutationKey = ['startEdgeValidationPilot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startEdgeValidationPilot>>, {data: BodyType<EdgeValidationPilotRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  startEdgeValidationPilot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartEdgeValidationPilotMutationResult = NonNullable<Awaited<ReturnType<typeof startEdgeValidationPilot>>>
+    export type StartEdgeValidationPilotMutationBody = BodyType<EdgeValidationPilotRequest>
+    export type StartEdgeValidationPilotMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start the bounded Phase 3 historical edge-validation pilot
+ */
+export const useStartEdgeValidationPilot = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startEdgeValidationPilot>>, TError,{data: BodyType<EdgeValidationPilotRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startEdgeValidationPilot>>,
+        TError,
+        {data: BodyType<EdgeValidationPilotRequest>},
+        TContext
+      > => {
+      return useMutation(getStartEdgeValidationPilotMutationOptions(options));
+    }
+
+export const getGetEdgeValidationPilotStatusUrl = (params: GetEdgeValidationPilotStatusParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/edge-pilot-status?${stringifiedParams}` : `/api/backtest/edge-pilot-status`
+}
+
+/**
+ * @summary Read Phase 3 pilot progress or evidence
+ */
+export const getEdgeValidationPilotStatus = async (params: GetEdgeValidationPilotStatusParams, options?: Parameters<typeof customFetch>[1]): Promise<EdgeValidationPilotStatus> => {
+
+  return customFetch<EdgeValidationPilotStatus>(getGetEdgeValidationPilotStatusUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEdgeValidationPilotStatusQueryKey = (params?: GetEdgeValidationPilotStatusParams,) => {
+    return [
+    `/api/backtest/edge-pilot-status`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetEdgeValidationPilotStatusQueryOptions = <TData = Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>, TError = ErrorType<ErrorResponse>>(params: GetEdgeValidationPilotStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEdgeValidationPilotStatusQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>> = ({ signal }) => getEdgeValidationPilotStatus(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEdgeValidationPilotStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>>
+export type GetEdgeValidationPilotStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read Phase 3 pilot progress or evidence
+ */
+
+export function useGetEdgeValidationPilotStatus<TData = Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>, TError = ErrorType<ErrorResponse>>(
+ params: GetEdgeValidationPilotStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEdgeValidationPilotStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEdgeValidationPilotStatusQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelEdgeValidationPilotUrl = (params: CancelEdgeValidationPilotParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/edge-pilot-cancel?${stringifiedParams}` : `/api/backtest/edge-pilot-cancel`
+}
+
+/**
+ * @summary Cancel a running Phase 3 pilot
+ */
+export const cancelEdgeValidationPilot = async (params: CancelEdgeValidationPilotParams, options?: Parameters<typeof customFetch>[1]): Promise<EdgeValidationPilotStatus> => {
+
+  return customFetch<EdgeValidationPilotStatus>(getCancelEdgeValidationPilotUrl(params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelEdgeValidationPilotMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelEdgeValidationPilot>>, TError,{params: CancelEdgeValidationPilotParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelEdgeValidationPilot>>, TError,{params: CancelEdgeValidationPilotParams}, TContext> => {
+
+const mutationKey = ['cancelEdgeValidationPilot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelEdgeValidationPilot>>, {params: CancelEdgeValidationPilotParams}> = (props) => {
+          const {params} = props ?? {};
+
+          return  cancelEdgeValidationPilot(params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelEdgeValidationPilotMutationResult = NonNullable<Awaited<ReturnType<typeof cancelEdgeValidationPilot>>>
+
+    export type CancelEdgeValidationPilotMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a running Phase 3 pilot
+ */
+export const useCancelEdgeValidationPilot = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelEdgeValidationPilot>>, TError,{params: CancelEdgeValidationPilotParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelEdgeValidationPilot>>,
+        TError,
+        {params: CancelEdgeValidationPilotParams},
+        TContext
+      > => {
+      return useMutation(getCancelEdgeValidationPilotMutationOptions(options));
+    }
 
 export const getGetBacktestAuditPageUrl = (params: GetBacktestAuditPageParams,) => {
   const normalizedParams = new URLSearchParams();
