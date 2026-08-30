@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { deriveTeachingCompatibilityFields } from "../src/lib/visual-review-teaching.ts";
+import { deriveTeachingCompatibilityFields, evaluateDynamicLevelInteraction } from "../src/lib/visual-review-teaching.ts";
 
 const page = readFileSync(new URL("../src/pages/visual-review.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
@@ -115,4 +115,21 @@ test("teaching compatibility fields exclude dynamic indicators and clear stale s
     qualifyingLevelRangeHigh: null,
   });
   assert.match(page, /qualifyingLevels: normalizeTeachingQualifyingLevels/);
+});
+
+test("frontend dynamic-level interaction matches the four-tick L-range rule", () => {
+  const cases = [
+    { name: "wick touches fractional VWAP", high: 6851.508, low: 6850, value: 6851.508, qualifies: true, distanceTicks: 0 },
+    { name: "body crosses fractional VWAP", high: 6852, low: 6851, value: 6851.508, qualifies: true, distanceTicks: 0 },
+    { name: "closes below after touching", high: 6851.508, low: 6850.5, value: 6851.508, qualifies: true, distanceTicks: 0 },
+    { name: "stays within four ticks", high: 6850.5, low: 6849, value: 6851.492, qualifies: true, distanceTicks: 4 },
+    { name: "exceeds four ticks", high: 6850.25, low: 6849, value: 6851.492, qualifies: false, distanceTicks: 5 },
+  ];
+  for (const example of cases) {
+    const result = evaluateDynamicLevelInteraction(example.value, example.high, example.low, 4);
+    assert.equal(result.qualifies, example.qualifies, example.name);
+    assert.equal(result.distanceTicks, example.distanceTicks, example.name);
+  }
+  assert.equal(evaluateDynamicLevelInteraction(6851.508, 6851, 6850, 4).value, 6851.508);
+  assert.equal(evaluateDynamicLevelInteraction(6851.492, 6851, 6850, 4).value, 6851.492);
 });

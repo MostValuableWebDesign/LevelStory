@@ -1,0 +1,110 @@
+```text
+Fix the LevelStory Visual Review qualifying-level logic so the VWAP pullback shown in the current April 13, 2026 MES example is selectable.
+
+Problem
+The candle marked L clearly pulls back to/interacts with the historical VWAP curve, but VWAP is disabled under “Qualifying pullback levels.” The chart and validator therefore disagree.
+
+Required behavior
+
+1. Evaluate VWAP using its historical value at the exact L candle interval—not the final-session VWAP value.
+
+2. Determine interaction using the full L candle high/low range, not its close or marker position.
+
+For MES, with the default four-tick tolerance:
+
+tolerance = 4 × 0.25 = 1.00 point
+
+VWAP qualifies when:
+
+L.high >= VWAP_at_L - tolerance
+AND
+L.low <= VWAP_at_L + tolerance
+
+This must qualify a candle that:
+
+- touches VWAP;
+- crosses VWAP;
+- overlaps VWAP;
+- closes slightly above or below VWAP after interacting with it; or
+- comes within the configured four-tick tolerance.
+
+3. Keep L, P, and E responsibilities explicit:
+
+- L = qualifying level-interaction candle.
+- P = patience candle.
+- E = immediately following entry-confirmation candle.
+- L may equal P when the patience candle itself interacts with VWAP.
+- When L=P, evaluate VWAP at P’s exact five-minute timestamp.
+- E must still be the immediately following completed candle and confirm 3–4 ticks beyond P in the trade direction.
+- Do not move P or E merely to make VWAP qualify.
+
+4. Apply the same timestamp-accurate range-interaction method to EMA 200, while preserving each indicator’s independent identity.
+
+5. Make the frontend and API use the same calculation. Do not allow the UI to disable VWAP when the server would accept it, or display it as selectable when the server would reject it.
+
+6. In “Qualifying pullback levels,” show the evidence used for each dynamic indicator:
+
+- Historical indicator value at L
+- L candle low–high range
+- Configured tolerance in ticks and points
+- Distance from the indicator to the candle range
+- “Qualifies” or the exact reason it does not qualify
+
+Example:
+
+VWAP
+Value at L: 6851.508
+L range: 6851.25–6857.00
+Tolerance: 4 ticks / 1.00 point
+Distance: 0 ticks
+Qualifies: Yes
+
+7. If the chart visually shows an interaction but validation does not, fail closed and display a “Chart/validation evidence mismatch” diagnostic containing:
+
+- L timestamp;
+- VWAP source timestamp;
+- plotted VWAP value;
+- validator VWAP value;
+- L high and low;
+- calculated distance.
+
+Do not silently disable the option.
+
+Tests required
+
+Add deterministic tests covering:
+
+- L wick touches fractional VWAP.
+- L body crosses fractional VWAP.
+- L closes below VWAP after touching it.
+- L sits below VWAP but remains within four ticks.
+- L is more than four ticks away and is rejected.
+- L=P with a valid VWAP interaction.
+- L and P are separate causal candles.
+- VWAP is resolved at L, not from the final chart value.
+- Fractional VWAP values remain full precision and are not forced onto the MES 0.25 tick grid.
+- EMA 200 follows the same interaction method.
+- The April 13, 2026 example makes VWAP selectable when the immutable historical evidence confirms the interaction.
+- Frontend availability and API validation produce the same result.
+
+Safeguards
+
+- Do not increase the default four-tick tolerance.
+- Do not fabricate indicator values, candles, quotes, or fills.
+- Do not use future candles or final-session indicator values.
+- Do not change the patience-candle or next-candle entry rules.
+- Do not mutate the executable formula automatically.
+- Preserve persistent teaching evidence, approval/audit controls, deterministic replay, Shadow Mode, and no-live-orders protections.
+- Do not run a full historical-index rebuild or large qualification backtest for this fix.
+
+Verification
+
+Run only focused tests, frontend/API typechecks, and the smallest relevant build checks. Report:
+
+1. Root cause.
+2. Files changed.
+3. Exact VWAP-at-L calculation.
+4. April 13 example’s L timestamp, OHLC range, VWAP-at-L, distance, and qualification result.
+5. Focused test totals.
+6. Confirmation that no strategy was activated and no orders were created.
+```
