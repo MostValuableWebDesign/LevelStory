@@ -33,6 +33,16 @@ test("visual review presentation uses the full-session default and compact causa
   assert.doesNotMatch(page, /chart-level-connector-/);
 });
 
+test("visual review browses one stable queue across dates and categories", () => {
+  assert.match(page, /const reviewQueue = strategySnapshots/);
+  assert.match(page, /selectedSnapshotIndex=\{reviewQueue\.findIndex/);
+  assert.match(page, /selectedSnapshotTotal=\{reviewQueue\.length\}/);
+  assert.match(page, /moveSnapshot\(reviewQueue, activeSnapshot/);
+  assert.match(page, /<SnapshotNavigator snapshots=\{reviewQueue\}/);
+  assert.match(page, /setSelectedCategory\(snapshot\.category\)/);
+  assert.match(page, /snapshot\.tradingDate/);
+});
+
 test("visual review presentation retains human-only shading and semantic level colors", () => {
   assert.match(page, /data-testid="human-only-region"/);
   assert.ok(chart.includes("label: `ORB / NTZ ${side}`"));

@@ -899,7 +899,7 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
   const candidates = trades.filter((trade) =>
     trade.tradingDate === record.tradingDate
     && trade.contractSymbol === record.contractSymbol
-    && trade.setupType === record.setupType
+    && canonicalStrategyId(trade.setupType) === canonicalStrategyId(record.setupType)
     && trade.direction === record.direction
     && trade.period === record.period,
   );

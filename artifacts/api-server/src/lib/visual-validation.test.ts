@@ -157,6 +157,21 @@ test("historical visual review retains every occurrence in a category", () => {
   assert.notEqual(strong[0]?.snapshotId, strong[1]?.snapshotId);
 });
 
+test("historical trade matching keeps canonical strategy identity across audit labels", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "qualified_trade");
+  assert.ok(fixture?.trade);
+  const aliasedAudit = {
+    ...fixture.audit,
+    setupType: "ORB_BREAK_PULLBACK_CONTINUATION",
+    id: "aliased-prior-date-audit",
+    modeledFillObservationTime: null,
+    exitCandleOpenTime: null,
+    exitCandleCloseTime: null,
+  };
+  const matched = matchingTrade(aliasedAudit, [fixture.trade]);
+  assert.equal(matched?.id, fixture.trade.id);
+});
+
 test("historical Visual Review prioritizes the earliest primary-window occurrence without dropping afternoon evidence", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
   assert.ok(fixture);

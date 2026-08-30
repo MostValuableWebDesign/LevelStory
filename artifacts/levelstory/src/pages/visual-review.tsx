@@ -303,7 +303,10 @@ export default function VisualReview() {
     () => strategySnapshots.filter((snapshot) => snapshot.category === selectedCategory),
     [selectedCategory, strategySnapshots],
   );
-  const activeSnapshot = categorySnapshots.find((snapshot) => snapshot.snapshotId === selectedSnapshotId) ?? categorySnapshots[0];
+  const reviewQueue = strategySnapshots;
+  const activeSnapshot = reviewQueue.find((snapshot) => snapshot.snapshotId === selectedSnapshotId)
+    ?? categorySnapshots[0]
+    ?? reviewQueue[0];
 
   useEffect(() => {
     if (data && !reviewSetId && typeof window !== "undefined") {
@@ -429,6 +432,9 @@ export default function VisualReview() {
 
   const selectSnapshot = (snapshotId: string) => {
     if (snapshotId === activeSnapshot?.snapshotId || !confirmDiscardReview()) return;
+    const snapshot = reviewQueue.find((item) => item.snapshotId === snapshotId);
+    if (!snapshot) return;
+    setSelectedCategory(snapshot.category);
     setSelectedSnapshotId(snapshotId);
   };
 
@@ -551,8 +557,8 @@ export default function VisualReview() {
                selectedStrategyKey={selectedStrategyKey}
                selectedCategory={selectedCategory}
                selectedSnapshot={activeSnapshot}
-               selectedSnapshotIndex={categorySnapshots.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
-               selectedSnapshotTotal={categorySnapshots.length}
+               selectedSnapshotIndex={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
+               selectedSnapshotTotal={reviewQueue.length}
                onSelectStrategy={(key) => {
                  if (!confirmDiscardReview()) return;
                  setSelectedStrategyKey(key);
@@ -560,8 +566,8 @@ export default function VisualReview() {
                  setSelectedSnapshotId("");
                }}
                onSelect={selectCategory}
-               onPrevious={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, -1, selectSnapshot)}
-               onNext={() => activeSnapshot && moveSnapshot(categorySnapshots, activeSnapshot, 1, selectSnapshot)}
+               onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
+               onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
              />
           </div>
 
@@ -625,7 +631,7 @@ export default function VisualReview() {
                     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
                       <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} />
                       <div className="space-y-5">
-                        <SnapshotNavigator snapshots={categorySnapshots} active={activeSnapshot} onSelect={selectSnapshot} />
+                        <SnapshotNavigator snapshots={reviewQueue} active={activeSnapshot} onSelect={selectSnapshot} />
                         <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
                          <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
                            if (!data) return;
