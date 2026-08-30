@@ -1,0 +1,187 @@
+```text
+Correct the LevelStory 200 EMA calculation and chart display for MES five-minute candles.
+
+Problem
+
+The 200 EMA displayed in Visual Review does not appear to match the candle history or the expected NinjaTrader 200 EMA. Diagnose whether the problem comes from:
+
+- insufficient warm-up candles;
+- resetting the EMA at 9:30 a.m. or each trading day;
+- calculating from one-minute instead of completed five-minute candles;
+- using the wrong session template;
+- mixing contracts across a futures rollover;
+- using future candles;
+- plotting final-session values at earlier timestamps;
+- labeling a simple moving average as an EMA; or
+- incorrectly projecting sparse indicator points across the chart.
+
+Authoritative definition
+
+The indicator is a **200-period exponential moving average of completed five-minute closing prices**:
+
+alpha = 2 / (200 + 1)
+
+EMA[t] = close[t] × alpha + EMA[t−1] × (1−alpha)
+
+Use only information available when each five-minute candle completed.
+
+Required behavior
+
+1. Calculate the 200 EMA from chronological, completed five-minute MES candles.
+
+2. Do not reset the EMA:
+
+- at 9:30 a.m.;
+- at midnight;
+- at the start of the selected chart window;
+- when Visual Review begins; or
+- at the beginning of each trading date.
+
+3. Load sufficient causal warm-up history before the first displayed candle:
+
+- Require at least 200 completed five-minute candles.
+- Prefer at least 400–600 warm-up candles for a stable value.
+- Warm-up candles may remain hidden from the chart, but their source and count must be recorded.
+- Never substitute missing candles or use candles occurring after the evaluated timestamp.
+
+4. Session template
+
+For MES, default the 200 EMA calculation to the CME equity-index futures extended session used by the imported Databento data. Do not limit calculation to the visible 9:30 a.m.–4:00 p.m. chart window.
+
+Expose the calculation basis clearly:
+
+“200 EMA · completed 5m closes · CME extended session · no daily reset”
+
+If the application supports an RTH-only alternative, keep it explicitly separate and never mix RTH and extended-session values. The configured template must match the value used by validation and chart rendering.
+
+5. Contract handling
+
+- Use the actual contract associated with each candle.
+- Do not mix prices from different contracts without an explicit, deterministic continuous-contract policy.
+- Do not back-adjust or blend rollover prices silently.
+- At rollover, record the contract and warm-up policy used.
+- Fail closed with an explanation if adequate contract-local warm-up history is unavailable.
+
+6. Initialization
+
+Initialize the EMA deterministically using the SMA of the first 200 valid completed five-minute closes, then apply the recursive EMA formula to subsequent candles.
+
+Do not initialize it from:
+
+- the first visible candle;
+- zero;
+- the first candle’s close alone; or
+- a future final value.
+
+7. Chart rendering
+
+- Plot the 200 EMA as a continuous curved line through the timestamp-specific EMA values.
+- Use light green for the 200 EMA.
+- Do not draw one horizontal “final EMA” value across the entire chart.
+- Do not interpolate across missing five-minute intervals as though candles existed.
+- Use a dashed segment or visible gap when the source history has missing intervals.
+- The value shown in the Candle Inspector must equal the plotted EMA value for that exact candle.
+- The value used under “Qualifying pullback levels” must be the same timestamp-specific EMA value.
+
+8. Level interaction
+
+For a selected qualifying candle L, evaluate its full high–low range against `EMA200_at_L`.
+
+With the default four-tick MES tolerance:
+
+tolerance = 4 × 0.25 = 1.00 point
+
+EMA 200 qualifies when:
+
+L.high >= EMA200_at_L - tolerance
+AND
+L.low <= EMA200_at_L + tolerance
+
+A candle may touch, cross, overlap, or close slightly above/below the EMA and still qualify. Do not compare only the candle close with the EMA.
+
+9. Evidence panel
+
+For any selected candle, display:
+
+- candle timestamp in ET and UTC;
+- contract;
+- five-minute close;
+- EMA 200 at that candle;
+- session template;
+- warm-up candle count;
+- initialization method;
+- source range used;
+- whether the candle is machine-visible;
+- distance from the candle range to EMA in points and MES ticks;
+- qualification result.
+
+Example:
+
+200 EMA at L: 6849.418
+L range: 6848.75–6852.50
+Distance: 0 ticks
+Warm-up: 600 completed 5m candles
+Template: CME extended session
+Initialization: SMA of first 200 closes
+Qualifies: Yes
+
+10. Chart/validator consistency
+
+The chart, Candle Inspector, frontend qualifying-level selector, API validator, stored teaching evidence, replay engine, and backtest must all use the same EMA series.
+
+If any values disagree, fail closed and show a diagnostic containing both values and their source timestamps.
+
+Focused tests
+
+Add deterministic tests covering:
+
+- exact EMA calculation from known close values;
+- SMA initialization after 200 candles;
+- continued calculation across multiple trading dates;
+- no reset at 9:30 a.m.;
+- extended-session warm-up feeding the first RTH candle;
+- no future-candle access;
+- exact timestamp alignment;
+- missing-candle behavior;
+- contract rollover isolation;
+- chart and Candle Inspector equality;
+- chart and API validator equality;
+- fractional EMA precision;
+- L touching/crossing EMA;
+- L within four ticks;
+- L beyond four ticks;
+- dynamic EMA values staying out of legacy fixed-price fields;
+- no horizontal final-value projection across historical candles.
+
+NinjaTrader comparison
+
+Choose at least three timestamps from the uploaded MES history and report:
+
+- LevelStory EMA value;
+- expected independently calculated EMA value;
+- difference in points and ticks;
+- contract;
+- session template;
+- warm-up count.
+
+Do not claim an exact NinjaTrader match unless the NinjaTrader chart uses the same contract, five-minute bars, session template, data source, missing-bar policy, and EMA initialization.
+
+Safeguards
+
+- Do not fabricate warm-up candles.
+- Do not rebuild the full historical index unless genuinely required.
+- Do not run a large backtest.
+- Do not change the trading formula, patience-candle rules, or entry rules.
+- Do not activate a strategy automatically.
+- Preserve persistent teaching evidence, approval/audit controls, deterministic replay, Shadow Mode, and no-live-orders protections.
+
+Report
+
+1. Root cause.
+2. Files changed.
+3. Previous calculation versus corrected calculation.
+4. Session and warm-up policy.
+5. Three timestamp comparison results.
+6. Focused test and typecheck totals.
+7. Confirmation that no live/paper orders or automatic strategy changes were created.
+```
