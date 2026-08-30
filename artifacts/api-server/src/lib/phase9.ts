@@ -402,16 +402,29 @@ export type BacktestReport = {
 };
 
 export type HistoricalReplayDiagnostics = {
+  rawAuditPatienceReferences: number;
+  uniquePhysicalPatienceCandles: number;
+  canonicalPatienceOccurrences: number;
+  patienceShapesFound: number;
+  immediateConfirmationFailures: number;
+  canonicalSignalsConfirmed: number;
+  canonicalStructuralInvalidations: number;
+  duplicatePatienceReferencesRemoved: number;
+  confirmedOccurrencesByEdge: Record<string, number>;
+  confirmedOccurrencesBySession: Record<string, number>;
+  confirmedOccurrencesByDirectionSource: Record<string, number>;
   eligibleLevelInteractions: number;
   bullishPatienceShapesBeforeQualification: number;
   bearishPatienceShapesBeforeQualification: number;
   orbDirectionShapes: number;
   trendDirectionShapes: number;
   shapesWithoutStrategyDirection: number;
-  immediateConfirmationFailures: number;
   signalConfirmed: number;
   structuralInvalidations: number;
   armExpirations: number;
+  armInvalidations: number;
+  armSupersessions: number;
+  armConsumptions: number;
   rawPullbackEvents: number;
   canonicalPullbackOccurrences: number;
   duplicatePullbackReferencesRemoved: number;
@@ -457,6 +470,9 @@ export type HistoricalOccurrence = {
   formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
+  canonicalOccurrence?: boolean;
+  directionSource?: string;
+  directionSources?: string[];
   primaryEdge?: string;
   matchedEdges?: string[];
   supportingConfluences?: string[];
@@ -1079,6 +1095,16 @@ export function historicalReplayDiagnostics(
   occurrences: readonly HistoricalOccurrence[],
 ): HistoricalReplayDiagnostics {
   const patience = audits.flatMap((record) => record.patienceOccurrences ?? []);
+  const canonicalPatience = occurrences.filter((occurrence) => occurrence.kind === "patience" && occurrence.canonicalOccurrence === true);
+  const confirmedPatience = canonicalPatience.filter((occurrence) => occurrence.status === "SIGNAL_CONFIRMED");
+  const countBy = (values: readonly string[]): Record<string, number> =>
+    values.reduce<Record<string, number>>((counts, value) => {
+      counts[value] = (counts[value] ?? 0) + 1;
+      return counts;
+    }, {});
+  const confirmedByEdge = countBy(confirmedPatience.map((occurrence) => occurrence.primaryEdge ?? occurrence.strategyCandidate));
+  const confirmedBySession = countBy(confirmedPatience.map((occurrence) => `${occurrence.contractSymbol}|${occurrence.tradingDate}`));
+  const confirmedBySource = countBy(confirmedPatience.flatMap((occurrence) => occurrence.directionSources ?? (occurrence.directionSource ? [occurrence.directionSource] : [])));
   const rawPullbackEvents = audits.reduce(
     (count, record) => count + (record.pullbackOccurrences?.filter((event) => event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type)).length ?? 0),
     0,
@@ -1093,18 +1119,29 @@ export function historicalReplayDiagnostics(
     interactionSessions.set(session, interactions);
   }
   return {
+    rawAuditPatienceReferences: patience.length,
+    uniquePhysicalPatienceCandles: new Set(patience.map((item) => `${item.direction}|${item.patienceCandle.openTime}`)).size,
+    canonicalPatienceOccurrences: canonicalPatience.length,
+    patienceShapesFound: canonicalPatience.filter((item) => item.status === "PATIENCE_SHAPE_FOUND").length,
+    canonicalSignalsConfirmed: confirmedPatience.length,
+    canonicalStructuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
+    duplicatePatienceReferencesRemoved: Math.max(0, patience.length - canonicalPatience.length),
+    confirmedOccurrencesByEdge: confirmedByEdge,
+    confirmedOccurrencesBySession: confirmedBySession,
+    confirmedOccurrencesByDirectionSource: confirmedBySource,
     eligibleLevelInteractions: rawPullbackEvents,
     bullishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "long").length,
     bearishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "short").length,
     orbDirectionShapes: patience.filter((item) => item.directionSource === "ORB_BREAKOUT" || item.directionSource === "CONSOLIDATION_BREAKOUT").length,
     trendDirectionShapes: patience.filter((item) => item.directionSource === "CONFIRMED_15M_TREND").length,
     shapesWithoutStrategyDirection: audits.filter((record) => record.patienceCandle !== null && record.direction === null).length,
-    immediateConfirmationFailures: patience.filter((item) => item.qualificationStatus === "IMMEDIATE_CONFIRMATION_FAILED" || (
-      item.qualificationStatus === undefined && item.outcomeStatus !== "CONFIRMED"
-    )).length,
-    signalConfirmed: patience.filter((item) => item.qualificationStatus === "SIGNAL_CONFIRMED" || item.outcomeStatus === "CONFIRMED").length,
-    structuralInvalidations: patience.filter((item) => item.qualificationStatus === "STRUCTURALLY_INVALIDATED" || item.status === "OPPOSITE_SIDE_INVALIDATION" || item.status === "AMBIGUOUS_EVENT_ORDER").length,
+    immediateConfirmationFailures: canonicalPatience.filter((item) => item.status === "IMMEDIATE_CONFIRMATION_FAILED").length,
+    signalConfirmed: confirmedPatience.length,
+    structuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
     armExpirations: 0,
+    armInvalidations: patience.filter((item) => item.eligibilityArmState === "invalidated").length,
+    armSupersessions: patience.filter((item) => item.eligibilityArmState === "superseded").length,
+    armConsumptions: patience.filter((item) => item.eligibilityArmState === "consumed").length,
     rawPullbackEvents,
     canonicalPullbackOccurrences: canonicalPullbackOccurrences.length,
     duplicatePullbackReferencesRemoved: Math.max(0, rawPullbackEvents - canonicalPullbackOccurrences.length),
@@ -1409,6 +1446,41 @@ function linkedPullbackEvents(
   return events.filter((event) => pullbackEventOpenTime(event) === anchorOpenTime);
 }
 
+type CanonicalPatienceStatus =
+  | "PATIENCE_SHAPE_FOUND"
+  | "IMMEDIATE_CONFIRMATION_FAILED"
+  | "SIGNAL_CONFIRMED"
+  | "STRUCTURALLY_INVALIDATED";
+
+function canonicalPatienceStatus(patience: PatienceOccurrence): CanonicalPatienceStatus {
+  if (patience.qualificationStatus) return patience.qualificationStatus;
+  if (patience.outcomeStatus === "CONFIRMED" || patience.status === "ENTRY_TRIGGERED") return "SIGNAL_CONFIRMED";
+  if (patience.status === "OPPOSITE_SIDE_INVALIDATION" || patience.status === "AMBIGUOUS_EVENT_ORDER") return "STRUCTURALLY_INVALIDATED";
+  if (patience.status === "PATIENCE_CANDLE_EXPIRED") return "IMMEDIATE_CONFIRMATION_FAILED";
+  return "PATIENCE_SHAPE_FOUND";
+}
+
+function patienceStatusRank(status: string): number {
+  return status === "SIGNAL_CONFIRMED"
+    ? 4
+    : status === "STRUCTURALLY_INVALIDATED"
+      ? 3
+      : status === "IMMEDIATE_CONFIRMATION_FAILED"
+        ? 2
+        : status === "PATIENCE_SHAPE_FOUND"
+          ? 1
+          : 0;
+}
+
+function patienceSequenceIdentity(
+  patience: PatienceOccurrence,
+  linkedPullback: HistoricalPullbackEvent | undefined,
+): string {
+  return patience.eligibilityArmId
+    ?? patience.eligibilityEventId
+    ?? (linkedPullback ? pullbackEventId(linkedPullback) : "unarmed");
+}
+
 function levelEvidence(events: readonly HistoricalPullbackEvent[]): {
   identifiers: string[];
   values: Record<string, number>;
@@ -1459,6 +1531,7 @@ export function buildHistoricalOccurrenceLedger(
       "CONSOLIDATION_BREAKOUT_CONTINUATION",
       "EQUIVALENT_CANDLE_REVERSAL",
       "PATIENCE_CANDLE_CONTINUATION",
+      "PEAK_RETRACEMENT_REVERSAL",
     ].indexOf(canonicalStrategyId(setupType) ?? setupType);
     const primary = precedence(value.strategyCandidate) < precedence(existing.strategyCandidate) ? value : existing;
     const matches = [...new Set([
@@ -1471,6 +1544,14 @@ export function buildHistoricalOccurrenceLedger(
       ...primary,
       secondaryStrategyMatches: matches.filter((match) => match !== primary.strategyCandidate),
       canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
+      ...(existing.kind === "patience" && value.kind === "patience" ? {
+        status: patienceStatusRank(value.status) > patienceStatusRank(existing.status) ? value.status : existing.status,
+        canonicalOccurrence: true,
+        directionSources: [...new Set([
+          ...(existing.directionSources ?? (existing.directionSource ? [existing.directionSource] : [])),
+          ...(value.directionSources ?? (value.directionSource ? [value.directionSource] : [])),
+        ])],
+      } : {}),
     };
     byIdentity.set(identity, { ...merged, occurrenceId: governedOccurrenceId(merged) });
   };
@@ -1586,24 +1667,28 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
-        linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? "absent",
-        linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : "absent",
+        patienceSequenceIdentity(patience, linkedPullback),
+        linkedEvents.map((event) => `${event.level}|${pullbackEventOpenTime(event)}`).sort().join(","),
         new Date(patience.patienceCandle.openTime).toISOString(),
         new Date(expectedEntryCandleOpenTime).toISOString(),
         confirmedEntry ? new Date(confirmedEntry.openTime).toISOString() : "absent",
-        outcomeStatus,
       ].join("|");
       const id = occurrenceId(identity);
       upsert(identity, {
         occurrenceId: id,
         auditId: record.id,
         kind: "patience",
+         canonicalOccurrence: true,
         strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+         primaryEdge: canonicalStrategyId(record.setupType) ?? record.setupType,
+         matchedEdges: [canonicalStrategyId(record.setupType) ?? record.setupType, ...secondary],
         secondaryStrategyMatches: secondary,
         tradingDate: record.tradingDate,
         contractSymbol: record.contractSymbol,
         contractMonth: record.contractMonth,
         direction: patience.direction,
+         directionSource: patience.directionSource,
+         directionSources: patience.directionSource ? [patience.directionSource] : [],
         lTimestamp: linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : null,
         lEventId: linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? null,
         lInteractionType: linkedPullback?.type ?? null,
@@ -1626,7 +1711,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
-        status: outcomeStatus,
+         status: canonicalPatienceStatus(patience),
         reasonCode: patience.reasonCode,
         evaluationCursor: new Date(patience.evaluationCursor).toISOString(),
         formulaVersion: FIXED_FORMULA_VERSION,
@@ -1656,7 +1741,8 @@ export function buildHistoricalOccurrenceLedger(
          } : {}),
       });
     }
-    if (record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade) {
+    if ((record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade)
+      && (trade !== undefined || (record.patienceOccurrences?.length ?? 0) === 0)) {
       const identity = [
         "decision",
         fingerprint,

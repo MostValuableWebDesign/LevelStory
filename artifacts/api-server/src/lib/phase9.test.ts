@@ -621,7 +621,7 @@ test("ledger retains an expired patience attempt without inventing an E candle",
   });
   const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [expired], []).find((item) => item.kind === "patience");
   assert.ok(occurrence);
-  assert.equal(occurrence.status, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
+  assert.equal(occurrence.status, "IMMEDIATE_CONFIRMATION_FAILED");
   assert.equal(occurrence.entryCandle, null);
 });
 
@@ -686,7 +686,7 @@ test("failed immediate confirmation remains a no-trade patience occurrence", () 
     }],
   });
   const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [failed], []);
-  assert.ok(occurrences.some((occurrence) => occurrence.kind === "patience" && occurrence.status === "EXPIRED_NO_IMMEDIATE_CONFIRMATION"));
+  assert.ok(occurrences.some((occurrence) => occurrence.kind === "patience" && occurrence.status === "IMMEDIATE_CONFIRMATION_FAILED"));
   assert.equal(occurrences.some((occurrence) => occurrence.kind === "trade" || occurrence.kind === "risk"), false);
 });
 
@@ -731,7 +731,7 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
   const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], [linkedTrade]);
   const patience = occurrences.filter((occurrence) => occurrence.kind === "patience");
   assert.equal(patience.length, 2);
-  assert.equal(patience[0]?.status, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
+  assert.equal(patience[0]?.status, "IMMEDIATE_CONFIRMATION_FAILED");
   assert.equal(patience[0]?.entryTimestamp, null);
   assert.equal(patience[0]?.entryCandle, null);
   assert.equal(patience[0]?.nextObservedCandle?.openTime, failedImmediate.openTime);
