@@ -671,10 +671,12 @@ function buildPatienceOccurrences(
   });
   return occurrences.map((occurrence): PatienceOccurrence => {
     if (occurrence.eligibilityArmState !== "active") return occurrence;
+    const currentArm = occurrence.eligibilityArmId ? armStates.get(occurrence.eligibilityArmId) : undefined;
+    if (currentArm && currentArm.state !== "active") return occurrence;
     const supersedingCandidate = candidates.find((candidate) =>
       candidate.armId !== occurrence.eligibilityArmId
       && candidate.event !== undefined
-      && candidate.event.time > occurrence.patienceCandle.openTime,
+      && candidate.event.time > occurrence.eligibilityTime,
     );
     if (!supersedingCandidate) return occurrence;
     return {

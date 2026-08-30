@@ -181,6 +181,8 @@ export type BacktestTrade = {
   matchedEdges?: string[];
   supportingConfluences?: string[];
   setupGrade?: "A" | "A+" | "A++";
+  signalOccurrenceId?: string;
+  candidateId?: string;
   patienceCandle?: Record<string, number | boolean> | null;
   entryCandle?: Record<string, number | boolean> | null;
   audit?: {
@@ -376,6 +378,9 @@ export type BacktestReport = {
   outOfSample: BacktestMetrics;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
+  tradeCandidates: HistoricalTradeCandidate[];
+  rejectedCandidateSignals: RejectedCandidateSignal[];
+  orphanModeledTrades: OrphanModeledTrade[];
   audit: BacktestAuditRecord[];
   occurrences: HistoricalOccurrence[];
   diagnostics?: HistoricalReplayDiagnostics;
@@ -400,6 +405,41 @@ export type BacktestReport = {
     commissionPerContract: number;
   };
   gapReport: BacktestGapReport;
+};
+
+export type HistoricalTradeCandidate = {
+  candidateId: string;
+  signalOccurrenceId: string;
+  sourceFingerprint: string;
+  formulaHash: string;
+  formulaVersion: string;
+  contractSymbol: string;
+  tradingDate: string;
+  direction: "long" | "short";
+  primaryEdge: string;
+  matchedEdges: string[];
+  supportingConfluences: string[];
+  qualifyingLevelIdentifiers: string[];
+  qualifyingLevelValues: Record<string, number>;
+  patienceTimestamp: string;
+  expectedEntryTimestamp: string;
+  confirmationPrice: number;
+  confirmationBufferTicks: number;
+  grade: "A" | "A+" | "A++";
+  eligible: true;
+  executionStatus: "MODELED_TRADE_CREATED" | "EXECUTION_EVIDENCE_UNAVAILABLE" | "EXECUTION_AMBIGUOUS";
+};
+
+export type RejectedCandidateSignal = {
+  signalOccurrenceId: string;
+  reasonCodes: string[];
+  details: string[];
+};
+
+export type OrphanModeledTrade = {
+  tradeId: string;
+  reason: string;
+  matchingSignalOccurrenceId?: string;
 };
 
 export type HistoricalReplayDiagnostics = {
@@ -440,8 +480,9 @@ export type HistoricalReplayDiagnostics = {
   candidatesWithoutConfirmedSignals: number;
   modeledTradesWithoutCandidates: number;
   duplicateCandidatesPerSignal: number;
-  duplicateModeledTradesPerSignal: number;
+  duplicateModeledTradesPerCandidate: number;
   candidateRejectionReasons: Record<string, string>;
+  orphanModeledTradesExcluded: number;
 };
 
 export type HistoricalOccurrence = {
@@ -1109,7 +1150,10 @@ export function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCou
 export function historicalReplayDiagnostics(
   audits: readonly BacktestAuditRecord[],
   occurrences: readonly HistoricalOccurrence[],
-  modeledTradesInput?: readonly BacktestTrade[],
+  tradeCandidates: readonly HistoricalTradeCandidate[] = [],
+  authoritativeModeledTrades: readonly BacktestTrade[] = [],
+  rejectedCandidateSignals: readonly RejectedCandidateSignal[] = [],
+  orphanModeledTrades: readonly OrphanModeledTrade[] = [],
 ): HistoricalReplayDiagnostics {
   const patience = audits.flatMap((record) => record.patienceOccurrences ?? []);
   const canonicalPatience = occurrences.filter((occurrence) => occurrence.kind === "patience" && occurrence.canonicalOccurrence === true);
@@ -1122,18 +1166,12 @@ export function historicalReplayDiagnostics(
   const confirmedByEdge = countBy(confirmedPatience.map((occurrence) => occurrence.primaryEdge ?? occurrence.strategyCandidate));
   const confirmedBySession = countBy(confirmedPatience.map((occurrence) => `${occurrence.contractSymbol}|${occurrence.tradingDate}`));
   const confirmedBySource = countBy(confirmedPatience.flatMap((occurrence) => occurrence.directionSources ?? (occurrence.directionSource ? [occurrence.directionSource] : [])));
-  const candidateRecords = confirmedPatience.flatMap((occurrence) => {
-    const edge = candidateEdgeEligibility(occurrence);
-    if (!edge.eligible) return [];
-    if (!candidateWindowEligible(occurrence)) return [];
-    return [{ signalId: occurrence.occurrenceId, modeledTrade: occurrence.canonicalTrade }];
-  });
-  const candidateSignalIds = candidateRecords.map((candidate) => candidate.signalId);
+  const candidateSignalIds = tradeCandidates.map((candidate) => candidate.signalOccurrenceId);
   const candidateCountBySignal = countBy(candidateSignalIds);
   const duplicateCandidatesPerSignal = Object.values(candidateCountBySignal)
     .reduce((total, count) => total + Math.max(0, count - 1), 0);
-  const modeledTradeSignalIds = candidateRecords.filter((candidate) => candidate.modeledTrade).map((candidate) => candidate.signalId);
-  const duplicateModeledTradesPerSignal = Object.values(countBy(modeledTradeSignalIds))
+  const modeledTradeCandidateIds = authoritativeModeledTrades.map((trade) => trade.candidateId).filter((id): id is string => Boolean(id));
+  const duplicateModeledTradesPerCandidate = Object.values(countBy(modeledTradeCandidateIds))
     .reduce((total, count) => total + Math.max(0, count - 1), 0);
   const armTransitionReferences = patience
     .filter((item) => item.eligibilityArmId && item.eligibilityArmState && item.eligibilityArmState !== "active")
@@ -1159,10 +1197,7 @@ export function historicalReplayDiagnostics(
     }
   }
   const uniqueArms = new Set(patience.flatMap((item) => item.eligibilityArmId ? [item.eligibilityArmId] : [])).size;
-  const modeledTrades = modeledTradesInput?.length
-    ?? new Set(occurrences
-      .filter((occurrence) => occurrence.kind === "trade" && occurrence.canonicalTrade)
-      .map((occurrence) => `${occurrence.contractSymbol}|${occurrence.tradingDate}|${occurrence.direction}|${occurrence.entryTimestamp}`)).size;
+  const modeledTrades = authoritativeModeledTrades.length;
   const rawPullbackEvents = audits.reduce(
     (count, record) => count + (record.pullbackOccurrences?.filter((event) => event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type)).length ?? 0),
     0,
@@ -1207,20 +1242,19 @@ export function historicalReplayDiagnostics(
     canonicalPullbackOccurrences: canonicalPullbackOccurrences.length,
     duplicatePullbackReferencesRemoved: Math.max(0, rawPullbackEvents - canonicalPullbackOccurrences.length),
     sessionsWithMultipleGenuinePullbacks: [...interactionSessions.values()].filter((items) => items.size > 1).length,
-    tradeCandidates: candidateRecords.length,
+    tradeCandidates: tradeCandidates.length,
     modeledTrades,
     confirmedSignalsWithoutCandidates: confirmedPatience.filter((occurrence) => !candidateSignalIds.includes(occurrence.occurrenceId)).length,
-    candidatesWithoutModeledTrades: candidateRecords.filter((candidate) => !candidate.modeledTrade).length,
-    candidatesWithoutConfirmedSignals: candidateRecords.filter((candidate) => !confirmedPatience.some((occurrence) => occurrence.occurrenceId === candidate.signalId)).length,
-    modeledTradesWithoutCandidates: modeledTrades - new Set(modeledTradeSignalIds).size,
+    candidatesWithoutModeledTrades: tradeCandidates.filter((candidate) => !authoritativeModeledTrades.some((trade) => trade.candidateId === candidate.candidateId)).length,
+    candidatesWithoutConfirmedSignals: tradeCandidates.filter((candidate) => !confirmedPatience.some((occurrence) => occurrence.occurrenceId === candidate.signalOccurrenceId)).length,
+    modeledTradesWithoutCandidates: authoritativeModeledTrades.filter((trade) => !tradeCandidates.some((candidate) => candidate.candidateId === trade.candidateId)).length,
     duplicateCandidatesPerSignal,
-    duplicateModeledTradesPerSignal,
-    candidateRejectionReasons: Object.fromEntries(confirmedPatience
-      .filter((occurrence) => !candidateSignalIds.includes(occurrence.occurrenceId))
-      .map((occurrence) => {
-        const edge = candidateEdgeEligibility(occurrence);
-        return [occurrence.occurrenceId, edge.reason ?? "Entry confirmation is outside the primary 9:30 a.m.–1:00 p.m. ET window."];
-      })),
+    duplicateModeledTradesPerCandidate,
+    candidateRejectionReasons: Object.fromEntries(rejectedCandidateSignals.flatMap((rejection) =>
+      rejection.details.length
+        ? [[rejection.signalOccurrenceId, rejection.details.join(" ")]]
+        : [])),
+    orphanModeledTradesExcluded: orphanModeledTrades.length,
   };
 }
 
@@ -1972,6 +2006,140 @@ function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible:
   return { eligible: true };
 }
 
+function historicalCandidateId(occurrence: HistoricalOccurrence): string {
+  return occurrenceId([
+    "historical-trade-candidate-v1",
+    occurrence.sourceFingerprint,
+    occurrence.formulaHash,
+    occurrence.occurrenceId,
+  ].join("|"));
+}
+
+function projectHistoricalTradeCandidates(
+  occurrences: readonly HistoricalOccurrence[],
+  rawTrades: readonly BacktestTrade[],
+): {
+  candidates: HistoricalTradeCandidate[];
+  rejected: RejectedCandidateSignal[];
+  authoritativeTrades: BacktestTrade[];
+  orphans: OrphanModeledTrade[];
+} {
+  const confirmed = occurrences.filter((occurrence) =>
+    occurrence.kind === "patience"
+    && occurrence.canonicalOccurrence === true
+    && occurrence.status === "SIGNAL_CONFIRMED"
+    && occurrence.direction !== null
+    && occurrence.patienceTimestamp !== null
+    && occurrence.expectedEntryTimestamp !== null,
+  );
+  const candidates: HistoricalTradeCandidate[] = [];
+  const rejected: RejectedCandidateSignal[] = [];
+  const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
+  for (const occurrence of confirmed) {
+    const edge = candidateEdgeEligibility(occurrence);
+    const inWindow = candidateWindowEligible(occurrence);
+    if (!edge.eligible || !inWindow) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: [
+          ...(!edge.eligible ? ["MISSING_EDGE_REQUIREMENT"] : []),
+          ...(!inWindow ? ["OUTSIDE_PRIMARY_ENTRY_WINDOW"] : []),
+        ],
+        details: [
+          ...(edge.reason ? [edge.reason] : []),
+          ...(!inWindow ? ["Immediate E opens outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
+        ],
+      });
+      continue;
+    }
+    const physicalIdentity = [
+      occurrence.contractSymbol,
+      occurrence.tradingDate,
+      occurrence.direction,
+      occurrence.patienceTimestamp,
+      occurrence.expectedEntryTimestamp,
+    ].join("|");
+    if (signalByPhysicalIdentity.has(physicalIdentity)) continue;
+    signalByPhysicalIdentity.set(physicalIdentity, occurrence);
+  }
+  const usedRawTradeIds = new Set<string>();
+  for (const occurrence of signalByPhysicalIdentity.values()) {
+    const candidateId = historicalCandidateId(occurrence);
+    const linked = rawTrades.filter((trade) =>
+      trade.contractSymbol === occurrence.contractSymbol
+      && trade.tradingDate === occurrence.tradingDate
+      && trade.direction === occurrence.direction
+      && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
+      && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+    );
+    const firstTrade = linked[0];
+    for (const trade of linked) usedRawTradeIds.add(trade.id);
+    candidates.push({
+      candidateId,
+      signalOccurrenceId: occurrence.occurrenceId,
+      sourceFingerprint: occurrence.sourceFingerprint,
+      formulaHash: occurrence.formulaHash,
+      formulaVersion: occurrence.formulaVersion,
+      contractSymbol: occurrence.contractSymbol,
+      tradingDate: occurrence.tradingDate,
+      direction: occurrence.direction!,
+      primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate,
+      matchedEdges: [...new Set(occurrence.matchedEdges ?? [occurrence.strategyCandidate])].sort(),
+      supportingConfluences: [...new Set(occurrence.supportingConfluences ?? [])].sort(),
+      qualifyingLevelIdentifiers: [...occurrence.levelIdentifiers].sort(),
+      qualifyingLevelValues: { ...occurrence.levelValues },
+      patienceTimestamp: occurrence.patienceTimestamp!,
+      expectedEntryTimestamp: occurrence.expectedEntryTimestamp!,
+      confirmationPrice: occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? 0,
+      confirmationBufferTicks: occurrence.confirmationBufferTicks ?? 0,
+      grade: occurrence.setupGrade ?? "A",
+      eligible: true,
+      executionStatus: firstTrade
+        ? "MODELED_TRADE_CREATED"
+        : occurrence.confirmationThreshold === null
+          ? "EXECUTION_EVIDENCE_UNAVAILABLE"
+          : "EXECUTION_EVIDENCE_UNAVAILABLE",
+    });
+  }
+  const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const authoritativeTrades: BacktestTrade[] = [];
+  const orphans: OrphanModeledTrade[] = [];
+  for (const trade of rawTrades) {
+    const matchingCandidate = candidates.find((candidate) =>
+      candidate.contractSymbol === trade.contractSymbol
+      && candidate.tradingDate === trade.tradingDate
+      && candidate.direction === trade.direction
+      && trade.audit?.patienceCandleOpenTime === candidate.patienceTimestamp
+      && trade.audit?.triggerCandleOpenTime === candidate.expectedEntryTimestamp,
+    );
+    if (!matchingCandidate) {
+      const matchingSignal = confirmed.find((occurrence) =>
+        occurrence.contractSymbol === trade.contractSymbol
+        && occurrence.tradingDate === trade.tradingDate
+        && occurrence.direction === trade.direction
+        && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
+        && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+      );
+      orphans.push({
+        tradeId: trade.id,
+        matchingSignalOccurrenceId: matchingSignal?.occurrenceId,
+        reason: matchingSignal
+          ? "The modeled trade matched a confirmed signal, but that signal failed complete edge or primary-window eligibility."
+          : "No canonical confirmed signal matched the trade's exact contract/date/direction/P/E identity.",
+      });
+      continue;
+    }
+    if (candidateById.has(matchingCandidate.candidateId)) {
+      authoritativeTrades.push({
+        ...trade,
+        signalOccurrenceId: matchingCandidate.signalOccurrenceId,
+        candidateId: matchingCandidate.candidateId,
+      });
+    }
+  }
+  return { candidates, rejected, authoritativeTrades, orphans };
+}
+
 function candidateDimensionValue(
   candidate: QualificationCandidate,
   dimension: QualificationFunnelComparison["dimension"],
@@ -2603,12 +2771,22 @@ export function runCausalBacktest(
   if (candles.length) {
     finalReplay = createCausalReplay(dataset, candles.at(-1)!.closeTime);
   }
-  const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
-  const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
-  const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
   const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
-  const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
-  const diagnostics = historicalReplayDiagnostics(audit, occurrences, trades);
+  const signalOccurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
+  const reconciliation = projectHistoricalTradeCandidates(signalOccurrences, trades);
+  const authoritativeTrades = reconciliation.authoritativeTrades;
+  const inSampleTrades = authoritativeTrades.filter((trade) => trade.period === "in_sample");
+  const outOfSampleTrades = authoritativeTrades.filter((trade) => trade.period === "out_of_sample");
+  const allMetrics = calculateBacktestMetrics(authoritativeTrades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
+  const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, authoritativeTrades, reportFormulaHash);
+  const diagnostics = historicalReplayDiagnostics(
+    audit,
+    occurrences,
+    reconciliation.candidates,
+    authoritativeTrades,
+    reconciliation.rejected,
+    reconciliation.orphans,
+  );
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
@@ -2646,8 +2824,11 @@ export function runCausalBacktest(
     metrics: allMetrics,
     inSample: calculateBacktestMetrics(inSampleTrades, rejectedByPeriod.in_sample, audit.filter((record) => record.period === "in_sample")),
     outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejectedByPeriod.out_of_sample, audit.filter((record) => record.period === "out_of_sample")),
-    segments: buildSegments(trades, allMetrics.rejectedSetupCount),
-    trades,
+    segments: buildSegments(authoritativeTrades, allMetrics.rejectedSetupCount),
+    trades: authoritativeTrades,
+    tradeCandidates: reconciliation.candidates,
+    rejectedCandidateSignals: reconciliation.rejected,
+    orphanModeledTrades: reconciliation.orphans,
     audit,
     occurrences,
     diagnostics,

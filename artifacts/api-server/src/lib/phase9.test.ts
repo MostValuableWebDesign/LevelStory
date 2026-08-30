@@ -549,6 +549,25 @@ test("ledger merges multiple qualifying levels into one physical P to E signal",
   assert.deepEqual(patience[0]?.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
 });
 
+test("authoritative candidate identity preserves one candidate across merged signal provenance", () => {
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const second = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "candidate-secondary-audit",
+    pullbackOccurrences: [{
+      ...first.pullbackOccurrences![0]!,
+      eventId: "candidate-vwap",
+      level: "VWAP",
+      type: "proximity",
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [first, second], []);
+  const patience = occurrences.find((occurrence) => occurrence.kind === "patience")!;
+  assert.equal(patience.occurrenceId, buildHistoricalOccurrenceLedger(occurrenceDataset(), [second, first], [])
+    .find((occurrence) => occurrence.kind === "patience")?.occurrenceId);
+  assert.deepEqual(patience.levelIdentifiers, ["ORB", "VWAP"]);
+  assert.deepEqual(patience.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+});
+
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {
   const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
     pullbackOccurrences: [{
