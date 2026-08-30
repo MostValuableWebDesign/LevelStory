@@ -526,6 +526,8 @@ export function createMarketSnapshot(
     specification.tickSize,
     config.patienceEntryBufferTicks,
     config.patienceStopBufferTicks,
+    false,
+    breakout.direction ? "ORB_BREAKOUT" : "CONFIRMED_15M_TREND",
   );
   const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
   const baseSetupContext = {
@@ -556,6 +558,7 @@ export function createMarketSnapshot(
     config.patienceEntryBufferTicks,
     config.patienceStopBufferTicks,
     true,
+    "EQUIVALENT_REVERSAL",
   );
   const preliminarySetupAnalysis = phase6Analysis({
     ...baseSetupContext,

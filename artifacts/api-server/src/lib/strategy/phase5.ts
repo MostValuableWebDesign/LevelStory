@@ -51,9 +51,22 @@ export type PatienceOccurrenceStatus =
   | "EXPIRED_INCOMPLETE_E"
   | "INVALIDATED";
 
+export type PatienceDirectionSource =
+  | "ORB_BREAKOUT"
+  | "CONSOLIDATION_BREAKOUT"
+  | "EQUIVALENT_REVERSAL"
+  | "CONFIRMED_15M_TREND";
+
+export type PatienceOccurrenceQualification =
+  | "PATIENCE_SHAPE_FOUND"
+  | "IMMEDIATE_CONFIRMATION_FAILED"
+  | "SIGNAL_CONFIRMED"
+  | "STRUCTURALLY_INVALIDATED";
+
 export type PatienceOccurrence = {
   occurrenceId: string;
   direction: Direction;
+  directionSource?: PatienceDirectionSource;
   entryBufferTicks: number;
   stopBufferTicks: number;
   eligibilityReason: PatienceEligibilityReason;
@@ -69,6 +82,7 @@ export type PatienceOccurrence = {
   triggerCandle: PatienceCandleSnapshot | null;
   nextObservedCandle?: PatienceCandleSnapshot | null;
   outcomeStatus?: PatienceOccurrenceStatus;
+  qualificationStatus?: PatienceOccurrenceQualification;
   status: PatienceState;
   reasonCode: string;
   evaluationCursor: number;
@@ -87,6 +101,7 @@ export type PatienceAnalysis = {
   state: PatienceState;
   /** The direction this patience engine evaluated, independent of the established continuation trend. */
   direction?: Direction;
+  directionSource?: PatienceDirectionSource;
   eligible: boolean;
   eligibilityReason: PatienceEligibilityReason | null;
   eligibilityTime: number | null;
@@ -117,6 +132,7 @@ export type PatienceEngineOptions = {
   stopBufferTicks?: number;
   validContext?: boolean;
   allowOpposingTrend?: boolean;
+  directionSource?: PatienceDirectionSource;
 };
 
 const PATIENCE_STATES: readonly PatienceState[] = [
@@ -135,8 +151,6 @@ const PATIENCE_STATES: readonly PatienceState[] = [
   "AMBIGUOUS_EVENT_ORDER",
   "RISK_REJECTED",
 ];
-const PATIENCE_ARM_MAX_DURATION_MS = 30 * 60_000;
-
 export function patienceCandleEngine(
   candles: readonly Candle[],
   direction: Direction,
@@ -150,12 +164,14 @@ export function patienceCandleEngine(
   const entryBufferTicks = options.entryBufferTicks ?? 4;
   const stopBufferTicks = options.stopBufferTicks ?? 1;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
-  const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, direction });
+  const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
+  const trendRequired = directionSource === "CONFIRMED_15M_TREND";
+  const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, direction, directionSource });
   validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
   const validContext = options.validContext ?? eligibility.length > 0;
   if (!validContext) return withDirection(waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks));
   if (!eligibility.length) return withDirection(waiting("WAITING_FOR_LEVEL", "Valid pullback/consolidation context exists; waiting for a qualifying level interaction.", trend, entryBufferTicks, stopBufferTicks));
-  if (trend === "neutral") return withDirection(waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
+  if (trend === "neutral" && trendRequired) return withDirection(waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
   const latestEligibility = eligibility.at(-1)!;
   const candidateIndexes = completed
     .map((candle, index) => {
@@ -165,9 +181,8 @@ export function patienceCandleEngine(
     .filter(({ event, candle, index }) =>
       event !== undefined
       && index > 0
-      && candle.openTime <= event.time + PATIENCE_ARM_MAX_DURATION_MS
       && patienceShape(candle, completed[index - 1], direction));
-  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend);
+  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, directionSource, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend, trendRequired);
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => {
     const latestOccurrence = occurrences.at(-1);
     return {
@@ -202,7 +217,7 @@ export function patienceCandleEngine(
     if (!previous) return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event));
     const event = candidate.event!;
     const shapeValid = patienceShape(candidate.candle, previous, direction);
-    const trendValid = allowOpposingTrend || directionTrendMatches(direction, trend);
+    const trendValid = !trendRequired || allowOpposingTrend || directionTrendMatches(direction, trend);
     if (!trendValid || !shapeValid) {
       return finalize({
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
@@ -245,14 +260,12 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []));
+    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []));
   }
 
   const forming = sorted.at(-1);
   const event = forming ? latestEligibilityBefore(eligibility, forming.openTime) : latestEligibility;
-  const eventIsWithinArm = event !== undefined && forming !== undefined
-    ? forming.openTime <= event.time + PATIENCE_ARM_MAX_DURATION_MS
-    : true;
+  const eventIsWithinArm = true;
   const latestCompleted = completed.at(-1);
   const latestPrevious = completed.at(-2);
   if (latestCompleted && latestPrevious && event && eventIsWithinArm && !patienceShape(latestCompleted, latestPrevious, direction)) {
@@ -287,6 +300,7 @@ export function phase5PatienceAnalysis(
   entryBufferTicks = 4,
   stopBufferTicks = 1,
   allowOpposingTrend = false,
+  directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const eligibilityEvents: PatienceEligibilityEvent[] = [
@@ -329,6 +343,7 @@ export function phase5PatienceAnalysis(
     stopBufferTicks,
     validContext: pullback.status === "observed" || (ntz?.complete === true),
     allowOpposingTrend,
+    directionSource,
   });
 }
 
@@ -343,6 +358,7 @@ function evaluateTrigger(
   direction: Direction,
   eligibility: PatienceEligibilityEvent,
   trend: TrendDirection,
+  directionSource: PatienceDirectionSource,
   tickSize: number,
   entryBufferTicks: number,
   stopBufferTicks: number,
@@ -366,6 +382,7 @@ function evaluateTrigger(
   const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
     direction,
+    directionSource,
     eligible: true,
     eligibilityReason: eligibility.reason,
     eligibilityTime: eligibility.time,
@@ -465,12 +482,14 @@ function buildPatienceOccurrences(
   completed: readonly Candle[],
   sorted: readonly Candle[],
   direction: Direction,
+  directionSource: PatienceDirectionSource,
   trend: TrendDirection,
   tickSize: number,
   entryBufferTicks: number,
   stopBufferTicks: number,
   intrabarEvidence: readonly IntrabarEvidence[],
   allowOpposingTrend: boolean,
+  trendRequired: boolean,
 ): PatienceOccurrence[] {
   const armStates = new Map<string, { state: PatienceEligibilityArmState; reason: string }>();
   const occurrences: PatienceOccurrence[] = candidates.map((candidate): PatienceOccurrence => {
@@ -509,6 +528,7 @@ function buildPatienceOccurrences(
       return {
         occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
         direction,
+        directionSource,
         entryBufferTicks,
         stopBufferTicks,
         eligibilityReason: event.reason,
@@ -544,7 +564,7 @@ function buildPatienceOccurrences(
     let analysis: PatienceAnalysis;
     if (!previous) {
       analysis = waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, event);
-    } else if (!allowOpposingTrend && !directionTrendMatches(direction, trend)) {
+      } else if (trendRequired && !allowOpposingTrend && !directionTrendMatches(direction, trend)) {
       analysis = {
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
@@ -580,7 +600,7 @@ function buildPatienceOccurrences(
         detail: "The immediately following candle is missing; this P→E attempt expired.",
       };
     } else {
-      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
+      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
     }
     const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
       ? "CANDIDATE"
@@ -597,6 +617,11 @@ function buildPatienceOccurrences(
                 : analysis.state === "AMBIGUOUS_EVENT_ORDER"
                   ? "INVALIDATED"
                   : "CANDIDATE";
+    const qualificationStatus: PatienceOccurrenceQualification = outcomeStatus === "CONFIRMED"
+      ? "SIGNAL_CONFIRMED"
+      : analysis.state === "OPPOSITE_SIDE_INVALIDATION" || analysis.state === "AMBIGUOUS_EVENT_ORDER"
+        ? "STRUCTURALLY_INVALIDATED"
+        : "IMMEDIATE_CONFIRMATION_FAILED";
     const stateAfterCandidate: PatienceEligibilityArmState = outcomeStatus === "CONFIRMED"
       ? "consumed"
       : analysis.state === "OPPOSITE_SIDE_INVALIDATION"
@@ -606,11 +631,12 @@ function buildPatienceOccurrences(
       ? "Immediate-next E reached the full confirmation buffer; the arm was consumed by signal confirmation."
       : stateAfterCandidate === "invalidated"
         ? analysis.detail
-        : "Arm remains active for a later patience candidate within the bounded causal context.";
+        : "Arm remains active for a later patience candidate until session or structural invalidation.";
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
       direction,
+      directionSource,
       entryBufferTicks,
       stopBufferTicks,
       eligibilityReason: event.reason,
@@ -626,6 +652,7 @@ function buildPatienceOccurrences(
       triggerCandle: trigger ? snapshot(trigger) : null,
       nextObservedCandle: nextObserved && (nextObserved !== trigger || outcomeStatus !== "CONFIRMED") ? snapshot(nextObserved) : null,
       outcomeStatus,
+      qualificationStatus,
       status: analysis.state,
       reasonCode: analysis.detail,
       evaluationCursor,

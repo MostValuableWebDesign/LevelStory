@@ -272,7 +272,7 @@ test("three-tick confirmation is configurable and the thesis stop sits one tick 
   assert.equal(result.strategyStopPrice, 6.75);
 });
 
-test("neutral and opposing patience trends cannot qualify continuation patience", () => {
+test("generic continuation still requires a confirmed trend, but records the examined shape", () => {
   const neutral = patienceCandleEngine(setup("long", candle(2, 10.8, 10.9, 10.1, 10.7)), "long", {
     eligibilityEvents: eligibility(),
     trend: "neutral",
@@ -283,7 +283,59 @@ test("neutral and opposing patience trends cannot qualify continuation patience"
   ], "long", { eligibilityEvents: eligibility() });
   assert.equal(neutral.state, "PATIENCE_TREND_MISMATCH");
   assert.match(neutral.detail, /WAITING — TREND UNCLEAR/);
+  assert.equal(neutral.occurrences?.length ?? 0, 0);
   assert.equal(opposingShape.state, "PATIENCE_TREND_MISMATCH");
+});
+
+test("ORB-directed bearish patience qualifies through a neutral 15-minute trend", () => {
+  const result = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 7.8, 8)), "short", {
+    eligibilityEvents: eligibility(),
+    trend: "neutral",
+    directionSource: "ORB_BREAKOUT",
+  });
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.directionSource, "ORB_BREAKOUT");
+  assert.equal(result.occurrences?.[0]?.qualificationStatus, "SIGNAL_CONFIRMED");
+});
+
+test("ORB-directed bullish patience qualifies through an opposing 15-minute trend", () => {
+  const result = patienceCandleEngine(setup("long", candle(2, 10.8, 12.1, 10.2, 12)), "long", {
+    eligibilityEvents: eligibility(),
+    trend: "bearish",
+    directionSource: "ORB_BREAKOUT",
+  });
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.directionSource, "ORB_BREAKOUT");
+  assert.equal(result.occurrences?.[0]?.qualificationStatus, "SIGNAL_CONFIRMED");
+});
+
+test("generic continuation does not qualify without a causal direction", () => {
+  const result = phase5PatienceAnalysis(
+    setup("long", candle(2, 10.8, 12.1, 10.2, 12)),
+    null,
+    { status: "observed", events: [], evaluatedCandles: 2, maxCandles: 6, maxDurationMinutes: 30, elapsedMinutes: 5, proximityTolerance: 0.5, atr14: 1, qualifyingLevelCount: 1, detail: "observed" },
+    null,
+    [],
+    undefined,
+    "neutral",
+  );
+  assert.equal(result.direction, undefined);
+  assert.equal(result.state, "PATIENCE_TREND_MISMATCH");
+});
+
+test("a qualifying patience shape remains eligible beyond thirty minutes", () => {
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(10, 10.5, 11, 7, 10.8),
+    candle(11, 10.8, 12.1, 10.2, 12),
+  ];
+  const result = patienceCandleEngine(candles, "long", {
+    eligibilityEvents: [{ time: candles[1].openTime, reason: "pullback" }],
+    directionSource: "ORB_BREAKOUT",
+    trend: "neutral",
+  });
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.occurrences?.[0]?.patienceCandle.openTime, candles[1].openTime);
 });
 
 test("buffer configuration rejects unsupported confirmation widths", () => {

@@ -1,0 +1,293 @@
+Implement the targeted Phase 2 correction based on the completed July 13–27 diagnostic.
+
+DIAGNOSTIC CONCLUSION
+
+The cached 11-session analysis found:
+
+- 858 completed five-minute candles
+- 1,926 stored pullback/EDGE_FOUND occurrences
+- 393 evaluations blocked by PATIENCE_TREND_MISMATCH
+- 465 evaluations waiting for level context
+- 0 patience occurrences
+- 0 SIGNAL_CONFIRMED occurrences
+- 0 projected candidates
+
+The decisive failure is in phase5.ts:
+
+The engine returns immediately when the causal 15-minute trend is neutral. This happens before patience-candle shape scanning, so valid ORB-directed P→E sequences can never be discovered or stored.
+
+Make the smallest authoritative correction. Do not redesign the frontend or candidate-projection system in this phase.
+
+1. REMOVE THE UNIVERSAL TREND GATE
+
+Do not require every patience-candle evaluation to have a non-neutral 15-minute trend.
+
+Replace the universal trend dependency with edge-specific causal direction.
+
+Direction resolution must be deterministic:
+
+A. ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+
+- Completed close above ORB/NTZ high establishes bullish local direction.
+- Completed close below ORB/NTZ low establishes bearish local direction.
+- This direction persists for the causal breakout/pullback sequence until structurally invalidated.
+- A neutral or opposing 15-minute trend does not block this edge.
+- Record the 15-minute trend as supporting, neutral, or opposing confluence for grading.
+
+B. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+
+- The confirmed consolidation breakout establishes local direction.
+- Fifteen-minute trend is confluence, not a universal blocker.
+
+C. EQUIVALENT_CANDLE_REVERSAL
+
+- The confirmed reversal pattern establishes reversal direction.
+- It may oppose the preceding 15-minute continuation trend.
+
+D. PATIENCE_CANDLE_CONTINUATION
+
+- This generic continuation edge still requires confirmed causal 15-minute trend.
+- Do not weaken the trend requirement for this edge.
+
+The shared patience engine must accept an explicit intended direction and direction source rather than reading only context.trend.direction.
+
+Direction sources should include:
+
+- ORB_BREAKOUT
+- CONSOLIDATION_BREAKOUT
+- EQUIVALENT_REVERSAL
+- CONFIRMED_15M_TREND
+
+2. SEPARATE SHAPE DETECTION FROM STRATEGY QUALIFICATION
+
+The engine must not discard candle-shape evidence before recording it.
+
+For each completed candle after an eligible level interaction:
+
+- Evaluate whether it satisfies bullish patience shape.
+- Evaluate whether it satisfies bearish patience shape.
+- Store the result and intended direction source.
+- Then evaluate whether the relevant edge permits that direction.
+
+For ORB setups, evaluate the shape in the ORB breakout direction even when the 15-minute trend is neutral.
+
+Do not label a candle as a confirmed patience signal unless its immediate E candle confirms it.
+
+Use distinct occurrence statuses:
+
+- PATIENCE_SHAPE_FOUND
+- IMMEDIATE_CONFIRMATION_FAILED
+- SIGNAL_CONFIRMED
+- STRUCTURALLY_INVALIDATED
+
+A failed immediate confirmation must not erase the fact that P was examined.
+
+3. PRESERVE THE IMMEDIATE P→E RULE
+
+Do not relax entry confirmation:
+
+- P1 may only be confirmed by immediate E1.
+- If E1 fails, P1 expires.
+- Continue scanning for a later P2.
+- P2 may only be confirmed by immediate E2.
+- E2 cannot confirm P1.
+- Store every failed and successful P occurrence.
+
+For a bullish setup:
+
+- E must trade through P high plus the configured confirmation buffer.
+
+For a bearish setup:
+
+- E must trade through P low minus the configured confirmation buffer.
+
+P and E must be completed five-minute candles, and:
+
+E.openTime = P.openTime + 5 minutes
+
+4. KEEP THE 12-TICK LEVEL ZONE
+
+The diagnostic confirmed that the authoritative pullback path is already using:
+
+12 MES ticks = 3.00 points
+
+Keep that tolerance unchanged.
+
+Continue evaluating qualifying interaction against:
+
+- ORB/NTZ high or low
+- VWAP at the interaction candle’s timestamp
+- 200 EMA at the interaction candle’s timestamp
+- Premarket high or low
+- Previous-day high or low
+- Day-before-previous high or low
+- Governed support/resistance
+- Valid causal Fibonacci levels
+
+L may occur before P, or P may also serve as L.
+
+5. REMOVE THE ARBITRARY 30-MINUTE ARM EXPIRATION
+
+The 30-minute expiration was not the first blocker in this diagnostic, but it remains an incorrect downstream restriction.
+
+Remove the hard-coded 30-minute patience-arm timeout.
+
+An armed breakout/pullback sequence remains valid until:
+
+- Session end
+- Structural invalidation
+- Opposite breakout invalidation
+- A newer qualifying pullback supersedes it
+
+Time alone must not invalidate it.
+
+6. FIX OCCURRENCE DUPLICATION
+
+The diagnostic produced 1,926 pullback occurrences from 858 candles.
+
+Audit whether the same physical level interaction is being stored once for each of the five strategy evaluations.
+
+Store one canonical pullback occurrence per unique:
+
+- contract
+- trading date
+- direction
+- breakout sequence
+- interaction candle
+- qualifying level
+
+Strategy evaluations may reference that occurrence, but must not create duplicate ledger records.
+
+Do not collapse genuinely different levels or separate pullback occurrences.
+
+Report:
+
+- Raw pullback events before canonicalization
+- Unique canonical pullback occurrences
+- Duplicate references removed
+- Sessions containing multiple genuine pullbacks
+
+7. VERIFY ORB BREAK DETECTION WITHOUT SPECULATIVE RELAXATION
+
+The diagnostic found only:
+
+- 2 bullish ORB breaks
+- 2 bearish ORB breaks
+
+Verify these four breaks against raw candles.
+
+Also report sessions where price crossed an ORB boundary but was rejected because of:
+
+- No completed close outside
+- ORB not finalized
+- Wrong boundary value
+- Timestamp/session error
+- Duplicate-state suppression
+- Another specific rule
+
+Do not change the completed-close breakout requirement unless a deterministic test proves the implementation is incorrect.
+
+Once a valid breakout occurs, persist its causal direction so later pullbacks are not required to break ORB again.
+
+8. ADD THE PRE-GATE FUNNEL
+
+Add focused diagnostic counts for:
+
+- Eligible level interactions
+- Bullish patience shapes before strategy gating
+- Bearish patience shapes before strategy gating
+- Shapes using ORB direction
+- Shapes using 15-minute trend direction
+- Shapes blocked because no strategy direction exists
+- P→E failures
+- SIGNAL_CONFIRMED
+- 30-minute expirations, which should become zero after removal
+- Canonical versus duplicate pullback occurrences
+
+This diagnostic output may remain server-side. Do not redesign the Visual Review UI in this phase.
+
+9. DETERMINISTIC TESTS
+
+Add focused tests proving:
+
+A. Bearish ORB case
+
+- ORB downside breakout completes.
+- Fifteen-minute trend is neutral.
+- Price pulls back within 12 ticks of ORB low.
+- Bearish P forms.
+- Immediate E breaks below P by the confirmation buffer.
+- Result: SIGNAL_CONFIRMED.
+
+B. Bullish ORB case
+
+- ORB upside breakout completes.
+- Fifteen-minute trend is opposing or neutral.
+- Price retests a qualifying level.
+- Bullish P→E confirms.
+- Result: SIGNAL_CONFIRMED with trend recorded as confluence, not a blocker.
+
+C. Generic patience continuation
+
+- No ORB, consolidation, or reversal direction exists.
+- Fifteen-minute trend is neutral.
+- Result: no PATIENCE_CANDLE_CONTINUATION candidate.
+
+D. Re-arming
+
+- P1 fails on E1.
+- Later P2 forms.
+- E2 confirms P2.
+- Only P2/E2 becomes SIGNAL_CONFIRMED.
+
+E. Delayed retest
+
+- Valid P occurs more than 30 minutes after the qualifying breakout/pullback context.
+- No structural invalidation occurs.
+- P remains eligible.
+
+F. Canonical storage
+
+- Five strategy evaluations reference the same physical pullback.
+- Only one canonical pullback occurrence is stored.
+
+G. Multiple genuine interactions
+
+- Two different qualifying interactions occur in one session.
+- Both remain stored.
+
+10. VERIFICATION
+
+Run only:
+
+- Focused phase5 tests
+- Focused strategy-direction tests
+- Focused occurrence-ledger tests
+- API typecheck
+- git diff --check
+- One cached July 13–27 replay
+
+Do not:
+
+- Rebuild the historical index
+- Change the frontend
+- Change candidate projection
+- Run a broad backtest
+- Add broker, live-order, or paper-order behavior
+
+FINAL REPORT
+
+Provide:
+
+1. Files changed.
+2. Exact trend-gate change.
+3. How direction is now selected for each edge.
+4. Before/after funnel counts.
+5. Patience shapes found before qualification.
+6. Failed and confirmed P→E counts.
+7. SIGNAL_CONFIRMED counts per session and edge.
+8. Raw versus canonical pullback occurrence counts.
+9. Verification of the four recorded ORB breaks.
+10. Focused test totals.
+11. Whether candidate projection now receives confirmed occurrences.
+12. Remaining issues, without implementing unrelated follow-ups.

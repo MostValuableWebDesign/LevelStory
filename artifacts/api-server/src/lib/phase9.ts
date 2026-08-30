@@ -377,6 +377,7 @@ export type BacktestReport = {
   trades: BacktestTrade[];
   audit: BacktestAuditRecord[];
   occurrences: HistoricalOccurrence[];
+  diagnostics?: HistoricalReplayDiagnostics;
   auditPage?: {
     runId: string;
     page: number;
@@ -398,6 +399,23 @@ export type BacktestReport = {
     commissionPerContract: number;
   };
   gapReport: BacktestGapReport;
+};
+
+export type HistoricalReplayDiagnostics = {
+  eligibleLevelInteractions: number;
+  bullishPatienceShapesBeforeQualification: number;
+  bearishPatienceShapesBeforeQualification: number;
+  orbDirectionShapes: number;
+  trendDirectionShapes: number;
+  shapesWithoutStrategyDirection: number;
+  immediateConfirmationFailures: number;
+  signalConfirmed: number;
+  structuralInvalidations: number;
+  armExpirations: number;
+  rawPullbackEvents: number;
+  canonicalPullbackOccurrences: number;
+  duplicatePullbackReferencesRemoved: number;
+  sessionsWithMultipleGenuinePullbacks: number;
 };
 
 export type HistoricalOccurrence = {
@@ -1056,6 +1074,44 @@ export function buildSegments(trades: readonly BacktestTrade[], rejectedSetupCou
   return [...dimensionalSegments, ...periodSegments];
 }
 
+export function historicalReplayDiagnostics(
+  audits: readonly BacktestAuditRecord[],
+  occurrences: readonly HistoricalOccurrence[],
+): HistoricalReplayDiagnostics {
+  const patience = audits.flatMap((record) => record.patienceOccurrences ?? []);
+  const rawPullbackEvents = audits.reduce(
+    (count, record) => count + (record.pullbackOccurrences?.filter((event) => event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type)).length ?? 0),
+    0,
+  );
+  const canonicalPullbackOccurrences = occurrences.filter((occurrence) => occurrence.kind === "pullback");
+  const interactionSessions = new Map<string, Set<string>>();
+  for (const occurrence of canonicalPullbackOccurrences) {
+    const session = `${occurrence.contractSymbol}|${occurrence.tradingDate}`;
+    const identity = `${occurrence.direction ?? "unknown"}|${occurrence.lTimestamp}|${occurrence.levelIdentifiers.join("|")}`;
+    const interactions = interactionSessions.get(session) ?? new Set<string>();
+    interactions.add(identity);
+    interactionSessions.set(session, interactions);
+  }
+  return {
+    eligibleLevelInteractions: rawPullbackEvents,
+    bullishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "long").length,
+    bearishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "short").length,
+    orbDirectionShapes: patience.filter((item) => item.directionSource === "ORB_BREAKOUT" || item.directionSource === "CONSOLIDATION_BREAKOUT").length,
+    trendDirectionShapes: patience.filter((item) => item.directionSource === "CONFIRMED_15M_TREND").length,
+    shapesWithoutStrategyDirection: audits.filter((record) => record.patienceCandle !== null && record.direction === null).length,
+    immediateConfirmationFailures: patience.filter((item) => item.qualificationStatus === "IMMEDIATE_CONFIRMATION_FAILED" || (
+      item.qualificationStatus === undefined && item.outcomeStatus !== "CONFIRMED"
+    )).length,
+    signalConfirmed: patience.filter((item) => item.qualificationStatus === "SIGNAL_CONFIRMED" || item.outcomeStatus === "CONFIRMED").length,
+    structuralInvalidations: patience.filter((item) => item.qualificationStatus === "STRUCTURALLY_INVALIDATED" || item.status === "OPPOSITE_SIDE_INVALIDATION" || item.status === "AMBIGUOUS_EVENT_ORDER").length,
+    armExpirations: 0,
+    rawPullbackEvents,
+    canonicalPullbackOccurrences: canonicalPullbackOccurrences.length,
+    duplicatePullbackReferencesRemoved: Math.max(0, rawPullbackEvents - canonicalPullbackOccurrences.length),
+    sessionsWithMultipleGenuinePullbacks: [...interactionSessions.values()].filter((items) => items.size > 1).length,
+  };
+}
+
 function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Record<string, number | boolean> | null {
   if (!candle) return null;
   return {
@@ -1434,9 +1490,8 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         record.direction ?? "absent",
-        pullbackEventId(event),
         event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
-        event.type,
+        event.level,
       ].join("|");
       const id = occurrenceId(identity);
       const evidence = levelEvidence([event]);
@@ -2319,6 +2374,7 @@ export function runCausalBacktest(
   const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
   const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
   const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
+  const diagnostics = historicalReplayDiagnostics(audit, occurrences);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
@@ -2360,6 +2416,7 @@ export function runCausalBacktest(
     trades,
     audit,
     occurrences,
+    diagnostics,
     assumptions: [
       "Every strategy decision is recomputed from the visible candle prefix at that historical cursor.",
       "No current or future candle, indicator, volume value, level reaction, or setup state is available before its close time.",

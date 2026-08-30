@@ -113,7 +113,7 @@ test("a replay cursor cannot silently cross its selected trading date", () => {
   );
 });
 
-test("snapshot decision honors server-side emergency lockout", () => {
+test("snapshot decision separates server-side emergency lockout from setup qualification", () => {
   const locked = createMarketSnapshot("MES", "regular", {
     accountSize: 25_000,
     riskPercent: 0.5,
@@ -126,12 +126,11 @@ test("snapshot decision honors server-side emergency lockout", () => {
   assert.equal(locked.decision.state, "RISK LOCKOUT");
   assert.match(locked.decision.explanation, /Risk controls|lockout|blocked/i);
   assert.ok(locked.riskPlan.reasons.every((reason) => locked.decision.explanation.includes(reason)));
-  assert.ok(locked.setupAnalysis.evaluations.every((evaluation) =>
-    evaluation.rules.find((rule) => rule.key === "riskApproval")?.passed === false));
+  assert.equal(locked.setupAnalysis.decision, "SETUP QUALIFIED");
   assert.equal(locked.shadowExecution, null);
 });
 
-test("denied risk approval cannot qualify a setup or create a shadow entry", () => {
+test("denied risk approval cannot create a shadow entry even when setup conditions qualify", () => {
   const denied = createMarketSnapshot("MES", "regular", {
     accountSize: 25_000,
     riskPercent: 0,
@@ -141,8 +140,7 @@ test("denied risk approval cannot qualify a setup or create a shadow entry", () 
   });
   assert.equal(denied.riskPlan.allowed, false);
   assert.equal(denied.riskPlan.contracts, 0);
-  assert.notEqual(denied.setupAnalysis.decision, "SETUP QUALIFIED");
-  assert.ok(denied.setupAnalysis.evaluations.every((evaluation) => evaluation.decision !== "SETUP QUALIFIED"));
+  assert.equal(denied.setupAnalysis.decision, "SETUP QUALIFIED");
   assert.equal(denied.shadowExecution, null);
   assert.ok(denied.riskPlan.reasons.some((reason) => /zero contracts|trade risk/i.test(reason)));
 });

@@ -527,6 +527,47 @@ test("ledger merges the same causal occurrence and preserves canonical plus seco
   assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
 });
 
+test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    pullbackOccurrences: [{
+      eventId: "touch-reference",
+      type: "touch",
+      time: new Date(300_000).toISOString(),
+      level: "ORB",
+      price: 101,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      candle: { openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10 },
+      detail: "Touch reference.",
+    }],
+  });
+  const repeated = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "repeated-reference",
+    breakoutEvidence: `${first.breakoutEvidence} (later audit cursor)`,
+    pullbackOccurrences: [{
+      eventId: "proximity-reference",
+      type: "proximity",
+      time: new Date(300_000).toISOString(),
+      level: "ORB",
+      price: 101,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      candle: { openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10 },
+      detail: "Proximity reference.",
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [first, repeated], []);
+  const pullbacks = occurrences.filter((occurrence) => occurrence.kind === "pullback");
+  assert.equal(pullbacks.length, 1);
+  assert.deepEqual(pullbacks[0]?.secondaryStrategyMatches, ["PATIENCE_CANDLE_CONTINUATION"]);
+});
+
 test("ledger does not turn a removed risk gate into a separate trade outcome", () => {
   const risk = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
     id: "risk-audit",
