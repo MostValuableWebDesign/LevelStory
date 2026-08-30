@@ -470,7 +470,7 @@ export type CandidateManagementContext = {
   runnerExitRule: string | null;
   sessionCloseTime: string | null;
   sourceAuditId: string;
-  managementEvidenceStatus: "complete" | "missing";
+  managementEvidenceStatus: "complete" | "missing" | "invalid";
   missingEvidenceReasons: string[];
 };
 
@@ -647,6 +647,8 @@ export type HistoricalOccurrence = {
   eOpenTimestamp: string | null;
   /** The completed E candle close where threshold confirmation is observed. */
   entryObservationTimestamp: string | null;
+  /** Non-empty only when a confirmed P→E sequence violates causal identity invariants. */
+  identityInvariantViolations: string[];
   confirmationBufferTicks: number | null;
   nextObservedCandle: Record<string, number | boolean> | null;
   consolidationThresholds: ConsolidationThresholds;
@@ -1780,6 +1782,60 @@ function canonicalPatienceStatus(patience: PatienceOccurrence): CanonicalPatienc
   return "PATIENCE_SHAPE_FOUND";
 }
 
+function canonicalPatienceIdentityViolations(input: {
+  tradingDate: string;
+  contractSymbol: string;
+  patienceCandle: { openTime: number; closeTime: number };
+  pOpenTimestamp: string | null;
+  eOpenTimestamp: string | null;
+  entryObservationTimestamp: string | null;
+  confirmedEntry: { openTime: number; closeTime: number } | null;
+  expectedEntryCandleOpenTime: number;
+}): string[] {
+  const violations: string[] = [];
+  const pOpen = input.patienceCandle.openTime;
+  const pClose = input.patienceCandle.closeTime;
+  const eOpen = input.confirmedEntry?.openTime ?? input.expectedEntryCandleOpenTime;
+  const eClose = input.confirmedEntry?.closeTime ?? Number.NaN;
+  const pTimestamp = input.pOpenTimestamp ? Date.parse(input.pOpenTimestamp) : Number.NaN;
+  const eTimestamp = input.eOpenTimestamp ? Date.parse(input.eOpenTimestamp) : Number.NaN;
+  const observationTimestamp = input.entryObservationTimestamp
+    ? Date.parse(input.entryObservationTimestamp)
+    : Number.NaN;
+  if (!Number.isFinite(pOpen) || !Number.isFinite(pTimestamp) || pTimestamp !== pOpen) {
+    violations.push("P_OPEN_MISMATCH");
+  }
+  if (!Number.isFinite(pClose) || pClose - pOpen !== 5 * 60_000) {
+    violations.push("P_NOT_FIVE_MINUTES");
+  }
+  if (!Number.isFinite(eOpen) || !Number.isFinite(eTimestamp) || eTimestamp !== eOpen) {
+    violations.push("E_OPEN_MISMATCH");
+  }
+  if (!Number.isFinite(eClose) || eClose - eOpen !== 5 * 60_000) {
+    violations.push("E_NOT_FIVE_MINUTES");
+  }
+  if (!Number.isFinite(pClose) || pClose !== eOpen) {
+    violations.push("E_NOT_IMMEDIATE_NEXT_CANDLE");
+  }
+  if (!input.confirmedEntry || input.confirmedEntry.openTime !== input.expectedEntryCandleOpenTime) {
+    violations.push("CONFIRMATION_NOT_ON_IMMEDIATE_E");
+  }
+  if (!Number.isFinite(observationTimestamp) || observationTimestamp !== eClose) {
+    violations.push("E_CLOSE_OBSERVATION_MISMATCH");
+  }
+  if (Number.isFinite(pOpen) && Number.isFinite(eOpen)) {
+    const root = input.contractSymbol.replace(/[FGHJKMNQUVXZ]\d$/, "");
+    const calendar = sessionCalendarForContract(getFuturesContractSpecification(root || input.contractSymbol));
+    if (tradingDateForTimestamp(pOpen, calendar) !== input.tradingDate
+      || tradingDateForTimestamp(eOpen, calendar) !== input.tradingDate) {
+      violations.push("P_E_TRADING_DATE_MISMATCH");
+    }
+  } else {
+    violations.push("P_E_TIMESTAMP_INVALID");
+  }
+  return [...new Set(violations)];
+}
+
 function patienceStatusRank(status: string): number {
   return status === "SIGNAL_CONFIRMED"
     ? 4
@@ -1963,6 +2019,7 @@ export function buildHistoricalOccurrenceLedger(
         pOpenTimestamp: event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
         eOpenTimestamp: null,
         entryObservationTimestamp: null,
+         identityInvariantViolations: [],
         confirmationBufferTicks: null,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
@@ -2011,6 +2068,27 @@ export function buildHistoricalOccurrenceLedger(
             : Math.max(0, patience.patienceCandle.low - observedImmediate.low)
           : null
       );
+      const pOpenTimestamp = Number.isFinite(patience.patienceCandle.openTime)
+        ? new Date(patience.patienceCandle.openTime).toISOString()
+        : null;
+      const eOpenTimestamp = Number.isFinite(expectedEntryCandleOpenTime)
+        ? new Date(expectedEntryCandleOpenTime).toISOString()
+        : null;
+      const entryObservationTimestamp = confirmedEntry && Number.isFinite(confirmedEntry.closeTime)
+        ? new Date(confirmedEntry.closeTime).toISOString()
+        : null;
+      const identityInvariantViolations = outcomeStatus === "SIGNAL_CONFIRMED"
+        ? canonicalPatienceIdentityViolations({
+          tradingDate: record.tradingDate,
+          contractSymbol: record.contractSymbol,
+          patienceCandle: patience.patienceCandle,
+          pOpenTimestamp,
+          eOpenTimestamp,
+          entryObservationTimestamp,
+          confirmedEntry,
+          expectedEntryCandleOpenTime,
+        })
+        : [];
       const linkedTrade = trade
         && confirmedEntry
         && trade.audit?.patienceCandleOpenTime === new Date(patience.patienceCandle.openTime).toISOString()
@@ -2025,8 +2103,8 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
-        new Date(patience.patienceCandle.openTime).toISOString(),
-        new Date(expectedEntryCandleOpenTime).toISOString(),
+         pOpenTimestamp ?? "invalid",
+         eOpenTimestamp ?? "invalid",
       ].join("|");
       const id = occurrenceId(identity);
       upsert(identity, {
@@ -2052,10 +2130,12 @@ export function buildHistoricalOccurrenceLedger(
         patienceTimestamp: new Date(patience.patienceCandle.openTime).toISOString(),
         patienceCandle: occurrenceCandle(patience.patienceCandle),
         candidateShapeResult: patience.candidateShapeResult ?? true,
-        expectedEntryTimestamp: new Date(expectedEntryCandleOpenTime).toISOString(),
+         expectedEntryTimestamp: eOpenTimestamp,
         confirmationThreshold,
         confirmationExcursion,
-        entryTimestamp: confirmedEntry ? new Date(confirmedEntry.openTime).toISOString() : null,
+         entryTimestamp: confirmedEntry && Number.isFinite(confirmedEntry.openTime)
+           ? new Date(confirmedEntry.openTime).toISOString()
+           : null,
         entryCandle: occurrenceCandle(confirmedEntry ?? (outcomeStatus === "SIGNAL_CONFIRMED" ? observedImmediate : null)),
         levelIdentifiers: linkedEvidence.identifiers,
         levelValues: linkedEvidence.values,
@@ -2063,15 +2143,10 @@ export function buildHistoricalOccurrenceLedger(
         levelTolerancePoints: linkedEvidence.tolerancePoints,
         levelToleranceTicks: linkedEvidence.toleranceTicks,
         levelInteractionTypes: linkedEvidence.interactionTypes,
-         pOpenTimestamp: linkedPullback?.candle
-           ? new Date(linkedPullback.candle.openTime).toISOString()
-           : linkedPullback
-             ? new Date(linkedPullback.time).toISOString()
-             : null,
-         eOpenTimestamp: new Date(expectedEntryCandleOpenTime).toISOString(),
-         entryObservationTimestamp: confirmedEntry && typeof confirmedEntry.closeTime === "number"
-           ? new Date(confirmedEntry.closeTime).toISOString()
-           : null,
+         pOpenTimestamp,
+         eOpenTimestamp,
+         entryObservationTimestamp,
+         identityInvariantViolations,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
@@ -2166,6 +2241,7 @@ export function buildHistoricalOccurrenceLedger(
          pOpenTimestamp: record.patienceCandleOpenTime,
          eOpenTimestamp: record.triggerCandleOpenTime ?? record.patienceCandleCloseTime,
          entryObservationTimestamp: record.triggerCandleCloseTime,
+         identityInvariantViolations: [],
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
@@ -2294,10 +2370,18 @@ function freezeCandidateManagementContext(
   };
   const validationReasons = candidateManagementValidationReasons(context, occurrence.entryObservationTimestamp);
   const allReasons = [...new Set([...missingEvidenceReasons, ...validationReasons])];
+  const invalidReasons = validationReasons.filter((reason) => !missingEvidenceReasons.includes(reason));
+  const managementEvidenceStatus = invalidReasons.length > 0
+    ? "invalid"
+    : allReasons.length > 0
+      ? "missing"
+      : "complete";
   return {
     ...context,
-    managementEvidenceStatus: allReasons.length ? "missing" : "complete",
-    missingEvidenceReasons: allReasons,
+    managementEvidenceStatus,
+    missingEvidenceReasons: managementEvidenceStatus === "invalid"
+      ? ["INVALID_MANAGEMENT_GEOMETRY", ...allReasons]
+      : allReasons,
   };
 }
 
@@ -2320,7 +2404,8 @@ export function projectHistoricalTradeCandidates(
     && occurrence.expectedEntryTimestamp !== null
     && occurrence.pOpenTimestamp !== null
     && occurrence.eOpenTimestamp !== null
-    && occurrence.entryObservationTimestamp !== null,
+    && occurrence.entryObservationTimestamp !== null
+    && !(occurrence.identityInvariantViolations?.length),
   );
   const candidates: HistoricalTradeCandidate[] = [];
   const rejected: RejectedCandidateSignal[] = [];
@@ -2328,16 +2413,21 @@ export function projectHistoricalTradeCandidates(
   for (const occurrence of confirmed) {
     const edge = candidateEdgeEligibility(occurrence);
     const inWindow = candidateWindowEligible(occurrence);
-    if (!edge.eligible || !inWindow) {
+    const identityValid = !(occurrence.identityInvariantViolations?.length);
+    if (!edge.eligible || !inWindow || !identityValid) {
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: [
           ...(!edge.eligible ? ["MISSING_EDGE_REQUIREMENT"] : []),
           ...(!inWindow ? ["OUTSIDE_PRIMARY_ENTRY_WINDOW"] : []),
+          ...(!identityValid ? ["INVALID_CAUSAL_IDENTITY"] : []),
         ],
         details: [
           ...(edge.reason ? [edge.reason] : []),
           ...(!inWindow ? ["Entry confirmation is observed outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
+          ...(!identityValid
+            ? [`Confirmed P→E identity invariant failed: ${occurrence.identityInvariantViolations.join(", ")}.`]
+            : []),
         ],
       });
       continue;
