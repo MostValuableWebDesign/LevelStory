@@ -1102,7 +1102,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
    const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null && !annotation.id.startsWith("fib-"));
-  const criticalLevels = allLevels.filter((annotation) => annotation.id.startsWith("critical-"));
+  const criticalLevels = allLevels.filter((annotation) =>
+    annotation.id.startsWith("critical-")
+    && annotation.label !== "Critical · Premarket high",
+  );
   const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
   const relevantCritical = [...criticalLevels]
     .sort((first, second) => entryReference == null
