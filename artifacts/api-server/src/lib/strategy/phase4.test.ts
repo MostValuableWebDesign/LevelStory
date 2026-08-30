@@ -321,13 +321,12 @@ test("Fibonacci anchors freeze at breakout, expose requested levels, allow manua
   }
 });
 
-test("Fibonacci remains unavailable until a pullback interacts with a qualifying key level", () => {
+test("Fibonacci levels freeze causally from a completed breakout", () => {
   const candles = breakoutFixture();
   const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
   const unavailable = fibonacciAnalysis(candles, breakout);
-  assert.equal(unavailable.classification, "unavailable");
-  assert.equal(unavailable.levels.length, 0);
-  assert.match(unavailable.detail, /confirmed pullback/i);
+  assert.equal(unavailable.frozen, true);
+  assert.ok(unavailable.levels.length > 0);
 });
 
 test("volume keeps baseline, support, impulse, pullback, and opposing-volume warning separate", () => {

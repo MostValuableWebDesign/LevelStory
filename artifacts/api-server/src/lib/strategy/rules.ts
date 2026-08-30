@@ -27,8 +27,12 @@ export function hasConfirmedDirectionalTrend(
     ? trend.structure === "higher highs / higher lows"
     : trend.structure === "lower highs / lower lows";
   const scoreMatches = direction === "long" ? trend.score >= 5 : trend.score <= -5;
-  const evidenceMatches = trend.evidenceItems.every((item) =>
-    item.status !== "neutral" && (direction === "long" ? item.status === "positive" : item.status === "negative"));
+  const expectedStatus = direction === "long" ? "positive" : "negative";
+  const structureEvidence = trend.evidenceItems.find((item) => item.key === "structure");
+  const slopeEvidence = trend.evidenceItems.find((item) => item.key === "emaSlope");
+  const evidenceMatches = structureEvidence?.status === expectedStatus
+    && slopeEvidence?.status === expectedStatus
+    && trend.evidenceItems.every((item) => item.status === expectedStatus);
   return trend.direction === expected
     && structureMatches
     && scoreMatches

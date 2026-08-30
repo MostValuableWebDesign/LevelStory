@@ -1424,7 +1424,14 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
       }
     }
-    const selected = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
+    const selected = ([
+      "ORB_PULLBACK_CONTINUATION",
+      "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      "EQUIVALENT_CANDLE_REVERSAL",
+      "PATIENCE_CANDLE_CONTINUATION",
+    ] as const)
+      .map((setupType) => evaluations.find((evaluation) => evaluation.setupType === setupType && evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly))
+      .find((evaluation) => evaluation !== undefined);
     const selectedAudit = selected
       ? evaluationAudits.find((record) => record.setupType === selected.setupType)
       : undefined;

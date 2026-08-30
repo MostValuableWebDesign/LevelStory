@@ -62,6 +62,8 @@ export type StrategyConfig = {
   phase4FailureReclaimRequired: boolean;
   phase4FailureOpposingVolumeRatio: number;
   phase6ConsolidationExpansionRatio: number;
+  phase6ConsolidationMinCandles: number;
+  phase6ConsolidationMaxRangeTicks: number;
   phase7MaxContracts: number;
   phase7StaleDataSeconds: number;
   phase7NormalSlippageTicks: number;
@@ -127,6 +129,8 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4FailureReclaimRequired: true,
   phase4FailureOpposingVolumeRatio: 1.5,
   phase6ConsolidationExpansionRatio: 1.25,
+  phase6ConsolidationMinCandles: 3,
+  phase6ConsolidationMaxRangeTicks: 24, // assumption: bounded consolidation may span up to 24 MES ticks
   phase7MaxContracts: 10,
   phase7StaleDataSeconds: 15,
   phase7NormalSlippageTicks: 1,
@@ -196,6 +200,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase4StrongCloseLocationRatio", config.phase4StrongCloseLocationRatio],
     ["phase4FailureOpposingVolumeRatio", config.phase4FailureOpposingVolumeRatio],
     ["phase6ConsolidationExpansionRatio", config.phase6ConsolidationExpansionRatio],
+    ["phase6ConsolidationMinCandles", config.phase6ConsolidationMinCandles],
+    ["phase6ConsolidationMaxRangeTicks", config.phase6ConsolidationMaxRangeTicks],
     ["phase7MaxContracts", config.phase7MaxContracts],
     ["phase7StaleDataSeconds", config.phase7StaleDataSeconds],
     ["phase7NormalSlippageTicks", config.phase7NormalSlippageTicks],

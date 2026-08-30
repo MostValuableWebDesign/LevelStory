@@ -690,21 +690,6 @@ export function fibonacciAnalysis(
       detail: "Fibonacci anchors are unavailable until a breakout is detected.",
     };
   }
-  if (!pullback || pullback.events.length === 0) {
-    return {
-      direction: null,
-      impulseLow: null,
-      impulseHigh: null,
-      breakoutTime: null,
-      frozen: false,
-      frozenAt: null,
-      manualCorrection: false,
-      levels: [],
-      retracementPercent: null,
-      classification: "unavailable",
-      detail: "Fibonacci anchors are unavailable until a confirmed pullback interacts with a qualifying key level.",
-    };
-  }
   const completed = completedCandles(candles);
   const breakoutIndex = completed.findIndex((candle) => candle.openTime === breakout.candleOpenTime);
   if (breakoutIndex < 0) return fibonacciAnalysis([], { ...breakout, detected: false });

@@ -1,9 +1,5 @@
-import type {
-  BreakoutEvent,
-  FibonacciAnalysis,
-  Phase4VolumeAnalysis,
-  PullbackAnalysis,
-} from "./phase4.js";
+import { levelInteractionDistance } from "./phase4.js";
+import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
 import type { PatienceAnalysis } from "./phase5.js";
 import type { MajorLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
@@ -97,7 +93,7 @@ export type Phase6Context = {
     structure: string;
     score?: number;
     candleCount?: number;
-    evidenceItems?: Array<{ status: "positive" | "negative" | "neutral" }>;
+    evidenceItems?: Array<{ key: "structure" | "vwap" | "ema" | "emaSlope"; status: "positive" | "negative" | "neutral" }>;
   };
   riskApproved: boolean;
   config: StrategyConfig;
@@ -110,14 +106,21 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluatePatienceCandleContinuation(context),
     evaluateEquivalentCandleReversal(context),
   ];
-  const qualified = evaluations.find((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly);
-  const reversalQualified = evaluations.find((evaluation) => evaluation.setupType === "EQUIVALENT_CANDLE_REVERSAL" && evaluation.decision === "SETUP QUALIFIED");
+  const attributionOrder: SetupType[] = [
+    "ORB_PULLBACK_CONTINUATION",
+    "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    "EQUIVALENT_CANDLE_REVERSAL",
+    "PATIENCE_CANDLE_CONTINUATION",
+  ];
+  const qualified = attributionOrder
+    .map((setupType) => evaluations.find((evaluation) => evaluation.setupType === setupType && evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly))
+    .find((evaluation): evaluation is SetupEvaluation => evaluation !== undefined);
   const possibleReversal = evaluations.find((evaluation) => evaluation.decision === "POSSIBLE REVERSAL");
   const ambiguous = evaluations.find((evaluation) => evaluation.decision === "AMBIGUOUS");
   const expired = evaluations.find((evaluation) => evaluation.decision === "EXPIRED");
   const forming = evaluations.find((evaluation) => evaluation.decision === "SETUP FORMING");
-  if (qualified || reversalQualified) {
-    const selected = qualified ?? reversalQualified!;
+  if (qualified) {
+    const selected = qualified;
     return { decision: "SETUP QUALIFIED", primarySetup: canonicalStrategyId(selected.setupType), evaluations, explanation: `${selected.setupType} passed every mandatory rule. This is shadow analysis only.` };
   }
   if (possibleReversal) return { decision: "POSSIBLE REVERSAL", primarySetup: "EQUIVALENT_CANDLE_REVERSAL", evaluations, explanation: possibleReversal.explanation };
@@ -136,11 +139,13 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.breakout.direction;
   const confirmedTrend = hasConfirmedTrend(context, direction);
+  const fibonacciInteraction = hasFibonacciPullbackInteraction(context);
+  const levelInteraction = hasQualifyingPullback(context.pullback) || fibonacciInteraction;
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
     rule("breakoutAgreesWithTrend", "Breakout agrees with confirmed 15-minute trend", confirmedTrend, confirmedTrend ? "Confirmed causal 15-minute trend agrees with the breakout." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
-    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", hasQualifyingPullback(context.pullback) || (context.fibonacci.frozen && context.fibonacci.levels.length > 0), "A structural/dynamic level or causal Fibonacci interaction is required."),
+    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", levelInteraction, fibonacciInteraction ? "Pullback range interacted with a specific causal Fibonacci retracement." : "A structural/dynamic level interaction is required."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -163,7 +168,7 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
 }
 
 export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
-  const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio, context.breakout.candleOpenTime ?? context.breakout.time);
+  const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio, context.breakout.candleOpenTime ?? context.breakout.time, context.config.phase6ConsolidationMaxRangeTicks, context.config.phase6ConsolidationMinCandles);
   const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
   const breakoutCandle = completedCandles(context.candles).find((candle) => candle.openTime === context.breakout.candleOpenTime);
   const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
@@ -197,7 +202,7 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
   const patience = context.reversalPatience ?? context.patience;
   const rules: SetupRuleEvidence[] = [
     rule("equivalentContext", "Equivalent opposing candles at a qualifying level", evidence.equivalentOpposingCandles, evidence.equivalentOpposingCandles ? "Equivalent opposing full-body candles meet the configured level and wick tolerances." : "Equivalent opposing candles at a qualifying level are required."),
-    rule("directionalConfirmation", "Directional confirmation", reversalDirection !== null && trendAgrees(reversalDirection, context.trend.direction), reversalDirection && context.trend.direction !== "neutral" ? `${reversalDirection} reversal direction vs ${context.trend.direction} 15-minute trend.` : "A directional trend confirmation is required."),
+    rule("directionalConfirmation", "Directional reversal confirmation", reversalDirection !== null, "The reversal direction is established by separate reversal evidence; it may oppose the preceding continuation trend."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -273,13 +278,14 @@ export function detectReversalEvidence(
   };
 }
 
-export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: SessionLevels["ntz"], expansionLimit = 1.25, breakoutTime: number | null = null): ExtendedConsolidation {
+export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: SessionLevels["ntz"], expansionLimit = 1.25, breakoutTime: number | null = null, maxRangeTicks = 24, minimumCandles = 3): ExtendedConsolidation {
   const completed = completedCandles(candles).filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
-  if (completed.length < 3) return emptyConsolidation("At least three contiguous completed candles are required.");
-  const maxRange = 1.5;
+  const minimumCount = Math.max(3, Math.floor(minimumCandles));
+  if (completed.length < minimumCount) return emptyConsolidation(`At least ${minimumCount} contiguous completed candles are required.`);
+  const maxRange = maxRangeTicks * 0.25;
   const candidates: ExtendedConsolidation[] = [];
-  const minimumCount = breakoutTime === null ? completed.length : 3;
-  for (let count = minimumCount; count <= completed.length; count += 1) {
+  const firstCount = breakoutTime === null ? completed.length : minimumCount;
+  for (let count = firstCount; count <= completed.length; count += 1) {
     const window = completed.slice(-count);
     if (!isContiguous(window)) break;
     const midpoint = Math.max(1, Math.floor(count / 2));
@@ -302,7 +308,7 @@ export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: 
   }
   const best = candidates.at(-1);
   if (best) return best;
-  const window = breakoutTime === null ? completed : completed.slice(-Math.min(3, completed.length));
+  const window = breakoutTime === null ? completed : completed.slice(-Math.min(minimumCount, completed.length));
   const range = Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low));
   const midpoint = Math.max(1, Math.floor(window.length / 2));
   const firstRange = candleRange(window.slice(0, midpoint));
@@ -397,6 +403,18 @@ function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
   return pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
 }
 
+function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
+  if (!context.fibonacci.frozen || !context.fibonacci.levels.length || context.breakout.candleOpenTime === null) return false;
+  const completed = context.candles
+    .filter((candle) => candle.isComplete)
+    .sort((first, second) => first.openTime - second.openTime);
+  const breakoutIndex = completed.findIndex((candle) => candle.openTime === context.breakout.candleOpenTime);
+  if (breakoutIndex < 0) return false;
+  const pullbackCandles = completed.slice(breakoutIndex + 1, breakoutIndex + 1 + context.config.phase4PullbackMaxCandles);
+  return pullbackCandles.some((candle) => context.fibonacci.levels.some((level) =>
+    levelInteractionDistance(level.price, candle.high, candle.low) <= context.config.levelTolerance));
+}
+
 function patienceDirectionMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {
   return direction === "long" ? patience.trend === "bullish" : direction === "short" ? patience.trend === "bearish" : false;
 }
@@ -420,8 +438,8 @@ function hasConfirmedTrend(context: Phase6Context, direction: Direction | null):
     structure: context.trend.structure,
     score: context.trend.score,
     candleCount: context.trend.candleCount,
-    evidenceItems: context.trend.evidenceItems.map((item, index) => ({
-      key: ["structure", "vwap", "ema", "emaSlope"][index] as "structure" | "vwap" | "ema" | "emaSlope",
+    evidenceItems: context.trend.evidenceItems.map((item) => ({
+      key: item.key,
       label: "",
       status: item.status,
       detail: "",

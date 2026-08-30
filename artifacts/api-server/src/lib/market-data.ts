@@ -466,11 +466,23 @@ export function createMarketSnapshot(
       .filter((level) => level.confluence !== "normal")
       .map((level) => ({ name: `Confluence · ${level.name}`, price: level.price, kind: "confluence" })),
   ];
-  const pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config, {
+  let pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config, {
     causalCandles: historicalFeed,
     calendar,
   });
-  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
+  let fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
+  if (fibonacci.levels.length) {
+    const fibonacciLevels = fibonacci.levels.map((level) => ({
+      name: level.name,
+      price: level.price,
+      kind: "reference" as const,
+    }));
+    pullback = analyzePullback(regular, breakout, [...qualifyingLevels, ...fibonacciLevels], specification, config, {
+      causalCandles: historicalFeed,
+      calendar,
+    });
+    fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
+  }
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;

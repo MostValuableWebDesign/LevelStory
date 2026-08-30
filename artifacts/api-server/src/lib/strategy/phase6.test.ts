@@ -159,7 +159,7 @@ function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
     },
      patience: patience(),
      reversalPatience: patience("PATIENCE_CANDLE_VALID"),
-    trend: { direction: "bullish", structure: "higher highs / higher lows", score: 6, candleCount: 8, evidenceItems: [{ status: "positive" }, { status: "positive" }, { status: "positive" }, { status: "positive" }] },
+    trend: { direction: "bullish", structure: "higher highs / higher lows", score: 6, candleCount: 8, evidenceItems: [{ key: "structure", status: "positive" }, { key: "vwap", status: "positive" }, { key: "ema", status: "positive" }, { key: "emaSlope", status: "positive" }] },
     riskApproved: true,
     config,
     ...overrides,
@@ -234,7 +234,7 @@ test("ORB continuation never qualifies when any mandatory gate fails", () => {
   }
 });
 
-test("extended NTZ consolidation requires 9 to 12 contiguous five-minute candles", () => {
+test("tight consolidation can qualify outside the old 45–60 minute window", () => {
   const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
   const result = detectExtendedNtzConsolidation(candles, ntz());
   assert.equal(result.detected, true);
@@ -328,7 +328,7 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
     levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
-    trend: { direction: "bearish", structure: "lower highs / lower lows" },
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
     breakout: { ...baseContext().breakout, direction: "long" },
      reversalPatience: patience("ENTRY_TRIGGERED", "bearish"),
   });
@@ -336,6 +336,20 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.alertOnly, false);
   assert.equal(result.mandatoryPassed, true);
+});
+
+test("ORB Fibonacci interaction is required when no structural level interaction exists", () => {
+  const withoutInteraction = evaluateOrbBreakPullbackContinuation(baseContext({
+    pullback: { ...baseContext().pullback, events: [] },
+    fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 100 }] },
+  }));
+  assert.equal(withoutInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, false);
+
+  const withInteraction = evaluateOrbBreakPullbackContinuation(baseContext({
+    pullback: { ...baseContext().pullback, events: [] },
+    fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
+  }));
+  assert.equal(withInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, true);
 });
 
 test("reversal requires directional confirmation, patience, immediate trigger, and risk", () => {
