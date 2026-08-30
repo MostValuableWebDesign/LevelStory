@@ -1,0 +1,159 @@
+The Phase 3 architecture is solid, but I would not run the full 20+10-session pilot yet. Two causal-timing issues and one management issue could distort results.
+
+Critical findings:
+
+1. The 1:00 p.m. cutoff uses the E candle’s opening timestamp. A 12:55–1:00 candle could therefore qualify even though confirmation is not known until 1:00. The cutoff must use E close/entry-observation time and require it to be strictly before 1:00 p.m. ET.
+
+2. Phase 9 records the modeled entry at E open even though E’s high/low confirms the threshold only after E completes. This backdates the entry five minutes. Store E open separately, but use E close as `entryObservationTimestamp`, modeled fill observation time, trade entry time, time bucket, and cutoff timestamp.
+
+3. Phase 3 filters invalid stop/target geometry from scoring, but Phase 9 can still send invalid geometry into outcome simulation. Core candidate execution must validate target, strategy stop, catastrophe stop, runner settings, and contract quantity before management replay.
+
+4. The Phase 3 manifest says physical identity includes `lTimestamp`, while the canonical P→E identity should not be split by qualifying level. The actual Phase 3 deduplication key also omits direction. Use:
+
+```text
+source fingerprint
+formula/configuration hash
+contract
+New York trading date
+direction
+P open timestamp
+immediate E open timestamp
+```
+
+The positive side: checkpointing, 20+10 separation, primary-edge attribution, confluence preservation, asynchronous progress, and open/unscored outcome reporting are all well structured in the [latest commit](https://github.com/MostValuableWebDesign/LevelStory/commit/6d1645fced7c5d128278ccbcaa8606472054572d).
+
+Paste this into Replit:
+
+```text
+Implement one focused Phase 3 causal-timing and management-geometry correction before running the full 20+10 edge pilot.
+
+Do not redesign Phase 3. Preserve the existing immutable manifest, checkpoint/resume workflow, edge attribution, confluences, Shadow Mode safeguards, and historical index.
+
+1. Correct entry timestamps
+
+Distinguish these timestamps explicitly:
+
+- patienceCandleOpenTimestamp: P open
+- expectedEntryTimestamp: immediate E candle open
+- entryCandleCloseTimestamp / entryObservationTimestamp: E close
+
+The confirmation threshold is evaluated using the completed E candle’s high or low. Therefore the entry cannot be considered observed before E closes.
+
+Use entryObservationTimestamp for:
+
+- The 1:00 p.m. entry cutoff
+- Historical trade entryTime
+- modeledFillObservationTime
+- Phase 3 time-of-day buckets
+- Candidate eligibility gates
+- Audit and report displays
+
+Keep expectedEntryTimestamp as the E-open identity timestamp only. Do not use it as the fill or decision time.
+
+2. Enforce the entry cutoff causally
+
+No new trade may be entered at or after 1:00 p.m. America/New_York.
+
+Require:
+
+entryObservationTimestamp < 1:00 p.m. ET
+
+Boundary behavior:
+
+- E = 12:50–12:55: eligible if all other rules pass
+- E = 12:55–1:00: rejected because confirmation becomes known at 1:00
+- E opening at 1:00 or later: rejected
+- Existing positions may still be managed after 1:00
+- DST conversion must remain America/New_York safe
+
+Add deterministic EST and EDT boundary tests.
+
+3. Validate frozen management geometry in authoritative Phase 9 execution
+
+Before sending a candidate-driven trade into outcome simulation, validate its frozen causal management context.
+
+For a long:
+
+- target > entry
+- strategy stop < entry
+- catastrophe stop <= strategy stop, unless a stricter governed rule applies
+
+For a short:
+
+- target < entry
+- strategy stop > entry
+- catastrophe stop >= strategy stop, unless a stricter governed rule applies
+
+Also validate:
+
+- All required prices are finite
+- Contract quantity is a positive integer
+- Runner activation and exit rules are directionally valid
+- Management values came from evidence frozen no later than entryObservationTimestamp
+
+If geometry is invalid:
+
+- Preserve the confirmed signal and candidate
+- Set managementEvidenceStatus to INVALID_MANAGEMENT_GEOMETRY
+- Do not run stop/target outcome simulation
+- Keep the occurrence open and unscored
+- Do not fabricate an exit or P&L
+
+Do not merely filter an invalid trade from Phase 3 metrics after simulation.
+
+4. Correct physical signal identity documentation and deduplication
+
+Use this canonical physical P→E identity:
+
+source fingerprint
++ formula/configuration hash
++ contract
++ New York trading date
++ direction
++ P open timestamp
++ immediate E open timestamp
+
+Do not include:
+
+- L timestamp
+- qualifying level
+- level combination
+- primary edge
+- secondary edge
+- arm ID
+- entry price
+- status
+- audit cursor
+
+Merge levels, edges, direction sources, confluences, and audit IDs as provenance.
+
+Update the Phase 3 manifest description to match the actual authoritative identity.
+
+5. Tests
+
+Add focused deterministic tests proving:
+
+- A 12:55–1:00 E candle is rejected
+- An E candle closing before 1:00 can qualify
+- Trade entryTime equals E close, not E open
+- modeledFillObservationTime equals E close
+- Outcome replay begins with the first candle after E
+- Invalid long and short management geometry never reaches simulation
+- Valid geometry still produces the prior deterministic result
+- Multiple levels for one P→E pair produce one candidate
+- Opposite directions cannot accidentally merge
+
+Verification:
+
+- Run focused Phase 5, Phase 6, Phase 9, OHLCV execution, and Phase 3 tests
+- Run API typecheck
+- Run git diff --check
+- Use cached/preloaded historical data only
+- Do not rebuild the historical index
+- Do not run the full 20+10 pilot until these focused tests pass
+- Do not add broker, live-order, or paper-order behavior
+
+Report the exact files changed, root causes, boundary-test results, and whether Phase 3 is then safe to run.
+```
+
+After that passes, you’re ready to run the actual Phase 3 pilot.
