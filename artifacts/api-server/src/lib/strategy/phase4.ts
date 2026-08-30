@@ -77,6 +77,7 @@ export type BreakoutQualityMetrics = {
 
 export type PullbackEventType = "touch" | "proximity" | "break and reclaim" | "hold" | "consolidation" | "break through";
 export type PullbackEvent = {
+  eventId?: string;
   type: PullbackEventType;
   time: number;
   level: string;
@@ -814,6 +815,7 @@ function event(
   detail: string,
 ): PullbackEvent {
   return {
+    eventId: `pullback|${type}|${candle.openTime}|${level.name}|${level.price}`,
     type,
     time: candle.closeTime,
     level: level.name,

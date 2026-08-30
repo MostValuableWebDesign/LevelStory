@@ -558,6 +558,7 @@ export function multiContractImportToReplayDataset(
     selectedDates,
     excludedDates: eligibleDates.filter((date) => date >= startDate && date <= endDate && !selectedDateSet.has(date)),
     source: MULTI_CONTRACT_SOURCE,
+    contentFingerprint: imported.contentFingerprint,
     quotesAvailable: false,
     gapReport: selectedGapReport(candles, normalizedSelectedOneMinute),
     contractSchedule: {

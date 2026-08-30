@@ -51,6 +51,7 @@ function hashJson(value: unknown): string {
 }
 
 function sourceFingerprint(snapshot: VisualValidationSnapshot): string {
+  if (snapshot.sourceFingerprint) return snapshot.sourceFingerprint;
   return hashJson({
     symbol: snapshot.symbol,
     contractSymbol: snapshot.contractSymbol,

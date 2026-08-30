@@ -764,6 +764,7 @@ export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandles
 
 export const runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const runBacktestResponseOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const runBacktestResponseAuditPagePageSizeMax = 100;
@@ -1129,6 +1130,8 @@ export const RunBacktestResponse = zod.object({
   "contractMonth": zod.string(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "lTimestamp": zod.coerce.date().nullable(),
+  "lEventId": zod.string().nullable(),
+  "lInteractionType": zod.string().nullable(),
   "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "patienceTimestamp": zod.coerce.date().nullable(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1137,7 +1140,11 @@ export const RunBacktestResponse = zod.object({
   "levelIdentifiers": zod.array(zod.string()),
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "levelTolerancePoints": zod.record(zod.string(), zod.number()),
+  "levelToleranceTicks": zod.record(zod.string(), zod.number()),
+  "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
   "confirmationBufferTicks": zod.number().nullable(),
+  "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin),
@@ -1148,6 +1155,7 @@ export const RunBacktestResponse = zod.object({
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
+  "formulaHash": zod.string().regex(runBacktestResponseOccurrencesItemFormulaHashRegExp),
   "sourceFingerprint": zod.string(),
   "canonicalTrade": zod.boolean()
 })),
@@ -1283,6 +1291,7 @@ export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationT
 
 export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const startBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const startBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -1659,6 +1668,8 @@ export const StartBatchBacktestResponse = zod.object({
   "contractMonth": zod.string(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "lTimestamp": zod.coerce.date().nullable(),
+  "lEventId": zod.string().nullable(),
+  "lInteractionType": zod.string().nullable(),
   "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "patienceTimestamp": zod.coerce.date().nullable(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1667,7 +1678,11 @@ export const StartBatchBacktestResponse = zod.object({
   "levelIdentifiers": zod.array(zod.string()),
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "levelTolerancePoints": zod.record(zod.string(), zod.number()),
+  "levelToleranceTicks": zod.record(zod.string(), zod.number()),
+  "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
   "confirmationBufferTicks": zod.number().nullable(),
+  "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
@@ -1678,6 +1693,7 @@ export const StartBatchBacktestResponse = zod.object({
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
+  "formulaHash": zod.string().regex(startBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp),
   "sourceFingerprint": zod.string(),
   "canonicalTrade": zod.boolean()
 })),
@@ -2214,6 +2230,7 @@ export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidat
 
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const getBatchBacktestStatusResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -2590,6 +2607,8 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "contractMonth": zod.string(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "lTimestamp": zod.coerce.date().nullable(),
+  "lEventId": zod.string().nullable(),
+  "lInteractionType": zod.string().nullable(),
   "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "patienceTimestamp": zod.coerce.date().nullable(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
@@ -2598,7 +2617,11 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "levelIdentifiers": zod.array(zod.string()),
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "levelTolerancePoints": zod.record(zod.string(), zod.number()),
+  "levelToleranceTicks": zod.record(zod.string(), zod.number()),
+  "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
   "confirmationBufferTicks": zod.number().nullable(),
+  "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
@@ -2609,6 +2632,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
+  "formulaHash": zod.string().regex(getBatchBacktestStatusResponseReportOneOneOccurrencesItemFormulaHashRegExp),
   "sourceFingerprint": zod.string(),
   "canonicalTrade": zod.boolean()
 })),
@@ -3145,6 +3169,7 @@ export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidation
 
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const cancelBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -3521,6 +3546,8 @@ export const CancelBatchBacktestResponse = zod.object({
   "contractMonth": zod.string(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "lTimestamp": zod.coerce.date().nullable(),
+  "lEventId": zod.string().nullable(),
+  "lInteractionType": zod.string().nullable(),
   "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "patienceTimestamp": zod.coerce.date().nullable(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
@@ -3529,7 +3556,11 @@ export const CancelBatchBacktestResponse = zod.object({
   "levelIdentifiers": zod.array(zod.string()),
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "levelTolerancePoints": zod.record(zod.string(), zod.number()),
+  "levelToleranceTicks": zod.record(zod.string(), zod.number()),
+  "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
   "confirmationBufferTicks": zod.number().nullable(),
+  "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
@@ -3540,6 +3571,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
+  "formulaHash": zod.string().regex(cancelBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp),
   "sourceFingerprint": zod.string(),
   "canonicalTrade": zod.boolean()
 })),
@@ -4262,6 +4294,7 @@ export const getVisualValidationSetResponseRequestSourceDefault = `historical_da
 export const getVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
 export const getVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
@@ -4326,6 +4359,8 @@ export const GetVisualValidationSetResponse = zod.object({
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
+  "occurrenceId": zod.string().optional(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp).optional(),
   "sampleIndex": zod.number().min(1),
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
@@ -4608,6 +4643,7 @@ export const createVisualValidationSetResponseRequestSourceDefault = `historical
 export const createVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
 export const createVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
@@ -4672,6 +4708,8 @@ export const CreateVisualValidationSetResponse = zod.object({
 }),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
+  "occurrenceId": zod.string().optional(),
+  "sourceFingerprint": zod.string().regex(createVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp).optional(),
   "sampleIndex": zod.number().min(1),
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),

@@ -21,6 +21,9 @@ import type { VisualValidationTradeEvent } from './visualValidationTradeEvent';
 
 export interface VisualValidationSnapshot {
   snapshotId: string;
+  occurrenceId?: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  sourceFingerprint?: string;
   /** @minimum 1 */
   sampleIndex: number;
   category: VisualValidationCategory;

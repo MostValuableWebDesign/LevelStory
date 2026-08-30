@@ -435,7 +435,78 @@ test("historical occurrence ledger is repeatable and retains causal L/P/E eviden
   assert.equal(patience.lCandle?.openTime, 300_000);
   assert.equal(patience.patienceCandle?.openTime, 600_000);
   assert.equal(patience.entryCandle?.openTime, 900_000);
-  assert.equal(patience.evaluationCursor, new Date(900_000).toISOString());
+  assert.equal(patience.evaluationCursor, new Date(1_200_000).toISOString());
+});
+
+test("historical occurrences preserve exact L identity, all same-candle levels, and content fingerprints", () => {
+  const previousCandle = { openTime: 0, closeTime: 300_000, open: 99, high: 101, low: 98, close: 100, volume: 9, isComplete: true };
+  const patienceCandle = { openTime: 600_000, closeTime: 900_000, open: 101, high: 102, low: 98, close: 100, volume: 11, isComplete: true };
+  const triggerCandle = { openTime: 900_000, closeTime: 1_200_000, open: 100, high: 105, low: 100, close: 104, volume: 12, isComplete: true };
+  const audit = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    pullbackOccurrences: [
+      {
+        eventId: "l-orb",
+        type: "touch",
+        time: new Date(300_000).toISOString(),
+        level: "ORB",
+        price: 101,
+        distancePoints: 0,
+        distanceTicks: 0,
+        tolerancePoints: 3,
+        toleranceTicks: 12,
+        qualifies: true,
+        candle: {
+          openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10,
+        },
+        detail: "ORB retest.",
+      },
+      {
+        eventId: "l-vwap",
+        type: "proximity",
+        time: new Date(300_000).toISOString(),
+        level: "VWAP",
+        price: 100.75,
+        distancePoints: 1,
+        distanceTicks: 4,
+        tolerancePoints: 3,
+        toleranceTicks: 12,
+        qualifies: true,
+        candle: {
+          openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10,
+        },
+        detail: "VWAP proximity.",
+      },
+    ],
+    patienceOccurrences: [{
+      occurrenceId: "p1",
+      direction: "long",
+      entryBufferTicks: 3,
+      stopBufferTicks: 1,
+      eligibilityReason: "pullback",
+      eligibilityTime: 300_000,
+      eligibilityEventId: "l-orb",
+      previousCandle,
+      patienceCandle,
+      triggerCandle,
+      status: "ENTRY_TRIGGERED",
+      reasonCode: "entry confirmed",
+      evaluationCursor: 1_200_000,
+    }],
+  });
+  const dataset = { ...occurrenceDataset(), candles: [candle(1)] };
+  const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], []).find((item) => item.kind === "patience");
+  assert.ok(occurrence);
+  assert.equal(occurrence.lEventId, "l-orb");
+  assert.deepEqual(occurrence.levelIdentifiers, ["ORB", "VWAP"]);
+  assert.deepEqual(occurrence.levelInteractionTypes, { ORB: ["touch"], VWAP: ["proximity"] });
+  assert.equal(occurrence.formulaHash.length, 64);
+  const changed = buildHistoricalOccurrenceLedger(
+    { ...dataset, candles: [candle(1, { high: 106 })] },
+    [audit],
+    [],
+  ).find((item) => item.kind === "patience");
+  assert.ok(changed);
+  assert.notEqual(changed.sourceFingerprint, occurrence.sourceFingerprint);
 });
 
 test("ledger merges the same causal occurrence and preserves canonical plus secondary strategies", () => {

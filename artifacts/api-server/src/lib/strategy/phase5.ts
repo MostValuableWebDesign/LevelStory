@@ -19,7 +19,7 @@ export type PatienceState =
   | "RISK_REJECTED";
 
 export type PatienceEligibilityReason = "pullback" | "consolidation" | "ntz consolidation";
-export type PatienceEligibilityEvent = { time: number; reason: PatienceEligibilityReason; detail?: string };
+export type PatienceEligibilityEvent = { time: number; reason: PatienceEligibilityReason; detail?: string; eventId?: string };
 export type IntrabarFirstBreak = "intended-first" | "opposite-first" | "ambiguous";
 export type IntrabarEvidence = { candleOpenTime: number; firstBreak: IntrabarFirstBreak };
 
@@ -41,9 +41,11 @@ export type PatienceOccurrence = {
   stopBufferTicks: number;
   eligibilityReason: PatienceEligibilityReason;
   eligibilityTime: number;
+  eligibilityEventId?: string | null;
   previousCandle: PatienceCandleSnapshot;
   patienceCandle: PatienceCandleSnapshot;
   triggerCandle: PatienceCandleSnapshot | null;
+  nextObservedCandle?: PatienceCandleSnapshot | null;
   status: PatienceState;
   reasonCode: string;
   evaluationCursor: number;
@@ -222,11 +224,12 @@ export function phase5PatienceAnalysis(
         time: event.time,
         reason: event.type === "consolidation" ? "consolidation" as const : "pullback" as const,
         detail: `${event.type} at ${event.level}`,
+        eventId: event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`,
       })),
     ...ntzEvents
       .filter((event) => eligibleAfter === null || event.time >= eligibleAfter)
       .filter((event) => event.type === "Consolidation inside NTZ")
-      .map((event) => ({ time: event.time, reason: "ntz consolidation" as const, detail: event.detail })),
+      .map((event) => ({ time: event.time, reason: "ntz consolidation" as const, detail: event.detail, eventId: `ntz|${event.type}|${event.time}` })),
   ];
   if (ntz && ntz.complete && candles.length >= 2) {
     const completed = candles.filter((candle) => candle.isComplete).sort((first, second) => first.openTime - second.openTime);
@@ -384,10 +387,17 @@ function buildPatienceOccurrences(
   stopBufferTicks: number,
   intrabarEvidence: readonly IntrabarEvidence[],
 ): PatienceOccurrence[] {
-  const evaluationCursor = sorted.filter((candle) => candle.isComplete).at(-1)?.closeTime ?? sorted.at(-1)?.closeTime ?? 0;
   return candidates.map((candidate) => {
     const previous = completed[candidate.index - 1];
-    const trigger = sorted.find((item) => item.openTime > candidate.candle.openTime && item.openTime <= evaluationCursor && item.isComplete);
+    const nextObserved = sorted.find((item) => item.openTime > candidate.candle.openTime);
+    const trigger = nextObserved
+      && nextObserved.openTime === candidate.candle.closeTime
+      && nextObserved.isComplete
+      ? nextObserved
+      : undefined;
+    const evaluationCursor = trigger?.closeTime
+      ?? completed.at(-1)?.closeTime
+      ?? candidate.candle.closeTime;
     const event = candidate.event!;
     let analysis: PatienceAnalysis;
     if (!previous) {
@@ -400,25 +410,35 @@ function buildPatienceOccurrences(
         stateTime: candidate.candle.closeTime,
         detail: "The detected patience candle is not aligned with the continuation trend.",
       };
-    } else if (!trigger) {
+    } else if (!nextObserved) {
       analysis = {
         ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: snapshot(candidate.candle),
+        triggerCandle: null,
         stateTime: candidate.candle.closeTime,
         detail: "Detected patience candle has no immediately following candle in the visible replay prefix.",
       };
-    } else if (trigger.openTime !== candidate.candle.closeTime) {
+    } else if (!nextObserved.isComplete) {
+      analysis = {
+        ...baseAnalysis("TRIGGER_CANDLE_ACTIVE", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
+        patienceCandle: snapshot(candidate.candle),
+        triggerCandle: null,
+        stateTime: nextObserved.openTime,
+        detail: "The immediate-next candle (E) is incomplete; it cannot be recorded as a confirmation until its interval is complete.",
+      };
+    } else if (nextObserved.openTime !== candidate.candle.closeTime) {
       analysis = {
         ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: snapshot(candidate.candle),
-        triggerCandle: snapshot(trigger),
-        stateTime: trigger.openTime,
+        triggerCandle: null,
+        stateTime: nextObserved.openTime,
         detail: "The immediately following candle is missing; this P→E attempt expired.",
       };
     } else {
-      analysis = evaluateTrigger(candidate.candle, previous, trigger, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
+      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
     }
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
@@ -427,9 +447,11 @@ function buildPatienceOccurrences(
       stopBufferTicks,
       eligibilityReason: event.reason,
       eligibilityTime: event.time,
+      eligibilityEventId: event.eventId ?? null,
       previousCandle: snapshot(previous),
       patienceCandle: snapshot(candidate.candle),
       triggerCandle: trigger ? snapshot(trigger) : null,
+      nextObservedCandle: nextObserved && nextObserved !== trigger ? snapshot(nextObserved) : null,
       status: analysis.state,
       reasonCode: analysis.detail,
       evaluationCursor,

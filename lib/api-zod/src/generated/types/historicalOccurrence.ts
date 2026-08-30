@@ -11,7 +11,11 @@ import type { HistoricalOccurrenceEntryCandle } from './historicalOccurrenceEntr
 import type { HistoricalOccurrenceKind } from './historicalOccurrenceKind';
 import type { HistoricalOccurrenceLCandle } from './historicalOccurrenceLCandle';
 import type { HistoricalOccurrenceLevelDistancesTicks } from './historicalOccurrenceLevelDistancesTicks';
+import type { HistoricalOccurrenceLevelInteractionTypes } from './historicalOccurrenceLevelInteractionTypes';
+import type { HistoricalOccurrenceLevelTolerancePoints } from './historicalOccurrenceLevelTolerancePoints';
+import type { HistoricalOccurrenceLevelToleranceTicks } from './historicalOccurrenceLevelToleranceTicks';
 import type { HistoricalOccurrenceLevelValues } from './historicalOccurrenceLevelValues';
+import type { HistoricalOccurrenceNextObservedCandle } from './historicalOccurrenceNextObservedCandle';
 import type { HistoricalOccurrencePatienceCandle } from './historicalOccurrencePatienceCandle';
 
 export interface HistoricalOccurrence {
@@ -28,6 +32,10 @@ export interface HistoricalOccurrence {
   /** @nullable */
   lTimestamp: Date | null;
   /** @nullable */
+  lEventId: string | null;
+  /** @nullable */
+  lInteractionType: string | null;
+  /** @nullable */
   lCandle: HistoricalOccurrenceLCandle;
   /** @nullable */
   patienceTimestamp: Date | null;
@@ -40,13 +48,20 @@ export interface HistoricalOccurrence {
   levelIdentifiers: string[];
   levelValues: HistoricalOccurrenceLevelValues;
   levelDistancesTicks: HistoricalOccurrenceLevelDistancesTicks;
+  levelTolerancePoints: HistoricalOccurrenceLevelTolerancePoints;
+  levelToleranceTicks: HistoricalOccurrenceLevelToleranceTicks;
+  levelInteractionTypes: HistoricalOccurrenceLevelInteractionTypes;
   /** @nullable */
   confirmationBufferTicks: number | null;
+  /** @nullable */
+  nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: Date;
   formulaVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
 }

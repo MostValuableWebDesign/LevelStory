@@ -2971,6 +2971,8 @@ components:
         contractMonth: { type: string }
         direction: { type: ["string", "null"], enum: [long, short, null] }
         lTimestamp: { type: ["string", "null"], format: date-time }
+        lEventId: { type: ["string", "null"] }
+        lInteractionType: { type: ["string", "null"] }
         lCandle: { type: ["object", "null"], additionalProperties: true }
         patienceTimestamp: { type: ["string", "null"], format: date-time }
         patienceCandle: { type: ["object", "null"], additionalProperties: true }
@@ -2979,15 +2981,20 @@ components:
         levelIdentifiers: { type: array, items: { type: string } }
         levelValues: { type: object, additionalProperties: { type: number } }
         levelDistancesTicks: { type: object, additionalProperties: { type: number } }
+        levelTolerancePoints: { type: object, additionalProperties: { type: number } }
+        levelToleranceTicks: { type: object, additionalProperties: { type: number } }
+        levelInteractionTypes: { type: object, additionalProperties: { type: array, items: { type: string } } }
         confirmationBufferTicks: { type: ["number", "null"] }
+        nextObservedCandle: { type: ["object", "null"], additionalProperties: true }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
         status: { type: string }
         reasonCode: { type: string }
         evaluationCursor: { type: string, format: date-time }
         formulaVersion: { type: string }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         sourceFingerprint: { type: string }
         canonicalTrade: { type: boolean }
-      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, confirmationBufferTicks, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, sourceFingerprint, canonicalTrade]
+      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lEventId, lInteractionType, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, levelTolerancePoints, levelToleranceTicks, levelInteractionTypes, confirmationBufferTicks, nextObservedCandle, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, formulaHash, sourceFingerprint, canonicalTrade]
     BacktestAuditPage:
       type: object
       additionalProperties: false
@@ -3673,6 +3680,8 @@ components:
       type: object
       properties:
         snapshotId: { type: string }
+        occurrenceId: { type: string }
+        sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
         sampleIndex: { type: number, minimum: 1 }
         category: { $ref: "#/components/schemas/VisualValidationCategory" }
         categoryLabel: { type: string }

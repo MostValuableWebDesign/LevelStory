@@ -170,6 +170,8 @@ export type VisualValidationCoverage = {
 
 export type VisualValidationSnapshot = {
   snapshotId: string;
+  occurrenceId?: string;
+  sourceFingerprint?: string;
   sampleIndex: number;
   category: VisualValidationCategory;
   categoryLabel: string;
@@ -978,7 +980,8 @@ const anchorLabels: Record<VisualValidationCategory, string> = {
   runner_exit: "Runner exit found",
 };
 
-function anchorDetail(category: VisualValidationCategory, audit: BacktestAuditRecord): string {
+function anchorDetail(category: VisualValidationCategory, audit: BacktestAuditRecord, occurrence?: HistoricalOccurrence): string {
+  if (occurrence) return `${occurrence.reasonCode} (occurrence ${occurrence.occurrenceId}).`;
   if (category === "bullish_patience_candle" || category === "bearish_patience_candle") {
     return `${audit.direction === "long" ? "Bullish" : "Bearish"} patience candle from the immutable audit record.`;
   }
@@ -1008,26 +1011,31 @@ export function buildCategoryAnchor(
   trade: BacktestTrade | null,
   candles: readonly SimulatedFuturesCandle[],
   occurrence?: HistoricalOccurrence,
+  causalCloseTime?: number,
 ): VisualValidationCategoryAnchor | null {
   const contractCandles = candles.filter((candle) => candle.contractSymbol === audit.contractSymbol && candle.isComplete);
   const anchorEvent = categoryAnchorEvent(category, audit, trade, occurrence);
   const anchorCandle = resolvedAnchorCandle(anchorEvent, contractCandles);
   if (!anchorCandle) return null;
-  const relatedEvents = [
-    auditEvent("evaluation", audit.evaluatedCandleOpenTime, null, audit.entryTriggerPrice),
-    auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close")),
-    auditEvent("entry", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice),
-    auditEvent("fill", audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime, null, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null),
-    auditEvent("exit", audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime, audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime, trade?.exitPrice ?? audit.targetPrice),
-  ];
-  if (occurrence) {
-    const occurrenceEvent = categoryAnchorEvent(category, audit, trade, occurrence);
-    relatedEvents.unshift(occurrenceEvent);
-  }
-  const evaluationClose = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
+  const relatedEvents = occurrence
+    ? [
+        auditEvent("evaluation", occurrence.lTimestamp, occurrence.lTimestamp, Object.values(occurrence.levelValues)[0] ?? null),
+        auditEvent("patience", occurrence.patienceTimestamp, occurrence.patienceTimestamp, evidenceNumber(occurrence.patienceCandle, "close")),
+        auditEvent("entry", occurrence.entryTimestamp, occurrence.entryTimestamp, evidenceNumber(occurrence.entryCandle, "close")),
+      ]
+    : [
+        auditEvent("evaluation", audit.evaluatedCandleOpenTime, null, audit.entryTriggerPrice),
+        auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close")),
+        auditEvent("entry", audit.triggerCandleOpenTime, audit.triggerCandleCloseTime, evidenceNumber(audit.triggerCandle, "close") ?? audit.entryTriggerPrice),
+        auditEvent("fill", audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime, null, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null),
+        auditEvent("exit", audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime, audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime, trade?.exitPrice ?? audit.targetPrice),
+      ];
+  const evaluationClose = causalCloseTime
+    ?? Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
   const relatedCandles = relatedEvents.flatMap((event) => {
     const candle = resolvedAnchorCandle(event, contractCandles);
     if (!candle) return [];
+    if (occurrence && candle.closeTime > evaluationClose) return [];
     const openTime = new Date(candle.openTime).toISOString();
     const closeTime = new Date(candle.closeTime).toISOString();
     return [{
@@ -1048,7 +1056,7 @@ export function buildCategoryAnchor(
     price: anchorEvent.price ?? anchorCandle.close,
     direction: audit.direction,
     label: anchorLabels[category],
-    detail: anchorDetail(category, audit),
+    detail: anchorDetail(category, audit, occurrence),
     relatedCandles,
     visibility: anchorCandle.openTime <= evaluationClose ? "machine" : "human_only",
     ...(occurrence ? { occurrenceId: occurrence.occurrenceId } : {}),
@@ -1152,9 +1160,17 @@ function annotation(
   };
 }
 
-function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, trade: BacktestTrade | null, indicatorSeries: VisualValidationIndicatorPoint[] = []): VisualValidationAnnotation[] {
+function buildAnnotations(
+  snapshot: MarketSnapshot,
+  audit: BacktestAuditRecord,
+  trade: BacktestTrade | null,
+  indicatorSeries: VisualValidationIndicatorPoint[] = [],
+  occurrence?: HistoricalOccurrence,
+): VisualValidationAnnotation[] {
   const lines: VisualValidationAnnotation[] = [];
-  const causalBoundary = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
+  const causalBoundary = occurrence
+    ? Date.parse(occurrence.evaluationCursor)
+    : Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
   const eventVisibility = (openTime: number | null): VisualValidationAnnotation["visibility"] =>
     openTime === null || openTime <= causalBoundary ? "machine" : "human_only";
   const addLevel = (id: string, label: string, price: number | null, detail: string, color: VisualValidationAnnotation["color"] = "accent") => {
@@ -1190,14 +1206,14 @@ function buildAnnotations(snapshot: MarketSnapshot, audit: BacktestAuditRecord, 
     for (const level of snapshot.fibonacci.levels) addLevel(`fib-${level.name}`, `Fib ${level.label}`, level.price, `${(level.ratio * 100).toFixed(1)}% retracement`, "blue");
   }
 
-  const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
-  const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
-  const entryOpen = evidenceTime(audit.triggerCandle, "openTime");
-  const entryClose = evidenceTime(audit.triggerCandle, "closeTime");
-  const patiencePrice = evidenceNumber(audit.patienceCandle, "close");
-  const entryPrice = evidenceNumber(audit.triggerCandle, "close");
-  lines.push(annotation("patience-candle", "Patience candle", "candle", patiencePrice, "positive", snapshot.patience.detail, patienceOpen, patienceClose));
-  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", "The immediate-next candle after P; its buffered move authorizes the modeled entry.", entryOpen, entryClose));
+  const patienceOpen = occurrence?.patienceTimestamp ? Date.parse(occurrence.patienceTimestamp) : evidenceTime(audit.patienceCandle, "openTime");
+  const patienceClose = occurrence?.patienceCandle ? Number(occurrence.patienceCandle.closeTime) : evidenceTime(audit.patienceCandle, "closeTime");
+  const entryOpen = occurrence?.entryTimestamp ? Date.parse(occurrence.entryTimestamp) : evidenceTime(audit.triggerCandle, "openTime");
+  const entryClose = occurrence?.entryCandle ? Number(occurrence.entryCandle.closeTime) : evidenceTime(audit.triggerCandle, "closeTime");
+  const patiencePrice = occurrence?.patienceCandle ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close");
+  const entryPrice = occurrence?.entryCandle ? evidenceNumber(occurrence.entryCandle, "close") : evidenceNumber(audit.triggerCandle, "close");
+  lines.push(annotation("patience-candle", "Patience candle", "candle", patiencePrice, "positive", occurrence?.reasonCode ?? snapshot.patience.detail, patienceOpen, patienceClose));
+  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as a completed E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.", entryOpen, entryClose));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
@@ -1419,10 +1435,18 @@ function buildMachineSnapshot(
   premarketAvailable: boolean,
   occurrence?: HistoricalOccurrence,
 ): VisualValidationSnapshot {
-  const evaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
-  const evaluationCloseTime = evaluationTime + 5 * 60_000;
-  const exitTime = trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : evaluationTime;
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
+  const auditEvaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
+  const occurrenceEvaluationCloseTime = occurrence ? Date.parse(occurrence.evaluationCursor) : Number.NaN;
+  const occurrenceCursorIsForAuditDate = Number.isFinite(occurrenceEvaluationCloseTime)
+    && tradingDateForTimestamp(occurrenceEvaluationCloseTime, calendar) === audit.tradingDate;
+  const evaluationCloseTime = occurrenceCursorIsForAuditDate
+    ? occurrenceEvaluationCloseTime
+    : auditEvaluationTime + 5 * 60_000;
+  const evaluationTime = occurrenceCursorIsForAuditDate
+    ? evaluationCloseTime - 5 * 60_000
+    : auditEvaluationTime;
+  const exitTime = trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : evaluationTime;
   const historicalCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
   const evaluationCandles = regularSessionCandlesForDate(historicalCandles, audit.tradingDate, audit.contractSymbol, calendar);
   const visibleEvaluation = visibleReplayPrefix(evaluationCandles, evaluationCloseTime);
@@ -1464,7 +1488,7 @@ function buildMachineSnapshot(
   const machineCandles = visibleEvaluation.map(toRawCandle);
   const reviewCandles = visibleReview.map(toRawCandle);
   const premarketCandles = visiblePremarket.map(toRawCandle);
-  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles, occurrence);
+  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles, occurrence, evaluationCloseTime);
   const indicatorSeries = buildIndicatorSeries(
     historicalCandles,
     visibleReview,
@@ -1475,11 +1499,27 @@ function buildMachineSnapshot(
   );
   if (!categoryAnchor) throw new Error(`Category anchor could not resolve to a raw ${audit.contractSymbol} candle.`);
   const hash = createHash("sha256")
-    .update(`${report.formulaHash}|${audit.id}|${category}`)
+    .update(JSON.stringify({
+      sourceFingerprint: occurrence?.sourceFingerprint ?? null,
+      formulaHash: report.formulaHash,
+      contractSymbol: audit.contractSymbol,
+      tradingDate: audit.tradingDate,
+      strategy: canonicalStrategyId(audit.setupType) ?? audit.setupType,
+      category,
+      occurrenceKind: occurrence?.kind ?? null,
+      lTimestamp: occurrence?.lTimestamp ?? null,
+      patienceTimestamp: occurrence?.patienceTimestamp ?? null,
+      entryTimestamp: occurrence?.entryTimestamp ?? null,
+      lEventId: occurrence?.lEventId ?? null,
+      evaluationCursor: occurrence?.evaluationCursor ?? null,
+      auditId: audit.id,
+      occurrenceId: occurrence?.occurrenceId ?? null,
+    }))
     .digest("hex")
     .slice(0, 16);
   return {
     snapshotId: `visual-${hash}`,
+    ...(occurrence ? { occurrenceId: occurrence.occurrenceId, sourceFingerprint: occurrence.sourceFingerprint } : {}),
     sampleIndex,
     category,
     categoryLabel: categoryLabels[category],
@@ -1493,7 +1533,7 @@ function buildMachineSnapshot(
     tradingDate: audit.tradingDate,
     period: audit.period,
     evaluationCursor: {
-      openTime: audit.evaluatedCandleOpenTime,
+      openTime: new Date(evaluationTime).toISOString(),
       closeTime: new Date(evaluationCloseTime).toISOString(),
       newYork: formatTime(evaluationTime, "America/New_York"),
       utc: formatTime(evaluationTime, "UTC"),
@@ -1514,7 +1554,7 @@ function buildMachineSnapshot(
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
     categoryAnchor,
-    annotations: buildAnnotations(evaluationSnapshot, audit, trade, indicatorSeries),
+    annotations: buildAnnotations(evaluationSnapshot, audit, trade, indicatorSeries, occurrence),
     machineEvidence: {
       quotesAvailable: report.executionMode === "quote_based_shadow",
       sourceSchema: report.executionMode === "quote_based_shadow" ? "quote_bbo" : "historical_ohlcv",
@@ -1633,13 +1673,25 @@ export function buildHistoricalVisualValidationSetFromReport(
     const trade = matchingTrade(audit, report.trades);
     return [{ audit, trade, category, occurrence }];
   }) ?? [];
-  const candidates = ledgerCandidates.length > 0
-    ? ledgerCandidates
-    : report.audit.flatMap((audit) => {
-      const trade = matchingTrade(audit, report.trades);
-      return categoriesFor(audit, trade)
-        .map((category) => ({ audit, trade, category, occurrence: undefined }));
-    });
+  const uniqueLedgerCandidates = [...new Map(
+    ledgerCandidates.map((candidate) => [
+      `${candidate.occurrence.occurrenceId}|${candidate.category}`,
+      candidate,
+    ]),
+  ).values()];
+  const ledgerCategoriesByAudit = new Set(
+    uniqueLedgerCandidates.map((candidate) => `${candidate.audit.id}|${candidate.category}`),
+  );
+  const auditCandidates = report.audit.flatMap((audit) => {
+    const trade = matchingTrade(audit, report.trades);
+    return categoriesFor(audit, trade)
+      .map((category) => ({ audit, trade, category, occurrence: undefined }))
+      .filter((candidate) => !ledgerCategoriesByAudit.has(`${candidate.audit.id}|${candidate.category}`));
+  });
+  const candidates = [
+    ...uniqueLedgerCandidates,
+    ...auditCandidates,
+  ];
   const visibleCandidates = candidates
       .filter((candidate) => mode === "trades_and_diagnostics"
         || candidate.trade !== null

@@ -423,7 +423,13 @@ test("ORB Fibonacci interaction is required when no structural level interaction
   assert.equal(withoutInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, false);
 
   const withInteraction = evaluateOrbBreakPullbackContinuation(baseContext({
-    pullback: { ...baseContext().pullback, events: [] },
+    pullback: {
+      ...baseContext().pullback,
+      events: [
+        ...baseContext().pullback.events,
+        { ...baseContext().pullback.events[0]!, level: "Fib 0.5", price: 10.1 },
+      ],
+    },
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
   }));
   assert.equal(withInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, true);

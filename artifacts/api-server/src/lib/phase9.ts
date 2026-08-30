@@ -88,6 +88,7 @@ export type CausalReplayDataset = {
   selectedDates?: readonly string[];
   excludedDates?: readonly string[];
   source?: "simulated" | "historical_databento" | "historical_databento_multicontract";
+  contentFingerprint?: string;
   quotesAvailable?: boolean;
   gapReport?: BacktestGapReport;
   contractSchedule?: {
@@ -250,6 +251,7 @@ export type BacktestAuditRecord = {
   confirmationBufferTicks?: number;
   consolidationThresholds: ConsolidationThresholds;
   pullbackOccurrences?: Array<{
+    eventId?: string;
     type: string;
     time: string;
     level: string;
@@ -402,6 +404,8 @@ export type HistoricalOccurrence = {
   contractMonth: string;
   direction: Direction | null;
   lTimestamp: string | null;
+  lEventId: string | null;
+  lInteractionType: string | null;
   lCandle: Record<string, number | boolean> | null;
   patienceTimestamp: string | null;
   patienceCandle: Record<string, number | boolean> | null;
@@ -410,12 +414,17 @@ export type HistoricalOccurrence = {
   levelIdentifiers: string[];
   levelValues: Record<string, number>;
   levelDistancesTicks: Record<string, number>;
+  levelTolerancePoints: Record<string, number>;
+  levelToleranceTicks: Record<string, number>;
+  levelInteractionTypes: Record<string, string[]>;
   confirmationBufferTicks: number | null;
+  nextObservedCandle: Record<string, number | boolean> | null;
   consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: string;
   formulaVersion: string;
+  formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
 };
@@ -1223,26 +1232,105 @@ function occurrenceId(seed: string): string {
 }
 
 function sourceFingerprint(dataset: CausalReplayDataset): string {
-  return createHash("sha256")
-    .update(JSON.stringify({
-      source: dataset.source ?? "simulated",
-      contractSymbol: dataset.contractSymbol,
-      contractMonth: dataset.contractMonth,
-      selectedDates: dataset.selectedDates ?? [...dataset.inSampleDates, ...dataset.outOfSampleDates],
-      candleCount: dataset.candles.length,
-      firstCandle: dataset.candles[0]?.openTime ?? null,
-      lastCandle: dataset.candles.at(-1)?.closeTime ?? null,
-      schedule: dataset.contractSchedule?.version ?? null,
-    }))
-    .digest("hex");
+  const digest = createHash("sha256");
+  digest.update("levelstory-causal-source-v2|");
+  if (dataset.contentFingerprint) digest.update(`importer:${dataset.contentFingerprint}|`);
+  const candles = [...dataset.candles].sort((first, second) =>
+    first.contractSymbol.localeCompare(second.contractSymbol)
+    || first.openTime - second.openTime
+    || first.closeTime - second.closeTime,
+  );
+  for (const candle of candles) {
+    digest.update(JSON.stringify({
+      contract: candle.contractSymbol,
+      openTime: candle.openTime,
+      closeTime: candle.closeTime,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      isComplete: candle.isComplete,
+    }));
+    digest.update("\n");
+  }
+  digest.update(JSON.stringify({
+    source: dataset.source ?? "simulated",
+    contractSymbol: dataset.contractSymbol,
+    contractMonth: dataset.contractMonth,
+    selectedDates: dataset.selectedDates ?? [...dataset.inSampleDates, ...dataset.outOfSampleDates],
+    schedule: dataset.contractSchedule?.version ?? null,
+  }));
+  return digest.digest("hex");
+}
+
+type HistoricalPullbackEvent = NonNullable<BacktestAuditRecord["pullbackOccurrences"]>[number];
+
+const QUALIFYING_PULLBACK_EVENT_TYPES = new Set([
+  "touch",
+  "proximity",
+  "consolidation",
+  "break and reclaim",
+  "hold",
+]);
+
+function pullbackEventId(event: HistoricalPullbackEvent): string {
+  return event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`;
+}
+
+function pullbackEventOpenTime(event: HistoricalPullbackEvent): number {
+  return event.candle?.openTime ?? Date.parse(event.time);
+}
+
+function linkedPullbackEvents(
+  record: BacktestAuditRecord,
+  patience: PatienceOccurrence,
+): HistoricalPullbackEvent[] {
+  const events = (record.pullbackOccurrences ?? []).filter((event) =>
+    event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type),
+  );
+  const exact = patience.eligibilityEventId
+    ? events.find((event) => pullbackEventId(event) === patience.eligibilityEventId)
+    : undefined;
+  const anchor = exact ?? events.find((event) => Date.parse(event.time) === patience.eligibilityTime);
+  if (!anchor) return [];
+  const anchorOpenTime = pullbackEventOpenTime(anchor);
+  return events.filter((event) => pullbackEventOpenTime(event) === anchorOpenTime);
+}
+
+function levelEvidence(events: readonly HistoricalPullbackEvent[]): {
+  identifiers: string[];
+  values: Record<string, number>;
+  distancesTicks: Record<string, number>;
+  tolerancePoints: Record<string, number>;
+  toleranceTicks: Record<string, number>;
+  interactionTypes: Record<string, string[]>;
+} {
+  const identifiers: string[] = [];
+  const values: Record<string, number> = {};
+  const distancesTicks: Record<string, number> = {};
+  const tolerancePoints: Record<string, number> = {};
+  const toleranceTicks: Record<string, number> = {};
+  const interactionTypes: Record<string, string[]> = {};
+  for (const event of events) {
+    if (!identifiers.includes(event.level)) identifiers.push(event.level);
+    values[event.level] ??= event.price;
+    distancesTicks[event.level] = Math.min(distancesTicks[event.level] ?? Number.POSITIVE_INFINITY, event.distanceTicks ?? 0);
+    if (event.tolerancePoints !== undefined) tolerancePoints[event.level] = event.tolerancePoints;
+    if (event.toleranceTicks !== undefined) toleranceTicks[event.level] = event.toleranceTicks;
+    interactionTypes[event.level] = [...new Set([...(interactionTypes[event.level] ?? []), event.type])];
+  }
+  return { identifiers, values, distancesTicks, tolerancePoints, toleranceTicks, interactionTypes };
 }
 
 export function buildHistoricalOccurrenceLedger(
   dataset: CausalReplayDataset,
   audits: readonly BacktestAuditRecord[],
   trades: readonly BacktestTrade[],
+  reportFormulaHash?: string,
 ): HistoricalOccurrence[] {
   const fingerprint = sourceFingerprint(dataset);
+  const formulaHash = reportFormulaHash ?? createHash("sha256").update(FIXED_FORMULA_VERSION).digest("hex");
   const byIdentity = new Map<string, HistoricalOccurrence>();
   const auditsAtCursor = new Map<string, BacktestAuditRecord[]>();
   for (const record of audits) {
@@ -1284,6 +1372,7 @@ export function buildHistoricalOccurrenceLedger(
     for (const event of record.pullbackOccurrences ?? []) {
       const identity = `pullback|${record.tradingDate}|${record.contractSymbol}|${event.type}|${event.level}|${event.time}`;
       const id = occurrenceId(identity);
+      const evidence = levelEvidence([event]);
       upsert(identity, {
         occurrenceId: id,
         auditId: record.id,
@@ -1295,28 +1384,36 @@ export function buildHistoricalOccurrenceLedger(
         contractMonth: record.contractMonth,
         direction: record.direction,
         lTimestamp: event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
+        lEventId: pullbackEventId(event),
+        lInteractionType: event.type,
         lCandle: occurrenceCandle(event.candle),
         patienceTimestamp: null,
         patienceCandle: null,
         entryTimestamp: null,
         entryCandle: null,
-        levelIdentifiers: [event.level],
-        levelValues: { [event.level]: event.price },
-        levelDistancesTicks: { [event.level]: event.distanceTicks ?? 0 },
+        levelIdentifiers: evidence.identifiers,
+        levelValues: evidence.values,
+        levelDistancesTicks: evidence.distancesTicks,
+        levelTolerancePoints: evidence.tolerancePoints,
+        levelToleranceTicks: evidence.toleranceTicks,
+        levelInteractionTypes: evidence.interactionTypes,
         confirmationBufferTicks: null,
+        nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
         status: event.type,
         reasonCode: event.detail,
         evaluationCursor: cursor,
         formulaVersion: FIXED_FORMULA_VERSION,
+        formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: false,
       });
     }
     for (const patience of record.patienceOccurrences ?? []) {
-      const linkedPullback = (record.pullbackOccurrences ?? [])
-        .filter((event) => Date.parse(event.time) <= patience.patienceCandle.openTime)
-        .at(-1);
+      const linkedEvents = linkedPullbackEvents(record, patience);
+      const linkedPullback = linkedEvents[0];
+      const linkedEvidence = levelEvidence(linkedEvents);
+      const trigger = patience.triggerCandle?.isComplete ? patience.triggerCandle : null;
       const identity = `patience|${record.tradingDate}|${record.contractSymbol}|${patience.direction}|${patience.occurrenceId}`;
       const id = occurrenceId(identity);
       upsert(identity, {
@@ -1330,20 +1427,27 @@ export function buildHistoricalOccurrenceLedger(
         contractMonth: record.contractMonth,
         direction: patience.direction,
         lTimestamp: linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : null,
+        lEventId: linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? null,
+        lInteractionType: linkedPullback?.type ?? null,
         lCandle: occurrenceCandle(linkedPullback?.candle),
         patienceTimestamp: new Date(patience.patienceCandle.openTime).toISOString(),
         patienceCandle: occurrenceCandle(patience.patienceCandle),
-        entryTimestamp: patience.triggerCandle ? new Date(patience.triggerCandle.openTime).toISOString() : null,
-        entryCandle: occurrenceCandle(patience.triggerCandle),
-        levelIdentifiers: linkedPullback ? [linkedPullback.level] : [],
-        levelValues: linkedPullback ? { [linkedPullback.level]: linkedPullback.price } : {},
-        levelDistancesTicks: linkedPullback ? { [linkedPullback.level]: linkedPullback.distanceTicks ?? 0 } : {},
+        entryTimestamp: trigger ? new Date(trigger.openTime).toISOString() : null,
+        entryCandle: occurrenceCandle(trigger),
+        levelIdentifiers: linkedEvidence.identifiers,
+        levelValues: linkedEvidence.values,
+        levelDistancesTicks: linkedEvidence.distancesTicks,
+        levelTolerancePoints: linkedEvidence.tolerancePoints,
+        levelToleranceTicks: linkedEvidence.toleranceTicks,
+        levelInteractionTypes: linkedEvidence.interactionTypes,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        nextObservedCandle: occurrenceCandle(patience.nextObservedCandle),
         consolidationThresholds: record.consolidationThresholds,
         status: patience.status,
         reasonCode: patience.reasonCode,
-        evaluationCursor: cursor,
+        evaluationCursor: new Date(patience.evaluationCursor).toISOString(),
         formulaVersion: FIXED_FORMULA_VERSION,
+        formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: trade !== undefined,
       });
@@ -1361,6 +1465,8 @@ export function buildHistoricalOccurrenceLedger(
         contractMonth: record.contractMonth,
         direction: record.direction,
         lTimestamp: null,
+        lEventId: null,
+        lInteractionType: null,
         lCandle: null,
         patienceTimestamp: record.patienceCandleOpenTime,
         patienceCandle: record.patienceCandle,
@@ -1369,12 +1475,17 @@ export function buildHistoricalOccurrenceLedger(
         levelIdentifiers: [],
         levelValues: {},
         levelDistancesTicks: {},
+        levelTolerancePoints: {},
+        levelToleranceTicks: {},
+        levelInteractionTypes: {},
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
         status: trade ? "QUALIFIED_TRADE" : "RISK_REJECTED",
         reasonCode: record.rejectionSummary ?? record.decision,
         evaluationCursor: cursor,
         formulaVersion: FIXED_FORMULA_VERSION,
+        formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: trade !== undefined,
       });
@@ -1987,7 +2098,7 @@ export function runCausalBacktest(
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
   const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
   const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
-  const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades);
+  const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",

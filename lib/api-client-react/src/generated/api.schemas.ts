@@ -2194,6 +2194,17 @@ export type HistoricalOccurrenceLevelValues = {[key: string]: number};
 
 export type HistoricalOccurrenceLevelDistancesTicks = {[key: string]: number};
 
+export type HistoricalOccurrenceLevelTolerancePoints = {[key: string]: number};
+
+export type HistoricalOccurrenceLevelToleranceTicks = {[key: string]: number};
+
+export type HistoricalOccurrenceLevelInteractionTypes = {[key: string]: string[]};
+
+/**
+ * @nullable
+ */
+export type HistoricalOccurrenceNextObservedCandle = { [key: string]: unknown } | null;
+
 export interface HistoricalOccurrence {
   occurrenceId: string;
   auditId: string;
@@ -2208,6 +2219,10 @@ export interface HistoricalOccurrence {
   /** @nullable */
   lTimestamp: string | null;
   /** @nullable */
+  lEventId: string | null;
+  /** @nullable */
+  lInteractionType: string | null;
+  /** @nullable */
   lCandle: HistoricalOccurrenceLCandle;
   /** @nullable */
   patienceTimestamp: string | null;
@@ -2220,13 +2235,20 @@ export interface HistoricalOccurrence {
   levelIdentifiers: string[];
   levelValues: HistoricalOccurrenceLevelValues;
   levelDistancesTicks: HistoricalOccurrenceLevelDistancesTicks;
+  levelTolerancePoints: HistoricalOccurrenceLevelTolerancePoints;
+  levelToleranceTicks: HistoricalOccurrenceLevelToleranceTicks;
+  levelInteractionTypes: HistoricalOccurrenceLevelInteractionTypes;
   /** @nullable */
   confirmationBufferTicks: number | null;
+  /** @nullable */
+  nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: string;
   formulaVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
 }
@@ -3544,6 +3566,9 @@ export type VisualValidationSnapshotReview = {
 
 export interface VisualValidationSnapshot {
   snapshotId: string;
+  occurrenceId?: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  sourceFingerprint?: string;
   /** @minimum 1 */
   sampleIndex: number;
   category: VisualValidationCategory;

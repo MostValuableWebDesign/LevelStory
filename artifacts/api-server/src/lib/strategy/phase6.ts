@@ -1,4 +1,3 @@
-import { levelInteractionDistance } from "./phase4.js";
 import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
 import type { PatienceAnalysis } from "./phase5.js";
 import type { MajorLevel } from "./major-levels.js";
@@ -36,6 +35,8 @@ export type SetupRuleEvidence = {
 };
 
 export type ReversalEvidence = {
+  reversalDirection?: Direction | null;
+  directionalConfirmation?: boolean;
   dojiAtMajorLevel: boolean;
   equivalentOpposingCandles: boolean;
   failedBreakout: boolean;
@@ -140,13 +141,15 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.breakout.direction;
   const confirmedTrend = hasConfirmedTrend(context, direction);
+  const genuinePullback = hasGenuinePullback(context.pullback);
   const fibonacciInteraction = hasFibonacciPullbackInteraction(context);
-  const levelInteraction = hasQualifyingPullback(context.pullback) || fibonacciInteraction;
+  const levelInteraction = genuinePullback && (hasQualifyingPullback(context.pullback) || fibonacciInteraction);
   const rules: SetupRuleEvidence[] = [
+    rule("genuinePullback", "Genuine pullback interaction", genuinePullback, genuinePullback ? "A qualifying pullback event is recorded at a structural or dynamic level." : "A Fibonacci-distance candle alone is not a pullback; a genuine pullback interaction is required."),
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
     rule("breakoutAgreesWithTrend", "Breakout agrees with confirmed 15-minute trend", confirmedTrend, confirmedTrend ? "Confirmed causal 15-minute trend agrees with the breakout." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
-    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", levelInteraction, fibonacciInteraction ? "Pullback range interacted with a specific causal Fibonacci retracement." : "A structural/dynamic level interaction is required."),
+    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", levelInteraction, fibonacciInteraction ? "A genuine pullback also interacted with a specific causal Fibonacci retracement." : "A genuine structural/dynamic level interaction is required."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -198,12 +201,12 @@ export const evaluateExtendedNtzConsolidationBreakout = evaluateStrongBreakoutAf
 export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupEvaluation {
   const completed = completedCandles(context.candles);
   const latest = completed.at(-1);
-  const reversalDirection = reverseDirection(context.breakout.direction ?? directionFromTrend(context.trend.direction));
   const evidence = detectReversalEvidence(context, completed, latest);
+  const reversalDirection = evidence.reversalDirection ?? null;
   const patience = context.reversalPatience ?? context.patience;
   const rules: SetupRuleEvidence[] = [
     rule("equivalentContext", "Equivalent opposing candles at a qualifying level", evidence.equivalentOpposingCandles, evidence.equivalentOpposingCandles ? "Equivalent opposing full-body candles meet the configured level and wick tolerances." : "Equivalent opposing candles at a qualifying level are required."),
-    rule("directionalConfirmation", "Directional reversal confirmation", reversalDirection !== null, "The reversal direction is established by separate reversal evidence; it may oppose the preceding continuation trend."),
+    rule("directionalConfirmation", "Directional reversal confirmation", evidence.directionalConfirmation === true, evidence.directionalConfirmation ? "A completed opposing candle structure confirms the reversal direction." : "A reversed direction label is not sufficient; completed opposing-candle evidence must confirm it."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -248,6 +251,14 @@ export function detectReversalEvidence(
   const deepFibonacciRetracement = ["deep", "elevated failure risk", "fully retraced"].includes(context.fibonacci.classification);
   const majorLevelRejection = latest !== undefined && hasMajorLevelRejection(latest, context.levels.majorLevels, context.config);
   const structureBreak = hasStructureBreak(completed, context.trend.direction);
+  const reversalDirection = confirmedReversalDirection(context, completed, equivalentOpposingCandles, failedBreakout, structureBreak, majorLevelRejection, strongOpposingVolume);
+  const directionalConfirmation = reversalDirection !== null && (
+    equivalentOpposingCandles
+    || failedBreakout
+    || strongOpposingVolume
+    || majorLevelRejection
+    || structureBreak
+  );
   const signals = [
     dojiAtMajorLevel,
     equivalentOpposingCandles,
@@ -267,6 +278,8 @@ export function detectReversalEvidence(
     ["structure break", structureBreak],
   ].filter(([, passed]) => passed).map(([name]) => name);
   return {
+    reversalDirection,
+    directionalConfirmation,
     dojiAtMajorLevel,
     equivalentOpposingCandles,
     failedBreakout,
@@ -393,6 +406,7 @@ function buildEvaluation(
 
 function evidenceRules(evidence: ReversalEvidence): SetupRuleEvidence[] {
   return [
+    { key: "directionalConfirmationEvidence", label: "Directional reversal evidence", passed: evidence.directionalConfirmation === true },
     { key: "dojiAtMajorLevel", label: "Doji at major level", passed: evidence.dojiAtMajorLevel },
     { key: "equivalentOpposingCandles", label: "Equivalent opposing candles", passed: evidence.equivalentOpposingCandles },
     { key: "failedBreakout", label: "Failed breakout", passed: evidence.failedBreakout },
@@ -411,16 +425,24 @@ function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
   return pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
 }
 
+function hasGenuinePullback(pullback: PullbackAnalysis): boolean {
+  return pullback.events.some((event) =>
+    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+    && !event.level.toLowerCase().startsWith("fib"),
+  );
+}
+
 function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
-  if (!context.fibonacci.frozen || !context.fibonacci.levels.length || context.breakout.candleOpenTime === null) return false;
-  const completed = context.candles
-    .filter((candle) => candle.isComplete)
-    .sort((first, second) => first.openTime - second.openTime);
-  const breakoutIndex = completed.findIndex((candle) => candle.openTime === context.breakout.candleOpenTime);
-  if (breakoutIndex < 0) return false;
-  const pullbackCandles = completed.slice(breakoutIndex + 1, breakoutIndex + 1 + context.config.phase4PullbackMaxCandles);
-  return pullbackCandles.some((candle) => context.fibonacci.levels.some((level) =>
-    levelInteractionDistance(level.price, candle.high, candle.low) <= context.config.levelTolerance));
+  if (!context.fibonacci.frozen || !context.fibonacci.levels.length) return false;
+  const genuineEvents = context.pullback.events.filter((event) =>
+    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+    && !event.level.toLowerCase().startsWith("fib"),
+  );
+  return context.pullback.events.some((event) =>
+    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+    && event.level.toLowerCase().startsWith("fib")
+    && genuineEvents.some((genuine) => (event.candle?.openTime ?? event.time) === (genuine.candle?.openTime ?? genuine.time)),
+  );
 }
 
 function patienceDirectionMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {
@@ -507,6 +529,34 @@ function hasStructureBreak(candles: readonly Candle[], trend: TrendDirection): b
   return trend === "bullish"
     ? latest.close < Math.min(...previous.map((candle) => candle.low))
     : latest.close > Math.max(...previous.map((candle) => candle.high));
+}
+
+function confirmedReversalDirection(
+  context: Phase6Context,
+  candles: readonly Candle[],
+  equivalentOpposingCandles: boolean,
+  failedBreakout: boolean,
+  structureBreak: boolean,
+  majorLevelRejection: boolean,
+  strongOpposingVolume: boolean,
+): Direction | null {
+  const continuationDirection = context.breakout.direction ?? directionFromTrend(context.trend.direction);
+  const oppositeDirection = reverseDirection(continuationDirection);
+  if (!oppositeDirection) return null;
+  const hasIndependentConfirmation = equivalentOpposingCandles
+    || failedBreakout
+    || structureBreak
+    || majorLevelRejection
+    || strongOpposingVolume;
+  if (!hasIndependentConfirmation) return null;
+  const reversalCandle = [...candles].reverse().find((candle) => candleDirection(candle) === oppositeDirection);
+  return reversalCandle ? oppositeDirection : null;
+}
+
+function candleDirection(candle: Candle): Direction | null {
+  if (candle.close > candle.open) return "long";
+  if (candle.close < candle.open) return "short";
+  return null;
 }
 
 function sameDirection(first: Candle, second: Candle): boolean {

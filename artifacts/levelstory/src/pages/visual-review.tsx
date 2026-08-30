@@ -764,6 +764,11 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
+    <div className="grid gap-px border-t border-border bg-border text-[10px] sm:grid-cols-3" data-testid="occurrence-provenance">
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Occurrence identity</div><div className="mono mt-1 break-all text-foreground">{snapshot.occurrenceId ?? `audit:${snapshot.machineEvidence.audit && typeof snapshot.machineEvidence.audit === "object" && "id" in snapshot.machineEvidence.audit ? String(snapshot.machineEvidence.audit.id) : "unavailable"}`}</div></div>
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 break-all text-foreground">{snapshot.sourceFingerprint ?? "derived from visible source candles"}</div></div>
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
+    </div>
   </div>;
 }
 
@@ -1392,6 +1397,9 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
   const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
   const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
+  const thresholds = typeof audit.consolidationThresholds === "object" && audit.consolidationThresholds !== null
+    ? audit.consolidationThresholds as Record<string, unknown>
+    : null;
   const qualified = audit.rejectionCategory === "QUALIFIED" && evidence.trade;
   const behavior = [
     audit.trendEvidence,
@@ -1417,6 +1425,7 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
+      {thresholds && <div className="border-t border-border bg-card px-4 py-3 text-[10px]" data-testid="threshold-provenance"><div className="eyebrow text-muted-foreground">Governed threshold provenance</div><div className="mono mt-2 break-words">{safeValue(thresholds.version)} · min {safeValue(thresholds.minimumCandles)} candles · max {safeValue(thresholds.maximumRangeTicks)} ticks · expansion {safeValue(thresholds.maximumExpansionRatio)}×</div></div>}
      <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
         <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>
       <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
