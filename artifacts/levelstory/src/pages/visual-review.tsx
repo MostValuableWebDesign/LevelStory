@@ -699,7 +699,7 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
       <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Trades-only keeps the main room focused on trade-linked evidence. The diagnostics option adds a separate, collapsed no-entry section for explicit rule inspection." /></span>}>
         <select className="field" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value as "trades_only" | "confirmed_signals" | "trades_and_diagnostics")} data-testid="select-visual-review-mode">
           <option value="trades_only">Trades only · default</option>
-          <option value="confirmed_signals">Confirmed signals · may be unfinalized</option>
+          <option value="confirmed_signals">Confirmed trades · edge + patience + signal</option>
           <option value="trades_and_diagnostics">Trades + no-entry diagnostics</option>
         </select>
         <span className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Historical mode filters no-entry samples unless confirmed signals or diagnostics are explicitly enabled." : "Simulated fixtures remain available for deterministic contract testing."}</span>
