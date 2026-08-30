@@ -3696,6 +3696,23 @@ components:
         categoryCoverage:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
+        funnelDiagnostics:
+          type: object
+          properties:
+            sessionCount: { type: number, minimum: 0 }
+            candidateCount: { type: number, minimum: 0 }
+            stages:
+              type: array
+              items: { $ref: "#/components/schemas/QualificationFunnelStageCount" }
+            rejectionCounts:
+              type: array
+              items:
+                type: object
+                properties:
+                  stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
+                  count: { type: number, minimum: 0 }
+                required: [stage, count]
+          required: [sessionCount, candidateCount, stages, rejectionCounts]
       required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
     VisualValidationReviewRequest:
       type: object

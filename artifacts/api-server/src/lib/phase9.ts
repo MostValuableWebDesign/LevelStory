@@ -1124,13 +1124,28 @@ function contiguousStage(stageFlags: readonly boolean[]): QualificationFunnelSta
   return QUALIFICATION_FUNNEL_STAGES[rank];
 }
 
-function candidateKey(record: Pick<BacktestAuditRecord, "tradingDate" | "contractSymbol" | "setupType" | "direction">): string {
+function candidateKey(record: Pick<BacktestAuditRecord, "tradingDate" | "contractSymbol" | "setupType" | "direction" | "evaluatedCandleOpenTime">): string {
   return [
     record.tradingDate,
     record.contractSymbol,
     record.setupType,
     record.direction ?? "unknown",
+    record.evaluatedCandleOpenTime,
   ].join("|");
+}
+
+function tradeForRecord(record: BacktestAuditRecord, trades: readonly BacktestTrade[]): BacktestTrade | undefined {
+  return trades.find((trade) => (
+    trade.tradingDate === record.tradingDate
+    && trade.contractSymbol === record.contractSymbol
+    && trade.setupType === record.setupType
+    && trade.direction === record.direction
+    && (
+      trade.audit?.triggerCandleOpenTime === record.triggerCandleOpenTime
+      || trade.entryTime === record.triggerCandleCloseTime
+      || trade.entryTime === record.evaluatedCandleOpenTime
+    )
+  ));
 }
 
 function candidateDimensionValue(
@@ -1170,26 +1185,12 @@ export function buildQualificationFunnel(
 ): QualificationFunnel {
   const allAudits = reports.flatMap((report) => report.audit);
   const allTrades = reports.flatMap((report) => report.trades);
-  const tradesByCandidate = new Map<string, BacktestTrade>();
-  for (const trade of allTrades) {
-    tradesByCandidate.set(candidateKey(trade), trade);
-  }
-  const selectedCandidateRecords = new Map<string, BacktestAuditRecord>();
-  for (const record of allAudits) {
-    const key = candidateKey(record);
-    const existing = selectedCandidateRecords.get(key);
-    const trade = tradesByCandidate.get(key);
-    const currentRank = stageRank(contiguousStage(stageEvidence(record, trade)));
-    const existingRank = existing
-      ? stageRank(contiguousStage(stageEvidence(existing, tradesByCandidate.get(key))))
-      : -1;
-    if (!existing || currentRank > existingRank || (
-      currentRank === existingRank
-      && record.evaluatedCandleOpenTime > existing.evaluatedCandleOpenTime
-    )) {
-      selectedCandidateRecords.set(key, record);
-    }
-  }
+  // Every completed causal evaluation is an independent funnel occurrence.
+  // Do not select the strongest/latest record: later qualification failure
+  // must not erase an earlier pullback or patience observation.
+  const occurrenceRecords = [...new Map(
+    allAudits.map((record) => [candidateKey(record), record]),
+  ).values()];
 
   const sessionKeys = new Set<string>();
   for (const report of reports) {
@@ -1202,10 +1203,10 @@ export function buildQualificationFunnel(
     }
   }
 
-  const candidates = [...selectedCandidateRecords.values()]
+  const candidates = occurrenceRecords
     .sort((first, second) => candidateKey(first).localeCompare(candidateKey(second)))
     .map((record): QualificationCandidate => {
-      const trade = tradesByCandidate.get(candidateKey(record));
+      const trade = tradeForRecord(record, allTrades);
       const flags = stageEvidence(record, trade);
       const reachedStage = contiguousStage(flags);
       const firstRejectedIndex = flags.findIndex((passed, index) => index > 0 && !passed);

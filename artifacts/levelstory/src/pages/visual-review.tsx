@@ -567,6 +567,7 @@ export default function VisualReview() {
             <Panel><EmptyReview /></Panel>
           ) : (
             <>
+              {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
               {activeSnapshot ? (
                 <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                   <div className="visual-review-chart-column min-w-0 space-y-5">
@@ -630,6 +631,22 @@ export default function VisualReview() {
       </div>
     </LevelStoryShell>
   );
+}
+
+function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["funnelDiagnostics"]> }) {
+  return <Panel>
+    <PanelTitle eyebrow="Detection funnel / every causal occurrence" title="Where evidence was retained" right={<span className="mono text-[10px] text-muted-foreground">{data.candidateCount} occurrences · {data.sessionCount} sessions</span>} />
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="detection-funnel">
+      {data.stages.map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
+        <div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{stage.stage.replaceAll("_", " ")}</div>
+        <div className="mt-1 flex items-baseline gap-2"><span className="display text-2xl font-bold">{stage.count}</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfPreceding}% of prior</span></div>
+      </div>)}
+    </div>
+    {data.rejectionCounts.length > 0 && <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+      <span className="font-semibold text-foreground">Recorded rejection gates:</span>{" "}
+      {data.rejectionCounts.map((item) => `${item.stage.replaceAll("_", " ")} (${item.count})`).join(" · ")}
+    </div>}
+  </Panel>;
 }
 
 function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; pending: boolean; message: string }) {
@@ -1246,7 +1263,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             })}
           </div>}
         </section>
-        <CandleInspector inspection={activeDetails} activeEvents={activeEvents} selectedSlot={activeSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} activeCandle={activeCandle} onLockCandle={onLockCandle} />
+        <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} />
         <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} />
        <div className="chart-plot-shell mt-3">
          <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>

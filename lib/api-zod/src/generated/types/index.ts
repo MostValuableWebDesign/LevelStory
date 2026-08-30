@@ -324,6 +324,8 @@ export * from './visualValidationReviewRequestTeachingEntryBufferTicks';
 export * from './visualValidationReviewRequestTeachingLevelToleranceTicks';
 export * from './visualValidationReviewStatus';
 export * from './visualValidationSet';
+export * from './visualValidationSetFunnelDiagnostics';
+export * from './visualValidationSetFunnelDiagnosticsRejectionCountsItem';
 export * from './visualValidationSetSource';
 export * from './visualValidationSnapshot';
 export * from './visualValidationSnapshotMachineEvidence';

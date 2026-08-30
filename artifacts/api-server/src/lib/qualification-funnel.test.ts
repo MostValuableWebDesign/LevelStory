@@ -75,7 +75,7 @@ function report(audits: BacktestAuditRecord[], selectedDates: string[], contract
   };
 }
 
-test("qualification funnel counts each candidate once and keeps the strongest evidence", () => {
+test("qualification funnel retains each occurrence and keeps each occurrence's evidence", () => {
   const weak = audit({ id: "weak", evaluatedCandleOpenTime: "2026-08-24T13:35:00.000Z" });
   const strong = audit({
     id: "strong",
@@ -107,11 +107,12 @@ test("qualification funnel counts each candidate once and keeps the strongest ev
   const funnel = buildQualificationFunnel([
     report([weak, strong, strong], ["2026-08-24"]),
   ]);
-  assert.equal(funnel.candidateCount, 1);
+  assert.equal(funnel.candidateCount, 2);
   assert.equal(funnel.sessionCount, 1);
-  assert.equal(funnel.candidates[0]?.reachedStage, "risk_approved");
-  assert.equal(funnel.candidates[0]?.primaryRejectionStage, "modeled_entry");
-  assert.equal(funnel.candidates[0]?.evidence.evaluatedCandleOpenTime, strong.evaluatedCandleOpenTime);
+  const strongCandidate = funnel.candidates.find((candidate) => candidate.evidence.evaluatedCandleOpenTime === strong.evaluatedCandleOpenTime);
+  assert.equal(strongCandidate?.reachedStage, "risk_approved");
+  assert.equal(strongCandidate?.primaryRejectionStage, "modeled_entry");
+  assert.equal(strongCandidate?.evidence.evaluatedCandleOpenTime, strong.evaluatedCandleOpenTime);
   for (let index = 1; index < funnel.stages.length; index += 1) {
     assert.ok((funnel.stages[index]?.count ?? 0) <= (funnel.stages[index - 1]?.count ?? 0));
   }
@@ -127,4 +128,15 @@ test("rollover candidates remain isolated by active contract", () => {
   assert.equal(funnel.candidateCount, 2);
   assert.deepEqual(funnel.candidates.map((candidate) => candidate.contractSymbol), ["MESU5", "MESZ5"]);
   assert.equal(funnel.sessionCount, 2);
+});
+
+test("qualification funnel retains distinct causal occurrences", () => {
+  const first = audit({ id: "first", evaluatedCandleOpenTime: "2026-08-24T13:35:00.000Z" });
+  const second = audit({ id: "second", evaluatedCandleOpenTime: "2026-08-24T13:40:00.000Z" });
+  const funnel = buildQualificationFunnel([report([first, second], ["2026-08-24"])]);
+  assert.equal(funnel.candidateCount, 2);
+  assert.deepEqual(funnel.candidates.map((candidate) => candidate.evidence.evaluatedCandleOpenTime), [
+    first.evaluatedCandleOpenTime,
+    second.evaluatedCandleOpenTime,
+  ]);
 });

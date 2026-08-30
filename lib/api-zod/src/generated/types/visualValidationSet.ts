@@ -8,6 +8,7 @@
 import type { VisualValidationCategoryCoverage } from './visualValidationCategoryCoverage';
 import type { VisualValidationRequest } from './visualValidationRequest';
 import type { VisualValidationReviewPeriod } from './visualValidationReviewPeriod';
+import type { VisualValidationSetFunnelDiagnostics } from './visualValidationSetFunnelDiagnostics';
 import type { VisualValidationSetSource } from './visualValidationSetSource';
 import type { VisualValidationSnapshot } from './visualValidationSnapshot';
 
@@ -24,4 +25,5 @@ export interface VisualValidationSet {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
+  funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
 }

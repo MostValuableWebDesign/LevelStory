@@ -10,6 +10,8 @@ import {
   type BacktestReport,
   type BacktestTrade,
   type CausalReplayDataset,
+  buildQualificationFunnel,
+  type QualificationFunnel,
 } from "./phase9.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
@@ -246,6 +248,7 @@ export type VisualValidationSet = {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
+  funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "stages" | "rejectionCounts">;
 };
 
 export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
@@ -1583,7 +1586,8 @@ export async function buildHistoricalVisualValidationSet(
 export function buildHistoricalVisualValidationSetFromReport(
   request: VisualValidationRequest,
   dataset: CausalReplayDataset,
-  report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">,
+  report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
+    & Partial<Pick<BacktestReport, "dataset" | "contract">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -1600,23 +1604,32 @@ export function buildHistoricalVisualValidationSetFromReport(
         || (mode === "confirmed_signals" && hasConfirmedSignal(candidate.audit)))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles) !== null);
   });
-  const snapshots = VISUAL_VALIDATION_CATEGORIES.flatMap((category, categoryIndex) => {
-    const candidate = candidates.find((item) => item.category === category);
-    if (!candidate) return [];
+  const snapshots = candidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
       ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
       : Date.parse(candidate.audit.evaluatedCandleOpenTime) + 5 * 60_000;
-    return [buildMachineSnapshot(
+    return buildMachineSnapshot(
       fixtureReport,
       dataset,
       candidate.audit,
       candidate.trade,
-      categoryIndex + 1,
-      category,
+      candidateIndex + 1,
+      candidate.category,
       reviewCloseTime,
       request.premarketAvailable !== false,
-    )];
+    );
   });
+  const funnelDiagnostics = report.dataset && report.contract
+    ? (() => {
+        const funnel = buildQualificationFunnel([report as Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">]);
+        return {
+          sessionCount: funnel.sessionCount,
+          candidateCount: funnel.candidateCount,
+          stages: funnel.stages,
+          rejectionCounts: funnel.rejectionCounts,
+        };
+      })()
+    : undefined;
   return {
     formulaHash: fixtureReport.formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
@@ -1631,6 +1644,7 @@ export function buildHistoricalVisualValidationSetFromReport(
       count: snapshots.filter((snapshot) => snapshot.category === category).length,
       available: snapshots.some((snapshot) => snapshot.category === category),
     })),
+    ...(funnelDiagnostics ? { funnelDiagnostics } : {}),
   };
 }
 

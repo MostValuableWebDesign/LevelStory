@@ -56,7 +56,9 @@ export function createVisualValidationRouter(): IRouter {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    if (parsed.data.reviewSetId || getLatestVisualValidationSet()) {
+    const hasGenerationParams = ["symbol", "endDate", "inSampleDays", "outOfSampleDays", "seed", "reviewMode"]
+      .some((key) => Object.prototype.hasOwnProperty.call(req.query, key));
+    if (parsed.data.reviewSetId || (!hasGenerationParams && getLatestVisualValidationSet())) {
       const existing = parsed.data.reviewSetId
         ? getVisualValidationSet(parsed.data.reviewSetId)
         : getLatestVisualValidationSet();

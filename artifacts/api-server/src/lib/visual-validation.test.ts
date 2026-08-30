@@ -112,6 +112,32 @@ test("historical visual review defaults to trade-linked samples and opts into no
   assert.ok(withDiagnostics.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
 });
 
+test("historical visual review retains every occurrence in a category", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  const second = {
+    ...fixture.audit,
+    id: `${fixture.audit.id}-second`,
+    evaluatedCandleOpenTime: new Date(Date.parse(fixture.audit.evaluatedCandleOpenTime) + 5 * 60_000).toISOString(),
+  };
+  const dataset = { ...fixture.dataset, source: "historical_databento_multicontract" as const };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    dataset,
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [fixture.audit, second],
+      trades: [],
+    },
+  );
+  const strong = set.snapshots.filter((snapshot) => snapshot.category === "strong_breakout");
+  assert.equal(strong.length, 2);
+  assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 2);
+  assert.notEqual(strong[0]?.snapshotId, strong[1]?.snapshotId);
+});
+
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
   const set = buildVisualValidationSet(request);
   assert.equal(set.snapshots.length, 12);

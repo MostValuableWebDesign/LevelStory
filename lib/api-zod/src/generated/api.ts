@@ -15,6 +15,8 @@ import * as zod from 'zod';
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
+
+
 /**
  * Returns simulated five-minute candles, levels, indicators, and discipline signals. This endpoint never connects to a broker or places orders.
  * @summary Get the simulated market snapshot
@@ -41,6 +43,7 @@ export const GetMarketSnapshotQueryParams = zod.object({
   "targetDollars": zod.coerce.number().min(getMarketSnapshotQueryTargetDollarsMin).max(getMarketSnapshotQueryTargetDollarsMax).default(getMarketSnapshotQueryTargetDollarsDefault).describe('Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.'),
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(getMarketSnapshotQuerySlippageModeDefault).describe('Descriptive slippage regime used by the shadow cost model.')
 })
+
 export const GetMarketSnapshotResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
   "symbol": zod.string(),
@@ -4063,6 +4066,12 @@ export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFing
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
+export const getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
+
 
 
 export const GetVisualValidationSetResponse = zod.object({
@@ -4300,7 +4309,21 @@ export const GetVisualValidationSetResponse = zod.object({
   "label": zod.string(),
   "count": zod.number().min(getVisualValidationSetResponseCategoryCoverageItemCountMin),
   "available": zod.boolean()
+})),
+  "funnelDiagnostics": zod.object({
+  "sessionCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
+  "candidateCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
+  "stages": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number(),
+  "percentOfPreceding": zod.number(),
+  "percentOfSessions": zod.number()
+})),
+  "rejectionCounts": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
 }))
+}).optional()
 })
 
 
@@ -4385,6 +4408,12 @@ export const createVisualValidationSetResponseSnapshotsItemReviewTeachingFormula
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
 
 
 
@@ -4623,7 +4652,21 @@ export const CreateVisualValidationSetResponse = zod.object({
   "label": zod.string(),
   "count": zod.number().min(createVisualValidationSetResponseCategoryCoverageItemCountMin),
   "available": zod.boolean()
+})),
+  "funnelDiagnostics": zod.object({
+  "sessionCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
+  "candidateCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
+  "stages": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number(),
+  "percentOfPreceding": zod.number(),
+  "percentOfSessions": zod.number()
+})),
+  "rejectionCounts": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
 }))
+}).optional()
 })
 
 
@@ -6718,6 +6761,8 @@ export const GetStrategyReadinessResponse = zod.object({
 }),
   "message": zod.string()
 })
+
+
 /**
  * @summary Set owner-approved fitness thresholds for one strategy
  */

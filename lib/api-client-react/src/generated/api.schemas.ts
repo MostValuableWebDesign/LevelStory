@@ -3495,6 +3495,21 @@ export const VisualValidationSetSource = {
   historical_databento: 'historical_databento',
 } as const;
 
+export type VisualValidationSetFunnelDiagnosticsRejectionCountsItem = {
+  stage: QualificationFunnelStage;
+  /** @minimum 0 */
+  count: number;
+};
+
+export type VisualValidationSetFunnelDiagnostics = {
+  /** @minimum 0 */
+  sessionCount: number;
+  /** @minimum 0 */
+  candidateCount: number;
+  stages: QualificationFunnelStageCount[];
+  rejectionCounts: VisualValidationSetFunnelDiagnosticsRejectionCountsItem[];
+};
+
 export interface VisualValidationSet {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
@@ -3508,6 +3523,7 @@ export interface VisualValidationSet {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
+  funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
 }
 
 export type VisualValidationReviewRequestTeachingDirection = typeof VisualValidationReviewRequestTeachingDirection[keyof typeof VisualValidationReviewRequestTeachingDirection];
