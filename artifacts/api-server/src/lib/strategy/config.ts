@@ -12,6 +12,9 @@ export type StrategyConfig = {
   barIntervalMinutes: 5;
   sessionTimeZone: string;
   sessionStartMinutes: number;
+  primaryEntryStartMinutes: number;
+  primaryEntryEndMinutes: number;
+  primaryEntryWindowVersion: string;
   premarketStartMinutes: number;
   orbMinutes: number;
   ntzMinutes: number;
@@ -101,6 +104,9 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   barIntervalMinutes: 5,
   sessionTimeZone: "America/New_York",
   sessionStartMinutes: 570, // assumption: 09:30 exchange-local minutes
+  primaryEntryStartMinutes: 570, // assumption: 09:30 America/New_York
+  primaryEntryEndMinutes: 780, // assumption: 13:00 America/New_York
+  primaryEntryWindowVersion: "mes-primary-entry-window-v1",
   premarketStartMinutes: 240, // assumption: 04:00
   orbMinutes: 15, // assumption: exact 9:30–9:45 ET opening range
   ntzMinutes: 15, // assumption: exact first three completed 5m candles
@@ -190,6 +196,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   const positiveNumbers: Array<[string, number]> = [
     ["sessionStartMinutes", config.sessionStartMinutes],
+    ["primaryEntryStartMinutes", config.primaryEntryStartMinutes],
+    ["primaryEntryEndMinutes", config.primaryEntryEndMinutes],
     ["premarketStartMinutes", config.premarketStartMinutes],
     ["orbMinutes", config.orbMinutes],
     ["ntzMinutes", config.ntzMinutes],
@@ -234,6 +242,16 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase7FastSlippageTicks", config.phase7FastSlippageTicks],
     ["phase7DefaultTargetDollars", config.phase7DefaultTargetDollars],
   ];
+  if (!Number.isInteger(config.primaryEntryStartMinutes)
+    || !Number.isInteger(config.primaryEntryEndMinutes)
+    || config.primaryEntryStartMinutes >= config.primaryEntryEndMinutes
+    || config.primaryEntryStartMinutes < 0
+    || config.primaryEntryEndMinutes > 24 * 60) {
+    throw new Error("Invalid strategy configuration: primary entry window must be an increasing New York wall-clock minute range.");
+  }
+  if (!config.primaryEntryWindowVersion.trim()) {
+    throw new Error("Invalid strategy configuration: primaryEntryWindowVersion is required.");
+  }
   for (const [name, value] of positiveNumbers) {
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`Invalid strategy configuration: ${name} must be finite and positive.`);

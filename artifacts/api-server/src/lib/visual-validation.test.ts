@@ -157,6 +157,38 @@ test("historical visual review retains every occurrence in a category", () => {
   assert.notEqual(strong[0]?.snapshotId, strong[1]?.snapshotId);
 });
 
+test("historical Visual Review prioritizes the earliest primary-window occurrence without dropping afternoon evidence", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  const morning = {
+    ...fixture.audit,
+    id: "morning-breakout",
+    evaluatedCandleOpenTime: "2026-08-26T14:30:00.000Z",
+  };
+  const afternoon = {
+    ...fixture.audit,
+    id: "afternoon-breakout",
+    evaluatedCandleOpenTime: "2026-08-26T19:50:00.000Z",
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    { ...fixture.dataset, source: "historical_databento_multicontract" as const },
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [afternoon, morning],
+      trades: [],
+    },
+  );
+  const strong = set.snapshots.filter((snapshot) => snapshot.category === "strong_breakout");
+  assert.equal(strong.length, 2);
+  assert.equal(strong[0]?.entryWindow, "primary");
+  assert.equal(strong[1]?.entryWindow, "outside_primary");
+  assert.match(strong[0]?.selectionReason ?? "", /primary entry window/);
+  assert.equal(set.defaultSelectionReason, strong[0]?.selectionReason);
+});
+
 test("historical Visual Review maps a ledger occurrence to its exact L anchor", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "pullback");
   assert.ok(fixture);
@@ -358,17 +390,17 @@ test("visual-validation provides twelve distinct valid five-minute MES fixtures"
     set.snapshots.map((snapshot) => snapshot.category),
     [
       "qualified_trade",
-      "rejected_setup",
-      "bullish_patience_candle",
-      "bearish_patience_candle",
-      "weak_orb_probe",
-      "strong_breakout",
-      "pullback",
-      "consolidation",
-      "ambiguous_candle",
       "stop_exit",
       "target_exit",
       "runner_exit",
+      "bearish_patience_candle",
+      "pullback",
+      "consolidation",
+      "ambiguous_candle",
+      "bullish_patience_candle",
+      "strong_breakout",
+      "rejected_setup",
+      "weak_orb_probe",
     ],
   );
   const fingerprints = new Set<string>();

@@ -4380,6 +4380,22 @@ export const getVisualValidationSetResponseFunnelDiagnosticsStagesItemPercentOfS
 
 export const getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
 
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowBreakoutOccurrencesMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowQualifyingPullbacksMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowPatienceCandidatesMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowExpiredPatienceCandidatesMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowConfirmedPairsMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowRiskApprovedEntriesMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
+
 
 
 export const GetVisualValidationSetResponse = zod.object({
@@ -4422,6 +4438,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "contractSymbol": zod.string(),
   "contractMonth": zod.string(),
   "tradingDate": zod.string(),
+  "entryWindow": zod.enum(['primary', 'outside_primary']).describe('Primary MES entry window membership in America\/New_York wall-clock time.'),
+  "selectionReason": zod.string(),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "evaluationCursor": zod.object({
   "openTime": zod.coerce.date(),
@@ -4624,6 +4642,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "count": zod.number().min(getVisualValidationSetResponseCategoryCoverageItemCountMin),
   "available": zod.boolean()
 })),
+  "defaultSelectionReason": zod.string(),
   "funnelDiagnostics": zod.object({
   "sessionCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
   "candidateCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
@@ -4637,7 +4656,17 @@ export const GetVisualValidationSetResponse = zod.object({
   "rejectionCounts": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
-}))
+})),
+  "window": zod.object({
+  "breakoutOccurrences": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowBreakoutOccurrencesMin),
+  "qualifyingPullbacks": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowQualifyingPullbacksMin),
+  "patienceCandidates": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowPatienceCandidatesMin),
+  "expiredPatienceCandidates": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowExpiredPatienceCandidatesMin),
+  "confirmedPairs": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowConfirmedPairsMin),
+  "riskApprovedEntries": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowRiskApprovedEntriesMin),
+  "primaryWindowOccurrences": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin),
+  "outsidePrimaryWindowOccurrences": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
+})
 }).optional()
 })
 
@@ -4741,6 +4770,22 @@ export const createVisualValidationSetResponseFunnelDiagnosticsStagesItemPercent
 
 export const createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
 
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowBreakoutOccurrencesMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowQualifyingPullbacksMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowPatienceCandidatesMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowExpiredPatienceCandidatesMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowConfirmedPairsMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowRiskApprovedEntriesMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
+
 
 
 export const CreateVisualValidationSetResponse = zod.object({
@@ -4783,6 +4828,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "contractSymbol": zod.string(),
   "contractMonth": zod.string(),
   "tradingDate": zod.string(),
+  "entryWindow": zod.enum(['primary', 'outside_primary']).describe('Primary MES entry window membership in America\/New_York wall-clock time.'),
+  "selectionReason": zod.string(),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "evaluationCursor": zod.object({
   "openTime": zod.coerce.date(),
@@ -4985,6 +5032,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "count": zod.number().min(createVisualValidationSetResponseCategoryCoverageItemCountMin),
   "available": zod.boolean()
 })),
+  "defaultSelectionReason": zod.string(),
   "funnelDiagnostics": zod.object({
   "sessionCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
   "candidateCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
@@ -4998,7 +5046,17 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rejectionCounts": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
-}))
+})),
+  "window": zod.object({
+  "breakoutOccurrences": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowBreakoutOccurrencesMin),
+  "qualifyingPullbacks": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowQualifyingPullbacksMin),
+  "patienceCandidates": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowPatienceCandidatesMin),
+  "expiredPatienceCandidates": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowExpiredPatienceCandidatesMin),
+  "confirmedPairs": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowConfirmedPairsMin),
+  "riskApprovedEntries": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowRiskApprovedEntriesMin),
+  "primaryWindowOccurrences": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin),
+  "outsidePrimaryWindowOccurrences": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
+})
 }).optional()
 })
 

@@ -30,6 +30,13 @@ export function formulaConfiguration(
       noParameterOptimization: true,
       ohlcvAmbiguityRule: "adverse-first-stop",
       runnerRetracementRatio: 0.4,
+      primaryEntryWindow: {
+        version: config.primaryEntryWindowVersion,
+        timeZone: config.sessionTimeZone,
+        startMinutes: config.primaryEntryStartMinutes,
+        endMinutes: config.primaryEntryEndMinutes,
+        completedFiveMinuteCandlesOnly: true,
+      },
     },
   };
 }

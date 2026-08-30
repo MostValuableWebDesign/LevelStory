@@ -14,6 +14,7 @@ import type { VisualValidationCoverage } from './visualValidationCoverage';
 import type { VisualValidationCursor } from './visualValidationCursor';
 import type { VisualValidationIndicatorPoint } from './visualValidationIndicatorPoint';
 import type { VisualValidationReviewCursor } from './visualValidationReviewCursor';
+import type { VisualValidationSnapshotEntryWindow } from './visualValidationSnapshotEntryWindow';
 import type { VisualValidationSnapshotMachineEvidence } from './visualValidationSnapshotMachineEvidence';
 import type { VisualValidationSnapshotPeriod } from './visualValidationSnapshotPeriod';
 import type { VisualValidationSnapshotReview } from './visualValidationSnapshotReview';
@@ -37,6 +38,9 @@ export interface VisualValidationSnapshot {
   contractSymbol: string;
   contractMonth: string;
   tradingDate: string;
+  /** Primary MES entry window membership in America/New_York wall-clock time. */
+  entryWindow: VisualValidationSnapshotEntryWindow;
+  selectionReason: string;
   period: VisualValidationSnapshotPeriod;
   evaluationCursor: VisualValidationCursor;
   reviewCursor: VisualValidationReviewCursor;

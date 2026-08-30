@@ -141,6 +141,12 @@ function dateParts(timestamp: number, timeZone: string): { year: number; month: 
   };
 }
 
+export function wallClockMinutesForTimestamp(timestamp: number, timeZone = "America/New_York"): number {
+  if (!Number.isFinite(timestamp)) invalid("timestamp must be finite.");
+  const parts = dateParts(timestamp, timeZone);
+  return parts.hour * 60 + parts.minute;
+}
+
 function wallClockAsUtc(date: string, time: string): number {
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);

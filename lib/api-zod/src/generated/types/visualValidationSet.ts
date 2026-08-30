@@ -38,5 +38,6 @@ export interface VisualValidationSet {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
+  defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
 }

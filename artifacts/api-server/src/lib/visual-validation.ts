@@ -29,6 +29,7 @@ import {
   sessionCalendarForContract,
   sessionWindow,
   tradingDateForTimestamp,
+  wallClockMinutesForTimestamp,
 } from "./futures/session-calendar.js";
 import { causalEmaSeries } from "./strategy/indicators.js";
 import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
@@ -59,6 +60,7 @@ export const VISUAL_VALIDATION_CATEGORIES = [
 ] as const;
 
 export type VisualValidationCategory = typeof VISUAL_VALIDATION_CATEGORIES[number];
+export type VisualValidationEntryWindow = "primary" | "outside_primary";
 export type VisualValidationReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain" | "rule_needs_clarification" | "missed_trade" | "false_positive_trade";
 export type VisualValidationReviewMode = "trades_only" | "confirmed_signals" | "trades_and_diagnostics";
 export type VisualValidationTeachingJudgment = "missed_trade" | "false_positive_trade";
@@ -185,6 +187,8 @@ export type VisualValidationSnapshot = {
   contractSymbol: string;
   contractMonth: string;
   tradingDate: string;
+  entryWindow: VisualValidationEntryWindow;
+  selectionReason: string;
   period: "in_sample" | "out_of_sample";
   evaluationCursor: {
     openTime: string;
@@ -259,7 +263,19 @@ export type VisualValidationSet = {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
-  funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "occurrenceCount" | "stages" | "rejectionCounts">;
+  defaultSelectionReason: string;
+  funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "occurrenceCount" | "stages" | "rejectionCounts"> & {
+    window: {
+      breakoutOccurrences: number;
+      qualifyingPullbacks: number;
+      patienceCandidates: number;
+      expiredPatienceCandidates: number;
+      confirmedPairs: number;
+      riskApprovedEntries: number;
+      primaryWindowOccurrences: number;
+      outsidePrimaryWindowOccurrences: number;
+    };
+  };
 };
 
 export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
@@ -1491,6 +1507,78 @@ function buildCoverage(
   return [build("primary", 42), build("full_regular", 78)];
 }
 
+type ReviewCandidate = {
+  audit: BacktestAuditRecord;
+  trade: BacktestTrade | null;
+  category: VisualValidationCategory;
+  occurrence?: HistoricalOccurrence;
+};
+
+function candidateOccurrenceTimestamp(candidate: ReviewCandidate): number {
+  const occurrence = candidate.occurrence;
+  const value = candidate.category === "qualified_trade"
+    ? occurrence?.entryTimestamp
+    : candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
+      ? occurrence?.patienceTimestamp
+      : candidate.category === "pullback"
+        ? occurrence?.lTimestamp
+        : occurrence?.entryTimestamp ?? occurrence?.patienceTimestamp ?? occurrence?.lTimestamp;
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  if (Number.isFinite(parsed)) return parsed;
+  const tradeTime = candidate.trade?.audit?.modeledFillObservationTime
+    ? Date.parse(candidate.trade.audit.modeledFillObservationTime)
+    : Number.NaN;
+  return Number.isFinite(tradeTime) ? tradeTime : Date.parse(candidate.audit.evaluatedCandleOpenTime);
+}
+
+function isPrimaryEntryTimestamp(timestamp: number): boolean {
+  const config = activeShadowStrategySnapshot().config;
+  if (!Number.isFinite(timestamp)) return false;
+  const minutes = wallClockMinutesForTimestamp(timestamp, config.sessionTimeZone);
+  return minutes >= config.primaryEntryStartMinutes && minutes < config.primaryEntryEndMinutes;
+}
+
+function candidateIsPrimary(candidate: ReviewCandidate): boolean {
+  return isPrimaryEntryTimestamp(candidateOccurrenceTimestamp(candidate));
+}
+
+function candidateSelectionRank(candidate: ReviewCandidate): number {
+  const primary = candidateIsPrimary(candidate);
+  if (candidate.trade && primary) return 0;
+  if (candidate.occurrence && (candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle")
+    && hasConfirmedPatienceOccurrence(candidate.occurrence) && primary) return 1;
+  if (candidate.occurrence && candidate.category === "pullback" && primary) return 2;
+  if (primary && (candidate.trade !== null || hasConfirmedSignal(candidate.audit))) return 3;
+  if (primary) return 4;
+  return 5;
+}
+
+function candidateSelectionReason(candidate: ReviewCandidate): string {
+  const window = candidateIsPrimary(candidate) ? "inside the 9:30 a.m.–1:00 p.m. ET primary entry window" : "outside the primary entry window";
+  const rank = candidateSelectionRank(candidate);
+  const quality = rank === 0
+    ? "confirmed modeled entry"
+    : rank === 1
+      ? "confirmed immediate P→E pair"
+      : rank === 2
+        ? "causal ORB pullback"
+        : rank === 3
+          ? "confirmed morning evidence"
+          : rank === 4
+            ? "morning diagnostic"
+            : "afternoon diagnostic";
+  return `${quality}; ${window}; earliest causal occurrence within its tier`;
+}
+
+function sortReviewCandidates(candidates: readonly ReviewCandidate[]): ReviewCandidate[] {
+  return [...candidates].sort((first, second) =>
+    candidateSelectionRank(first) - candidateSelectionRank(second)
+    || candidateOccurrenceTimestamp(first) - candidateOccurrenceTimestamp(second)
+    || first.audit.id.localeCompare(second.audit.id)
+    || first.category.localeCompare(second.category),
+  );
+}
+
 function buildMachineSnapshot(
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode">,
   dataset: CausalReplayDataset,
@@ -1501,6 +1589,7 @@ function buildMachineSnapshot(
   reviewCloseTime: number,
   premarketAvailable: boolean,
   occurrence?: HistoricalOccurrence,
+  selectionReason = "causal occurrence retained",
 ): VisualValidationSnapshot {
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
   const auditEvaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
@@ -1598,6 +1687,13 @@ function buildMachineSnapshot(
     contractSymbol: audit.contractSymbol,
     contractMonth: audit.contractMonth,
     tradingDate: audit.tradingDate,
+    entryWindow: isPrimaryEntryTimestamp(candidateOccurrenceTimestamp({
+      audit,
+      trade,
+      category,
+      occurrence,
+    })) ? "primary" : "outside_primary",
+    selectionReason,
     period: audit.period,
     evaluationCursor: {
       openTime: new Date(evaluationTime).toISOString(),
@@ -1655,16 +1751,25 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     inSampleDates: [],
     outOfSampleDates: [],
   }, request.endDate);
-  const snapshots = fixtures.map((fixture, index) => buildMachineSnapshot(
-      fixtureReport,
-      fixture.dataset,
-      fixture.audit,
-      fixture.trade,
-      index + 1,
-      fixture.category,
-      fixture.reviewCloseTime,
-      request.premarketAvailable !== false,
-    ));
+  const orderedFixtures = [...fixtures].sort((first, second) => {
+    const firstCandidate: ReviewCandidate = { audit: first.audit, trade: first.trade, category: first.category };
+    const secondCandidate: ReviewCandidate = { audit: second.audit, trade: second.trade, category: second.category };
+    return candidateSelectionRank(firstCandidate) - candidateSelectionRank(secondCandidate)
+      || candidateOccurrenceTimestamp(firstCandidate) - candidateOccurrenceTimestamp(secondCandidate)
+      || first.audit.id.localeCompare(second.audit.id);
+  });
+  const snapshots = orderedFixtures.map((fixture, index) => buildMachineSnapshot(
+    fixtureReport,
+    fixture.dataset,
+    fixture.audit,
+    fixture.trade,
+    index + 1,
+    fixture.category,
+    fixture.reviewCloseTime,
+    request.premarketAvailable !== false,
+    undefined,
+    candidateSelectionReason({ audit: fixture.audit, trade: fixture.trade, category: fixture.category }),
+  ));
   return {
     buildId: APPLICATION_BUILD_ID,
     currentBuildId: APPLICATION_BUILD_ID,
@@ -1677,6 +1782,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     request: { ...request, source: "simulated" },
     reviewPeriod,
     snapshots,
+    defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,
       label: categoryLabels[category],
@@ -1731,7 +1837,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     executionMode: "ohlcv_modeled",
   };
   const mode = visualValidationReviewMode(request);
-  const ledgerCandidates = report.occurrences?.flatMap((occurrence) => {
+  const ledgerCandidates: ReviewCandidate[] = report.occurrences?.flatMap((occurrence) => {
     const audit = report.audit.find((candidate) => candidate.id === occurrence.auditId);
     if (!audit) return [];
     const category: VisualValidationCategory | null = occurrence.kind === "pullback"
@@ -1747,10 +1853,9 @@ export function buildHistoricalVisualValidationSetFromReport(
     return [{ audit, trade, category, occurrence }];
   }) ?? [];
   const uniqueLedgerCandidates = [...new Map(
-    ledgerCandidates.map((candidate) => [
-      `${candidate.occurrence.occurrenceId}|${candidate.category}`,
-      candidate,
-    ]),
+    ledgerCandidates
+      .filter((candidate): candidate is ReviewCandidate & { occurrence: HistoricalOccurrence } => Boolean(candidate.occurrence))
+      .map((candidate) => [`${candidate.occurrence.occurrenceId}|${candidate.category}`, candidate]),
   ).values()];
   const ledgerCategoriesByAudit = new Set(
     uniqueLedgerCandidates.map((candidate) => `${candidate.audit.id}|${candidate.category}`),
@@ -1762,11 +1867,11 @@ export function buildHistoricalVisualValidationSetFromReport(
       .filter((candidate) => candidate.category !== "qualified_trade")
       .filter((candidate) => !ledgerCategoriesByAudit.has(`${candidate.audit.id}|${candidate.category}`));
   });
-  const candidates = [
+  const candidates: ReviewCandidate[] = [
     ...uniqueLedgerCandidates,
     ...auditCandidates,
   ];
-  const visibleCandidates = candidates
+  const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
         || candidate.trade !== null
         || (mode === "confirmed_signals" && (
@@ -1793,17 +1898,37 @@ export function buildHistoricalVisualValidationSetFromReport(
       reviewCloseTime,
       request.premarketAvailable !== false,
       candidate.occurrence,
+      candidateSelectionReason(candidate),
     );
   });
   const funnelDiagnostics = report.dataset && report.contract
     ? (() => {
         const funnel = buildQualificationFunnel([report as Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">]);
+        const occurrences = report.occurrences ?? [];
+        const primaryCount = occurrences.filter((occurrence) => isPrimaryEntryTimestamp(candidateOccurrenceTimestamp({
+          audit: report.audit.find((item) => item.id === occurrence.auditId) ?? report.audit[0]!,
+          trade: null,
+          category: occurrence.kind === "pullback" ? "pullback" : occurrence.kind === "patience"
+            ? occurrence.direction === "long" ? "bullish_patience_candle" : "bearish_patience_candle"
+            : occurrence.kind === "trade" ? "qualified_trade" : "rejected_setup",
+          occurrence,
+        }))).length;
         return {
           sessionCount: funnel.sessionCount,
           candidateCount: funnel.candidateCount,
           occurrenceCount: funnel.occurrenceCount,
           stages: funnel.stages,
           rejectionCounts: funnel.rejectionCounts,
+          window: {
+            breakoutOccurrences: report.audit.filter((audit) => audit.breakoutEvidence.trim().length > 0).length,
+            qualifyingPullbacks: occurrences.filter((occurrence) => occurrence.kind === "pullback").length,
+            patienceCandidates: occurrences.filter((occurrence) => occurrence.kind === "patience").length,
+            expiredPatienceCandidates: occurrences.filter((occurrence) => occurrence.kind === "patience" && !hasConfirmedPatienceOccurrence(occurrence)).length,
+            confirmedPairs: occurrences.filter((occurrence) => occurrence.kind === "patience" && hasConfirmedPatienceOccurrence(occurrence)).length,
+            riskApprovedEntries: occurrences.filter((occurrence) => occurrence.kind === "trade" && occurrence.canonicalTrade).length,
+            primaryWindowOccurrences: primaryCount,
+            outsidePrimaryWindowOccurrences: occurrences.length - primaryCount,
+          },
         };
       })()
     : undefined;
@@ -1819,6 +1944,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     request: { ...request, source: "historical_databento" },
     reviewPeriod: reviewPeriodForDataset(dataset, request.endDate),
     snapshots,
+    defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,
       label: categoryLabels[category],

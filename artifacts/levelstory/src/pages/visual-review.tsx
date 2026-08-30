@@ -649,6 +649,12 @@ export default function VisualReview() {
 function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["funnelDiagnostics"]> }) {
   return <Panel>
     <PanelTitle eyebrow="Detection funnel / every causal occurrence" title="Where evidence was retained" right={<span className="mono text-[10px] text-muted-foreground">{data.occurrenceCount} ledger occurrences · {data.sessionCount} sessions</span>} />
+    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="window-diagnostics">
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Primary window</div><div className="display mt-1 text-xl font-bold">{data.window.primaryWindowOccurrences}</div><div className="mono mt-1 text-[10px] text-muted-foreground">9:30 a.m.–1:00 p.m. ET</div></div>
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Outside window</div><div className="display mt-1 text-xl font-bold">{data.window.outsidePrimaryWindowOccurrences}</div><div className="mono mt-1 text-[10px] text-muted-foreground">retained as diagnostics</div></div>
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmed P→E</div><div className="display mt-1 text-xl font-bold">{data.window.confirmedPairs}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{data.window.expiredPatienceCandidates} expired candidates</div></div>
+      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Risk-approved entries</div><div className="display mt-1 text-xl font-bold">{data.window.riskApprovedEntries}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{data.window.qualifyingPullbacks} qualifying pullbacks</div></div>
+    </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="detection-funnel">
       {data.stages.map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
         <div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{stage.stage.replaceAll("_", " ")}</div>
@@ -767,13 +773,14 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
 function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
   const prefix = (value: string) => value.slice(0, 12);
   const stale = data.stale || data.currentBuildId !== FRONTEND_BUILD_ID;
-  return <div className="mb-5 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" data-testid="review-set-diagnostics">
+  return <div className="mb-5 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7" data-testid="review-set-diagnostics">
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Build</div><div className="mono mt-1 break-all text-foreground" title={data.buildId}>{data.buildId}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula</div><div className="mono mt-1 text-foreground" title={data.formulaHash}>{data.formulaVersion} · {prefix(data.formulaHash)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 text-foreground" title={data.sourceFingerprint}>{prefix(data.sourceFingerprint)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Created</div><div className="mono mt-1 text-foreground">{formatReviewTime(data.createdAt)}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Review set</div><div className="mono mt-1 text-foreground" title={data.reviewSetId}>{prefix(data.reviewSetId)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Freshness</div><div className={`mt-1 font-bold ${stale ? "text-destructive" : "text-[hsl(var(--positive))]"}`}>{stale ? "stale" : "current"}</div><div className="mono mt-1 break-all text-muted-foreground" title={data.currentBuildId}>current {prefix(data.currentBuildId)}…</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Default selection</div><div className="mt-1 leading-4 text-foreground">{data.defaultSelectionReason}</div></div>
   </div>;
 }
 
@@ -783,7 +790,8 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
       <div className="min-w-0">
         <div className="eyebrow mb-2 text-muted-foreground">Example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period === "in_sample" ? "formula-development sample" : "holdout sample"} <InfoTip label="Dataset role" text="Formula-development examples are in-sample. Holdout examples are out-of-sample and are not used to tune the rule." /></div>
         <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">{snapshot.categoryLabel}</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{snapshot.machineLabel}</span></div>
-        <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · Formula evidence is machine-owned</p>
+         <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
+         <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <button type="button" onClick={onPrevious} disabled={index <= 0} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Previous sample"><ChevronLeft size={17} /></button>
@@ -1601,7 +1609,7 @@ function ReviewPanel({
 function SnapshotNavigator({ snapshots, active, onSelect }: { snapshots: VisualValidationSnapshot[]; active: VisualValidationSnapshot; onSelect: (id: string) => void }) {
   return <Panel>
     <PanelTitle eyebrow="Same category / sample index" title="Other samples" right={<span className="mono text-[10px] text-muted-foreground">{snapshots.length}</span>} />
-    {snapshots.length > 1 ? <div className="divide-y divide-border border-t border-border">{snapshots.map((snapshot) => <button type="button" key={snapshot.snapshotId} onClick={() => onSelect(snapshot.snapshotId)} className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition hover:bg-muted/40 ${active.snapshotId === snapshot.snapshotId ? "bg-accent/10" : ""}`}><span className="min-w-0"><span className="mono block text-[10px] text-muted-foreground">sample {String(snapshot.sampleIndex).padStart(2, "0")} · {snapshot.tradingDate}</span><span className="mt-1 block truncate text-xs font-semibold">{snapshot.machineLabel}</span></span><ReviewDot status={snapshot.review.status} /></button>)}</div> : <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">Only one generated sample is available for this category.</div>}
+    {snapshots.length > 1 ? <div className="divide-y divide-border border-t border-border">{snapshots.map((snapshot) => <button type="button" key={snapshot.snapshotId} onClick={() => onSelect(snapshot.snapshotId)} className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition hover:bg-muted/40 ${active.snapshotId === snapshot.snapshotId ? "bg-accent/10" : ""}`}><span className="min-w-0"><span className="mono block text-[10px] text-muted-foreground">sample {String(snapshot.sampleIndex).padStart(2, "0")} · {snapshot.tradingDate} · {formatReviewTime(snapshot.categoryAnchor.openTime)}</span><span className="mt-1 block truncate text-xs font-semibold">{snapshot.machineLabel}</span><span className={`mt-1 block text-[9px] font-bold uppercase ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "primary window" : "outside primary window"}</span></span><ReviewDot status={snapshot.review.status} /></button>)}</div> : <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">Only one generated sample is available for this category.</div>}
   </Panel>;
 }
 

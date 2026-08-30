@@ -7,6 +7,7 @@
  */
 import type { QualificationFunnelStageCount } from './qualificationFunnelStageCount';
 import type { VisualValidationSetFunnelDiagnosticsRejectionCountsItem } from './visualValidationSetFunnelDiagnosticsRejectionCountsItem';
+import type { VisualValidationSetFunnelDiagnosticsWindow } from './visualValidationSetFunnelDiagnosticsWindow';
 
 export type VisualValidationSetFunnelDiagnostics = {
   /** @minimum 0 */
@@ -17,4 +18,5 @@ export type VisualValidationSetFunnelDiagnostics = {
   occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: VisualValidationSetFunnelDiagnosticsRejectionCountsItem[];
+  window: VisualValidationSetFunnelDiagnosticsWindow;
 };

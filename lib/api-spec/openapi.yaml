@@ -3698,6 +3698,8 @@ components:
         contractSymbol: { type: string }
         contractMonth: { type: string }
         tradingDate: { type: string }
+        entryWindow: { type: string, enum: [primary, outside_primary], description: Primary MES entry window membership in America/New_York wall-clock time. }
+        selectionReason: { type: string }
         period: { type: string, enum: [in_sample, out_of_sample] }
         evaluationCursor: { $ref: "#/components/schemas/VisualValidationCursor" }
         reviewCursor: { $ref: "#/components/schemas/VisualValidationReviewCursor" }
@@ -3736,7 +3738,7 @@ components:
             reviewedAt: { type: ["string", "null"], format: date-time }
             teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
           required: [status, note, reviewedAt]
-      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, strategyKey, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
+      required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, strategyKey, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, entryWindow, selectionReason, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
       properties:
@@ -3772,6 +3774,7 @@ components:
         categoryCoverage:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
+        defaultSelectionReason: { type: string }
         funnelDiagnostics:
           type: object
           properties:
@@ -3789,8 +3792,20 @@ components:
                   stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
                   count: { type: number, minimum: 0 }
                 required: [stage, count]
-          required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts]
-      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
+            window:
+              type: object
+              properties:
+                breakoutOccurrences: { type: number, minimum: 0 }
+                qualifyingPullbacks: { type: number, minimum: 0 }
+                patienceCandidates: { type: number, minimum: 0 }
+                expiredPatienceCandidates: { type: number, minimum: 0 }
+                confirmedPairs: { type: number, minimum: 0 }
+                riskApprovedEntries: { type: number, minimum: 0 }
+                primaryWindowOccurrences: { type: number, minimum: 0 }
+                outsidePrimaryWindowOccurrences: { type: number, minimum: 0 }
+              required: [breakoutOccurrences, qualifyingPullbacks, patienceCandidates, expiredPatienceCandidates, confirmedPairs, riskApprovedEntries, primaryWindowOccurrences, outsidePrimaryWindowOccurrences]
+          required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, window]
+      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, categoryCoverage, defaultSelectionReason]
     VisualValidationReviewRequest:
       type: object
       properties:

@@ -3560,6 +3560,17 @@ export interface VisualValidationReviewCursor {
   utc: string;
 }
 
+/**
+ * Primary MES entry window membership in America/New_York wall-clock time.
+ */
+export type VisualValidationSnapshotEntryWindow = typeof VisualValidationSnapshotEntryWindow[keyof typeof VisualValidationSnapshotEntryWindow];
+
+
+export const VisualValidationSnapshotEntryWindow = {
+  primary: 'primary',
+  outside_primary: 'outside_primary',
+} as const;
+
 export type VisualValidationSnapshotPeriod = typeof VisualValidationSnapshotPeriod[keyof typeof VisualValidationSnapshotPeriod];
 
 
@@ -3597,6 +3608,9 @@ export interface VisualValidationSnapshot {
   contractSymbol: string;
   contractMonth: string;
   tradingDate: string;
+  /** Primary MES entry window membership in America/New_York wall-clock time. */
+  entryWindow: VisualValidationSnapshotEntryWindow;
+  selectionReason: string;
   period: VisualValidationSnapshotPeriod;
   evaluationCursor: VisualValidationCursor;
   reviewCursor: VisualValidationReviewCursor;
@@ -3643,6 +3657,25 @@ export type VisualValidationSetFunnelDiagnosticsRejectionCountsItem = {
   count: number;
 };
 
+export type VisualValidationSetFunnelDiagnosticsWindow = {
+  /** @minimum 0 */
+  breakoutOccurrences: number;
+  /** @minimum 0 */
+  qualifyingPullbacks: number;
+  /** @minimum 0 */
+  patienceCandidates: number;
+  /** @minimum 0 */
+  expiredPatienceCandidates: number;
+  /** @minimum 0 */
+  confirmedPairs: number;
+  /** @minimum 0 */
+  riskApprovedEntries: number;
+  /** @minimum 0 */
+  primaryWindowOccurrences: number;
+  /** @minimum 0 */
+  outsidePrimaryWindowOccurrences: number;
+};
+
 export type VisualValidationSetFunnelDiagnostics = {
   /** @minimum 0 */
   sessionCount: number;
@@ -3652,6 +3685,7 @@ export type VisualValidationSetFunnelDiagnostics = {
   occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: VisualValidationSetFunnelDiagnosticsRejectionCountsItem[];
+  window: VisualValidationSetFunnelDiagnosticsWindow;
 };
 
 export interface VisualValidationSet {
@@ -3680,6 +3714,7 @@ export interface VisualValidationSet {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
+  defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
 }
 
