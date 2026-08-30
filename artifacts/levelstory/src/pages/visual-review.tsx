@@ -223,7 +223,7 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
 
 function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
-  if (annotation.id.startsWith("premarket-")) return "hsl(157 45% 35%)";
+  if (annotation.id === "premarket-high" || annotation.id === "premarket-low") return "hsl(var(--positive))";
   if (annotation.id === "previous-session-high" || annotation.id === "previous-session-low") return "hsl(259 55% 48%)";
   if (annotation.id === "two-sessions-high" || annotation.id === "two-sessions-low") return "hsl(190 58% 38%)";
   if (annotation.id === "vwap") return "hsl(5 58% 46%)";
@@ -866,11 +866,10 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-orange-500" />ORB / NTZ boundary</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-700" />premarket</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-[hsl(var(--positive))]" />premarket high / low</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-500" />EMA 200</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-red-600" />VWAP</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />support / resistance</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t border-dashed border-muted-foreground" />Fibonacci</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />entry candle (E)</span>
@@ -1102,7 +1101,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView) : -1;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
-  const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null);
+   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null && !annotation.id.startsWith("fib-"));
   const criticalLevels = allLevels.filter((annotation) => annotation.id.startsWith("critical-"));
   const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
   const relevantCritical = [...criticalLevels]
@@ -1307,7 +1306,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
-        const fib = annotation.id.startsWith("fib-");
         const critical = annotation.id.startsWith("critical-");
         const stop = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop";
         const target = annotation.id === "target";
@@ -1318,7 +1316,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           const displaced = isDisplacedLabel(labelY, y(annotation.price));
           const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
           return <g key={annotation.id} pointerEvents="none" data-testid={`chart-level-${annotation.id}`}>
-            <line pointerEvents="none" x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : fib ? "3 6" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={fib ? ".42" : orb ? ".98" : ".8"} />
+            <line pointerEvents="none" x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
             <rect x={axisLabelX} y={labelY - 10} width={labelWidth} height="18" rx="2" fill="hsl(var(--card) / .94)" stroke={stroke} strokeOpacity=".32" />
             <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical || structural ? "700" : "500"} fontFamily="DM Mono">{structural ? `${annotation.label} ${formatPriceAxisValue(annotation.price)}` : annotation.label}</text>
             <text x={width - 11} y={labelY + 3} textAnchor="end" fill={stroke} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{formatPriceAxisValue(annotation.price)}</text>
