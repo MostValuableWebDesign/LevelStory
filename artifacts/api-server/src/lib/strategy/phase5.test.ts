@@ -56,6 +56,8 @@ test("a later candle cannot be stored as the immediate-next entry candle", () =>
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
   assert.equal(result.triggerCandle, null);
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_MISSING_E");
+  assert.equal(result.occurrences?.[0]?.nextObservedCandle?.openTime, candles[2].openTime);
   assert.match(result.detail, /immediate-next entry candle is missing/i);
   assert.match(result.detail, /00:10:00\.000Z.*00:15:00\.000Z/);
 });
@@ -65,6 +67,12 @@ test("a failed immediate trigger expires and a later candle cannot trigger it", 
   candles.push(candle(4, 10.4, 12.2, 10.1, 12.1));
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
+  assert.equal(result.occurrences?.[0]?.triggerCandle?.openTime, candles[2].openTime);
+  assert.equal(result.occurrences?.[0]?.nextObservedCandle?.openTime, candles[2].openTime);
+  assert.equal(result.occurrences?.[0]?.expectedEntryCandleOpenTime, candles[2].openTime);
+  assert.equal(result.occurrences?.[0]?.confirmationThreshold, 12);
+  assert.ok((result.occurrences?.[0]?.actualConfirmationExcursion ?? 0) < 1);
   assert.match(result.detail, /confirmation buffer|new patience pattern/i);
 });
 
@@ -81,8 +89,11 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
   assert.equal(result.patienceCandle?.openTime, candles[3].openTime);
   assert.equal(result.triggerCandle?.openTime, candles[4].openTime);
   assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.status), ["PATIENCE_CANDLE_EXPIRED", "ENTRY_TRIGGERED"]);
+  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["EXPIRED_NO_IMMEDIATE_CONFIRMATION", "CONFIRMED"]);
   assert.equal(result.occurrences?.[0]?.patienceCandle.openTime, candles[1].openTime);
+  assert.equal(result.occurrences?.[0]?.nextObservedCandle?.openTime, candles[2].openTime);
   assert.equal(result.occurrences?.[1]?.patienceCandle.openTime, candles[3].openTime);
+  assert.equal(result.occurrences?.[1]?.nextObservedCandle, null);
 });
 
 test("two successful P→E sequences remain ordered in one visible session", () => {
@@ -110,6 +121,21 @@ test("an occurrence never reads an entry candle beyond the visible evaluation cu
   const result = patienceCandleEngine(visible, "long", { eligibilityEvents: eligibility() });
   assert.equal(result.occurrences?.[0]?.triggerCandle, null);
   assert.equal(result.occurrences?.[0]?.evaluationCursor, visible[1].closeTime);
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "CANDIDATE");
+});
+
+test("an incomplete immediate candle cannot be replaced by a later interval", () => {
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 11.2, 10.1, 10.9, false),
+    candle(3, 10.9, 12.2, 10.5, 12),
+  ];
+  const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
+  const occurrence = result.occurrences?.find((item) => item.patienceCandle.openTime === candles[1].openTime);
+  assert.equal(occurrence?.outcomeStatus, "EXPIRED_INCOMPLETE_E");
+  assert.equal(occurrence?.triggerCandle, null);
+  assert.equal(occurrence?.nextObservedCandle?.openTime, candles[2].openTime);
 });
 
 test("configured confirmation and stop buffers are retained on every patience occurrence", () => {

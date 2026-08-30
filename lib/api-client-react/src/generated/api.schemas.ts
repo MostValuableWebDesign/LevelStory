@@ -2225,9 +2225,19 @@ export interface HistoricalOccurrence {
   /** @nullable */
   lCandle: HistoricalOccurrenceLCandle;
   /** @nullable */
+  previousComparisonTimestamp: string | null;
+  /** @nullable */
   patienceTimestamp: string | null;
   /** @nullable */
   patienceCandle: HistoricalOccurrencePatienceCandle;
+  /** @nullable */
+  candidateShapeResult: boolean | null;
+  /** @nullable */
+  expectedEntryTimestamp: string | null;
+  /** @nullable */
+  confirmationThreshold: number | null;
+  /** @nullable */
+  confirmationExcursion: number | null;
   /** @nullable */
   entryTimestamp: string | null;
   /** @nullable */

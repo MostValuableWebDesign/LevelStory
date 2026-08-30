@@ -14,3 +14,9 @@ Occurrence provenance must also retain the stable L event identity, every qualif
 **Why:** A setup label or a single selected level cannot distinguish causal occurrences reliably, and metadata-only source identity allows visually identical records to collide after source candle changes.
 
 **How to apply:** Link patience rows through the exact eligibility event when available, group same-candle qualifying level events, and include provenance in snapshot identity and review records.
+
+A qualified trade may attach only to the patience occurrence whose completed E opens exactly when that P closes. Expired candidates remain diagnostic-only even when a later P→E pair qualifies in the same audit.
+
+**Why:** Audit-level trade fallback can otherwise lend a later trade's E, fill, and exit markers to an earlier failed P, creating a visually valid-looking but temporally impossible sequence.
+
+**How to apply:** Preserve the failed immediate candle and buffer comparison on the expired row, leave its entry and canonical-trade fields empty, and build trade markers only from the exact confirmed occurrence.

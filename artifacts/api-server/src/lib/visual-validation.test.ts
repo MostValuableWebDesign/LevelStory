@@ -216,6 +216,104 @@ test("historical Visual Review maps a ledger occurrence to its exact L anchor", 
   assert.equal(snapshot.categoryAnchor?.openTime, occurrence.lTimestamp);
 });
 
+test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with adjacent P2 and E2", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "qualified_trade");
+  assert.ok(fixture?.trade);
+  const completed = fixture.dataset.candles
+    .filter((candle) => candle.contractSymbol === fixture.audit.contractSymbol && candle.isComplete)
+    .sort((first, second) => first.openTime - second.openTime);
+  const p2Open = Date.parse(fixture.audit.patienceCandleOpenTime!);
+  const p2Index = completed.findIndex((candle) => candle.openTime === p2Open);
+  assert.ok(p2Index >= 2);
+  const p1 = completed[p2Index - 2]!;
+  const failedImmediate = completed[p2Index - 1]!;
+  const p2 = completed[p2Index]!;
+  const e2 = completed.find((candle) => candle.openTime === p2.closeTime);
+  assert.ok(e2);
+  const evidenceCandle = (candle: typeof p1): Record<string, number | boolean> => ({
+    openTime: candle.openTime,
+    closeTime: candle.closeTime,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    isComplete: candle.isComplete,
+  });
+  const occurrence = (
+    occurrenceId: string,
+    patienceCandle: typeof p1,
+    immediate: typeof failedImmediate,
+    confirmed: boolean,
+  ): HistoricalOccurrence => ({
+    occurrenceId,
+    auditId: fixture.audit.id,
+    kind: "patience",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    secondaryStrategyMatches: [],
+    tradingDate: fixture.audit.tradingDate,
+    contractSymbol: fixture.audit.contractSymbol,
+    contractMonth: fixture.audit.contractMonth,
+    direction: "long",
+    lTimestamp: null,
+    lEventId: null,
+    lInteractionType: null,
+    lCandle: null,
+    previousComparisonTimestamp: new Date(patienceCandle.openTime - 300_000).toISOString(),
+    patienceTimestamp: new Date(patienceCandle.openTime).toISOString(),
+    patienceCandle: evidenceCandle(patienceCandle),
+    candidateShapeResult: true,
+    expectedEntryTimestamp: new Date(patienceCandle.closeTime).toISOString(),
+    confirmationThreshold: patienceCandle.high + 0.75,
+    confirmationExcursion: Math.max(0, immediate.high - patienceCandle.high),
+    entryTimestamp: confirmed ? new Date(immediate.openTime).toISOString() : null,
+    entryCandle: confirmed ? evidenceCandle(immediate) : null,
+    levelIdentifiers: [],
+    levelValues: {},
+    levelDistancesTicks: {},
+    levelTolerancePoints: {},
+    levelToleranceTicks: {},
+    levelInteractionTypes: {},
+    confirmationBufferTicks: 3,
+    nextObservedCandle: confirmed ? null : evidenceCandle(immediate),
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
+    status: confirmed ? "CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
+    reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the three-tick buffer; P1 expired.",
+    evaluationCursor: new Date(immediate.closeTime).toISOString(),
+    formulaVersion: "test",
+    formulaHash: "a".repeat(64),
+    sourceFingerprint: "b".repeat(64),
+    canonicalTrade: confirmed,
+  });
+  const expired = occurrence("expired-p1", p1, failedImmediate, false);
+  const confirmed = occurrence("confirmed-p2", p2, e2, true);
+  const report = {
+    symbol: "MES",
+    formulaHash: "a".repeat(64),
+    executionMode: "ohlcv_modeled" as const,
+    audit: [fixture.audit],
+    trades: [fixture.trade],
+    occurrences: [expired, confirmed],
+  };
+  const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, report);
+  const tradePatience = tradeOnly.snapshots.filter((snapshot) => snapshot.category === "bullish_patience_candle");
+  assert.deepEqual(tradePatience.map((snapshot) => snapshot.occurrenceId), ["confirmed-p2"]);
+  assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "entry")?.openTime, confirmed.entryTimestamp);
+  assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "patience")?.closeTime, confirmed.entryTimestamp);
+
+  const diagnostics = buildHistoricalVisualValidationSetFromReport(
+    { ...request, reviewMode: "trades_and_diagnostics" },
+    fixture.dataset,
+    report,
+  );
+  const expiredSnapshot = diagnostics.snapshots.find((snapshot) => snapshot.occurrenceId === "expired-p1");
+  assert.ok(expiredSnapshot);
+  assert.equal(expiredSnapshot.machineEvidence.trade, null);
+  assert.deepEqual(expiredSnapshot.tradeEvents, []);
+  assert.equal(expiredSnapshot.annotations.find((annotation) => annotation.id === "entry-candle")?.available, false);
+  assert.equal(expiredSnapshot.annotations.find((annotation) => annotation.id === "patience-candle")?.label, "Expired patience candidate");
+});
+
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
   const set = buildVisualValidationSet(request);
   assert.equal(set.snapshots.length, 12);

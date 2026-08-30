@@ -358,7 +358,7 @@ function occurrenceAudit(
     pullbackEvidence: "",
     criticalLevelEvidence: "",
     trendEvidence: "",
-    patienceState: "PATIENCE_CANDLE_VALID",
+    patienceState: "ENTRY_TRIGGERED",
     patienceCandle: pCandle,
     triggerCandle: eCandle,
     patienceCandleOpenTime: new Date(pOpen).toISOString(),
@@ -402,11 +402,18 @@ function occurrenceAudit(
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: lOpen,
+      previousComparisonTimestamp: lCandle.openTime,
+      candidateShapeResult: true,
+      expectedEntryCandleOpenTime: eCandle.openTime,
+      confirmationThreshold: 102.75,
+      actualConfirmationExcursion: 3,
       previousCandle: lCandle,
       patienceCandle: pCandle,
       triggerCandle: eCandle,
-      status: "PATIENCE_CANDLE_VALID",
-      reasonCode: "waiting for immediate E",
+      nextObservedCandle: null,
+      outcomeStatus: "CONFIRMED",
+      status: "ENTRY_TRIGGERED",
+      reasonCode: "immediate E reached the confirmation buffer",
       evaluationCursor: eCandle.closeTime,
     }],
     ...overrides,
@@ -574,7 +581,7 @@ test("ledger retains an expired patience attempt without inventing an E candle",
   });
   const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [expired], []).find((item) => item.kind === "patience");
   assert.ok(occurrence);
-  assert.equal(occurrence.status, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(occurrence.status, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
   assert.equal(occurrence.entryCandle, null);
 });
 
@@ -639,6 +646,57 @@ test("failed immediate confirmation remains a no-trade patience occurrence", () 
     }],
   });
   const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [failed], []);
-  assert.ok(occurrences.some((occurrence) => occurrence.kind === "patience" && occurrence.status === "PATIENCE_CANDLE_EXPIRED"));
+  assert.ok(occurrences.some((occurrence) => occurrence.kind === "patience" && occurrence.status === "EXPIRED_NO_IMMEDIATE_CONFIRMATION"));
   assert.equal(occurrences.some((occurrence) => occurrence.kind === "trade" || occurrence.kind === "risk"), false);
+});
+
+test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", () => {
+  const base = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION");
+  const confirmed = base.patienceOccurrences![0]!;
+  const previous = { openTime: 0, closeTime: 300_000, open: 99, high: 103, low: 98, close: 101, volume: 8, isComplete: true };
+  const expiredPatience = { openTime: 300_000, closeTime: 600_000, open: 101, high: 102, low: 99, close: 101, volume: 9, isComplete: true };
+  const failedImmediate = { openTime: 600_000, closeTime: 900_000, open: 101, high: 102.5, low: 100, close: 102, volume: 10, isComplete: true };
+  const expired: NonNullable<BacktestAuditRecord["patienceOccurrences"]>[number] = {
+    occurrenceId: "expired-p1",
+    direction: "long",
+    entryBufferTicks: 3,
+    stopBufferTicks: 1,
+    eligibilityReason: "pullback",
+    eligibilityTime: 300_000,
+    previousComparisonTimestamp: previous.openTime,
+    candidateShapeResult: true,
+    expectedEntryCandleOpenTime: failedImmediate.openTime,
+    confirmationThreshold: 102.75,
+    actualConfirmationExcursion: 0.5,
+    previousCandle: previous,
+    patienceCandle: expiredPatience,
+    triggerCandle: failedImmediate,
+    nextObservedCandle: failedImmediate,
+    outcomeStatus: "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
+    status: "PATIENCE_CANDLE_EXPIRED",
+    reasonCode: "10:10 failed to reach the three-tick confirmation buffer.",
+    evaluationCursor: failedImmediate.closeTime,
+  };
+  const audit = { ...base, patienceOccurrences: [expired, confirmed] };
+  const linkedTrade = trade(25, {
+    setupType: "PATIENCE_CANDLE_CONTINUATION",
+    entryTime: base.triggerCandleCloseTime!,
+    audit: {
+      patienceCandleOpenTime: base.patienceCandleOpenTime,
+      patienceCandleCloseTime: base.patienceCandleCloseTime,
+      triggerCandleOpenTime: base.triggerCandleOpenTime,
+      triggerCandleCloseTime: base.triggerCandleCloseTime,
+    } as NonNullable<BacktestTrade["audit"]>,
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], [linkedTrade]);
+  const patience = occurrences.filter((occurrence) => occurrence.kind === "patience");
+  assert.equal(patience.length, 2);
+  assert.equal(patience[0]?.status, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
+  assert.equal(patience[0]?.entryTimestamp, null);
+  assert.equal(patience[0]?.entryCandle, null);
+  assert.equal(patience[0]?.nextObservedCandle?.openTime, failedImmediate.openTime);
+  assert.equal(patience[0]?.canonicalTrade, false);
+  assert.equal(patience[1]?.status, "CONFIRMED");
+  assert.equal(patience[1]?.entryTimestamp, base.triggerCandleOpenTime);
+  assert.equal(patience[1]?.canonicalTrade, true);
 });

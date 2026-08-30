@@ -38,9 +38,19 @@ export interface HistoricalOccurrence {
   /** @nullable */
   lCandle: HistoricalOccurrenceLCandle;
   /** @nullable */
+  previousComparisonTimestamp: Date | null;
+  /** @nullable */
   patienceTimestamp: Date | null;
   /** @nullable */
   patienceCandle: HistoricalOccurrencePatienceCandle;
+  /** @nullable */
+  candidateShapeResult: boolean | null;
+  /** @nullable */
+  expectedEntryTimestamp: Date | null;
+  /** @nullable */
+  confirmationThreshold: number | null;
+  /** @nullable */
+  confirmationExcursion: number | null;
   /** @nullable */
   entryTimestamp: Date | null;
   /** @nullable */
