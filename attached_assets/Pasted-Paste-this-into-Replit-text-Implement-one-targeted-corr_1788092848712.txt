@@ -1,0 +1,186 @@
+Paste this into Replit:
+
+```text
+Implement one targeted correctness pass for the remaining LevelStory strategy and Visual Review issues.
+
+Important constraints
+
+- MES futures only.
+- Five-minute execution candles.
+- Twelve-tick/3.00-point qualifying-level proximity remains unchanged.
+- Entries still require a completed patience candle P followed by its immediate completed entry candle E.
+- E must exceed P by the configured 3–4 tick confirmation buffer.
+- If E fails, P expires. A later candle cannot confirm it.
+- Preserve the four independent strategies.
+- Preserve Shadow Mode only.
+- Do not add live orders, paper orders, broker integration, fabricated candles, or fabricated fills.
+- I am limited on compute. Do not rebuild the historical index, run a cold 20+2 backtest, or run a broad qualification batch.
+
+Fix these five issues.
+
+1. Fix Equivalent Candle Reversal patience direction
+
+The production reversal path is still contradictory.
+
+Current problem:
+
+- `market-data.ts` correctly derives a reversal direction opposite the preceding trend.
+- Phase 5 permits opposing-trend patience through `allowOpposingTrend`.
+- However, Phase 6 calls `patienceDirectionMatches`, which compares `patience.trend` to the reversal direction.
+- Because `patience.trend` still contains the preceding continuation trend, a valid reversal patience sequence can be rejected.
+
+Correct behavior:
+
+- Continuation strategies must still require confirmed trend alignment.
+- Equivalent Candle Reversal must validate P and E against the separately confirmed `reversalDirection`.
+- It must not require the preceding continuation trend to match the reversal direction.
+- Do not weaken the trend requirement for Patience Candle Continuation, ORB Pullback Continuation, or Consolidation Breakout Continuation.
+- Prefer an explicit reversal-specific direction field or validation function instead of pretending the preceding trend changed.
+
+Add a production-path integration test covering:
+
+- Confirmed bullish preceding trend.
+- Confirmed bearish equivalent-candle reversal evidence.
+- Valid bearish P.
+- Immediate next bearish E exceeding P low by the configured buffer.
+- Risk approved.
+- Result: `EQUIVALENT_CANDLE_REVERSAL` is `SETUP QUALIFIED`.
+
+Also test that continuation patience in the same bullish context cannot use bearish P.
+
+2. Make pullback structure genuinely countertrend
+
+The structural pullback detector is currently too permissive.
+
+For a long breakout, it can start a pullback merely because a later candle’s low is below the running impulse high. That condition is true for many normal continuation candles.
+
+Implement a causal, direction-aware structural detector.
+
+For a bullish impulse, pullback structure should begin only when a completed post-peak candle provides countertrend evidence such as:
+
+- A lower low than the immediately preceding completed candle; or
+- A lower close than the immediately preceding close without making a new impulse high.
+
+For a bearish impulse, mirror the rule:
+
+- A higher high than the immediately preceding candle; or
+- A higher close without making a new impulse low.
+
+Requirements:
+
+- A wick merely being below the running bullish peak or above the running bearish trough is insufficient.
+- A new impulse extreme before the pullback starts must update the frozen peak/trough.
+- Once structural retracement starts, track its causal extreme and retracement percentage.
+- Keep the greater-than-50% reversal warning.
+- Consolidation remains a separately identified context and should not be fabricated as directional pullback structure.
+- A genuine structural pullback may qualify through a structural level, VWAP, 200 EMA, ORB/NTZ, major level, prior-day level, or Fibonacci level within the governed 12-tick tolerance.
+- Fibonacci proximity alone must not manufacture pullback structure.
+
+Add deterministic bullish and bearish tests for:
+
+- Directional continuation candle with a wick inside the running peak: not a pullback.
+- Genuine countertrend candle: pullback detected.
+- New impulse extreme followed by a pullback: correct peak is frozen.
+- Fibonacci-only level interaction after genuine pullback structure: eligible.
+- Fibonacci proximity without genuine structure: ineligible.
+
+3. Make Visual Review use authoritative occurrence status
+
+The deployed review set currently reports:
+
+- Four valid trend-aligned patience candles.
+- Four immediate-next-candle confirmations.
+- Four risk approvals.
+
+But Visual Review shows:
+
+- Zero bullish patience categories.
+- Zero bearish patience categories.
+- Zero qualified trades.
+
+Fix this mismatch.
+
+Requirements:
+
+- Historical occurrence ledger data is authoritative for occurrence-based categories.
+- In `confirmed_signals` mode, show a patience category when its occurrence has:
+  - `status: CONFIRMED`
+  - A valid P timestamp.
+  - An immediate E timestamp.
+  - An entry timestamp matching that immediate E.
+- Determine bullish/bearish category from the occurrence direction.
+- Do not hide a confirmed occurrence merely because its linked cumulative audit record later moved to another state.
+- Candidate and expired P occurrences must not appear as confirmed signals.
+- Expired occurrences may appear only in diagnostic modes with truthful labels.
+- A confirmed trade occurrence should produce a qualified-trade category only when it is actually canonical/trade-linked.
+- Do not convert confirmed signals into fabricated fills.
+
+Add a regression test where:
+
+- The occurrence is `CONFIRMED`.
+- Its linked audit record is waiting or represents a later state.
+- `confirmed_signals` still includes the correct bullish/bearish patience snapshot.
+
+Also test that `EXPIRED_NO_IMMEDIATE_CONFIRMATION`, `EXPIRED_MISSING_E`, and `EXPIRED_INCOMPLETE_E` are excluded from confirmed-signal categories.
+
+4. Make deployment freshness identification real
+
+The live API currently returns:
+
+- `buildId: development`
+- `currentBuildId: development`
+- `stale: false`
+
+That makes stale-set detection ineffective.
+
+Implement a deterministic build identifier for the API and frontend.
+
+Requirements:
+
+- Prefer the actual deployed Git commit SHA.
+- If Replit does not expose the SHA at runtime, inject it during the build using `git rev-parse HEAD` or an equivalent build-time mechanism.
+- The API and frontend must use the same build ID.
+- Production/deployed builds must not silently fall back to `"development"`.
+- Local development may use a clearly labeled local identifier.
+- A review set generated under a different build ID must return `stale: true`.
+- Regeneration must reuse the ready historical index and must not trigger an index rebuild.
+- Display build ID, formula hash, and source fingerprint in the diagnostics panel.
+
+Add focused tests proving different build IDs mark a stored review set stale.
+
+5. Correct funnel diagnostics
+
+`percentOfSessions` currently produces values such as 31,200%.
+
+Fix the metric semantics:
+
+- If the intended value is average occurrences/candidates per session, rename it accordingly.
+- If it is truly a percentage of sessions, count distinct sessions reaching the stage and constrain it to 0–100%.
+- Preserve raw candidate counts separately.
+- Make the UI label accurately describe the calculation.
+
+Verification
+
+Run only focused tests for:
+
+- Phase 4 pullback structure.
+- Phase 5 P→immediate-E state machine.
+- Phase 6 four-strategy qualification.
+- Phase 9 occurrence identity/ledger.
+- Visual-validation occurrence projection and freshness.
+- API and frontend typechecks.
+- `git diff --check`.
+
+Do not run a historical-index rebuild or large cold backtest.
+
+Report:
+
+1. Files changed.
+2. Root cause of each issue.
+3. Exact final pullback-structure rule.
+4. Exact continuation-versus-reversal patience distinction.
+5. Visual Review category counts from one small cached or already-indexed 5+2 review set.
+6. Build ID, formula hash, and source fingerprint returned by the deployed API.
+7. Focused test totals and typecheck results.
+8. Confirmation that no live/paper execution path or fabricated data was added.
+```
