@@ -273,6 +273,7 @@ export type VisualValidationReview = {
 };
 
 export type VisualValidationTeachingInput = {
+  machineTradeId?: string;
   judgment: VisualValidationTeachingJudgment;
   direction: "long" | "short";
   levelCandleOpenTime?: string;
@@ -286,6 +287,14 @@ export type VisualValidationTeachingInput = {
   qualifyingLevelId?: string;
   qualifyingLevelRangeLow?: number | null;
   qualifyingLevelRangeHigh?: number | null;
+  qualifyingLevels?: Array<{
+    levelId: string;
+    levelType: "dynamic_indicator" | "fixed_level" | "level_range";
+    valueAtInteraction: number;
+    sourceTimestamp: string;
+    rangeLow: number | null;
+    rangeHigh: number | null;
+  }>;
   pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
@@ -315,6 +324,22 @@ export type VisualValidationLevelInteraction = {
   allowedTolerancePoints: number;
   machineVisible: boolean;
   passed: boolean;
+  reason: string;
+};
+
+export type ResolvedQualifyingLevel = {
+  levelId: string;
+  levelType: "dynamic_indicator" | "fixed_level" | "level_range";
+  label: string;
+  valueAtInteraction: number;
+  rangeLow: number | null;
+  rangeHigh: number | null;
+  sourceTimestamp: string;
+  machineVisible: boolean;
+  distancePoints: number;
+  distanceTicks: number;
+  toleranceTicks: number;
+  qualifies: boolean;
   reason: string;
 };
 
@@ -401,6 +426,59 @@ function sameCandle(candidate: VisualValidationCandle | undefined, openTime: str
   return candidate?.openTime === openTime && candidate.closeTime === closeTime;
 }
 
+export function resolveQualifyingLevelAtCandle(
+  snapshot: VisualValidationSnapshot,
+  levelCandle: VisualValidationCandle,
+  levelId: string,
+  toleranceTicks = DEFAULT_LEVEL_TOLERANCE_TICKS,
+): ResolvedQualifyingLevel {
+  const annotation = snapshot.annotations.find((item) => item.id === levelId);
+  const indicator = levelId === "vwap" || levelId === "ema-200"
+    ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime)
+    : undefined;
+  const dynamic = levelId === "vwap" || levelId === "ema-200";
+  const valueAtInteraction = dynamic
+    ? levelId === "vwap" ? indicator?.vwap ?? Number.NaN : indicator?.ema200 ?? Number.NaN
+    : annotation?.price ?? Number.NaN;
+  const rangeLow = dynamic ? null : annotation?.rangeLow ?? null;
+  const rangeHigh = dynamic ? null : annotation?.rangeHigh ?? null;
+  const sourceTimestamp = indicator?.openTime ?? annotation?.openTime ?? levelCandle.openTime;
+  const machineVisible = Boolean(annotation?.available && annotation.visibility === "machine")
+    && (!dynamic || indicator?.visibility === "machine");
+  const distancePoints = Number.isFinite(valueAtInteraction)
+    ? distanceToLevel(valueAtInteraction, levelCandle.high, levelCandle.low, rangeLow, rangeHigh)
+    : Number.POSITIVE_INFINITY;
+  const distanceTicks = Number.isFinite(distancePoints)
+    ? Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-10)
+    : Number.POSITIVE_INFINITY;
+  const tolerancePoints = toleranceTicks * TEACHING_TICK_SIZE;
+  const qualifies = machineVisible && distancePoints <= tolerancePoints + 1e-10;
+  const reason = !annotation
+    ? `Level ${levelId} is not present in the immutable snapshot.`
+    : !machineVisible
+      ? `${annotation.label} is not machine-visible at L.`
+      : !Number.isFinite(valueAtInteraction)
+        ? `${annotation.label} has no causal value at L.`
+        : qualifies
+          ? `${annotation.label} at ${valueAtInteraction.toFixed(3)} is within ${distanceTicks} ticks at L.`
+          : `Patience candle remained ${distanceTicks} ticks from ${annotation.label}.`;
+  return {
+    levelId,
+    levelType: dynamic ? "dynamic_indicator" : annotation?.kind === "level" && (rangeLow !== null || rangeHigh !== null) ? "level_range" : "fixed_level",
+    label: annotation?.label ?? levelId,
+    valueAtInteraction,
+    rangeLow,
+    rangeHigh,
+    sourceTimestamp,
+    machineVisible,
+    distancePoints,
+    distanceTicks,
+    toleranceTicks,
+    qualifies,
+    reason,
+  };
+}
+
 export function validateVisualValidationTeaching(
   snapshot: VisualValidationSnapshot,
   input: VisualValidationTeachingInput,
@@ -448,8 +526,6 @@ export function validateVisualValidationTeaching(
       }
     }
     if (between.some((candle) => candle.contractSymbol !== snapshot.contractSymbol)) messages.push("Every L to P consolidation candle must belong to the snapshot's active MES contract.");
-    if (input.direction === "long" && between.some((candle) => candle.low < levelCandle.low - 1e-8)) messages.push("Long L to P consolidation invalidated below the qualifying level candle low.");
-    if (input.direction === "short" && between.some((candle) => candle.high > levelCandle.high + 1e-8)) messages.push("Short L to P consolidation invalidated above the qualifying level candle high.");
   }
   if (entry && (!Number.isFinite(evaluationClose) || Date.parse(entry.closeTime) > evaluationClose)) {
     messages.push("The entry candle is beyond the machine evaluation boundary and is not causally visible.");
@@ -470,8 +546,9 @@ export function validateVisualValidationTeaching(
   if (patience && previous && input.direction === "short" && patience.low < previous.low) messages.push("Short patience must contain its low within the preceding completed candle.");
   if (!previous) messages.push("A preceding completed candle is required to validate patience containment.");
   const pullbackLevels = [...new Set(input.pullbackLevels.filter(Number.isFinite))];
-  if (!pullbackLevels.length) messages.push("Choose at least one qualifying pullback level.");
-  if (pullbackLevels.some((level) => !tickAligned(level))) messages.push("Every qualifying pullback level must be aligned to the MES 0.25 tick.");
+  const structuredLevels = input.qualifyingLevels ?? [];
+  if (!pullbackLevels.length && !structuredLevels.length) messages.push("Choose at least one qualifying pullback level.");
+  if (pullbackLevels.some((level) => !tickAligned(level))) messages.push("Every executable fixed qualifying pullback level must be aligned to the MES 0.25 tick.");
   const requestedLevelId = input.qualifyingLevelId;
   const selectedAnnotation = requestedLevelId
     ? snapshot.annotations.find((annotation) => annotation.id === requestedLevelId)
@@ -479,52 +556,66 @@ export function validateVisualValidationTeaching(
   if (requestedLevelId && (!selectedAnnotation || !selectedAnnotation.available || selectedAnnotation.visibility !== "machine")) {
     messages.push("The selected qualifying level ID is not machine-visible at the causal evaluation time.");
   }
-  const unmappedLevels = pullbackLevels.filter((level) => !snapshot.annotations.some((annotation) =>
-    annotation.available
-    && annotation.price !== null
-    && annotation.kind !== "candle"
-    && (!requestedLevelId || annotation.id === requestedLevelId)
-    && Math.abs(annotation.price - level) <= TEACHING_TICK_SIZE + 1e-8,
-  ));
-  if (unmappedLevels.length) messages.push("A selected qualifying level was not present in the machine-visible snapshot at the evaluation time.");
-  for (const level of pullbackLevels) {
-    const annotation = snapshot.annotations
-      .filter((item) => item.available && item.price !== null && item.kind !== "candle" && Math.abs(item.price - level) <= TEACHING_TICK_SIZE + 1e-8)
-      .filter((item) => !requestedLevelId || item.id === requestedLevelId)
-      .sort((first, second) => Math.abs(first.price! - level) - Math.abs(second.price! - level))[0];
-    if (!levelCandle || !annotation) continue;
-    const rangeLow = input.qualifyingLevelRangeLow ?? annotation.rangeLow;
-    const rangeHigh = input.qualifyingLevelRangeHigh ?? annotation.rangeHigh;
-    const distancePoints = distanceToLevel(level, levelCandle.high, levelCandle.low, rangeLow, rangeHigh);
-    const distanceTicks = Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-8);
-    const passed = distancePoints <= levelTolerancePoints + 1e-8;
-    const levelName = annotation.label;
+  const legacyAnnotations = pullbackLevels.flatMap((level) => snapshot.annotations
+    .filter((item) => item.available && item.price !== null && item.kind !== "candle" && Math.abs(item.price - level) <= TEACHING_TICK_SIZE + 1e-8)
+    .filter((item) => !requestedLevelId || item.id === requestedLevelId)
+    .sort((first, second) => Math.abs(first.price! - level) - Math.abs(second.price! - level))
+    .slice(0, 1)
+    .map((annotation) => ({ annotation, level })));
+  if (legacyAnnotations.length !== pullbackLevels.length && !structuredLevels.length) {
+    messages.push("A selected qualifying level was not present in the machine-visible snapshot at the evaluation time.");
+  }
+  const levelSelections = structuredLevels.length
+    ? structuredLevels.map((selection) => ({ selection, resolved: levelCandle ? resolveQualifyingLevelAtCandle(snapshot, levelCandle, selection.levelId, levelToleranceTicks) : null }))
+    : legacyAnnotations.map(({ annotation, level }) => ({
+        selection: null,
+        resolved: levelCandle && (annotation.id === "vwap" || annotation.id === "ema-200")
+          ? resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks)
+          : levelCandle
+            ? {
+                ...resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks),
+                valueAtInteraction: level,
+                distancePoints: distanceToLevel(level, levelCandle.high, levelCandle.low, input.qualifyingLevelRangeLow ?? annotation.rangeLow, input.qualifyingLevelRangeHigh ?? annotation.rangeHigh),
+                distanceTicks: Math.ceil(Math.max(0, distanceToLevel(level, levelCandle.high, levelCandle.low, input.qualifyingLevelRangeLow ?? annotation.rangeLow, input.qualifyingLevelRangeHigh ?? annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
+                rangeLow: input.qualifyingLevelRangeLow ?? annotation.rangeLow ?? null,
+                rangeHigh: input.qualifyingLevelRangeHigh ?? annotation.rangeHigh ?? null,
+              }
+            : null,
+      }));
+  for (const { selection, resolved } of levelSelections) {
+    if (!resolved) continue;
+    if (selection) {
+      if (Math.abs(selection.valueAtInteraction - resolved.valueAtInteraction) > 1e-9) messages.push(`Submitted value for ${selection.levelId} disagrees with the immutable causal value at L.`);
+      if ((selection.sourceTimestamp !== resolved.sourceTimestamp) || selection.rangeLow !== resolved.rangeLow || selection.rangeHigh !== resolved.rangeHigh) messages.push(`Submitted evidence for ${selection.levelId} disagrees with the immutable causal level range or timestamp.`);
+      if (selection.levelType !== resolved.levelType) messages.push(`Submitted level type for ${selection.levelId} disagrees with the immutable annotation.`);
+      if (resolved.levelType === "dynamic_indicator" && (selection.rangeLow !== null || selection.rangeHigh !== null)) messages.push(`Dynamic indicator ${selection.levelId} cannot submit a client-defined range.`);
+    }
+    const passed = resolved.qualifies;
+    const levelName = resolved.label;
     levelInteractions.push({
-      levelId: annotation.id,
+      levelId: resolved.levelId,
       levelName,
-      levelPrice: level,
-      levelRangeLow: rangeLow,
-      levelRangeHigh: rangeHigh,
-      candleOpenTime: levelCandle.openTime,
-      candleCloseTime: levelCandle.closeTime,
-      candleHigh: levelCandle.high,
-      candleLow: levelCandle.low,
-      distanceTicks,
-      distancePoints: Number(distancePoints.toFixed(2)),
+      levelPrice: resolved.valueAtInteraction,
+      levelRangeLow: resolved.rangeLow,
+      levelRangeHigh: resolved.rangeHigh,
+      candleOpenTime: levelCandle!.openTime,
+      candleCloseTime: levelCandle!.closeTime,
+      candleHigh: levelCandle!.high,
+      candleLow: levelCandle!.low,
+      distanceTicks: resolved.distanceTicks,
+      distancePoints: Number(resolved.distancePoints.toFixed(2)),
       allowedToleranceTicks: levelToleranceTicks,
       allowedTolerancePoints: levelTolerancePoints,
-      machineVisible: annotation.visibility === "machine" && annotation.available,
+      machineVisible: resolved.machineVisible,
       passed,
-      reason: passed
-        ? `Patience candle came within ${distanceTicks} ticks of ${levelName}. Allowed tolerance: ${levelToleranceTicks} ticks.`
-        : `Patience candle remained ${distanceTicks} ticks from ${levelName}. Allowed tolerance: ${levelToleranceTicks} ticks.`,
+      reason: resolved.reason,
     });
-    if (!passed) messages.push(levelInteractions.at(-1)!.reason);
+    if (!passed || !resolved.machineVisible) messages.push(resolved.reason);
   }
   const indicatorAtLevel = levelCandle
     ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime)
     : undefined;
-  if (input.levelCandleOpenTime !== undefined || input.levelCandleCloseTime !== undefined || input.qualifyingLevelId !== undefined) {
+  if (input.levelCandleOpenTime !== undefined || input.levelCandleCloseTime !== undefined || input.qualifyingLevelId !== undefined || structuredLevels.length > 0) {
     if (!indicatorAtLevel) messages.push("No causal VWAP/EMA 200 indicator point exists at the qualifying level candle.");
     else if (indicatorAtLevel.visibility !== "machine") messages.push("VWAP and EMA 200 at L are not causally machine-visible.");
   }
@@ -563,6 +654,16 @@ export function createVisualValidationTeachingExample(
     levelCandleCloseTime: input.levelCandleCloseTime ?? input.patienceCandleCloseTime,
     levelToleranceTicks: input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
     pullbackLevels: [...new Set(input.pullbackLevels)].sort((a, b) => a - b),
+    qualifyingLevels: validation.levelInteractions
+      .filter((interaction) => interaction.passed)
+      .map((interaction) => ({
+        levelId: interaction.levelId ?? "",
+        levelType: interaction.levelId === "vwap" || interaction.levelId === "ema-200" ? "dynamic_indicator" as const : interaction.levelRangeLow !== null || interaction.levelRangeHigh !== null ? "level_range" as const : "fixed_level" as const,
+        valueAtInteraction: interaction.levelPrice,
+        sourceTimestamp: interaction.candleOpenTime ?? input.levelCandleOpenTime ?? input.patienceCandleOpenTime,
+        rangeLow: interaction.levelRangeLow ?? null,
+        rangeHigh: interaction.levelRangeHigh ?? null,
+      })),
     teachingId: randomUUID(),
     calculatedEntryPrice: validation.calculatedEntryPrice,
     validation: {

@@ -118,7 +118,7 @@ export async function persistTeachingEvidence(args: {
     direction: teaching.direction,
     entryBufferTicks: teaching.entryBufferTicks,
     levelToleranceTicks: teaching.levelToleranceTicks ?? 4,
-    qualifyingLevelId: teaching.qualifyingLevelId ?? teaching.validation.levelInteractions[0]?.levelId ?? null,
+    qualifyingLevelId: teaching.qualifyingLevels?.[0]?.levelId ?? teaching.qualifyingLevelId ?? teaching.validation.levelInteractions[0]?.levelId ?? null,
     qualifyingLevelValue: teaching.validation.levelInteractions[0]?.levelPrice != null ? String(teaching.validation.levelInteractions[0].levelPrice) : null,
     qualifyingLevelRangeLow: teaching.validation.levelInteractions[0]?.levelRangeLow != null ? String(teaching.validation.levelInteractions[0].levelRangeLow) : null,
     qualifyingLevelRangeHigh: teaching.validation.levelInteractions[0]?.levelRangeHigh != null ? String(teaching.validation.levelInteractions[0].levelRangeHigh) : null,
@@ -126,19 +126,21 @@ export async function persistTeachingEvidence(args: {
     consolidationMetadata: {
       levelCandleOpenTime: teaching.levelCandleOpenTime ?? teaching.patienceCandleOpenTime,
       patienceCandleOpenTime: teaching.patienceCandleOpenTime,
-      candleCount: teaching.levelCandleOpenTime && teaching.levelCandleOpenTime !== teaching.patienceCandleOpenTime
-        ? Math.max(0, Math.round((Date.parse(teaching.patienceCandleOpenTime) - Date.parse(teaching.levelCandleOpenTime)) / (5 * 60_000)) + 1)
-        : 1,
+      elapsedMinutes: teaching.levelCandleOpenTime
+        ? Math.round((Date.parse(teaching.patienceCandleOpenTime) - Date.parse(teaching.levelCandleOpenTime)) / 60_000)
+        : 0,
+      candlesStrictlyBetween: teaching.levelCandleOpenTime && teaching.levelCandleOpenTime !== teaching.patienceCandleOpenTime
+        ? Math.max(0, Math.round((Date.parse(teaching.patienceCandleOpenTime) - Date.parse(teaching.levelCandleOpenTime)) / (5 * 60_000)) - 1)
+        : 0,
       maxCandles: 6,
       maxDurationMinutes: 30,
     },
     indicatorSourceTimestamp: teaching.levelCandleOpenTime ?? teaching.patienceCandleOpenTime,
     calculatedEntryPrice: Number.isFinite(teaching.calculatedEntryPrice) ? String(teaching.calculatedEntryPrice) : null,
     setupClassification: teaching.setupType,
-    qualifyingPullbackLevels: teaching.pullbackLevels,
-    qualifyingLevelType: teaching.pullbackLevels.map((level) => args.snapshot.annotations.find((annotation) =>
-      annotation.available && annotation.price !== null && Math.abs(annotation.price - level) < 0.26
-    )?.label).filter((label): label is string => Boolean(label)).join(", ") || null,
+    qualifyingLevels: teaching.qualifyingLevels ?? [],
+    qualifyingPullbackLevels: teaching.qualifyingLevels ?? teaching.pullbackLevels,
+    qualifyingLevelType: teaching.qualifyingLevels?.map((level) => level.levelType).join(", ") || null,
     confidence: teaching.confidence,
     reviewerExplanation: teaching.explanation,
     machineDecision: args.snapshot.machineEvidence.audit.decision,
@@ -386,7 +388,7 @@ async function requireCurrentPassedValidation(proposal: AdvisoryRuleProposal, ca
   const [run] = await db.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
   const metrics = (run?.afterMetrics ?? {}) as { performanceMetricsAvailable?: boolean };
   if (!run || run.status !== "passed"
-    || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+    || run.validatorVersion !== PROPOSAL_VALIDATOR_VERSION
     || metrics.performanceMetricsAvailable !== true
     || !run.candidateFormulaHash
     || (candidateFormulaHash !== undefined && run.candidateFormulaHash !== candidateFormulaHash)
@@ -439,6 +441,7 @@ async function runValidation(runId: string, proposalId: string, workerId: string
       calendarFingerprint: result.calendarFingerprint,
       parentFormulaHash: result.parentFormulaHash,
       candidateFormulaHash: result.candidateFormulaHash,
+      validatorVersion: PROPOSAL_VALIDATOR_VERSION,
       validationConfigFingerprint: hashJson({ validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", strategyKey: proposal.strategyKey }),
       holdoutCompleted: result.holdoutCompleted ? 1 : 0,
       heartbeatAt: new Date(),
@@ -504,7 +507,7 @@ export async function requestValidation(args: {
     eq(proposalValidationRunsTable.proposalId, args.id),
     eq(proposalValidationRunsTable.requestFingerprint, fingerprint),
   ));
-  if (cached && cached.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)) return cached;
+  if (cached && cached.validatorVersion === PROPOSAL_VALIDATOR_VERSION) return cached;
   if (!["draft", "validation_failed", "clarification_requested"].includes(proposal.status)) {
     throw new GovernanceError(409, `Cannot validate a proposal in ${proposal.status} state.`);
   }
@@ -517,6 +520,7 @@ export async function requestValidation(args: {
     sourceFingerprint: "pending",
     evidenceIds: evidence.map((item) => item.id),
     requestedBy: args.actor.id,
+    validatorVersion: PROPOSAL_VALIDATOR_VERSION,
   }).returning();
   await db.update(advisoryRuleProposalsTable).set({ status: "validation_pending", validationRunId: run.id, updatedAt: new Date() })
     .where(and(eq(advisoryRuleProposalsTable.id, args.id), eq(advisoryRuleProposalsTable.status, proposal.status)));
@@ -558,7 +562,7 @@ export async function publishCandidate(id: string, actor: GovernanceActor, idemp
     if (!proposal.strategyKey || !isStrategyId(proposal.strategyKey) || !proposal.validationRunId) throw new GovernanceError(409, "A canonical strategy and completed validation are required.");
     const [run] = await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
     if (!run || run.status !== "passed"
-      || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+      || run.validatorVersion !== PROPOSAL_VALIDATOR_VERSION
       || (run.afterMetrics as { performanceMetricsAvailable?: boolean } | null)?.performanceMetricsAvailable !== true
       || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.calendarFingerprint) {
       throw new GovernanceError(409, "Revalidation required.");
@@ -598,7 +602,7 @@ export async function activateCandidate(id: string, actor: GovernanceActor, idem
     if (!version || version.status !== "candidate") throw new GovernanceError(409, "Candidate strategy version is unavailable.");
     const [run] = proposal.validationRunId ? await tx.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId)) : [];
     if (!run || run.status !== "passed"
-      || !run.validationConfigFingerprint?.includes(PROPOSAL_VALIDATOR_VERSION)
+      || run.validatorVersion !== PROPOSAL_VALIDATOR_VERSION
       || (run.afterMetrics as { performanceMetricsAvailable?: boolean } | null)?.performanceMetricsAvailable !== true
       || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.candidateFormulaHash
       || run.candidateFormulaHash !== version.formulaHash) throw new GovernanceError(409, "Revalidation required.");

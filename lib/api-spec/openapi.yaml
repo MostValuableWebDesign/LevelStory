@@ -3360,10 +3360,21 @@ components:
               reason: { type: string }
             required: [levelName, levelPrice, candleHigh, candleLow, distanceTicks, distancePoints, allowedToleranceTicks, allowedTolerancePoints, machineVisible, passed, reason]
       required: [valid, messages, checkedAt, levelInteractions]
+    VisualValidationQualifyingLevel:
+      type: object
+      properties:
+        levelId: { type: string, maxLength: 120 }
+        levelType: { type: string, enum: [dynamic_indicator, fixed_level, level_range] }
+        valueAtInteraction: { type: number }
+        sourceTimestamp: { type: string, format: date-time }
+        rangeLow: { type: ["number", "null"] }
+        rangeHigh: { type: ["number", "null"] }
+      required: [levelId, levelType, valueAtInteraction, sourceTimestamp, rangeLow, rangeHigh]
     VisualValidationTeachingExample:
       type: object
       properties:
         teachingId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        machineTradeId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
         direction: { type: string, enum: [long, short] }
         levelCandleOpenTime: { type: string, format: date-time, description: Qualifying level-interaction candle L. }
@@ -3377,6 +3388,11 @@ components:
         qualifyingLevelId: { type: string, maxLength: 120, description: Stable annotation ID for the qualifying level. }
         qualifyingLevelRangeLow: { type: ["number", "null"] }
         qualifyingLevelRangeHigh: { type: ["number", "null"] }
+        qualifyingLevels:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/VisualValidationQualifyingLevel" }
         pullbackLevels:
           type: array
           minItems: 1
@@ -3612,6 +3628,7 @@ components:
           type: object
           properties:
             judgment: { $ref: "#/components/schemas/VisualValidationTeachingJudgment" }
+            machineTradeId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
             direction: { type: string, enum: [long, short] }
             levelCandleOpenTime: { type: string, format: date-time }
             levelCandleCloseTime: { type: string, format: date-time }
@@ -3624,6 +3641,11 @@ components:
             qualifyingLevelId: { type: string, maxLength: 120 }
             qualifyingLevelRangeLow: { type: ["number", "null"] }
             qualifyingLevelRangeHigh: { type: ["number", "null"] }
+            qualifyingLevels:
+              type: array
+              minItems: 1
+              maxItems: 20
+              items: { $ref: "#/components/schemas/VisualValidationQualifyingLevel" }
             pullbackLevels:
               type: array
               minItems: 1
@@ -3737,6 +3759,14 @@ components:
         calculatedEntryPrice: { type: ["string", "null"] }
         setupClassification: { type: string }
         qualifyingLevelType: { type: ["string", "null"] }
+        levelCandleTimestamp: { type: ["string", "null"], format: date-time }
+        qualifyingLevelId: { type: ["string", "null"] }
+        qualifyingLevelValue: { type: ["string", "null"] }
+        qualifyingLevelRangeLow: { type: ["string", "null"] }
+        qualifyingLevelRangeHigh: { type: ["string", "null"] }
+        qualifyingLevelDistanceTicks: { type: ["number", "null"] }
+        consolidationMetadata: { type: ["object", "null"], additionalProperties: true }
+        indicatorSourceTimestamp: { type: ["string", "null"], format: date-time }
         qualifyingPullbackLevels: { type: array, items: { type: number } }
         confidence: { type: string }
         reviewerExplanation: { type: string }

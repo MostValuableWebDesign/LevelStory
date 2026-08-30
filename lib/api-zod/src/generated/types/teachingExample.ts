@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TeachingExampleCausalValidation } from './teachingExampleCausalValidation';
+import type { TeachingExampleConsolidationMetadata } from './teachingExampleConsolidationMetadata';
 import type { TeachingExampleEvidenceSnapshot } from './teachingExampleEvidenceSnapshot';
 import type { TeachingExampleJudgment } from './teachingExampleJudgment';
 import type { TeachingExampleOutcomeSnapshot } from './teachingExampleOutcomeSnapshot';
@@ -33,6 +34,22 @@ export interface TeachingExample {
   setupClassification: string;
   /** @nullable */
   qualifyingLevelType: string | null;
+  /** @nullable */
+  levelCandleTimestamp?: Date | null;
+  /** @nullable */
+  qualifyingLevelId?: string | null;
+  /** @nullable */
+  qualifyingLevelValue?: string | null;
+  /** @nullable */
+  qualifyingLevelRangeLow?: string | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: string | null;
+  /** @nullable */
+  qualifyingLevelDistanceTicks?: number | null;
+  /** @nullable */
+  consolidationMetadata?: TeachingExampleConsolidationMetadata;
+  /** @nullable */
+  indicatorSourceTimestamp?: Date | null;
   qualifyingPullbackLevels: number[];
   confidence: string;
   reviewerExplanation: string;

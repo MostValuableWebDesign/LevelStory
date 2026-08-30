@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationQualifyingLevel } from './visualValidationQualifyingLevel';
 import type { VisualValidationTeachingConfidence } from './visualValidationTeachingConfidence';
 import type { VisualValidationTeachingExampleDirection } from './visualValidationTeachingExampleDirection';
 import type { VisualValidationTeachingExampleEntryBufferTicks } from './visualValidationTeachingExampleEntryBufferTicks';
@@ -16,6 +17,8 @@ import type { VisualValidationTeachingValidation } from './visualValidationTeach
 export interface VisualValidationTeachingExample {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   teachingId: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  machineTradeId?: string;
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationTeachingExampleDirection;
   /** Qualifying level-interaction candle L. */
@@ -42,6 +45,11 @@ export interface VisualValidationTeachingExample {
   qualifyingLevelRangeLow?: number | null;
   /** @nullable */
   qualifyingLevelRangeHigh?: number | null;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  qualifyingLevels?: VisualValidationQualifyingLevel[];
   /**
      * @minItems 1
      * @maxItems 20

@@ -2994,6 +2994,27 @@ export interface VisualValidationTeachingValidation {
   levelInteractions: VisualValidationTeachingValidationLevelInteractionsItem[];
 }
 
+export type VisualValidationQualifyingLevelLevelType = typeof VisualValidationQualifyingLevelLevelType[keyof typeof VisualValidationQualifyingLevelLevelType];
+
+
+export const VisualValidationQualifyingLevelLevelType = {
+  dynamic_indicator: 'dynamic_indicator',
+  fixed_level: 'fixed_level',
+  level_range: 'level_range',
+} as const;
+
+export interface VisualValidationQualifyingLevel {
+  /** @maxLength 120 */
+  levelId: string;
+  levelType: VisualValidationQualifyingLevelLevelType;
+  valueAtInteraction: number;
+  sourceTimestamp: string;
+  /** @nullable */
+  rangeLow: number | null;
+  /** @nullable */
+  rangeHigh: number | null;
+}
+
 export type VisualValidationTeachingExampleDirection = typeof VisualValidationTeachingExampleDirection[keyof typeof VisualValidationTeachingExampleDirection];
 
 
@@ -3015,6 +3036,8 @@ export type VisualValidationTeachingExampleMachineEvidenceSnapshot = { [key: str
 export interface VisualValidationTeachingExample {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   teachingId: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  machineTradeId?: string;
   judgment: VisualValidationTeachingJudgment;
   direction: VisualValidationTeachingExampleDirection;
   /** Qualifying level-interaction candle L. */
@@ -3041,6 +3064,11 @@ export interface VisualValidationTeachingExample {
   qualifyingLevelRangeLow?: number | null;
   /** @nullable */
   qualifyingLevelRangeHigh?: number | null;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  qualifyingLevels?: VisualValidationQualifyingLevel[];
   /**
      * @minItems 1
      * @maxItems 20
@@ -3421,6 +3449,8 @@ export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
 
 export type VisualValidationReviewRequestTeaching = {
   judgment: VisualValidationTeachingJudgment;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  machineTradeId?: string;
   direction: VisualValidationReviewRequestTeachingDirection;
   levelCandleOpenTime: string;
   levelCandleCloseTime: string;
@@ -3441,6 +3471,11 @@ export type VisualValidationReviewRequestTeaching = {
   qualifyingLevelRangeLow?: number | null;
   /** @nullable */
   qualifyingLevelRangeHigh?: number | null;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  qualifyingLevels?: VisualValidationQualifyingLevel[];
   /**
      * @minItems 1
      * @maxItems 20
@@ -3574,6 +3609,11 @@ export const TeachingExampleJudgment = {
   false_positive_trade: 'false_positive_trade',
 } as const;
 
+/**
+ * @nullable
+ */
+export type TeachingExampleConsolidationMetadata = { [key: string]: unknown } | null;
+
 export type TeachingExampleEvidenceSnapshot = { [key: string]: unknown };
 
 export type TeachingExampleCausalValidation = { [key: string]: unknown };
@@ -3605,6 +3645,22 @@ export interface TeachingExample {
   setupClassification: string;
   /** @nullable */
   qualifyingLevelType: string | null;
+  /** @nullable */
+  levelCandleTimestamp?: string | null;
+  /** @nullable */
+  qualifyingLevelId?: string | null;
+  /** @nullable */
+  qualifyingLevelValue?: string | null;
+  /** @nullable */
+  qualifyingLevelRangeLow?: string | null;
+  /** @nullable */
+  qualifyingLevelRangeHigh?: string | null;
+  /** @nullable */
+  qualifyingLevelDistanceTicks?: number | null;
+  /** @nullable */
+  consolidationMetadata?: TeachingExampleConsolidationMetadata;
+  /** @nullable */
+  indicatorSourceTimestamp?: string | null;
   qualifyingPullbackLevels: number[];
   confidence: string;
   reviewerExplanation: string;

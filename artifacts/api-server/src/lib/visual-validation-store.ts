@@ -12,6 +12,7 @@ import {
   buildProposedRuleAnalysis,
   createVisualValidationTeachingExample,
 } from "./visual-validation.js";
+import { canonicalStrategyId } from "./strategy/taxonomy.js";
 
 type StoredVisualValidationSet = {
   set: VisualValidationSet;
@@ -113,8 +114,17 @@ export function recordVisualValidationReview(
     const machineTrade = snapshot.machineEvidence.trade;
     if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
     if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
-    if (teaching.direction !== machineTrade.direction || teaching.entryCandleOpenTime !== machineTrade.entryTime) {
-      throw new Error("False-positive teaching must match the machine trade direction and entry candle.");
+    const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? machineTrade.entryTime;
+    const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? null;
+    if (
+      teaching.machineTradeId && teaching.machineTradeId !== machineTrade.id
+      || teaching.direction !== machineTrade.direction
+      || teaching.entryCandleOpenTime !== expectedEntryOpen
+      || (expectedEntryClose !== null && teaching.entryCandleCloseTime !== expectedEntryClose)
+      || stored.set.snapshots.find((candidate) => candidate.snapshotId === snapshotId)?.contractSymbol !== machineTrade.contractSymbol
+      || canonicalStrategyId(teaching.setupType) !== canonicalStrategyId(machineTrade.setupType)
+    ) {
+      throw new Error("False-positive teaching must match the exact machine trade identity, contract, strategy, direction, and entry interval.");
     }
     if (Math.abs(teaching.calculatedEntryPrice - machineTrade.entryPrice) > 0.01) {
       throw new Error("False-positive teaching entry price must match the machine trade.");
