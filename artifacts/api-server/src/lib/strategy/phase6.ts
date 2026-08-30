@@ -12,7 +12,8 @@ export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
   | "CONSOLIDATION_BREAKOUT_CONTINUATION"
   | "PATIENCE_CANDLE_CONTINUATION"
-  | "EQUIVALENT_CANDLE_REVERSAL";
+  | "EQUIVALENT_CANDLE_REVERSAL"
+  | "PEAK_RETRACEMENT_REVERSAL";
 
 /** Accepted only at legacy input boundaries; new machine output never emits these IDs. */
 export type LegacySetupType = "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | "BONUS_REVERSAL";
@@ -107,11 +108,13 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluateStrongBreakoutAfterConsolidation(context),
     evaluatePatienceCandleContinuation(context),
     evaluateEquivalentCandleReversal(context),
+    evaluatePeakRetracementReversal(context),
   ];
   const attributionOrder: SetupType[] = [
     "ORB_PULLBACK_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",
+    "PEAK_RETRACEMENT_REVERSAL",
     "PATIENCE_CANDLE_CONTINUATION",
   ];
   const qualified = attributionOrder
@@ -140,7 +143,6 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.breakout.direction;
-  const confirmedTrend = hasConfirmedTrend(context, direction);
   const genuinePullback = hasGenuinePullback(context.pullback);
   const fibonacciInteraction = hasFibonacciPullbackInteraction(context);
   const levelInteraction = genuinePullback && (hasQualifyingPullback(context.pullback) || fibonacciInteraction);
@@ -148,11 +150,9 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
     rule("genuinePullback", "Genuine countertrend pullback structure", genuinePullback, genuinePullback ? "A causal post-breakout impulse and countertrend retracement are recorded." : "A Fibonacci-distance candle alone is not a pullback; a causal countertrend retracement is required."),
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
-    rule("breakoutAgreesWithTrend", "Breakout agrees with confirmed 15-minute trend", confirmedTrend, confirmedTrend ? "Confirmed causal 15-minute trend agrees with the breakout." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
     rule("levelContext", "Pullback L candle interacted with a qualifying level", levelInteraction, fibonacciInteraction ? "The structurally detected pullback L candle interacted with a causal Fibonacci retracement." : "The structurally detected pullback L candle must interact with a governed level."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
-    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
   return buildEvaluation("ORB_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
 }
@@ -166,7 +166,6 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
     rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
-    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk approved." : "Risk blocked."),
   ];
   return buildEvaluation("PATIENCE_CANDLE_CONTINUATION", direction, rules, false, context.patience.state);
 }
@@ -191,7 +190,6 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
-    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
   return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
 }
@@ -237,6 +235,22 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
 }
 
 export const evaluateBonusReversal = evaluateEquivalentCandleReversal;
+
+export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEvaluation {
+  const patience = context.reversalPatience ?? context.patience;
+  const direction = directionFromTrend(context.trend.direction);
+  const retracement = context.fibonacci.retracementPercent;
+  const deepRetracement = retracement !== null && retracement > 50;
+  const rules: SetupRuleEvidence[] = [
+    rule("peakRetracement", "Greater-than-50% causal impulse retracement", deepRetracement, deepRetracement
+      ? `Causal retracement is ${retracement}%.`
+      : "A causal intraday impulse retracement greater than 50% is required."),
+    rule("reversalDirection", "Reversal direction established", direction !== null, direction ? `Reversal direction is ${direction}.` : "A reversal direction is not established."),
+    rule("validPatienceCandle", "Valid reversal patience candle formed", patience.patienceCandle !== null && patience.direction === direction && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
+    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.detail),
+  ];
+  return buildEvaluation("PEAK_RETRACEMENT_REVERSAL", direction, rules, false, patience.state);
+}
 
 export function detectReversalEvidence(
   context: Phase6Context,

@@ -19,6 +19,7 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
+import { targetPriceForDollars } from "./strategy/phase7.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
@@ -169,12 +170,18 @@ export type BacktestTrade = {
   fees: number;
   slippage: number;
   netPnl: number;
-  outcome: "target" | "strategy stop" | "catastrophe stop" | "session close" | "manual";
+  outcome: "target" | "strategy stop" | "catastrophe stop" | "session close" | "manual" | "open";
   ambiguityLabel: string | null;
   source: "tick" | "one-minute" | "ohlc";
   segmentation: BacktestSegmentation;
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
   fillLabel?: string | null;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: "A" | "A+" | "A++";
+  patienceCandle?: Record<string, number | boolean> | null;
+  entryCandle?: Record<string, number | boolean> | null;
   audit?: {
     entryTriggerPrice: number | null;
     modeledFillPrice: number | null;
@@ -432,7 +439,14 @@ export type HistoricalOccurrence = {
   formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
-  signalStatus?: "ENTRY_CONFIRMATION_FAILED" | "ENTRY_CONFIRMED";
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: "A" | "A+" | "A++";
+  entryPrice?: number | null;
+  patienceEntryPrice?: number | null;
+  confirmationEntryPrice?: number | null;
+  signalStatus?: "SIGNAL_CONFIRMED" | "ENTRY_CONFIRMATION_FAILED" | "ENTRY_CONFIRMED";
   eligibilityArmId?: string;
   eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded";
   eligibilityArmStateReason?: string;
@@ -1458,7 +1472,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: null,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
-        status: event.type,
+         status: "EDGE_FOUND",
         reasonCode: event.detail,
         evaluationCursor: cursor,
         formulaVersion: FIXED_FORMULA_VERSION,
@@ -1472,9 +1486,9 @@ export function buildHistoricalOccurrenceLedger(
       const linkedPullback = linkedEvents[0];
       const linkedEvidence = levelEvidence(linkedEvents);
       const expectedEntryCandleOpenTime = patience.expectedEntryCandleOpenTime ?? patience.patienceCandle.closeTime;
-      const outcomeStatus = patience.outcomeStatus ?? (
+      const outcomeStatus = (patience.outcomeStatus === "CONFIRMED" ? "SIGNAL_CONFIRMED" : patience.outcomeStatus) ?? (
         patience.status === "ENTRY_TRIGGERED"
-          ? "CONFIRMED"
+           ? "SIGNAL_CONFIRMED"
           : patience.status === "OPPOSITE_SIDE_INVALIDATION"
             ? "EXPIRED_WRONG_DIRECTION"
             : patience.status === "PATIENCE_CANDLE_EXPIRED"
@@ -1486,7 +1500,7 @@ export function buildHistoricalOccurrenceLedger(
       const observedImmediate = patience.triggerCandle?.isComplete
         ? patience.triggerCandle
         : patience.nextObservedCandle ?? null;
-      const confirmedEntry = outcomeStatus === "CONFIRMED"
+       const confirmedEntry = outcomeStatus === "SIGNAL_CONFIRMED"
         && patience.triggerCandle?.isComplete
         && patience.triggerCandle.openTime === expectedEntryCandleOpenTime
         ? patience.triggerCandle
@@ -1564,8 +1578,17 @@ export function buildHistoricalOccurrenceLedger(
         formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: linkedTrade !== undefined,
+         ...(linkedTrade ? {
+           primaryEdge: linkedTrade.primaryEdge ?? linkedTrade.setupType,
+           matchedEdges: linkedTrade.matchedEdges ?? [linkedTrade.setupType],
+           supportingConfluences: linkedTrade.supportingConfluences ?? [],
+           setupGrade: linkedTrade.setupGrade ?? "A",
+           entryPrice: linkedTrade.entryPrice,
+           patienceEntryPrice: linkedTrade.audit?.entryTriggerPrice ?? null,
+           confirmationEntryPrice: linkedTrade.entryPrice,
+         } : {}),
          ...(outcomeStatus !== "CANDIDATE"
-           ? { signalStatus: outcomeStatus === "CONFIRMED" ? "ENTRY_CONFIRMED" as const : "ENTRY_CONFIRMATION_FAILED" as const }
+            ? { signalStatus: outcomeStatus === "SIGNAL_CONFIRMED" ? "SIGNAL_CONFIRMED" as const : "ENTRY_CONFIRMATION_FAILED" as const }
            : {}),
          ...(patience.eligibilityArmId ? { eligibilityArmId: patience.eligibilityArmId } : {}),
          ...(patience.eligibilityArmState ? { eligibilityArmState: patience.eligibilityArmState } : {}),
@@ -1595,17 +1618,15 @@ export function buildHistoricalOccurrenceLedger(
         record.rejectionCategory ?? "absent",
         trade?.id ?? "none",
       ].join("|");
-      const decisionStatus: HistoricalOccurrence["status"] = trade
-        ? "MODELED_TRADE"
-        : record.rejectionCategory === "RISK_REJECTION"
-          ? "RISK_REJECTED"
-          : record.rejectionReason === "NO_MODELED_EXIT" || record.rejectionCategory === "POSITION_ACTIVE"
-            ? "RISK_APPROVED_EXECUTION_UNAVAILABLE"
-            : "ENTRY_CONFIRMED";
+       const decisionStatus: HistoricalOccurrence["status"] = trade
+         ? (trade.outcome === "open" ? "TRADE_TAKEN" : "TRADE_OUTCOME")
+         : record.patienceState === "ENTRY_TRIGGERED"
+           ? "SIGNAL_CONFIRMED"
+           : "PATIENCE_FOUND";
       upsert(identity, {
         occurrenceId: occurrenceId(identity),
         auditId: record.id,
-        kind: trade ? "trade" : "risk",
+         kind: trade ? "trade" : "patience",
         strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
         secondaryStrategyMatches: secondary,
         tradingDate: record.tradingDate,
@@ -1641,6 +1662,15 @@ export function buildHistoricalOccurrenceLedger(
         formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: trade !== undefined,
+         ...(trade ? {
+           primaryEdge: trade.primaryEdge ?? trade.setupType,
+           matchedEdges: trade.matchedEdges ?? [trade.setupType],
+           supportingConfluences: trade.supportingConfluences ?? [],
+           setupGrade: trade.setupGrade ?? "A",
+           entryPrice: trade.entryPrice,
+           patienceEntryPrice: trade.audit?.entryTriggerPrice ?? null,
+           confirmationEntryPrice: trade.entryPrice,
+         } : {}),
       });
     }
   }
@@ -1947,19 +1977,27 @@ export function runCausalBacktest(
       "CONSOLIDATION_BREAKOUT_CONTINUATION",
       "EQUIVALENT_CANDLE_REVERSAL",
       "PATIENCE_CANDLE_CONTINUATION",
+      "PEAK_RETRACEMENT_REVERSAL",
     ] as const)
       .map((setupType) => evaluations.find((evaluation) => evaluation.setupType === setupType && evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly))
       .find((evaluation) => evaluation !== undefined);
+    const matchedEdges = evaluations
+      .filter((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly)
+      .map((evaluation) => evaluation.setupType);
+    const supportingConfluences = selected
+      ? selected.rules.filter((item) => item.passed).map((item) => item.label)
+      : [];
+    const setupGrade: BacktestTrade["setupGrade"] = matchedEdges.length >= 3
+      ? "A++"
+      : matchedEdges.length === 2 ? "A+" : "A";
     const selectedAudit = selected
       ? evaluationAudits.find((record) => record.setupType === selected.setupType)
       : undefined;
-    if (!selected?.direction || snapshot.riskPlan.contracts <= 0 || !snapshot.riskPlan.allowed) {
+    if (!selected?.direction) {
       if (selectedAudit) setAuditRejection(
         selectedAudit,
-        selected ? "RISK_REJECTED" : "NO_QUALIFIED_SETUP",
-        selected
-          ? snapshot.riskPlan.reasons.join(" ") || "Risk plan rejected the qualified setup."
-          : "No non-alert qualified setup was available.",
+        "NO_QUALIFIED_SETUP",
+        "No non-alert qualified setup was available.",
       );
       continue;
     }
@@ -1969,8 +2007,8 @@ export function runCausalBacktest(
        continue;
      }
     if (executionMode === "ohlcv_modeled") {
-      const patienceSummary = snapshot.patience.patienceCandle;
-      const triggerSummary = snapshot.patience.triggerCandle;
+       const patienceSummary = snapshot.patience.patienceCandle;
+       const triggerSummary = snapshot.patience.triggerCandle;
        const contractCandleIndexByOpenTime = dataset.contractSchedule
          ? replayIndexes.candleIndexByContractOpenTime.get(currentContractSymbol)
          : candleIndexByOpenTime;
@@ -1987,11 +2025,23 @@ export function runCausalBacktest(
       }
       const entryKey = `${currentContractSymbol}|${selected.setupType}|${selected.direction}|${trigger.openTime}`;
       if (executedEntryKeys.has(entryKey)) continue;
-      const entryResolution = resolveEntryAndInvalidation({
+       const entry = snapshot.patience.entryBufferPrice
+         ?? snapshot.riskPlan.entry
+         ?? (selected.direction === "long"
+           ? patienceCandle.high + entryBufferTicks * specification.tickSize
+           : patienceCandle.low - entryBufferTicks * specification.tickSize);
+       const strategyStop = snapshot.riskPlan.strategyStop
+         ?? (selected.direction === "long"
+           ? patienceCandle.low - stopBufferTicks * specification.tickSize
+           : patienceCandle.high + stopBufferTicks * specification.tickSize);
+       const target = snapshot.riskPlan.target
+         ?? targetPriceForDollars(selected.direction, entry, request.targetDollars ?? 75, specification);
+       const contracts = Math.max(1, snapshot.riskPlan.contracts);
+       const entryResolution = resolveEntryAndInvalidation({
         direction: selected.direction,
         candle: trigger,
-        entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
-        invalidation: snapshot.riskPlan.strategyStop,
+         entry,
+         invalidation: strategyStop,
         sequenceKnown: false,
       });
       if (entryResolution.status === "ambiguous") {
@@ -2022,15 +2072,15 @@ export function runCausalBacktest(
             .at(-1);
       const modeled = simulateOhlcvExecution({
         direction: selected.direction,
-        entry: snapshot.riskPlan.entry ?? snapshot.patience.entryBufferPrice ?? trigger.close,
+         entry,
         patienceCandle,
         immediateTriggerCandle: trigger,
         subsequentCompletedCandles: postTrigger,
-        contracts: snapshot.riskPlan.contracts,
-        targetQuantity: snapshot.riskPlan.targetContracts,
-        target: snapshot.riskPlan.target,
-        strategyStop: snapshot.riskPlan.strategyStop,
-        catastropheStop: snapshot.riskPlan.catastropheStop,
+         contracts,
+         targetQuantity: 1,
+         target,
+         strategyStop,
+         catastropheStop: snapshot.riskPlan.catastropheStop,
         sessionCloseCandle,
         tickSize: specification.tickSize,
         tickValue: specification.dollarValuePerTick,
@@ -2046,17 +2096,17 @@ export function runCausalBacktest(
             }
           : { commission: request.ohlcvCommissionPerContract / 2 },
       });
-      if (modeled.modeledFill === null || modeled.exitPrice === null || !modeled.legs.length) {
-        if (selectedAudit) setAuditRejection(selectedAudit, "NO_MODELED_EXIT", "No modeled fill and exit pair satisfied the bounded execution policy.");
-        rejectedByPeriod[period] += 1;
+       if (modeled.modeledFill === null) {
+         if (selectedAudit) setAuditRejection(selectedAudit, "NO_MODELED_FILL", "The confirmed entry did not produce a finite OHLCV trigger fill.");
         continue;
       }
-      const exitCandle = modeled.audit.exitCandle ?? trigger;
+       const isOpen = modeled.exitPrice === null || !modeled.legs.length;
+       const exitCandle = modeled.audit.exitCandle ?? trigger;
       const outcome = modeled.exitReason === "target"
         ? "target"
         : modeled.exitReason === "stop"
           ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
-          : modeled.exitReason === "session_close" ? "session close" : "manual";
+           : modeled.exitReason === "session_close" ? "session close" : isOpen ? "open" : "manual";
        const ambiguityLabel = modeled.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
       const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, currentContractSymbol, currentContractMonth);
       trades.push({
@@ -2068,10 +2118,10 @@ export function runCausalBacktest(
         setupType: selected.setupType,
         direction: selected.direction,
          entryTime: new Date(trigger.closeTime).toISOString(),
-        exitTime: new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
+         exitTime: isOpen ? "" : new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
         entryPrice: modeled.modeledFill,
-        exitPrice: modeled.exitPrice,
-        contracts: snapshot.riskPlan.contracts,
+         exitPrice: modeled.exitPrice ?? modeled.modeledFill,
+         contracts,
         grossPnl: modeled.accounting.grossPnl,
         fees: modeled.accounting.fees,
         slippage: modeled.accounting.slippage,
@@ -2082,6 +2132,12 @@ export function runCausalBacktest(
         segmentation: segment,
         executionMode,
         fillLabel: MODELED_OHLCV_FILL_LABEL,
+         primaryEdge: selected.setupType,
+         matchedEdges,
+         supportingConfluences,
+         setupGrade,
+         patienceCandle: occurrenceCandle(patienceCandle),
+         entryCandle: occurrenceCandle(trigger),
         audit: {
           entryTriggerPrice: modeled.entryTrigger,
           modeledFillPrice: modeled.modeledFill,

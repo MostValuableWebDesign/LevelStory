@@ -10,6 +10,11 @@ export type HistoricalOccurrenceStatus = typeof HistoricalOccurrenceStatus[keyof
 
 
 export const HistoricalOccurrenceStatus = {
+  EDGE_FOUND: 'EDGE_FOUND',
+  PATIENCE_FOUND: 'PATIENCE_FOUND',
+  SIGNAL_CONFIRMED: 'SIGNAL_CONFIRMED',
+  TRADE_TAKEN: 'TRADE_TAKEN',
+  TRADE_OUTCOME: 'TRADE_OUTCOME',
   CANDIDATE: 'CANDIDATE',
   CONFIRMED: 'CONFIRMED',
   ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',

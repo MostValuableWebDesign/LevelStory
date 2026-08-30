@@ -8,9 +8,12 @@
 import type { BacktestSegmentation } from './backtestSegmentation';
 import type { BacktestTradeAudit } from './backtestTradeAudit';
 import type { BacktestTradeDirection } from './backtestTradeDirection';
+import type { BacktestTradeEntryCandle } from './backtestTradeEntryCandle';
 import type { BacktestTradeExecutionMode } from './backtestTradeExecutionMode';
 import type { BacktestTradeOutcome } from './backtestTradeOutcome';
+import type { BacktestTradePatienceCandle } from './backtestTradePatienceCandle';
 import type { BacktestTradePeriod } from './backtestTradePeriod';
+import type { BacktestTradeSetupGrade } from './backtestTradeSetupGrade';
 import type { BacktestTradeSource } from './backtestTradeSource';
 
 export interface BacktestTrade {
@@ -23,8 +26,8 @@ export interface BacktestTrade {
   direction: BacktestTradeDirection;
   /** Modeled or observed entry event time in UTC. */
   entryTime: Date;
-  /** Modeled or observed exit event time in UTC. */
-  exitTime: Date;
+  /** Modeled or observed exit event time in UTC; empty while the trade is open. */
+  exitTime: string;
   entryPrice: number;
   exitPrice: number;
   contracts: number;
@@ -40,5 +43,13 @@ export interface BacktestTrade {
   executionMode?: BacktestTradeExecutionMode;
   /** @nullable */
   fillLabel?: string | null;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: BacktestTradeSetupGrade;
+  /** @nullable */
+  patienceCandle?: BacktestTradePatienceCandle;
+  /** @nullable */
+  entryCandle?: BacktestTradeEntryCandle;
   audit?: BacktestTradeAudit;
 }

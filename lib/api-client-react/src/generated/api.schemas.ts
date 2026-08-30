@@ -824,6 +824,7 @@ export const SetupEvaluationSetupType = {
   CONSOLIDATION_BREAKOUT_CONTINUATION: 'CONSOLIDATION_BREAKOUT_CONTINUATION',
   PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
   EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+  PEAK_RETRACEMENT_REVERSAL: 'PEAK_RETRACEMENT_REVERSAL',
 } as const;
 
 /**
@@ -887,6 +888,7 @@ export const SetupAnalysisPrimarySetup = {
   CONSOLIDATION_BREAKOUT_CONTINUATION: 'CONSOLIDATION_BREAKOUT_CONTINUATION',
   PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
   EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+  PEAK_RETRACEMENT_REVERSAL: 'PEAK_RETRACEMENT_REVERSAL',
 } as const;
 
 export interface SetupAnalysis {
@@ -1306,6 +1308,7 @@ export const StrategyId = {
   CONSOLIDATION_BREAKOUT_CONTINUATION: 'CONSOLIDATION_BREAKOUT_CONTINUATION',
   PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
   EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+  PEAK_RETRACEMENT_REVERSAL: 'PEAK_RETRACEMENT_REVERSAL',
 } as const;
 
 export interface StrategyThresholdsInput {
@@ -2235,6 +2238,11 @@ export type HistoricalOccurrenceStatus = typeof HistoricalOccurrenceStatus[keyof
 
 
 export const HistoricalOccurrenceStatus = {
+  EDGE_FOUND: 'EDGE_FOUND',
+  PATIENCE_FOUND: 'PATIENCE_FOUND',
+  SIGNAL_CONFIRMED: 'SIGNAL_CONFIRMED',
+  TRADE_TAKEN: 'TRADE_TAKEN',
+  TRADE_OUTCOME: 'TRADE_OUTCOME',
   CANDIDATE: 'CANDIDATE',
   CONFIRMED: 'CONFIRMED',
   ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',
@@ -2256,6 +2264,7 @@ export type HistoricalOccurrenceSignalStatus = typeof HistoricalOccurrenceSignal
 
 
 export const HistoricalOccurrenceSignalStatus = {
+  SIGNAL_CONFIRMED: 'SIGNAL_CONFIRMED',
   ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',
   ENTRY_CONFIRMED: 'ENTRY_CONFIRMED',
 } as const;
@@ -2271,6 +2280,15 @@ export const HistoricalOccurrenceEligibilityArmState = {
 } as const;
 
 export type HistoricalOccurrenceEligibilityProvenance = { [key: string]: unknown };
+
+export type HistoricalOccurrenceSetupGrade = typeof HistoricalOccurrenceSetupGrade[keyof typeof HistoricalOccurrenceSetupGrade];
+
+
+export const HistoricalOccurrenceSetupGrade = {
+  A: 'A',
+  'A+': 'A+',
+  'A++': 'A++',
+} as const;
 
 export interface HistoricalOccurrence {
   occurrenceId: string;
@@ -2333,6 +2351,16 @@ export interface HistoricalOccurrence {
   formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: HistoricalOccurrenceSetupGrade;
+  /** @nullable */
+  entryPrice?: number | null;
+  /** @nullable */
+  patienceEntryPrice?: number | null;
+  /** @nullable */
+  confirmationEntryPrice?: number | null;
 }
 
 export type BacktestAuditPageFilters = { [key: string]: unknown };
@@ -2584,6 +2612,7 @@ export const BacktestTradeOutcome = {
   catastrophe_stop: 'catastrophe stop',
   session_close: 'session close',
   manual: 'manual',
+  open: 'open',
 } as const;
 
 export type BacktestTradeSource = typeof BacktestTradeSource[keyof typeof BacktestTradeSource];
@@ -2602,6 +2631,25 @@ export const BacktestTradeExecutionMode = {
   quote_based_shadow: 'quote_based_shadow',
   ohlcv_modeled: 'ohlcv_modeled',
 } as const;
+
+export type BacktestTradeSetupGrade = typeof BacktestTradeSetupGrade[keyof typeof BacktestTradeSetupGrade];
+
+
+export const BacktestTradeSetupGrade = {
+  A: 'A',
+  'A+': 'A+',
+  'A++': 'A++',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BacktestTradePatienceCandle = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type BacktestTradeEntryCandle = { [key: string]: unknown } | null;
 
 /**
  * @nullable
@@ -2702,7 +2750,7 @@ export interface BacktestTrade {
   direction: BacktestTradeDirection;
   /** Modeled or observed entry event time in UTC. */
   entryTime: string;
-  /** Modeled or observed exit event time in UTC. */
+  /** Modeled or observed exit event time in UTC; empty while the trade is open. */
   exitTime: string;
   entryPrice: number;
   exitPrice: number;
@@ -2719,6 +2767,14 @@ export interface BacktestTrade {
   executionMode?: BacktestTradeExecutionMode;
   /** @nullable */
   fillLabel?: string | null;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: BacktestTradeSetupGrade;
+  /** @nullable */
+  patienceCandle?: BacktestTradePatienceCandle;
+  /** @nullable */
+  entryCandle?: BacktestTradeEntryCandle;
   audit?: BacktestTradeAudit;
 }
 
@@ -3222,6 +3278,7 @@ export const VisualValidationTeachingSetup = {
   CONSOLIDATION_BREAKOUT_CONTINUATION: 'CONSOLIDATION_BREAKOUT_CONTINUATION',
   PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
   EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+  PEAK_RETRACEMENT_REVERSAL: 'PEAK_RETRACEMENT_REVERSAL',
 } as const;
 
 export type VisualValidationTeachingValidationLevelInteractionsItem = {

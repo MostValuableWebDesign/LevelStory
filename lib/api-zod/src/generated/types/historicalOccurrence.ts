@@ -19,6 +19,7 @@ import type { HistoricalOccurrenceLevelToleranceTicks } from './historicalOccurr
 import type { HistoricalOccurrenceLevelValues } from './historicalOccurrenceLevelValues';
 import type { HistoricalOccurrenceNextObservedCandle } from './historicalOccurrenceNextObservedCandle';
 import type { HistoricalOccurrencePatienceCandle } from './historicalOccurrencePatienceCandle';
+import type { HistoricalOccurrenceSetupGrade } from './historicalOccurrenceSetupGrade';
 import type { HistoricalOccurrenceSignalStatus } from './historicalOccurrenceSignalStatus';
 import type { HistoricalOccurrenceStatus } from './historicalOccurrenceStatus';
 
@@ -83,4 +84,14 @@ export interface HistoricalOccurrence {
   formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: HistoricalOccurrenceSetupGrade;
+  /** @nullable */
+  entryPrice?: number | null;
+  /** @nullable */
+  patienceEntryPrice?: number | null;
+  /** @nullable */
+  confirmationEntryPrice?: number | null;
 }

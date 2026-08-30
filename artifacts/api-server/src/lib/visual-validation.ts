@@ -1164,7 +1164,7 @@ function hasConfirmedPatienceOccurrence(occurrence: HistoricalOccurrence): boole
 
 function hasCanonicalTradeOccurrence(occurrence: HistoricalOccurrence, trade: BacktestTrade | null): boolean {
   return (occurrence.kind === "trade" || occurrence.kind === "patience")
-    && (occurrence.status === "QUALIFIED_TRADE" || occurrence.status === "MODELED_TRADE" || occurrence.status === "CONFIRMED")
+    && (occurrence.status === "TRADE_TAKEN" || occurrence.status === "TRADE_OUTCOME" || occurrence.status === "SIGNAL_CONFIRMED")
     && occurrence.canonicalTrade
     && trade !== null;
 }
@@ -1556,7 +1556,7 @@ function candidateOccurrenceTimestamp(candidate: ReviewCandidate): number {
   const value = candidate.category === "qualified_trade"
     ? occurrence?.entryTimestamp
     : candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
-      ? occurrence?.signalStatus === "ENTRY_CONFIRMED"
+      ? occurrence?.signalStatus === "SIGNAL_CONFIRMED"
         ? occurrence.entryTimestamp
         : occurrence?.patienceTimestamp
       : candidate.category === "pullback"
@@ -1890,7 +1890,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     const trade = occurrence.canonicalTrade ? matchingTrade(audit, report.trades) : null;
     if (category === "qualified_trade" && !hasCanonicalTradeOccurrence(occurrence, trade)) return [];
     const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
-    if (occurrence.kind === "patience" && occurrence.status === "CONFIRMED" && occurrence.canonicalTrade && trade) {
+    if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED" && occurrence.canonicalTrade && trade) {
       candidates.push({ audit, trade, category: "qualified_trade", occurrence });
     }
     return candidates;

@@ -5,6 +5,7 @@ export const STRATEGY_IDS = [
   "CONSOLIDATION_BREAKOUT_CONTINUATION",
   "PATIENCE_CANDLE_CONTINUATION",
   "EQUIVALENT_CANDLE_REVERSAL",
+  "PEAK_RETRACEMENT_REVERSAL",
 ] as const;
 
 export type StrategyId = typeof STRATEGY_IDS[number];
@@ -62,23 +63,30 @@ export const STRATEGY_DEFINITIONS: readonly StrategyDefinition[] = [
   {
     id: "CONSOLIDATION_BREAKOUT_CONTINUATION",
     name: "Strong Breakout After Consolidation",
-    description: "A bounded, stable price consolidation followed by a strong directional breakout, continuation, and risk approval.",
-    components: ["consolidation", "strong breakout", "patience candle", "risk"],
+    description: "A bounded, stable price consolidation followed by a strong directional breakout, continuation, and immediate confirmation.",
+    components: ["consolidation", "strong breakout", "patience candle", "immediate confirmation"],
     alertOnly: false,
   },
-  { id: "PATIENCE_CANDLE_CONTINUATION", name: "Patience Candle Continuation", description: "A valid patience candle followed by the immediate buffered continuation candle.", components: ["trend", "level interaction", "patience candle", "immediate entry candle", "risk"], alertOnly: false },
+  { id: "PATIENCE_CANDLE_CONTINUATION", name: "Patience Candle Continuation", description: "A valid patience candle followed by the immediate buffered continuation candle.", components: ["trend", "level interaction", "patience candle", "immediate entry candle"], alertOnly: false },
   {
     id: "ORB_PULLBACK_CONTINUATION",
     name: "ORB Pullback Continuation",
     description: "A trend-aligned ORB/NTZ break, qualifying pullback interaction, and buffered continuation.",
-    components: ["ORB/NTZ boundary", "breakout", "pullback", "Fibonacci", "volume", "patience candle", "risk"],
+    components: ["ORB/NTZ boundary", "breakout", "pullback", "Fibonacci", "volume", "patience candle"],
     alertOnly: false,
   },
   {
     id: "EQUIVALENT_CANDLE_REVERSAL",
     name: "Equivalent Candle Reversal",
     description: "Equivalent opposing candles at a major level followed by a directionally appropriate buffered continuation.",
-    components: ["equivalent candles", "major level", "reversal context", "patience candle", "risk"],
+    components: ["equivalent candles", "major level", "reversal context", "patience candle"],
+    alertOnly: false,
+  },
+  {
+    id: "PEAK_RETRACEMENT_REVERSAL",
+    name: "Peak Retracement Reversal",
+    description: "A greater-than-50% causal impulse retracement followed by a reversal patience candle and immediate confirmation.",
+    components: ["peak retracement", "reversal patience candle", "immediate entry candle"],
     alertOnly: false,
   },
 ] as const;
@@ -90,6 +98,7 @@ export const LEGACY_STRATEGY_IDS: Record<StrategyId, readonly string[]> = {
   CONSOLIDATION_BREAKOUT_CONTINUATION: ["STRONG_BREAKOUT_AFTER_CONSOLIDATION", "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"],
   PATIENCE_CANDLE_CONTINUATION: [],
   EQUIVALENT_CANDLE_REVERSAL: ["BONUS_REVERSAL"],
+  PEAK_RETRACEMENT_REVERSAL: [],
 } as const;
 
 export function strategyIdsIncludingLegacy(strategyKey: StrategyId): readonly string[] {

@@ -10,6 +10,7 @@ export type HistoricalOccurrenceSignalStatus = typeof HistoricalOccurrenceSignal
 
 
 export const HistoricalOccurrenceSignalStatus = {
+  SIGNAL_CONFIRMED: 'SIGNAL_CONFIRMED',
   ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',
   ENTRY_CONFIRMED: 'ENTRY_CONFIRMED',
 } as const;
