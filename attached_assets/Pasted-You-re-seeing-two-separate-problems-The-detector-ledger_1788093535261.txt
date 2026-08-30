@@ -1,0 +1,184 @@
+You’re seeing two separate problems:
+
+- The detector/ledger missed or failed to retain the earlier ORB → pullback → P → E sequence.
+- Visual Review selected the late 3:50 p.m. occurrence instead of prioritizing the 9:30 a.m.–1:00 p.m. trading window.
+
+Assuming the marked bearish P candle did not break the previous candle’s low and the immediate next candle broke 3–4 ticks below P, it should qualify.
+
+Use this prompt:
+
+```text
+Correct LevelStory’s historical occurrence scanning and morning-session prioritization without hardcoding this screenshot.
+
+Observed failure
+
+The chart contains an earlier bearish ORB Pullback Continuation sequence:
+
+1. Price breaks below the completed ORB/NTZ low.
+2. Price pulls back to the ORB/NTZ low within the governed 12-MES-tick proximity zone.
+3. A bearish patience candle P forms:
+   - Bearish direction is valid.
+   - P’s low does not surpass the immediately previous candle’s low.
+4. The immediate next completed candle E breaks below P by the configured 3–4 tick confirmation buffer.
+5. This should create an ORB_PULLBACK_CONTINUATION entry opportunity.
+
+Instead, Visual Review anchors a pullback around 3:50–3:55 p.m. and does not surface the earlier morning sequence.
+
+Do not hardcode this chart’s date, prices, candle indexes, or timestamps. Correct the general state machine and occurrence-selection behavior so it works across other dates, MES contracts, directions, and qualifying levels.
+
+1. Govern the primary entry window
+
+Add or enforce a governed default MES entry window:
+
+- Start: 9:30 a.m. America/New_York.
+- End: 1:00 p.m. America/New_York.
+- Five-minute completed candles only.
+- DST-safe.
+- Configurable and included in the formula hash.
+
+Behavior:
+
+- Strategy qualification and modeled entries default to 9:30 a.m.–1:00 p.m.
+- Continue scanning 1:00–4:00 p.m. for diagnostic/audit evidence.
+- After-1:00 occurrences must not replace or outrank a valid morning entry.
+- Clearly label after-1:00 occurrences as outside the primary entry window.
+- Do not silently delete later occurrences.
+
+2. Scan and retain every causal sequence
+
+Do not keep only the latest pullback, patience candle, or category anchor.
+
+For every session, retain each distinct sequence:
+
+- Breakout event.
+- Pullback interaction L.
+- Patience candidate P.
+- Expected immediate E.
+- P outcome.
+- Entry outcome.
+- Risk outcome.
+
+Occurrence identity must include:
+
+- Source fingerprint.
+- Formula hash and version.
+- Contract.
+- Trading date.
+- Direction.
+- Strategy.
+- Breakout timestamp.
+- L timestamp and level identifier.
+- P timestamp.
+- Expected E timestamp.
+
+Deduplicate repeated cumulative-replay observations of the same sequence, but never merge distinct morning and afternoon occurrences.
+
+3. Correct ORB Pullback Continuation sequencing
+
+The authoritative bearish sequence is:
+
+ORB/NTZ breakout → pullback L → bearish P → immediate bearish E → risk approval.
+
+Requirements:
+
+- ORB and NTZ are the same opening-range boundaries.
+- A breakout must occur before L.
+- L must interact with ORB/NTZ low or another governed level within 12 MES ticks.
+- L, P, and E may be different candles.
+- P must occur after the qualifying pullback interaction.
+- Bearish P rule:
+  - P low must not be below the immediately preceding completed candle’s low.
+- Bullish P rule:
+  - P high must not be above the immediately preceding completed candle’s high.
+- Whole-candle containment is not required.
+- Only the immediate next completed candle may be E.
+- Short E must reach P low minus the configured 3–4 tick buffer.
+- Long E must reach P high plus the configured buffer.
+- If immediate E fails, P expires.
+- Continue scanning for a new P2 and its own immediate E2.
+- A later candle cannot confirm an expired P1.
+- A qualifying ORB pullback does not require strong-breakout classification.
+- Preserve confirmed 15-minute directional trend requirements.
+
+4. Separate detection from sample selection
+
+The occurrence ledger must retain every occurrence. Visual Review may then choose which example to show first.
+
+Visual Review default ranking:
+
+1. Confirmed entry inside 9:30 a.m.–1:00 p.m.
+2. Confirmed patience P→E inside that window.
+3. ORB pullback sequence inside that window.
+4. Other confirmed morning evidence.
+5. Morning rejected/expired diagnostics.
+6. After-1:00 evidence.
+
+Within the same quality tier:
+
+- Prefer the earliest causal occurrence.
+- Never choose the final occurrence merely because it was processed last.
+- Provide next/previous occurrence navigation so all retained examples remain reviewable.
+- Display “Example 1 of N” with the occurrence time.
+
+A 3:50 p.m. pullback must not become the default example when a valid morning P→E entry exists.
+
+5. Make categories truthful
+
+If a confirmed morning ORB P→E occurrence exists, expose:
+
+- ORB Pullback Continuation.
+- Bearish or Bullish Patience Candle.
+- Qualified trade only if risk and modeled-entry requirements passed.
+
+A pullback without P→E remains contextual evidence, not an independent trading edge.
+
+A patience category must point to the actual P candle, and its related E marker must point to the immediate next candle.
+
+6. Add generalization tests
+
+Create deterministic tests using synthetic candles, not the screenshot’s prices.
+
+Test at least:
+
+- Morning bearish ORB break → ORB-low pullback → P → immediate E: qualifies.
+- Morning bullish mirror case: qualifies.
+- P with failed immediate E followed by a later break: does not qualify P1.
+- Failed P1 followed by valid P2→E2: only P2 qualifies.
+- Valid 10:30 occurrence plus valid 3:50 occurrence: morning occurrence is displayed first and both remain stored.
+- Afternoon-only occurrence: retained as diagnostic and labeled outside the primary entry window.
+- Pullback without patience confirmation: no entry.
+- P→E without a preceding breakout/pullback context: not ORB Pullback Continuation.
+- Same logic works on at least two trading dates and two quarterly MES contracts.
+- No timestamp, date, price, or candle-index fixture from this screenshot is embedded in production code.
+
+7. Add diagnostics
+
+For each session report:
+
+- Total breakout occurrences.
+- Total qualifying pullbacks.
+- P candidates.
+- Expired P candidates.
+- Confirmed P→E pairs.
+- Risk-approved entries.
+- Counts inside and outside the primary entry window.
+- Reason the default Visual Review occurrence was selected.
+
+Verification constraints
+
+I am limited on compute.
+
+Run only focused strategy, ledger, Visual Review, and typecheck tests. Reuse the ready historical index. Do not rebuild it, run a cold 20+2 backtest, or run a broad qualification batch.
+
+Report:
+
+1. Root cause of the late-day selection.
+2. Files changed.
+3. Final morning-window governance.
+4. Final ORB → L → P → E sequence.
+5. Evidence that all occurrences are retained.
+6. Deterministic test results.
+7. One small cached/indexed review-set result showing morning occurrences prioritized.
+8. Confirmation that nothing was hardcoded to this chart.
+9. Confirmation that no live or paper execution was added.
+```
