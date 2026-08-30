@@ -45,9 +45,10 @@ function major(price = 10): MajorLevel {
   };
 }
 
-function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED", trend: "bullish" | "bearish" = "bullish") {
+function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED", trend: "bullish" | "bearish" = "bullish", direction?: "long" | "short") {
   return {
     state,
+    direction,
     eligible: true,
     eligibilityReason: "pullback" as const,
     eligibilityTime: 1,
@@ -387,12 +388,33 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     trend: { direction: "bullish", structure: "higher highs / higher lows" },
     breakout: { ...baseContext().breakout, direction: "long" },
-     reversalPatience: patience("ENTRY_TRIGGERED", "bearish"),
+     reversalPatience: patience("ENTRY_TRIGGERED", "bearish", "short"),
   });
   const result = evaluateBonusReversal(context);
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.alertOnly, false);
   assert.equal(result.mandatoryPassed, true);
+});
+
+test("reversal patience must carry the independently confirmed reversal direction", () => {
+  const context = baseContext({
+    candles: [
+      candle(0, 9.8, 10.01, 9.79, 10),
+      candle(300_000, 10, 10.01, 9.79, 9.81),
+      candle(600_000, 10, 10.04, 9.96, 10.005),
+      candle(900_000, 10.005, 10.01, 9.8, 9.85),
+      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
+    ],
+    levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
+    fibonacci: { ...baseContext().fibonacci, classification: "deep" },
+    volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    reversalPatience: patience("ENTRY_TRIGGERED", "bullish", "long"),
+  });
+  const result = evaluateBonusReversal(context);
+  assert.equal(result.direction, "short");
+  assert.equal(result.rules.find((rule) => rule.key === "validPatienceCandle")?.passed, false);
+  assert.notEqual(result.decision, "SETUP QUALIFIED");
 });
 
 test("equivalent reversal owns a shared qualified sequence before generic patience", () => {

@@ -113,6 +113,9 @@ test("qualification funnel retains each occurrence and keeps each occurrence's e
   ]);
   assert.equal(funnel.candidateCount, 2);
   assert.equal(funnel.sessionCount, 1);
+  assert.ok(funnel.stages.every((stage) => stage.percentOfSessions >= 0 && stage.percentOfSessions <= 100));
+  assert.equal(funnel.stages[0]?.percentOfSessions, 100);
+  assert.equal(funnel.stages.find((stage) => stage.stage === "risk_approved")?.percentOfSessions, 100);
   const strongCandidate = funnel.candidates.find((candidate) => candidate.evidence.evaluatedCandleOpenTime === strong.evaluatedCandleOpenTime);
   assert.equal(strongCandidate?.reachedStage, "risk_approved");
   assert.equal(strongCandidate?.primaryRejectionStage, "modeled_entry");

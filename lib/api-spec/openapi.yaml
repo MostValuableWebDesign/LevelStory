@@ -3332,7 +3332,7 @@ components:
         stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
         count: { type: number }
         percentOfPreceding: { type: number }
-        percentOfSessions: { type: number }
+        percentOfSessions: { type: number, minimum: 0, maximum: 100, description: Percentage of distinct sessions that reached this stage; raw candidate count remains in count. }
       required: [stage, count, percentOfPreceding, percentOfSessions]
     QualificationCandidate:
       type: object

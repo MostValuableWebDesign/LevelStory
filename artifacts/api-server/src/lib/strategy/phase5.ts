@@ -68,6 +68,8 @@ export type PatienceOccurrence = {
 
 export type PatienceAnalysis = {
   state: PatienceState;
+  /** The direction this patience engine evaluated, independent of the established continuation trend. */
+  direction?: Direction;
   eligible: boolean;
   eligibilityReason: PatienceEligibilityReason | null;
   eligibilityTime: number | null;
@@ -126,17 +128,18 @@ export function patienceCandleEngine(
   const entryBufferTicks = options.entryBufferTicks ?? 4;
   const stopBufferTicks = options.stopBufferTicks ?? 1;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
+  const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, direction });
   validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
   const validContext = options.validContext ?? eligibility.length > 0;
-  if (!validContext) return waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks);
-  if (!eligibility.length) return waiting("WAITING_FOR_LEVEL", "Valid pullback/consolidation context exists; waiting for a qualifying level interaction.", trend, entryBufferTicks, stopBufferTicks);
-  if (trend === "neutral") return waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1));
+  if (!validContext) return withDirection(waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks));
+  if (!eligibility.length) return withDirection(waiting("WAITING_FOR_LEVEL", "Valid pullback/consolidation context exists; waiting for a qualifying level interaction.", trend, entryBufferTicks, stopBufferTicks));
+  if (trend === "neutral") return withDirection(waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
   const latestEligibility = eligibility.at(-1)!;
   const candidateIndexes = completed
     .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend);
-  const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, occurrences });
+  const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...withDirection(analysis), occurrences });
   const candidate = candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
     if (!next || !next.isComplete || next.openTime !== candle.closeTime) return false;
@@ -306,6 +309,7 @@ function evaluateTrigger(
   const gapOpposite = direction === "long" ? trigger.open <= oppositePrice : trigger.open >= oppositePrice;
   const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
+    direction,
     eligible: true,
     eligibilityReason: eligibility.reason,
     eligibilityTime: eligibility.time,

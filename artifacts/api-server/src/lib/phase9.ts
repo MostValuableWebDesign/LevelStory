@@ -1639,17 +1639,25 @@ function candidateDimensionValue(
 function funnelStageCounts(
   candidates: readonly QualificationCandidate[],
   sessionCount: number,
+  useCandidateSessionDenominator = false,
 ): QualificationFunnelStageCount[] {
+  const candidateSessionCount = new Set(candidates.map((candidate) => `${candidate.tradingDate}|${candidate.contractSymbol}`)).size;
+  const sessionDenominator = useCandidateSessionDenominator ? candidateSessionCount : sessionCount;
   return QUALIFICATION_FUNNEL_STAGES.map((stage, index) => {
     const count = candidates.filter((candidate) => stageRank(candidate.reachedStage) >= index).length;
     const preceding = index === 0
       ? candidates.length
       : candidates.filter((candidate) => stageRank(candidate.reachedStage) >= index - 1).length;
+    const reachedSessions = new Set(
+      candidates
+        .filter((candidate) => stageRank(candidate.reachedStage) >= index)
+        .map((candidate) => `${candidate.tradingDate}|${candidate.contractSymbol}`),
+    ).size;
     return {
       stage,
       count,
       percentOfPreceding: preceding === 0 ? 0 : Number(((count / preceding) * 100).toFixed(1)),
-      percentOfSessions: sessionCount === 0 ? 0 : Number(((count / sessionCount) * 100).toFixed(1)),
+      percentOfSessions: sessionDenominator === 0 ? 0 : Number(((reachedSessions / sessionDenominator) * 100).toFixed(1)),
     };
   });
 }
@@ -1753,7 +1761,7 @@ export function buildQualificationFunnel(
         dimension,
         value,
         candidateCount: matching.length,
-        stageCounts: funnelStageCounts(matching, sessionKeys.size),
+        stageCounts: funnelStageCounts(matching, sessionKeys.size, true),
       };
     });
   });

@@ -4,11 +4,24 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveBuildId() {
+  if (process.env.LEVELSTORY_BUILD_ID) return process.env.LEVELSTORY_BUILD_ID;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: path.resolve(artifactDir, "../.."),
+      encoding: "utf8",
+    }).trim();
+  } catch (error) {
+    throw new Error(`Unable to resolve the build ID: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
@@ -106,6 +119,9 @@ async function buildAll() {
       "electron",
     ],
     sourcemap: "linked",
+    define: {
+      "process.env.LEVELSTORY_BUILD_ID": JSON.stringify(resolveBuildId()),
+    },
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

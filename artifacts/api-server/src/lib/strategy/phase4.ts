@@ -599,15 +599,19 @@ export function detectPullbackStructure(
   let pullbackStart: number | null = null;
   let pullbackEnd: number | null = null;
   let retracementExtreme = direction === "long" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+  let previousCompleted: Candle = breakoutCandle;
 
   for (const candle of postBreakout) {
     if (direction === "long") {
       if (pullbackStart === null && candle.high > extreme) {
         extreme = candle.high;
         extremeTime = candle.openTime;
+        previousCompleted = candle;
         continue;
       }
-      if (pullbackStart === null && candle.low < extreme) pullbackStart = candle.openTime;
+      const countertrend = candle.low < previousCompleted.low
+        || (candle.close < previousCompleted.close && candle.high <= extreme);
+      if (pullbackStart === null && countertrend) pullbackStart = candle.openTime;
       if (pullbackStart !== null) {
         retracementExtreme = Math.min(retracementExtreme, candle.low);
         pullbackEnd = candle.closeTime;
@@ -616,14 +620,18 @@ export function detectPullbackStructure(
       if (pullbackStart === null && candle.low < extreme) {
         extreme = candle.low;
         extremeTime = candle.openTime;
+        previousCompleted = candle;
         continue;
       }
-      if (pullbackStart === null && candle.high > extreme) pullbackStart = candle.openTime;
+      const countertrend = candle.high > previousCompleted.high
+        || (candle.close > previousCompleted.close && candle.low >= extreme);
+      if (pullbackStart === null && countertrend) pullbackStart = candle.openTime;
       if (pullbackStart !== null) {
         retracementExtreme = Math.max(retracementExtreme, candle.high);
         pullbackEnd = candle.closeTime;
       }
     }
+    previousCompleted = candle;
   }
 
   if (pullbackStart === null || pullbackEnd === null) return emptyPullbackStructure();

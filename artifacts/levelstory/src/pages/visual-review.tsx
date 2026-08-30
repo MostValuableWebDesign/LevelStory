@@ -50,6 +50,8 @@ import {
 } from "@workspace/api-spec/constants";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
+
+const FRONTEND_BUILD_ID = import.meta.env.VITE_LEVELSTORY_BUILD_ID ?? "local-development";
 import { deriveTeachingCompatibilityFields, evaluateDynamicLevelInteraction, normalizeTeachingQualifyingLevels } from "@/lib/visual-review-teaching";
 import {
   CHART_HEIGHT,
@@ -576,7 +578,7 @@ export default function VisualReview() {
             <Panel><EmptyReview /></Panel>
           ) : (
             <>
-               {data.stale && <div className="mb-5 flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
+               {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="mb-5 flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
                <ReviewSetDiagnostics data={data} />
               {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
               {activeSnapshot ? (
@@ -650,7 +652,7 @@ function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["fu
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="detection-funnel">
       {data.stages.map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
         <div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{stage.stage.replaceAll("_", " ")}</div>
-        <div className="mt-1 flex items-baseline gap-2"><span className="display text-2xl font-bold">{stage.count}</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfPreceding}% of prior</span></div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="display text-2xl font-bold">{stage.count}</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfPreceding}% of prior candidates</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfSessions}% of sessions</span></div>
       </div>)}
     </div>
     {data.rejectionCounts.length > 0 && <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
@@ -764,13 +766,14 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
 
 function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
   const prefix = (value: string) => value.slice(0, 12);
+  const stale = data.stale || data.currentBuildId !== FRONTEND_BUILD_ID;
   return <div className="mb-5 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" data-testid="review-set-diagnostics">
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Build</div><div className="mono mt-1 break-all text-foreground" title={data.buildId}>{data.buildId}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula</div><div className="mono mt-1 text-foreground" title={data.formulaHash}>{data.formulaVersion} · {prefix(data.formulaHash)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 text-foreground" title={data.sourceFingerprint}>{prefix(data.sourceFingerprint)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Created</div><div className="mono mt-1 text-foreground">{formatReviewTime(data.createdAt)}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Review set</div><div className="mono mt-1 text-foreground" title={data.reviewSetId}>{prefix(data.reviewSetId)}…</div></div>
-    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Freshness</div><div className={`mt-1 font-bold ${data.stale ? "text-destructive" : "text-[hsl(var(--positive))]"}`}>{data.stale ? "stale" : "current"}</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Freshness</div><div className={`mt-1 font-bold ${stale ? "text-destructive" : "text-[hsl(var(--positive))]"}`}>{stale ? "stale" : "current"}</div><div className="mono mt-1 break-all text-muted-foreground" title={data.currentBuildId}>current {prefix(data.currentBuildId)}…</div></div>
   </div>;
 }
 

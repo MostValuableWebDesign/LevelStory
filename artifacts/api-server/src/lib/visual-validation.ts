@@ -1090,6 +1090,36 @@ function hasConfirmedSignal(record: BacktestAuditRecord): boolean {
   ].includes(record.patienceState);
 }
 
+function occurrenceCandleOpenTime(candle: HistoricalOccurrence["patienceCandle"] | HistoricalOccurrence["entryCandle"]): number | null {
+  const value = candle?.openTime;
+  return typeof value === "number" ? value : null;
+}
+
+function hasConfirmedPatienceOccurrence(occurrence: HistoricalOccurrence): boolean {
+  if (occurrence.kind !== "patience" || occurrence.status !== "CONFIRMED") return false;
+  const patienceTimestamp = Date.parse(occurrence.patienceTimestamp ?? "");
+  const expectedEntryTimestamp = Date.parse(occurrence.expectedEntryTimestamp ?? "");
+  const entryTimestamp = Date.parse(occurrence.entryTimestamp ?? "");
+  const patienceOpenTime = occurrenceCandleOpenTime(occurrence.patienceCandle);
+  const entryOpenTime = occurrenceCandleOpenTime(occurrence.entryCandle);
+  return Number.isFinite(patienceTimestamp)
+    && Number.isFinite(expectedEntryTimestamp)
+    && Number.isFinite(entryTimestamp)
+    && patienceOpenTime !== null
+    && entryOpenTime !== null
+    && entryTimestamp === expectedEntryTimestamp
+    && patienceTimestamp === patienceOpenTime
+    && entryTimestamp === entryOpenTime
+    && entryTimestamp === patienceTimestamp + 5 * 60_000;
+}
+
+function hasCanonicalTradeOccurrence(occurrence: HistoricalOccurrence, trade: BacktestTrade | null): boolean {
+  return occurrence.kind === "trade"
+    && occurrence.status === "QUALIFIED_TRADE"
+    && occurrence.canonicalTrade
+    && trade !== null;
+}
+
 function hasTrendAlignedPatience(record: BacktestAuditRecord): boolean {
   const trendAligned = record.direction === "long"
     ? /^bullish\s*:/i.test(record.trendEvidence)
@@ -1713,6 +1743,7 @@ export function buildHistoricalVisualValidationSetFromReport(
           : "qualified_trade";
     if (!category) return [];
     const trade = occurrence.canonicalTrade ? matchingTrade(audit, report.trades) : null;
+    if (category === "qualified_trade" && !hasCanonicalTradeOccurrence(occurrence, trade)) return [];
     return [{ audit, trade, category, occurrence }];
   }) ?? [];
   const uniqueLedgerCandidates = [...new Map(
@@ -1728,6 +1759,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     const trade = matchingTrade(audit, report.trades);
     return categoriesFor(audit, trade)
       .map((category) => ({ audit, trade, category, occurrence: undefined }))
+      .filter((candidate) => candidate.category !== "qualified_trade")
       .filter((candidate) => !ledgerCategoriesByAudit.has(`${candidate.audit.id}|${candidate.category}`));
   });
   const candidates = [
@@ -1737,7 +1769,15 @@ export function buildHistoricalVisualValidationSetFromReport(
   const visibleCandidates = candidates
       .filter((candidate) => mode === "trades_and_diagnostics"
         || candidate.trade !== null
-        || (mode === "confirmed_signals" && hasConfirmedSignal(candidate.audit)))
+        || (mode === "confirmed_signals" && (
+          candidate.occurrence
+            ? candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
+              ? hasConfirmedPatienceOccurrence(candidate.occurrence)
+              : candidate.category === "qualified_trade"
+                ? hasCanonicalTradeOccurrence(candidate.occurrence, candidate.trade)
+                : false
+            : hasConfirmedSignal(candidate.audit)
+        )))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
   const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime

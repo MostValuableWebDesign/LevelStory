@@ -1,4 +1,5 @@
 import path from 'path';
+import { execFileSync } from 'child_process';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -29,6 +30,23 @@ if (!basePath) {
 }
 
 const allowedHosts = resolveAllowedHosts(process.env);
+
+function resolveBuildId(): string {
+  if (process.env.LEVELSTORY_BUILD_ID) return process.env.LEVELSTORY_BUILD_ID;
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: path.resolve(import.meta.dirname, '..', '..'),
+      encoding: 'utf8',
+    }).trim();
+  } catch (error) {
+    if (process.argv.includes('build')) {
+      throw new Error(`Unable to resolve the build ID: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return 'local-development';
+  }
+}
+
+const buildId = resolveBuildId();
 const privateFileDeny = [
   '**/attached_assets/**',
   '**/*.csv',
@@ -95,6 +113,9 @@ export default defineConfig({
   // resolves them against the local artifact root instead of treating the
   // prefix as a filesystem route.
   base: "/",
+  define: {
+    'import.meta.env.VITE_LEVELSTORY_BUILD_ID': JSON.stringify(buildId),
+  },
   plugins: [
     react(),
     tailwindcss(),

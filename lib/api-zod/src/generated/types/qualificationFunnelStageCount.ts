@@ -11,5 +11,10 @@ export interface QualificationFunnelStageCount {
   stage: QualificationFunnelStage;
   count: number;
   percentOfPreceding: number;
+  /**
+     * Percentage of distinct sessions that reached this stage; raw candidate count remains in count.
+     * @minimum 0
+     * @maximum 100
+     */
   percentOfSessions: number;
 }

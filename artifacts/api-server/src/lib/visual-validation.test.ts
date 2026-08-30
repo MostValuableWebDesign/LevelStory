@@ -325,6 +325,30 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   assert.deepEqual(expiredSnapshot.tradeEvents, []);
   assert.equal(expiredSnapshot.annotations.find((annotation) => annotation.id === "entry-candle")?.available, false);
   assert.equal(expiredSnapshot.annotations.find((annotation) => annotation.id === "patience-candle")?.label, "Expired patience candidate");
+
+  const lateAudit = {
+    ...fixture.audit,
+    id: "late-audit",
+    decision: "EXPIRED" as const,
+    rejectionReason: "PATIENT",
+    patienceState: "PATIENCE_CANDLE_EXPIRED" as const,
+    triggerCandle: null,
+    triggerCandleOpenTime: null,
+    triggerCandleCloseTime: null,
+  };
+  const confirmedWithoutTrade = { ...confirmed, occurrenceId: "confirmed-late-audit", auditId: lateAudit.id, canonicalTrade: false };
+  const confirmedSet = buildHistoricalVisualValidationSetFromReport(
+    { ...request, reviewMode: "confirmed_signals" },
+    fixture.dataset,
+    {
+      ...report,
+      audit: [lateAudit],
+      trades: [],
+      occurrences: [confirmedWithoutTrade],
+    },
+  );
+  assert.ok(confirmedSet.snapshots.some((snapshot) => snapshot.occurrenceId === confirmedWithoutTrade.occurrenceId));
+  assert.equal(confirmedSet.snapshots.some((snapshot) => snapshot.category === "qualified_trade"), false);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {

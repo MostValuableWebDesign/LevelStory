@@ -100,6 +100,22 @@ test("pullback structure is causal and independent of qualifying levels", () => 
   assert.equal(continuationOnly.detected, false);
 });
 
+test("pullback structure requires direction-aware countertrend evidence after the impulse extreme", () => {
+  const bullishBreakout = candle(0, 100, 105, 99, 104.5, 120);
+  const bullishImpulse = candle(1, 104.5, 106, 104, 105.5, 100);
+  const bullishContinuation = candle(2, 105.5, 105.8, 104.2, 105.6, 100);
+  const bullishPullback = candle(2, 105.5, 105.8, 103.5, 104.2, 90);
+  assert.equal(detectPullbackStructure([bullishImpulse, bullishContinuation], bullishBreakout, "long").detected, false);
+  assert.equal(detectPullbackStructure([bullishImpulse, bullishPullback], bullishBreakout, "long").detected, true);
+
+  const bearishBreakout = candle(0, 100, 101, 95, 96, 120);
+  const bearishImpulse = candle(1, 96, 97, 94, 95, 100);
+  const bearishContinuation = candle(2, 95, 95.8, 94.2, 94.8, 100);
+  const bearishPullback = candle(2, 95, 98, 94.2, 97.5, 90);
+  assert.equal(detectPullbackStructure([bearishImpulse, bearishContinuation], bearishBreakout, "short").detected, false);
+  assert.equal(detectPullbackStructure([bearishImpulse, bearishPullback], bearishBreakout, "short").detected, true);
+});
+
 test("breakout requires a finalized NTZ and a completed close outside it", () => {
   const candles = breakoutFixture();
   const ntz = { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime };

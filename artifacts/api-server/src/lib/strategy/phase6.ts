@@ -450,7 +450,9 @@ function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
 }
 
 function patienceDirectionMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {
-  return direction === "long" ? patience.trend === "bullish" : direction === "short" ? patience.trend === "bearish" : false;
+  if (!direction) return false;
+  if (patience.direction) return patience.direction === direction;
+  return direction === "long" ? patience.trend === "bullish" : patience.trend === "bearish";
 }
 
 function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {
