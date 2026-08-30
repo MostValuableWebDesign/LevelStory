@@ -608,6 +608,7 @@ export type HistoricalReplayDiagnostics = {
   duplicateCandidatesPerSignal: number;
   duplicateModeledTradesPerCandidate: number;
   candidateRejectionReasons: Record<string, string>;
+  invalidCausalIdentityCount: number;
   orphanModeledTradesExcluded: number;
   candidateInvariantViolations: string[];
 };
@@ -1409,6 +1410,9 @@ export function historicalReplayDiagnostics(
       rejection.details.length
         ? [[rejection.signalOccurrenceId, rejection.details.join(" ")]]
         : [])),
+    invalidCausalIdentityCount: confirmedPatience.filter((occurrence) =>
+      (occurrence.identityInvariantViolations?.length ?? 0) > 0,
+    ).length,
     orphanModeledTradesExcluded: orphanModeledTrades.length,
     candidateInvariantViolations,
   };
@@ -2404,8 +2408,7 @@ export function projectHistoricalTradeCandidates(
     && occurrence.expectedEntryTimestamp !== null
     && occurrence.pOpenTimestamp !== null
     && occurrence.eOpenTimestamp !== null
-    && occurrence.entryObservationTimestamp !== null
-    && !(occurrence.identityInvariantViolations?.length),
+    && occurrence.entryObservationTimestamp !== null,
   );
   const candidates: HistoricalTradeCandidate[] = [];
   const rejected: RejectedCandidateSignal[] = [];
@@ -2425,9 +2428,7 @@ export function projectHistoricalTradeCandidates(
         details: [
           ...(edge.reason ? [edge.reason] : []),
           ...(!inWindow ? ["Entry confirmation is observed outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
-          ...(!identityValid
-            ? [`Confirmed P→E identity invariant failed: ${occurrence.identityInvariantViolations.join(", ")}.`]
-            : []),
+          ...(!identityValid ? occurrence.identityInvariantViolations : []),
         ],
       });
       continue;

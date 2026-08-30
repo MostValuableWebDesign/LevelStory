@@ -5,6 +5,7 @@ import {
   calculateBacktestMetrics,
   createCausalReplay,
   buildReplayIndexes,
+  historicalReplayDiagnostics,
   resolveEntryAndInvalidation,
   resolveIntrabarOutcome,
   buildHistoricalOccurrenceLedger,
@@ -13,6 +14,7 @@ import {
   type BacktestTrade,
   type BacktestAuditRecord,
   type CausalReplayDataset,
+  type HistoricalOccurrence,
 } from "./phase9.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
@@ -832,6 +834,7 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     specification: {} as any,
     executionMode: "ohlcv_modeled",
   });
+  assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
   assert.equal(result.authoritativeTrades.length, 1);
   assert.equal(result.authoritativeTrades[0]?.candidateId, result.candidates[0]?.candidateId);
@@ -870,6 +873,39 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     matchingSignalOccurrenceId: occurrence.occurrenceId,
     reason: "LEGACY_TRADE_CONFLICTS_WITH_CANDIDATE_ENTRY_DISPOSITION",
   }]);
+});
+
+test("invalid confirmed P to E identity is rejected diagnostically without a candidate or trade", () => {
+  const occurrence = {
+    ...confirmedCandidateOccurrence({
+      pOpen: "2026-08-25T15:00:00.000Z",
+      eOpen: "2026-08-25T15:05:00.000Z",
+      eClose: "2026-08-25T15:10:00.000Z",
+    }),
+    identityInvariantViolations: ["P_E_DURATION_MISMATCH", "CONFIRMATION_NOT_ON_IMMEDIATE_E"],
+  } as HistoricalOccurrence;
+  const result = projectHistoricalTradeCandidates(
+    [occurrence],
+    [],
+    {
+      dataset: candidateProjectionDataset(occurrence),
+      specification: {} as any,
+      executionMode: "ohlcv_modeled",
+    },
+  );
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.equal(result.rejected.length, 1);
+  assert.deepEqual(result.rejected[0]?.reasonCodes, ["INVALID_CAUSAL_IDENTITY"]);
+  assert.deepEqual(result.rejected[0]?.details, occurrence.identityInvariantViolations);
+
+  const diagnostics = historicalReplayDiagnostics([], [occurrence], [], [], result.rejected);
+  assert.equal(diagnostics.invalidCausalIdentityCount, 1);
+  assert.equal(diagnostics.confirmedSignalsWithoutCandidates, 1);
+  assert.equal(
+    diagnostics.candidateRejectionReasons[occurrence.occurrenceId],
+    occurrence.identityInvariantViolations.join(" "),
+  );
 });
 
 test("candidate window uses completed E observation time across EST and EDT cutoffs", () => {
