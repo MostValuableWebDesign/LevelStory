@@ -1021,7 +1021,7 @@ function categoryAnchorEvent(
 }
 
 const anchorLabels: Record<VisualValidationCategory, string> = {
-  qualified_trade: "Qualified trade found",
+  qualified_trade: "Confirmed edge / trade found",
   rejected_setup: "Rejected setup found",
   bullish_patience_candle: "Bullish patience candle found",
   bearish_patience_candle: "Bearish patience candle found",
@@ -1915,14 +1915,11 @@ export function buildHistoricalVisualValidationSetFromReport(
   ];
   const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
-        || candidate.trade !== null
-        || (mode === "confirmed_signals" && candidate.occurrence !== undefined && (
-          candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
-            ? hasConfirmedPatienceOccurrence(candidate.occurrence)
-            : candidate.category === "qualified_trade"
-              ? hasConfirmedTradeOccurrence(candidate.occurrence)
-              : false
-        )))
+        || (mode === "trades_only" && candidate.trade !== null)
+        || (mode === "confirmed_signals"
+          && candidate.category === "qualified_trade"
+          && candidate.occurrence !== undefined
+          && hasConfirmedTradeOccurrence(candidate.occurrence)))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
   const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
