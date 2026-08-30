@@ -1,0 +1,218 @@
+Understood. Simplify the workflow to:
+
+```text
+EDGE_FOUND
+→ PATIENCE_FOUND
+→ SIGNAL_CONFIRMED
+→ TRADE_TAKEN
+→ TRADE_OUTCOME
+```
+
+Remove these from formula qualification and the user-facing workflow:
+
+- `TRADE_INTENT_CREATED`
+- `RISK_APPROVED`
+- `RISK_BLOCKED`
+- `MODELED_FILL`
+- `EXECUTION_UNAVAILABLE`
+
+For backtesting, once the immediate E candle crosses the P candle by the configured buffer, the app should create one deterministic trade. Missing quotes, liquidity, spread, or a finalized exit must not erase that trade.
+
+Use this Replit prompt:
+
+```text
+Simplify LevelStory’s authoritative signal-to-trade workflow so it matches my actual formula.
+
+CORE RULE
+
+When one of my recognized edges is present, followed by a valid completed patience candle P and immediate next-candle confirmation E, take the trade.
+
+Do not require every indicator, trend test, volume test, risk status, or execution-status projection to agree.
+
+AUTHORITATIVE WORKFLOW
+
+Use only these user-facing states:
+
+1. EDGE_FOUND
+2. PATIENCE_FOUND
+3. SIGNAL_CONFIRMED
+4. TRADE_TAKEN
+5. TRADE_OUTCOME
+
+Remove these states from strategy qualification, historical occurrence classification, Visual Review, backtest explanations, and user-facing decision panels:
+
+- TRADE_INTENT_CREATED
+- RISK_APPROVED
+- RISK_BLOCKED
+- MODELED_FILL
+- EXECUTION_UNAVAILABLE
+
+Do not let those removed statuses invalidate, hide, or downgrade a confirmed signal.
+
+RECOGNIZED EDGES
+
+Treat these as independent primary edges:
+
+1. ORB_PULLBACK_CONTINUATION
+   - Completed breakout outside finalized ORB/NTZ.
+   - Pullback to a qualifying structural or dynamic level.
+   - Valid P.
+   - Immediate E confirmation.
+
+2. CONSOLIDATION_BREAKOUT_CONTINUATION
+   - Tight/stable consolidation.
+   - Strong directional breakout with continuation.
+   - Pullback or post-breakout consolidation.
+   - Valid P.
+   - Immediate E confirmation.
+
+3. EQUIVALENT_CANDLE_REVERSAL
+   - Equivalent opposing candles at a qualifying major level.
+   - Reversal direction established.
+   - Valid P.
+   - Immediate E confirmation.
+
+4. PEAK_RETRACEMENT_REVERSAL
+   - Greater-than-50% retracement from a causal intraday high or low impulse.
+   - Reversal-direction P.
+   - Immediate E confirmation.
+
+5. PATIENCE_CONTINUATION
+   - Directional continuation context.
+   - Pullback to a qualifying level.
+   - Valid P.
+   - Immediate E confirmation.
+
+PATIENCE AND ENTRY
+
+- P must be a completed five-minute patience candle.
+- E must be the immediately following completed five-minute candle.
+- Long E confirms only by crossing above P high by the configured 3–4 tick buffer.
+- Short E confirms only by crossing below P low by the configured 3–4 tick buffer.
+- If E fails, P expires.
+- Continue scanning for a new P2.
+- Only the immediate E2 may confirm P2.
+- Never attach a later E candle to an earlier expired P.
+- A confirmed P→E sequence creates TRADE_TAKEN immediately.
+
+BACKTEST TRADE CREATION
+
+Historical OHLCV data is sufficient to create the deterministic backtest trade.
+
+- Use the confirmation trigger price as the entry price.
+- Apply the configured historical slippage and fees directly to accounting.
+- Use the configured contract quantity, defaulting to one MES contract when no quantity is supplied.
+- Do not require historical bid/ask quotes, spread, order-book liquidity, or quote freshness.
+- Do not reject a confirmed signal because an exit has not occurred yet.
+- Record an open trade until a permitted exit occurs.
+- Calculate TRADE_OUTCOME when target, stop, runner rule, or session-close exit occurs.
+- Preserve causal same-candle ambiguity handling, but do not delete the trade occurrence.
+
+CONFLUENCE AND GRADING
+
+Multiple edges or supporting conditions must produce one trade, not multiple trades.
+
+Deduplicate by:
+
+- contract
+- trading date
+- direction
+- entry candle timestamp
+- entry trigger price
+
+Each trade must contain:
+
+- primaryEdge
+- matchedEdges[]
+- supportingConfluences[]
+- setupGrade
+- patienceCandleTime
+- entryCandleTime
+- entryPrice
+- direction
+- outcome
+
+Use deterministic grading:
+
+- A: one recognized edge confirmed.
+- A+: two independent recognized edges align on the same P→E entry.
+- A++: three or more independent recognized edges align.
+
+Supporting indicators and levels should be listed as confluence evidence:
+
+- ORB/NTZ
+- VWAP
+- 200 EMA
+- premarket high/low
+- previous-day high/low
+- day-before-previous high/low
+- major support/resistance
+- Fibonacci
+- volume support
+- confirmed 15-minute trend
+
+These supporting confluences must not independently block a confirmed edge unless they are part of that edge’s defining requirements.
+
+For example:
+
+- Volume is defining evidence for a strong breakout after consolidation.
+- ORB completion and pullback are defining evidence for ORB continuation.
+- Equivalent candles and a major level are defining evidence for equivalent reversal.
+- Greater-than-50% retracement is defining evidence for peak reversal.
+- The strict eight-candle trend test must not universally block all edges.
+
+SEPARATE SAFETY CODE
+
+Do not delete reusable risk-management or live-execution code. Isolate it from formula qualification for possible future broker integration.
+
+The current application remains Shadow Mode only:
+
+- no live orders
+- no paper orders
+- no broker integration
+
+Risk/account checks may be retained internally for future use, but they must not determine whether historical formula evidence is EDGE_FOUND, SIGNAL_CONFIRMED, or TRADE_TAKEN.
+
+UI AND REPORTING
+
+Visual Review and backtest reports should clearly show:
+
+- primary edge
+- every matched edge
+- supporting confluences
+- setup grade
+- P candle
+- immediate E candle
+- entry price
+- stop and target
+- trade outcome or OPEN
+
+Replace vague statements such as “failed downstream trading gates” with the exact missing edge requirement or P→E failure.
+
+TESTS
+
+Add deterministic tests proving:
+
+1. One valid edge plus P→E creates exactly one A-grade trade.
+2. Two aligned edges on the same P→E create one A+ trade.
+3. Three aligned edges create one A++ trade.
+4. Multiple matching edges never create duplicate trades.
+5. Missing bid/ask, spread, liquidity, or freshness does not block an OHLCV historical trade.
+6. Missing finalized exit leaves the trade OPEN rather than rejected.
+7. Failed E expires P and scanning continues to P2→E2.
+8. E2 cannot confirm P1.
+9. Strict 15-minute trend disagreement does not block an independently valid ORB or reversal edge.
+10. Strategy-specific requirements remain enforced.
+11. Machine-only and human-only causal boundaries remain unchanged.
+
+Do not run a full historical rebuild or large qualification backtest for this task. Run focused strategy, occurrence-ledger, Visual Review, backtest, typecheck, and production-build verification.
+
+Report:
+
+- files changed
+- old versus new state machine
+- deduplication key
+- grade calculation
+- focused test totals
+- any remaining limitations
+```
