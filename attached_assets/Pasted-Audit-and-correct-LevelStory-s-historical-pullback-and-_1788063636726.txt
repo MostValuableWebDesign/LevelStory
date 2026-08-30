@@ -1,0 +1,189 @@
+Audit and correct LevelStory’s historical pullback and patience-candle detection. The historical MES charts contain numerous visible pullbacks within the configured 12-tick level zone and valid patience candles, but Visual Review is not finding them.
+
+Primary objective
+
+Detect and retain every causal pullback candidate and patience-candle occurrence independently of whether it ultimately becomes a qualified trade.
+
+Do not require a completed entry or winning trade merely to recognize a pullback or patience candle.
+
+Detection pipeline
+
+Implement separate deterministic stages:
+
+1. Level-interaction candidate
+2. Pullback candidate
+3. Patience-candle candidate
+4. Immediate next-candle confirmation
+5. Risk/formula approval
+6. Qualified trade or rejected setup
+
+A failure at a later stage must not erase evidence from an earlier stage.
+
+Example:
+
+- Price comes within 12 ticks of VWAP.
+- Record a VWAP pullback candidate.
+- A valid patience candle forms.
+- Record the patience candle.
+- The next candle fails confirmation.
+- Do not create a trade, but retain the pullback and patience-candle occurrences with “entry confirmation failed.”
+
+Authoritative level tolerance
+
+MES tick size: 0.25
+Default proximity: 12 ticks / 3.00 points
+
+For every qualifying level V and completed five-minute candle C:
+
+if V < C.low:
+    distancePoints = C.low - V
+else if V > C.high:
+    distancePoints = V - C.high
+else:
+    distancePoints = 0
+
+distanceTicks = distancePoints / 0.25
+
+Level interaction qualifies when:
+
+distanceTicks <= 12
+
+Use the candle’s complete high–low range. Do not compare only its close.
+
+Apply the same authoritative 12-tick default to:
+
+- historical occurrence scanning;
+- formula evaluation;
+- Visual Review generation;
+- frontend qualification controls;
+- API validation;
+- deterministic replay;
+- Shadow Mode;
+- backtest setup detection.
+
+Search the codebase for remaining hard-coded values of 4 ticks, 1.00 point, `DEFAULT_LEVEL_TOLERANCE_TICKS = 4`, or equivalent comparisons.
+
+Dynamic indicators
+
+- Resolve VWAP and EMA 200 at the exact candle timestamp.
+- Never use their final-session values.
+- EMA 200 must use completed five-minute closes and sufficient causal warm-up history.
+- Preserve fractional indicator precision.
+
+Patience-candle detection
+
+Evaluate each completed five-minute candle after a pullback or consolidation candidate.
+
+Bullish patience candle:
+
+- The active directional trend is bullish.
+- The candle’s trend-direction top/high does not exceed the preceding completed candle’s top/high.
+- The whole candle does not need to be inside the preceding candle.
+
+Bearish patience candle:
+
+- The active directional trend is bearish.
+- The candle’s trend-direction bottom/low does not go below the preceding completed candle’s bottom/low.
+- The whole candle does not need to be inside the preceding candle.
+
+The patience candle must be recorded even if the next candle does not confirm an entry.
+
+Entry confirmation remains separate:
+
+- E must be the immediately following completed five-minute candle.
+- Long: E confirms 3–4 ticks above P.
+- Short: E confirms 3–4 ticks below P.
+- A later candle cannot replace E.
+- If E fails, preserve P and label the setup “patience found; next-candle confirmation failed.”
+
+Occurrence scanning
+
+Do not generate only one example per category or date.
+
+For every selected historical session:
+
+- scan all completed five-minute candles chronologically;
+- collect every distinct pullback and patience-candle occurrence;
+- deduplicate only identical occurrences with the same contract, timestamp, direction, level and formula version;
+- retain multiple legitimate occurrences in one session;
+- expose occurrence counts and navigation.
+
+Visual Review categories should report:
+
+- Pullback candidates found
+- Bullish patience candles found
+- Bearish patience candles found
+- Confirmed entries
+- Rejected after patience
+- Qualified trades
+
+Diagnostics/funnel
+
+Add a detection funnel showing:
+
+- five-minute candles evaluated;
+- candles within 12 ticks of any level;
+- pullback candidates;
+- rejected pullbacks and exact reasons;
+- patience candidates;
+- rejected patience candles and exact reasons;
+- next-candle confirmations;
+- failed confirmations;
+- risk-approved setups;
+- qualified trades.
+
+For every rejected visible candidate, report the exact gate and evidence:
+
+- candle timestamp;
+- direction/trend;
+- level ID and value at that timestamp;
+- candle high–low range;
+- distance in ticks and points;
+- active tolerance;
+- previous-candle comparison;
+- next-candle result;
+- rejection reason.
+
+Tests
+
+Add deterministic tests for:
+
+- exactly 12 ticks qualifies;
+- 12.25 ticks fails;
+- wick touching/crossing a level;
+- fractional VWAP and EMA values;
+- multiple pullbacks in one session;
+- multiple patience candles in one session;
+- patience candle retained when E fails;
+- immediately following E confirms;
+- later confirmation is rejected;
+- bullish and bearish patience definitions;
+- pullback and patience categories do not require a trade;
+- category counts equal the actual stored occurrences;
+- no duplicate occurrences;
+- no future-data access;
+- frontend, API, replay and backtest use the same 12-tick setting.
+
+Verification
+
+Use a small known historical range containing visually identified examples. Produce a table comparing each visible example with the detector’s result.
+
+Do not run a full historical rebuild or large backtest.
+
+Safeguards
+
+- Do not weaken trend, entry or risk rules merely to create trades.
+- Do not fabricate candles, levels, indicators or fills.
+- Do not automatically approve or activate strategy changes.
+- Preserve persistent teaching evidence and approval/audit history.
+- Preserve deterministic replay, Shadow Mode and no-live-orders protections.
+
+Report:
+
+1. Root causes.
+2. Every remaining four-tick code path found.
+3. Files changed.
+4. Before/after occurrence counts.
+5. Detection funnel totals.
+6. Focused test totals.
+7. Confirmation that no strategy was activated and no orders were created.
