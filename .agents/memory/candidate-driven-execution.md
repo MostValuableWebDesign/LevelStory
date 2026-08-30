@@ -32,3 +32,9 @@ When a valid candidate matches a legacy OHLCV trade, reproject the authoritative
 **Why:** Legacy records can encode entry at the P-candle close even though the causal candidate enters at the immediate E candle open; retaining that record distorts entry timing and can evaluate the wrong intrabar path.
 
 **How to apply:** Preserve legacy records only as reconciliation evidence; use the candidate-owned trade for authoritative metrics and retain the exact E open plus E close in its audit.
+
+Dashboard risk and execution projections must use the patience analysis belonging to the selected setup.
+
+**Why:** Reversal setups can have a valid reversal-specific patience sequence while generic continuation patience is empty; mixing them creates a false qualified-without-entry invariant violation.
+
+**How to apply:** Select reversal patience for reversal setup types and generic patience for continuation setup types before building risk, Phase 8, dashboard, and invariant inputs.

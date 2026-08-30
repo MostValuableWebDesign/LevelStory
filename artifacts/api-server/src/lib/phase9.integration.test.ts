@@ -92,7 +92,7 @@ test("deterministic bullish and bearish A+ fixtures qualify and target-exit thro
   for (const [seed, direction] of [[11, "long"], [12, "short"]] as const) {
     const snapshot = scenarioSnapshot(seed);
     assert.equal(snapshot.setupAnalysis.decision, "SETUP QUALIFIED", `seed ${seed}`);
-    assert.equal(snapshot.setupAnalysis.primarySetup, "ORB_BREAK_PULLBACK_CONTINUATION", `seed ${seed}`);
+    assert.equal(snapshot.setupAnalysis.primarySetup, "ORB_PULLBACK_CONTINUATION", `seed ${seed}`);
     assert.equal(snapshot.riskPlan.allowed, true, `seed ${seed}`);
     assert.equal(snapshot.riskPlan.direction, direction, `seed ${seed}`);
     assert.equal(snapshot.shadowExecution?.contracts, 2, `seed ${seed}`);

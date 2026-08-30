@@ -2331,7 +2331,9 @@ export function projectHistoricalTradeCandidates(
         candle.contractSymbol === matchingCandidate.contractSymbol
         && candle.openTime === Date.parse(matchingCandidate.expectedEntryTimestamp),
       );
-      const candidateExecution = executionContext && matchingOccurrence
+      const candidateExecution = executionContext
+        && ["historical_databento", "historical_databento_multicontract"].includes(executionContext.dataset.source ?? "")
+        && matchingOccurrence
         ? candidateDrivenEntryTrade(
           datasetEntryCandle && !matchingOccurrence.entryCandle
             ? { ...matchingOccurrence, entryCandle: occurrenceCandle(datasetEntryCandle) }

@@ -565,7 +565,11 @@ export function createMarketSnapshot(
     reversalPatience,
   });
   const direction = selectExecutableDirection(preliminarySetupAnalysis, evaluatedBreakout, patienceDirection);
-  const plan = buildRiskPlan(direction, levels, patience, riskInput, config, specification, {
+  const executablePatience = preliminarySetupAnalysis.primarySetup === "EQUIVALENT_CANDLE_REVERSAL"
+    || preliminarySetupAnalysis.primarySetup === "PEAK_RETRACEMENT_REVERSAL"
+    ? reversalPatience
+    : patience;
+  const plan = buildRiskPlan(direction, levels, executablePatience, riskInput, config, specification, {
     ...phase7Input,
     observedSpreadTicks: current ? Math.max(0, Math.round((current.ask - current.bid) / specification.tickSize)) : undefined,
     liquidity: current?.volume,
@@ -594,7 +598,7 @@ export function createMarketSnapshot(
     pullback,
     fibonacci,
     volume: volumeAnalysis,
-    patience,
+    patience: executablePatience,
     evaluation: selectedEvaluation,
     riskPlan: plan,
     direction: plan.direction,
@@ -727,7 +731,7 @@ export function createMarketSnapshot(
        qualifyingLevelCount: pullback.qualifyingLevelCount,
        detail: pullback.detail,
      },
-      patience: toApiPatience(patience),
+      patience: toApiPatience(executablePatience),
      fibonacci: {
        direction: fibonacci.direction,
        impulseLow: fibonacci.impulseLow,
@@ -786,7 +790,7 @@ export function createMarketSnapshot(
       breakout: snapshot.breakout,
       signals: snapshot.signals,
       riskPlan: snapshot.riskPlan,
-      patience,
+      patience: executablePatience,
       setupAnalysis,
       shadowExecution: snapshot.shadowExecution,
     });
