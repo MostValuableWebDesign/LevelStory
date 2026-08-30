@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildBacktestCacheKey, getBacktestAuditPage, getCachedBacktestReport, storeBacktestReport } from "./backtest-store.js";
 import type { BacktestAuditRecord, BacktestReport } from "./phase9.js";
+import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG, strategyConfig } from "./strategy/config.js";
+import { formulaConfigurationHash } from "./formula-hash.js";
 
 function audit(id: string, date: string, category: BacktestAuditRecord["rejectionCategory"]): BacktestAuditRecord {
   return {
@@ -14,6 +16,7 @@ function audit(id: string, date: string, category: BacktestAuditRecord["rejectio
      modeledFillObservationTime: null, exitCandleOpenTime: null, exitCandleCloseTime: null, entryTriggerPrice: null, strategyStopPrice: null,
      catastropheStopPrice: null, eventLabels: [], targetPrice: null, ambiguityLabels: [], executionMode: "ohlcv_modeled", fees: 0,
     slippage: 0, grossPnl: null, netPnl: null, exitReason: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
   };
 }
 
@@ -56,8 +59,15 @@ test("source content, risk, and execution changes invalidate cache identity", ()
   });
   const formulaA = buildBacktestCacheKey({ ...base, formulaHash: "a".repeat(64) });
   const formulaB = buildBacktestCacheKey({ ...base, formulaHash: "b".repeat(64) });
+  const governedConfig = strategyConfig({ phase6ConsolidationMaxRangeTicks: 23 });
+  const governedFormulaA = formulaConfigurationHash({ symbol: "MES" }, strategyConfig());
+  const governedFormulaB = formulaConfigurationHash({ symbol: "MES" }, governedConfig);
+  const governedCacheA = buildBacktestCacheKey({ ...base, formulaHash: governedFormulaA });
+  const governedCacheB = buildBacktestCacheKey({ ...base, formulaHash: governedFormulaB });
   assert.notEqual(sourceA, sourceB);
   assert.notEqual(sourceA, riskChanged);
   assert.notEqual(sourceA, executionChanged);
   assert.notEqual(formulaA, formulaB);
+  assert.notEqual(governedFormulaA, governedFormulaB);
+  assert.notEqual(governedCacheA, governedCacheB);
 });

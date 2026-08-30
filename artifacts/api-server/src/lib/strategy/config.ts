@@ -61,6 +61,7 @@ export type StrategyConfig = {
   phase4AllowStrongSingleCandleException: boolean;
   phase4FailureReclaimRequired: boolean;
   phase4FailureOpposingVolumeRatio: number;
+  phase6ConsolidationThresholdVersion: string;
   phase6ConsolidationExpansionRatio: number;
   phase6ConsolidationMinCandles: number;
   phase6ConsolidationMaxRangeTicks: number;
@@ -71,6 +72,27 @@ export type StrategyConfig = {
   phase7DefaultTargetDollars: number;
   phase7RunnerRetracementRatio: number;
 };
+
+export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v1";
+
+export type ConsolidationThresholds = {
+  version: string;
+  minCandles: number;
+  maxRangeTicks: number;
+  maxExpansionRatio: number;
+};
+
+export function consolidationThresholds(config: Pick<
+  StrategyConfig,
+  "phase6ConsolidationThresholdVersion" | "phase6ConsolidationMinCandles" | "phase6ConsolidationMaxRangeTicks" | "phase6ConsolidationExpansionRatio"
+>): ConsolidationThresholds {
+  return {
+    version: config.phase6ConsolidationThresholdVersion,
+    minCandles: config.phase6ConsolidationMinCandles,
+    maxRangeTicks: config.phase6ConsolidationMaxRangeTicks,
+    maxExpansionRatio: config.phase6ConsolidationExpansionRatio,
+  };
+}
 
 export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   defaultContractSymbol: "MES",
@@ -128,6 +150,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4AllowStrongSingleCandleException: true,
   phase4FailureReclaimRequired: true,
   phase4FailureOpposingVolumeRatio: 1.5,
+  phase6ConsolidationThresholdVersion: CONSOLIDATION_THRESHOLD_VERSION,
   phase6ConsolidationExpansionRatio: 1.25,
   phase6ConsolidationMinCandles: 3,
   phase6ConsolidationMaxRangeTicks: 24, // assumption: bounded consolidation may span up to 24 MES ticks
@@ -161,6 +184,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.sessionTimeZone !== "America/New_York") {
     throw new Error("Invalid strategy configuration: sessionTimeZone must be America/New_York.");
+  }
+  if (!config.phase6ConsolidationThresholdVersion.trim()) {
+    throw new Error("Invalid strategy configuration: phase6ConsolidationThresholdVersion is required.");
   }
   const positiveNumbers: Array<[string, number]> = [
     ["sessionStartMinutes", config.sessionStartMinutes],
@@ -253,6 +279,12 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");
+  }
+  if (!Number.isInteger(config.phase6ConsolidationMinCandles) || config.phase6ConsolidationMinCandles < 3) {
+    throw new Error("Invalid strategy configuration: phase6ConsolidationMinCandles must be an integer of at least three.");
+  }
+  if (!Number.isInteger(config.phase6ConsolidationMaxRangeTicks)) {
+    throw new Error("Invalid strategy configuration: phase6ConsolidationMaxRangeTicks must be an integer.");
   }
   const approvedTolerancePoints = LEVEL_TOLERANCE_TICKS.map(levelTolerancePoints);
   if (!approvedTolerancePoints.includes(config.levelTolerance)) {

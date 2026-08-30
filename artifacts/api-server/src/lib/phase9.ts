@@ -29,6 +29,7 @@ import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
+import { consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -247,6 +248,7 @@ export type BacktestAuditRecord = {
   netPnl: number | null;
   exitReason: string | null;
   confirmationBufferTicks?: number;
+  consolidationThresholds: ConsolidationThresholds;
   pullbackOccurrences?: Array<{
     type: string;
     time: string;
@@ -409,6 +411,7 @@ export type HistoricalOccurrence = {
   levelValues: Record<string, number>;
   levelDistancesTicks: Record<string, number>;
   confirmationBufferTicks: number | null;
+  consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: string;
@@ -1055,6 +1058,7 @@ function auditForEvaluation(
   executionMode: "quote_based_shadow" | "ohlcv_modeled",
   contractSymbol: string,
   contractMonth: string,
+  governedConsolidation: ConsolidationThresholds,
 ): BacktestAuditRecord {
   const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   return {
@@ -1106,6 +1110,7 @@ function auditForEvaluation(
     netPnl: null,
     exitReason: null,
     confirmationBufferTicks: snapshot.patience.entryBufferTicks,
+    consolidationThresholds: governedConsolidation,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
     patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
   };
@@ -1299,6 +1304,7 @@ export function buildHistoricalOccurrenceLedger(
         levelValues: { [event.level]: event.price },
         levelDistancesTicks: { [event.level]: event.distanceTicks ?? 0 },
         confirmationBufferTicks: null,
+        consolidationThresholds: record.consolidationThresholds,
         status: event.type,
         reasonCode: event.detail,
         evaluationCursor: cursor,
@@ -1333,6 +1339,7 @@ export function buildHistoricalOccurrenceLedger(
         levelValues: linkedPullback ? { [linkedPullback.level]: linkedPullback.price } : {},
         levelDistancesTicks: linkedPullback ? { [linkedPullback.level]: linkedPullback.distanceTicks ?? 0 } : {},
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        consolidationThresholds: record.consolidationThresholds,
         status: patience.status,
         reasonCode: patience.reasonCode,
         evaluationCursor: cursor,
@@ -1363,6 +1370,7 @@ export function buildHistoricalOccurrenceLedger(
         levelValues: {},
         levelDistancesTicks: {},
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        consolidationThresholds: record.consolidationThresholds,
         status: trade ? "QUALIFIED_TRADE" : "RISK_REJECTED",
         reasonCode: record.rejectionSummary ?? record.decision,
         evaluationCursor: cursor,
@@ -1536,6 +1544,8 @@ export function runCausalBacktest(
   providedDataset?: CausalReplayDataset,
 ): BacktestReport {
   const specification = getFuturesContractSpecification(request.symbol);
+  const activeStrategy = activeShadowStrategySnapshot();
+  const governedConsolidation = consolidationThresholds(activeStrategy.config);
   const calendar = sessionCalendarForContract(specification);
   const dataset = providedDataset ?? buildReplayDataset(request.symbol, request);
   const executionMode = request.executionMode
@@ -1631,7 +1641,7 @@ export function runCausalBacktest(
         historicalFeed: visibleContractCandles,
         historicalHourly,
         allCandlesCompleted: true,
-        strategyConfigOverrides: activeShadowStrategySnapshot().config,
+        strategyConfigOverrides: activeStrategy.config,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
         // The active Shadow configuration is authoritative for ordinary backtests.
@@ -1649,6 +1659,7 @@ export function runCausalBacktest(
         executionMode,
         currentContractSymbol,
         currentContractMonth,
+        governedConsolidation,
       );
       audit.push(record);
       return record;
@@ -1975,7 +1986,7 @@ export function runCausalBacktest(
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
   const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
-  const reportFormulaHash = formulaConfigurationHash(request);
+  const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
   const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",

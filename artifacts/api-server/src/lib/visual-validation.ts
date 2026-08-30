@@ -1536,7 +1536,7 @@ function buildMachineSnapshot(
 }
 
 export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
-  const formulaHash = formulaConfigurationHash({ symbol: request.symbol });
+  const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config);
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
     formulaHash,
@@ -1615,7 +1615,7 @@ export function buildHistoricalVisualValidationSetFromReport(
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
-    formulaHash: formulaConfigurationHash({ symbol: request.symbol }),
+    formulaHash: formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config),
     executionMode: "ohlcv_modeled",
   };
   const mode = visualValidationReviewMode(request);

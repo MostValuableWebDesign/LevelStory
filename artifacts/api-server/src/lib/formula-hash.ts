@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
+import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
 export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v2";
@@ -15,11 +15,14 @@ function stableSerialize(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function formulaConfiguration(request: Pick<BacktestRequest, "symbol">): Record<string, unknown> {
+export function formulaConfiguration(
+  request: Pick<BacktestRequest, "symbol">,
+  config: StrategyConfig = DEFAULT_STRATEGY_CONFIG,
+): Record<string, unknown> {
   return {
     version: FIXED_FORMULA_VERSION,
     symbol: request.symbol,
-    strategy: DEFAULT_STRATEGY_CONFIG,
+    strategy: config,
     fixedConstraints: {
       completedBarOnly: true,
       immediateNextCandleOnly: true,
@@ -31,6 +34,9 @@ export function formulaConfiguration(request: Pick<BacktestRequest, "symbol">): 
   };
 }
 
-export function formulaConfigurationHash(request: Pick<BacktestRequest, "symbol">): string {
-  return createHash("sha256").update(stableSerialize(formulaConfiguration(request))).digest("hex");
+export function formulaConfigurationHash(
+  request: Pick<BacktestRequest, "symbol">,
+  config: StrategyConfig = DEFAULT_STRATEGY_CONFIG,
+): string {
+  return createHash("sha256").update(stableSerialize(formulaConfiguration(request, config))).digest("hex");
 }

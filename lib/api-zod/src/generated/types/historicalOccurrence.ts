@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ConsolidationThresholds } from './consolidationThresholds';
 import type { HistoricalOccurrenceDirection } from './historicalOccurrenceDirection';
 import type { HistoricalOccurrenceEntryCandle } from './historicalOccurrenceEntryCandle';
 import type { HistoricalOccurrenceKind } from './historicalOccurrenceKind';
@@ -41,6 +42,7 @@ export interface HistoricalOccurrence {
   levelDistancesTicks: HistoricalOccurrenceLevelDistancesTicks;
   /** @nullable */
   confirmationBufferTicks: number | null;
+  consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: Date;

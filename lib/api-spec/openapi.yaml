@@ -2897,6 +2897,15 @@ components:
         partialTargetExits: { type: number }
         consecutiveLosses: { type: number }
       required: [tradeCount, winRate, averageWin, averageLoss, expectancy, profitFactor, maximumDrawdown, grossPnl, fees, slippage, netPnl, ambiguousTradeCount, rejectedSetupCount, setupsDetected, setupsRejected, patienceCandles, entryTriggers, modeledFills, stopExits, targetExits, runnerExits, ambiguityCount, ambiguousExitCount, expiredPatienceSetups, ambiguousEntryCount, strategyStopExits, catastropheStopExits, sessionCloseExits, partialTargetExits, consecutiveLosses]
+    ConsolidationThresholds:
+      type: object
+      additionalProperties: false
+      properties:
+        version: { type: string }
+        minCandles: { type: number, minimum: 3 }
+        maxRangeTicks: { type: number, minimum: 1 }
+        maxExpansionRatio: { type: number, exclusiveMinimum: 0 }
+      required: [version, minCandles, maxRangeTicks, maxExpansionRatio]
     BacktestAuditRecord:
       type: object
       additionalProperties: false
@@ -2944,9 +2953,10 @@ components:
         netPnl: { type: ["number", "null"] }
         exitReason: { type: ["string", "null"] }
         confirmationBufferTicks: { type: ["number", "null"] }
+        consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
         pullbackOccurrences: { type: array, items: { type: object, additionalProperties: true } }
         patienceOccurrences: { type: array, items: { type: object, additionalProperties: true } }
-      required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
+      required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason, consolidationThresholds]
     HistoricalOccurrence:
       type: object
       additionalProperties: false
@@ -2970,13 +2980,14 @@ components:
         levelValues: { type: object, additionalProperties: { type: number } }
         levelDistancesTicks: { type: object, additionalProperties: { type: number } }
         confirmationBufferTicks: { type: ["number", "null"] }
+        consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
         status: { type: string }
         reasonCode: { type: string }
         evaluationCursor: { type: string, format: date-time }
         formulaVersion: { type: string }
         sourceFingerprint: { type: string }
         canonicalTrade: { type: boolean }
-      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, confirmationBufferTicks, status, reasonCode, evaluationCursor, formulaVersion, sourceFingerprint, canonicalTrade]
+      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, confirmationBufferTicks, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, sourceFingerprint, canonicalTrade]
     BacktestAuditPage:
       type: object
       additionalProperties: false

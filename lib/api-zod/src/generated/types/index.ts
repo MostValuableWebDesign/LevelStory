@@ -76,6 +76,7 @@ export * from './breakoutEventState';
 export * from './cancelBatchBacktestParams';
 export * from './candidatePublication';
 export * from './candle';
+export * from './consolidationThresholds';
 export * from './criticalLevel';
 export * from './dashboardOverview';
 export * from './errorResponse';

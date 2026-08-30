@@ -51,6 +51,7 @@ import {
 } from "../lib/backtest-store.js";
 import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
+import { activeShadowStrategySnapshot } from "../lib/active-shadow-strategy.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
 import type { NormalizedCandle } from "../lib/futures/market-data-provider.js";
@@ -404,7 +405,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
           cacheVersion: "qualification-batch-v2-walk-forward",
-          formulaHash: formulaConfigurationHash(request),
+          formulaHash: formulaConfigurationHash(request, activeShadowStrategySnapshot().config),
           request,
           risk,
           contract: specification,
@@ -692,7 +693,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       const cacheLookupStartedAt = Date.now();
       const cacheKey = buildBacktestCacheKey({
         cacheVersion: "causal-backtest-v3-formula-hash",
-        formulaHash: formulaConfigurationHash(parsed.data),
+        formulaHash: formulaConfigurationHash(parsed.data, activeShadowStrategySnapshot().config),
         request: parsed.data,
         risk,
         contract: specification,

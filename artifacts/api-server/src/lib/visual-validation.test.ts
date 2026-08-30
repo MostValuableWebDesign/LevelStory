@@ -15,6 +15,7 @@ import {
 } from "./visual-validation.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 import type { BacktestAuditRecord, BacktestTrade, HistoricalOccurrence } from "./phase9.js";
+import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 import {
   buildVisualValidationDiscrepancyReport,
   getVisualValidationSet,
@@ -182,6 +183,7 @@ test("historical Visual Review maps a ledger occurrence to its exact L anchor", 
     evaluationCursor: new Date(lCandle.closeTime).toISOString(),
     formulaVersion: "test",
     sourceFingerprint: "test",
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     canonicalTrade: false,
   };
   const set = buildHistoricalVisualValidationSetFromReport(
@@ -858,6 +860,7 @@ function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecor
     grossPnl: null,
     netPnl: null,
     exitReason: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     ...overrides,
   };
 }

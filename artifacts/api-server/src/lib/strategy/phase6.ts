@@ -4,6 +4,7 @@ import type { PatienceAnalysis } from "./phase5.js";
 import type { MajorLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
 import type { StrategyConfig } from "./config.js";
+import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
 import { hasConfirmedDirectionalTrend } from "./rules.js";
@@ -278,9 +279,16 @@ export function detectReversalEvidence(
   };
 }
 
-export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: SessionLevels["ntz"], expansionLimit = 1.25, breakoutTime: number | null = null, maxRangeTicks = 24, minimumCandles = 3): ExtendedConsolidation {
+export function detectExtendedNtzConsolidation(
+  candles: readonly Candle[],
+  ntz: SessionLevels["ntz"],
+  expansionLimit = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationExpansionRatio,
+  breakoutTime: number | null = null,
+  maxRangeTicks = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMaxRangeTicks,
+  minimumCandles = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles,
+): ExtendedConsolidation {
   const completed = completedCandles(candles).filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
-  const minimumCount = Math.max(3, Math.floor(minimumCandles));
+  const minimumCount = Math.max(DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles, Math.floor(minimumCandles));
   if (completed.length < minimumCount) return emptyConsolidation(`At least ${minimumCount} contiguous completed candles are required.`);
   const maxRange = maxRangeTicks * 0.25;
   const candidates: ExtendedConsolidation[] = [];
@@ -303,7 +311,7 @@ export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: 
       startTime: window[0]!.openTime, endTime: window.at(-1)!.closeTime,
       frozenHigh: Math.max(...window.map((candle) => candle.high)),
       frozenLow: Math.min(...window.map((candle) => candle.low)),
-      detail: `${count} contiguous completed candles (${Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000)} minutes) in a bounded ${range.toFixed(2)} point range; ${insideOrNear}/${count} closes inside NTZ.`,
+       detail: `${count} contiguous completed candles (${Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000)} minutes) in a bounded ${range.toFixed(2)} point range; governed thresholds are minimum ${minimumCount} candles, maximum ${maxRangeTicks} ticks, and ${expansionLimit.toFixed(2)}× expansion; ${insideOrNear}/${count} closes inside NTZ (diagnostic confluence only).`,
     });
   }
   const best = candidates.at(-1);
@@ -324,7 +332,7 @@ export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: 
     endTime: window.at(-1)!.closeTime,
     frozenHigh: Math.max(...window.map((candle) => candle.high)),
     frozenLow: Math.min(...window.map((candle) => candle.low)),
-    detail: `No tight/stable consolidation immediately before breakout: ${window.length} candles span ${range.toFixed(2)} points with expansion ratio ${formatRatio(expansionRatio)}.`,
+     detail: `No tight/stable consolidation immediately before breakout: ${window.length} candles span ${range.toFixed(2)} points with expansion ratio ${formatRatio(expansionRatio)}; governed thresholds are minimum ${minimumCount} candles, maximum ${maxRangeTicks} ticks, and ${expansionLimit.toFixed(2)}× expansion.`,
   };
 }
 

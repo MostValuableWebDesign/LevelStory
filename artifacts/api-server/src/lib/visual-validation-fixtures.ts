@@ -16,6 +16,7 @@ import type {
 } from "./phase9.js";
 import type { VisualValidationCategory, VisualValidationRequest } from "./visual-validation.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
+import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 
 const INTERVAL = 5 * 60_000;
 const CANDLE_COUNT = 78;
@@ -289,6 +290,7 @@ function makeAudit(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
   };
 }
 

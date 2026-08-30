@@ -6,6 +6,7 @@ import {
   type BacktestReport,
   type HistoricalOccurrence,
 } from "./phase9.js";
+import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 
 function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecord {
   return {
@@ -51,6 +52,7 @@ function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecor
     grossPnl: null,
     netPnl: null,
     exitReason: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     ...overrides,
   };
 }

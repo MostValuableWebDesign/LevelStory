@@ -754,6 +754,16 @@ export const RunBacktestBody = zod.object({
 })
 
 export const runBacktestResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const runBacktestResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
 export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const runBacktestResponseAuditPagePageSizeMax = 100;
@@ -1099,6 +1109,12 @@ export const RunBacktestResponse = zod.object({
   "netPnl": zod.number().nullable(),
   "exitReason": zod.string().nullable(),
   "confirmationBufferTicks": zod.number().nullish(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(runBacktestResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 })),
@@ -1122,6 +1138,12 @@ export const RunBacktestResponse = zod.object({
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
   "confirmationBufferTicks": zod.number().nullable(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "status": zod.string(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
@@ -1251,6 +1273,16 @@ export const StartBatchBacktestBody = zod.object({
 
 export const startBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const startBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
 export const startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const startBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -1607,6 +1639,12 @@ export const StartBatchBacktestResponse = zod.object({
   "netPnl": zod.number().nullable(),
   "exitReason": zod.string().nullable(),
   "confirmationBufferTicks": zod.number().nullish(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 })),
@@ -1630,6 +1668,12 @@ export const StartBatchBacktestResponse = zod.object({
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
   "confirmationBufferTicks": zod.number().nullable(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "status": zod.string(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
@@ -2160,6 +2204,16 @@ export const GetBatchBacktestStatusQueryParams = zod.object({
 
 export const getBatchBacktestStatusResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getBatchBacktestStatusResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
 export const getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const getBatchBacktestStatusResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -2516,6 +2570,12 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "netPnl": zod.number().nullable(),
   "exitReason": zod.string().nullable(),
   "confirmationBufferTicks": zod.number().nullish(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 })),
@@ -2539,6 +2599,12 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
   "confirmationBufferTicks": zod.number().nullable(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "status": zod.string(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
@@ -3069,6 +3135,16 @@ export const CancelBatchBacktestQueryParams = zod.object({
 
 export const cancelBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const cancelBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
 export const cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 export const cancelBatchBacktestResponseReportOneOneAuditPagePageSizeMax = 100;
@@ -3425,6 +3501,12 @@ export const CancelBatchBacktestResponse = zod.object({
   "netPnl": zod.number().nullable(),
   "exitReason": zod.string().nullable(),
   "confirmationBufferTicks": zod.number().nullish(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 })),
@@ -3448,6 +3530,12 @@ export const CancelBatchBacktestResponse = zod.object({
   "levelValues": zod.record(zod.string(), zod.number()),
   "levelDistancesTicks": zod.record(zod.string(), zod.number()),
   "confirmationBufferTicks": zod.number().nullable(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "status": zod.string(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
@@ -4054,6 +4142,11 @@ export const getBacktestAuditPageResponsePageSizeMax = 100;
 
 export const getBacktestAuditPageResponseTotalMin = 0;
 
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinCandlesMin = 3;
+
+
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
 
 
 export const GetBacktestAuditPageResponse = zod.object({
@@ -4107,6 +4200,12 @@ export const GetBacktestAuditPageResponse = zod.object({
   "netPnl": zod.number().nullable(),
   "exitReason": zod.string().nullable(),
   "confirmationBufferTicks": zod.number().nullish(),
+  "consolidationThresholds": zod.object({
+  "version": zod.string(),
+  "minCandles": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinCandlesMin),
+  "maxRangeTicks": zod.number().min(1),
+  "maxExpansionRatio": zod.number().gt(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+}),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }))

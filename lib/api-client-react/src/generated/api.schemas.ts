@@ -2021,6 +2021,16 @@ export interface BacktestMetricSet {
   consecutiveLosses: number;
 }
 
+export interface ConsolidationThresholds {
+  version: string;
+  /** @minimum 3 */
+  minCandles: number;
+  /** @minimum 1 */
+  maxRangeTicks: number;
+  /** @exclusiveMinimum 0 */
+  maxExpansionRatio: number;
+}
+
 export type BacktestAuditRecordPeriod = typeof BacktestAuditRecordPeriod[keyof typeof BacktestAuditRecordPeriod];
 
 
@@ -2139,6 +2149,7 @@ export interface BacktestAuditRecord {
   exitReason: string | null;
   /** @nullable */
   confirmationBufferTicks?: number | null;
+  consolidationThresholds: ConsolidationThresholds;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
   patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
 }
@@ -2211,6 +2222,7 @@ export interface HistoricalOccurrence {
   levelDistancesTicks: HistoricalOccurrenceLevelDistancesTicks;
   /** @nullable */
   confirmationBufferTicks: number | null;
+  consolidationThresholds: ConsolidationThresholds;
   status: string;
   reasonCode: string;
   evaluationCursor: string;

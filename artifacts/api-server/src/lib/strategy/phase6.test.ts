@@ -270,6 +270,22 @@ test("bounded consolidation qualifies both below 45 and above 60 minutes without
   assert.equal(detectExtendedNtzConsolidation(short.slice(0, 2), ntz()).detected, false);
 });
 
+test("governed consolidation range threshold changes qualification deterministically", () => {
+  const consolidation = Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.5, 10.5, 9, 9.5));
+  const breakout = candle(900_000, 10, 10.8, 9.9, 10.7, 250);
+  const evaluate = (maxRangeTicks: number) => evaluateExtendedNtzConsolidationBreakout(baseContext({
+    candles: [...consolidation, breakout],
+    breakout: { ...baseContext().breakout, candleOpenTime: breakout.openTime, time: breakout.closeTime },
+    patience: { ...patience(), eligibilityReason: "ntz consolidation" },
+    config: strategyConfig({ phase6ConsolidationMaxRangeTicks: maxRangeTicks }),
+  }));
+  const governed = evaluate(config.phase6ConsolidationMaxRangeTicks);
+  const stricter = evaluate(5);
+  assert.equal(governed.rules.find((rule) => rule.key === "extendedConsolidation")?.passed, true);
+  assert.equal(stricter.rules.find((rule) => rule.key === "extendedConsolidation")?.passed, false);
+  assert.deepEqual(stricter, evaluate(5));
+});
+
 test("extended consolidation rejects a materially expanding range", () => {
   const candles = Array.from({ length: 9 }, (_, index) => index < 4
     ? candle(index * 300_000, 9.95, 9.96, 9.94, 9.95)

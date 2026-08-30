@@ -15,6 +15,7 @@ import {
 } from "./phase9.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
+import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;
@@ -380,6 +381,7 @@ function occurrenceAudit(
     netPnl: null,
     exitReason: null,
     confirmationBufferTicks: 3,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     pullbackOccurrences: [{
       type: "touch",
       time: new Date(lOpen).toISOString(),

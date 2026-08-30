@@ -20,6 +20,7 @@ import {
   type DecisionState,
   type Direction,
   type StrategyConfig,
+  consolidationThresholds,
   type OrbBreakoutState,
   type BreakoutContinuationCondition,
   buildPhase7RiskPlan,
@@ -746,7 +747,10 @@ export function createMarketSnapshot(
       "Patience-candle states are descriptive shadow analysis only; a trigger never creates a live or paper order.",
       "Phase 6 setup decisions require every mandatory rule; scores and reversal alerts cannot qualify a setup.",
       "Doji uses a 10% body-to-range default; equivalent opposing candles use 15% body-size tolerance, 70% minimum body-to-range, and 15% trend-facing-wick limits.",
-      `Extended NTZ consolidation requires 9–12 contiguous completed five-minute candles (45–60 minutes), primarily inside or near NTZ, with no more than ${config.phase6ConsolidationExpansionRatio.toFixed(2)}× range expansion.`,
+      (() => {
+        const thresholds = consolidationThresholds(config);
+        return `Phase 6 consolidation thresholds ${thresholds.version}: minimum ${thresholds.minCandles} completed five-minute candles, maximum ${thresholds.maxRangeTicks} MES ticks, and no more than ${thresholds.maxExpansionRatio.toFixed(2)}× range expansion. NTZ proximity is diagnostic confluence, not a duration substitute.`;
+      })(),
        `Phase 7 uses tick-aligned catastrophe risk, ${plan.targetDollars.toFixed(2)} dollar target selection, whole-contract sizing, and a frozen 40% runner retracement.`,
        `Simulated costs: normal slippage is one adverse tick per fill; abnormal spread mode includes the observed spread. Fees include commission, exchange/regulatory, regulatory, and clearing components.`,
     ],
