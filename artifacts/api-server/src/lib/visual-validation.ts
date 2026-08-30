@@ -915,8 +915,11 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
       [record.exitCandleOpenTime, tradeAudit.exitCandleOpenTime ?? null],
       [record.exitCandleCloseTime, tradeAudit.exitCandleCloseTime ?? null],
     ];
-    return exactPairs.some(([recordValue, tradeValue]) => recordValue !== null || tradeValue !== null)
-      && exactPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue);
+    const causalPairs = exactPairs.slice(0, 4);
+    const optionalPairs = exactPairs.slice(4);
+    return causalPairs.every(([recordValue, tradeValue]) => recordValue === tradeValue)
+      && optionalPairs.every(([recordValue, tradeValue]) =>
+        recordValue === null || tradeValue === null || recordValue === tradeValue);
   });
   return causalMatches.length === 1 ? causalMatches[0]! : null;
 }
@@ -1153,8 +1156,8 @@ function hasConfirmedPatienceOccurrence(occurrence: HistoricalOccurrence): boole
 }
 
 function hasCanonicalTradeOccurrence(occurrence: HistoricalOccurrence, trade: BacktestTrade | null): boolean {
-  return occurrence.kind === "trade"
-    && occurrence.status === "QUALIFIED_TRADE"
+  return (occurrence.kind === "trade" || occurrence.kind === "patience")
+    && (occurrence.status === "QUALIFIED_TRADE" || occurrence.status === "CONFIRMED")
     && occurrence.canonicalTrade
     && trade !== null;
 }
@@ -1873,7 +1876,11 @@ export function buildHistoricalVisualValidationSetFromReport(
     if (!category) return [];
     const trade = occurrence.canonicalTrade ? matchingTrade(audit, report.trades) : null;
     if (category === "qualified_trade" && !hasCanonicalTradeOccurrence(occurrence, trade)) return [];
-    return [{ audit, trade, category, occurrence }];
+    const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
+    if (occurrence.kind === "patience" && occurrence.status === "CONFIRMED" && occurrence.canonicalTrade && trade) {
+      candidates.push({ audit, trade, category: "qualified_trade", occurrence });
+    }
+    return candidates;
   }) ?? [];
   const uniqueLedgerCandidates = [...new Map(
     ledgerCandidates

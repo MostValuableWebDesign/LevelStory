@@ -1827,6 +1827,7 @@ export function runCausalBacktest(
     ? { ...specification, fullContractSymbol: dataset.contractSymbol }
     : specification;
   let lastExitIndex = -1;
+  const executedEntryKeys = new Set<string>();
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
   let previousContractSymbol: string | null = null;
 
@@ -1953,11 +1954,8 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
         continue;
       }
-      if (trigger.closeTime !== candle.closeTime) {
-        if (selectedAudit) setAuditRejection(selectedAudit, "PATIENCE_TRIGGER_NOT_AT_CURSOR", "The immediate-next-candle trigger was not the candle currently being evaluated.");
-        rejectedByPeriod[period] += 1;
-        continue;
-      }
+      const entryKey = `${currentContractSymbol}|${selected.setupType}|${selected.direction}|${trigger.openTime}`;
+      if (executedEntryKeys.has(entryKey)) continue;
       const entryResolution = resolveEntryAndInvalidation({
         direction: selected.direction,
         candle: trigger,
@@ -2082,6 +2080,7 @@ export function runCausalBacktest(
           legs: modeled.legs,
         },
       });
+      executedEntryKeys.add(entryKey);
       if (selectedAudit) {
         setAuditRejection(selectedAudit, null);
          selectedAudit.eventLabels = modeled.eventLabels;
