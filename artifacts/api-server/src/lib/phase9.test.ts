@@ -8,6 +8,7 @@ import {
   resolveEntryAndInvalidation,
   resolveIntrabarOutcome,
   buildHistoricalOccurrenceLedger,
+  projectHistoricalTradeCandidates,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -566,6 +567,77 @@ test("authoritative candidate identity preserves one candidate across merged sig
     .find((occurrence) => occurrence.kind === "patience")?.occurrenceId);
   assert.deepEqual(patience.levelIdentifiers, ["ORB", "VWAP"]);
   assert.deepEqual(patience.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+});
+
+test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {
+  const patienceTimestamp = "2026-08-25T13:55:00.000Z";
+  const entryTimestamp = "2026-08-25T14:00:00.000Z";
+  const occurrence = {
+    occurrenceId: "signal-candidate-driven",
+    auditId: "audit-candidate-driven",
+    kind: "patience",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    secondaryStrategyMatches: [],
+    tradingDate: "2026-08-25",
+    contractSymbol: "MESU26",
+    contractMonth: "U26",
+    direction: "long",
+    lTimestamp: "2026-08-25T13:50:00.000Z",
+    lEventId: "l-candidate-driven",
+    lInteractionType: "proximity",
+    lCandle: null,
+    previousComparisonTimestamp: "2026-08-25T13:45:00.000Z",
+    patienceTimestamp,
+    patienceCandle: { openTime: Date.parse(patienceTimestamp), closeTime: Date.parse(entryTimestamp), open: 100, high: 101, low: 99, close: 100.5, volume: 1000, isComplete: true },
+    candidateShapeResult: true,
+    expectedEntryTimestamp: entryTimestamp,
+    confirmationThreshold: 101.25,
+    confirmationExcursion: 0.25,
+    entryTimestamp: null,
+    entryCandle: null,
+    levelIdentifiers: ["Prior day high"],
+    levelValues: { "Prior day high": 100.5 },
+    levelDistancesTicks: {},
+    levelTolerancePoints: {},
+    levelToleranceTicks: {},
+    levelInteractionTypes: {},
+    confirmationBufferTicks: 1,
+    nextObservedCandle: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
+    status: "SIGNAL_CONFIRMED",
+    reasonCode: "Immediate next candle reached the confirmation buffer.",
+    evaluationCursor: entryTimestamp,
+    formulaVersion: "phase9-fixed-formula-v2",
+    formulaHash: "formula-candidate-driven",
+    sourceFingerprint: "source-candidate-driven",
+    canonicalTrade: false,
+    canonicalOccurrence: true,
+    primaryEdge: "ORB_PULLBACK_CONTINUATION",
+    matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
+    supportingConfluences: ["Immediate confirmation"],
+    setupGrade: "A",
+    signalStatus: "SIGNAL_CONFIRMED",
+  } as any;
+  const dataset = {
+    candles: [
+      candle(Date.parse(patienceTimestamp) / 300_000, { openTime: Date.parse(patienceTimestamp), closeTime: Date.parse(entryTimestamp), contractSymbol: "MESU26", high: 101, low: 99 }),
+      candle(Date.parse(entryTimestamp) / 300_000, { openTime: Date.parse(entryTimestamp), closeTime: Date.parse(entryTimestamp) + 300_000, contractSymbol: "MESU26", high: 101.25, low: 100 }),
+    ],
+    inSampleDates: ["2026-08-25"],
+    outOfSampleDates: [],
+    contractMonth: "U26",
+  } as any;
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
+  assert.equal(result.authoritativeTrades.length, 1);
+  assert.equal(result.authoritativeTrades[0]?.candidateId, result.candidates[0]?.candidateId);
+  assert.equal(result.authoritativeTrades[0]?.signalOccurrenceId, occurrence.occurrenceId);
+  assert.equal(result.authoritativeTrades[0]?.fillLabel, "OHLCV_CONFIRMATION_THRESHOLD");
+  assert.equal(result.authoritativeTrades[0]?.entryPrice, 101.25);
 });
 
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {
