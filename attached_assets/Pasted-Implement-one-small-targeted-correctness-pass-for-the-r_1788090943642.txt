@@ -1,0 +1,347 @@
+Implement one small, targeted correctness pass for the remaining LevelStory issues identified after reviewing commit 2e516b9.
+
+Do not modify the approved consolidation-threshold governance. Do not run a broad backtest, qualification batch, historical-index rebuild, or unrelated UI redesign.
+
+Preserve:
+
+- Shadow Mode only
+- No live or paper orders
+- No broker integration
+- No fabricated candles, quotes, or fills
+- Existing deterministic caching
+- Existing 22-session interactive limit
+- Existing 12-MES-tick pullback-level tolerance
+- Existing 3-or-4-tick patience confirmation configuration
+- Existing four-strategy taxonomy and canonical attribution order
+
+OBJECTIVE
+
+Correct:
+
+1. Occurrence-specific cursor handling for missing or incomplete E candles.
+2. Governed occurrence identities across data and formula versions.
+3. Fibonacci-only qualifying pullbacks for ORB continuation.
+4. Production wiring for equivalent-candle reversal patience.
+5. Deployment/review-set version visibility.
+
+1. FIX OCCURRENCE-SPECIFIC EVALUATION CURSORS
+
+Current problem:
+
+`buildPatienceOccurrences` can fall back to the last completed candle in the visible prefix when the immediate E candle is missing or incomplete. This can give an earlier occurrence a later evaluation cursor.
+
+Every occurrence must stop at the earliest causal time when its state became knowable.
+
+Required cursor rules:
+
+Confirmed P → E:
+
+- E must be the immediate five-minute interval after P.
+- `evaluationCursor = E.closeTime`.
+
+Completed E that fails confirmation:
+
+- Mark P as `EXPIRED_NO_IMMEDIATE_CONFIRMATION`, `EXPIRED_WRONG_DIRECTION`, or `INVALIDATED`.
+- `evaluationCursor = E.closeTime`.
+
+Missing immediate E interval:
+
+- Mark P as `EXPIRED_MISSING_E` once a later interval proves the expected E interval is absent.
+- Use the expected E interval boundary as the occurrence cursor.
+- Do not use the later observed candle’s close.
+- Store the later candle only as diagnostic `nextObservedCandle`.
+- Never label it E.
+
+Incomplete immediate E with no later interval:
+
+- Keep status as `CANDIDATE`.
+- Do not invent E.
+- The cursor must not extend past currently available causal evidence.
+
+Incomplete immediate E followed by a later interval:
+
+- Mark P as `EXPIRED_INCOMPLETE_E`.
+- Use the expected immediate E interval boundary as the occurrence cursor.
+- Do not use the later completed candle’s close.
+- Do not allow the later candle to confirm P.
+
+No immediate candle yet:
+
+- Keep P as `CANDIDATE`.
+- Use P close or the exact current causal cursor, whichever is valid without future access.
+
+Remove any fallback equivalent to:
+
+`completed.at(-1)?.closeTime`
+
+when assigning an individual occurrence’s cursor.
+
+Visual Review must continue using the occurrence cursor rather than the surrounding audit prefix.
+
+Add deterministic tests proving:
+
+- Missing E followed by a later candle does not advance the occurrence cursor.
+- Incomplete E followed by a later candle does not advance the occurrence cursor.
+- A failed completed E uses exactly E close.
+- A confirmed E uses exactly E close.
+- Mutating candles after the occurrence cursor cannot change the occurrence or its snapshot.
+- Machine-visible candles never extend beyond the occurrence cursor.
+
+2. GOVERN OCCURRENCE IDS BY SOURCE AND FORMULA
+
+Current problem:
+
+Occurrences store `sourceFingerprint` and `formulaHash`, but those fields are not included in every occurrence ID seed.
+
+Correct all occurrence identities:
+
+- Pullback
+- Patience
+- Risk rejection
+- Qualified trade
+
+Every occurrence ID seed must include:
+
+- Source content fingerprint
+- Formula hash
+- Formula version
+- Contract symbol
+- New York trading date
+- Occurrence kind
+- Canonical strategy candidate
+- Direction
+- Exact L event ID and timestamp when applicable
+- P timestamp when applicable
+- Expected E timestamp
+- Actual E timestamp or explicit absence
+- Occurrence status
+
+The same source and formula must reproduce the same ID.
+
+Required tests:
+
+- Identical input produces an identical occurrence ID.
+- Changing one OHLCV value changes the source fingerprint and occurrence ID.
+- Changing formula configuration changes formula hash and occurrence ID.
+- Two occurrences from the same audit and category retain different occurrence IDs.
+- An expired P1 and confirmed P2 cannot collide.
+- Existing persisted reviews cannot overwrite another occurrence.
+
+Do not use filenames, row counts, or timestamp bounds as substitutes for the content fingerprint.
+
+3. MODEL A GENUINE PULLBACK INDEPENDENTLY OF ITS LEVEL
+
+Current problem:
+
+ORB currently treats a “genuine pullback” as an interaction with a non-Fibonacci level. This prevents a real pullback that interacts only with a Fibonacci level from qualifying.
+
+Correct the model by separating:
+
+A. Pullback structure
+
+B. Qualifying L-level interaction
+
+A genuine pullback must be detected from causal price movement after the completed ORB/NTZ breakout.
+
+For a bullish breakout, the pullback should show countertrend downward retracement from a causal post-breakout peak.
+
+For a bearish breakout, the pullback should show countertrend upward retracement from a causal post-breakout trough.
+
+The pullback detector must identify:
+
+- Breakout direction
+- Causal impulse peak or trough
+- Countertrend retracement
+- L candle
+- Pullback depth
+- Pullback start and end
+- No future candles
+- Whether the move became a greater-than-50% reversal warning
+
+Do not define “genuine pullback” merely as “a non-Fibonacci level event exists.”
+
+After detecting the structural pullback, require its exact L candle to interact with at least one qualifying level:
+
+- ORB/NTZ
+- VWAP
+- EMA 200
+- Premarket high/low
+- Prior-day high/low
+- Day-before-prior high/low
+- Major support/resistance
+- Valid frozen Fibonacci retracement level
+
+Use the governed 12-MES-tick tolerance.
+
+Fibonacci rules:
+
+- A random continuation candle near Fibonacci is not a pullback.
+- A structurally detected pullback whose L candle interacts with Fibonacci can qualify even if no non-Fibonacci level also qualifies.
+- Fibonacci levels must be frozen causally from the appropriate impulse anchors.
+- Do not calculate or expose future-dependent Fibonacci levels.
+- Preserve all same-L confluences when multiple levels qualify.
+
+ORB qualification must independently require:
+
+1. Finalized ORB/NTZ.
+2. Completed breakout outside ORB/NTZ.
+3. Genuine countertrend pullback structure.
+4. L interaction with at least one qualifying level.
+5. Valid patience P after L.
+6. Immediate next-candle E confirmation.
+7. Configured confirmation buffer.
+8. Risk approval.
+
+Required tests:
+
+- Fibonacci proximity without a countertrend pullback fails.
+- Countertrend pullback without any qualifying level fails.
+- Genuine pullback to Fibonacci alone passes the pullback-and-level gates.
+- Genuine pullback to VWAP passes.
+- Genuine pullback to EMA 200 passes.
+- Genuine pullback to ORB/NTZ passes.
+- Genuine pullback to support/resistance passes.
+- Multiple same-L levels are preserved as confluence.
+- Strong-breakout classification is not required for ORB pullback continuation.
+- Pullback and L occur after the breakout and before P.
+- P and immediate E occur after L.
+
+4. FIX EQUIVALENT-REVERSAL PATIENCE WIRING
+
+Current problem:
+
+The production path calculates the reversal direction but calls the patience engine using the original continuation trend. A bearish reversal during a bullish continuation trend can therefore be rejected as `PATIENCE_TREND_MISMATCH`.
+
+Do not pass the original continuation trend to reversal patience as if the reversal were another continuation trade.
+
+Create explicit reversal-direction evidence.
+
+Equivalent Candle Reversal must require:
+
+- Equivalent opposing full-body candle pattern.
+- Pattern at or within tolerance of a qualifying level.
+- Governed causal reversal-direction confirmation.
+- Reversal patience candle P aligned with the confirmed reversal direction.
+- Immediate next-candle E confirmation.
+- Configured buffer.
+- Risk approval.
+
+The reversal direction may oppose the preceding 15-minute continuation trend.
+
+Required production behavior:
+
+- If continuation trend is bullish and reversal evidence confirms short:
+  - Reversal patience evaluates against confirmed short reversal direction.
+  - It is not rejected merely because the earlier continuation trend was bullish.
+
+- If continuation trend is bearish and reversal evidence confirms long:
+  - Reversal patience evaluates against confirmed long reversal direction.
+
+Do not simply assign the opposite direction.
+
+Direction must be supported by completed causal reversal evidence, such as:
+
+- Equivalent opposing candles
+- Major-level rejection
+- Failed breakout
+- Structure break
+- Strong opposing volume
+
+Create a reversal-specific context or engine mode rather than weakening continuation patience trend requirements.
+
+Continuation patience must still require confirmed causal 15-minute trend evidence.
+
+Required tests:
+
+- Bullish continuation trend with confirmed bearish equivalent reversal can complete bearish P → E.
+- Bearish continuation trend with confirmed bullish equivalent reversal can complete bullish P → E.
+- Synthetic opposite direction without reversal evidence fails.
+- Equivalent pattern without reversal confirmation fails.
+- Reversal confirmation without patience fails.
+- Reversal P without immediate E fails.
+- Valid reversal evidence plus P → immediate E plus risk approval qualifies.
+- Generic Patience Continuation cannot claim the reversal trade.
+
+5. PRESERVE CORRECT P1 → E1 RE-ARMING
+
+Do not regress the newly corrected patience behavior:
+
+- P1 may only be confirmed by immediate E1.
+- Failed E1 expires P1.
+- A later candle cannot confirm P1.
+- Scanning continues for a new patience candidate.
+- P2 may only be confirmed by immediate E2.
+- Only confirmed P2 → E2 may own the entry.
+- Expired P1 remains diagnostic-only.
+- Visual Review must not display expired P1 as the trade-linked P.
+
+If the candle that served as failed E1 independently satisfies the patience-candle shape, it may become a new P candidate, but only its own immediate next candle may confirm it.
+
+6. ADD DEPLOYMENT AND REVIEW-SET VERSION VISIBILITY
+
+Add a small non-sensitive diagnostic area to Visual Review showing:
+
+- Application commit SHA or build ID
+- Formula version
+- Formula hash prefix
+- Source fingerprint prefix
+- Review-set creation time
+- Review-set ID
+- Whether the set was generated before or after the current build
+
+If the current review set was generated under an older formula hash or application build:
+
+- Display `Stale review set — regenerate`.
+- Do not silently present it as current.
+- Provide a regenerate action.
+- Regeneration must reuse the ready historical index.
+- Do not rebuild the historical index merely to regenerate Visual Review.
+
+Do not expose secrets, filesystem paths, environment contents, uploaded filenames, or API keys.
+
+7. FOCUSED VERIFICATION ONLY
+
+Run only:
+
+- Focused Phase 4 pullback tests
+- Focused Phase 5 patience tests
+- Focused Phase 6 strategy tests
+- Phase 9 occurrence-ledger tests
+- Visual-validation tests
+- Relevant governance/persistence tests
+- API typecheck
+- Frontend typecheck
+- git diff --check
+
+Do not run:
+
+- Cold 20+2 replay
+- Broad historical backtest
+- Qualification batch
+- Historical-index rebuild
+- Unrelated full test suites
+
+FINAL REPORT
+
+Report:
+
+1. Files changed.
+2. Root cause of each issue.
+3. Final occurrence cursor rules.
+4. Final occurrence ID fields.
+5. How a structural pullback is detected independently of levels.
+6. How Fibonacci-only qualifying pullbacks now work.
+7. How reversal-specific patience is wired.
+8. Confirmation that P1 cannot be paired with a later E.
+9. Focused test totals and typecheck results.
+10. Commit SHA/build ID displayed by Visual Review.
+11. Whether a Visual Review set must be regenerated.
+12. Remaining limitations.
+
+Do not claim completion unless deterministic tests cover:
+
+- Missing/incomplete E cursor boundaries
+- Source/formula-dependent occurrence IDs
+- Genuine Fibonacci-only pullbacks
+- Reversal patience opposing the preceding trend
+- Expired P1 followed by confirmed P2 → immediate E2
