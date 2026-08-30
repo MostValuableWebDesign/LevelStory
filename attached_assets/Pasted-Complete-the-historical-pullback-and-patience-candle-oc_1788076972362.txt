@@ -1,0 +1,146 @@
+Complete the historical pullback and patience-candle occurrence ledger.
+
+This is a focused correctness task. Do not modify the four-strategy taxonomy, canonical attribution order, historical importer, broker behavior, fill model, risk amounts, or Shadow Mode safeguards.
+
+OBJECTIVE
+
+Retain every causal pullback and patience-candle occurrence found during a session—not only the final qualified sequence or first successful trade.
+
+AUTHORITATIVE P→E RULE
+
+For each completed patience candle P:
+
+1. Only the immediately following completed candle E may confirm P.
+2. E must break P in the intended direction by the configured confirmation buffer.
+3. If E fails, breaks the wrong side, or expires, record that outcome.
+4. Resume scanning after E for a new patience candle.
+5. P2 may only be confirmed by E2.
+6. E2 must never confirm P1.
+7. Continue scanning through the entire machine-visible session.
+8. Never access a candle beyond the evaluation cursor.
+
+OCCURRENCES TO RETAIN
+
+Persist an immutable ordered occurrence for every:
+
+- Qualifying level interaction or pullback L
+- Patience candle P
+- Immediate confirmation candle E
+- Failed confirmation
+- Wrong-side invalidation
+- Expired P→E pair
+- Confirmed entry
+- Risk rejection
+- Qualified trade
+
+Each occurrence must include:
+
+- Stable deterministic occurrence ID
+- Strategy candidate
+- Contract and New York trading date
+- Direction
+- L timestamp and OHLCV, when applicable
+- P timestamp and OHLCV
+- E timestamp and OHLCV, when available
+- Qualifying level identifiers and causal values
+- Distance from each selected level in MES ticks
+- Confirmation buffer
+- Status/reason code
+- Evaluation cursor
+- Formula/configuration version
+- Source fingerprint
+- Whether it became the canonical trade
+- Secondary strategy matches, if applicable
+
+SEPARATE DETECTION FROM QUALIFICATION
+
+Do not discard a detected pullback or patience candle because:
+
+- Entry confirmation failed
+- Risk approval failed
+- A later candidate qualified
+- Another strategy received canonical ownership
+- The occurrence was not ultimately traded
+
+Detection evidence and trade qualification are separate stages.
+
+DATA MODEL
+
+Use an append-only or immutable-per-run occurrence ledger.
+
+Do not silently overwrite earlier occurrences with later candidates.
+
+Sort deterministically by:
+
+1. Trading date
+2. Candle timestamp
+3. Event stage
+4. Stable occurrence ID
+
+Deduplicate only genuinely identical occurrences using stable causal identities. Do not merge distinct patience candles that occur near the same level.
+
+VISUAL REVIEW INTEGRATION
+
+Update Visual Review so historical categories are generated from this occurrence ledger.
+
+The interface must be able to show:
+
+- Every detected pullback
+- Every detected bullish or bearish patience candle
+- Failed P→E examples
+- Confirmed P→E examples
+- The exact L, P, and E candles
+- Why a detected occurrence did or did not become a trade
+
+Do not require an entry for a pullback or patience occurrence to remain visible as diagnostic evidence.
+
+Keep trade-linked strategy examples separate from no-entry diagnostic examples.
+
+TESTS REQUIRED
+
+Add deterministic tests proving:
+
+1. P1 failure is retained.
+2. P1 failure does not prevent later P2/E2 qualification.
+3. E2 cannot confirm P1.
+4. Two successful P→E sequences in one session are both retained.
+5. A risk-rejected confirmed entry remains in the ledger.
+6. A detected pullback without patience remains in the ledger.
+7. A patience candle without confirmation remains in the ledger.
+8. A later canonical trade does not overwrite earlier occurrences.
+9. Repeating the same replay produces identical occurrence IDs and ordering.
+10. No occurrence reads beyond the evaluation cursor.
+11. Visual Review categories use actual ledger occurrences.
+12. Detection counts reconcile with qualification-funnel counts.
+
+VERIFICATION
+
+Run only:
+
+- Focused Phase 4/5/6 tests
+- New occurrence-ledger tests
+- Visual Review data-mapping tests
+- API typecheck
+- Frontend typecheck
+- git diff --check
+
+Do not run:
+
+- Cold 20+2 backtest
+- Full qualification batch
+- Historical-index rebuild
+- Live or paper orders
+
+REPORT
+
+Return:
+
+1. Files changed.
+2. Ledger schema.
+3. Detection and qualification stages.
+4. How P1 failure and P2 re-arming work.
+5. How Visual Review consumes occurrences.
+6. Named tests and exact results.
+7. Remaining limitations.
+
+Do not report completion if earlier failed occurrences can still be overwritten, discarded, or hidden merely because a later trade qualified.

@@ -30,7 +30,21 @@ export type PatienceCandleSnapshot = {
   high: number;
   low: number;
   close: number;
+  volume: number;
   isComplete: boolean;
+};
+
+export type PatienceOccurrence = {
+  occurrenceId: string;
+  direction: Direction;
+  eligibilityReason: PatienceEligibilityReason;
+  eligibilityTime: number;
+  previousCandle: PatienceCandleSnapshot;
+  patienceCandle: PatienceCandleSnapshot;
+  triggerCandle: PatienceCandleSnapshot | null;
+  status: PatienceState;
+  reasonCode: string;
+  evaluationCursor: number;
 };
 
 export type PatienceAnalysis = {
@@ -49,6 +63,7 @@ export type PatienceAnalysis = {
   triggerPrice: number | null;
   stateTime: number | null;
   detail: string;
+  occurrences: PatienceOccurrence[];
 };
 
 export type PatienceEngineOptions = {
@@ -99,6 +114,8 @@ export function patienceCandleEngine(
   const candidateIndexes = completed
     .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
+  const occurrences = buildPatienceOccurrences(candidateIndexes, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
+  const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, occurrences });
   const candidate = candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
     if (!next || next.openTime !== candle.closeTime) return false;
@@ -109,12 +126,12 @@ export function patienceCandleEngine(
   }) ?? candidateIndexes.at(-1);
   if (candidate) {
     const previous = completed[candidate.index - 1];
-    if (!previous) return waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event);
+    if (!previous) return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event));
     const event = candidate.event!;
     const shapeValid = patienceShape(candidate.candle, previous, direction);
     const trendValid = directionTrendMatches(direction, trend);
     if (!trendValid || !shapeValid) {
-      return {
+      return finalize({
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: snapshot(candidate.candle),
@@ -122,7 +139,7 @@ export function patienceCandleEngine(
         detail: !trendValid
           ? `${direction === "long" ? "Bullish" : "Bearish"} patience requires the established ${direction === "long" ? "bullish" : "bearish"} 15-minute trend; current trend is ${trend}.`
           : `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
-      };
+      });
     }
     const next = sorted.find((candle) => candle.openTime > candidate.candle.openTime);
     const patience = snapshot(candidate.candle);
@@ -133,7 +150,7 @@ export function patienceCandleEngine(
       ? roundPrice(candidate.candle.low - stopBufferTicks * tickSize, tickSize)
       : roundPrice(candidate.candle.high + stopBufferTicks * tickSize, tickSize);
     if (!next) {
-      return {
+      return finalize({
         ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: patience,
@@ -141,7 +158,7 @@ export function patienceCandleEngine(
         strategyStopPrice,
         stateTime: candidate.candle.closeTime,
         detail: `Completed ${direction === "long" ? "bullish" : "bearish"} patience candle accepted from exact wick highs/lows; entry waits for a ${entryBufferTicks}-tick confirmation buffer on the immediate next candle.`,
-      };
+      });
     }
     if (next.openTime !== candidate.candle.closeTime) {
       return {
@@ -155,7 +172,7 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       };
     }
-    return evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
+    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []));
   }
 
   const forming = sorted.at(-1);
@@ -163,23 +180,23 @@ export function patienceCandleEngine(
   const latestCompleted = completed.at(-1);
   const latestPrevious = completed.at(-2);
   if (latestCompleted && latestPrevious && event && !patienceShape(latestCompleted, latestPrevious, direction)) {
-    return {
+    return finalize({
       ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
       previousCandle: snapshot(latestPrevious),
       patienceCandle: snapshot(latestCompleted),
       stateTime: latestCompleted.closeTime,
       detail: `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
-    };
+    });
   }
   if (forming && !forming.isComplete && completed.length && event) {
-    return {
+    return finalize({
       ...baseAnalysis("PATIENCE_CANDLE_FORMING", true, event, trend, entryBufferTicks, stopBufferTicks),
       patienceCandle: snapshot(forming),
       stateTime: forming.openTime,
       detail: "A patience candle is forming; wait for its completed close before checking exact wick highs/lows and trend alignment.",
-    };
+    });
   }
-  return waiting("WAITING_FOR_PATIENCE_CANDLE", "A qualifying level is recorded; waiting for a completed trend-aligned patience candle.", trend, entryBufferTicks, stopBufferTicks, latestEligibility);
+  return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "A qualifying level is recorded; waiting for a completed trend-aligned patience candle.", trend, entryBufferTicks, stopBufferTicks, latestEligibility));
 }
 
 export function phase5PatienceAnalysis(
