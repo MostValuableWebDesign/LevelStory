@@ -1,0 +1,389 @@
+```text
+Correct the four-strategy taxonomy and qualification rules so each strategy proves its own edge instead of sharing inappropriate gates.
+
+Preserve these four independent strategy IDs:
+
+1. PATIENCE_CANDLE_CONTINUATION
+2. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+3. ORB_BREAK_PULLBACK_CONTINUATION
+4. EQUIVALENT_CANDLE_REVERSAL
+
+Patience remains a reusable entry-confirmation mechanism across strategies, but it cannot replace required trend, breakout, pullback, consolidation, reversal, or risk evidence.
+
+IMPORTANT ARCHITECTURE
+
+Separate:
+
+- Strategy-context qualification
+- Patience-candle detection
+- Immediate next-candle confirmation
+- Risk approval
+- Trade simulation
+- Trade outcome
+
+A patience candle alone must never prove an entire strategy.
+
+Use completed causal candles only. Never use future candles or final-session indicator values.
+
+--------------------------------------------------
+1. PATIENCE_CANDLE_CONTINUATION
+--------------------------------------------------
+
+Current problem:
+
+The strategy currently treats any non-neutral trend direction as a confirmed trend. That is insufficient.
+
+Required context:
+
+A. Confirmed causal 15-minute directional trend.
+B. A qualifying continuation context, normally a pullback to a machine-visible level.
+C. A trend-aligned patience candle P.
+D. Immediate next-candle confirmation E.
+E. Risk approval.
+
+CONFIRMED 15-MINUTE TREND
+
+Create or reuse one shared function:
+
+hasConfirmedDirectionalTrend(trendEvidence, direction)
+
+It must use the same causal 15-minute trend-structure evidence required by the other directional continuation strategies.
+
+Do not pass merely because:
+
+trend.direction !== neutral
+
+Require the existing confirmed trend evidence, including applicable:
+
+- Completed 15-minute structure
+- Higher-high/higher-low or lower-high/lower-low evidence
+- 15-minute directional slope evidence
+- Required completed-candle lookback
+- Absence of neutral, unclear, or conflicting trend state
+- Machine-visible causal timestamps
+
+Long patience continuation requires confirmed bullish evidence.
+
+Short patience continuation requires confirmed bearish evidence.
+
+If direction is present but not confirmed, record:
+
+TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED
+
+and reject the strategy without deleting any detected pullback or patience evidence.
+
+PATIENCE RE-ARMING
+
+For every P:
+
+- Evaluate only its immediate next completed five-minute candle E.
+- If E confirms by the configured 3–4 tick buffer, continue to risk approval.
+- If E fails, expire that P only.
+- Keep the valid underlying strategy context active.
+- Continue scanning for another P.
+- E may become the next P when it independently satisfies the patience definition.
+- A later candle may never confirm an older P.
+
+--------------------------------------------------
+2. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+--------------------------------------------------
+
+Current problem:
+
+The detector hardcodes exactly 9–12 five-minute candles and a 45–60 minute consolidation. Duration should not define the edge.
+
+Required sequence:
+
+A. Tight/stable consolidation range detected.
+B. No material range expansion during the consolidation.
+C. Directional breakout from the frozen range.
+D. Strong breakout evidence specific to this strategy.
+E. Continuation after the breakout.
+F. A valid post-breakout patience candle P.
+G. Immediate E confirmation.
+H. Risk approval.
+
+CONSOLIDATION DETECTION
+
+Detect consolidation primarily from price behavior:
+
+- Stable bounded high-low range
+- Repeated completed candles remaining inside or near the frozen range
+- No material progressive range expansion
+- No persistent directional displacement before breakout
+- Range width acceptable relative to an existing configurable tick/ATR measure
+- Causal start and end timestamps
+- Frozen range high and low before breakout
+
+Candle count and elapsed time may be:
+
+- Diagnostic evidence
+- A configurable minimum data-quality requirement
+
+They must not require exactly:
+
+- 9–12 candles
+- 45–60 minutes
+
+Do not impose a maximum consolidation duration unless a separately governed configuration explicitly defines one.
+
+Remove “near the NTZ” as a universal hard requirement. NTZ proximity may be recorded as confluence, but consolidation can occur at another machine-visible area.
+
+STRONG BREAKOUT
+
+Only this strategy should require the strong-breakout gates, including the governed combination of:
+
+- Directional close outside the frozen consolidation range
+- Meaningful displacement
+- Supporting volume
+- Candle-body/close-location evidence
+- Continued movement or completed-candle continuation
+
+A strong breakout alone is not an entry.
+
+Entry must still wait for a post-breakout P and its immediate E confirmation.
+
+--------------------------------------------------
+3. ORB_BREAK_PULLBACK_CONTINUATION
+--------------------------------------------------
+
+Current problem:
+
+ORB continuation is being routed through strong-breakout gates that belong only to STRONG_BREAKOUT_AFTER_CONSOLIDATION.
+
+Required sequence:
+
+A. Finalized ORB/NTZ.
+B. Completed candle breaks and closes outside the ORB/NTZ.
+C. Direction agrees with the required confirmed directional evidence.
+D. A qualifying pullback occurs.
+E. Pullback interacts with either:
+   - A structural/dynamic qualifying level within the shared 12-tick area; or
+   - A valid causal frozen Fibonacci level after a valid swing exists.
+F. A directionally aligned patience candle P forms.
+G. Immediate E confirms P using the 3–4 tick entry buffer.
+H. Risk approval passes.
+
+ORB breakout requirements:
+
+- Finalized opening range
+- Completed close outside the range
+- Valid direction
+- No future access
+
+ORB continuation must not require:
+
+- Strong breakout classification
+- Strong breakout body ratio
+- Strong breakout volume classification
+- Consolidation-breakout classification
+
+Those may be recorded as optional confluence but cannot block an otherwise valid ORB pullback continuation.
+
+The required directional continuation after the pullback is supplied by the valid P/E confirmation sequence. Do not require a separate strong-breakout gate before allowing the pullback to be evaluated.
+
+LEVEL INTERACTION
+
+Use the authoritative shared pullback rule:
+
+- 12 MES ticks = 3.00 points by default
+- Full L-candle high-low range
+- VWAP at L
+- EMA 200 at L
+- Fixed structural level value visible at L
+- Shared detector/Visual Review qualification helper
+- ATR diagnostic only
+
+Fibonacci is optional alternative evidence, not universally mandatory.
+
+Do not create Fibonacci levels until a valid causal swing and qualifying pullback context exist.
+
+--------------------------------------------------
+4. EQUIVALENT_CANDLE_REVERSAL
+--------------------------------------------------
+
+Preserve this independent reversal strategy.
+
+Required sequence:
+
+A. Equivalent opposing candle evidence.
+B. Occurrence at or near a valid key level/reversal context.
+C. Body-size and wick tolerances pass.
+D. Reversal direction is established.
+E. Reversal-direction patience candle P forms.
+F. Immediate E confirms P.
+G. Risk approval passes.
+
+Equivalent candles alone must not produce an entry.
+
+Do not route equivalent reversal through bullish continuation or bearish continuation trend requirements. Preserve its separately governed reversal evidence.
+
+--------------------------------------------------
+STRATEGY ATTRIBUTION AND DUPLICATES
+--------------------------------------------------
+
+The same market sequence may contain components used by multiple strategies, but it must not create duplicate simulated trades.
+
+Add deterministic canonical attribution:
+
+1. If the full ORB breakout/pullback sequence qualifies:
+   canonicalStrategyId = ORB_BREAK_PULLBACK_CONTINUATION
+
+2. If a frozen consolidation and strong consolidation breakout qualify:
+   canonicalStrategyId = STRONG_BREAKOUT_AFTER_CONSOLIDATION
+
+3. If equivalent-candle reversal context qualifies:
+   canonicalStrategyId = EQUIVALENT_CANDLE_REVERSAL
+
+4. Otherwise, a confirmed trend/pullback/patience continuation may use:
+   canonicalStrategyId = PATIENCE_CANDLE_CONTINUATION
+
+Preserve secondary matched strategy IDs as diagnostic labels if useful, but produce only one simulated trade for one P/E confirmation.
+
+Do not double-count one trade under Patience and ORB merely because ORB uses patience as its entry mechanism.
+
+--------------------------------------------------
+SHARED PATIENCE RULE
+--------------------------------------------------
+
+Apply the existing directional patience definition:
+
+Bullish P:
+
+- Confirmed bullish strategy direction
+- P’s high does not exceed the preceding completed candle’s high
+- The whole candle does not need to be inside the preceding candle
+
+Bearish P:
+
+- Confirmed bearish strategy direction
+- P’s low does not exceed the preceding completed candle’s low downward
+- The whole candle does not need to be inside the preceding candle
+
+Each P can be confirmed only by its immediate next completed five-minute candle.
+
+Long E:
+
+- Must exceed P high by the configured 3–4 tick buffer
+
+Short E:
+
+- Must exceed P low downward by the configured 3–4 tick buffer
+
+If E fails:
+
+- Preserve P/E attempt
+- Expire P only
+- Continue searching while the strategy context remains valid
+
+--------------------------------------------------
+EVENTS AND FAILURE REASONS
+--------------------------------------------------
+
+Persist component events independently from strategy qualification:
+
+- TREND_CONFIRMED
+- TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED
+- CONSOLIDATION_DETECTED
+- CONSOLIDATION_RANGE_EXPANDED
+- CONSOLIDATION_BREAKOUT
+- STRONG_BREAKOUT_CONFIRMED
+- ORB_BREAK_CONFIRMED
+- PULLBACK_INTERACTION
+- FIBONACCI_INTERACTION
+- PATIENCE_CANDLE_FOUND
+- ENTRY_CONFIRMATION_FAILED
+- ENTRY_CONFIRMED
+- RISK_REJECTED
+- STRATEGY_CONTEXT_INVALIDATED
+
+Preserve evidence even when the complete strategy fails.
+
+--------------------------------------------------
+REGRESSION TESTS
+--------------------------------------------------
+
+Add focused deterministic tests proving:
+
+PATIENCE_CANDLE_CONTINUATION:
+
+1. Non-neutral but unconfirmed 15-minute direction does not qualify.
+2. Confirmed bullish 15-minute trend plus valid bullish P/E may qualify.
+3. Confirmed bearish 15-minute trend plus valid bearish P/E may qualify.
+4. A patience candle cannot substitute for missing trend evidence.
+5. P1 may fail and P2/E2 may later confirm.
+
+STRONG_BREAKOUT_AFTER_CONSOLIDATION:
+
+6. A stable tight consolidation shorter than 45 minutes may qualify when minimum data quality passes.
+7. A stable consolidation longer than 60 minutes may qualify.
+8. Progressive range expansion does not qualify as consolidation.
+9. Consolidation duration is recorded but is not an exact mandatory gate.
+10. A strong breakout without prior consolidation does not qualify this strategy.
+11. Consolidation plus breakout without P/E creates no entry.
+12. NTZ proximity is optional confluence, not mandatory.
+
+ORB_BREAK_PULLBACK_CONTINUATION:
+
+13. A normal completed ORB breakout can qualify without strong-breakout classification.
+14. Failure of strong-volume/body gates does not automatically reject a valid ORB pullback continuation.
+15. ORB breakout without pullback does not qualify.
+16. Pullback without qualifying level/Fibonacci interaction does not qualify.
+17. Valid ORB break, pullback, level interaction, P/E, and risk approval qualify.
+18. Exactly one simulated trade is produced even if the sequence also matches generic patience continuation.
+
+EQUIVALENT_CANDLE_REVERSAL:
+
+19. Equivalent candles without reversal context do not qualify.
+20. Equivalent reversal context without P/E creates no entry.
+21. Complete reversal context plus valid P/E may qualify.
+
+SHARED:
+
+22. A later candle cannot confirm an older P.
+23. Failed P attempts remain in Visual Review.
+24. Every qualified trade has exactly one canonical strategy ID.
+25. Component detections remain visible even without a completed trade.
+
+--------------------------------------------------
+MIGRATION AND SAFETY
+--------------------------------------------------
+
+Correct naming and mapping inconsistencies across:
+
+- Strategy taxonomy
+- API schemas
+- Audit records
+- Visual Review filters
+- Strategy Proposals
+- Backtest attribution
+- Metrics and exports
+
+Do not rewrite immutable historical evidence. Add an explicit taxonomy/schema version and compatibility mapping where required.
+
+Preserve:
+
+- Shadow Mode only
+- No live orders
+- No paper orders
+- No broker integration
+- No fabricated candles, indicators, or fills
+- No automatic activation from human teaching evidence
+
+Run only focused strategy/taxonomy/API/frontend tests, typechecks, and builds.
+
+Do not rebuild the historical index or run a long backtest.
+
+Report:
+
+1. Files changed
+2. Final four strategy IDs
+3. Confirmed-trend function and evidence requirements
+4. New consolidation definition
+5. ORB gates removed
+6. Canonical attribution order
+7. Compatibility mapping
+8. Focused test totals
+9. Any remaining code that applies strong-breakout gates to ORB
+10. Any remaining exact 45–60-minute consolidation requirement
+```
