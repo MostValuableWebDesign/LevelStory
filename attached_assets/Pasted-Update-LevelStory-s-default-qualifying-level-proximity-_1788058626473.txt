@@ -1,0 +1,145 @@
+Update LevelStory’s default qualifying-level proximity tolerance from 4 MES ticks to 12 MES ticks.
+
+Authoritative setting
+
+MES tick size: 0.25 point
+Default tolerance: 12 ticks
+Point equivalent: 3.00 points
+
+A candle L interacts with a qualifying level when its complete high–low range touches, crosses, overlaps, or comes within 12 ticks of the level.
+
+For a level value V:
+
+tolerancePoints = 12 × 0.25 = 3.00
+
+The level qualifies when:
+
+L.high >= V - 3.00
+AND
+L.low <= V + 3.00
+
+Required changes
+
+1. Change the default tolerance from 4 to 12 ticks everywhere it is used:
+
+- Visual Review
+- qualifying-level selector
+- frontend evidence
+- API validation
+- saved teaching evidence
+- strategy proposals
+- deterministic replay
+- Shadow Mode
+- backtest formula configuration
+
+2. Do not replace the setting with scattered hard-coded values. Define one authoritative default:
+
+DEFAULT_LEVEL_TOLERANCE_TICKS = 12
+
+Derive points from:
+
+toleranceTicks × MES_TICK_SIZE
+
+3. Preserve the exact configured tolerance with every teaching example and proposal. Historical examples saved with four ticks must remain four-tick examples unless explicitly migrated. Do not silently reinterpret previously stored evidence as 12 ticks.
+
+4. Apply the tolerance to:
+
+- VWAP at L
+- EMA 200 at L
+- ORB/NTZ high and low
+- premarket high and low
+- previous-day high and low
+- day-before-previous high and low
+- support/resistance levels
+- valid Fibonacci levels
+
+5. Dynamic indicators must still use their historical values at L’s exact five-minute timestamp. Do not use their final-session values.
+
+6. Calculate distance from the candle’s full range:
+
+if V < L.low:
+    distancePoints = L.low - V
+else if V > L.high:
+    distancePoints = V - L.high
+else:
+    distancePoints = 0
+
+distanceTicks = distancePoints / 0.25
+
+Qualifies when distanceTicks <= 12.
+
+7. Update the UI to display:
+
+Default pullback zone: 12 MES ticks / 3.00 points
+
+For every level show:
+
+- level value at L;
+- L candle range;
+- distance in ticks and points;
+- allowed tolerance;
+- Qualifies: Yes/No.
+
+Example:
+
+VWAP at L: 6851.50
+L range: 6854.00–6858.00
+Distance: 10 ticks / 2.50 points
+Allowed: 12 ticks / 3.00 points
+Qualifies: Yes
+
+8. Add a user-selectable tolerance control with approved values:
+
+- 4 ticks / 1.00 point
+- 8 ticks / 2.00 points
+- 12 ticks / 3.00 points — default
+
+Persist the selected value with the evidence. Do not let changing the interface setting retroactively alter previously submitted reviews.
+
+9. Do not make level proximity alone sufficient for an entry. Preserve the complete sequence:
+
+- directional context;
+- ORB/NTZ requirements;
+- pullback or consolidation;
+- qualifying level interaction;
+- valid patience candle P;
+- immediately following entry candle E;
+- 3–4 tick confirmation beyond P;
+- risk approval.
+
+10. Update wording that currently says “four-tick zone” so it derives from the active tolerance.
+
+Tests
+
+Add focused deterministic tests for:
+
+- exact level touch;
+- 4-tick distance;
+- 8-tick distance;
+- exactly 12 ticks qualifies;
+- more than 12 ticks is rejected;
+- fractional VWAP at L;
+- fractional EMA 200 at L;
+- fixed levels;
+- previously saved four-tick evidence remains unchanged;
+- new reviews default to 12 ticks;
+- frontend and API produce identical results;
+- no change to P/E sequencing.
+
+Safeguards
+
+- Do not fabricate candles or indicator values.
+- Do not loosen patience-candle or entry-confirmation rules.
+- Do not automatically approve or activate a strategy.
+- Preserve Shadow Mode and no-live-orders protections.
+- Do not rebuild the historical index.
+- Do not run a large backtest for this change.
+
+Report:
+
+1. Files changed.
+2. Location of the authoritative default.
+3. Confirmation that 12 ticks equals 3.00 MES points.
+4. Treatment of previously saved four-tick evidence.
+5. Focused test totals.
+6. Confirmation that no strategy or order path was activated.
