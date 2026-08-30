@@ -114,8 +114,13 @@ export function recordVisualValidationReview(
     const machineTrade = snapshot.machineEvidence.trade;
     if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
     if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
-    const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? machineTrade.entryTime;
-    const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? null;
+    const observedEntryCandle = snapshot.reviewCandles.find((candle) =>
+      candle.isComplete
+      && Date.parse(candle.openTime) <= Date.parse(machineTrade.entryTime)
+      && Date.parse(machineTrade.entryTime) < Date.parse(candle.closeTime),
+    );
+    const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? observedEntryCandle?.openTime ?? machineTrade.entryTime;
+    const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? observedEntryCandle?.closeTime ?? null;
     if (
       teaching.machineTradeId && teaching.machineTradeId !== machineTrade.id
       || teaching.direction !== machineTrade.direction

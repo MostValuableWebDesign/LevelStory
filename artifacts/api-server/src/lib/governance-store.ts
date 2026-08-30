@@ -139,7 +139,7 @@ export async function persistTeachingEvidence(args: {
     calculatedEntryPrice: Number.isFinite(teaching.calculatedEntryPrice) ? String(teaching.calculatedEntryPrice) : null,
     setupClassification: teaching.setupType,
     qualifyingLevels: teaching.qualifyingLevels ?? [],
-    qualifyingPullbackLevels: teaching.qualifyingLevels ?? teaching.pullbackLevels,
+    qualifyingPullbackLevels: teaching.pullbackLevels,
     qualifyingLevelType: teaching.qualifyingLevels?.map((level) => level.levelType).join(", ") || null,
     confidence: teaching.confidence,
     reviewerExplanation: teaching.explanation,

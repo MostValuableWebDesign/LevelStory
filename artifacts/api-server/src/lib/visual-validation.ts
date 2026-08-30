@@ -575,10 +575,10 @@ export function validateVisualValidationTeaching(
             ? {
                 ...resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks),
                 valueAtInteraction: level,
-                distancePoints: distanceToLevel(level, levelCandle.high, levelCandle.low, input.qualifyingLevelRangeLow ?? annotation.rangeLow, input.qualifyingLevelRangeHigh ?? annotation.rangeHigh),
-                distanceTicks: Math.ceil(Math.max(0, distanceToLevel(level, levelCandle.high, levelCandle.low, input.qualifyingLevelRangeLow ?? annotation.rangeLow, input.qualifyingLevelRangeHigh ?? annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
-                rangeLow: input.qualifyingLevelRangeLow ?? annotation.rangeLow ?? null,
-                rangeHigh: input.qualifyingLevelRangeHigh ?? annotation.rangeHigh ?? null,
+                distancePoints: distanceToLevel(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh),
+                distanceTicks: Math.ceil(Math.max(0, distanceToLevel(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
+                rangeLow: annotation.rangeLow ?? null,
+                rangeHigh: annotation.rangeHigh ?? null,
               }
             : null,
       }));
@@ -615,7 +615,9 @@ export function validateVisualValidationTeaching(
   const indicatorAtLevel = levelCandle
     ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime)
     : undefined;
-  if (input.levelCandleOpenTime !== undefined || input.levelCandleCloseTime !== undefined || input.qualifyingLevelId !== undefined || structuredLevels.length > 0) {
+  const needsIndicatorEvidence = structuredLevels.some((selection) => selection.levelType === "dynamic_indicator")
+    || input.qualifyingLevelId === "vwap" || input.qualifyingLevelId === "ema-200";
+  if (needsIndicatorEvidence) {
     if (!indicatorAtLevel) messages.push("No causal VWAP/EMA 200 indicator point exists at the qualifying level candle.");
     else if (indicatorAtLevel.visibility !== "machine") messages.push("VWAP and EMA 200 at L are not causally machine-visible.");
   }

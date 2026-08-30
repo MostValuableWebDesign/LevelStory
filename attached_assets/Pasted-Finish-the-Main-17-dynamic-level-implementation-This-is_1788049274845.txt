@@ -1,0 +1,150 @@
+Finish the Main 17 dynamic-level implementation. This is a focused correctness pass only. Do not run historical indexing, cold backtests, qualification batches, or activate Shadow Mode.
+
+1. Correct the frontend level cards
+
+The “Indicators at L” panel correctly reads selectedIndicator.vwap and selectedIndicator.ema200, but the qualifying cards still use snapshot.annotations and annotation.price.
+
+Build resolved cards for the selected L:
+
+For vwap:
+- valueAtInteraction = selectedIndicator.vwap
+- sourceTimestamp = selectedIndicator.openTime
+- rangeLow = null
+- rangeHigh = null
+
+For ema-200:
+- valueAtInteraction = selectedIndicator.ema200
+- sourceTimestamp = selectedIndicator.openTime
+- rangeLow = null
+- rangeHigh = null
+
+For fixed levels:
+- Continue resolving from the immutable machine-visible annotation.
+
+Use the resolved value for:
+
+- Card price
+- Distance calculation
+- Enabled/disabled state
+- Checked state
+- Submitted qualifyingLevels evidence
+
+Regression:
+
+L high 6857.50
+L low 6851.25
+VWAP at L 6851.508
+Final VWAP 6867.25
+
+Expected:
+
+- VWAP card displays 6851.508
+- Distance is 0 ticks
+- Checkbox is enabled
+- Submitted valueAtInteraction is 6851.508
+- Final VWAP 6867.25 is not used
+
+2. Select levels by stable ID
+
+Determine checked state using:
+
+teaching.qualifyingLevels.some(item => item.levelId === level.id)
+
+Do not determine dynamic selection using:
+
+teaching.pullbackLevels.includes(annotation.price)
+
+When selecting VWAP or EMA, submit the L-time value.
+
+When deselecting, remove the item by levelId.
+
+3. Recalculate when L changes
+
+Whenever the reviewer changes L:
+
+- Resolve all currently selected levels again at the new L.
+- Update dynamic valueAtInteraction and sourceTimestamp.
+- Recalculate distances and eligibility.
+- Remove any selection that is unavailable, non-causal, or outside tolerance.
+- Never retain an old L-time VWAP/EMA value.
+
+4. Preserve legacy numeric compatibility correctly
+
+Keep:
+
+qualifyingLevels = structured authoritative evidence
+
+Keep qualifyingPullbackLevels as number[] only for compatibility.
+
+Do not assign structured qualifyingLevels objects to qualifyingPullbackLevels.
+
+For dynamic indicators, the legacy numeric array may contain the authoritative L-time value, or be empty if old consumers cannot safely interpret fractional indicators.
+
+Update the OpenAPI schema and generated clients so runtime data matches declared types.
+
+5. Tighten server validation
+
+Only require indicatorAtLevel when at least one selected structured level has:
+
+levelType === "dynamic_indicator"
+
+Fixed ORB, premarket, previous-day, and support/resistance selections must not fail merely because indicatorSeries is absent.
+
+Remove all client-authoritative range handling from the legacy path:
+
+- Do not use input.qualifyingLevelRangeLow/High to calculate validity.
+- Resolve fixed ranges from immutable server annotations.
+- Resolve dynamic values from immutable indicatorSeries.
+
+6. Complete the migration
+
+Add every missing teaching/governance column with ADD COLUMN IF NOT EXISTS:
+
+- level_candle_timestamp
+- qualifying_level_id
+- qualifying_level_value
+- qualifying_level_range_low
+- qualifying_level_range_high
+- qualifying_level_distance_ticks
+- consolidation_metadata
+- indicator_source_timestamp
+- qualifying_levels
+- validator_version
+- calendar_fingerprint if not already included in an earlier committed migration
+
+Ensure a clean database can apply the complete migration chain without requiring a manual schema push.
+
+7. Finish false-positive fallback handling
+
+If machineTrade.audit does not contain trigger-candle open and close timestamps:
+
+- Locate the exact observed review candle containing machineTrade.entryTime.
+- Match that candle’s complete interval.
+- Do not compare entryCandleOpenTime directly with a close-time entry event.
+
+8. Add focused tests
+
+Add deterministic tests for:
+
+- VWAP card uses 6851.508 rather than final 6867.25.
+- VWAP inside L is selectable.
+- Submitted structured VWAP uses L-time value.
+- Changing L recomputes the VWAP selection.
+- EMA follows the same behavior.
+- Fixed ORB works without indicator-series data.
+- Client ranges cannot override server ranges.
+- qualifyingPullbackLevels remains number[].
+- qualifyingLevels retains structured evidence.
+- Complete migration works from a clean schema.
+- Validator-version cache reuse works.
+- False-positive fallback identifies the correct candle interval.
+
+Run only focused visual-validation, visual-review UI, persistence, governance, migration, and generated-schema tests plus typechecks/builds.
+
+Report:
+- Files changed
+- Migration coverage
+- Regression result for 6851.508 versus 6867.25
+- Focused test totals
+- Proof that UI and server resolve the same value
+- Confirmation that no strategy was activated

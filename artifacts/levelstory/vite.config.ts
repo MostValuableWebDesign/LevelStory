@@ -90,7 +90,11 @@ const privatePathGuard = {
 };
 
 export default defineConfig({
-  base: basePath,
+  // The artifact is registered at the root preview path. The proxy adds its
+  // external prefix; Vite must emit root-relative assets so preview/serve
+  // resolves them against the local artifact root instead of treating the
+  // prefix as a filesystem route.
+  base: "/",
   plugins: [
     react(),
     tailwindcss(),
