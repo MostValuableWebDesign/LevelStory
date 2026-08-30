@@ -1,0 +1,227 @@
+```text
+Implement one focused Phase 2G correction: close the legacy reconciliation loophole and add authoritative candidate-driven trade management.
+
+Do not change:
+
+- Strategy definitions
+- Patience-candle shape
+- Immediate P→E confirmation
+- Confirmation buffer
+- 12-tick pullback tolerance
+- 9:30 a.m.–1:00 p.m. ET entry window
+- Candidate identity
+- Historical index
+- Frontend
+- Broker, live, or paper-trading behavior
+
+PART 1 — FIX LEGACY TRADE RECONCILIATION
+
+A legacy raw trade may become authoritative only when its matching candidate has:
+
+executionStatus === "MODELED_TRADE_CREATED"
+entryReachedThreshold === true
+
+If the candidate is:
+
+- ENTRY_NOT_REACHED
+- INSUFFICIENT_CANDLE_DATA
+- ENTRY_AMBIGUOUS
+
+then its matching legacy trade must be moved to orphan diagnostics and excluded from authoritative trades and metrics.
+
+Use a precise reason such as:
+
+LEGACY_TRADE_CONFLICTS_WITH_CANDIDATE_ENTRY_DISPOSITION
+
+Add a deterministic test proving a legacy trade cannot bypass a candidate’s failed entry disposition.
+
+PART 2 — CREATE FROZEN CANDIDATE MANAGEMENT CONTEXT
+
+At the time the candidate is created, preserve the same causal management plan used by an ordinary authoritative trade.
+
+Create a structure such as:
+
+CandidateManagementContext {
+  candidateId
+  signalOccurrenceId
+  frozenAt
+  direction
+  contracts
+  entryPrice
+  strategyStopPrice
+  catastropheStopPrice
+  targetPrice
+  runnerActivationPrice
+  runnerExitRule
+  sessionCloseTime
+  sourceAuditId
+  managementEvidenceStatus
+  missingEvidenceReasons[]
+}
+
+Use existing governed configuration and existing stop, target, runner, and session-close rules.
+
+Do not invent new stop or target rules.
+
+Do not derive management levels from future candles.
+
+If required context is unavailable, retain the open trade and identify the exact missing fields.
+
+PART 3 — MANAGE CANDIDATE-DRIVEN TRADES
+
+For every candidate-driven trade with complete management context:
+
+1. Entry is observed at E close under OHLCV_CONFIRMATION_THRESHOLD.
+2. Do not use earlier intrabar movement from E to evaluate exits.
+3. Begin outcome replay with the first candle after E.
+4. Process candles causally in timestamp order.
+5. Use one-minute constituent bars when available.
+6. Otherwise use the existing governed same-candle ambiguity policy.
+
+Evaluate the existing authoritative rules for:
+
+- Strategy stop
+- Catastrophe stop
+- Profit target
+- Partial target
+- Runner activation
+- Runner exit
+- Level-break invalidation
+- Session-close exit
+
+Preserve the user’s existing runner and Fibonacci rules. Do not add unrelated exit behavior.
+
+PART 4 — OUTCOME STATES
+
+Each entered candidate-driven trade must end in one of:
+
+- FINALIZED_TARGET
+- FINALIZED_STRATEGY_STOP
+- FINALIZED_CATASTROPHE_STOP
+- FINALIZED_RUNNER_EXIT
+- FINALIZED_SESSION_CLOSE
+- OPEN_MISSING_MANAGEMENT_CONTEXT
+- OPEN_END_OF_AVAILABLE_DATA
+- EXIT_AMBIGUOUS
+
+Store exact timestamps, prices, rule source, and evidence.
+
+Do not fabricate an exit when the data ends.
+
+PART 5 — AMBIGUITY
+
+ENTRY_AMBIGUOUS must be produced when entry ordering is genuinely unresolved.
+
+For exits:
+
+- Prefer one-minute constituent evidence.
+- If stop and target occur in the same unresolved bar, use an existing governed conservative policy if configured.
+- Record the ambiguity label and policy.
+- If no governed policy exists, use EXIT_AMBIGUOUS and leave the trade unscored.
+- Never choose based on array iteration order.
+
+A finalized trade resolved under a governed conservative policy may remain scored, but its ambiguity must be visible separately.
+
+An unresolved ambiguous trade must not affect realized metrics.
+
+PART 6 — METRICS AND COUNTS
+
+Report separately:
+
+- eligibleCandidateCount
+- enteredTradeCount
+- finalizedTradeCount
+- openTradeCount
+- unresolvedAmbiguousTradeCount
+- conservativelyResolvedTradeCount
+- unscoredTradeCount
+
+Realized metrics must use only finalized trades and explicitly governed ambiguity resolutions.
+
+Exclude:
+
+- Open trades
+- Entry ambiguity
+- Unresolved exit ambiguity
+- Missing-management-context trades
+
+from:
+
+- Win/loss rate
+- Expectancy
+- P&L
+- Fees and slippage
+- Drawdown
+- Exit statistics
+
+PART 7 — RECONCILE THE TWO OPEN TRADES
+
+For the July 24 long and July 27 short candidate-driven trades, report:
+
+- Candidate and signal IDs
+- P and E timestamps
+- Entry threshold
+- Frozen strategy stop
+- Catastrophe stop
+- Target
+- Runner rules
+- First candle evaluated after E
+- Final disposition
+- Exit timestamp and price, if finalized
+- Exact missing evidence if still open
+
+Do not force these trades closed merely to produce statistics.
+
+TESTS
+
+Add focused deterministic tests proving:
+
+1. Failed candidate disposition rejects a matching legacy trade.
+2. Management context is frozen without future access.
+3. Exit replay begins after E, not earlier inside E.
+4. Later target finalizes a long trade.
+5. Later target finalizes a short trade.
+6. Later strategy stop finalizes a trade.
+7. Catastrophe stop remains distinct.
+8. Runner activation and exit follow existing governed rules.
+9. Session-close exit uses the existing session calendar.
+10. One-minute evidence resolves five-minute ambiguity.
+11. Unresolved stop/target collision becomes EXIT_AMBIGUOUS.
+12. Open trades remain excluded from realized metrics.
+13. Governed conservative ambiguity remains labeled.
+14. Each candidate produces at most one final trade outcome.
+15. No future candle influences frozen management context.
+
+VERIFICATION
+
+Run only focused Phase 5, Phase 6, Phase 9, candidate-entry, candidate-management, intrabar ambiguity, and metric tests; API typecheck; git diff --check; and one cached July 13–27 replay.
+
+Do not rebuild the historical index or run a broad backtest.
+
+FINAL REPORT
+
+Provide:
+
+- Files changed
+- Legacy reconciliation fix
+- Frozen management-context fields and sources
+- Candidate-driven outcome replay process
+- Results for all six entered trades
+- Finalized/open/ambiguous counts
+- Updated realized P&L, expectancy, win rate, and drawdown
+- Any trades still missing management evidence
+- Focused test totals
+- Remaining honest limitations
+
+SUCCESS CRITERIA
+
+A failed candidate disposition cannot retain a legacy trade.
+
+Every entered candidate has one management disposition.
+
+No exit uses candles before the modeled entry observation.
+
+Open and unresolved ambiguous trades do not affect realized performance.
+
+No stop, target, runner event, fill, exit, or intrabar ordering is fabricated.
+```
