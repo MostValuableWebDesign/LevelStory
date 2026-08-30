@@ -548,7 +548,6 @@ export function validateVisualValidationTeaching(
   const pullbackLevels = [...new Set(input.pullbackLevels.filter(Number.isFinite))];
   const structuredLevels = input.qualifyingLevels ?? [];
   if (!pullbackLevels.length && !structuredLevels.length) messages.push("Choose at least one qualifying pullback level.");
-  if (pullbackLevels.some((level) => !tickAligned(level))) messages.push("Every executable fixed qualifying pullback level must be aligned to the MES 0.25 tick.");
   const requestedLevelId = input.qualifyingLevelId;
   const selectedAnnotation = requestedLevelId
     ? snapshot.annotations.find((annotation) => annotation.id === requestedLevelId)
@@ -582,6 +581,14 @@ export function validateVisualValidationTeaching(
               }
             : null,
       }));
+  const dynamicStructuredValues = structuredLevels
+    .filter((selection) => selection.levelType === "dynamic_indicator")
+    .map((selection) => levelCandle ? resolveQualifyingLevelAtCandle(snapshot, levelCandle, selection.levelId, levelToleranceTicks).valueAtInteraction : Number.NaN)
+    .filter(Number.isFinite);
+  const legacyLevelsForTickValidation = structuredLevels.length
+    ? pullbackLevels.filter((level) => !dynamicStructuredValues.some((dynamicValue) => Math.abs(dynamicValue - level) <= 1e-9))
+    : pullbackLevels;
+  if (legacyLevelsForTickValidation.some((level) => !tickAligned(level))) messages.push("Every executable fixed qualifying pullback level must be aligned to the MES 0.25 tick.");
   for (const { selection, resolved } of levelSelections) {
     if (!resolved) continue;
     if (selection) {
@@ -655,7 +662,10 @@ export function createVisualValidationTeachingExample(
     levelCandleOpenTime: input.levelCandleOpenTime ?? input.patienceCandleOpenTime,
     levelCandleCloseTime: input.levelCandleCloseTime ?? input.patienceCandleCloseTime,
     levelToleranceTicks: input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
-    pullbackLevels: [...new Set(input.pullbackLevels)].sort((a, b) => a - b),
+    pullbackLevels: [...new Set(validation.levelInteractions
+      .filter((interaction) => interaction.passed && interaction.levelId !== "vwap" && interaction.levelId !== "ema-200")
+      .map((interaction) => interaction.levelPrice)
+      .filter(tickAligned))].sort((a, b) => a - b),
     qualifyingLevels: validation.levelInteractions
       .filter((interaction) => interaction.passed)
       .map((interaction) => ({

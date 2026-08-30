@@ -1,0 +1,188 @@
+Fix the remaining Main 18 visual-review correctness issues. Keep this update narrowly scoped. Do not rebuild the historical index, run cold backtests, change the trading formula, or alter execution behavior.
+
+Repository:
+MostValuableWebDesign/LevelStory
+
+Primary goal:
+Make fractional VWAP and EMA 200 teaching selections work correctly through the real browser submission path while preserving backward compatibility.
+
+1. Fix frontend teaching serialization
+
+File:
+artifacts/levelstory/src/pages/visual-review.tsx
+
+The current interface correctly obtains VWAP and EMA 200 from the selected qualifying-level candle L, but it incorrectly copies every structured qualifying level into the legacy `pullbackLevels` array.
+
+Required behavior:
+
+- `qualifyingLevels` is the authoritative structured evidence.
+- Dynamic indicators—VWAP and EMA 200—must exist only in `qualifyingLevels`.
+- Never copy fractional VWAP or EMA values into legacy `pullbackLevels`.
+- Legacy `pullbackLevels` may contain only fixed or ranged executable levels that are valid MES tick prices.
+- When levels are selected, deselected, or refreshed after changing L, recompute all legacy fields from the remaining fixed/ranged structured selections:
+  - `pullbackLevels`
+  - `qualifyingLevelId`
+  - `qualifyingLevelRangeLow`
+  - `qualifyingLevelRangeHigh`
+- If only dynamic indicators remain selected, clear those legacy singleton fields.
+- Do not leave a stale `qualifyingLevelId` after its level is deselected.
+- Recalculate selected dynamic indicator evidence whenever any of these change:
+  - snapshot identity
+  - L candle
+  - level-tolerance ticks
+  - selected structured levels
+  - VWAP/EMA source point
+- Preserve full fractional precision in `valueAtInteraction`.
+- Preserve the exact indicator source timestamp from L.
+- Dynamic indicators must continue using `rangeLow: null` and `rangeHigh: null`.
+
+Prefer a small reusable pure helper, such as:
+
+artifacts/levelstory/src/lib/visual-review-teaching.ts
+
+The helper should derive compatibility fields only from non-dynamic structured selections.
+
+2. Fix saved-review dirty-state comparison
+
+File:
+artifacts/levelstory/src/pages/visual-review.tsx
+
+`savedTeachingKey` currently omits `qualifyingLevels`, while the draft key contains them.
+
+Required behavior:
+
+- Include normalized `qualifyingLevels` in the saved-teaching comparison.
+- After saving and reloading a structured VWAP/EMA teaching review, the form must not remain incorrectly marked as unsaved.
+- Preserve the real unsaved-change warning when the reviewer actually modifies evidence.
+
+3. Make API validation defensive
+
+File:
+artifacts/api-server/src/lib/visual-validation.ts
+
+Required behavior:
+
+- When non-empty structured `qualifyingLevels` are supplied, treat them as authoritative.
+- Do not apply the legacy `pullbackLevels` tick-alignment rule to duplicated dynamic values from older clients.
+- Continue applying MES 0.25 tick alignment to legacy-only fixed executable levels.
+- Validate dynamic VWAP/EMA evidence against the immutable indicator value and timestamp at L.
+- Do not round VWAP or EMA before comparison or persistence.
+- Continue rejecting:
+  - client-defined ranges for dynamic indicators
+  - tampered values
+  - tampered timestamps
+  - incorrect level types
+  - future or non-machine-visible evidence
+  - fixed executable prices that are off tick
+- When creating the persisted teaching example, derive legacy `pullbackLevels` only from validated, passed, non-dynamic interactions. Never persist VWAP or EMA values in that legacy array.
+
+4. Correct the database migration
+
+File:
+lib/db/migrations/0001_dynamic_level_safety.sql
+
+Add this non-destructively:
+
+ALTER TABLE levelstory_proposal_validation_runs
+  ADD COLUMN IF NOT EXISTS calendar_fingerprint TEXT;
+
+Preserve the existing validator-version addition and all existing rows. Do not drop, truncate, delete, or recreate any table.
+
+5. Strengthen regression tests
+
+Update:
+
+- artifacts/api-server/src/lib/visual-validation.test.ts
+- artifacts/levelstory/tests/visual-review-presentation.test.ts
+
+Add a focused frontend helper test if a helper is introduced.
+
+Required cases:
+
+A. Real browser-shaped fractional VWAP payload
+
+- Structured `qualifyingLevels` contains VWAP value `6851.508`.
+- Legacy `pullbackLevels` also contains `6851.508`, simulating the old browser bug.
+- API accepts the authoritative structured evidence.
+- Persisted structured evidence retains `6851.508`.
+- Persisted legacy `pullbackLevels` is empty.
+
+B. Fractional EMA
+
+- EMA value such as `6851.492` validates as structured dynamic evidence.
+- It never enters legacy fixed-price fields.
+
+C. Mixed selection
+
+- Structured selection includes fractional VWAP plus a fixed level such as `6849.75`.
+- Legacy compatibility fields contain only `6849.75`.
+- Deselecting that fixed level clears the legacy singleton ID and ranges while leaving VWAP selected.
+
+D. Fixed off-tick rejection
+
+- A legacy-only fixed price such as `6851.10` remains rejected.
+
+E. Tamper protection
+
+Continue verifying rejection of altered dynamic value, timestamp, type, or range.
+
+F. Saved-review state
+
+- A saved teaching review containing structured `qualifyingLevels` compares equal to its freshly loaded draft.
+- A genuinely edited draft still compares unequal.
+
+G. Migration scope
+
+Do not merely search for `calendar_fingerprint` anywhere in the migration.
+
+Assert specifically that the `ALTER TABLE levelstory_proposal_validation_runs` block adds both:
+
+- `validator_version`
+- `calendar_fingerprint`
+
+The test must fail if `calendar_fingerprint` is added only to `levelstory_teaching_examples`.
+
+6. Verification
+
+Run only focused, inexpensive checks:
+
+- visual-validation API tests
+- visual-review frontend tests
+- API typecheck
+- frontend typecheck
+- git diff --check
+
+Do not run:
+
+- historical-index rebuild
+- cold 20+2 backtest
+- qualification batch
+- full historical replay
+- unnecessary production workflows
+
+7. Safeguards
+
+Preserve:
+
+- Shadow Mode only
+- no live orders
+- no paper orders
+- no broker integration
+- no automatic strategy mutation
+- immutable machine evidence
+- separate human teaching evidence
+- approval-required strategy proposals
+- no fabricated candles, indicators, quotes, or fills
+
+8. Report
+
+Return:
+
+- files changed
+- root causes fixed
+- exact frontend serialization behavior
+- exact API compatibility behavior
+- migration statement added
+- tests and typecheck totals
+- confirmation that no historical rebuild or backtest was performed
+- remaining limitations, if any

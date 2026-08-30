@@ -454,7 +454,7 @@ function dynamicLevelFixture() {
 
 test("fractional VWAP at L validates, persists at full precision, and stays out of legacy levels", () => {
   const { snapshot, input, selection } = dynamicLevelFixture();
-  const dynamicInput = { ...input, pullbackLevels: [], qualifyingLevels: [selection] };
+  const dynamicInput = { ...input, pullbackLevels: [6851.508], qualifyingLevels: [selection] };
   const validation = validateVisualValidationTeaching(snapshot, dynamicInput);
   assert.equal(validation.valid, true, validation.messages.join("; "));
   const example = createVisualValidationTeachingExample(snapshot, dynamicInput, null);
@@ -503,8 +503,10 @@ test("dynamic qualifying-level tampering is rejected against immutable L evidenc
 
 test("migration preserves existing rows while adding validator and calendar fingerprints", () => {
   const migration = readFileSync(new URL("../../../../lib/db/migrations/0001_dynamic_level_safety.sql", import.meta.url), "utf8");
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS validator_version TEXT/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS calendar_fingerprint TEXT/);
+  const proposalValidationRunBlock = migration.match(/ALTER TABLE levelstory_proposal_validation_runs[\s\S]*?(?=\nALTER TABLE|$)/)?.[0] ?? "";
+  assert.match(proposalValidationRunBlock, /ALTER TABLE levelstory_proposal_validation_runs/);
+  assert.match(proposalValidationRunBlock, /ADD COLUMN IF NOT EXISTS validator_version TEXT/);
+  assert.match(proposalValidationRunBlock, /ADD COLUMN IF NOT EXISTS calendar_fingerprint TEXT/);
   assert.doesNotMatch(migration, /\b(DROP TABLE|TRUNCATE|DELETE FROM)\b/i);
 });
 

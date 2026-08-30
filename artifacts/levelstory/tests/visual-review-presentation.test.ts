@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { deriveTeachingCompatibilityFields } from "../src/lib/visual-review-teaching.ts";
 
 const page = readFileSync(new URL("../src/pages/visual-review.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
@@ -82,4 +83,36 @@ test("human judgment teaches only from an explicitly locked causal candle pair",
   assert.doesNotMatch(page, /Only levels contained by the selected patience candle/);
   assert.match(page, /Unable to save this review/);
   assert.match(page, /Human judgments never mutate executable formula behavior/);
+});
+
+test("teaching compatibility fields exclude dynamic indicators and clear stale singleton fields", () => {
+  const dynamic = {
+    levelId: "vwap",
+    levelType: "dynamic_indicator" as const,
+    valueAtInteraction: 6851.508,
+    sourceTimestamp: "2026-08-26T13:30:00.000Z",
+    rangeLow: null,
+    rangeHigh: null,
+  };
+  const fixed = {
+    levelId: "orb-high",
+    levelType: "fixed_level" as const,
+    valueAtInteraction: 6849.75,
+    sourceTimestamp: "2026-08-26T13:30:00.000Z",
+    rangeLow: null,
+    rangeHigh: null,
+  };
+  assert.deepEqual(deriveTeachingCompatibilityFields([dynamic, fixed]), {
+    pullbackLevels: [6849.75],
+    qualifyingLevelId: "orb-high",
+    qualifyingLevelRangeLow: null,
+    qualifyingLevelRangeHigh: null,
+  });
+  assert.deepEqual(deriveTeachingCompatibilityFields([dynamic]), {
+    pullbackLevels: [],
+    qualifyingLevelId: undefined,
+    qualifyingLevelRangeLow: null,
+    qualifyingLevelRangeHigh: null,
+  });
+  assert.match(page, /qualifyingLevels: normalizeTeachingQualifyingLevels/);
 });
