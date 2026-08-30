@@ -4,6 +4,7 @@ import {
   detectExtendedNtzConsolidation,
   detectReversalEvidence,
   evaluateBonusReversal,
+  evaluateStrongBreakoutAfterConsolidation,
   evaluateExtendedNtzConsolidationBreakout,
   evaluateOrbBreakPullbackContinuation,
   hasEquivalentOpposingCandles,
@@ -14,6 +15,7 @@ import {
 import { strategyConfig } from "./config.js";
 import type { MajorLevel } from "./major-levels.js";
 import type { Candle } from "./types.js";
+import { STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
 
 const config = strategyConfig();
 
@@ -43,13 +45,13 @@ function major(price = 10): MajorLevel {
   };
 }
 
-function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED") {
+function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED", trend: "bullish" | "bearish" = "bullish") {
   return {
     state,
     eligible: true,
     eligibilityReason: "pullback" as const,
     eligibilityTime: 1,
-    trend: "bullish" as const,
+    trend,
     previousCandle: { openTime: 1, closeTime: 2, open: 10, high: 10.4, low: 9.6, close: 10.1, isComplete: true },
     patienceCandle: { openTime: 2, closeTime: 3, open: 10, high: 10.2, low: 9.8, close: 10.15, isComplete: true },
     triggerCandle: { openTime: 3, closeTime: 4, open: 10.15, high: 10.3, low: 10.1, close: 10.25, isComplete: true },
@@ -166,10 +168,53 @@ function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
 
 test("ORB continuation qualifies only when every mandatory rule passes", () => {
   const result = evaluateOrbBreakPullbackContinuation(baseContext());
-  assert.equal(result.setupType, "ORB_BREAK_PULLBACK_CONTINUATION");
+  assert.equal(result.setupType, "ORB_PULLBACK_CONTINUATION");
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);
   assert.ok(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed));
+});
+
+test("taxonomy exposes four strategies and separates components from outcomes", () => {
+  assert.deepEqual(STRATEGY_IDS, [
+    "ORB_PULLBACK_CONTINUATION",
+    "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    "PATIENCE_CANDLE_CONTINUATION",
+    "EQUIVALENT_CANDLE_REVERSAL",
+  ]);
+  assert.ok(STRATEGY_COMPONENT_TYPES.includes("BULLISH_PATIENCE"));
+  assert.ok(STRATEGY_COMPONENT_TYPES.includes("ENTRY_CONFIRMATION_FAILED"));
+  assert.deepEqual(STRATEGY_OUTCOME_TYPES, ["QUALIFIED_TRADE", "STOP_EXIT", "TARGET_EXIT", "RUNNER_EXIT"]);
+  assert.deepEqual(strategyIdsIncludingLegacy("ORB_PULLBACK_CONTINUATION"), [
+    "ORB_PULLBACK_CONTINUATION", "ORB_BREAK_PULLBACK_CONTINUATION",
+  ]);
+  assert.deepEqual(strategyIdsIncludingLegacy("CONSOLIDATION_BREAKOUT_CONTINUATION"), [
+    "CONSOLIDATION_BREAKOUT_CONTINUATION", "STRONG_BREAKOUT_AFTER_CONSOLIDATION", "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
+  ]);
+});
+
+test("a pullback or patience candle without its strategy context cannot qualify", () => {
+  const noPatience = evaluateOrbBreakPullbackContinuation(baseContext({
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.notEqual(noPatience.decision, "SETUP QUALIFIED");
+
+  const noContext = evaluateOrbBreakPullbackContinuation(baseContext({
+    breakout: { ...baseContext().breakout, detected: false, direction: null },
+    pullback: { ...baseContext().pullback, events: [] },
+  }));
+  assert.notEqual(noContext.decision, "SETUP QUALIFIED");
+});
+
+test("consolidation breakout requires a strong breakout and shared patience sequence", () => {
+  const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
+  const noConsolidation = evaluateStrongBreakoutAfterConsolidation(baseContext());
+  assert.notEqual(noConsolidation.decision, "SETUP QUALIFIED");
+
+  const noPatience = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles,
+    patience: patience("PATIENCE_CANDLE_VALID"),
+  }));
+  assert.notEqual(noPatience.decision, "SETUP QUALIFIED");
 });
 
 test("ORB continuation never qualifies when any mandatory gate fails", () => {
@@ -243,7 +288,7 @@ test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {
   assert.equal(hasEquivalentOpposingCandles([first, tooDifferent], [major(10)], config), false);
 });
 
-test("bonus reversal exposes independent evidence and remains alert-only", () => {
+test("equivalent reversal exposes independent context before entry confirmation", () => {
   const context = baseContext({
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
@@ -266,12 +311,12 @@ test("bonus reversal exposes independent evidence and remains alert-only", () =>
   assert.equal(evidence.strongOpposingVolume, true);
   assert.equal(evidence.deepFibonacciRetracement, true);
   const result = evaluateBonusReversal(context);
-  assert.equal(result.alertOnly, true);
+  assert.equal(result.alertOnly, false);
   assert.equal(result.decision, "POSSIBLE REVERSAL");
   assert.equal(result.rules.find((rule) => rule.key === "immediateTrigger")?.passed, false);
 });
 
-test("bonus reversal can qualify only as an alert-only descriptive setup", () => {
+test("equivalent reversal qualifies after context, patience, and risk approval", () => {
   const context = baseContext({
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
@@ -285,11 +330,11 @@ test("bonus reversal can qualify only as an alert-only descriptive setup", () =>
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     trend: { direction: "bearish", structure: "lower highs / lower lows" },
     breakout: { ...baseContext().breakout, direction: "long" },
-     reversalPatience: patience("ENTRY_TRIGGERED"),
+     reversalPatience: patience("ENTRY_TRIGGERED", "bearish"),
   });
   const result = evaluateBonusReversal(context);
   assert.equal(result.decision, "SETUP QUALIFIED");
-  assert.equal(result.alertOnly, true);
+  assert.equal(result.alertOnly, false);
   assert.equal(result.mandatoryPassed, true);
 });
 

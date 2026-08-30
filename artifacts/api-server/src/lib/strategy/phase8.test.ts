@@ -136,7 +136,7 @@ test("Phase 8 maps setup states and computes excursions in dollars", () => {
 
 test("Phase 8 timeline is chronological and includes failed setup outcome", () => {
   const evaluation: SetupEvaluation = {
-    setupType: "ORB_BREAK_PULLBACK_CONTINUATION",
+    setupType: "ORB_PULLBACK_CONTINUATION",
     direction: "long",
     decision: "AMBIGUOUS",
     mandatoryPassed: false,
@@ -166,7 +166,7 @@ test("Phase 8 timeline is chronological and includes failed setup outcome", () =
   assert.ok(timeline.every((item, index) => index === 0 || item.time >= timeline[index - 1].time));
 });
 
-test("Phase 8 never simulates execution for an alert-only qualified reversal", () => {
+test("Phase 8 simulates a qualified equivalent reversal only in shadow mode", () => {
   const timeline = buildPhase8Timeline({
     candles: [{ openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 1.5, volume: 10, isComplete: true, ...quote }],
     ntz: null,
@@ -176,13 +176,12 @@ test("Phase 8 never simulates execution for an alert-only qualified reversal", (
     fibonacci: { direction: "bullish", impulseLow: 1, impulseHigh: 2, breakoutTime: 1, frozen: true, frozenAt: 1, manualCorrection: false, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 1.5 }], retracementPercent: 0, classification: "normal", detail: "Frozen." },
     volume: { baselineCandleCount: 6, recentSixAverage: 5, breakoutVolume: 10, breakoutRatio: 2, supportingBreakoutVolume: true, averageImpulseVolume: 10, pullbackAverageVolume: 5, pullbackToBreakoutRatio: 0.5, pullbackToImpulseRatio: 0.5, pullbackToRecentRatio: 1, opposingPullbackVolume: null, reversalWarning: null },
     patience: { state: "ENTRY_TRIGGERED", eligible: true, eligibilityReason: "pullback", eligibilityTime: 1, trend: "bullish", previousCandle: null, patienceCandle: { openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 1.5, isComplete: true }, triggerCandle: null, entryBufferTicks: 4, entryBufferPrice: 2, stopBufferTicks: 1, strategyStopPrice: 0.75, triggerPrice: 2, stateTime: 2, detail: "Triggered." },
-    evaluation: { setupType: "BONUS_REVERSAL", direction: "long", decision: "SETUP QUALIFIED", mandatoryPassed: true, alertOnly: true, rules: [], reversalEvidence: { dojiAtMajorLevel: true, equivalentOpposingCandles: false, failedBreakout: false, strongOpposingVolume: false, deepFibonacciRetracement: false, majorLevelRejection: false, structureBreak: false, alert: true, detail: "Alert only." }, consolidation: null, explanation: "Alert only." },
+    evaluation: { setupType: "EQUIVALENT_CANDLE_REVERSAL", direction: "long", decision: "SETUP QUALIFIED", mandatoryPassed: true, alertOnly: false, rules: [], reversalEvidence: { dojiAtMajorLevel: true, equivalentOpposingCandles: true, failedBreakout: false, strongOpposingVolume: false, deepFibonacciRetracement: false, majorLevelRejection: false, structureBreak: false, alert: true, detail: "Equivalent reversal context." }, consolidation: null, explanation: "Equivalent reversal context qualified." },
     riskPlan: riskPlan(),
     direction: "long",
     trend: "bullish",
     specification,
     now: 3,
   });
-  assert.equal(timeline.some((item) => item.eventType === "Shadow entry"), false);
-  assert.equal(timeline.at(-1)?.eventType, "Failed setup");
+  assert.equal(timeline.some((item) => item.eventType === "Shadow entry"), true);
 });

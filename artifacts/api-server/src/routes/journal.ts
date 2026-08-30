@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, journalEntriesTable } from "@workspace/db";
 import {
   CreateJournalEntryBody,
@@ -10,16 +10,14 @@ import {
 } from "@workspace/api-zod";
 import { getFuturesContractSpecification } from "../lib/futures/contracts";
 import { toApiJournalEntry } from "../lib/phase8-journal";
-import { canonicalStrategyId } from "../lib/strategy/taxonomy";
+import { canonicalStrategyId, isStrategyId, strategyIdsIncludingLegacy } from "../lib/strategy/taxonomy";
 
 const router: IRouter = Router();
 
 function setupFilter(value: string) {
-  if (value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION") {
-    return or(eq(journalEntriesTable.setupType, value), eq(journalEntriesTable.setupType, "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"));
-  }
-  if (value === "EQUIVALENT_CANDLE_REVERSAL") {
-    return or(eq(journalEntriesTable.setupType, value), eq(journalEntriesTable.setupType, "BONUS_REVERSAL"));
+  const strategyKey = canonicalStrategyId(value);
+  if (strategyKey && isStrategyId(strategyKey)) {
+    return inArray(journalEntriesTable.setupType, strategyIdsIncludingLegacy(strategyKey));
   }
   return eq(journalEntriesTable.setupType, value);
 }

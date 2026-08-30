@@ -33,9 +33,9 @@ export function summarizeDashboardEntries(
   const breakeven = closedTrades.filter((entry) => pnlFor(entry) === 0);
   const pnl = closedTrades.reduce((total, entry) => total + pnlFor(entry), 0);
   const setupTypes = [
+    "ORB_PULLBACK_CONTINUATION",
+    "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "PATIENCE_CANDLE_CONTINUATION",
-    "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
-    "ORB_BREAK_PULLBACK_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",
   ];
   const setupPerformance: DashboardSetupPerformance[] = setupTypes.map((setupType) => {

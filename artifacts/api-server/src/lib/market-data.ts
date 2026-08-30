@@ -909,7 +909,7 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
     primarySetup: analysis.primarySetup,
     explanation: analysis.explanation,
     evaluations: analysis.evaluations.map((evaluation) => ({
-      setupType: canonicalStrategyId(evaluation.setupType) ?? "PATIENCE_CANDLE_CONTINUATION",
+      setupType: canonicalStrategyId(evaluation.setupType) ?? "ORB_PULLBACK_CONTINUATION",
       direction: evaluation.direction,
       decision: evaluation.decision,
       mandatoryPassed: evaluation.mandatoryPassed,

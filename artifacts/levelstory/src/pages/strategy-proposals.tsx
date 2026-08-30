@@ -39,9 +39,8 @@ type Detail = { proposal: Proposal; auditEvents: Array<{ id: string; actorId: st
 type ActiveStrategy = { formulaVersion: string; formulaHash: string; versionNumber: number | null; activatedAt: string | null; activatedBy: string | null; source: string };
 
 const TRADING_EDGES = [
-  "Patience Candle Continuation",
-  "Strong Breakout After Consolidation",
-  "ORB Break Pullback Continuation",
+  "ORB Pullback Continuation",
+  "Consolidation Breakout Continuation",
   "Equivalent Candle Reversal",
 ] as const;
 

@@ -102,8 +102,7 @@ export default function Journal() {
               <FilterField label="Setup type">
                 <select value={filters.setupType ?? ""} onChange={(event) => updateFilter("setupType", event.target.value)} className="field" data-testid="select-filter-setup">
                   <option value="">All setup engines</option>
-                  <option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback</option>
-                  <option value="PATIENCE_CANDLE_CONTINUATION">Patience candle continuation</option>
+                  <option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB pullback continuation</option>
                   <option value="STRONG_BREAKOUT_AFTER_CONSOLIDATION">Strong breakout after consolidation</option>
                   <option value="EQUIVALENT_CANDLE_REVERSAL">Equivalent candle reversal</option>
                 </select>

@@ -12,9 +12,9 @@ import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
 
 export type SetupType =
+  | "ORB_PULLBACK_CONTINUATION"
+  | "CONSOLIDATION_BREAKOUT_CONTINUATION"
   | "PATIENCE_CANDLE_CONTINUATION"
-  | "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-  | "ORB_BREAK_PULLBACK_CONTINUATION"
   | "EQUIVALENT_CANDLE_REVERSAL";
 
 /** Accepted only at legacy input boundaries; new machine output never emits these IDs. */
@@ -133,23 +133,21 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
     rule("pullbackReachedLevel", "Pullback reached or came near a qualifying level", hasQualifyingPullback(context.pullback), hasQualifyingPullback(context.pullback) ? "Pullback interaction reached a mapped level." : "No qualifying pullback interaction has been recorded."),
     rule("pullbackVolumePassed", "Pullback volume passed", pullbackVolumePassed(context.volume), pullbackVolumePassed(context.volume) ? "Pullback volume remained below the breakout safety reference without a reversal warning." : "Pullback volume is missing, expanded, or carries an opposing-volume warning."),
     rule("contextRecorded", "Fibonacci and level context recorded", context.fibonacci.frozen && context.fibonacci.levels.length > 0 && context.levels.levels.some((level) => Number.isFinite(level.price)), context.fibonacci.frozen ? "Frozen Fibonacci levels and mapped level context are recorded." : "Frozen Fibonacci and mapped level context are incomplete."),
-    rule("validPatienceCandle", "Valid patience candle formed", context.patience.patienceCandle !== null && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
+    rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
-  return buildEvaluation("ORB_BREAK_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
+  return buildEvaluation("ORB_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
 }
 
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
   const direction = directionFromTrend(context.trend.direction);
-  const eligible = context.patience.eligible && context.patience.patienceCandle !== null;
-  const validState = ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state);
-  const rules: SetupRuleEvidence[] = [
-    rule("directionalTrend", "Directional 15-minute trend", direction !== null, direction ? `${direction} continuation follows the ${context.trend.direction} trend.` : "A bullish or bearish 15-minute trend is required."),
-    rule("eligiblePatience", "Patience candle is eligible", eligible, eligible ? `Patience eligibility recorded from ${context.patience.eligibilityReason}.` : "No causal patience-candle eligibility is recorded."),
-    rule("validPatienceCandle", "Valid patience candle formed", validState, context.patience.detail),
-    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
-    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
+  const valid = context.patience.eligible && context.patience.patienceCandle !== null;
+  const rules = [
+    rule("directionalContext", "Directional trend context", direction !== null, "A directional trend is required."),
+    rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
+    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
+    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk approved." : "Risk blocked."),
   ];
   return buildEvaluation("PATIENCE_CANDLE_CONTINUATION", direction, rules, false, context.patience.state);
 }
@@ -157,19 +155,24 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
 export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
   const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio);
   const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
+  const breakoutConfirmed = context.breakout.detected && !context.breakout.failed && context.breakout.continuationConfirmed;
+  const postBreakoutContext = hasQualifyingPullback(context.pullback)
+    || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
   const patienceNearLevel = context.patience.patienceCandle !== null
     && context.patience.eligible
-    && (hasQualifyingPullback(context.pullback) || context.patience.eligibilityReason === "ntz consolidation");
+    && postBreakoutContext;
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("extendedConsolidation", "45–60 minutes / 9–12 completed candles inside or near NTZ", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
-    rule("validPatienceNearLevel", "Valid patience candle formed near a qualifying level", patienceNearLevel && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the NTZ or a mapped qualifying-level interaction."),
+    rule("strongBreakout", "Strong directional breakout and continuation", breakoutConfirmed && direction !== null && trendAgrees(direction, context.trend.direction), breakoutConfirmed ? "Strong breakout continuation is recorded." : "A completed, trend-aligned strong breakout and continuation are required."),
+    rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
+    rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
-  return buildEvaluation("STRONG_BREAKOUT_AFTER_CONSOLIDATION", direction, rules, false, context.patience.state, consolidation);
+  return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
 }
 
 export const evaluateExtendedNtzConsolidationBreakout = evaluateStrongBreakoutAfterConsolidation;
@@ -181,8 +184,9 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
   const evidence = detectReversalEvidence(context, completed, latest);
   const patience = context.reversalPatience ?? context.patience;
   const rules: SetupRuleEvidence[] = [
+    rule("equivalentContext", "Equivalent opposing candles at a qualifying level", evidence.equivalentOpposingCandles, evidence.equivalentOpposingCandles ? "Equivalent opposing full-body candles meet the configured level and wick tolerances." : "Equivalent opposing candles at a qualifying level are required."),
     rule("directionalConfirmation", "Directional confirmation", reversalDirection !== null && trendAgrees(reversalDirection, context.trend.direction), reversalDirection && context.trend.direction !== "neutral" ? `${reversalDirection} reversal direction vs ${context.trend.direction} 15-minute trend.` : "A directional trend confirmation is required."),
-    rule("validPatienceCandle", "Valid patience candle formed", patience.patienceCandle !== null && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
+    rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
@@ -199,7 +203,7 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
     direction: reversalDirection,
     decision,
     mandatoryPassed,
-    alertOnly: true,
+    alertOnly: false,
     rules: [...evidenceRules(evidence), ...rules],
     reversalEvidence: evidence,
     consolidation: null,
@@ -364,6 +368,10 @@ function rule(key: string, label: string, passed: boolean, detail: string): Setu
 
 function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
   return pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
+}
+
+function patienceDirectionMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {
+  return direction === "long" ? patience.trend === "bullish" : direction === "short" ? patience.trend === "bearish" : false;
 }
 
 function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {

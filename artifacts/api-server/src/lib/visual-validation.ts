@@ -1460,7 +1460,7 @@ function buildMachineSnapshot(
     category,
     categoryLabel: categoryLabels[category],
     machineLabel: audit.rejectionCategory === "QUALIFIED" ? `${canonicalStrategyId(audit.setupType) ?? audit.setupType} qualified` : audit.rejectionSummary ?? audit.decision,
-    strategyKey: canonicalStrategyId(audit.setupType) ?? "PATIENCE_CANDLE_CONTINUATION",
+    strategyKey: canonicalStrategyId(audit.setupType) ?? "ORB_PULLBACK_CONTINUATION",
     formulaHash: report.formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
     symbol: report.symbol,

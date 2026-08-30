@@ -10,6 +10,7 @@ import {
   STRATEGY_DEFINITIONS,
   canonicalStrategyId,
   isStrategyId,
+  strategyIdsIncludingLegacy,
   type StrategyDefinition,
   type StrategyId,
 } from "./taxonomy.js";
@@ -95,9 +96,60 @@ function deriveStatus(row: StrategyReadiness): { status: ReadinessState; message
 }
 
 async function ensureRows(): Promise<void> {
-  await db.insert(strategyReadinessTable).values(STRATEGY_DEFINITIONS.map((definition) => ({
-    strategyKey: definition.id,
-  }))).onConflictDoNothing();
+  const existing = await db.select().from(strategyReadinessTable);
+  const byKey = new Map(existing.map((row) => [row.strategyKey, row]));
+  for (const definition of STRATEGY_DEFINITIONS) {
+    const current = byKey.get(definition.id);
+    const legacy = strategyIdsIncludingLegacy(definition.id)
+      .slice(1)
+      .map((key) => byKey.get(key))
+      .filter((row): row is StrategyReadiness => Boolean(row))
+      .sort((left, right) => readinessPriority(right) - readinessPriority(left) || right.updatedAt.getTime() - left.updatedAt.getTime())[0];
+    if (!current) {
+      if (legacy) {
+        await db.insert(strategyReadinessTable).values(readinessMigrationValues(definition.id, legacy)).onConflictDoNothing();
+      } else {
+        await db.insert(strategyReadinessTable).values({ strategyKey: definition.id }).onConflictDoNothing();
+      }
+      continue;
+    }
+    if (legacy && !current.thresholdsApproved && current.formulaVersion === "" && !current.shadowEnabled) {
+      await db.update(strategyReadinessTable)
+        .set(readinessMigrationValues(definition.id, legacy))
+        .where(eq(strategyReadinessTable.strategyKey, definition.id));
+    }
+  }
+}
+
+function readinessPriority(row: StrategyReadiness): number {
+  const status = row.status as ReadinessState;
+  return ({ FIT_AVAILABLE: 7, SHADOW_CANDIDATE: 6, READY_FOR_VALIDATION: 5, VALIDATION_FAILED: 4, PAUSED: 3, COLLECTING_EVIDENCE: 2, NOT_ENOUGH_EVIDENCE: 1 }[status] ?? 0)
+    + (row.thresholdsApproved ? 10 : 0)
+    + (row.fitnessReport && typeof row.fitnessReport === "object" && Object.keys(row.fitnessReport).length ? 2 : 0);
+}
+
+function readinessMigrationValues(strategyKey: StrategyId, source: StrategyReadiness) {
+  return {
+    strategyKey,
+    status: source.status,
+    minSetupCount: source.minSetupCount,
+    minCompletedTrades: source.minCompletedTrades,
+    minHoldoutCount: source.minHoldoutCount,
+    minExpectancy: source.minExpectancy,
+    maxDrawdown: source.maxDrawdown,
+    maxAmbiguityRate: source.maxAmbiguityRate,
+    minReviewedExampleAgreement: source.minReviewedExampleAgreement,
+    thresholdsApproved: source.thresholdsApproved,
+    deterministicComplete: source.deterministicComplete,
+    leakageFree: source.leakageFree,
+    patienceEntryCompliant: source.patienceEntryCompliant,
+    dataCoverageComplete: source.dataCoverageComplete,
+    formulaVersion: source.formulaVersion,
+    validationDate: source.validationDate,
+    pauseReason: source.pauseReason,
+    shadowEnabled: source.shadowEnabled,
+    fitnessReport: source.fitnessReport,
+  };
 }
 
 async function refreshRow(strategyKey: StrategyId): Promise<StrategyReadiness> {

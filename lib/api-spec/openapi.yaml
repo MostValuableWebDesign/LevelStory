@@ -1933,7 +1933,7 @@ components:
       properties:
         setupType:
           type: string
-          enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
+          enum: [ORB_PULLBACK_CONTINUATION, CONSOLIDATION_BREAKOUT_CONTINUATION, PATIENCE_CANDLE_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
         direction:
           type: ["string", "null"]
           enum: [long, short, null]
@@ -1967,7 +1967,7 @@ components:
           enum: ["NO TRADE", "WAITING", "SETUP FORMING", "SETUP QUALIFIED", "POSSIBLE REVERSAL", "EXPIRED", "AMBIGUOUS"]
         primarySetup:
           type: ["string", "null"]
-          enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL, null]
+          enum: [ORB_PULLBACK_CONTINUATION, CONSOLIDATION_BREAKOUT_CONTINUATION, PATIENCE_CANDLE_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL, null]
         explanation:
           type: string
         evaluations:
@@ -2157,7 +2157,7 @@ components:
       required: [setupType, reviewCount, triggeredCount, closedCount, wins, losses, breakeven, winRate, netPnl]
     StrategyId:
       type: string
-      enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
+      enum: [ORB_PULLBACK_CONTINUATION, CONSOLIDATION_BREAKOUT_CONTINUATION, PATIENCE_CANDLE_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
     StrategyThresholdsInput:
       type: object
       properties:
@@ -3416,7 +3416,7 @@ components:
       enum: [low, medium, high]
     VisualValidationTeachingSetup:
       type: string
-      enum: [PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, ORB_BREAK_PULLBACK_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
+      enum: [ORB_PULLBACK_CONTINUATION, CONSOLIDATION_BREAKOUT_CONTINUATION, PATIENCE_CANDLE_CONTINUATION, EQUIVALENT_CANDLE_REVERSAL]
     VisualValidationTeachingValidation:
       type: object
       properties:

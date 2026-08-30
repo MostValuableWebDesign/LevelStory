@@ -448,7 +448,7 @@ function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["sn
     patienceCandleCloseTime: base.patience.closeTime,
     entryBufferTicks: 4,
     pullbackLevels: [base.level],
-    setupType: "ORB_BREAK_PULLBACK_CONTINUATION",
+    setupType: "ORB_PULLBACK_CONTINUATION",
     confidence: "medium",
     explanation: `${direction} example has an exact patience pair and buffered continuation.`,
   };

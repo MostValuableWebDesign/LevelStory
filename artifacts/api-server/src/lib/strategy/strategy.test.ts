@@ -148,7 +148,7 @@ test("denied risk approval cannot qualify a setup or create a shadow entry", () 
 });
 
 function setupAnalysis(direction: "long" | "short" | null, decision: "SETUP QUALIFIED" | "WAITING" = "SETUP QUALIFIED", alertOnly = false): Pick<Phase6Analysis, "evaluations"> {
-  return { evaluations: [{ setupType: "ORB_BREAK_PULLBACK_CONTINUATION", direction, decision, mandatoryPassed: decision === "SETUP QUALIFIED", alertOnly, rules: [], reversalEvidence: null, consolidation: null, explanation: "" }] };
+  return { evaluations: [{ setupType: "ORB_PULLBACK_CONTINUATION", direction, decision, mandatoryPassed: decision === "SETUP QUALIFIED", alertOnly, rules: [], reversalEvidence: null, consolidation: null, explanation: "" }] };
 }
 
 test("direction precedence feeds consistent bearish and bullish Phase 7 plans", () => {
@@ -260,7 +260,7 @@ test("public dashboard decision and rule lists project the selected phased evalu
 
 function invariantFixture(overrides: Record<string, unknown> = {}) {
   const evaluation = {
-    setupType: "ORB_BREAK_PULLBACK_CONTINUATION" as const,
+    setupType: "ORB_PULLBACK_CONTINUATION" as const,
     direction: "long" as const,
     decision: "SETUP QUALIFIED" as const,
     mandatoryPassed: true,
@@ -296,7 +296,7 @@ function invariantFixture(overrides: Record<string, unknown> = {}) {
     patience: { entryBufferPrice: 100, strategyStopPrice: 99 },
     setupAnalysis: {
       decision: "SETUP QUALIFIED" as const,
-      primarySetup: "ORB_BREAK_PULLBACK_CONTINUATION" as const,
+      primarySetup: "ORB_PULLBACK_CONTINUATION" as const,
       evaluations: [evaluation],
     },
     shadowExecution: { contracts: 1 },
