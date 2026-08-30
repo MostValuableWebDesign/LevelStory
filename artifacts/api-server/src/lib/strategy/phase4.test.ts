@@ -3,7 +3,7 @@ import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { analyzePullback, classifyRetracement, detectInitialBreakout, evaluateOrbBreakoutQuality, fibonacciAnalysis, phase4Volume } from "./phase4.js";
+import { analyzePullback, classifyRetracement, detectInitialBreakout, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, type BreakoutEvent } from "./phase4.js";
 import { phase5PatienceAnalysis } from "./phase5.js";
 import type { Candle } from "./types.js";
 
@@ -58,21 +58,89 @@ test("breakout requires a finalized NTZ and a completed close outside it", () =>
   assert.equal(detectInitialBreakout(candles.slice(0, 3), ntz, config).detected, false);
 });
 
-test("pullback uses max(two ticks, 0.10 ATR), stays bounded, and records interaction types", () => {
+test("pullback uses the shared 12-tick full-range tolerance and records interaction types", () => {
   const candles = breakoutFixture();
   const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
   const pullback = analyzePullback(candles, breakout, [
     { name: "ORB high", price: 102 },
     { name: "VWAP", price: 101.2 },
+    { name: "Far level", price: 104 },
   ], specification, config);
   const eventTypes = new Set(pullback.events.map((event) => event.type));
-  assert.equal(pullback.proximityTolerance, 0.5);
-  for (const type of ["touch", "proximity", "break and reclaim", "hold", "consolidation", "break through"] as const) {
+  assert.equal(pullback.proximityTolerance, 3);
+  for (const type of ["touch", "proximity", "hold", "consolidation", "break through"] as const) {
     assert.equal(eventTypes.has(type), true, `missing ${type}`);
   }
   assert.equal(pullback.evaluatedCandles, 6);
   assert.equal(pullback.status, "expired");
   assert.equal(pullback.maxDurationMinutes, 30);
+});
+
+test("pullback distance uses full L-candle range at the 0/4/8/12 tick boundaries", () => {
+  assert.equal(levelInteractionDistance(100, 101, 99), 0, "a wick crossing is zero distance");
+  assert.equal(levelInteractionDistance(100, 99, 98.5), 1, "four ticks above a candle below the level");
+  assert.equal(levelInteractionDistance(100, 98, 97.5), 2, "eight ticks above a candle below the level");
+  assert.equal(levelInteractionDistance(100, 97, 96.5), 3, "twelve ticks above a candle below the level");
+  assert.ok(Math.abs(levelInteractionDistance(100, 96.99, 96.5) - 3.01) < 1e-9, "distance beyond twelve ticks remains outside");
+  assert.equal(levelInteractionDistance(100, 102, 101), 1, "nearest wick is used when the candle is above the level");
+  assert.equal(levelInteractionDistance(100, 103, 99, 99.5, 100.5), 0, "ranged levels use their complete zone");
+});
+
+test("pullback qualification accepts a candle below a level through the configured twelve-tick zone", () => {
+  const breakout = detectInitialBreakout(
+    breakoutFixture(),
+    { high: 102, low: 99, complete: true, completedAt: candle(2, 100, 102, 99, 101, 100).closeTime },
+    config,
+  );
+  const level = { name: "Below-level test", price: 104.8 };
+  const pullback = analyzePullback(breakoutFixture(), breakout, [level], specification, config);
+  assert.equal(pullback.proximityTolerance, 3);
+  assert.equal(pullback.events.some((event) => event.level === level.name && event.type === "proximity"), true);
+  assert.equal(pullback.events.some((event) => event.level === level.name && event.type === "touch"), true);
+  assert.equal(pullback.events.every((event) => event.detail.includes("tolerance is 3.00 points")), true);
+});
+
+test("dynamic pullback levels resolve from the causal L candle, not the latest candle", () => {
+  const first = candle(0, 100, 100.2, 99.8, 100, 100);
+  const levelCandle = candle(1, 101, 101.2, 100.8, 101, 100);
+  const breakout: BreakoutEvent = {
+    detected: true,
+    direction: "long",
+    time: first.closeTime,
+    candleOpenTime: first.openTime,
+    state: "QUALIFIED_BREAKOUT",
+    candidateTime: first.closeTime,
+    candidateCandleOpenTime: first.openTime,
+    distanceOutside: 1,
+    meaningfulDistance: 1,
+    breakoutVolume: 100,
+    baselineVolume: 100,
+    volumeRatio: 1,
+    volumeSupported: true,
+    bodyRatio: 1,
+    closeLocationRatio: 1,
+    candleStructureSupported: true,
+    continuationConfirmed: true,
+    continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION",
+    failed: false,
+    detail: "fixture",
+  };
+  const shortEmaConfig = strategyConfig({ emaPeriod: 2 });
+  const result = analyzePullback(
+    [first, levelCandle],
+    breakout,
+    [{ name: "EMA 200", price: 999 }, { name: "VWAP", price: 999 }],
+    specification,
+    shortEmaConfig,
+    { causalCandles: [first, levelCandle], calendar },
+  );
+  const event = result.events.find((item) => item.level === "EMA 200" && item.type === "proximity");
+  assert.ok(event);
+  assert.equal(event.price, 100.5);
+  assert.notEqual(event.price, 101);
+  const vwapEvent = result.events.find((item) => item.level === "VWAP" && item.type === "proximity");
+  assert.ok(vwapEvent);
+  assert.equal(vwapEvent.price, 100.5);
 });
 
 test("Fibonacci anchors freeze at breakout, expose requested levels, allow manual correction, and classify depth independently", () => {

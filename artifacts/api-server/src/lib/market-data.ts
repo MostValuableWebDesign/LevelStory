@@ -466,7 +466,10 @@ export function createMarketSnapshot(
       .filter((level) => level.confluence !== "normal")
       .map((level) => ({ name: `Confluence · ${level.name}`, price: level.price, kind: "confluence" })),
   ];
-  const pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config);
+  const pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config, {
+    causalCandles: historicalFeed,
+    calendar,
+  });
   const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
@@ -713,7 +716,7 @@ export function createMarketSnapshot(
       `Phase 4 breakout support requires ${config.phase4BreakoutVolumeRatio.toFixed(2)}x the previous six completed five-minute candle volume average.`,
       `ORB quality uses ${config.phase4BreakoutMeaningfulDistanceTicks} ticks or ${config.phase4BreakoutMeaningfulDistanceAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period ATR for meaningful distance, ${config.phase4BreakoutBodyRatio.toFixed(0)}% body, and the outer ${(1 - config.phase4BreakoutCloseLocationRatio) * 100}% close location.`,
       `ORB continuation requires immediate extension or a second close outside the ORB; the strong single-candle exception is ${config.phase4AllowStrongSingleCandleException ? "enabled" : "disabled"} and uses ${config.phase4StrongVolumeRatio.toFixed(2)}x volume, ${(config.phase4StrongBodyRatio * 100).toFixed(0)}% body, and the outer ${(1 - config.phase4StrongCloseLocationRatio) * 100}% close location.`,
-      `Phase 4 pullback proximity is the greater of ${config.phase4ProximityTicks} ticks and ${config.phase4ProximityAtrFactor.toFixed(2)} × ${config.phase4AtrPeriod}-period five-minute ATR, bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
+      `Phase 4 qualifying-level proximity uses the shared ${Math.round(config.levelTolerance / specification.tickSize)}-tick MES tolerance (${config.levelTolerance.toFixed(2)} points) against the complete L-candle range; ${config.phase4AtrPeriod}-period ATR is diagnostic only. The window is bounded to ${config.phase4PullbackMaxCandles} candles / ${config.phase4PullbackMaxMinutes} minutes.`,
       "Patience-candle states are descriptive shadow analysis only; a trigger never creates a live or paper order.",
       "Phase 6 setup decisions require every mandatory rule; scores and reversal alerts cannot qualify a setup.",
       "Doji uses a 10% body-to-range default; equivalent opposing candles use 15% body-size tolerance, 70% minimum body-to-range, and 15% trend-facing-wick limits.",

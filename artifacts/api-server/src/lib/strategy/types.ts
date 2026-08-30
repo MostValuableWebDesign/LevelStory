@@ -24,7 +24,14 @@ export function completedCandles(replay: Replay): Candle[] {
 }
 
 export type Direction = "long" | "short";
-export type Level = { name: string; price: number; kind?: string };
+export type Level = {
+  name: string;
+  price: number;
+  kind?: string;
+  /** Optional bounds for a qualifying zone; point levels omit both bounds. */
+  rangeLow?: number;
+  rangeHigh?: number;
+};
 
 export type TrendDirection = "bullish" | "bearish" | "neutral";
 export type DecisionState = "NO TRADE" | "WAITING" | "SETUP FORMING" | "SETUP QUALIFIED" | "POSSIBLE REVERSAL" | "RISK LOCKOUT";

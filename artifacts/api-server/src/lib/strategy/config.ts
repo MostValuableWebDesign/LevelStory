@@ -1,5 +1,9 @@
 /** Every default is deliberately explicit: these are strategy assumptions, not facts. */
-import { DEFAULT_LEVEL_TOLERANCE_POINTS } from "@workspace/api-spec/constants";
+import {
+  DEFAULT_LEVEL_TOLERANCE_POINTS,
+  LEVEL_TOLERANCE_TICKS,
+  levelTolerancePoints,
+} from "@workspace/api-spec/constants";
 
 export type StrategyConfig = {
   defaultContractSymbol: string;
@@ -42,8 +46,6 @@ export type StrategyConfig = {
   majorLevelConfluenceToleranceTicks: number;
   majorLevelRecencyHalfLifeDays: number;
   phase4AtrPeriod: number;
-  phase4ProximityTicks: number;
-  phase4ProximityAtrFactor: number;
   phase4PullbackMaxCandles: number;
   phase4PullbackMaxMinutes: number;
   phase4BreakoutVolumeRatio: number;
@@ -109,8 +111,6 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   majorLevelConfluenceToleranceTicks: 2,
   majorLevelRecencyHalfLifeDays: 60,
   phase4AtrPeriod: 14,
-  phase4ProximityTicks: 2,
-  phase4ProximityAtrFactor: 0.1,
   phase4PullbackMaxCandles: 6,
   phase4PullbackMaxMinutes: 30,
   phase4BreakoutVolumeRatio: 1.25,
@@ -182,7 +182,6 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["majorLevelConfluenceToleranceTicks", config.majorLevelConfluenceToleranceTicks],
     ["majorLevelRecencyHalfLifeDays", config.majorLevelRecencyHalfLifeDays],
     ["phase4AtrPeriod", config.phase4AtrPeriod],
-    ["phase4ProximityTicks", config.phase4ProximityTicks],
     ["phase4PullbackMaxCandles", config.phase4PullbackMaxCandles],
     ["phase4PullbackMaxMinutes", config.phase4PullbackMaxMinutes],
     ["phase4BreakoutVolumeRatio", config.phase4BreakoutVolumeRatio],
@@ -220,7 +219,6 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["trendEmaFlatThreshold", config.trendEmaFlatThreshold],
     ["majorLevelProximityPercent", config.majorLevelProximityPercent],
     ["majorLevelProximityAtrFactor", config.majorLevelProximityAtrFactor],
-    ["phase4ProximityAtrFactor", config.phase4ProximityAtrFactor],
     ["phase7RunnerRetracementRatio", config.phase7RunnerRetracementRatio],
   ];
   for (const [name, value] of nonNegativeNumbers) {
@@ -249,6 +247,10 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");
+  }
+  const approvedTolerancePoints = LEVEL_TOLERANCE_TICKS.map(levelTolerancePoints);
+  if (!approvedTolerancePoints.includes(config.levelTolerance)) {
+    throw new Error(`Invalid strategy configuration: levelTolerance must be one of ${approvedTolerancePoints.join(", ")} MES points.`);
   }
   return { ...config };
 }

@@ -28,6 +28,7 @@ import {
   tradingDateForTimestamp,
 } from "./futures/session-calendar.js";
 import { causalEmaSeries } from "./strategy/indicators.js";
+import { levelInteractionDistance } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
@@ -422,14 +423,6 @@ function tickAligned(value: number): boolean {
   return Number.isFinite(value) && Math.abs(value / TEACHING_TICK_SIZE - Math.round(value / TEACHING_TICK_SIZE)) < 1e-8;
 }
 
-function distanceToLevel(level: number, candleHigh: number, candleLow: number, rangeLow?: number | null, rangeHigh?: number | null): number {
-  const low = rangeLow ?? level;
-  const high = rangeHigh ?? level;
-  if (candleHigh >= low && candleLow <= high) return 0;
-  if (candleHigh < low) return low - candleHigh;
-  return candleLow - high;
-}
-
 function normalizedLevelTolerance(input: VisualValidationTeachingInput, messages: string[]): number {
   const value = input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS;
   if (!LEVEL_TOLERANCE_TICKS.includes(value as typeof LEVEL_TOLERANCE_TICKS[number])) {
@@ -463,7 +456,7 @@ export function resolveQualifyingLevelAtCandle(
   const machineVisible = Boolean(annotation?.available && annotation.visibility === "machine")
     && (!dynamic || indicator?.visibility === "machine");
   const distancePoints = Number.isFinite(valueAtInteraction)
-    ? distanceToLevel(valueAtInteraction, levelCandle.high, levelCandle.low, rangeLow, rangeHigh)
+    ? levelInteractionDistance(valueAtInteraction, levelCandle.high, levelCandle.low, rangeLow, rangeHigh)
     : Number.POSITIVE_INFINITY;
   const distanceTicks = Number.isFinite(distancePoints)
     ? Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-10)
@@ -591,8 +584,8 @@ export function validateVisualValidationTeaching(
             ? {
                 ...resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks),
                 valueAtInteraction: level,
-                distancePoints: distanceToLevel(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh),
-                distanceTicks: Math.ceil(Math.max(0, distanceToLevel(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
+                distancePoints: levelInteractionDistance(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh),
+                distanceTicks: Math.ceil(Math.max(0, levelInteractionDistance(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
                 rangeLow: annotation.rangeLow ?? null,
                 rangeHigh: annotation.rangeHigh ?? null,
               }
@@ -1429,7 +1422,9 @@ function buildMachineSnapshot(
       tradingDate: audit.tradingDate,
       cursor: evaluationCloseTime,
       allCandles: analysisCandles,
-      historicalFeed: analysisCandles,
+      // Keep the full contract-local history available to the causal replay
+      // layer; sessionLevels and Phase 4 filter it at the evaluation cursor.
+      historicalFeed: historicalCandles,
       allCandlesCompleted: true,
       premarketAvailable,
       executionMode: report.executionMode,

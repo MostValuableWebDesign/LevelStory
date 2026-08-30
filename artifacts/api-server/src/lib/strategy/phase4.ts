@@ -2,6 +2,16 @@ import type { FuturesContractSpecification } from "../futures/contracts.js";
 import type { StrategyConfig } from "./config.js";
 import type { SessionLevels } from "./levels.js";
 import type { Candle, Direction, Level } from "./types.js";
+import { causalEmaValueAt, regularSessionVwap } from "./indicators.js";
+import {
+  DEFAULT_LEVEL_TOLERANCE_POINTS,
+  MES_TICK_SIZE,
+} from "@workspace/api-spec/constants";
+import {
+  DEFAULT_FUTURES_SESSION_CALENDAR,
+  tradingDateForTimestamp,
+  type FuturesSessionCalendar,
+} from "../futures/session-calendar.js";
 
 export type BreakoutEvent = {
   detected: boolean;
@@ -72,6 +82,16 @@ export type PullbackEvent = {
   level: string;
   price: number;
   detail: string;
+};
+
+export type PullbackAnalysisOptions = {
+  /**
+   * Historical contract-local candles used to resolve dynamic levels at each
+   * L candle. The source may contain future rows; they are filtered by the
+   * evaluated candle close before use.
+   */
+  causalCandles?: readonly Candle[];
+  calendar?: FuturesSessionCalendar;
 };
 
 export type PullbackAnalysis = {
@@ -424,6 +444,7 @@ export function analyzePullback(
   levels: readonly Level[],
   specification: FuturesContractSpecification,
   config: StrategyConfig,
+  options: PullbackAnalysisOptions = {},
 ): PullbackAnalysis {
   const completed = completedCandles(candles);
   if (!breakout.detected || breakout.candleOpenTime === null || breakout.direction === null) {
@@ -447,36 +468,49 @@ export function analyzePullback(
     (candle.openTime - breakoutCandle.closeTime) <= config.phase4PullbackMaxMinutes * 60_000,
   ).slice(0, config.phase4PullbackMaxCandles);
   const atr14 = averageTrueRange(completed.slice(0, breakoutIndex + 1), config.phase4AtrPeriod);
-  const proximityTolerance = Number(Math.max(specification.tickSize * config.phase4ProximityTicks, atr14 * config.phase4ProximityAtrFactor).toFixed(2));
+  // This is the executable qualifying-level tolerance. ATR remains exposed
+  // below as diagnostic evidence, but can never widen or replace this zone.
+  const proximityTolerance = Number((config.levelTolerance || DEFAULT_LEVEL_TOLERANCE_POINTS).toFixed(2));
   const events: PullbackEvent[] = [];
   const nearStreak = new Map<string, number>();
-  const validLevels = levels.filter((level) => Number.isFinite(level.price));
+  const validLevels = levels.filter((level) =>
+    Number.isFinite(level.price) || isDynamicPullbackLevel(level),
+  );
+  const calendar = options.calendar ?? DEFAULT_FUTURES_SESSION_CALENDAR;
 
   for (const candle of postBreakout) {
     for (const level of validLevels) {
-      const distance = Math.min(
-        Math.abs(candle.close - level.price),
-        Math.abs(candle.high - level.price),
-        Math.abs(candle.low - level.price),
+      const resolved = resolvePullbackLevel(level, candle, candles, options.causalCandles, config, calendar);
+      if (!resolved) continue;
+      const distance = levelInteractionDistance(
+        resolved.price,
+        candle.high,
+        candle.low,
+        resolved.rangeLow,
+        resolved.rangeHigh,
       );
-      const touched = candle.low <= level.price && candle.high >= level.price;
+      const touched = distance === 0;
       const near = touched || distance <= proximityTolerance;
       const streak = near ? (nearStreak.get(level.name) ?? 0) + 1 : 0;
       nearStreak.set(level.name, streak);
-      const favorable = breakout.direction === "long" ? candle.close >= level.price : candle.close <= level.price;
+      const favorable = breakout.direction === "long" ? candle.close >= resolved.price : candle.close <= resolved.price;
+      const lowerBoundary = resolved.rangeLow ?? resolved.price;
+      const upperBoundary = resolved.rangeHigh ?? resolved.price;
       const reclaim = breakout.direction === "long"
-        ? candle.low < level.price - proximityTolerance && candle.close >= level.price
-        : candle.high > level.price + proximityTolerance && candle.close <= level.price;
+        ? candle.low < lowerBoundary - proximityTolerance && candle.close >= lowerBoundary
+        : candle.high > upperBoundary + proximityTolerance && candle.close <= upperBoundary;
       const through = breakout.direction === "long"
-        ? candle.close < level.price - proximityTolerance
-        : candle.close > level.price + proximityTolerance;
+        ? candle.close < lowerBoundary - proximityTolerance
+        : candle.close > upperBoundary + proximityTolerance;
+      const distanceDetail = `${distanceInTicks(distance)} ticks / ${distance.toFixed(2)} points from ${level.name}; tolerance is ${proximityTolerance.toFixed(2)} points.`;
 
-      if (touched) events.push(event("touch", candle, level, `Completed close interacted with ${level.name} within ${proximityTolerance.toFixed(2)} points.`));
-      else if (near) events.push(event("proximity", candle, level, `Price came within ${proximityTolerance.toFixed(2)} points of ${level.name}.`));
-      if (reclaim) events.push(event("break and reclaim", candle, level, `${level.name} was breached intrabar and reclaimed on the completed close.`));
-      if (touched && favorable) events.push(event("hold", candle, level, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}.`));
-      if (streak >= 2) events.push(event("consolidation", candle, level, `${streak} consecutive completed candles consolidated near ${level.name}.`));
-      if (through) events.push(event("break through", candle, level, `Completed close broke through ${level.name} against the ${breakout.direction} breakout.`));
+      const resolvedLevel: Level = { ...level, price: resolved.price };
+      if (touched) events.push(event("touch", candle, resolvedLevel, `Completed range interacted with ${level.name}; ${distanceDetail}`));
+      else if (near) events.push(event("proximity", candle, resolvedLevel, `Completed range came within the qualifying zone; ${distanceDetail}`));
+      if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`));
+      if (touched && favorable) events.push(event("hold", candle, resolvedLevel, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`));
+      if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`));
+      if (through) events.push(event("break through", candle, resolvedLevel, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`));
     }
   }
 
@@ -496,6 +530,71 @@ export function analyzePullback(
     qualifyingLevelCount: validLevels.length,
     detail: events.length ? `${events.length} pullback observations across ${postBreakout.length} completed candles.` : "No qualifying pullback interaction in the bounded window.",
   };
+}
+
+/**
+ * Distance from a candle's complete high-low range to a point or zone.
+ * Overlap is always zero; otherwise only the nearest wick matters.
+ */
+export function levelInteractionDistance(
+  level: number,
+  candleHigh: number,
+  candleLow: number,
+  rangeLow?: number | null,
+  rangeHigh?: number | null,
+): number {
+  const low = rangeLow ?? level;
+  const high = rangeHigh ?? level;
+  if (candleHigh >= low && candleLow <= high) return 0;
+  if (candleHigh < low) return low - candleHigh;
+  return candleLow - high;
+}
+
+function distanceInTicks(distance: number): number {
+  return Math.ceil(Math.max(0, distance) / MES_TICK_SIZE - 1e-10);
+}
+
+function resolvePullbackLevel(
+  level: Level,
+  candle: Candle,
+  visibleCandles: readonly Candle[],
+  causalCandles: readonly Candle[] | undefined,
+  config: StrategyConfig,
+  calendar: FuturesSessionCalendar,
+): { price: number; rangeLow: number | null; rangeHigh: number | null } | null {
+  const dynamic = level.name.trim().toLowerCase();
+  if (!causalCandles) {
+    return Number.isFinite(level.price)
+      ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null }
+      : null;
+  }
+  const source = [...causalCandles, ...visibleCandles]
+    .filter((item) => item.isComplete && item.closeTime <= candle.closeTime)
+    .filter((item) => sameContract(item, candle))
+    .sort((first, second) => first.closeTime - second.closeTime || first.openTime - second.openTime);
+  const deduped = [...new Map(source.map((item) => [item.openTime, item])).values()];
+  if (dynamic === "vwap") {
+    const price = regularSessionVwap(deduped, calendar, tradingDateForTimestamp(candle.openTime, calendar));
+    return Number.isFinite(price) ? { price, rangeLow: null, rangeHigh: null } : null;
+  }
+  if (dynamic === "ema 200" || dynamic === "ema200") {
+    const price = causalEmaValueAt(deduped, config.emaPeriod, candle.openTime);
+    return price === null || !Number.isFinite(price) ? null : { price, rangeLow: null, rangeHigh: null };
+  }
+  return Number.isFinite(level.price)
+    ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null }
+    : null;
+}
+
+function isDynamicPullbackLevel(level: Level): boolean {
+  const name = level.name.trim().toLowerCase();
+  return name === "vwap" || name === "ema 200" || name === "ema200";
+}
+
+function sameContract(first: Candle, second: Candle): boolean {
+  const firstContract = (first as Candle & { contractSymbol?: string }).contractSymbol;
+  const secondContract = (second as Candle & { contractSymbol?: string }).contractSymbol;
+  return firstContract === undefined || secondContract === undefined || firstContract === secondContract;
 }
 
 export function advanceOrbBreakoutState(
