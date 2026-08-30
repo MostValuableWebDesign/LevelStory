@@ -2326,8 +2326,23 @@ export function projectHistoricalTradeCandidates(
     }
     if (candidateById.has(matchingCandidate.candidateId)
       && !authoritativeTrades.some((existing) => existing.candidateId === matchingCandidate.candidateId)) {
+      const matchingOccurrence = confirmed.find((occurrence) => occurrence.occurrenceId === matchingCandidate.signalOccurrenceId);
+      const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
+        candle.contractSymbol === matchingCandidate.contractSymbol
+        && candle.openTime === Date.parse(matchingCandidate.expectedEntryTimestamp),
+      );
+      const candidateExecution = executionContext && matchingOccurrence
+        ? candidateDrivenEntryTrade(
+          datasetEntryCandle && !matchingOccurrence.entryCandle
+            ? { ...matchingOccurrence, entryCandle: occurrenceCandle(datasetEntryCandle) }
+            : matchingOccurrence,
+          matchingCandidate.candidateId,
+          matchingCandidate,
+          executionContext,
+        )
+        : undefined;
       authoritativeTrades.push({
-        ...trade,
+        ...(candidateExecution ?? trade),
         signalOccurrenceId: matchingCandidate.signalOccurrenceId,
         candidateId: matchingCandidate.candidateId,
       });
@@ -2406,8 +2421,8 @@ function candidateDrivenEntryTrade(
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
   const period = periodForDate(tradingDate, context.dataset);
-  const entryTime = typeof entryCandle.closeTime === "number"
-    ? new Date(entryCandle.closeTime).toISOString()
+  const entryTime = typeof entryCandle.openTime === "number"
+    ? new Date(entryCandle.openTime).toISOString()
     : occurrence.expectedEntryTimestamp!;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const contractCandles = context.dataset.candles
@@ -2529,7 +2544,9 @@ function candidateDrivenEntryTrade(
       patienceCandleOpenTime: occurrence.patienceTimestamp,
       patienceCandleCloseTime: typeof patience.closeTime === "number" ? new Date(patience.closeTime).toISOString() : null,
       triggerCandleOpenTime: occurrence.expectedEntryTimestamp,
-      triggerCandleCloseTime: entryTime,
+       triggerCandleCloseTime: typeof entryCandle.closeTime === "number"
+         ? new Date(entryCandle.closeTime).toISOString()
+         : null,
       modeledFillObservationTime: entryTime,
       exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,

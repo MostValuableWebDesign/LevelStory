@@ -638,9 +638,21 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
   assert.equal(result.authoritativeTrades[0]?.signalOccurrenceId, occurrence.occurrenceId);
   assert.equal(result.authoritativeTrades[0]?.fillLabel, "OHLCV_CONFIRMATION_THRESHOLD");
   assert.equal(result.authoritativeTrades[0]?.entryPrice, 101.25);
+  assert.equal(result.authoritativeTrades[0]?.entryTime, entryTimestamp);
+  assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleOpenTime, entryTimestamp);
+  assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleCloseTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
   assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing");
 
   const legacyTrade = { ...result.authoritativeTrades[0]!, id: "legacy-conflicts-with-entry" };
+  const reconciledResult = projectHistoricalTradeCandidates([occurrence], [legacyTrade], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(reconciledResult.authoritativeTrades.length, 1);
+  assert.equal(reconciledResult.authoritativeTrades[0]?.entryTime, entryTimestamp);
+  assert.equal(reconciledResult.authoritativeTrades[0]?.audit?.triggerCandleCloseTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
+
   const failedOccurrence = {
     ...occurrence,
     confirmationThreshold: 101.5,

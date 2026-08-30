@@ -26,3 +26,9 @@ Historical replay response contracts must include every status and Phase 2G fiel
 **Why:** Strict response validation can reject an otherwise completed worker report when a newly surfaced historical status or candidate-management field is absent from the generated OpenAPI schema.
 
 **How to apply:** Update the OpenAPI source and regenerate derived validators/clients whenever replay output gains a status or report property; keep HTTP errors generic but preserve worker details in server diagnostics.
+
+When a valid candidate matches a legacy OHLCV trade, reproject the authoritative trade through candidate execution if replay candles are available.
+
+**Why:** Legacy records can encode entry at the P-candle close even though the causal candidate enters at the immediate E candle open; retaining that record distorts entry timing and can evaluate the wrong intrabar path.
+
+**How to apply:** Preserve legacy records only as reconciliation evidence; use the candidate-owned trade for authoritative metrics and retain the exact E open plus E close in its audit.
