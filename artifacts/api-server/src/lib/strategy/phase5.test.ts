@@ -117,6 +117,21 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
   assert.equal(result.occurrences?.[1]?.nextObservedCandle, null);
 });
 
+test("a later confirmed P→E sequence remains executable after an earlier ambiguous candidate", () => {
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 12.2, 6.8, 10.5),
+    candle(3, 10.5, 11.1, 9.2, 10.8),
+    candle(4, 10.8, 12.1, 9.3, 12),
+  ];
+  const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.patienceCandle?.openTime, candles[3].openTime);
+  assert.equal(result.triggerCandle?.openTime, candles[4].openTime);
+  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["INVALIDATED", "CONFIRMED"]);
+});
+
 test("two successful P→E sequences remain ordered in one visible session", () => {
   const candles = [
     candle(0, 10, 12, 8, 10.5),

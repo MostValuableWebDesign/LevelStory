@@ -140,7 +140,17 @@ export function patienceCandleEngine(
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend);
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...withDirection(analysis), occurrences });
-  const candidate = candidateIndexes.find(({ candle }) => {
+  // If an earlier P/E candidate is invalidated or ambiguous, continue to the
+  // earliest later confirmed occurrence. Do not let a stale earlier candidate
+  // hide a valid immediate P→E sequence at the same replay cursor.
+  const confirmedOccurrence = occurrences.find((occurrence) =>
+    occurrence.outcomeStatus === "CONFIRMED"
+    && occurrence.triggerCandle?.openTime !== undefined
+    && occurrence.patienceCandle.openTime !== undefined,
+  );
+  const candidate = (confirmedOccurrence
+    ? candidateIndexes.find(({ candle }) => candle.openTime === confirmedOccurrence.patienceCandle.openTime)
+    : undefined) ?? candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
     if (!next || !next.isComplete || next.openTime !== candle.closeTime) return false;
     const confirmationPrice = direction === "long"

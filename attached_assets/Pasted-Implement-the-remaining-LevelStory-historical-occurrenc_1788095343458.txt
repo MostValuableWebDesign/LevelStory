@@ -1,0 +1,209 @@
+Implement the remaining LevelStory historical occurrence-validity corrections. This is a correctness-focused change. Do not hardcode April 13, specific candle times, prices, contracts, or screenshot data.
+
+Authoritative trading rules
+
+- MES uses 5-minute execution candles.
+- A pullback/level interaction creates an active eligibility arm.
+- The qualifying level uses the governed 12-tick MES tolerance: 3.00 points.
+- A patience candle P must occur after L while the qualifying level context remains valid.
+- Entry E must be the immediately following completed 5-minute candle.
+- E must exceed P in the intended direction by the configured 3–4-tick confirmation buffer.
+- If E fails, that P expires. Continue looking for a new P, but only while the same pullback context remains genuinely valid.
+- Once P→E confirms, consume that eligibility arm. Another entry requires a fresh qualifying pullback/level interaction.
+- Primary entry hours are 9:30 a.m.–1:00 p.m. America/New_York.
+- Shadow Mode only. Do not add live orders, paper orders, broker integration, fabricated quotes, or fabricated fills.
+
+1. Prevent stale pullback eligibility
+
+The current patience engine applies `latestEligibilityBefore()` to every later patience-shaped candle. This lets one morning L candle qualify multiple P→E pairs throughout the day.
+
+Replace this with an explicit causal eligibility-arm lifecycle.
+
+An eligibility arm must be identified by:
+
+- Trading date
+- Contract
+- Strategy candidate
+- Direction
+- Qualifying level identifier
+- Qualifying level-interaction candle L
+- Level value at the causal timestamp
+- Formula hash/version
+- Source fingerprint
+
+The arm becomes active at L.
+
+A P candidate may use the arm only when:
+
+- P occurs after L.
+- P is completed.
+- P has the correct directional patience shape.
+- P itself, or its immediately preceding comparison candle, remains within the governed 12-tick zone of the same qualifying level.
+- For dynamic indicators such as VWAP or EMA 200, use their causal value at the relevant L/P timestamp—not the session-final value.
+- The strategy direction and required context remain valid.
+- No confirmed entry has already consumed the arm.
+- No invalidating structural event has terminated the arm.
+
+Invalidate the arm when:
+
+- Price materially leaves the qualifying level zone and the pullback/consolidation context is no longer valid.
+- An opposing structural breakout or governed reversal invalidates the direction.
+- The session or contract changes.
+- A confirmed P→E entry consumes it.
+- A newer qualifying L supersedes it for the same strategy, direction, and level.
+
+Do not add a hidden arbitrary duration merely to remove afternoon occurrences. If an age limit is necessary, make it governed, configurable, formula-hashed, visible in diagnostics, and supported by tests. Prefer structural and proximity validity.
+
+2. Preserve P1 failure → P2 re-arming correctly
+
+- P1 may only be confirmed by immediate E1.
+- If E1 fails, P1 expires permanently.
+- E2 can never confirm P1.
+- Continue scanning for P2 only if the eligibility arm is still valid.
+- P2 may only be confirmed by immediate E2.
+- If the level context was invalidated before P2, require a fresh L.
+- Do not overwrite an earlier occurrence record.
+- Retain expired and confirmed attempts separately in the occurrence ledger.
+
+3. Consume confirmed eligibility
+
+After a confirmed P→E pair:
+
+- Mark the exact eligibility arm consumed.
+- Do not produce additional confirmed entries from that same L and level interaction.
+- Require a fresh pullback interaction before another trade can qualify.
+- Preserve the original confirmed occurrence as immutable evidence.
+
+This must stop one 10:15 L from generating confirmed pairs at 10:35, 10:45, 11:05, noon, and the afternoon without fresh pullbacks.
+
+4. Correct occurrence outcome taxonomy
+
+The historical OHLCV source has no bid/ask quotes, so a valid signal may not receive a modeled fill. Do not call this a risk rejection.
+
+Use separate outcomes:
+
+- `RISK_REJECTED`: risk controls genuinely rejected the setup.
+- `RISK_APPROVED_EXECUTION_UNAVAILABLE`: strategy and risk passed, but a modeled fill was unavailable because quote evidence was absent.
+- `MODELED_TRADE`: a valid modeled execution exists.
+- `ENTRY_CONFIRMATION_FAILED`: immediate E failed.
+- `ENTRY_CONFIRMED`: P→E confirmed before execution modeling.
+
+Do not convert every `ENTRY_TRIGGERED` occurrence without a trade into `RISK_REJECTED`.
+
+Update the occurrence ledger, API schema, generated clients, diagnostics, and UI descriptions consistently.
+
+5. Make Confirmed Signals occurrence-ledger authoritative
+
+For historical `confirmed_signals` mode:
+
+- Project categories only from immutable occurrence-ledger records.
+- Include a patience category only for a valid confirmed P→E occurrence.
+- Include a qualified trade only for a genuine canonical modeled trade.
+- If desired, expose risk-approved but unfilled signals under an accurately named signal category—not `Qualified trade` and not `Rejected setup`.
+- Do not derive pullback, rejected setup, breakout, or other categories from cumulative audit state merely because the audit later contains a confirmed signal.
+- Do not show audit-fallback candidates with no occurrence ID.
+- Deduplicate by governed occurrence ID plus category.
+
+`trades_and_diagnostics` may retain rejected and diagnostic audit evidence, but exact duplicates sharing the same audit, category, timestamp, and causal anchor must appear only once.
+
+6. Classify the primary window using the entry candle
+
+For confirmed P→E signals:
+
+- Use E’s open timestamp to decide whether the occurrence is inside the primary entry window.
+- Do not classify by P when E exists.
+- The configured end is exclusive.
+- Therefore, a 12:55–1:00 P followed by a 1:00–1:05 E is outside the primary entry window.
+- Pullback-only diagnostics may continue to use L.
+- Modeled trades use their entry/fill observation timestamp.
+
+Update `candidateOccurrenceTimestamp`, sorting, selection reasons, and window diagnostics.
+
+7. Reconcile diagnostics
+
+The following counts must have consistent meanings:
+
+- Patience candidates
+- Expired patience candidates
+- Confirmed P→E pairs
+- Risk-approved signals
+- Risk-rejected signals
+- Execution-unavailable signals
+- Modeled entries
+- Final trades
+- Primary-window occurrences
+- Outside-primary-window occurrences
+
+The qualification funnel and Visual Review window diagnostics must not report “4 risk approved” in one place and “0 risk approved entries” elsewhere simply because no quote-based fill exists.
+
+Add short user-facing definitions for these counts.
+
+8. Build/deployment provenance
+
+The deployed build ID must resolve to a real Git commit present in the public GitHub repository.
+
+- Build-time injection must use the actual commit SHA.
+- Push the completed source commit before deployment.
+- Verify the live `buildId` equals the pushed GitHub commit.
+- Do not report the deployment verified if the live SHA cannot be found in GitHub.
+
+Required deterministic tests
+
+Add focused tests covering:
+
+1. One L followed by one valid P→E confirms exactly once.
+2. Later patience-shaped candles cannot reuse the consumed L.
+3. P1→E1 fails, then P2→E2 confirms while the same level context remains valid.
+4. P1 fails, context invalidates, and P2 cannot qualify without a fresh L.
+5. A fresh L after a consumed entry creates a new independent arm.
+6. P outside the 12-tick level zone cannot use a stale L.
+7. VWAP and EMA use their causal values at L/P, not final-session values.
+8. Bullish and bearish mirror behavior.
+9. The occurrence ledger retains every expired and confirmed attempt without duplicates.
+10. Confirmed Signals contains no rejected/audit-fallback snapshots without occurrence IDs.
+11. Diagnostics mode may show rejected setups but removes exact duplicates.
+12. Risk-approved with missing quote evidence becomes `RISK_APPROVED_EXECUTION_UNAVAILABLE`, not `RISK_REJECTED`.
+13. Genuine risk rejection remains `RISK_REJECTED`.
+14. A 12:55 P with a 1:00 E is outside the exclusive primary entry window.
+15. Multiple dates and rollover contracts remain isolated.
+16. Sorting selects the earliest valid primary-window confirmed occurrence, not the last processed occurrence.
+
+Verification limits
+
+I am limiting Replit compute. Perform only:
+
+- Focused Phase 5 tests.
+- Focused Phase 9 occurrence-ledger tests.
+- Focused Visual Review tests.
+- Relevant API schema/client generation.
+- API and frontend typechecks.
+- `git diff --check`.
+- One cached or narrowly scoped live Visual Review smoke request.
+
+Do not run:
+
+- A cold 20+2 backtest.
+- A full qualification batch.
+- A historical-index rebuild.
+- Multiple workflow restarts.
+- Broad performance refactors.
+
+Final report
+
+Report:
+
+1. Files changed.
+2. Root cause of stale eligibility.
+3. Exact eligibility-arm lifecycle implemented.
+4. How P1 failure and P2 re-arming work.
+5. How confirmed arms are consumed.
+6. Corrected risk/execution taxonomy.
+7. Confirmed Signals deduplication behavior.
+8. Primary-window timestamp behavior.
+9. Focused test totals.
+10. Typecheck/build results.
+11. Pushed GitHub commit SHA.
+12. Live build ID and confirmation it matches GitHub.
+13. Any remaining limitation.
+
+Do not claim completion unless the live build SHA exists in GitHub and the focused tests pass.

@@ -921,6 +921,29 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
   return causalMatches.length === 1 ? causalMatches[0]! : null;
 }
 
+function auditForOccurrence(
+  occurrence: HistoricalOccurrence,
+  audits: readonly BacktestAuditRecord[],
+  trades: readonly BacktestTrade[],
+): BacktestAuditRecord | undefined {
+  const patienceTimestamp = occurrence.patienceTimestamp;
+  const entryTimestamp = occurrence.entryTimestamp;
+  if (patienceTimestamp && entryTimestamp) {
+    const exact = audits
+      .filter((audit) =>
+        audit.tradingDate === occurrence.tradingDate
+        && audit.contractSymbol === occurrence.contractSymbol
+        && audit.patienceCandleOpenTime === patienceTimestamp
+        && audit.triggerCandleOpenTime === entryTimestamp,
+      )
+      .sort((first, second) => Date.parse(first.evaluatedCandleOpenTime) - Date.parse(second.evaluatedCandleOpenTime));
+    const tradeAudit = exact.find((audit) => matchingTrade(audit, trades) !== null);
+    if (tradeAudit) return tradeAudit;
+    if (exact[0]) return exact[0];
+  }
+  return audits.find((candidate) => candidate.id === occurrence.auditId);
+}
+
 type AnchorEvent = {
   role: VisualValidationRelatedCandle["role"];
   openTime: string | null;
@@ -1838,7 +1861,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   };
   const mode = visualValidationReviewMode(request);
   const ledgerCandidates: ReviewCandidate[] = report.occurrences?.flatMap((occurrence) => {
-    const audit = report.audit.find((candidate) => candidate.id === occurrence.auditId);
+    const audit = auditForOccurrence(occurrence, report.audit, report.trades);
     if (!audit) return [];
     const category: VisualValidationCategory | null = occurrence.kind === "pullback"
       ? "pullback"
