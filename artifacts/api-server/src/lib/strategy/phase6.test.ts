@@ -159,7 +159,7 @@ function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
     },
      patience: patience(),
      reversalPatience: patience("PATIENCE_CANDLE_VALID"),
-    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    trend: { direction: "bullish", structure: "higher highs / higher lows", score: 6, candleCount: 8, evidenceItems: [{ status: "positive" }, { status: "positive" }, { status: "positive" }, { status: "positive" }] },
     riskApproved: true,
     config,
     ...overrides,
@@ -222,9 +222,7 @@ test("ORB continuation never qualifies when any mandatory gate fails", () => {
     ["NTZ", { levels: { ...baseContext().levels, ntz: { ...ntz(), complete: false } } }],
     ["completed breakout", { breakout: { ...baseContext().breakout, detected: false, direction: null } }],
     ["trend", { trend: { direction: "neutral", structure: "mixed structure" } }],
-    ["pullback", { pullback: { ...baseContext().pullback, events: [] } }],
-    ["volume", { volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" } }],
-    ["context", { fibonacci: { ...baseContext().fibonacci, frozen: false, levels: [] } }],
+    ["context", { pullback: { ...baseContext().pullback, events: [] }, fibonacci: { ...baseContext().fibonacci, frozen: false, levels: [] } }],
      ["patience", { patience: patience("PATIENCE_CANDLE_VALID") }],
      ["immediate trigger", { patience: patience("PATIENCE_CANDLE_EXPIRED") }],
     ["risk", { riskApproved: false }],
@@ -251,7 +249,7 @@ test("extended consolidation rejects a materially expanding range", () => {
     ? candle(index * 300_000, 9.95, 9.96, 9.94, 9.95)
     : candle(index * 300_000, 9.95, 10.1, 9.9, 9.96));
   const result = detectExtendedNtzConsolidation(candles, ntz());
-  assert.equal(result.detected, true);
+  assert.equal(result.detected, false);
   assert.ok((result.expansionRatio ?? 0) > 1.25);
   const evaluated = evaluateExtendedNtzConsolidationBreakout(baseContext({ candles }));
   assert.equal(evaluated.rules.find((rule) => rule.key === "rangeStable")?.passed, false);
@@ -261,8 +259,9 @@ test("extended consolidation rejects a materially expanding range", () => {
 test("extended consolidation does not require a pullback", () => {
   const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
   const result = evaluateExtendedNtzConsolidationBreakout(baseContext({
-    candles,
+    candles: [...candles, candle(2_700_000, 9.96, 10.25, 9.95, 10.2)],
     pullback: { ...baseContext().pullback, events: [] },
+    breakout: { ...baseContext().breakout, candleOpenTime: 2_700_000, time: 3_000_000 },
   }));
   assert.equal(result.rules.find((rule) => rule.key === "pullback")?.mandatory, undefined);
   assert.equal(result.rules.find((rule) => rule.key === "extendedConsolidation")?.passed, true);
@@ -271,8 +270,9 @@ test("extended consolidation does not require a pullback", () => {
 test("extended consolidation qualifies with a breakout and NTZ-eligible patience window", () => {
   const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
   const result = evaluateExtendedNtzConsolidationBreakout(baseContext({
-    candles,
-     patience: { ...patience(), eligibilityReason: "ntz consolidation" },
+    candles: [...candles, candle(2_700_000, 9.96, 10.25, 9.95, 10.2)],
+    patience: { ...patience(), eligibilityReason: "ntz consolidation" },
+    breakout: { ...baseContext().breakout, candleOpenTime: 2_700_000, time: 3_000_000 },
   }));
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);

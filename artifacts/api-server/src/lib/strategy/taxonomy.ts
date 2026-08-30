@@ -48,6 +48,13 @@ export type StrategyDefinition = {
 };
 
 export const STRATEGY_DEFINITIONS: readonly StrategyDefinition[] = [
+  {
+    id: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    name: "Strong Breakout After Consolidation",
+    description: "A bounded, stable price consolidation followed by a strong directional breakout, continuation, and risk approval.",
+    components: ["consolidation", "strong breakout", "patience candle", "risk"],
+    alertOnly: false,
+  },
   { id: "PATIENCE_CANDLE_CONTINUATION", name: "Patience Candle Continuation", description: "A valid patience candle followed by the immediate buffered continuation candle.", components: ["trend", "level interaction", "patience candle", "immediate entry candle", "risk"], alertOnly: false },
   {
     id: "ORB_PULLBACK_CONTINUATION",

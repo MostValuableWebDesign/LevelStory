@@ -6,7 +6,7 @@ export * from "./major-levels.js";
 export * from "./phase4.js";
 export * from "./phase5.js";
 export * from "./phase6.js";
-export { trendEvidence } from "./rules.js";
+export { trendEvidence, hasConfirmedDirectionalTrend } from "./rules.js";
 export type { TrendEvidence, TrendEvidenceItem } from "./rules.js";
 export * from "./risk.js";
 export * from "./simulation.js";

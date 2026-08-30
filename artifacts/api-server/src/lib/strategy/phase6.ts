@@ -10,6 +10,7 @@ import type { SessionLevels } from "./levels.js";
 import type { StrategyConfig } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
+import { hasConfirmedDirectionalTrend } from "./rules.js";
 
 export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
@@ -58,6 +59,8 @@ export type ExtendedConsolidation = {
   expansionRatio: number | null;
   startTime: number | null;
   endTime: number | null;
+  frozenHigh?: number | null;
+  frozenLow?: number | null;
   detail: string;
 };
 
@@ -89,7 +92,13 @@ export type Phase6Context = {
   volume: Phase4VolumeAnalysis;
   patience: PatienceAnalysis;
   reversalPatience?: PatienceAnalysis;
-  trend: { direction: TrendDirection; structure: string };
+  trend: {
+    direction: TrendDirection;
+    structure: string;
+    score?: number;
+    candleCount?: number;
+    evidenceItems?: Array<{ status: "positive" | "negative" | "neutral" }>;
+  };
   riskApproved: boolean;
   config: StrategyConfig;
 };
@@ -126,13 +135,12 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.breakout.direction;
+  const confirmedTrend = hasConfirmedTrend(context, direction);
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
-    rule("breakoutAgreesWithTrend", "Breakout agrees with 15-minute trend", direction !== null && trendAgrees(direction, context.trend.direction), direction && context.trend.direction !== "neutral" ? `${direction} breakout vs ${context.trend.direction} 15-minute trend.` : "Breakout direction and a directional 15-minute trend are both required."),
-    rule("pullbackReachedLevel", "Pullback reached or came near a qualifying level", hasQualifyingPullback(context.pullback), hasQualifyingPullback(context.pullback) ? "Pullback interaction reached a mapped level." : "No qualifying pullback interaction has been recorded."),
-    rule("pullbackVolumePassed", "Pullback volume passed", pullbackVolumePassed(context.volume), pullbackVolumePassed(context.volume) ? "Pullback volume remained below the breakout safety reference without a reversal warning." : "Pullback volume is missing, expanded, or carries an opposing-volume warning."),
-    rule("contextRecorded", "Fibonacci and level context recorded", context.fibonacci.frozen && context.fibonacci.levels.length > 0 && context.levels.levels.some((level) => Number.isFinite(level.price)), context.fibonacci.frozen ? "Frozen Fibonacci levels and mapped level context are recorded." : "Frozen Fibonacci and mapped level context are incomplete."),
+    rule("breakoutAgreesWithTrend", "Breakout agrees with confirmed 15-minute trend", confirmedTrend, confirmedTrend ? "Confirmed causal 15-minute trend agrees with the breakout." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
+    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", hasQualifyingPullback(context.pullback) || (context.fibonacci.frozen && context.fibonacci.levels.length > 0), "A structural/dynamic level or causal Fibonacci interaction is required."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -143,8 +151,10 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
   const direction = directionFromTrend(context.trend.direction);
   const valid = context.patience.eligible && context.patience.patienceCandle !== null;
+  const confirmedTrend = hasConfirmedTrend(context, direction);
   const rules = [
-    rule("directionalContext", "Directional trend context", direction !== null, "A directional trend is required."),
+    rule("confirmedTrend", "Confirmed causal 15-minute directional trend", confirmedTrend, confirmedTrend ? "Confirmed causal trend evidence is available." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
+    rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk approved." : "Risk blocked."),
@@ -153,19 +163,21 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
 }
 
 export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
-  const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio);
+  const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio, context.breakout.candleOpenTime ?? context.breakout.time);
   const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
-  const breakoutConfirmed = context.breakout.detected && !context.breakout.failed && context.breakout.continuationConfirmed;
+  const breakoutCandle = completedCandles(context.candles).find((candle) => candle.openTime === context.breakout.candleOpenTime);
+  const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
+    && (direction === "long" ? breakoutCandle.close > consolidation.frozenHigh! : breakoutCandle.close < consolidation.frozenLow!);
+  const breakoutConfirmed = context.breakout.detected && !context.breakout.failed && context.breakout.continuationConfirmed && breakoutOutsideFrozenRange;
   const postBreakoutContext = hasQualifyingPullback(context.pullback)
     || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
   const patienceNearLevel = context.patience.patienceCandle !== null
     && context.patience.eligible
     && postBreakoutContext;
   const rules: SetupRuleEvidence[] = [
-    rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
-    rule("extendedConsolidation", "45–60 minutes / 9–12 completed candles inside or near NTZ", consolidation.detected, consolidation.detail),
+    rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
-    rule("strongBreakout", "Strong directional breakout and continuation", breakoutConfirmed && direction !== null && trendAgrees(direction, context.trend.direction), breakoutConfirmed ? "Strong breakout continuation is recorded." : "A completed, trend-aligned strong breakout and continuation are required."),
+    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && (context.breakout.closeLocationRatio ?? 0) >= context.config.phase4StrongCloseLocationRatio, "Strong breakout evidence must close outside the frozen consolidation range."),
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
     rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
@@ -261,38 +273,53 @@ export function detectReversalEvidence(
   };
 }
 
-export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: SessionLevels["ntz"], expansionLimit = 1.25): ExtendedConsolidation {
-  if (!ntz?.complete) return emptyConsolidation("Waiting for a finalized NTZ.");
-  const afterNtz = completedCandles(candles).filter((candle) => ntz.completedAt === undefined || candle.openTime >= ntz.completedAt);
+export function detectExtendedNtzConsolidation(candles: readonly Candle[], ntz: SessionLevels["ntz"], expansionLimit = 1.25, breakoutTime: number | null = null): ExtendedConsolidation {
+  const completed = completedCandles(candles).filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
+  if (completed.length < 3) return emptyConsolidation("At least three contiguous completed candles are required.");
+  const maxRange = 1.5;
   const candidates: ExtendedConsolidation[] = [];
-  const proximity = Math.max((ntz.high - ntz.low) * 0.1, 0.01);
-  for (let count = 9; count <= Math.min(12, afterNtz.length); count += 1) {
-    for (let start = 0; start + count <= afterNtz.length; start += 1) {
-      const window = afterNtz.slice(start, start + count);
-      if (!isContiguous(window)) continue;
-      const insideOrNear = window.filter((candle) => candle.close >= ntz.low - proximity && candle.close <= ntz.high + proximity).length;
-      if (insideOrNear / count < 0.75) continue;
-      const midpoint = Math.floor(count / 2);
-      const firstRange = candleRange(window.slice(0, midpoint));
-      const secondRange = candleRange(window.slice(midpoint));
-      const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
-      candidates.push({
-        detected: true,
-        candleCount: count,
-        durationMinutes: Math.round((window.at(-1)!.closeTime - window[0].openTime) / 60_000),
-        insideOrNearCount: insideOrNear,
-        range: Number((Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low))).toFixed(2)),
-        expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(2)) : null,
-        startTime: window[0].openTime,
-        endTime: window.at(-1)!.closeTime,
-        detail: `${count} contiguous completed candles (${Math.round((window.at(-1)!.closeTime - window[0].openTime) / 60_000)} minutes); ${insideOrNear}/${count} closes inside or near NTZ.`,
-      });
-    }
+  const minimumCount = breakoutTime === null ? completed.length : 3;
+  for (let count = minimumCount; count <= completed.length; count += 1) {
+    const window = completed.slice(-count);
+    if (!isContiguous(window)) break;
+    const midpoint = Math.max(1, Math.floor(count / 2));
+    const firstRange = candleRange(window.slice(0, midpoint));
+    const secondRange = candleRange(window.slice(midpoint));
+    const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
+    const range = Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low));
+    if (range > maxRange || expansionRatio > expansionLimit) continue;
+    const insideOrNear = ntz?.complete ? window.filter((candle) => candle.close >= ntz.low && candle.close <= ntz.high).length : 0;
+    candidates.push({
+      detected: true, candleCount: count,
+      durationMinutes: Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000),
+      insideOrNearCount: insideOrNear, range: Number(range.toFixed(2)),
+      expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(2)) : null,
+      startTime: window[0]!.openTime, endTime: window.at(-1)!.closeTime,
+      frozenHigh: Math.max(...window.map((candle) => candle.high)),
+      frozenLow: Math.min(...window.map((candle) => candle.low)),
+      detail: `${count} contiguous completed candles (${Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000)} minutes) in a bounded ${range.toFixed(2)} point range; ${insideOrNear}/${count} closes inside NTZ.`,
+    });
   }
-  const best = candidates
-    .sort((first, second) => (second.endTime ?? 0) - (first.endTime ?? 0) || second.candleCount - first.candleCount)
-    .at(0);
-  return best ?? emptyConsolidation("No contiguous 45–60 minute window remains primarily inside or near NTZ.");
+  const best = candidates.at(-1);
+  if (best) return best;
+  const window = breakoutTime === null ? completed : completed.slice(-Math.min(3, completed.length));
+  const range = Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low));
+  const midpoint = Math.max(1, Math.floor(window.length / 2));
+  const firstRange = candleRange(window.slice(0, midpoint));
+  const secondRange = candleRange(window.slice(midpoint));
+  const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
+  return {
+    detected: false, candleCount: window.length,
+    durationMinutes: Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000),
+    insideOrNearCount: ntz?.complete ? window.filter((candle) => candle.close >= ntz.low && candle.close <= ntz.high).length : 0,
+    range: Number(range.toFixed(2)),
+    expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(2)) : null,
+    startTime: window[0]!.openTime,
+    endTime: window.at(-1)!.closeTime,
+    frozenHigh: Math.max(...window.map((candle) => candle.high)),
+    frozenLow: Math.min(...window.map((candle) => candle.low)),
+    detail: `No tight/stable consolidation immediately before breakout: ${window.length} candles span ${range.toFixed(2)} points with expansion ratio ${formatRatio(expansionRatio)}.`,
+  };
 }
 
 export function isDoji(candle: Candle, bodyRatio = 0.1): boolean {
@@ -384,6 +411,22 @@ function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {
 
 function trendAgrees(direction: Direction, trend: TrendDirection): boolean {
   return direction === "long" ? trend === "bullish" : trend === "bearish";
+}
+
+function hasConfirmedTrend(context: Phase6Context, direction: Direction | null): boolean {
+  if (!direction || context.trend.score === undefined || context.trend.candleCount === undefined || !context.trend.evidenceItems) return false;
+  return hasConfirmedDirectionalTrend({
+    direction: context.trend.direction,
+    structure: context.trend.structure,
+    score: context.trend.score,
+    candleCount: context.trend.candleCount,
+    evidenceItems: context.trend.evidenceItems.map((item, index) => ({
+      key: ["structure", "vwap", "ema", "emaSlope"][index] as "structure" | "vwap" | "ema" | "emaSlope",
+      label: "",
+      status: item.status,
+      detail: "",
+    })),
+  }, direction);
 }
 
 function directionFromTrend(trend: TrendDirection): Direction | null {

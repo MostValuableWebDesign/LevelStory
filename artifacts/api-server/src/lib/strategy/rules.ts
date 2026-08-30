@@ -17,6 +17,25 @@ export type TrendEvidence = {
   evidenceItems: TrendEvidenceItem[];
 };
 
+export function hasConfirmedDirectionalTrend(
+  trend: Pick<TrendEvidence, "direction" | "score" | "structure" | "candleCount" | "evidenceItems">,
+  direction: "long" | "short",
+  requiredCandleCount = 8,
+): boolean {
+  const expected = direction === "long" ? "bullish" : "bearish";
+  const structureMatches = direction === "long"
+    ? trend.structure === "higher highs / higher lows"
+    : trend.structure === "lower highs / lower lows";
+  const scoreMatches = direction === "long" ? trend.score >= 5 : trend.score <= -5;
+  const evidenceMatches = trend.evidenceItems.every((item) =>
+    item.status !== "neutral" && (direction === "long" ? item.status === "positive" : item.status === "negative"));
+  return trend.direction === expected
+    && structureMatches
+    && scoreMatches
+    && trend.candleCount >= requiredCandleCount
+    && evidenceMatches;
+}
+
 export function trendEvidence(candles: readonly Candle[], levels: SessionLevels, config: StrategyConfig): TrendEvidence {
   const fifteen = aggregate15(candles).slice(-config.trendCandleCount);
   if (fifteen.length < config.trendCandleCount) {
@@ -49,9 +68,9 @@ export function trendEvidence(candles: readonly Candle[], levels: SessionLevels,
     ? last.close > levels.ema ? "positive" : last.close < levels.ema ? "negative" : "neutral"
     : "neutral";
   const slopeStatus = Number.isFinite(levels.emaSlope)
-    ? levels.emaSlope >= -config.trendEmaFlatThreshold
+    ? levels.emaSlope > config.trendEmaFlatThreshold
       ? "positive"
-      : levels.emaSlope <= config.trendEmaFlatThreshold ? "negative" : "neutral"
+      : levels.emaSlope < -config.trendEmaFlatThreshold ? "negative" : "neutral"
     : "neutral";
   const evidenceItems: TrendEvidenceItem[] = [
     {
