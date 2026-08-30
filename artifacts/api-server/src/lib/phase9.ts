@@ -10,6 +10,7 @@ import {
   sessionCalendarForContract,
   sessionWindow,
   tradingDateForTimestamp,
+  wallClockMinutesForTimestamp,
   type FuturesSessionCalendar,
 } from "./futures/session-calendar.js";
 import {
@@ -427,6 +428,7 @@ export type HistoricalReplayDiagnostics = {
   armInvalidations: number;
   armSupersessions: number;
   armConsumptions: number;
+  armTerminalConflicts: number;
   rawPullbackEvents: number;
   canonicalPullbackOccurrences: number;
   duplicatePullbackReferencesRemoved: number;
@@ -435,6 +437,11 @@ export type HistoricalReplayDiagnostics = {
   modeledTrades: number;
   confirmedSignalsWithoutCandidates: number;
   candidatesWithoutModeledTrades: number;
+  candidatesWithoutConfirmedSignals: number;
+  modeledTradesWithoutCandidates: number;
+  duplicateCandidatesPerSignal: number;
+  duplicateModeledTradesPerSignal: number;
+  candidateRejectionReasons: Record<string, string>;
 };
 
 export type HistoricalOccurrence = {
@@ -490,6 +497,9 @@ export type HistoricalOccurrence = {
   eligibilityArmId?: string;
   eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded";
   eligibilityArmStateReason?: string;
+  eligibilityArmTransitionTime?: string;
+  eligibilityArmIds?: string[];
+  auditIds?: string[];
   eligibilityProvenance?: {
     eventId: string | null;
     reason: "pullback" | "consolidation" | "ntz consolidation";
@@ -1112,15 +1122,42 @@ export function historicalReplayDiagnostics(
   const confirmedByEdge = countBy(confirmedPatience.map((occurrence) => occurrence.primaryEdge ?? occurrence.strategyCandidate));
   const confirmedBySession = countBy(confirmedPatience.map((occurrence) => `${occurrence.contractSymbol}|${occurrence.tradingDate}`));
   const confirmedBySource = countBy(confirmedPatience.flatMap((occurrence) => occurrence.directionSources ?? (occurrence.directionSource ? [occurrence.directionSource] : [])));
-  const armTransitions = patience
+  const candidateRecords = confirmedPatience.flatMap((occurrence) => {
+    const edge = candidateEdgeEligibility(occurrence);
+    if (!edge.eligible) return [];
+    if (!candidateWindowEligible(occurrence)) return [];
+    return [{ signalId: occurrence.occurrenceId, modeledTrade: occurrence.canonicalTrade }];
+  });
+  const candidateSignalIds = candidateRecords.map((candidate) => candidate.signalId);
+  const candidateCountBySignal = countBy(candidateSignalIds);
+  const duplicateCandidatesPerSignal = Object.values(candidateCountBySignal)
+    .reduce((total, count) => total + Math.max(0, count - 1), 0);
+  const modeledTradeSignalIds = candidateRecords.filter((candidate) => candidate.modeledTrade).map((candidate) => candidate.signalId);
+  const duplicateModeledTradesPerSignal = Object.values(countBy(modeledTradeSignalIds))
+    .reduce((total, count) => total + Math.max(0, count - 1), 0);
+  const armTransitionReferences = patience
     .filter((item) => item.eligibilityArmId && item.eligibilityArmState && item.eligibilityArmState !== "active")
     .map((item) => [
       item.eligibilityArmId,
       item.eligibilityArmState,
-      item.evaluationCursor,
+      item.eligibilityArmTransitionTime ?? item.patienceCandle?.closeTime ?? item.evaluationCursor,
       item.eligibilityArmStateReason ?? "",
-    ].join("|"));
-  const uniqueArmTransitions = new Set(armTransitions);
+    ] as const);
+  const terminalByArm = new Map<string, { state: string; time: string; reason: string }>();
+  let armTerminalConflicts = 0;
+  for (const [rawArmId, rawState, rawTime, rawReason] of armTransitionReferences) {
+    if (!rawArmId || !rawState) continue;
+    const armId = rawArmId;
+    const state = rawState;
+    const time = String(rawTime);
+    const reason = rawReason ?? "";
+    const existing = terminalByArm.get(armId);
+    if (!existing) {
+      terminalByArm.set(armId, { state, time, reason });
+    } else if (existing.state !== state) {
+      armTerminalConflicts += 1;
+    }
+  }
   const uniqueArms = new Set(patience.flatMap((item) => item.eligibilityArmId ? [item.eligibilityArmId] : [])).size;
   const modeledTrades = modeledTradesInput?.length
     ?? new Set(occurrences
@@ -1148,7 +1185,7 @@ export function historicalReplayDiagnostics(
     canonicalStructuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
     duplicatePatienceReferencesRemoved: Math.max(0, patience.length - canonicalPatience.length),
     uniqueArms,
-    duplicateArmTransitionReferencesRemoved: Math.max(0, armTransitions.length - uniqueArmTransitions.size),
+    duplicateArmTransitionReferencesRemoved: Math.max(0, armTransitionReferences.length - terminalByArm.size),
     confirmedOccurrencesByEdge: confirmedByEdge,
     confirmedOccurrencesBySession: confirmedBySession,
     confirmedOccurrencesByDirectionSource: confirmedBySource,
@@ -1162,17 +1199,28 @@ export function historicalReplayDiagnostics(
     signalConfirmed: confirmedPatience.length,
     structuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
     armExpirations: 0,
-    armInvalidations: new Set(armTransitions.filter((item) => item.includes("|invalidated|"))).size,
-    armSupersessions: new Set(armTransitions.filter((item) => item.includes("|superseded|"))).size,
-    armConsumptions: new Set(armTransitions.filter((item) => item.includes("|consumed|"))).size,
+    armInvalidations: [...terminalByArm.values()].filter((item) => item.state === "invalidated").length,
+    armSupersessions: [...terminalByArm.values()].filter((item) => item.state === "superseded").length,
+    armConsumptions: [...terminalByArm.values()].filter((item) => item.state === "consumed").length,
+    armTerminalConflicts,
     rawPullbackEvents,
     canonicalPullbackOccurrences: canonicalPullbackOccurrences.length,
     duplicatePullbackReferencesRemoved: Math.max(0, rawPullbackEvents - canonicalPullbackOccurrences.length),
     sessionsWithMultipleGenuinePullbacks: [...interactionSessions.values()].filter((items) => items.size > 1).length,
-    tradeCandidates: confirmedPatience.length,
+    tradeCandidates: candidateRecords.length,
     modeledTrades,
-    confirmedSignalsWithoutCandidates: 0,
-    candidatesWithoutModeledTrades: Math.max(0, confirmedPatience.length - modeledTrades),
+    confirmedSignalsWithoutCandidates: confirmedPatience.filter((occurrence) => !candidateSignalIds.includes(occurrence.occurrenceId)).length,
+    candidatesWithoutModeledTrades: candidateRecords.filter((candidate) => !candidate.modeledTrade).length,
+    candidatesWithoutConfirmedSignals: candidateRecords.filter((candidate) => !confirmedPatience.some((occurrence) => occurrence.occurrenceId === candidate.signalId)).length,
+    modeledTradesWithoutCandidates: modeledTrades - new Set(modeledTradeSignalIds).size,
+    duplicateCandidatesPerSignal,
+    duplicateModeledTradesPerSignal,
+    candidateRejectionReasons: Object.fromEntries(confirmedPatience
+      .filter((occurrence) => !candidateSignalIds.includes(occurrence.occurrenceId))
+      .map((occurrence) => {
+        const edge = candidateEdgeEligibility(occurrence);
+        return [occurrence.occurrenceId, edge.reason ?? "Entry confirmation is outside the primary 9:30 a.m.–1:00 p.m. ET window."];
+      })),
   };
 }
 
@@ -1390,10 +1438,6 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
       value.contractSymbol,
       value.tradingDate,
       value.direction,
-      value.directionSources?.slice().sort().join(",") ?? value.directionSource,
-      value.eligibilityArmId,
-      value.lTimestamp,
-      value.levelIdentifiers.slice().sort().join(","),
       value.patienceTimestamp,
       value.expectedEntryTimestamp,
     ].map((part) => part ?? "absent").join("|"));
@@ -1588,6 +1632,37 @@ export function buildHistoricalOccurrenceLedger(
       ...primary,
       secondaryStrategyMatches: matches.filter((match) => match !== primary.strategyCandidate),
       canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
+      levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...value.levelIdentifiers])].sort(),
+      levelValues: { ...value.levelValues, ...existing.levelValues },
+      levelDistancesTicks: { ...value.levelDistancesTicks, ...existing.levelDistancesTicks },
+      levelTolerancePoints: { ...value.levelTolerancePoints, ...existing.levelTolerancePoints },
+      levelToleranceTicks: { ...value.levelToleranceTicks, ...existing.levelToleranceTicks },
+      levelInteractionTypes: Object.fromEntries([...new Set([
+        ...Object.keys(existing.levelInteractionTypes),
+        ...Object.keys(value.levelInteractionTypes),
+      ])].sort().map((level) => [
+        level,
+        [...new Set([
+          ...(existing.levelInteractionTypes[level] ?? []),
+          ...(value.levelInteractionTypes[level] ?? []),
+        ])].sort(),
+      ])),
+      eligibilityArmIds: [...new Set([
+        ...(existing.eligibilityArmIds ?? (existing.eligibilityArmId ? [existing.eligibilityArmId] : [])),
+        ...(value.eligibilityArmIds ?? (value.eligibilityArmId ? [value.eligibilityArmId] : [])),
+      ])].sort(),
+      auditIds: [...new Set([
+        ...(existing.auditIds ?? [existing.auditId]),
+        ...(value.auditIds ?? [value.auditId]),
+      ])].sort(),
+      supportingConfluences: [...new Set([
+        ...(existing.supportingConfluences ?? []),
+        ...(value.supportingConfluences ?? []),
+      ])].sort(),
+      matchedEdges: [...new Set([
+        ...(existing.matchedEdges ?? [existing.primaryEdge ?? existing.strategyCandidate]),
+        ...(value.matchedEdges ?? [value.primaryEdge ?? value.strategyCandidate]),
+      ])].sort(),
       ...(existing.kind === "patience" && value.kind === "patience" ? {
         status: patienceStatusRank(value.status) > patienceStatusRank(existing.status) ? value.status : existing.status,
         canonicalOccurrence: true,
@@ -1595,6 +1670,10 @@ export function buildHistoricalOccurrenceLedger(
           ...(existing.directionSources ?? (existing.directionSource ? [existing.directionSource] : [])),
           ...(value.directionSources ?? (value.directionSource ? [value.directionSource] : [])),
         ])],
+        eligibilityArmTransitionTime: [existing, value]
+          .map((item) => item.eligibilityArmTransitionTime)
+          .filter((item): item is string => Boolean(item))
+          .sort()[0],
       } : {}),
     };
     byIdentity.set(identity, { ...merged, occurrenceId: governedOccurrenceId(merged) });
@@ -1711,8 +1790,6 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
-        patienceSequenceIdentity(patience, linkedPullback),
-        linkedEvents.map((event) => `${event.level}|${pullbackEventOpenTime(event)}`).sort().join(","),
         new Date(patience.patienceCandle.openTime).toISOString(),
         new Date(expectedEntryCandleOpenTime).toISOString(),
       ].join("|");
@@ -1761,6 +1838,11 @@ export function buildHistoricalOccurrenceLedger(
         formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: linkedTrade !== undefined,
+         eligibilityArmIds: patience.eligibilityArmId ? [patience.eligibilityArmId] : [],
+         auditIds: [record.id],
+         ...(patience.eligibilityArmTransitionTime !== undefined
+           ? { eligibilityArmTransitionTime: new Date(patience.eligibilityArmTransitionTime).toISOString() }
+           : {}),
          ...(linkedTrade ? {
            primaryEdge: linkedTrade.primaryEdge ?? linkedTrade.setupType,
            matchedEdges: linkedTrade.matchedEdges ?? [linkedTrade.setupType],
@@ -1865,6 +1947,29 @@ export function buildHistoricalOccurrenceLedger(
     return `${first.tradingDate}|${firstTime}|${first.patienceTimestamp ?? "absent"}|${stageRank[first.kind]}|${first.occurrenceId}`
       .localeCompare(`${second.tradingDate}|${secondTime}|${second.patienceTimestamp ?? "absent"}|${stageRank[second.kind]}|${second.occurrenceId}`);
   });
+}
+
+function candidateWindowEligible(occurrence: HistoricalOccurrence): boolean {
+  if (!occurrence.expectedEntryTimestamp || !occurrence.direction) return false;
+  const entryTimestamp = Date.parse(occurrence.expectedEntryTimestamp);
+  if (!Number.isFinite(entryTimestamp)) return false;
+  const config = activeShadowStrategySnapshot().config;
+  const root = occurrence.contractSymbol.replace(/[FGHJKMNQUVXZ]\d$/, "");
+  const calendar = sessionCalendarForContract(getFuturesContractSpecification(root || occurrence.contractSymbol));
+  return tradingDateForTimestamp(entryTimestamp, calendar) === occurrence.tradingDate
+    && wallClockMinutesForTimestamp(entryTimestamp, config.sessionTimeZone) >= config.primaryEntryStartMinutes
+    && wallClockMinutesForTimestamp(entryTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
+}
+
+function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
+  const edge = occurrence.primaryEdge ?? occurrence.strategyCandidate;
+  if (edge === "ORB_PULLBACK_CONTINUATION" && occurrence.levelIdentifiers.length === 0) {
+    return {
+      eligible: false,
+      reason: "ORB_PULLBACK_CONTINUATION requires a persisted qualifying level interaction.",
+    };
+  }
+  return { eligible: true };
 }
 
 function candidateDimensionValue(

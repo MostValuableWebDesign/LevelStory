@@ -89,6 +89,7 @@ export type PatienceOccurrence = {
   eligibilityArmId?: string;
   eligibilityArmState?: PatienceEligibilityArmState;
   eligibilityArmStateReason?: string;
+  eligibilityArmTransitionTime?: number;
   eligibilityProvenance?: {
     eventId: string | null;
     reason: PatienceEligibilityReason;
@@ -632,6 +633,11 @@ function buildPatienceOccurrences(
       : stateAfterCandidate === "invalidated"
         ? analysis.detail
         : "Arm remains active for a later patience candidate until session or structural invalidation.";
+    const armTransitionTime = stateAfterCandidate === "consumed"
+      ? trigger?.closeTime ?? candidate.candle.closeTime
+      : stateAfterCandidate === "invalidated"
+        ? analysis.stateTime ?? candidate.candle.closeTime
+        : undefined;
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
@@ -659,6 +665,7 @@ function buildPatienceOccurrences(
       eligibilityArmId: armId,
       eligibilityArmState: stateAfterCandidate,
       eligibilityArmStateReason: stateReason,
+      eligibilityArmTransitionTime: armTransitionTime,
       eligibilityProvenance: provenance,
     };
   });
@@ -674,6 +681,7 @@ function buildPatienceOccurrences(
       ...occurrence,
       eligibilityArmState: "superseded" as const,
       eligibilityArmStateReason: `A newer causal eligibility event superseded arm ${occurrence.eligibilityArmId}.`,
+      eligibilityArmTransitionTime: supersedingCandidate.event?.time,
       reasonCode: `Eligibility arm superseded by ${supersedingCandidate.armId ?? "a newer causal event"}.`,
     };
   });

@@ -527,6 +527,28 @@ test("ledger merges the same causal occurrence and preserves canonical plus seco
   assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
 });
 
+test("ledger merges multiple qualifying levels into one physical P to E signal", () => {
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const second = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "second-level-audit",
+    pullbackOccurrences: [
+      {
+        ...first.pullbackOccurrences![0]!,
+        eventId: "vwap-interaction",
+        level: "VWAP",
+        type: "proximity",
+        price: 100.75,
+      },
+    ],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [first, second], []);
+  const patience = occurrences.filter((occurrence) => occurrence.kind === "patience");
+  assert.equal(patience.length, 1);
+  assert.deepEqual(patience[0]?.levelIdentifiers, ["ORB", "VWAP"]);
+  assert.deepEqual(patience[0]?.auditIds, ["ORB_PULLBACK_CONTINUATION-audit", "second-level-audit"]);
+  assert.deepEqual(patience[0]?.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+});
+
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {
   const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
     pullbackOccurrences: [{
