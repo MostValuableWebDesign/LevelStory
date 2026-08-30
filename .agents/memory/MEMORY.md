@@ -26,3 +26,4 @@
 - [Consolidation threshold governance](consolidation-threshold-governance.md) — active threshold config must fingerprint caches and travel with audit and occurrence provenance.
 - [Historical index load concurrency](historical-index-load-concurrency.md) — serialize reads of the large persisted multi-contract index so overlapping visual-review requests do not exhaust string memory.
 - [Patience wick invalidation](patience-wick-invalidation.md) — touching the opposite P wick is not a breach; prefer the exact P/E audit that owns a modeled trade.
+- [Ledger signal taxonomy](ledger-signal-taxonomy.md) — confirmed signals are ledger-owned P→E outcomes classified by E time; arm consumption blocks reuse while ambiguity remains recoverable.

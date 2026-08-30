@@ -19,7 +19,15 @@ export type PatienceState =
   | "RISK_REJECTED";
 
 export type PatienceEligibilityReason = "pullback" | "consolidation" | "ntz consolidation";
-export type PatienceEligibilityEvent = { time: number; reason: PatienceEligibilityReason; detail?: string; eventId?: string };
+export type PatienceEligibilityArmState = "active" | "consumed" | "invalidated" | "superseded";
+export type PatienceEligibilityEvent = {
+  time: number;
+  reason: PatienceEligibilityReason;
+  detail?: string;
+  eventId?: string;
+  levelValue?: number | null;
+  toleranceTicks?: number | null;
+};
 export type IntrabarFirstBreak = "intended-first" | "opposite-first" | "ambiguous";
 export type IntrabarEvidence = { candleOpenTime: number; firstBreak: IntrabarFirstBreak };
 
@@ -64,6 +72,15 @@ export type PatienceOccurrence = {
   status: PatienceState;
   reasonCode: string;
   evaluationCursor: number;
+  eligibilityArmId?: string;
+  eligibilityArmState?: PatienceEligibilityArmState;
+  eligibilityArmStateReason?: string;
+  eligibilityProvenance?: {
+    eventId: string | null;
+    reason: PatienceEligibilityReason;
+    time: number;
+    detail: string | null;
+  };
 };
 
 export type PatienceAnalysis = {
@@ -85,6 +102,10 @@ export type PatienceAnalysis = {
   stateTime: number | null;
   detail: string;
   occurrences?: PatienceOccurrence[];
+  eligibilityArmId?: string | null;
+  eligibilityArmState?: PatienceEligibilityArmState | null;
+  eligibilityArmStateReason?: string | null;
+  eligibilityProvenance?: PatienceOccurrence["eligibilityProvenance"] | null;
 };
 
 export type PatienceEngineOptions = {
@@ -114,6 +135,7 @@ const PATIENCE_STATES: readonly PatienceState[] = [
   "AMBIGUOUS_EVENT_ORDER",
   "RISK_REJECTED",
 ];
+const PATIENCE_ARM_MAX_DURATION_MS = 30 * 60_000;
 
 export function patienceCandleEngine(
   candles: readonly Candle[],
@@ -136,10 +158,27 @@ export function patienceCandleEngine(
   if (trend === "neutral") return withDirection(waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
   const latestEligibility = eligibility.at(-1)!;
   const candidateIndexes = completed
-    .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
-    .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
+    .map((candle, index) => {
+      const event = latestEligibilityBefore(eligibility, candle.openTime);
+      return { candle, index, event, armId: event ? eligibilityArmId(event) : null };
+    })
+    .filter(({ event, candle, index }) =>
+      event !== undefined
+      && index > 0
+      && candle.openTime <= event.time + PATIENCE_ARM_MAX_DURATION_MS
+      && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend);
-  const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...withDirection(analysis), occurrences });
+  const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => {
+    const latestOccurrence = occurrences.at(-1);
+    return {
+      ...withDirection(analysis),
+      occurrences,
+      eligibilityArmId: latestOccurrence?.eligibilityArmId ?? null,
+      eligibilityArmState: latestOccurrence?.eligibilityArmState ?? null,
+      eligibilityArmStateReason: latestOccurrence?.eligibilityArmStateReason ?? null,
+      eligibilityProvenance: latestOccurrence?.eligibilityProvenance ?? null,
+    };
+  };
   // If an earlier P/E candidate is invalidated or ambiguous, continue to the
   // earliest later confirmed occurrence. Do not let a stale earlier candidate
   // hide a valid immediate P→E sequence at the same replay cursor.
@@ -211,9 +250,12 @@ export function patienceCandleEngine(
 
   const forming = sorted.at(-1);
   const event = forming ? latestEligibilityBefore(eligibility, forming.openTime) : latestEligibility;
+  const eventIsWithinArm = event !== undefined && forming !== undefined
+    ? forming.openTime <= event.time + PATIENCE_ARM_MAX_DURATION_MS
+    : true;
   const latestCompleted = completed.at(-1);
   const latestPrevious = completed.at(-2);
-  if (latestCompleted && latestPrevious && event && !patienceShape(latestCompleted, latestPrevious, direction)) {
+  if (latestCompleted && latestPrevious && event && eventIsWithinArm && !patienceShape(latestCompleted, latestPrevious, direction)) {
     return finalize({
       ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
       previousCandle: snapshot(latestPrevious),
@@ -222,7 +264,7 @@ export function patienceCandleEngine(
       detail: `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
     });
   }
-  if (forming && !forming.isComplete && completed.length && event) {
+  if (forming && !forming.isComplete && completed.length && event && eventIsWithinArm) {
     return finalize({
       ...baseAnalysis("PATIENCE_CANDLE_FORMING", true, event, trend, entryBufferTicks, stopBufferTicks),
       patienceCandle: snapshot(forming),
@@ -230,7 +272,7 @@ export function patienceCandleEngine(
       detail: "A patience candle is forming; wait for its completed close before checking exact wick highs/lows and trend alignment.",
     });
   }
-  return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "A qualifying level is recorded; waiting for a completed trend-aligned patience candle.", trend, entryBufferTicks, stopBufferTicks, latestEligibility));
+  return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "A qualifying level is recorded; waiting for a completed trend-aligned patience candle.", trend, entryBufferTicks, stopBufferTicks, event && eventIsWithinArm ? event : undefined));
 }
 
 export function phase5PatienceAnalysis(
@@ -256,11 +298,13 @@ export function phase5PatienceAnalysis(
         reason: event.type === "consolidation" ? "consolidation" as const : "pullback" as const,
         detail: `${event.type} at ${event.level}`,
         eventId: event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`,
+        levelValue: event.price,
+        toleranceTicks: event.toleranceTicks ?? null,
       })),
     ...ntzEvents
       .filter((event) => eligibleAfter === null || event.time >= eligibleAfter)
       .filter((event) => event.type === "Consolidation inside NTZ")
-      .map((event) => ({ time: event.time, reason: "ntz consolidation" as const, detail: event.detail, eventId: `ntz|${event.type}|${event.time}` })),
+      .map((event) => ({ time: event.time, reason: "ntz consolidation" as const, detail: event.detail, eventId: `ntz|${event.type}|${event.time}`, levelValue: null, toleranceTicks: null })),
   ];
   if (ntz && ntz.complete && candles.length >= 2) {
     const completed = candles.filter((candle) => candle.isComplete).sort((first, second) => first.openTime - second.openTime);
@@ -270,7 +314,7 @@ export function phase5PatienceAnalysis(
       const near = candle.close >= ntz.low - proximity && candle.close <= ntz.high + proximity;
       insideStreak = near ? insideStreak + 1 : 0;
        if (insideStreak >= 2 && (eligibleAfter === null || candle.closeTime >= eligibleAfter)) {
-        eligibilityEvents.push({ time: candle.closeTime, reason: "ntz consolidation", detail: "Extended completed-candle consolidation inside or near NTZ." });
+        eligibilityEvents.push({ time: candle.closeTime, reason: "ntz consolidation", detail: "Extended completed-candle consolidation inside or near NTZ.", eventId: `ntz|extended-consolidation|${candle.closeTime}`, levelValue: null, toleranceTicks: null });
       }
     }
   }
@@ -398,6 +442,11 @@ function latestEligibilityBefore(events: readonly PatienceEligibilityEvent[], ti
   return events.filter((event) => event.time <= time).at(-1);
 }
 
+function eligibilityArmId(event: PatienceEligibilityEvent): string {
+  return event.eventId
+    ?? `eligibility|${event.reason}|${event.time}|${event.levelValue ?? "none"}|${event.detail ?? ""}`;
+}
+
 function snapshot(candle: Candle): PatienceCandleSnapshot {
   return {
     openTime: candle.openTime,
@@ -412,7 +461,7 @@ function snapshot(candle: Candle): PatienceCandleSnapshot {
 }
 
 function buildPatienceOccurrences(
-  candidates: readonly { candle: Candle; index: number; event?: PatienceEligibilityEvent }[],
+  candidates: readonly { candle: Candle; index: number; event?: PatienceEligibilityEvent; armId: string | null }[],
   completed: readonly Candle[],
   sorted: readonly Candle[],
   direction: Direction,
@@ -423,7 +472,8 @@ function buildPatienceOccurrences(
   intrabarEvidence: readonly IntrabarEvidence[],
   allowOpposingTrend: boolean,
 ): PatienceOccurrence[] {
-  return candidates.map((candidate) => {
+  const armStates = new Map<string, { state: PatienceEligibilityArmState; reason: string }>();
+  const occurrences: PatienceOccurrence[] = candidates.map((candidate): PatienceOccurrence => {
     const previous = completed[candidate.index - 1];
     const nextObserved = sorted.find((item) => item.openTime > candidate.candle.openTime);
     const trigger = nextObserved
@@ -445,6 +495,44 @@ function buildPatienceOccurrences(
               ? candidate.candle.closeTime
               : candidate.candle.closeTime);
     const event = candidate.event!;
+    const armId = candidate.armId ?? eligibilityArmId(event);
+    const arm = armStates.get(armId) ?? { state: "active" as const, reason: "Eligibility context opened by the causal level interaction." };
+    const provenance = {
+      eventId: event.eventId ?? null,
+      reason: event.reason,
+      time: event.time,
+      detail: event.detail ?? null,
+    };
+    if (arm.state !== "active") {
+      const previous = completed[candidate.index - 1];
+      const inactiveDetail = `Eligibility arm ${arm.state}: ${arm.reason}`;
+      return {
+        occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
+        direction,
+        entryBufferTicks,
+        stopBufferTicks,
+        eligibilityReason: event.reason,
+        eligibilityTime: event.time,
+        eligibilityEventId: event.eventId ?? null,
+        previousComparisonTimestamp: previous?.openTime,
+        candidateShapeResult: true,
+        expectedEntryCandleOpenTime: candidate.candle.closeTime,
+        confirmationThreshold: undefined,
+        actualConfirmationExcursion: null,
+        previousCandle: previous ? snapshot(previous) : snapshot(candidate.candle),
+        patienceCandle: snapshot(candidate.candle),
+        triggerCandle: null,
+        nextObservedCandle: nextObserved ? snapshot(nextObserved) : null,
+        outcomeStatus: "INVALIDATED",
+        status: "PATIENCE_CANDLE_EXPIRED",
+        reasonCode: inactiveDetail,
+        evaluationCursor: candidate.candle.closeTime,
+        eligibilityArmId: armId,
+        eligibilityArmState: arm.state,
+        eligibilityArmStateReason: arm.reason,
+        eligibilityProvenance: provenance,
+      };
+    }
     const confirmationThreshold = direction === "long"
       ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
       : roundPrice(candidate.candle.low - entryBufferTicks * tickSize, tickSize);
@@ -509,6 +597,17 @@ function buildPatienceOccurrences(
                 : analysis.state === "AMBIGUOUS_EVENT_ORDER"
                   ? "INVALIDATED"
                   : "CANDIDATE";
+    const stateAfterCandidate: PatienceEligibilityArmState = outcomeStatus === "CONFIRMED"
+      ? "consumed"
+      : analysis.state === "OPPOSITE_SIDE_INVALIDATION"
+        ? "invalidated"
+        : "active";
+    const stateReason = outcomeStatus === "CONFIRMED"
+      ? "Immediate-next E reached the full confirmation buffer; the arm was consumed by signal confirmation."
+      : stateAfterCandidate === "invalidated"
+        ? analysis.detail
+        : "Arm remains active for a later patience candidate within the bounded causal context.";
+    armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
       direction,
@@ -530,6 +629,25 @@ function buildPatienceOccurrences(
       status: analysis.state,
       reasonCode: analysis.detail,
       evaluationCursor,
+      eligibilityArmId: armId,
+      eligibilityArmState: stateAfterCandidate,
+      eligibilityArmStateReason: stateReason,
+      eligibilityProvenance: provenance,
+    };
+  });
+  return occurrences.map((occurrence): PatienceOccurrence => {
+    if (occurrence.eligibilityArmState !== "active") return occurrence;
+    const supersedingCandidate = candidates.find((candidate) =>
+      candidate.armId !== occurrence.eligibilityArmId
+      && candidate.event !== undefined
+      && candidate.event.time > occurrence.patienceCandle.openTime,
+    );
+    if (!supersedingCandidate) return occurrence;
+    return {
+      ...occurrence,
+      eligibilityArmState: "superseded" as const,
+      eligibilityArmStateReason: `A newer causal eligibility event superseded arm ${occurrence.eligibilityArmId}.`,
+      reasonCode: `Eligibility arm superseded by ${supersedingCandidate.armId ?? "a newer causal event"}.`,
     };
   });
 }

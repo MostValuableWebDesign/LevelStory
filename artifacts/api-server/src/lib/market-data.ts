@@ -193,6 +193,10 @@ export type MarketSnapshot = {
     stateTime: string | null;
     detail: string;
     occurrences?: PatienceOccurrence[];
+    eligibilityArmId?: string | null;
+    eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded" | null;
+    eligibilityArmStateReason?: string | null;
+    eligibilityProvenance?: PatienceOccurrence["eligibilityProvenance"] | null;
   };
   fibonacci: {
     direction: "bullish" | "bearish" | null;
@@ -1003,6 +1007,10 @@ function toApiPatience(analysis: PatienceAnalysis): MarketSnapshot["patience"] {
     stateTime: analysis.stateTime === null ? null : new Date(analysis.stateTime).toISOString(),
     detail: analysis.detail,
     occurrences: analysis.occurrences,
+    eligibilityArmId: analysis.eligibilityArmId ?? null,
+    eligibilityArmState: analysis.eligibilityArmState ?? null,
+    eligibilityArmStateReason: analysis.eligibilityArmStateReason ?? null,
+    eligibilityProvenance: analysis.eligibilityProvenance ?? null,
   };
 }
 

@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PatienceAnalysisEligibilityArmState } from './patienceAnalysisEligibilityArmState';
+import type { PatienceAnalysisEligibilityProvenance } from './patienceAnalysisEligibilityProvenance';
 import type { PatienceAnalysisEligibilityReason } from './patienceAnalysisEligibilityReason';
 import type { PatienceAnalysisEntryBufferTicks } from './patienceAnalysisEntryBufferTicks';
 import type { PatienceAnalysisState } from './patienceAnalysisState';
@@ -32,5 +34,13 @@ export interface PatienceAnalysis {
   triggerPrice: number | null;
   /** @nullable */
   stateTime: string | null;
+  /** @nullable */
+  eligibilityArmId?: string | null;
+  /** @nullable */
+  eligibilityArmState?: PatienceAnalysisEligibilityArmState;
+  /** @nullable */
+  eligibilityArmStateReason?: string | null;
+  /** @nullable */
+  eligibilityProvenance?: PatienceAnalysisEligibilityProvenance;
   detail: string;
 }

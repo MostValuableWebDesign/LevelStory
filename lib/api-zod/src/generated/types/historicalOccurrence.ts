@@ -7,6 +7,8 @@
  */
 import type { ConsolidationThresholds } from './consolidationThresholds';
 import type { HistoricalOccurrenceDirection } from './historicalOccurrenceDirection';
+import type { HistoricalOccurrenceEligibilityArmState } from './historicalOccurrenceEligibilityArmState';
+import type { HistoricalOccurrenceEligibilityProvenance } from './historicalOccurrenceEligibilityProvenance';
 import type { HistoricalOccurrenceEntryCandle } from './historicalOccurrenceEntryCandle';
 import type { HistoricalOccurrenceKind } from './historicalOccurrenceKind';
 import type { HistoricalOccurrenceLCandle } from './historicalOccurrenceLCandle';
@@ -17,6 +19,8 @@ import type { HistoricalOccurrenceLevelToleranceTicks } from './historicalOccurr
 import type { HistoricalOccurrenceLevelValues } from './historicalOccurrenceLevelValues';
 import type { HistoricalOccurrenceNextObservedCandle } from './historicalOccurrenceNextObservedCandle';
 import type { HistoricalOccurrencePatienceCandle } from './historicalOccurrencePatienceCandle';
+import type { HistoricalOccurrenceSignalStatus } from './historicalOccurrenceSignalStatus';
+import type { HistoricalOccurrenceStatus } from './historicalOccurrenceStatus';
 
 export interface HistoricalOccurrence {
   occurrenceId: string;
@@ -66,7 +70,12 @@ export interface HistoricalOccurrence {
   /** @nullable */
   nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
-  status: string;
+  status: HistoricalOccurrenceStatus;
+  signalStatus?: HistoricalOccurrenceSignalStatus;
+  eligibilityArmId?: string;
+  eligibilityArmState?: HistoricalOccurrenceEligibilityArmState;
+  eligibilityArmStateReason?: string;
+  eligibilityProvenance?: HistoricalOccurrenceEligibilityProvenance;
   reasonCode: string;
   evaluationCursor: Date;
   formulaVersion: string;

@@ -1867,6 +1867,16 @@ components:
           type: ["number", "null"]
         stateTime:
           type: ["string", "null"]
+        eligibilityArmId:
+          type: ["string", "null"]
+        eligibilityArmState:
+          type: ["string", "null"]
+          enum: [active, consumed, invalidated, superseded, null]
+        eligibilityArmStateReason:
+          type: ["string", "null"]
+        eligibilityProvenance:
+          type: ["object", "null"]
+          additionalProperties: true
         detail:
           type: string
       required: [state, eligible, eligibilityReason, eligibilityTime, trend, previousCandle, patienceCandle, triggerCandle, entryBufferTicks, entryBufferPrice, stopBufferTicks, strategyStopPrice, triggerPrice, stateTime, detail]
@@ -2992,7 +3002,14 @@ components:
         confirmationBufferTicks: { type: ["number", "null"] }
         nextObservedCandle: { type: ["object", "null"], additionalProperties: true }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
-        status: { type: string }
+        status:
+          type: string
+          enum: [CANDIDATE, CONFIRMED, ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED, QUALIFIED_TRADE, MODELED_TRADE, RISK_REJECTED, RISK_APPROVED_EXECUTION_UNAVAILABLE, STOP_EXIT, TARGET_EXIT, RUNNER_EXIT, PATIENCE_CANDLE_EXPIRED, EXPIRED_NO_IMMEDIATE_CONFIRMATION, EXPIRED_MISSING_E, EXPIRED_INCOMPLETE_E]
+        signalStatus: { type: string, enum: [ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED] }
+        eligibilityArmId: { type: string }
+        eligibilityArmState: { type: string, enum: [active, consumed, invalidated, superseded] }
+        eligibilityArmStateReason: { type: string }
+        eligibilityProvenance: { type: object, additionalProperties: true }
         reasonCode: { type: string }
         evaluationCursor: { type: string, format: date-time }
         formulaVersion: { type: string }

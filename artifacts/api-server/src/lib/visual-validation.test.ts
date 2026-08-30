@@ -98,7 +98,7 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(set.snapshots[0]?.futureCandleAccess, false);
 });
 
-test("historical visual review defaults to trade-linked samples and opts into no-entry diagnostics", () => {
+test("historical visual review keeps confirmed signals ledger-only and opts into no-entry diagnostics", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
   assert.ok(fixture);
   const dataset = { ...fixture.dataset, source: "historical_databento_multicontract" as const };
@@ -121,7 +121,8 @@ test("historical visual review defaults to trade-linked samples and opts into no
     dataset,
     report,
   );
-  assert.ok(confirmedSignals.snapshots.some((snapshot) => snapshot.category === "strong_breakout"));
+  assert.equal(confirmedSignals.snapshots.some((snapshot) => snapshot.category === "strong_breakout"), false);
+  assert.equal(confirmedSignals.categoryCoverage.find((item) => item.category === "strong_breakout")?.available, false);
   const withDiagnostics = buildHistoricalVisualValidationSetFromReport(
     { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
     dataset,
@@ -926,10 +927,10 @@ test("teaching validation accepts multiple mapped pullback levels", () => {
   assert.deepEqual(example.pullbackLevels, [100.75, 101]);
 });
 
-test("teaching validation allows an entry candle through the 2:00 PM ET boundary", () => {
+test("teaching validation enforces the exclusive 1:00 PM ET boundary", () => {
   const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
   const input = teachingInput(snapshot, "long");
-  const lateStart = Date.parse("2026-08-26T17:45:00.000Z");
+  const lateStart = Date.parse("2026-08-26T16:45:00.000Z");
   snapshot.reviewCandles = snapshot.reviewCandles.map((candle, index) => {
     const openTime = new Date(lateStart + index * 5 * 60_000).toISOString();
     const closeTime = new Date(lateStart + (index + 1) * 5 * 60_000).toISOString();
@@ -953,8 +954,8 @@ test("teaching validation allows an entry candle through the 2:00 PM ET boundary
 
   const afterBoundary = {
     ...input,
-    entryCandleOpenTime: "2026-08-26T18:00:00.000Z",
-    entryCandleCloseTime: "2026-08-26T18:05:00.000Z",
+    entryCandleOpenTime: "2026-08-26T17:00:00.000Z",
+    entryCandleCloseTime: "2026-08-26T17:05:00.000Z",
   };
   snapshot.reviewCandles = snapshot.reviewCandles.map((candle, index) => index === 2
     ? { ...candle, openTime: afterBoundary.entryCandleOpenTime, closeTime: afterBoundary.entryCandleCloseTime, timestamp: afterBoundary.entryCandleOpenTime }
@@ -966,7 +967,7 @@ test("teaching validation allows an entry candle through the 2:00 PM ET boundary
   };
   const rejected = validateVisualValidationTeaching(snapshot, afterBoundary);
   assert.equal(rejected.valid, false);
-  assert.ok(rejected.messages.some((message) => message.includes("9:30 AM–2:00 PM ET")));
+  assert.ok(rejected.messages.some((message) => message.includes("9:30 AM–1:00 PM ET")));
 });
 
 test("teaching validation rejects future, non-adjacent, and non-MES-buffer corrections", () => {

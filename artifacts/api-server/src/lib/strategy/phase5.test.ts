@@ -132,7 +132,7 @@ test("a later confirmed P→E sequence remains executable after an earlier ambig
   assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["INVALIDATED", "CONFIRMED"]);
 });
 
-test("two successful P→E sequences remain ordered in one visible session", () => {
+test("a consumed eligibility arm cannot produce a second successful P→E sequence", () => {
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11, 7, 10.8),
@@ -145,10 +145,26 @@ test("two successful P→E sequences remain ordered in one visible session", () 
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.deepEqual(
     result.occurrences?.filter((occurrence) => occurrence.status === "ENTRY_TRIGGERED").map((occurrence) => occurrence.patienceCandle.openTime),
-    [candles[1].openTime, candles[4].openTime],
+    [candles[1].openTime],
   );
   assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[1].openTime)?.triggerCandle?.openTime, candles[2].openTime);
-  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[4].openTime)?.triggerCandle?.openTime, candles[5].openTime);
+  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[4].openTime)?.eligibilityArmState, "consumed");
+});
+
+test("a newer causal eligibility event explicitly supersedes an older active arm", () => {
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 10.95, 9.2, 10.9),
+    candle(3, 10.9, 11.1, 9.4, 10.95),
+  ];
+  const events = [
+    { time: FIVE_MINUTES, reason: "pullback" as const, eventId: "older-arm" },
+    { time: 2 * FIVE_MINUTES, reason: "consolidation" as const, eventId: "newer-arm" },
+  ];
+  const result = patienceCandleEngine(candles, "long", { eligibilityEvents: events });
+  assert.equal(result.occurrences?.[0]?.eligibilityArmId, "older-arm");
+  assert.equal(result.occurrences?.[0]?.eligibilityArmState, "superseded");
 });
 
 test("an occurrence never reads an entry candle beyond the visible evaluation cursor", () => {

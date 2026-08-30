@@ -730,6 +730,24 @@ export const PatienceAnalysisEntryBufferTicks = {
   NUMBER_4: 4,
 } as const;
 
+/**
+ * @nullable
+ */
+export type PatienceAnalysisEligibilityArmState = typeof PatienceAnalysisEligibilityArmState[keyof typeof PatienceAnalysisEligibilityArmState] | null;
+
+
+export const PatienceAnalysisEligibilityArmState = {
+  active: 'active',
+  consumed: 'consumed',
+  invalidated: 'invalidated',
+  superseded: 'superseded',
+} as const;
+
+/**
+ * @nullable
+ */
+export type PatienceAnalysisEligibilityProvenance = { [key: string]: unknown } | null;
+
 export interface PatienceAnalysis {
   state: PatienceAnalysisState;
   eligible: boolean;
@@ -751,6 +769,14 @@ export interface PatienceAnalysis {
   triggerPrice: number | null;
   /** @nullable */
   stateTime: string | null;
+  /** @nullable */
+  eligibilityArmId?: string | null;
+  /** @nullable */
+  eligibilityArmState?: PatienceAnalysisEligibilityArmState;
+  /** @nullable */
+  eligibilityArmStateReason?: string | null;
+  /** @nullable */
+  eligibilityProvenance?: PatienceAnalysisEligibilityProvenance;
   detail: string;
 }
 
@@ -2205,6 +2231,47 @@ export type HistoricalOccurrenceLevelInteractionTypes = {[key: string]: string[]
  */
 export type HistoricalOccurrenceNextObservedCandle = { [key: string]: unknown } | null;
 
+export type HistoricalOccurrenceStatus = typeof HistoricalOccurrenceStatus[keyof typeof HistoricalOccurrenceStatus];
+
+
+export const HistoricalOccurrenceStatus = {
+  CANDIDATE: 'CANDIDATE',
+  CONFIRMED: 'CONFIRMED',
+  ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',
+  ENTRY_CONFIRMED: 'ENTRY_CONFIRMED',
+  QUALIFIED_TRADE: 'QUALIFIED_TRADE',
+  MODELED_TRADE: 'MODELED_TRADE',
+  RISK_REJECTED: 'RISK_REJECTED',
+  RISK_APPROVED_EXECUTION_UNAVAILABLE: 'RISK_APPROVED_EXECUTION_UNAVAILABLE',
+  STOP_EXIT: 'STOP_EXIT',
+  TARGET_EXIT: 'TARGET_EXIT',
+  RUNNER_EXIT: 'RUNNER_EXIT',
+  PATIENCE_CANDLE_EXPIRED: 'PATIENCE_CANDLE_EXPIRED',
+  EXPIRED_NO_IMMEDIATE_CONFIRMATION: 'EXPIRED_NO_IMMEDIATE_CONFIRMATION',
+  EXPIRED_MISSING_E: 'EXPIRED_MISSING_E',
+  EXPIRED_INCOMPLETE_E: 'EXPIRED_INCOMPLETE_E',
+} as const;
+
+export type HistoricalOccurrenceSignalStatus = typeof HistoricalOccurrenceSignalStatus[keyof typeof HistoricalOccurrenceSignalStatus];
+
+
+export const HistoricalOccurrenceSignalStatus = {
+  ENTRY_CONFIRMATION_FAILED: 'ENTRY_CONFIRMATION_FAILED',
+  ENTRY_CONFIRMED: 'ENTRY_CONFIRMED',
+} as const;
+
+export type HistoricalOccurrenceEligibilityArmState = typeof HistoricalOccurrenceEligibilityArmState[keyof typeof HistoricalOccurrenceEligibilityArmState];
+
+
+export const HistoricalOccurrenceEligibilityArmState = {
+  active: 'active',
+  consumed: 'consumed',
+  invalidated: 'invalidated',
+  superseded: 'superseded',
+} as const;
+
+export type HistoricalOccurrenceEligibilityProvenance = { [key: string]: unknown };
+
 export interface HistoricalOccurrence {
   occurrenceId: string;
   auditId: string;
@@ -2253,7 +2320,12 @@ export interface HistoricalOccurrence {
   /** @nullable */
   nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
-  status: string;
+  status: HistoricalOccurrenceStatus;
+  signalStatus?: HistoricalOccurrenceSignalStatus;
+  eligibilityArmId?: string;
+  eligibilityArmState?: HistoricalOccurrenceEligibilityArmState;
+  eligibilityArmStateReason?: string;
+  eligibilityProvenance?: HistoricalOccurrenceEligibilityProvenance;
   reasonCode: string;
   evaluationCursor: string;
   formulaVersion: string;
@@ -4537,3 +4609,4 @@ export const ListJournalEntriesOutcome = {
   expired: 'expired',
   ambiguous: 'ambiguous',
 } as const;
+

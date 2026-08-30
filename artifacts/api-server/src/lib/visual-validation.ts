@@ -424,18 +424,16 @@ export type VisualValidationProposedRuleAnalysis = {
 
 const TEACHING_TICK_SIZE = MES_TICK_SIZE;
 export { DEFAULT_LEVEL_TOLERANCE_TICKS };
-const TEACHING_ENTRY_WINDOW_START = 9 * 60 + 30;
-const TEACHING_ENTRY_WINDOW_END = 14 * 60;
 
 function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function localMinute(value: string): number | null {
+function localMinute(value: string, timeZone = activeShadowStrategySnapshot().config.sessionTimeZone): number | null {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return null;
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
+    timeZone,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
@@ -443,6 +441,14 @@ function localMinute(value: string): number | null {
   const hour = Number(parts.find((part) => part.type === "hour")?.value);
   const minute = Number(parts.find((part) => part.type === "minute")?.value);
   return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null;
+}
+
+function formatWindowMinute(minutes: number): string {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
 function tickAligned(value: number): boolean {
@@ -518,6 +524,7 @@ export function validateVisualValidationTeaching(
   input: VisualValidationTeachingInput,
 ): VisualValidationTeachingValidation & { calculatedEntryPrice: number } {
   const messages: string[] = [];
+  const entryWindowConfig = activeShadowStrategySnapshot().config;
   const levelInteractions: VisualValidationLevelInteraction[] = [];
   const levelToleranceTicks = normalizedLevelTolerance(input, messages);
   const levelTolerancePointsValue = levelTolerancePoints(levelToleranceTicks);
@@ -570,10 +577,10 @@ export function validateVisualValidationTeaching(
   if (levelCandle && (!Number.isFinite(evaluationClose) || Date.parse(levelCandle.closeTime) > evaluationClose)) {
     messages.push("The qualifying level candle is beyond the machine evaluation boundary and uses future data.");
   }
-  const entryMinute = entry ? localMinute(entry.openTime) : null;
-  const entryCloseMinute = entry ? localMinute(entry.closeTime) : null;
-  if (entryMinute === null || entryCloseMinute === null || entryMinute < TEACHING_ENTRY_WINDOW_START || entryCloseMinute > TEACHING_ENTRY_WINDOW_END) {
-    messages.push("The entry candle must be inside the 9:30 AM–2:00 PM ET primary entry window.");
+  const entryMinute = entry ? localMinute(entry.openTime, entryWindowConfig.sessionTimeZone) : null;
+  const entryCloseMinute = entry ? localMinute(entry.closeTime, entryWindowConfig.sessionTimeZone) : null;
+  if (entryMinute === null || entryCloseMinute === null || entryMinute < entryWindowConfig.primaryEntryStartMinutes || entryCloseMinute > entryWindowConfig.primaryEntryEndMinutes) {
+    messages.push(`The entry candle must be inside the ${formatWindowMinute(entryWindowConfig.primaryEntryStartMinutes)}–${formatWindowMinute(entryWindowConfig.primaryEntryEndMinutes)} ET primary entry window.`);
   }
   if (entry && entry.contractSymbol !== snapshot.contractSymbol) messages.push("The entry candle must belong to the snapshot's active MES contract.");
   if (patience && previous && input.direction === "long" && patience.high > previous.high) messages.push("Long patience must contain its high within the preceding completed candle.");
@@ -1157,7 +1164,7 @@ function hasConfirmedPatienceOccurrence(occurrence: HistoricalOccurrence): boole
 
 function hasCanonicalTradeOccurrence(occurrence: HistoricalOccurrence, trade: BacktestTrade | null): boolean {
   return (occurrence.kind === "trade" || occurrence.kind === "patience")
-    && (occurrence.status === "QUALIFIED_TRADE" || occurrence.status === "CONFIRMED")
+    && (occurrence.status === "QUALIFIED_TRADE" || occurrence.status === "MODELED_TRADE" || occurrence.status === "CONFIRMED")
     && occurrence.canonicalTrade
     && trade !== null;
 }
@@ -1509,14 +1516,18 @@ function buildCoverage(
   calendar: ReturnType<typeof sessionCalendarForContract>,
 ): VisualValidationCoverage[] {
   const window = sessionWindow(tradingDate, "regular", calendar);
+  const config = activeShadowStrategySnapshot().config;
   if (!window) {
     return [
-      { session: "primary", expectedCandleCount: 42, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
-      { session: "full_regular", expectedCandleCount: 78, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
+      { session: "primary", expectedCandleCount: 0, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
+      { session: "full_regular", expectedCandleCount: 0, observedCandleCount: 0, complete: false, missingIntervals: ["Regular session window unavailable."] },
     ];
   }
   const observed = new Set(regularCandles.map((candle) => candle.openTime));
-  const build = (session: "primary" | "full_regular", expected: number) => {
+  const intervalMs = 5 * 60_000;
+  const primaryEnd = Math.min(window.closeTime, window.openTime + (config.primaryEntryEndMinutes - config.primaryEntryStartMinutes) * 60_000);
+  const build = (session: "primary" | "full_regular", endTime: number) => {
+    const expected = Math.max(0, Math.floor((endTime - window.openTime) / intervalMs));
     const missing: string[] = [];
     for (let index = 0; index < expected; index += 1) {
       const openTime = window.openTime + index * 5 * 60_000;
@@ -1525,12 +1536,12 @@ function buildCoverage(
     return {
       session,
       expectedCandleCount: expected,
-      observedCandleCount: Math.min(regularCandles.length, expected),
+      observedCandleCount: regularCandles.filter((candle) => candle.openTime >= window.openTime && candle.openTime < endTime).length,
       complete: missing.length === 0,
       missingIntervals: missing,
     };
   };
-  return [build("primary", 42), build("full_regular", 78)];
+  return [build("primary", primaryEnd), build("full_regular", window.closeTime)];
 }
 
 type ReviewCandidate = {
@@ -1545,7 +1556,9 @@ function candidateOccurrenceTimestamp(candidate: ReviewCandidate): number {
   const value = candidate.category === "qualified_trade"
     ? occurrence?.entryTimestamp
     : candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
-      ? occurrence?.patienceTimestamp
+      ? occurrence?.signalStatus === "ENTRY_CONFIRMED"
+        ? occurrence.entryTimestamp
+        : occurrence?.patienceTimestamp
       : candidate.category === "pullback"
         ? occurrence?.lTimestamp
         : occurrence?.entryTimestamp ?? occurrence?.patienceTimestamp ?? occurrence?.lTimestamp;
@@ -1904,14 +1917,12 @@ export function buildHistoricalVisualValidationSetFromReport(
   const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
         || candidate.trade !== null
-        || (mode === "confirmed_signals" && (
-          candidate.occurrence
-            ? candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
-              ? hasConfirmedPatienceOccurrence(candidate.occurrence)
-              : candidate.category === "qualified_trade"
-                ? hasCanonicalTradeOccurrence(candidate.occurrence, candidate.trade)
-                : false
-            : hasConfirmedSignal(candidate.audit)
+        || (mode === "confirmed_signals" && candidate.occurrence !== undefined && (
+          candidate.category === "bullish_patience_candle" || candidate.category === "bearish_patience_candle"
+            ? hasConfirmedPatienceOccurrence(candidate.occurrence)
+            : candidate.category === "qualified_trade"
+              ? hasCanonicalTradeOccurrence(candidate.occurrence, candidate.trade)
+              : false
         )))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
   const snapshots = visibleCandidates.map((candidate, candidateIndex) => {

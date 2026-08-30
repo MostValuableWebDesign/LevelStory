@@ -200,7 +200,17 @@ test("taxonomy exposes four strategies and separates components from outcomes", 
   ]);
   assert.ok(STRATEGY_COMPONENT_TYPES.includes("BULLISH_PATIENCE"));
   assert.ok(STRATEGY_COMPONENT_TYPES.includes("ENTRY_CONFIRMATION_FAILED"));
-  assert.deepEqual(STRATEGY_OUTCOME_TYPES, ["QUALIFIED_TRADE", "STOP_EXIT", "TARGET_EXIT", "RUNNER_EXIT"]);
+  assert.deepEqual(STRATEGY_OUTCOME_TYPES, [
+    "QUALIFIED_TRADE",
+    "ENTRY_CONFIRMATION_FAILED",
+    "ENTRY_CONFIRMED",
+    "RISK_REJECTED",
+    "RISK_APPROVED_EXECUTION_UNAVAILABLE",
+    "MODELED_TRADE",
+    "STOP_EXIT",
+    "TARGET_EXIT",
+    "RUNNER_EXIT",
+  ]);
   assert.deepEqual(strategyIdsIncludingLegacy("ORB_PULLBACK_CONTINUATION"), [
     "ORB_PULLBACK_CONTINUATION", "ORB_BREAK_PULLBACK_CONTINUATION",
   ]);

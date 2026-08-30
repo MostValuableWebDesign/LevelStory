@@ -432,6 +432,16 @@ export type HistoricalOccurrence = {
   formulaHash: string;
   sourceFingerprint: string;
   canonicalTrade: boolean;
+  signalStatus?: "ENTRY_CONFIRMATION_FAILED" | "ENTRY_CONFIRMED";
+  eligibilityArmId?: string;
+  eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded";
+  eligibilityArmStateReason?: string;
+  eligibilityProvenance?: {
+    eventId: string | null;
+    reason: "pullback" | "consolidation" | "ntz consolidation";
+    time: string;
+    detail: string | null;
+  };
 };
 
 export const QUALIFICATION_FUNNEL_STAGES = [
@@ -1257,6 +1267,8 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
     actualObservedE,
     value.entryTimestamp,
     value.status,
+    value.signalStatus,
+    value.eligibilityArmId,
   ].map((part) => part ?? "absent").join("|"));
 }
 
@@ -1552,6 +1564,18 @@ export function buildHistoricalOccurrenceLedger(
         formulaHash,
         sourceFingerprint: fingerprint,
         canonicalTrade: linkedTrade !== undefined,
+         ...(outcomeStatus !== "CANDIDATE"
+           ? { signalStatus: outcomeStatus === "CONFIRMED" ? "ENTRY_CONFIRMED" as const : "ENTRY_CONFIRMATION_FAILED" as const }
+           : {}),
+         ...(patience.eligibilityArmId ? { eligibilityArmId: patience.eligibilityArmId } : {}),
+         ...(patience.eligibilityArmState ? { eligibilityArmState: patience.eligibilityArmState } : {}),
+         ...(patience.eligibilityArmStateReason ? { eligibilityArmStateReason: patience.eligibilityArmStateReason } : {}),
+         ...(patience.eligibilityProvenance ? {
+           eligibilityProvenance: {
+             ...patience.eligibilityProvenance,
+             time: new Date(patience.eligibilityProvenance.time).toISOString(),
+           },
+         } : {}),
       });
     }
     if (record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade) {
@@ -1571,6 +1595,13 @@ export function buildHistoricalOccurrenceLedger(
         record.rejectionCategory ?? "absent",
         trade?.id ?? "none",
       ].join("|");
+      const decisionStatus: HistoricalOccurrence["status"] = trade
+        ? "MODELED_TRADE"
+        : record.rejectionCategory === "RISK_REJECTION"
+          ? "RISK_REJECTED"
+          : record.rejectionReason === "NO_MODELED_EXIT" || record.rejectionCategory === "POSITION_ACTIVE"
+            ? "RISK_APPROVED_EXECUTION_UNAVAILABLE"
+            : "ENTRY_CONFIRMED";
       upsert(identity, {
         occurrenceId: occurrenceId(identity),
         auditId: record.id,
@@ -1603,7 +1634,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
-        status: trade ? "QUALIFIED_TRADE" : "RISK_REJECTED",
+        status: decisionStatus,
         reasonCode: record.rejectionSummary ?? record.decision,
         evaluationCursor: cursor,
         formulaVersion: FIXED_FORMULA_VERSION,
