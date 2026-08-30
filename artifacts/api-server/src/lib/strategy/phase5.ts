@@ -304,9 +304,11 @@ function evaluateTrigger(
     : roundPrice(oppositePrice + stopBufferTicks * tickSize, tickSize);
   const intendedTouched = direction === "long" ? trigger.high >= intendedPrice : trigger.low <= intendedPrice;
   const bufferReached = direction === "long" ? trigger.high >= entryBufferPrice : trigger.low <= entryBufferPrice;
-  const oppositeTouched = direction === "long" ? trigger.low <= oppositePrice : trigger.high >= oppositePrice;
+  // Touching the opposite wick is not a breach. Invalidation requires the
+  // immediate E candle to print beyond the patience extreme.
+  const oppositeTouched = direction === "long" ? trigger.low < oppositePrice : trigger.high > oppositePrice;
   const gapBuffer = direction === "long" ? trigger.open >= entryBufferPrice : trigger.open <= entryBufferPrice;
-  const gapOpposite = direction === "long" ? trigger.open <= oppositePrice : trigger.open >= oppositePrice;
+  const gapOpposite = direction === "long" ? trigger.open < oppositePrice : trigger.open > oppositePrice;
   const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
     direction,

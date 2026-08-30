@@ -192,6 +192,13 @@ test("both sides touched without sequence proof are ambiguous", () => {
   assert.equal(result.triggerPrice, null);
 });
 
+test("touching the opposite patience wick without breaking it does not invalidate E", () => {
+  const bullish = patienceCandleEngine(setup("long", candle(2, 10, 12.2, 7, 10.5)), "long", { eligibilityEvents: eligibility() });
+  const bearish = patienceCandleEngine(setup("short", candle(2, 10, 13, 7.8, 10.5)), "short", { eligibilityEvents: eligibility() });
+  assert.equal(bullish.state, "ENTRY_TRIGGERED");
+  assert.equal(bearish.state, "ENTRY_TRIGGERED");
+});
+
 test("a proven first-touch sequence resolves a two-sided trigger conservatively", () => {
   const candles = setup("long", candle(2, 10, 12.2, 6.8, 10.5));
   const intended = patienceCandleEngine(candles, "long", {
