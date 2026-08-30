@@ -1,0 +1,65 @@
+Correct the core historical pullback detector so it uses my intended 12-MES-tick qualifying-level area consistently.
+
+Current problem:
+The Visual Review and teaching workflow use a 12-tick tolerance, but the actual Phase 4 detector still uses phase4ProximityTicks = 2 and may also substitute an ATR-derived tolerance. This causes legitimate historical pullbacks near VWAP, 200 EMA, and key levels to be missed.
+
+Requirements:
+
+1. Create one authoritative pullback-level tolerance:
+   - MES tick size: 0.25 points.
+   - Default pullback tolerance: 12 ticks = 3.00 points.
+   - Use the shared constants already defined in lib/api-spec/src/constants.ts.
+   - Remove or retire duplicate detector defaults that conflict with the shared value.
+   - Do not silently replace the configured 12-tick tolerance with an ATR value.
+   - ATR may remain diagnostic evidence, but it must not override the configured qualifying area.
+
+2. A level interaction qualifies when the qualifying pullback candle’s full high-low range comes within 12 ticks of a machine-visible level.
+   Distance must be:
+   - 0 when the level is inside the candle’s high-low range.
+   - level - high when the candle is entirely below the level.
+   - low - level when the candle is entirely above the level.
+
+3. Evaluate dynamic indicators at the qualifying candle timestamp:
+   - VWAP at L
+   - 200 EMA at L
+   Do not compare against their final session values.
+
+4. Supported qualifying levels:
+   - VWAP
+   - 200 EMA
+   - ORB/NTZ high and low
+   - Premarket high and low
+   - Previous-day high and low
+   - Day-before-previous high and low
+   - Machine-visible support/resistance levels
+   - Fibonacci levels only when a valid pullback swing has already been established
+
+5. Keep these concepts separate:
+   - Level-interaction candle L
+   - Patience candle P
+   - Immediately following entry-confirmation candle E
+
+6. Do not require the level price to be physically contained inside P. The 12-tick area defines a zone around a level, not a hard-price touch.
+
+7. Preserve Shadow Mode:
+   - No live orders
+   - No paper orders
+   - No broker integration
+   - No fabricated candles, quotes, or fills
+
+Add deterministic focused tests proving:
+- 0, 4, 8, and 12 ticks qualify.
+- More than 12 ticks does not qualify.
+- A candle below VWAP but within 12 ticks qualifies.
+- A wick crossing VWAP has zero distance.
+- VWAP and 200 EMA use their values at L.
+- The detector and Visual Review return the same distance and qualification result.
+
+Run only focused tests, typechecks, and builds. Do not rebuild the historical index or run a long historical backtest yet.
+
+Report:
+- Files changed
+- Duplicate tolerance paths removed
+- Exact detector tolerance after the fix
+- Focused test totals
+- Any remaining conflicting proximity settings
