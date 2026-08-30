@@ -21,6 +21,26 @@ type StoredVisualValidationSet = {
   lastAccessedAt: number;
 };
 
+export function resolveObservedEntryCandle(
+  snapshot: VisualValidationSnapshot,
+  machineTrade: { entryTime: string; audit?: { triggerCandleOpenTime?: string | null; triggerCandleCloseTime?: string | null } },
+): VisualValidationSnapshot["reviewCandles"][number] | undefined {
+  const triggerOpen = machineTrade.audit?.triggerCandleOpenTime;
+  const triggerClose = machineTrade.audit?.triggerCandleCloseTime;
+  if (triggerOpen && triggerClose) {
+    const audited = snapshot.reviewCandles.find((candle) =>
+      candle.isComplete && candle.openTime === triggerOpen && candle.closeTime === triggerClose);
+    if (audited) return audited;
+  }
+  const entryTime = Date.parse(machineTrade.entryTime);
+  if (!Number.isFinite(entryTime)) return undefined;
+  return snapshot.reviewCandles.find((candle) => candle.isComplete && Date.parse(candle.closeTime) === entryTime)
+    ?? snapshot.reviewCandles.find((candle) =>
+      candle.isComplete
+      && Date.parse(candle.openTime) < entryTime
+      && entryTime <= Date.parse(candle.closeTime));
+}
+
 const MAX_STORED_SETS = 6;
 const SET_TTL_MS = 30 * 60_000;
 const sets = new Map<string, StoredVisualValidationSet>();
@@ -114,11 +134,7 @@ export function recordVisualValidationReview(
     const machineTrade = snapshot.machineEvidence.trade;
     if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
     if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
-    const observedEntryCandle = snapshot.reviewCandles.find((candle) =>
-      candle.isComplete
-      && Date.parse(candle.openTime) <= Date.parse(machineTrade.entryTime)
-      && Date.parse(machineTrade.entryTime) < Date.parse(candle.closeTime),
-    );
+    const observedEntryCandle = resolveObservedEntryCandle(snapshot, machineTrade);
     const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? observedEntryCandle?.openTime ?? machineTrade.entryTime;
     const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? observedEntryCandle?.closeTime ?? null;
     if (

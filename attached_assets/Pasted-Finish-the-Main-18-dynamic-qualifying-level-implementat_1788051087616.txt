@@ -1,0 +1,92 @@
+Finish the Main 18 dynamic qualifying-level implementation with a small, correctness-only patch.
+
+Do not redesign the UI, change the trading formula, rebuild the historical index, run a long backtest, or add live/paper trading.
+
+PRIMARY FIX — separate dynamic indicators from legacy fixed levels
+
+The structured `qualifyingLevels` collection must be authoritative whenever it is present.
+
+1. Dynamic indicators:
+   - VWAP and EMA 200 may contain fractional values that are not aligned to the MES 0.25 tick.
+   - Preserve their exact full-precision value at the selected qualifying-level candle L.
+   - Store them only in structured `qualifyingLevels` with:
+     - `levelId`
+     - `levelType: "dynamic_indicator"`
+     - `valueAtInteraction`
+     - immutable `sourceTimestamp`
+     - `rangeLow: null`
+     - `rangeHigh: null`
+   - Do not copy VWAP or EMA 200 values into the legacy numeric `pullbackLevels` array.
+   - Do not apply MES tick-alignment validation to dynamic indicators.
+
+2. Fixed levels:
+   - `pullbackLevels` is legacy compatibility storage for fixed executable price levels only.
+   - Premarket, ORB/NTZ, support/resistance, previous-day levels, and other fixed levels may remain in it when appropriate.
+   - Preserve the MES 0.25 tick-alignment requirement for fixed executable levels.
+   - Do not weaken fixed-level validation.
+
+3. Server validation:
+   - When nonempty structured `qualifyingLevels` are supplied, validate those selections as the authoritative evidence.
+   - Do not reject the request merely because a dynamic indicator’s exact value is not quarter-point aligned.
+   - Apply tick alignment only to fixed-level or level-range selections that require it.
+   - Continue resolving all submitted evidence against immutable server-owned candles, annotations, and indicator-series points.
+   - Never trust client-submitted VWAP, EMA, range, distance, or timestamp values without resolving and comparing them server-side.
+   - Preserve the configured maximum four-tick proximity tolerance around candle L.
+   - Preserve causal visibility and no-future-data enforcement.
+
+4. Frontend synchronization:
+   - When selecting or refreshing VWAP/EMA, update `qualifyingLevels` without adding the dynamic value to `pullbackLevels`.
+   - When selecting a fixed level, keep both structured evidence and any required legacy fixed-level value synchronized.
+   - When the L candle or tolerance changes, refresh or remove stale selections.
+   - Add the tolerance and active snapshot identity to the relevant effect dependencies.
+   - Clear or update the legacy singleton `qualifyingLevelId` when its corresponding selection is removed so stale data cannot block submission.
+
+DATABASE MIGRATION FIX
+
+Update the existing non-destructive migration to include:
+
+ALTER TABLE levelstory_proposal_validation_runs
+  ADD COLUMN IF NOT EXISTS calendar_fingerprint TEXT;
+
+Do not delete or rewrite existing rows. Confirm the migration matches the current Drizzle schema.
+
+FALSE-POSITIVE CANDLE MATCHING FIX
+
+Correct the fallback that associates `machineTrade.entryTime` with an observed candle.
+
+Because an entry event may be recorded at the completed candle’s close:
+
+- Prefer immutable audit trigger open/close timestamps when available.
+- Otherwise prefer an exact candle close-time match.
+- Then use interval containment appropriate for a close-generated event:
+  `openTime < entryTime && entryTime <= closeTime`
+- Do not map an entry occurring exactly at one candle’s close to the following candle.
+
+REQUIRED FOCUSED TESTS
+
+Add deterministic tests proving:
+
+1. VWAP `6851.508` at candle L is selectable and submits successfully.
+2. The persisted structured evidence retains the full VWAP precision and immutable source timestamp.
+3. The dynamic VWAP value is not stored in legacy `pullbackLevels`.
+4. A dynamic EMA value that is not quarter-point aligned also validates.
+5. A fixed executable level that is not aligned to 0.25 is still rejected.
+6. Client-tampered dynamic value, timestamp, type, or range is rejected.
+7. Changing L refreshes the selected VWAP/EMA value from the new immutable indicator point.
+8. Reducing tolerance removes an existing selection that is now outside the allowed zone.
+9. An entry timestamp equal to a candle close resolves to that completed candle, not the next candle.
+10. The migration contains both `validator_version` and the proposal-run `calendar_fingerprint` column.
+
+VERIFICATION
+
+Run only focused tests, typechecks, and normal production builds. Do not run historical indexing, cold 20+2 replays, qualification batches, or other expensive jobs.
+
+Report:
+
+- Files changed.
+- Root cause and exact fix.
+- Focused test results.
+- Typecheck/build results.
+- Confirmation that fractional VWAP/EMA evidence submits successfully.
+- Confirmation that fixed off-tick levels remain rejected.
+- Confirmation that no strategy rules, live orders, paper orders, broker connections, historical data, or existing teaching records were changed.

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildVisualValidationSet,
   buildHistoricalVisualValidationSetFromReport,
@@ -19,6 +20,7 @@ import {
   recordVisualValidationReview,
   storeVisualValidationSet,
   analyzeVisualValidationTeaching,
+  resolveObservedEntryCandle,
 } from "./visual-validation-store.js";
 
 const request: VisualValidationRequest = {
@@ -418,6 +420,94 @@ test("teaching validation accepts deterministic long and short buffered examples
   }
 });
 
+function dynamicLevelFixture() {
+  const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
+  const indicatorPoint = snapshot.indicatorSeries.find((item) => item.vwap !== null && item.ema200 !== null);
+  assert.ok(indicatorPoint);
+  const input = teachingInput(snapshot, "long");
+  const previous = snapshot.reviewCandles[0]!;
+  const patience = snapshot.reviewCandles[1]!;
+  const entry = snapshot.reviewCandles[2]!;
+  Object.assign(previous, { open: 6851, high: 6852, low: 6850.5, close: 6851.2 });
+  Object.assign(patience, { open: 6851.2, high: 6851.75, low: 6851.3, close: 6851.5 });
+  Object.assign(entry, { open: 6851.5, high: 6853, low: 6851.25, close: 6852.75 });
+  const point = indicatorPoint;
+  point.openTime = patience.openTime;
+  point.closeTime = patience.closeTime;
+  point.vwap = 6851.508;
+  point.ema200 = 6851.492;
+  point.visibility = "machine";
+  const vwap = snapshot.annotations.find((item) => item.id === "vwap");
+  assert.ok(vwap);
+  vwap.available = true;
+  vwap.visibility = "machine";
+  const selection = {
+    levelId: "vwap",
+    levelType: "dynamic_indicator" as const,
+    valueAtInteraction: 6851.508,
+    sourceTimestamp: point.openTime,
+    rangeLow: null,
+    rangeHigh: null,
+  };
+  return { snapshot, input, selection };
+}
+
+test("fractional VWAP at L validates, persists at full precision, and stays out of legacy levels", () => {
+  const { snapshot, input, selection } = dynamicLevelFixture();
+  const dynamicInput = { ...input, pullbackLevels: [], qualifyingLevels: [selection] };
+  const validation = validateVisualValidationTeaching(snapshot, dynamicInput);
+  assert.equal(validation.valid, true, validation.messages.join("; "));
+  const example = createVisualValidationTeachingExample(snapshot, dynamicInput, null);
+  const persistedLevels = example.qualifyingLevels ?? [];
+  assert.equal(persistedLevels[0]?.valueAtInteraction, 6851.508);
+  assert.equal(persistedLevels[0]?.sourceTimestamp, selection.sourceTimestamp);
+  assert.equal(persistedLevels[0]?.rangeLow, null);
+  assert.equal(persistedLevels[0]?.rangeHigh, null);
+  assert.deepEqual(example.pullbackLevels, []);
+});
+
+test("fractional EMA validates while an off-tick fixed executable level remains rejected", () => {
+  const { snapshot, input, selection } = dynamicLevelFixture();
+  const emaSelection = { ...selection, levelId: "ema-200", valueAtInteraction: 6851.492 };
+  const accepted = validateVisualValidationTeaching(snapshot, {
+    ...input,
+    pullbackLevels: [],
+    qualifyingLevels: [emaSelection],
+  });
+  assert.equal(accepted.valid, true, accepted.messages.join("; "));
+  const fixed = validateVisualValidationTeaching(snapshot, {
+    ...input,
+    pullbackLevels: [6851.1],
+    qualifyingLevels: [],
+  });
+  assert.equal(fixed.valid, false);
+  assert.ok(fixed.messages.some((message) => message.includes("0.25 tick")));
+});
+
+test("dynamic qualifying-level tampering is rejected against immutable L evidence", () => {
+  const { snapshot, input, selection } = dynamicLevelFixture();
+  for (const tampered of [
+    { ...selection, valueAtInteraction: 6851.75 },
+    { ...selection, sourceTimestamp: "2026-08-26T13:25:00.000Z" },
+    { ...selection, levelType: "fixed_level" as const },
+    { ...selection, rangeLow: 6851, rangeHigh: 6852 },
+  ]) {
+    const result = validateVisualValidationTeaching(snapshot, {
+      ...input,
+      pullbackLevels: [],
+      qualifyingLevels: [tampered],
+    });
+    assert.equal(result.valid, false);
+  }
+});
+
+test("migration preserves existing rows while adding validator and calendar fingerprints", () => {
+  const migration = readFileSync(new URL("../../../../lib/db/migrations/0001_dynamic_level_safety.sql", import.meta.url), "utf8");
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS validator_version TEXT/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS calendar_fingerprint TEXT/);
+  assert.doesNotMatch(migration, /\b(DROP TABLE|TRUNCATE|DELETE FROM)\b/i);
+});
+
 test("teaching validation uses a four-tick proximity zone instead of exact containment", () => {
   const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
   const input = teachingInput(snapshot, "long");
@@ -667,6 +757,15 @@ test("trade matching rejects an unrelated exit or causal timestamp", () => {
   }]), null);
   assert.equal(matchingTrade({ ...record, modeledFillObservationTime: "2026-08-26T13:40:00.000Z" }, [exact]), null);
   assert.equal(matchingTrade({ ...record, triggerCandleOpenTime: "2026-08-26T13:30:00.000Z" }, [exact]), null);
+});
+
+test("entry time equal to a candle close resolves to that completed candle", () => {
+  const snapshot = buildVisualValidationSet(request).snapshots[0]!;
+  const first = snapshot.reviewCandles[0]!;
+  const second = snapshot.reviewCandles[1]!;
+  const observed = resolveObservedEntryCandle(snapshot, { entryTime: first.closeTime });
+  assert.equal(observed?.openTime, first.openTime);
+  assert.notEqual(observed?.openTime, second.openTime);
 });
 
 test("category gates use explicit trend, mapped-level, and measured-state evidence", () => {
