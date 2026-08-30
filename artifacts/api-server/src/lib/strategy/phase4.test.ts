@@ -226,6 +226,28 @@ test("dynamic pullback levels resolve from the causal L candle, not the latest c
   assert.equal(vwapEvent.price, 100.5);
 });
 
+test("final-session dynamic values cannot qualify an earlier L candle", () => {
+  const first = candle(0, 100, 100.2, 99.8, 100, 100);
+  const levelCandle = candle(1, 101, 101.2, 100.8, 101, 100);
+  const finalSessionCandle = candle(2, 150, 151, 149, 150, 100);
+  const result = analyzePullback(
+    [first, levelCandle, finalSessionCandle],
+    breakoutAt(first),
+    [{ name: "EMA 200", price: 999 }, { name: "VWAP", price: 999 }],
+    specification,
+    strategyConfig({ emaPeriod: 2 }),
+    { causalCandles: [first, levelCandle], calendar },
+  );
+  const vwapEvent = result.events.find((item) => item.level === "VWAP" && item.candle?.openTime === levelCandle.openTime);
+  const emaEvent = result.events.find((item) => item.level === "EMA 200" && item.candle?.openTime === levelCandle.openTime);
+  assert.ok(vwapEvent);
+  assert.ok(emaEvent);
+  assert.equal(vwapEvent.price, 100.5);
+  assert.equal(emaEvent.price, 100.5);
+  assert.notEqual(vwapEvent.price, 150);
+  assert.notEqual(emaEvent.price, 150);
+});
+
 test("complete detector qualifies fractional VWAP at exactly the twelve-tick boundary", () => {
   const first = candle(0, 105.1, 105.1, 105.1, 105.1, 100);
   const high = 98.7583333333333;

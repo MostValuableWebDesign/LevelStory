@@ -174,6 +174,22 @@ test("ORB continuation qualifies only when every mandatory rule passes", () => {
   assert.ok(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed));
 });
 
+test("ORB qualification does not require strong-breakout volume or body classification", () => {
+  const context = baseContext({
+    breakout: {
+      ...baseContext().breakout,
+      volumeSupported: false,
+      bodyRatio: 0,
+      closeLocationRatio: 0,
+      candleStructureSupported: false,
+    },
+    volume: { ...baseContext().volume, supportingBreakoutVolume: false },
+  });
+  const result = evaluateOrbBreakPullbackContinuation(context);
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.some((rule) => rule.key === "strongBreakout" || rule.key === "breakoutVolume"), false);
+});
+
 test("taxonomy exposes four strategies and separates components from outcomes", () => {
   assert.deepEqual(STRATEGY_IDS, [
     "ORB_PULLBACK_CONTINUATION",
@@ -244,6 +260,16 @@ test("tight consolidation can qualify outside the old 45–60 minute window", ()
   assert.equal(result.expansionRatio, 1);
 });
 
+test("bounded consolidation qualifies both below 45 and above 60 minutes without NTZ duration substitution", () => {
+  const short = Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
+  const long = Array.from({ length: 13 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
+  assert.equal(detectExtendedNtzConsolidation(short, ntz()).detected, true);
+  assert.equal(detectExtendedNtzConsolidation(short, ntz()).durationMinutes, 15);
+  assert.equal(detectExtendedNtzConsolidation(long, ntz()).detected, true);
+  assert.equal(detectExtendedNtzConsolidation(long, ntz()).durationMinutes, 65);
+  assert.equal(detectExtendedNtzConsolidation(short.slice(0, 2), ntz()).detected, false);
+});
+
 test("extended consolidation rejects a materially expanding range", () => {
   const candles = Array.from({ length: 9 }, (_, index) => index < 4
     ? candle(index * 300_000, 9.95, 9.96, 9.94, 9.95)
@@ -276,6 +302,21 @@ test("extended consolidation qualifies with a breakout and NTZ-eligible patience
   }));
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);
+});
+
+test("consolidation breakout closes outside its frozen pre-breakout range", () => {
+  const consolidationCandles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
+  const breakoutCandle = candle(2_700_000, 9.96, 10.25, 9.95, 10.2);
+  const result = evaluateExtendedNtzConsolidationBreakout({
+    ...baseContext({
+      candles: [...consolidationCandles, breakoutCandle],
+      breakout: { ...baseContext().breakout, candleOpenTime: breakoutCandle.openTime, time: breakoutCandle.closeTime },
+      patience: { ...patience(), eligibilityReason: "ntz consolidation" },
+    }),
+  });
+  assert.equal(result.consolidation?.frozenHigh, 9.99);
+  assert.equal(result.consolidation?.frozenLow, 9.91);
+  assert.equal(result.rules.find((rule) => rule.key === "strongBreakout")?.passed, true);
 });
 
 test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {
@@ -336,6 +377,26 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.alertOnly, false);
   assert.equal(result.mandatoryPassed, true);
+});
+
+test("equivalent reversal owns a shared qualified sequence before generic patience", () => {
+  const context = baseContext({
+    candles: [
+      candle(0, 9.8, 10.01, 9.79, 10),
+      candle(300_000, 10, 10.01, 9.79, 9.81),
+      candle(600_000, 10, 10.04, 9.96, 10.005),
+      candle(900_000, 10.005, 10.01, 9.8, 9.85),
+      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
+    ],
+    levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
+    fibonacci: { ...baseContext().fibonacci, classification: "deep" },
+    volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
+    breakout: { ...baseContext().breakout, detected: false, failed: true },
+    reversalPatience: patience("ENTRY_TRIGGERED", "bearish"),
+  });
+  const result = phase6Analysis(context);
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.primarySetup, "EQUIVALENT_CANDLE_REVERSAL");
 });
 
 test("ORB Fibonacci interaction is required when no structural level interaction exists", () => {
