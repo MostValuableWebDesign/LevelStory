@@ -1,0 +1,230 @@
+Implement the common ORB Break–Pullback–Patience Continuation edge correctly and consistently across all historical MES charts.
+
+This must be a general rule-engine correction. Do not hardcode the attached dates, prices, candle indexes, screenshots, or expected outcomes.
+
+EDGE NAME
+
+ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+
+CORE PATTERN
+
+The strategy must recognize this causal sequence on completed five-minute candles:
+
+1. The ORB/NTZ is finalized from the first three completed five-minute candles:
+   9:30–9:35 ET
+   9:35–9:40 ET
+   9:40–9:45 ET
+
+2. Price breaks above ORB high for a long or below ORB low for a short.
+
+3. The breakout shows directional continuation.
+
+4. Price retraces toward a qualifying key-level zone.
+
+5. A valid patience candle forms during or after that pullback.
+
+6. The immediate next completed candle confirms the patience candle.
+
+7. The confirmed signal creates one trade and records every supporting confluence.
+
+BULLISH SEQUENCE
+
+- Completed close above ORB high.
+- Bullish continuation establishes the local direction.
+- Price pulls back toward a qualifying level.
+- Bullish patience candle P:
+  P.high must not exceed the preceding candle’s high.
+- The whole P candle does not need to be inside the previous candle.
+- P color is irrelevant.
+- Immediate next candle E must trade at least the configured entry buffer above P.high.
+- Default entry buffer: 3–4 MES ticks.
+- Entry occurs at the buffered breakout price, not at P’s close.
+
+BEARISH SEQUENCE
+
+- Completed close below ORB low.
+- Bearish continuation establishes the local direction.
+- Price pulls back toward a qualifying level.
+- Bearish patience candle P:
+  P.low must not fall below the preceding candle’s low.
+- The whole P candle does not need to be inside the previous candle.
+- P color is irrelevant.
+- Immediate next candle E must trade at least the configured entry buffer below P.low.
+- Default entry buffer: 3–4 MES ticks.
+- Entry occurs at the buffered breakout price, not at P’s close.
+
+PATIENCE RE-ARMING
+
+Only the candle immediately after P may confirm P.
+
+If E does not cross the buffered trend-side extreme:
+
+- Expire that P candidate.
+- Do not allow any later candle to confirm it.
+- Keep the ORB pullback setup armed if its broader structure is still valid.
+- Continue scanning for a new patience candle P2.
+- Only the candle immediately after P2 may confirm P2.
+- Continue this sequence until confirmed or structurally invalidated.
+
+KEY-LEVEL INTERACTION
+
+Use a default pullback proximity zone of 12 MES ticks, equal to 3.00 points.
+
+Qualifying levels include:
+
+- ORB/NTZ high and low
+- VWAP
+- 200 EMA on the five-minute chart
+- Premarket high and low
+- Previous-day high and low
+- Day-before-previous-day high and low
+- Confirmed support and resistance
+- Valid causal Fibonacci retracement levels
+
+Calculate interaction as the distance between the candle’s full high-low range and the level—not merely the candle close.
+
+A level qualifies when it:
+
+- Falls inside the candle’s high-low range; or
+- Is within 12 ticks of that range.
+
+For dynamic indicators such as VWAP and 200 EMA:
+
+- Use the indicator value at the exact candle timestamp.
+- Never use the final session value to validate an earlier candle.
+
+The qualifying level interaction may occur:
+
+- On an earlier pullback candle L;
+- On the patience candle P itself; or
+- Across the causal pullback sequence immediately preceding P.
+
+P may equal L. Do not require L and P to be different candles.
+
+If P touches, crosses, rejects, or comes within 12 ticks of VWAP or the 200 EMA, that indicator must be available as a qualifying pullback level.
+
+BREAKOUT QUALITY
+
+A slight ORB probe without continuation must not arm an entry.
+
+If price barely crosses the ORB boundary and immediately stalls or returns inside:
+
+- Record WEAK_ORB_PROBE.
+- Wait for a later meaningful directional push.
+- Do not permanently reject the session.
+
+A meaningful breakout may be established by existing causal impulse/continuation evidence, such as:
+
+- A decisive completed close beyond ORB;
+- Continued price expansion outside ORB; or
+- A follow-through candle maintaining the breakout direction.
+
+Volume may strengthen the setup grade, but do not require one rigid volume threshold unless governed by configuration.
+
+Do not require the breakout to satisfy the separate
+STRONG_BREAKOUT_AFTER_CONSOLIDATION strategy.
+
+TREND RULE
+
+The ORB breakout and continuation establish this edge’s local causal direction.
+
+The 15-minute trend may add confluence and improve the setup grade, but it must not automatically block an otherwise valid ORB break–pullback–patience sequence.
+
+CONFLUENCE AND GRADING
+
+A confirmed P→E sequence creates one trade.
+
+Supporting evidence increases the grade instead of creating duplicate trades:
+
+- One qualifying level: base grade
+- Multiple nearby qualifying levels: stronger grade
+- VWAP plus 200 EMA
+- ORB retest plus VWAP
+- Prior-day level confluence
+- Support/resistance confluence
+- Favorable volume
+- Confirmed 15-minute trend
+- Fibonacci confluence when causally valid
+
+Return one canonical trade containing:
+
+- Direction
+- ORB breakout candle
+- Pullback start
+- Qualifying level-interaction candle or candles
+- Patience candle P
+- Entry candle E
+- Entry trigger price
+- Every matched key level
+- Supporting confluences
+- Setup grade
+- Exact causal timestamps
+
+A confirmed signal should not be blocked by separate
+TRADE_INTENT_CREATED,
+RISK_APPROVED/RISK_BLOCKED,
+MODELED_FILL, or
+EXECUTION_UNAVAILABLE gates in the formula-detection workflow.
+
+Those may remain separate downstream simulation metadata, but they must not erase or reclassify the confirmed strategy trade.
+
+OCCURRENCE SELECTION
+
+Scan and retain every occurrence instead of overwriting earlier occurrences with a later end-of-day candidate.
+
+Prioritize the primary trading window:
+
+9:30 a.m.–1:00 p.m. America/New_York
+
+Continue scanning the remainder of the regular session for diagnostics, but Visual Review should prefer valid confirmed morning occurrences when available.
+
+VISUAL REVIEW
+
+For every detected occurrence, display:
+
+- ORB breakout marker
+- Pullback/level-interaction marker L
+- Patience marker P
+- Immediate entry marker E
+- Exact qualifying levels
+- Entry buffer and trigger price
+- Failed patience attempts separately from the confirmed P→E pair
+
+The selected category must focus the chart on the actual confirmed occurrence, not an unrelated late-session candle.
+
+TESTS REQUIRED
+
+Add deterministic bullish and bearish fixtures matching this general structure.
+
+Cover:
+
+1. Bullish ORB breakout, pullback to VWAP, P equals L, immediate E confirms.
+2. Bearish ORB breakout, pullback to VWAP/EMA, P equals L, immediate E confirms.
+3. Level is inside P’s wick.
+4. Level is within exactly 12 ticks.
+5. Level is outside 12 ticks and does not qualify.
+6. Dynamic VWAP/EMA uses its value at P/L time.
+7. P candle color does not control validity.
+8. Bullish P.high containment.
+9. Bearish P.low containment.
+10. E1 fails, P1 expires, P2/E2 succeeds.
+11. A later candle cannot confirm an expired P.
+12. Weak ORB probe waits for later continuation.
+13. Multiple confluences produce one trade.
+14. Morning confirmed occurrence is not overwritten by a late candidate.
+15. No future candle data is used.
+
+Keep all logic completed-candle-only and causal.
+
+Run only focused tests, typechecks, and the smallest applicable fixture validation. Do not trigger a full historical rebuild or broad backtest solely for this correction.
+
+Report:
+
+- Files changed
+- Previous root causes
+- Final state-machine behavior
+- Bullish and bearish fixture results
+- Failed-P then successful-P2 evidence
+- Exact 12-tick boundary results
+- Confirmation that dynamic VWAP/EMA values are timestamp-correct
+- Confirmation that one trade contains all supporting confluences
