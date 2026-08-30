@@ -696,13 +696,11 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
           <option value="simulated">Simulated fixture data · testing only</option>
         </select>
       </Field>
-      <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Trades-only keeps the main room focused on trade-linked evidence. The diagnostics option adds a separate, collapsed no-entry section for explicit rule inspection." /></span>}>
-        <select className="field" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value as "trades_only" | "confirmed_signals" | "trades_and_diagnostics")} data-testid="select-visual-review-mode">
-          <option value="trades_only">Trades only · default</option>
-          <option value="confirmed_signals">Confirmed trades · edge + patience + signal</option>
-          <option value="trades_and_diagnostics">Trades + no-entry diagnostics</option>
+      <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Review presents only confirmed edges that represent trades. An edge is confirmed when EDGE_FOUND, PATIENCE_FOUND, and SIGNAL_CONFIRMED are all present." /></span>}>
+        <select className="field" value="trades_only" disabled data-testid="select-visual-review-mode">
+          <option value="trades_only">Trade only · confirmed edges</option>
         </select>
-        <span className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Historical mode filters no-entry samples unless confirmed signals or diagnostics are explicitly enabled." : "Simulated fixtures remain available for deterministic contract testing."}</span>
+        <span className="mt-1 block text-[10px] text-muted-foreground">Only edge occurrences that complete the causal confirmation sequence appear as trades.</span>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>

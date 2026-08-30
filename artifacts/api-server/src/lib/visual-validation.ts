@@ -1915,7 +1915,12 @@ export function buildHistoricalVisualValidationSetFromReport(
   ];
   const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
-        || (mode === "trades_only" && candidate.trade !== null)
+        || (mode === "trades_only" && (
+          candidate.trade !== null
+          || (candidate.category === "qualified_trade"
+            && candidate.occurrence !== undefined
+            && hasConfirmedTradeOccurrence(candidate.occurrence))
+        ))
         || (mode === "confirmed_signals"
           && candidate.category === "qualified_trade"
           && candidate.occurrence !== undefined
