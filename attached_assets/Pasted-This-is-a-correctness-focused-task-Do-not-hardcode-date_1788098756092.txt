@@ -1,0 +1,291 @@
+This is a correctness-focused task. Do not hardcode dates, candle times, contracts, prices, screenshots, or specific historical examples.
+
+Preserve the improvements already present
+
+Do not remove or regress:
+
+- Strict opposite-wick invalidation: touching P’s opposite extreme is allowed; E must move beyond it to invalidate.
+- P1 failure followed by later P2 scanning.
+- Selection of the earliest later confirmed P→E occurrence after an earlier failed or ambiguous candidate.
+- Improved audit-to-trade causal matching.
+- Existing deterministic ordering.
+- The existing 12-MES-tick pullback tolerance.
+- Shadow Mode safeguards.
+- No live orders, paper orders, broker integration, or fabricated market data.
+
+The existing changes are not a complete eligibility lifecycle. Implement the remaining requirements below.
+
+1. Replace stale latestEligibilityBefore behavior
+
+The current Phase 5 implementation still assigns:
+
+latestEligibilityBefore(eligibility, candle.openTime)
+
+to every later patience-shaped candle. This can let one old L interaction qualify P→E pairs much later in the session.
+
+Replace this with a causal eligibility-arm lifecycle.
+
+Each arm must contain:
+
+- Trading date
+- Contract symbol
+- Strategy candidate
+- Direction
+- Qualifying level identifier
+- Causal level value
+- L candle open and close times
+- Pullback event ID
+- 12-tick tolerance
+- Formula version/hash
+- Source fingerprint
+- State: active, consumed, invalidated, or superseded
+- State-change timestamp and reason
+
+An arm becomes active only when a genuine qualifying level interaction L occurs.
+
+A patience candidate may use the arm only when:
+
+- P occurs after L.
+- P is completed.
+- P has the correct bullish or bearish patience shape.
+- P or its immediately preceding comparison candle remains within 12 MES ticks—3.00 points—of the same qualifying level.
+- Dynamic levels such as VWAP and EMA 200 use their causal value at L/P, never the session-final value.
+- The strategy direction and structural context remain valid.
+- The arm has not been consumed, invalidated, or superseded.
+
+Do not use an arbitrary hidden time limit. If an age limit is introduced, it must be governed, configurable, formula-hashed, visible in diagnostics, and tested.
+
+2. Correct P1 → E1 and P2 → E2 behavior
+
+- P1 may only be confirmed by immediate completed E1.
+- E1 must exceed P1 in the intended direction by the configured 3–4-tick buffer.
+- If E1 fails, P1 expires permanently.
+- No later candle may confirm P1.
+- Continue scanning for P2 only while the same eligibility arm remains structurally valid.
+- P2 may only be confirmed by immediate E2.
+- Preserve P1/E1 and P2/E2 as separate immutable occurrence records.
+- If context invalidates before P2, require a fresh L.
+
+3. Consume the arm at signal confirmation
+
+Consume the eligibility arm immediately when P→E becomes `ENTRY_CONFIRMED`.
+
+Do not wait for:
+
+- A modeled fill
+- A modeled exit
+- A completed trade
+- Quote data
+
+The existing `executedEntryKeys` protection is execution-level deduplication and is not sufficient. It is currently added only after a modeled trade succeeds.
+
+Separate:
+
+- Signal/eligibility consumption
+- Risk decision
+- Execution modeling
+- Trade creation
+
+Once an arm produces a confirmed P→E signal, later patience-shaped candles cannot reuse that L—even when execution modeling is unavailable or no modeled exit is produced.
+
+A new trade signal requires a fresh qualifying L interaction.
+
+4. Correct signal, risk, and execution outcomes
+
+Do not classify every confirmed signal without a trade as `RISK_REJECTED`.
+
+Use explicit outcomes:
+
+- `ENTRY_CONFIRMATION_FAILED`
+- `ENTRY_CONFIRMED`
+- `RISK_REJECTED`
+- `RISK_APPROVED_EXECUTION_UNAVAILABLE`
+- `MODELED_TRADE`
+
+Rules:
+
+- Immediate E failure → `ENTRY_CONFIRMATION_FAILED`
+- Valid P→E before risk evaluation → `ENTRY_CONFIRMED`
+- Genuine risk-control rejection → `RISK_REJECTED`
+- Risk passes but bounded OHLCV execution cannot produce a valid fill/exit pair → `RISK_APPROVED_EXECUTION_UNAVAILABLE`
+- Completed modeled fill and exit → `MODELED_TRADE`
+
+`NO_MODELED_EXIT` is an execution-model limitation, not automatically a risk rejection.
+
+Update:
+
+- HistoricalOccurrence types
+- Occurrence ledger generation
+- OpenAPI schema
+- Generated API clients
+- Funnel diagnostics
+- Visual Review wording
+- Strategy Proposals where these statuses are displayed
+
+5. Make Confirmed Signals ledger-only
+
+For `reviewMode=confirmed_signals`:
+
+- Use immutable occurrence-ledger records only.
+- Never use cumulative audit fallback.
+- Every displayed snapshot must have a governed occurrence ID.
+- Show bullish/bearish patience only for confirmed immediate P→E occurrences.
+- Show Qualified Trade only for a canonical modeled trade.
+- If a confirmed, risk-approved signal has no modeled trade, label it accurately as a confirmed unexecuted signal—not Rejected Setup or Qualified Trade.
+- Do not include pullback, consolidation, rejected setup, weak breakout, or similar diagnostic categories.
+
+`trades_and_diagnostics` may include those categories but must deduplicate exact audit/category/time/anchor duplicates.
+
+The current live Confirmed Signals response incorrectly returns:
+
+- 12 pullbacks
+- 12 rejected setups
+- 1 consolidation
+- 0 confirmed patience examples
+
+Add a regression test that makes this impossible.
+
+6. Use E for confirmed-signal time classification
+
+For confirmed P→E occurrences:
+
+- Primary-window classification must use E’s open time.
+- Sorting and selection reasons must use E.
+- P’s timestamp may be used only for unconfirmed patience diagnostics.
+- Pullback diagnostics use L.
+- Modeled trades use their modeled entry/fill observation time.
+- The end time is exclusive.
+
+Therefore:
+
+- P from 12:55–1:00 p.m.
+- E from 1:00–1:05 p.m.
+
+is outside the primary entry window.
+
+7. Unify teaching and strategy entry windows
+
+Remove the separate hardcoded teaching constants that currently allow entries until 2:00 p.m.
+
+Visual Review teaching validation must read:
+
+- `primaryEntryStartMinutes`
+- `primaryEntryEndMinutes`
+- `sessionTimeZone`
+- `primaryEntryWindowVersion`
+
+from the same active governed strategy configuration.
+
+Authoritative window:
+
+9:30 a.m.–1:00 p.m. America/New_York
+End exclusive.
+
+Update the incorrect user-facing message saying:
+
+“The entry candle must be inside the 9:30 AM–2:00 PM ET primary entry window.”
+
+It must say 9:30 a.m.–1:00 p.m. ET and derive that text from configuration where practical.
+
+Do not maintain a second independent entry-window definition in Visual Review.
+
+8. Reconcile diagnostics
+
+Use consistent definitions for:
+
+- Pullback interactions
+- Active eligibility arms
+- Invalidated arms
+- Superseded arms
+- Consumed arms
+- Patience candidates
+- Failed immediate confirmations
+- Confirmed P→E signals
+- Risk-approved signals
+- Risk-rejected signals
+- Execution-unavailable signals
+- Modeled trades
+- Primary-window confirmed signals
+- Outside-primary-window confirmed signals
+
+The funnel, occurrence ledger, Visual Review, and strategy proposal workflow must agree.
+
+Do not count audit rows as unique sessions or occurrences. Deduplicate using governed occurrence identity.
+
+9. Required focused tests
+
+Add deterministic tests for:
+
+1. One L → one valid P→E → exactly one confirmed signal.
+2. A confirmed arm is consumed even if no modeled trade is created.
+3. Later patience-shaped candles cannot reuse a consumed L.
+4. P1/E1 fails, then P2/E2 confirms while the same arm remains valid.
+5. P1 fails, context invalidates, and P2 requires a fresh L.
+6. A newer L supersedes the previous active arm for the same strategy/direction/level.
+7. A fresh L after consumption creates a new independent arm.
+8. P outside the 12-tick level zone cannot reuse an old L.
+9. Causal VWAP interaction at L/P.
+10. Causal EMA 200 interaction at L/P.
+11. Bullish and bearish mirror behavior.
+12. Exact opposite-wick touch does not invalidate; moving beyond it does.
+13. Every expired and confirmed attempt remains separately in the ledger.
+14. Confirmed Signals contains only ledger-backed confirmed signals/trades.
+15. Confirmed Signals contains no rejected, pullback, or consolidation audit fallback.
+16. Diagnostics mode deduplicates identical audit/category/anchor records.
+17. Genuine risk rejection remains `RISK_REJECTED`.
+18. Confirmed and risk-approved without modeled execution becomes `RISK_APPROVED_EXECUTION_UNAVAILABLE`.
+19. A 12:55 P with 1:00 E is outside the primary window.
+20. Teaching submission rejects a 1:00 p.m. E using the governed window.
+21. Multiple dates and rollover contracts remain isolated.
+22. Earliest valid primary-window confirmed E is selected before afternoon evidence.
+
+10. Deployment provenance
+
+After focused verification:
+
+- Commit and push the exact completed source to GitHub.
+- Deploy that pushed commit.
+- Verify the live build ID equals the pushed GitHub SHA.
+- Confirm the SHA exists in the public repository.
+- Do not report deployment verification if the live build is behind GitHub.
+
+Compute limits
+
+Run only:
+
+- Focused Phase 5 tests
+- Focused Phase 9 occurrence-ledger tests
+- Focused Visual Review tests
+- Relevant teaching-review tests
+- Schema/client generation
+- API typecheck
+- Frontend typecheck
+- git diff --check
+- One narrow or cached live Visual Review request
+
+Do not run:
+
+- Cold 20+2 historical backtest
+- Full qualification batch
+- Historical-index rebuild
+- Multiple workflow restarts
+- Broad performance refactor
+
+Final report
+
+Report:
+
+1. Files changed.
+2. Root cause.
+3. Eligibility-arm lifecycle.
+4. P1 failure and P2 re-arming behavior.
+5. Confirmation-time arm consumption.
+6. Signal/risk/execution taxonomy.
+7. Confirmed Signals filtering and deduplication.
+8. Governed entry-window behavior.
+9. Focused test totals.
+10. Typecheck results.
+11. Pushed GitHub SHA.
+12. Live build ID.
+13. Proof the live ID equals the public GitHub commit.
+14. Remaining limitations.
