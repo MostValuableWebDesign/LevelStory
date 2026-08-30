@@ -155,7 +155,18 @@ test("buffer configuration rejects unsupported confirmation widths", () => {
 test("pullback and consolidation locations can open patience eligibility", () => {
   const pullback: PullbackAnalysis = {
     status: "observed",
-    events: [{ type: "touch", time: FIVE_MINUTES, level: "VWAP", price: 10, detail: "touch" }],
+    events: [{
+      type: "touch",
+      time: FIVE_MINUTES,
+      level: "VWAP",
+      price: 10,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      detail: "touch",
+    }],
     evaluatedCandles: 1,
     maxCandles: 6,
     maxDurationMinutes: 30,

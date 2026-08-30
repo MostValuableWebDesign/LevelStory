@@ -190,6 +190,11 @@ export const GetMarketSnapshotResponse = zod.object({
   "time": zod.string(),
   "level": zod.string(),
   "price": zod.number(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "tolerancePoints": zod.number(),
+  "toleranceTicks": zod.number(),
+  "qualifies": zod.boolean(),
   "detail": zod.string()
 })),
   "evaluatedCandles": zod.number(),

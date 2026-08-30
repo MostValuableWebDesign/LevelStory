@@ -81,7 +81,20 @@ export type PullbackEvent = {
   time: number;
   level: string;
   price: number;
+  distancePoints: number;
+  distanceTicks: number;
+  tolerancePoints: number;
+  toleranceTicks: number;
+  qualifies: boolean;
   detail: string;
+};
+
+export type QualifyingLevelInteraction = {
+  distancePoints: number;
+  distanceTicks: number;
+  tolerancePoints: number;
+  toleranceTicks: number;
+  qualifies: boolean;
 };
 
 export type PullbackAnalysisOptions = {
@@ -489,8 +502,9 @@ export function analyzePullback(
         resolved.rangeLow,
         resolved.rangeHigh,
       );
-      const touched = distance === 0;
-      const near = touched || distance <= proximityTolerance;
+      const interaction = qualifyLevelInteraction(distance, proximityTolerance, MES_TICK_SIZE);
+      const touched = interaction.distancePoints === 0;
+      const near = interaction.qualifies;
       const streak = near ? (nearStreak.get(level.name) ?? 0) + 1 : 0;
       nearStreak.set(level.name, streak);
       const favorable = breakout.direction === "long" ? candle.close >= resolved.price : candle.close <= resolved.price;
@@ -502,15 +516,15 @@ export function analyzePullback(
       const through = breakout.direction === "long"
         ? candle.close < lowerBoundary - proximityTolerance
         : candle.close > upperBoundary + proximityTolerance;
-      const distanceDetail = `${distanceInTicks(distance)} ticks / ${distance.toFixed(2)} points from ${level.name}; tolerance is ${proximityTolerance.toFixed(2)} points.`;
+      const distanceDetail = `${interaction.distanceTicks} ticks / ${distance.toFixed(2)} points from ${level.name}; tolerance is ${proximityTolerance.toFixed(2)} points.`;
 
       const resolvedLevel: Level = { ...level, price: resolved.price };
-      if (touched) events.push(event("touch", candle, resolvedLevel, `Completed range interacted with ${level.name}; ${distanceDetail}`));
-      else if (near) events.push(event("proximity", candle, resolvedLevel, `Completed range came within the qualifying zone; ${distanceDetail}`));
-      if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`));
-      if (touched && favorable) events.push(event("hold", candle, resolvedLevel, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`));
-      if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`));
-      if (through) events.push(event("break through", candle, resolvedLevel, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`));
+      if (touched) events.push(event("touch", candle, resolvedLevel, interaction, `Completed range interacted with ${level.name}; ${distanceDetail}`));
+      else if (near) events.push(event("proximity", candle, resolvedLevel, interaction, `Completed range came within the qualifying zone; ${distanceDetail}`));
+      if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, interaction, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`));
+      if (touched && favorable) events.push(event("hold", candle, resolvedLevel, interaction, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`));
+      if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, interaction, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`));
+      if (through) events.push(event("break through", candle, resolvedLevel, interaction, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`));
     }
   }
 
@@ -550,8 +564,30 @@ export function levelInteractionDistance(
   return candleLow - high;
 }
 
-function distanceInTicks(distance: number): number {
-  return Math.ceil(Math.max(0, distance) / MES_TICK_SIZE - 1e-10);
+export function qualifyLevelInteraction(
+  distancePoints: number,
+  tolerancePoints: number,
+  tickSize: number = MES_TICK_SIZE,
+): QualifyingLevelInteraction {
+  const distanceTicks = Number.isFinite(distancePoints)
+    ? distanceInTicks(distancePoints, tickSize)
+    : Number.POSITIVE_INFINITY;
+  const toleranceTicks = Number.isFinite(tolerancePoints)
+    ? Math.round(tolerancePoints / tickSize)
+    : Number.POSITIVE_INFINITY;
+  return {
+    distancePoints,
+    distanceTicks,
+    tolerancePoints,
+    toleranceTicks,
+    qualifies: Number.isFinite(distancePoints)
+      && Number.isFinite(tolerancePoints)
+      && distancePoints <= tolerancePoints + 1e-10,
+  };
+}
+
+function distanceInTicks(distance: number, tickSize: number): number {
+  return Math.max(0, Math.ceil(Math.max(0, distance) / tickSize - 1e-10));
 }
 
 function resolvePullbackLevel(
@@ -773,8 +809,14 @@ function averageTrueRange(candles: readonly Candle[], period: number): number {
   return ranges.reduce((sum, range) => sum + range, 0) / ranges.length;
 }
 
-function event(type: PullbackEventType, candle: Candle, level: Level, detail: string): PullbackEvent {
-  return { type, time: candle.closeTime, level: level.name, price: level.price, detail };
+function event(
+  type: PullbackEventType,
+  candle: Candle,
+  level: Level,
+  interaction: QualifyingLevelInteraction,
+  detail: string,
+): PullbackEvent {
+  return { type, time: candle.closeTime, level: level.name, price: level.price, ...interaction, detail };
 }
 
 function pendingBreakout(detail: string): BreakoutEvent {

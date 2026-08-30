@@ -1517,9 +1517,19 @@ components:
           type: string
         price:
           type: number
+        distancePoints:
+          type: number
+        distanceTicks:
+          type: number
+        tolerancePoints:
+          type: number
+        toleranceTicks:
+          type: number
+        qualifies:
+          type: boolean
         detail:
           type: string
-      required: [type, time, level, price, detail]
+      required: [type, time, level, price, distancePoints, distanceTicks, tolerancePoints, toleranceTicks, qualifies, detail]
     PullbackAnalysis:
       type: object
       properties:

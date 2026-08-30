@@ -12,5 +12,10 @@ export interface PullbackEvent {
   time: string;
   level: string;
   price: number;
+  distancePoints: number;
+  distanceTicks: number;
+  tolerancePoints: number;
+  toleranceTicks: number;
+  qualifies: boolean;
   detail: string;
 }

@@ -7,6 +7,7 @@ import {
   categoriesFor,
   createVisualValidationTeachingExample,
   matchingTrade,
+  resolveQualifyingLevelAtCandle,
   validateVisualValidationTeaching,
   type VisualValidationTeachingInput,
   type VisualValidationRequest,
@@ -22,6 +23,10 @@ import {
   analyzeVisualValidationTeaching,
   resolveObservedEntryCandle,
 } from "./visual-validation-store.js";
+import { analyzePullback, type BreakoutEvent } from "./strategy/phase4.js";
+import { strategyConfig } from "./strategy/config.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
+import type { Candle } from "./strategy/types.js";
 
 const request: VisualValidationRequest = {
   symbol: "MES",
@@ -558,6 +563,75 @@ test("teaching validation uses the default twelve-tick proximity zone instead of
   assert.equal(result.levelInteractions[0]?.distanceTicks, 3);
   assert.equal(result.levelInteractions[0]?.allowedToleranceTicks, 12);
   assert.match(result.levelInteractions[0]?.reason ?? "", /Previous Day Low/);
+});
+
+test("detector and Visual Review return identical distance, ticks, and qualification", () => {
+  const source = buildVisualValidationSet(request).snapshots.find((item) => item.category === "pullback");
+  assert.ok(source);
+  const snapshot = structuredClone(source);
+  const levelCandle = snapshot.reviewCandles[1]!;
+  const breakoutCandle = snapshot.reviewCandles[0]!;
+  const level = levelCandle.high + 3;
+  snapshot.annotations.push({
+    id: "parity-level",
+    kind: "level",
+    label: "Parity level",
+    price: level,
+    available: true,
+    color: "blue",
+    detail: "Focused parity fixture.",
+    visibility: "machine",
+    openTime: null,
+    closeTime: null,
+  });
+  const toDetectorCandle = (value: typeof levelCandle): Candle => ({
+    openTime: Date.parse(value.openTime),
+    closeTime: Date.parse(value.closeTime),
+    open: value.open,
+    high: value.high,
+    low: value.low,
+    close: value.close,
+    volume: value.volume,
+    isComplete: value.isComplete,
+  });
+  const first = toDetectorCandle(breakoutCandle);
+  const l = toDetectorCandle(levelCandle);
+  const breakout = {
+    detected: true,
+    direction: "long",
+    time: first.closeTime,
+    candleOpenTime: first.openTime,
+    state: "QUALIFIED_BREAKOUT",
+    candidateTime: first.closeTime,
+    candidateCandleOpenTime: first.openTime,
+    distanceOutside: 1,
+    meaningfulDistance: 1,
+    breakoutVolume: first.volume,
+    baselineVolume: first.volume,
+    volumeRatio: 1,
+    volumeSupported: true,
+    bodyRatio: 1,
+    closeLocationRatio: 1,
+    candleStructureSupported: true,
+    continuationConfirmed: true,
+    continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION",
+    failed: false,
+    detail: "focused parity fixture",
+  } satisfies BreakoutEvent;
+  const detectorEvent = analyzePullback(
+    [first, l],
+    breakout,
+    [{ name: "Parity level", price: level }],
+    getFuturesContractSpecification("MES"),
+    strategyConfig(),
+  ).events.find((event) => event.level === "Parity level" && event.type === "proximity");
+  const visual = resolveQualifyingLevelAtCandle(snapshot, levelCandle, "parity-level", 12);
+  assert.ok(detectorEvent);
+  assert.equal(detectorEvent.distancePoints, visual.distancePoints);
+  assert.equal(detectorEvent.distanceTicks, visual.distanceTicks);
+  assert.equal(detectorEvent.tolerancePoints, 3);
+  assert.equal(detectorEvent.toleranceTicks, visual.toleranceTicks);
+  assert.equal(detectorEvent.qualifies, visual.qualifies);
 });
 
 test("teaching validation rejects levels beyond the configured proximity tolerance", () => {

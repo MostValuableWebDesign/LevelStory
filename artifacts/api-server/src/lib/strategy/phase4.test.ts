@@ -3,7 +3,7 @@ import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { analyzePullback, classifyRetracement, detectInitialBreakout, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, type BreakoutEvent } from "./phase4.js";
+import { analyzePullback, classifyRetracement, detectInitialBreakout, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, type BreakoutEvent } from "./phase4.js";
 import { phase5PatienceAnalysis } from "./phase5.js";
 import type { Candle } from "./types.js";
 
@@ -42,6 +42,49 @@ function breakoutFixture(): Candle[] {
   ];
 }
 
+function breakoutAt(candle: Candle): BreakoutEvent {
+  return {
+    detected: true,
+    direction: "long",
+    time: candle.closeTime,
+    candleOpenTime: candle.openTime,
+    state: "QUALIFIED_BREAKOUT",
+    candidateTime: candle.closeTime,
+    candidateCandleOpenTime: candle.openTime,
+    distanceOutside: 1,
+    meaningfulDistance: 1,
+    breakoutVolume: candle.volume,
+    baselineVolume: candle.volume,
+    volumeRatio: 1,
+    volumeSupported: true,
+    bodyRatio: 1,
+    closeLocationRatio: 1,
+    candleStructureSupported: true,
+    continuationConfirmed: true,
+    continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION",
+    failed: false,
+    detail: "focused fixture",
+  };
+}
+
+function analyzeSinglePullback(
+  high: number,
+  low: number,
+  close: number,
+  level = 100,
+  configOverrides: Parameters<typeof strategyConfig>[0] = {},
+) {
+  const breakoutCandle = candle(0, 100, 101, 99, 101, 100);
+  const levelCandle = candle(1, close, high, low, close, 100);
+  return analyzePullback(
+    [breakoutCandle, levelCandle],
+    breakoutAt(breakoutCandle),
+    [{ name: "Focused level", price: level }],
+    specification,
+    strategyConfig(configOverrides),
+  );
+}
+
 test("breakout requires a finalized NTZ and a completed close outside it", () => {
   const candles = breakoutFixture();
   const ntz = { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime };
@@ -76,13 +119,48 @@ test("pullback uses the shared 12-tick full-range tolerance and records interact
   assert.equal(pullback.maxDurationMinutes, 30);
 });
 
-test("pullback distance uses full L-candle range at the 0/4/8/12 tick boundaries", () => {
-  assert.equal(levelInteractionDistance(100, 101, 99), 0, "a wick crossing is zero distance");
-  assert.equal(levelInteractionDistance(100, 99, 98.5), 1, "four ticks above a candle below the level");
-  assert.equal(levelInteractionDistance(100, 98, 97.5), 2, "eight ticks above a candle below the level");
-  assert.equal(levelInteractionDistance(100, 97, 96.5), 3, "twelve ticks above a candle below the level");
-  assert.ok(Math.abs(levelInteractionDistance(100, 96.99, 96.5) - 3.01) < 1e-9, "distance beyond twelve ticks remains outside");
-  assert.equal(levelInteractionDistance(100, 102, 101), 1, "nearest wick is used when the candle is above the level");
+test("complete pullback detector qualifies full-range distances at 0/4/8/12 ticks and rejects beyond twelve", () => {
+  const cases = [
+    { label: "zero ticks", high: 100.25, low: 99.75, close: 100, distance: 0, ticks: 0, qualifies: true },
+    { label: "four ticks", high: 99, low: 98.5, close: 98.75, distance: 1, ticks: 4, qualifies: true },
+    { label: "eight ticks", high: 98, low: 97.5, close: 97.75, distance: 2, ticks: 8, qualifies: true },
+    { label: "exactly twelve ticks", high: 97, low: 96.5, close: 96.75, distance: 3, ticks: 12, qualifies: true },
+    { label: "just over twelve ticks", high: 96.99, low: 96.5, close: 96.75, distance: 3.01, ticks: 13, qualifies: false },
+  ];
+  for (const item of cases) {
+    const result = analyzeSinglePullback(item.high, item.low, item.close);
+    const event = result.events.find((candidate) => candidate.level === "Focused level");
+    assert.ok(event, `${item.label} produces detector evidence`);
+    assert.ok(Math.abs(event.distancePoints - item.distance) < 1e-9, `${item.label} distance`);
+    assert.equal(event.distanceTicks, item.ticks, `${item.label} tick count`);
+    assert.equal(event.tolerancePoints, 3);
+    assert.equal(event.toleranceTicks, 12);
+    assert.equal(event.qualifies, item.qualifies, `${item.label} qualification`);
+    assert.equal(result.events.some((candidate) => ["touch", "proximity"].includes(candidate.type)), item.qualifies, `${item.label} qualifying event`);
+  }
+});
+
+test("complete pullback detector handles above-level, below-level, and wick-crossing candles", () => {
+  const above = analyzeSinglePullback(101.5, 101.25, 101.4).events.find((event) => event.level === "Focused level");
+  const below = analyzeSinglePullback(99, 98.5, 98.75).events.find((event) => event.level === "Focused level");
+  const crossing = analyzeSinglePullback(100.25, 99.75, 100).events.find((event) => event.level === "Focused level");
+  assert.ok(above);
+  assert.equal(above.distanceTicks, 5);
+  assert.equal(above.qualifies, true);
+  assert.ok(below);
+  assert.equal(below.distanceTicks, 4);
+  assert.equal(below.qualifies, true);
+  assert.ok(crossing);
+  assert.equal(crossing.distancePoints, 0);
+  assert.equal(crossing.distanceTicks, 0);
+  assert.equal(crossing.qualifies, true);
+});
+
+test("shared qualification helper accepts the exact floating-point tolerance boundary", () => {
+  const result = qualifyLevelInteraction(3.00000000005, 3, 0.25);
+  assert.equal(result.distanceTicks, 13);
+  assert.equal(result.qualifies, true);
+  assert.equal(qualifyLevelInteraction(3.00000000011, 3, 0.25).qualifies, false);
   assert.equal(levelInteractionDistance(100, 103, 99, 99.5, 100.5), 0, "ranged levels use their complete zone");
 });
 
@@ -141,6 +219,80 @@ test("dynamic pullback levels resolve from the causal L candle, not the latest c
   const vwapEvent = result.events.find((item) => item.level === "VWAP" && item.type === "proximity");
   assert.ok(vwapEvent);
   assert.equal(vwapEvent.price, 100.5);
+});
+
+test("complete detector qualifies fractional VWAP at exactly the twelve-tick boundary", () => {
+  const first = candle(0, 105.1, 105.1, 105.1, 105.1, 100);
+  const high = 98.7583333333333;
+  const levelCandle = candle(1, high - 0.325, high, high - 0.7, high - 0.325, 100);
+  const result = analyzePullback(
+    [first, levelCandle],
+    breakoutAt(first),
+    [{ name: "VWAP", price: Number.NaN }],
+    specification,
+    strategyConfig(),
+    { causalCandles: [first, levelCandle], calendar },
+  );
+  const event = result.events.find((item) => item.level === "VWAP" && item.type === "proximity");
+  assert.ok(event);
+  assert.ok(Math.abs(event.distancePoints - 3) < 1e-9);
+  assert.equal(event.distanceTicks, 12);
+  assert.equal(event.qualifies, true);
+});
+
+test("complete detector resolves EMA 200 at the causal L candle", () => {
+  const first = candle(0, 100, 100.2, 99.8, 100, 100);
+  const levelCandle = candle(1, 103.25, 103.5, 103, 103.25, 100);
+  const result = analyzePullback(
+    [first, levelCandle],
+    breakoutAt(first),
+    [{ name: "EMA 200", price: Number.NaN }],
+    specification,
+    strategyConfig({ emaPeriod: 2 }),
+    { causalCandles: [first, levelCandle], calendar },
+  );
+  const event = result.events.find((item) => item.level === "EMA 200" && item.type === "proximity");
+  assert.ok(event);
+  assert.equal(event.price, 101.625);
+  assert.equal(event.distancePoints, 1.375);
+  assert.equal(event.distanceTicks, 6);
+  assert.equal(event.qualifies, true);
+});
+
+test("changing ATR cannot widen, narrow, or replace the configured three-point qualifying area", () => {
+  const prefix = [
+    candle(0, 100, 100.5, 99.5, 100, 100),
+    candle(1, 100, 100.5, 99.5, 100, 100),
+    candle(2, 100, 102, 99, 101, 100),
+  ];
+  const levelCandle = candle(3, 96.75, 97, 96.5, 96.75, 100);
+  const makeResult = (phase4AtrPeriod: number, high: number, low: number, close: number) => analyzePullback(
+    [...prefix, candle(3, close, high, low, close, 100)],
+    breakoutAt(prefix[2]!),
+    [{ name: "ATR-invariant level", price: 100 }],
+    specification,
+    strategyConfig({ phase4AtrPeriod }),
+  );
+  const onePeriod = makeResult(1, levelCandle.high, levelCandle.low, levelCandle.close);
+  const fourteenPeriod = makeResult(14, levelCandle.high, levelCandle.low, levelCandle.close);
+  assert.notEqual(onePeriod.atr14, fourteenPeriod.atr14);
+  for (const result of [onePeriod, fourteenPeriod]) {
+    assert.equal(result.proximityTolerance, 3);
+    const event = result.events.find((item) => item.level === "ATR-invariant level" && item.type === "proximity");
+    assert.ok(event);
+    assert.equal(event.distancePoints, 3);
+    assert.equal(event.qualifies, true);
+  }
+  for (const result of [
+    makeResult(1, 96.99, 96.5, 96.75),
+    makeResult(14, 96.99, 96.5, 96.75),
+  ]) {
+    const event = result.events.find((item) => item.level === "ATR-invariant level");
+    assert.ok(event);
+    assert.equal(event.distanceTicks, 13);
+    assert.equal(event.qualifies, false);
+    assert.equal(result.events.some((item) => ["touch", "proximity"].includes(item.type)), false);
+  }
 });
 
 test("Fibonacci anchors freeze at breakout, expose requested levels, allow manual correction, and classify depth independently", () => {
@@ -296,7 +448,18 @@ test("Fibonacci anchors begin at the later strong push and pre-qualification pat
 
   const patience = phase5PatienceAnalysis(candles, "long", {
     status: "observed",
-    events: [{ type: "touch", time: candleCloseTime(3), level: "ORB high", price: 102, detail: "Pre-qualification interaction." }],
+    events: [{
+      type: "touch",
+      time: candleCloseTime(3),
+      level: "ORB high",
+      price: 102,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      detail: "Pre-qualification interaction.",
+    }],
     evaluatedCandles: 1,
     maxCandles: 6,
     maxDurationMinutes: 30,

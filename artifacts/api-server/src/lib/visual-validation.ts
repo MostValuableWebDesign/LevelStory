@@ -28,7 +28,7 @@ import {
   tradingDateForTimestamp,
 } from "./futures/session-calendar.js";
 import { causalEmaSeries } from "./strategy/indicators.js";
-import { levelInteractionDistance } from "./strategy/phase4.js";
+import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
@@ -458,11 +458,9 @@ export function resolveQualifyingLevelAtCandle(
   const distancePoints = Number.isFinite(valueAtInteraction)
     ? levelInteractionDistance(valueAtInteraction, levelCandle.high, levelCandle.low, rangeLow, rangeHigh)
     : Number.POSITIVE_INFINITY;
-  const distanceTicks = Number.isFinite(distancePoints)
-    ? Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-10)
-    : Number.POSITIVE_INFINITY;
   const tolerancePoints = levelTolerancePoints(toleranceTicks);
-  const qualifies = machineVisible && distancePoints <= tolerancePoints + 1e-10;
+  const interaction = qualifyLevelInteraction(distancePoints, tolerancePoints, TEACHING_TICK_SIZE);
+  const qualifies = machineVisible && interaction.qualifies;
   const reason = !annotation
     ? `Level ${levelId} is not present in the immutable snapshot.`
     : !machineVisible
@@ -470,8 +468,8 @@ export function resolveQualifyingLevelAtCandle(
       : !Number.isFinite(valueAtInteraction)
         ? `${annotation.label} has no causal value at L.`
         : qualifies
-          ? `${annotation.label} at ${valueAtInteraction.toFixed(3)} is within ${distanceTicks} ticks at L.`
-          : `Patience candle remained ${distanceTicks} ticks from ${annotation.label}.`;
+          ? `${annotation.label} at ${valueAtInteraction.toFixed(3)} is within ${interaction.distanceTicks} ticks at L.`
+          : `Patience candle remained ${interaction.distanceTicks} ticks from ${annotation.label}.`;
   return {
     levelId,
     levelType: dynamic ? "dynamic_indicator" : annotation?.kind === "level" && (rangeLow !== null || rangeHigh !== null) ? "level_range" : "fixed_level",
@@ -482,7 +480,7 @@ export function resolveQualifyingLevelAtCandle(
     sourceTimestamp,
     machineVisible,
     distancePoints,
-    distanceTicks,
+    distanceTicks: interaction.distanceTicks,
     toleranceTicks,
     qualifies,
     reason,
