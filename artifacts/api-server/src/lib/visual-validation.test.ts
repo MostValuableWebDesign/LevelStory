@@ -338,7 +338,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     confirmationBufferTicks: 3,
     nextObservedCandle: confirmed ? null : evidenceCandle(immediate),
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
-    status: confirmed ? "CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
+    status: confirmed ? "SIGNAL_CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
     reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the three-tick buffer; P1 expired.",
     evaluationCursor: new Date(immediate.closeTime).toISOString(),
     formulaVersion: "test",
@@ -396,7 +396,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     },
   );
   assert.ok(confirmedSet.snapshots.some((snapshot) => snapshot.occurrenceId === confirmedWithoutTrade.occurrenceId));
-  assert.equal(confirmedSet.snapshots.some((snapshot) => snapshot.category === "qualified_trade"), false);
+  assert.equal(confirmedSet.snapshots.some((snapshot) => snapshot.category === "qualified_trade"), true);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {

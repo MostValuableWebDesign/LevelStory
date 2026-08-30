@@ -191,12 +191,25 @@ test("ORB qualification does not require strong-breakout volume or body classifi
   assert.equal(result.rules.some((rule) => rule.key === "strongBreakout" || rule.key === "breakoutVolume"), false);
 });
 
-test("taxonomy exposes four strategies and separates components from outcomes", () => {
+test("ORB continuation does not qualify a boundary probe without directional continuation", () => {
+  const result = evaluateOrbBreakPullbackContinuation(baseContext({
+    breakout: {
+      ...baseContext().breakout,
+      continuationConfirmed: false,
+      state: "ORB_PROBE_WAIT",
+    },
+  }));
+  assert.notEqual(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "breakoutContinuation")?.passed, false);
+});
+
+test("taxonomy exposes five strategies and separates components from outcomes", () => {
   assert.deepEqual(STRATEGY_IDS, [
     "ORB_PULLBACK_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "PATIENCE_CANDLE_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",
+    "PEAK_RETRACEMENT_REVERSAL",
   ]);
   assert.ok(STRATEGY_COMPONENT_TYPES.includes("BULLISH_PATIENCE"));
   assert.ok(STRATEGY_COMPONENT_TYPES.includes("ENTRY_CONFIRMATION_FAILED"));
@@ -244,15 +257,13 @@ test("consolidation breakout requires a strong breakout and shared patience sequ
   assert.notEqual(noPatience.decision, "SETUP QUALIFIED");
 });
 
-test("ORB continuation never qualifies when any mandatory gate fails", () => {
+test("ORB continuation never qualifies when an actual mandatory gate fails", () => {
   const gates: Array<[string, Partial<Phase6Context>]> = [
     ["NTZ", { levels: { ...baseContext().levels, ntz: { ...ntz(), complete: false } } }],
     ["completed breakout", { breakout: { ...baseContext().breakout, detected: false, direction: null } }],
-    ["trend", { trend: { direction: "neutral", structure: "mixed structure" } }],
     ["context", { pullback: { ...baseContext().pullback, events: [] }, fibonacci: { ...baseContext().fibonacci, frozen: false, levels: [] } }],
      ["patience", { patience: patience("PATIENCE_CANDLE_VALID") }],
      ["immediate trigger", { patience: patience("PATIENCE_CANDLE_EXPIRED") }],
-    ["risk", { riskApproved: false }],
   ];
   for (const [name, overrides] of gates) {
     const result = evaluateOrbBreakPullbackContinuation(baseContext(overrides));

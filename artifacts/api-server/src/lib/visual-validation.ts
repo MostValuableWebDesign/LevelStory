@@ -931,6 +931,24 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
   return causalMatches.length === 1 ? causalMatches[0]! : null;
 }
 
+function matchingTradeForOccurrence(
+  occurrence: HistoricalOccurrence,
+  record: BacktestAuditRecord,
+  trades: readonly BacktestTrade[],
+): BacktestTrade | null {
+  if (!occurrence.patienceTimestamp || !occurrence.entryTimestamp) return null;
+  const candidates = trades.filter((trade) =>
+    trade.tradingDate === occurrence.tradingDate
+    && trade.contractSymbol === occurrence.contractSymbol
+    && canonicalStrategyId(trade.setupType) === canonicalStrategyId(occurrence.strategyCandidate)
+    && trade.direction === occurrence.direction
+    && trade.period === record.period
+    && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
+    && trade.audit?.triggerCandleOpenTime === occurrence.entryTimestamp,
+  );
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
 function auditForOccurrence(
   occurrence: HistoricalOccurrence,
   audits: readonly BacktestAuditRecord[],
@@ -1886,7 +1904,9 @@ export function buildHistoricalVisualValidationSetFromReport(
           ? "rejected_setup"
           : "qualified_trade";
     if (!category) return [];
-    const trade = occurrence.canonicalTrade ? matchingTrade(audit, report.trades) : null;
+    const trade = occurrence.canonicalTrade
+      ? matchingTradeForOccurrence(occurrence, audit, report.trades) ?? matchingTrade(audit, report.trades)
+      : null;
     if (category === "qualified_trade" && !hasConfirmedTradeOccurrence(occurrence)) return [];
     const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
     if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED") {

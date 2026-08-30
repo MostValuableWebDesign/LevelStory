@@ -527,7 +527,7 @@ test("ledger merges the same causal occurrence and preserves canonical plus seco
   assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
 });
 
-test("ledger retains diagnostic risk rejection without fabricating a trade", () => {
+test("ledger does not turn a removed risk gate into a separate trade outcome", () => {
   const risk = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
     id: "risk-audit",
     decision: "SETUP REJECTED — RISK",
@@ -537,8 +537,7 @@ test("ledger retains diagnostic risk rejection without fabricating a trade", () 
   });
   const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [risk], []);
   const riskOccurrence = occurrences.find((occurrence) => occurrence.kind === "risk");
-  assert.ok(riskOccurrence);
-  assert.equal(riskOccurrence.canonicalTrade, false);
+  assert.equal(riskOccurrence, undefined);
   assert.equal(occurrences.some((occurrence) => occurrence.kind === "trade"), false);
 });
 
@@ -696,7 +695,7 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
   assert.equal(patience[0]?.entryCandle, null);
   assert.equal(patience[0]?.nextObservedCandle?.openTime, failedImmediate.openTime);
   assert.equal(patience[0]?.canonicalTrade, false);
-  assert.equal(patience[1]?.status, "CONFIRMED");
+  assert.equal(patience[1]?.status, "SIGNAL_CONFIRMED");
   assert.equal(patience[1]?.entryTimestamp, base.triggerCandleOpenTime);
   assert.equal(patience[1]?.canonicalTrade, true);
 });

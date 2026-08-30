@@ -20,3 +20,9 @@ A qualified trade may attach only to the patience occurrence whose completed E o
 **Why:** Audit-level trade fallback can otherwise lend a later trade's E, fill, and exit markers to an earlier failed P, creating a visually valid-looking but temporally impossible sequence.
 
 **How to apply:** Preserve the failed immediate candle and buffer comparison on the expired row, leave its entry and canonical-trade fields empty, and build trade markers only from the exact confirmed occurrence.
+
+Review trade linkage must use the occurrence's exact P and E timestamps as a causal key, with audit-based matching only as a compatibility fallback.
+
+**Why:** Audit records can omit or later enrich execution metadata even when the confirmed occurrence's P→E evidence is complete; requiring those optional fields hides valid confirmed trades from Review.
+
+**How to apply:** Match contract, date, direction, strategy, period, and exact patience/entry timestamps first; accept the trade only when that occurrence-specific candidate is unique.
