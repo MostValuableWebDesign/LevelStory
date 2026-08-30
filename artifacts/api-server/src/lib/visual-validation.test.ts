@@ -52,6 +52,19 @@ test("simulated visual-validation requests default their persisted source", () =
   assert.equal(set.request.source, "simulated");
 });
 
+test("visual-validation sets expose build, formula, source, and freshness provenance", () => {
+  const set = buildVisualValidationSet(request);
+  assert.ok(set.buildId.length > 0);
+  assert.equal(set.currentBuildId, set.buildId);
+  assert.equal(set.stale, false);
+  assert.match(set.formulaHash, /^[0-9a-f]{64}$/);
+  assert.match(set.sourceFingerprint, /^[0-9a-f]{64}$/);
+
+  const stored = storeVisualValidationSet({ ...set, buildId: "previous-build" });
+  assert.equal(stored.stale, true);
+  assert.equal(stored.currentBuildId, set.currentBuildId);
+});
+
 test("historical projection keeps contract-local candles and truthful category gaps", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
   assert.ok(fixture);

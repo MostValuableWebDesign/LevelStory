@@ -1236,7 +1236,31 @@ function occurrenceId(seed: string): string {
   return `occ-${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
 }
 
-function sourceFingerprint(dataset: CausalReplayDataset): string {
+function governedOccurrenceId(value: HistoricalOccurrence): string {
+  const actualObservedE = value.nextObservedCandle && typeof value.nextObservedCandle.openTime === "number"
+    ? value.nextObservedCandle.openTime
+    : null;
+  return occurrenceId([
+    "historical-occurrence-v2",
+    value.sourceFingerprint,
+    value.formulaHash,
+    value.formulaVersion,
+    value.contractSymbol,
+    value.tradingDate,
+    value.kind,
+    value.strategyCandidate,
+    value.direction,
+    value.lEventId,
+    value.lTimestamp,
+    value.patienceTimestamp,
+    value.expectedEntryTimestamp,
+    actualObservedE,
+    value.entryTimestamp,
+    value.status,
+  ].map((part) => part ?? "absent").join("|"));
+}
+
+export function sourceFingerprint(dataset: CausalReplayDataset): string {
   const digest = createHash("sha256");
   digest.update("levelstory-causal-source-v2|");
   if (dataset.contentFingerprint) digest.update(`importer:${dataset.contentFingerprint}|`);
@@ -1345,7 +1369,7 @@ export function buildHistoricalOccurrenceLedger(
   const upsert = (identity: string, value: HistoricalOccurrence) => {
     const existing = byIdentity.get(identity);
     if (!existing) {
-      byIdentity.set(identity, value);
+      byIdentity.set(identity, { ...value, occurrenceId: governedOccurrenceId(value) });
       return;
     }
     const precedence = (setupType: string): number => [
@@ -1361,11 +1385,12 @@ export function buildHistoricalOccurrenceLedger(
       ...existing.secondaryStrategyMatches,
       ...value.secondaryStrategyMatches,
     ])];
-    byIdentity.set(identity, {
+    const merged = {
       ...primary,
       secondaryStrategyMatches: matches.filter((match) => match !== primary.strategyCandidate),
       canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
-    });
+    };
+    byIdentity.set(identity, { ...merged, occurrenceId: governedOccurrenceId(merged) });
   };
   for (const record of audits) {
     const trade = tradeForRecord(record, trades);
@@ -1375,7 +1400,18 @@ export function buildHistoricalOccurrenceLedger(
       .filter((candidate) => candidate.id !== record.id && candidate.decision === "SETUP QUALIFIED")
       .map((candidate) => canonicalStrategyId(candidate.setupType) ?? candidate.setupType);
     for (const event of record.pullbackOccurrences ?? []) {
-      const identity = `pullback|${record.tradingDate}|${record.contractSymbol}|${event.type}|${event.level}|${event.time}`;
+      const identity = [
+        "pullback",
+        fingerprint,
+        formulaHash,
+        FIXED_FORMULA_VERSION,
+        record.tradingDate,
+        record.contractSymbol,
+        record.direction ?? "absent",
+        pullbackEventId(event),
+        event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
+        event.type,
+      ].join("|");
       const id = occurrenceId(identity);
       const evidence = levelEvidence([event]);
       upsert(identity, {
@@ -1461,7 +1497,21 @@ export function buildHistoricalOccurrenceLedger(
         && trade.audit?.triggerCandleOpenTime === new Date(confirmedEntry.openTime).toISOString()
         ? trade
         : undefined;
-      const identity = `patience|${record.tradingDate}|${record.contractSymbol}|${patience.direction}|${patience.occurrenceId}`;
+      const identity = [
+        "patience",
+        fingerprint,
+        formulaHash,
+        FIXED_FORMULA_VERSION,
+        record.tradingDate,
+        record.contractSymbol,
+        patience.direction,
+        linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? "absent",
+        linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : "absent",
+        new Date(patience.patienceCandle.openTime).toISOString(),
+        new Date(expectedEntryCandleOpenTime).toISOString(),
+        confirmedEntry ? new Date(confirmedEntry.openTime).toISOString() : "absent",
+        outcomeStatus,
+      ].join("|");
       const id = occurrenceId(identity);
       upsert(identity, {
         occurrenceId: id,
@@ -1505,7 +1555,22 @@ export function buildHistoricalOccurrenceLedger(
       });
     }
     if (record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade) {
-      const identity = `decision|${record.id}|${record.patienceState}|${record.rejectionCategory}|${trade?.id ?? "none"}`;
+      const identity = [
+        "decision",
+        fingerprint,
+        formulaHash,
+        FIXED_FORMULA_VERSION,
+        record.tradingDate,
+        record.contractSymbol,
+        record.direction ?? "absent",
+        record.id,
+        record.patienceCandleOpenTime ?? "absent",
+        record.patienceCandleCloseTime ?? "absent",
+        record.triggerCandleOpenTime ?? "absent",
+        record.patienceState ?? "absent",
+        record.rejectionCategory ?? "absent",
+        trade?.id ?? "none",
+      ].join("|");
       upsert(identity, {
         occurrenceId: occurrenceId(identity),
         auditId: record.id,
@@ -1552,8 +1617,8 @@ export function buildHistoricalOccurrenceLedger(
   return [...byIdentity.values()].sort((first, second) => {
     const firstTime = first.lTimestamp ?? first.patienceTimestamp ?? first.entryTimestamp ?? first.evaluationCursor;
     const secondTime = second.lTimestamp ?? second.patienceTimestamp ?? second.entryTimestamp ?? second.evaluationCursor;
-    return `${first.tradingDate}|${firstTime}|${stageRank[first.kind]}|${first.occurrenceId}`
-      .localeCompare(`${second.tradingDate}|${secondTime}|${stageRank[second.kind]}|${second.occurrenceId}`);
+    return `${first.tradingDate}|${firstTime}|${first.patienceTimestamp ?? "absent"}|${stageRank[first.kind]}|${first.occurrenceId}`
+      .localeCompare(`${second.tradingDate}|${secondTime}|${second.patienceTimestamp ?? "absent"}|${stageRank[second.kind]}|${second.occurrenceId}`);
   });
 }
 

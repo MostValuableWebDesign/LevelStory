@@ -3756,8 +3756,12 @@ components:
       properties:
         reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
         createdAt: { type: string, format: date-time }
+        buildId: { type: string, minLength: 1, maxLength: 128 }
+        currentBuildId: { type: string, minLength: 1, maxLength: 128 }
+        stale: { type: boolean }
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         formulaVersion: { type: string }
+        sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
         source: { type: string, enum: [simulated, historical_databento] }
         symbol: { type: string }
         request: { $ref: "#/components/schemas/VisualValidationRequest" }
@@ -3786,7 +3790,7 @@ components:
                   count: { type: number, minimum: 0 }
                 required: [stage, count]
           required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts]
-      required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
+      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
     VisualValidationReviewRequest:
       type: object
       properties:

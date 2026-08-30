@@ -13,6 +13,7 @@ import {
   createVisualValidationTeachingExample,
 } from "./visual-validation.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
+import { APPLICATION_BUILD_ID } from "./build-metadata.js";
 
 type StoredVisualValidationSet = {
   set: VisualValidationSet;
@@ -74,7 +75,13 @@ function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualVali
 export function storeVisualValidationSet(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): VisualValidationSet {
   prune();
   const stored: StoredVisualValidationSet = {
-    set: { ...set, reviewSetId: randomUUID(), createdAt: new Date().toISOString() },
+    set: {
+      ...set,
+      reviewSetId: randomUUID(),
+      createdAt: new Date().toISOString(),
+      currentBuildId: APPLICATION_BUILD_ID,
+      stale: set.buildId !== APPLICATION_BUILD_ID,
+    },
     reviews: new Map(),
     reviewHistory: [],
     lastAccessedAt: Date.now(),

@@ -3,7 +3,7 @@ import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { analyzePullback, classifyRetracement, detectInitialBreakout, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, type BreakoutEvent } from "./phase4.js";
+import { analyzePullback, classifyRetracement, detectInitialBreakout, detectPullbackStructure, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, type BreakoutEvent } from "./phase4.js";
 import { phase5PatienceAnalysis } from "./phase5.js";
 import type { Candle } from "./types.js";
 
@@ -84,6 +84,21 @@ function analyzeSinglePullback(
     strategyConfig(configOverrides),
   );
 }
+
+test("pullback structure is causal and independent of qualifying levels", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 101, 100);
+  const impulse = candle(1, 101, 103, 100.5, 102.8, 120);
+  const retracement = candle(2, 102.8, 103, 101.5, 102, 90);
+  const structure = detectPullbackStructure([impulse, retracement], breakoutCandle, "long");
+  assert.equal(structure.detected, true);
+  assert.equal(structure.impulseExtreme, impulse.high);
+  assert.equal(structure.pullbackStart, retracement.openTime);
+  assert.equal(structure.pullbackEnd, retracement.closeTime);
+  assert.ok((structure.depthPoints ?? 0) > 0);
+
+  const continuationOnly = detectPullbackStructure([impulse, candle(2, 102.8, 103.5, 102.5, 103.4, 90)], breakoutCandle, "long");
+  assert.equal(continuationOnly.detected, false);
+});
 
 test("breakout requires a finalized NTZ and a completed close outside it", () => {
   const candles = breakoutFixture();

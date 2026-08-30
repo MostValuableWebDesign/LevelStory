@@ -20,6 +20,7 @@ import {
   type DecisionState,
   type Direction,
   type StrategyConfig,
+  detectReversalEvidence,
   consolidationThresholds,
   type OrbBreakoutState,
   type BreakoutContinuationCondition,
@@ -522,7 +523,7 @@ export function createMarketSnapshot(
     config.patienceStopBufferTicks,
   );
   const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
-  const preliminarySetupAnalysis = phase6Analysis({
+  const baseSetupContext = {
     candles: regular,
     levels,
     breakout: evaluatedBreakout,
@@ -530,10 +531,30 @@ export function createMarketSnapshot(
     fibonacci,
     volume: volumeAnalysis,
     patience,
-    reversalPatience: patience,
     trend,
     riskApproved: true,
     config,
+  };
+  const preliminaryReversalEvidence = detectReversalEvidence(baseSetupContext);
+  const reversalDirection: Direction | null = preliminaryReversalEvidence.directionalConfirmation
+    ? preliminaryReversalEvidence.reversalDirection ?? null
+    : null;
+  const reversalPatience = phase5PatienceAnalysis(
+    regular,
+    reversalDirection,
+    pullback,
+    levels.ntz,
+    levels.ntzEvents,
+    undefined,
+    trend.direction,
+    specification.tickSize,
+    config.patienceEntryBufferTicks,
+    config.patienceStopBufferTicks,
+    true,
+  );
+  const preliminarySetupAnalysis = phase6Analysis({
+    ...baseSetupContext,
+    reversalPatience,
   });
   const direction = selectExecutableDirection(preliminarySetupAnalysis, evaluatedBreakout, patienceDirection);
   const plan = buildRiskPlan(direction, levels, patience, riskInput, config, specification, {
@@ -542,10 +563,6 @@ export function createMarketSnapshot(
     liquidity: current?.volume,
     dataAgeSeconds: 0,
   });
-  const reversalDirection: Direction | null = patienceDirection === null
-    ? null
-    : patienceDirection === "long" ? "short" : "long";
-  const reversalPatience = phase5PatienceAnalysis(regular, reversalDirection, pullback, levels.ntz, levels.ntzEvents, undefined, trend.direction, specification.tickSize, config.patienceEntryBufferTicks, config.patienceStopBufferTicks);
   const setupAnalysis = phase6Analysis({
     candles: regular,
     levels,

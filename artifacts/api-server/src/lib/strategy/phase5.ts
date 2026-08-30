@@ -93,6 +93,7 @@ export type PatienceEngineOptions = {
   entryBufferTicks?: number;
   stopBufferTicks?: number;
   validContext?: boolean;
+  allowOpposingTrend?: boolean;
 };
 
 const PATIENCE_STATES: readonly PatienceState[] = [
@@ -124,6 +125,7 @@ export function patienceCandleEngine(
   const tickSize = options.tickSize ?? 0.25;
   const entryBufferTicks = options.entryBufferTicks ?? 4;
   const stopBufferTicks = options.stopBufferTicks ?? 1;
+  const allowOpposingTrend = options.allowOpposingTrend ?? false;
   validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
   const validContext = options.validContext ?? eligibility.length > 0;
   if (!validContext) return waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks);
@@ -133,7 +135,7 @@ export function patienceCandleEngine(
   const candidateIndexes = completed
     .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
-  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
+  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend);
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, occurrences });
   const candidate = candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
@@ -148,7 +150,7 @@ export function patienceCandleEngine(
     if (!previous) return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event));
     const event = candidate.event!;
     const shapeValid = patienceShape(candidate.candle, previous, direction);
-    const trendValid = directionTrendMatches(direction, trend);
+    const trendValid = allowOpposingTrend || directionTrendMatches(direction, trend);
     if (!trendValid || !shapeValid) {
       return finalize({
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
@@ -229,6 +231,7 @@ export function phase5PatienceAnalysis(
   tickSize = 0.25,
   entryBufferTicks = 4,
   stopBufferTicks = 1,
+  allowOpposingTrend = false,
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const eligibilityEvents: PatienceEligibilityEvent[] = [
@@ -268,6 +271,7 @@ export function phase5PatienceAnalysis(
     entryBufferTicks,
     stopBufferTicks,
     validContext: pullback.status === "observed" || (ntz?.complete === true),
+    allowOpposingTrend,
   });
 }
 
@@ -401,6 +405,7 @@ function buildPatienceOccurrences(
   entryBufferTicks: number,
   stopBufferTicks: number,
   intrabarEvidence: readonly IntrabarEvidence[],
+  allowOpposingTrend: boolean,
 ): PatienceOccurrence[] {
   return candidates.map((candidate) => {
     const previous = completed[candidate.index - 1];
@@ -410,9 +415,19 @@ function buildPatienceOccurrences(
       && nextObserved.isComplete
       ? nextObserved
       : undefined;
+    const laterIntervalObserved = nextObserved
+      ? sorted.some((item) => item.openTime > nextObserved.openTime)
+      : false;
     const evaluationCursor = trigger?.closeTime
-      ?? completed.at(-1)?.closeTime
-      ?? candidate.candle.closeTime;
+      ?? (!nextObserved
+        ? candidate.candle.closeTime
+        : nextObserved.openTime !== candidate.candle.closeTime
+          ? candidate.candle.closeTime
+          : nextObserved.isComplete
+            ? nextObserved.closeTime
+            : laterIntervalObserved
+              ? candidate.candle.closeTime
+              : candidate.candle.closeTime);
     const event = candidate.event!;
     const confirmationThreshold = direction === "long"
       ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
@@ -425,7 +440,7 @@ function buildPatienceOccurrences(
     let analysis: PatienceAnalysis;
     if (!previous) {
       analysis = waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, event);
-    } else if (!directionTrendMatches(direction, trend)) {
+    } else if (!allowOpposingTrend && !directionTrendMatches(direction, trend)) {
       analysis = {
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
@@ -463,9 +478,6 @@ function buildPatienceOccurrences(
     } else {
       analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
     }
-    const laterIntervalObserved = nextObserved
-      ? sorted.some((item) => item.openTime > nextObserved.openTime)
-      : false;
     const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
       ? "CANDIDATE"
       : nextObserved.openTime !== candidate.candle.closeTime

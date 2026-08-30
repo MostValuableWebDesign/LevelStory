@@ -119,9 +119,22 @@ export type PullbackAnalysisOptions = {
   calendar?: FuturesSessionCalendar;
 };
 
+export type PullbackStructure = {
+  detected: boolean;
+  direction: Direction | null;
+  impulseExtreme: number | null;
+  impulseExtremeTime: number | null;
+  pullbackStart: number | null;
+  pullbackEnd: number | null;
+  depthPoints: number | null;
+  retracementPercent: number | null;
+  greaterThan50PercentWarning: boolean;
+};
+
 export type PullbackAnalysis = {
   status: "pending" | "observed" | "expired";
   events: PullbackEvent[];
+  structure?: PullbackStructure;
   evaluatedCandles: number;
   maxCandles: number;
   maxDurationMinutes: number;
@@ -476,6 +489,7 @@ export function analyzePullback(
     return {
       status: "pending",
       events: [],
+      structure: emptyPullbackStructure(),
       evaluatedCandles: 0,
       maxCandles: config.phase4PullbackMaxCandles,
       maxDurationMinutes: config.phase4PullbackMaxMinutes,
@@ -487,11 +501,12 @@ export function analyzePullback(
     };
   }
   const breakoutIndex = completed.findIndex((candle) => candle.openTime === breakout.candleOpenTime);
-  if (breakoutIndex < 0) return { status: "pending", events: [], evaluatedCandles: 0, maxCandles: config.phase4PullbackMaxCandles, maxDurationMinutes: config.phase4PullbackMaxMinutes, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: levels.length, detail: "Breakout candle is not visible in the completed replay." };
+  if (breakoutIndex < 0) return { status: "pending", events: [], structure: emptyPullbackStructure(), evaluatedCandles: 0, maxCandles: config.phase4PullbackMaxCandles, maxDurationMinutes: config.phase4PullbackMaxMinutes, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: levels.length, detail: "Breakout candle is not visible in the completed replay." };
   const breakoutCandle = completed[breakoutIndex];
   const postBreakout = completed.slice(breakoutIndex + 1).filter((candle) =>
     (candle.openTime - breakoutCandle.closeTime) <= config.phase4PullbackMaxMinutes * 60_000,
   ).slice(0, config.phase4PullbackMaxCandles);
+  const structure = detectPullbackStructure(postBreakout, breakoutCandle, breakout.direction);
   const atr14 = averageTrueRange(completed.slice(0, breakoutIndex + 1), config.phase4AtrPeriod);
   // This is the executable qualifying-level tolerance. ATR remains exposed
   // below as diagnostic evidence, but can never widen or replace this zone.
@@ -547,6 +562,7 @@ export function analyzePullback(
   return {
     status,
     events,
+    structure,
     evaluatedCandles: postBreakout.length,
     maxCandles: config.phase4PullbackMaxCandles,
     maxDurationMinutes: config.phase4PullbackMaxMinutes,
@@ -555,6 +571,81 @@ export function analyzePullback(
     atr14: finiteOrNull(atr14),
     qualifyingLevelCount: validLevels.length,
     detail: events.length ? `${events.length} pullback observations across ${postBreakout.length} completed candles.` : "No qualifying pullback interaction in the bounded window.",
+  };
+}
+
+function emptyPullbackStructure(): PullbackStructure {
+  return {
+    detected: false,
+    direction: null,
+    impulseExtreme: null,
+    impulseExtremeTime: null,
+    pullbackStart: null,
+    pullbackEnd: null,
+    depthPoints: null,
+    retracementPercent: null,
+    greaterThan50PercentWarning: false,
+  };
+}
+
+export function detectPullbackStructure(
+  postBreakout: readonly Candle[],
+  breakoutCandle: Candle,
+  direction: Direction,
+): PullbackStructure {
+  if (!postBreakout.length) return emptyPullbackStructure();
+  let extreme = direction === "long" ? breakoutCandle.high : breakoutCandle.low;
+  let extremeTime = breakoutCandle.openTime;
+  let pullbackStart: number | null = null;
+  let pullbackEnd: number | null = null;
+  let retracementExtreme = direction === "long" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+
+  for (const candle of postBreakout) {
+    if (direction === "long") {
+      if (pullbackStart === null && candle.high > extreme) {
+        extreme = candle.high;
+        extremeTime = candle.openTime;
+        continue;
+      }
+      if (pullbackStart === null && candle.low < extreme) pullbackStart = candle.openTime;
+      if (pullbackStart !== null) {
+        retracementExtreme = Math.min(retracementExtreme, candle.low);
+        pullbackEnd = candle.closeTime;
+      }
+    } else {
+      if (pullbackStart === null && candle.low < extreme) {
+        extreme = candle.low;
+        extremeTime = candle.openTime;
+        continue;
+      }
+      if (pullbackStart === null && candle.high > extreme) pullbackStart = candle.openTime;
+      if (pullbackStart !== null) {
+        retracementExtreme = Math.max(retracementExtreme, candle.high);
+        pullbackEnd = candle.closeTime;
+      }
+    }
+  }
+
+  if (pullbackStart === null || pullbackEnd === null) return emptyPullbackStructure();
+  const depthPoints = direction === "long"
+    ? extreme - retracementExtreme
+    : retracementExtreme - extreme;
+  const impulseRange = direction === "long"
+    ? extreme - breakoutCandle.low
+    : breakoutCandle.high - extreme;
+  const retracementPercent = impulseRange > 0
+    ? Number(Math.max(0, depthPoints / impulseRange * 100).toFixed(1))
+    : null;
+  return {
+    detected: depthPoints > 0,
+    direction,
+    impulseExtreme: extreme,
+    impulseExtremeTime: extremeTime,
+    pullbackStart,
+    pullbackEnd,
+    depthPoints,
+    retracementPercent,
+    greaterThan50PercentWarning: retracementPercent !== null && retracementPercent > 50,
   };
 }
 

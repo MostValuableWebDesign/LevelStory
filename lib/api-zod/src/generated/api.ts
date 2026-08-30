@@ -4295,7 +4295,12 @@ export const GetVisualValidationSetQueryParams = zod.object({
 })
 
 export const getVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationSetResponseBuildIdMax = 128;
+
+export const getVisualValidationSetResponseCurrentBuildIdMax = 128;
+
 export const getVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const getVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
 export const getVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -4359,8 +4364,12 @@ export const getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemC
 export const GetVisualValidationSetResponse = zod.object({
   "reviewSetId": zod.string().regex(getVisualValidationSetResponseReviewSetIdRegExp),
   "createdAt": zod.coerce.date(),
+  "buildId": zod.string().min(1).max(getVisualValidationSetResponseBuildIdMax),
+  "currentBuildId": zod.string().min(1).max(getVisualValidationSetResponseCurrentBuildIdMax),
+  "stale": zod.boolean(),
   "formulaHash": zod.string().regex(getVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationSetResponseSourceFingerprintRegExp),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -4644,7 +4653,12 @@ export const CreateVisualValidationSetBody = zod.object({
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const createVisualValidationSetResponseBuildIdMax = 128;
+
+export const createVisualValidationSetResponseCurrentBuildIdMax = 128;
+
 export const createVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const createVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
 export const createVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -4708,8 +4722,12 @@ export const createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsIt
 export const CreateVisualValidationSetResponse = zod.object({
   "reviewSetId": zod.string().regex(createVisualValidationSetResponseReviewSetIdRegExp),
   "createdAt": zod.coerce.date(),
+  "buildId": zod.string().min(1).max(createVisualValidationSetResponseBuildIdMax),
+  "currentBuildId": zod.string().min(1).max(createVisualValidationSetResponseCurrentBuildIdMax),
+  "stale": zod.boolean(),
   "formulaHash": zod.string().regex(createVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(createVisualValidationSetResponseSourceFingerprintRegExp),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({

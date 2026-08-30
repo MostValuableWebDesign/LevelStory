@@ -62,6 +62,16 @@ test("a later candle cannot be stored as the immediate-next entry candle", () =>
   assert.match(result.detail, /00:10:00\.000Z.*00:15:00\.000Z/);
 });
 
+test("a missing immediate E uses the expected boundary even after a later candle", () => {
+  const candles = setup("long", candle(2, 10.8, 11, 9.2, 10.6)).slice(0, 2);
+  candles.push(candle(4, 10.8, 12.1, 10.2, 12));
+  const occurrence = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() }).occurrences?.[0];
+  assert.equal(occurrence?.outcomeStatus, "EXPIRED_MISSING_E");
+  assert.equal(occurrence?.evaluationCursor, candles[1].closeTime);
+  assert.equal(occurrence?.triggerCandle, null);
+  assert.equal(occurrence?.nextObservedCandle?.openTime, candles[2].openTime);
+});
+
 test("a failed immediate trigger expires and a later candle cannot trigger it", () => {
   const candles = setup("long", candle(2, 10.8, 11.2, 10.1, 10.4));
   candles.push(candle(4, 10.4, 12.2, 10.1, 12.1));
@@ -74,6 +84,17 @@ test("a failed immediate trigger expires and a later candle cannot trigger it", 
   assert.equal(result.occurrences?.[0]?.confirmationThreshold, 12);
   assert.ok((result.occurrences?.[0]?.actualConfirmationExcursion ?? 0) < 1);
   assert.match(result.detail, /confirmation buffer|new patience pattern/i);
+});
+
+test("an incomplete immediate E followed by a later interval expires at the expected boundary", () => {
+  const candles = setup("long", candle(2, 10.8, 11.2, 10.1, 10.4)).slice(0, 2);
+  candles.push(candle(2, 10.8, 11.2, 10.1, 10.4, false));
+  candles.push(candle(3, 10.4, 12.2, 10.1, 12.1));
+  const occurrence = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() }).occurrences?.[0];
+  assert.equal(occurrence?.outcomeStatus, "EXPIRED_INCOMPLETE_E");
+  assert.equal(occurrence?.evaluationCursor, candles[1].closeTime);
+  assert.equal(occurrence?.triggerCandle, null);
+  assert.equal(occurrence?.nextObservedCandle?.openTime, candles[2].openTime);
 });
 
 test("an earlier ORB pullback patience sequence is not overwritten by a later candidate", () => {

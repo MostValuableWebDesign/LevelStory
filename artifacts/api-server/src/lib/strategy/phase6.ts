@@ -145,11 +145,11 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
   const fibonacciInteraction = hasFibonacciPullbackInteraction(context);
   const levelInteraction = genuinePullback && (hasQualifyingPullback(context.pullback) || fibonacciInteraction);
   const rules: SetupRuleEvidence[] = [
-    rule("genuinePullback", "Genuine pullback interaction", genuinePullback, genuinePullback ? "A qualifying pullback event is recorded at a structural or dynamic level." : "A Fibonacci-distance candle alone is not a pullback; a genuine pullback interaction is required."),
+    rule("genuinePullback", "Genuine countertrend pullback structure", genuinePullback, genuinePullback ? "A causal post-breakout impulse and countertrend retracement are recorded." : "A Fibonacci-distance candle alone is not a pullback; a causal countertrend retracement is required."),
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
     rule("breakoutAgreesWithTrend", "Breakout agrees with confirmed 15-minute trend", confirmedTrend, confirmedTrend ? "Confirmed causal 15-minute trend agrees with the breakout." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
-    rule("levelContext", "Pullback has structural/dynamic level or Fibonacci interaction", levelInteraction, fibonacciInteraction ? "A genuine pullback also interacted with a specific causal Fibonacci retracement." : "A genuine structural/dynamic level interaction is required."),
+    rule("levelContext", "Pullback L candle interacted with a qualifying level", levelInteraction, fibonacciInteraction ? "The structurally detected pullback L candle interacted with a causal Fibonacci retracement." : "The structurally detected pullback L candle must interact with a governed level."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
@@ -426,7 +426,7 @@ function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
 }
 
 function hasGenuinePullback(pullback: PullbackAnalysis): boolean {
-  return pullback.events.some((event) =>
+  return pullback.structure?.detected ?? pullback.events.some((event) =>
     ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && !event.level.toLowerCase().startsWith("fib"),
   );
@@ -434,6 +434,7 @@ function hasGenuinePullback(pullback: PullbackAnalysis): boolean {
 
 function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
   if (!context.fibonacci.frozen || !context.fibonacci.levels.length) return false;
+  const structure = context.pullback.structure;
   const genuineEvents = context.pullback.events.filter((event) =>
     ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && !event.level.toLowerCase().startsWith("fib"),
@@ -441,7 +442,10 @@ function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
   return context.pullback.events.some((event) =>
     ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && event.level.toLowerCase().startsWith("fib")
-    && genuineEvents.some((genuine) => (event.candle?.openTime ?? event.time) === (genuine.candle?.openTime ?? genuine.time)),
+    && (structure?.detected ?? genuineEvents.some((genuine) => (event.candle?.openTime ?? event.time) === (genuine.candle?.openTime ?? genuine.time)))
+    && (!structure
+      || ((event.candle?.openTime ?? event.time) >= (structure.pullbackStart ?? Number.POSITIVE_INFINITY)
+        && (event.candle?.openTime ?? event.time) <= (structure.pullbackEnd ?? Number.NEGATIVE_INFINITY))),
   );
 }
 

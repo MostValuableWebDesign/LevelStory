@@ -16,9 +16,22 @@ export interface VisualValidationSet {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
   createdAt: Date;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  buildId: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  currentBuildId: string;
+  stale: boolean;
   /** @pattern ^[0-9a-f]{64}$ */
   formulaHash: string;
   formulaVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  sourceFingerprint: string;
   source: VisualValidationSetSource;
   symbol: string;
   request: VisualValidationRequest;

@@ -13,8 +13,10 @@ import {
   type HistoricalOccurrence,
   buildQualificationFunnel,
   type QualificationFunnel,
+  sourceFingerprint as datasetSourceFingerprint,
 } from "./phase9.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
+import { APPLICATION_BUILD_ID } from "./build-metadata.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 import {
@@ -245,8 +247,12 @@ export type VisualValidationReviewPeriod = {
 export type VisualValidationSet = {
   reviewSetId: string;
   createdAt: string;
+  buildId: string;
+  currentBuildId: string;
+  stale: boolean;
   formulaHash: string;
   formulaVersion: string;
+  sourceFingerprint: string;
   source: "simulated" | "historical_databento";
   symbol: string;
   request: VisualValidationRequest;
@@ -1614,6 +1620,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     executionMode: "quote_based_shadow",
   };
   const fixtures = createVisualValidationFixtures(request);
+  const sourceFingerprint = hashJson(fixtures.map((fixture) => datasetSourceFingerprint(fixture.dataset)).sort());
   const reviewPeriod = reviewPeriodForDataset(fixtures[0]?.dataset ?? {
     inSampleDates: [],
     outOfSampleDates: [],
@@ -1629,8 +1636,12 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
       request.premarketAvailable !== false,
     ));
   return {
+    buildId: APPLICATION_BUILD_ID,
+    currentBuildId: APPLICATION_BUILD_ID,
+    stale: false,
     formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
+    sourceFingerprint,
     source: "simulated",
     symbol: request.symbol,
     request: { ...request, source: "simulated" },
@@ -1757,8 +1768,12 @@ export function buildHistoricalVisualValidationSetFromReport(
       })()
     : undefined;
   return {
+    buildId: APPLICATION_BUILD_ID,
+    currentBuildId: APPLICATION_BUILD_ID,
+    stale: false,
     formulaHash: fixtureReport.formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
+    sourceFingerprint: datasetSourceFingerprint(dataset),
     source: "historical_databento",
     symbol: request.symbol,
     request: { ...request, source: "historical_databento" },

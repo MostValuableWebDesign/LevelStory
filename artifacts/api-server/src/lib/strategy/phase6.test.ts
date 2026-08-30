@@ -435,6 +435,53 @@ test("ORB Fibonacci interaction is required when no structural level interaction
   assert.equal(withInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, true);
 });
 
+test("ORB accepts a genuine pullback whose only qualifying level is Fibonacci", () => {
+  const context = baseContext({
+    pullback: {
+      ...baseContext().pullback,
+      events: [{ ...baseContext().pullback.events[0]!, level: "Fib 0.5", price: 10.1 }],
+      structure: {
+        detected: true,
+        direction: "long",
+        impulseExtreme: 10.4,
+        impulseExtremeTime: 1,
+        pullbackStart: 2,
+        pullbackEnd: 3,
+        depthPoints: 0.3,
+        retracementPercent: 30,
+        greaterThan50PercentWarning: false,
+      },
+    },
+    fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
+  });
+  const result = evaluateOrbBreakPullbackContinuation(context);
+  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, true);
+  assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, true);
+});
+
+test("Fibonacci proximity without causal pullback structure does not qualify ORB continuation", () => {
+  const result = evaluateOrbBreakPullbackContinuation(baseContext({
+    pullback: {
+      ...baseContext().pullback,
+      events: [{ ...baseContext().pullback.events[0]!, level: "Fib 0.5", price: 10.1 }],
+      structure: {
+        detected: false,
+        direction: "long",
+        impulseExtreme: 10.4,
+        impulseExtremeTime: 1,
+        pullbackStart: null,
+        pullbackEnd: null,
+        depthPoints: null,
+        retracementPercent: null,
+        greaterThan50PercentWarning: false,
+      },
+    },
+    fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
+  }));
+  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, false);
+  assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, false);
+});
+
 test("reversal requires directional confirmation, patience, immediate trigger, and risk", () => {
   const result = evaluateBonusReversal(baseContext({
     candles: [candle(0, 10, 10.04, 9.96, 10.005)],
