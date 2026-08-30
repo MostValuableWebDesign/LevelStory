@@ -1,0 +1,79 @@
+Perform a focused regression audit of the corrected four-strategy qualification engine.
+
+Do not add features or redesign the engine. Fix only genuine failures found by the required tests.
+
+AUTHORITATIVE STRATEGY PRECEDENCE
+
+1. ORB_PULLBACK_CONTINUATION
+2. CONSOLIDATION_BREAKOUT_CONTINUATION
+3. EQUIVALENT_CANDLE_REVERSAL
+4. PATIENCE_CANDLE_CONTINUATION
+
+Only one strategy owns a trade. Secondary matches are diagnostic.
+
+ADD OR CONFIRM NAMED TESTS
+
+Create clearly named deterministic tests proving:
+
+ORB
+
+- ORB fails when Fibonacci levels exist but no level was touched within tolerance.
+- ORB passes from an actual Fibonacci-only interaction within 12 MES ticks.
+- ORB accepts actual structural or dynamic-level interaction.
+- ORB does not require strong-breakout volume/body classification.
+- ORB still requires completed breakout, pullback, P→E confirmation, and risk approval.
+
+DYNAMIC LEVELS
+
+- VWAP is evaluated at the exact L/P candle timestamp.
+- 200 EMA is evaluated at the exact L/P candle timestamp.
+- Final-session VWAP or EMA values cannot qualify an earlier setup.
+- Wick/range proximity uses the governed 12-tick tolerance.
+
+PATIENCE RE-ARMING
+
+- P1 can only be confirmed by E1.
+- Failed E1 expires P1.
+- P1 failure followed by valid P2/E2 qualifies P2.
+- E2 cannot confirm P1.
+- Multiple successful occurrences are retained in one session.
+
+EQUIVALENT REVERSAL
+
+- Equivalent reversal may oppose the preceding 15-minute trend.
+- Equivalent reversal requires separately governed reversal evidence.
+- Equivalent reversal still requires a new P→immediate-E sequence.
+- Equivalent reversal receives ownership before generic Patience.
+
+CONSOLIDATION
+
+- Structurally tight consolidation shorter than 45 minutes may qualify.
+- Structurally tight consolidation longer than 60 minutes may qualify.
+- Loose or materially expanding price action fails regardless of duration.
+- Consolidation range is frozen before breakout.
+- Breakout must close outside that frozen range.
+- NTZ proximity remains confluence/diagnostic evidence, not a mandatory duration substitute.
+
+CAUSAL SAFETY
+
+- No strategy reads candles after the evaluation cursor.
+- Dynamic indicators use only causal values.
+- Fibonacci swing anchors are causal and frozen.
+- Deterministic repeated runs return identical qualification results and IDs.
+
+TEST REPORT
+
+Provide a table containing:
+
+- Test name
+- Strategy/rule covered
+- Pass/fail
+- Exact failure fixed, if any
+
+VERIFICATION LIMITS
+
+Run only focused strategy tests, occurrence-ledger tests, API typecheck, frontend typecheck if shared types changed, and git diff --check.
+
+Do not run a cold historical backtest, index rebuild, broker workflow, live order, or paper order.
+
+Do not claim success with only an aggregate test count. Report every required named case.

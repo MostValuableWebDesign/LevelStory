@@ -86,6 +86,15 @@ export type PullbackEvent = {
   tolerancePoints: number;
   toleranceTicks: number;
   qualifies: boolean;
+  candle?: {
+    openTime: number;
+    closeTime: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  };
   detail: string;
 };
 
@@ -804,7 +813,23 @@ function event(
   interaction: QualifyingLevelInteraction,
   detail: string,
 ): PullbackEvent {
-  return { type, time: candle.closeTime, level: level.name, price: level.price, ...interaction, detail };
+  return {
+    type,
+    time: candle.closeTime,
+    level: level.name,
+    price: level.price,
+    ...interaction,
+    candle: {
+      openTime: candle.openTime,
+      closeTime: candle.closeTime,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+    },
+    detail,
+  };
 }
 
 function pendingBreakout(detail: string): BreakoutEvent {

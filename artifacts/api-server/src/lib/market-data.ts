@@ -14,6 +14,7 @@ import {
   type SetupType,
   type ManualFibAnchors,
   type PatienceAnalysis,
+  type PatienceOccurrence,
   type PatienceEligibilityReason,
   type PatienceState,
   type DecisionState,
@@ -151,7 +152,19 @@ export type MarketSnapshot = {
   };
   pullback: {
     status: "pending" | "observed" | "expired";
-    events: Array<{ type: string; time: string; level: string; price: number; detail: string }>;
+    events: Array<{
+      type: string;
+      time: string;
+      level: string;
+      price: number;
+      distancePoints?: number;
+      distanceTicks?: number;
+      tolerancePoints?: number;
+      toleranceTicks?: number;
+      qualifies?: boolean;
+      candle?: { openTime: number; closeTime: number; open: number; high: number; low: number; close: number; volume: number };
+      detail: string;
+    }>;
     evaluatedCandles: number;
     maxCandles: number;
     maxDurationMinutes: number;
@@ -177,6 +190,7 @@ export type MarketSnapshot = {
     triggerPrice: number | null;
     stateTime: string | null;
     detail: string;
+    occurrences?: PatienceOccurrence[];
   };
   fibonacci: {
     direction: "bullish" | "bearish" | null;
@@ -967,6 +981,7 @@ function toApiPatience(analysis: PatienceAnalysis): MarketSnapshot["patience"] {
     triggerPrice: analysis.triggerPrice,
     stateTime: analysis.stateTime === null ? null : new Date(analysis.stateTime).toISOString(),
     detail: analysis.detail,
+    occurrences: analysis.occurrences,
   };
 }
 

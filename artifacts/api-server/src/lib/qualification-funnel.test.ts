@@ -4,6 +4,7 @@ import {
   buildQualificationFunnel,
   type BacktestAuditRecord,
   type BacktestReport,
+  type HistoricalOccurrence,
 } from "./phase9.js";
 
 function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecord {
@@ -54,7 +55,7 @@ function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecor
   };
 }
 
-function report(audits: BacktestAuditRecord[], selectedDates: string[], contractSymbol = "MESU5"): Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract"> {
+function report(audits: BacktestAuditRecord[], selectedDates: string[], contractSymbol = "MESU5", occurrences: HistoricalOccurrence[] = []): Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract"> & { occurrences: HistoricalOccurrence[] } {
   return {
     audit: audits,
     trades: [],
@@ -72,6 +73,7 @@ function report(audits: BacktestAuditRecord[], selectedDates: string[], contract
       activeContractByDate: selectedDates.map((tradingDate) => ({ tradingDate, contractSymbol })),
     },
     contract: { fullContractSymbol: contractSymbol } as BacktestReport["contract"],
+    occurrences,
   };
 }
 
@@ -139,4 +141,15 @@ test("qualification funnel retains distinct causal occurrences", () => {
     first.evaluatedCandleOpenTime,
     second.evaluatedCandleOpenTime,
   ]);
+});
+
+test("qualification funnel reconciles its ledger occurrence count", () => {
+  const auditRecord = audit({ id: "ledger-audit" });
+  const occurrence = {
+    occurrenceId: "ledger-occurrence",
+    auditId: auditRecord.id,
+  } as HistoricalOccurrence;
+  const funnel = buildQualificationFunnel([report([auditRecord], ["2026-08-24"], "MESU5", [occurrence])]);
+  assert.equal(funnel.candidateCount, 1);
+  assert.equal(funnel.occurrenceCount, 1);
 });

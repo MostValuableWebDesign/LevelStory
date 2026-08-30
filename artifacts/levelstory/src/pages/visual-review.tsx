@@ -628,7 +628,7 @@ export default function VisualReview() {
 
 function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["funnelDiagnostics"]> }) {
   return <Panel>
-    <PanelTitle eyebrow="Detection funnel / every causal occurrence" title="Where evidence was retained" right={<span className="mono text-[10px] text-muted-foreground">{data.candidateCount} occurrences · {data.sessionCount} sessions</span>} />
+    <PanelTitle eyebrow="Detection funnel / every causal occurrence" title="Where evidence was retained" right={<span className="mono text-[10px] text-muted-foreground">{data.occurrenceCount} ledger occurrences · {data.sessionCount} sessions</span>} />
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="detection-funnel">
       {data.stages.map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
         <div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{stage.stage.replaceAll("_", " ")}</div>

@@ -10,6 +10,7 @@ import {
   type BacktestReport,
   type BacktestTrade,
   type CausalReplayDataset,
+  type HistoricalOccurrence,
   buildQualificationFunnel,
   type QualificationFunnel,
 } from "./phase9.js";
@@ -156,6 +157,7 @@ export type VisualValidationCategoryAnchor = {
   detail: string;
   relatedCandles: VisualValidationRelatedCandle[];
   visibility: "machine" | "human_only";
+  occurrenceId?: string;
 };
 
 export type VisualValidationCoverage = {
@@ -249,7 +251,7 @@ export type VisualValidationSet = {
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
   categoryCoverage: VisualValidationCategoryCoverage[];
-  funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "stages" | "rejectionCounts">;
+  funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "occurrenceCount" | "stages" | "rejectionCounts">;
 };
 
 export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
@@ -933,7 +935,19 @@ function categoryAnchorEvent(
   category: VisualValidationCategory,
   audit: BacktestAuditRecord,
   trade: BacktestTrade | null,
+  occurrence?: HistoricalOccurrence,
 ): AnchorEvent {
+  if (occurrence) {
+    if (category === "pullback" && occurrence.lTimestamp) {
+      return auditEvent("evaluation", occurrence.lTimestamp, occurrence.lTimestamp, Object.values(occurrence.levelValues)[0] ?? null);
+    }
+    if ((category === "bullish_patience_candle" || category === "bearish_patience_candle") && occurrence.patienceTimestamp) {
+      return auditEvent("patience", occurrence.patienceTimestamp, occurrence.patienceTimestamp, evidenceNumber(occurrence.patienceCandle, "close"));
+    }
+    if (category === "qualified_trade" && occurrence.entryTimestamp) {
+      return auditEvent("entry", occurrence.entryTimestamp, occurrence.entryTimestamp, evidenceNumber(occurrence.entryCandle, "close"));
+    }
+  }
   const evaluationClose = new Date(Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000).toISOString();
   const evaluation = auditEvent("evaluation", audit.evaluatedCandleOpenTime, evaluationClose, audit.entryTriggerPrice);
   const patience = auditEvent("patience", audit.patienceCandleOpenTime, audit.patienceCandleCloseTime, evidenceNumber(audit.patienceCandle, "close"));
@@ -993,9 +1007,10 @@ export function buildCategoryAnchor(
   audit: BacktestAuditRecord,
   trade: BacktestTrade | null,
   candles: readonly SimulatedFuturesCandle[],
+  occurrence?: HistoricalOccurrence,
 ): VisualValidationCategoryAnchor | null {
   const contractCandles = candles.filter((candle) => candle.contractSymbol === audit.contractSymbol && candle.isComplete);
-  const anchorEvent = categoryAnchorEvent(category, audit, trade);
+  const anchorEvent = categoryAnchorEvent(category, audit, trade, occurrence);
   const anchorCandle = resolvedAnchorCandle(anchorEvent, contractCandles);
   if (!anchorCandle) return null;
   const relatedEvents = [
@@ -1005,6 +1020,10 @@ export function buildCategoryAnchor(
     auditEvent("fill", audit.modeledFillObservationTime ?? trade?.audit?.modeledFillObservationTime, null, trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null),
     auditEvent("exit", audit.exitCandleOpenTime ?? trade?.audit?.exitCandleOpenTime, audit.exitCandleCloseTime ?? trade?.audit?.exitCandleCloseTime, trade?.exitPrice ?? audit.targetPrice),
   ];
+  if (occurrence) {
+    const occurrenceEvent = categoryAnchorEvent(category, audit, trade, occurrence);
+    relatedEvents.unshift(occurrenceEvent);
+  }
   const evaluationClose = Date.parse(audit.evaluatedCandleOpenTime) + 5 * 60_000;
   const relatedCandles = relatedEvents.flatMap((event) => {
     const candle = resolvedAnchorCandle(event, contractCandles);
@@ -1032,6 +1051,7 @@ export function buildCategoryAnchor(
     detail: anchorDetail(category, audit),
     relatedCandles,
     visibility: anchorCandle.openTime <= evaluationClose ? "machine" : "human_only",
+    ...(occurrence ? { occurrenceId: occurrence.occurrenceId } : {}),
   };
 }
 
@@ -1070,6 +1090,9 @@ function hasTrendAlignedPatience(record: BacktestAuditRecord): boolean {
       "BREAK_DETECTED_WAITING_FOR_BUFFER",
       "ENTRY_BUFFER_REACHED",
       "ENTRY_TRIGGERED",
+      "PATIENCE_CANDLE_EXPIRED",
+      "OPPOSITE_SIDE_INVALIDATION",
+      "AMBIGUOUS_EVENT_ORDER",
     ].includes(record.patienceState);
 }
 
@@ -1394,6 +1417,7 @@ function buildMachineSnapshot(
   category: VisualValidationCategory,
   reviewCloseTime: number,
   premarketAvailable: boolean,
+  occurrence?: HistoricalOccurrence,
 ): VisualValidationSnapshot {
   const evaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
   const evaluationCloseTime = evaluationTime + 5 * 60_000;
@@ -1440,7 +1464,7 @@ function buildMachineSnapshot(
   const machineCandles = visibleEvaluation.map(toRawCandle);
   const reviewCandles = visibleReview.map(toRawCandle);
   const premarketCandles = visiblePremarket.map(toRawCandle);
-  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles);
+  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles, occurrence);
   const indicatorSeries = buildIndicatorSeries(
     historicalCandles,
     visibleReview,
@@ -1587,7 +1611,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   request: VisualValidationRequest,
   dataset: CausalReplayDataset,
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
-    & Partial<Pick<BacktestReport, "dataset" | "contract">>,
+    & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -1595,16 +1619,33 @@ export function buildHistoricalVisualValidationSetFromReport(
     executionMode: "ohlcv_modeled",
   };
   const mode = visualValidationReviewMode(request);
-  const candidates = report.audit.flatMap((audit) => {
+  const ledgerCandidates = report.occurrences?.flatMap((occurrence) => {
+    const audit = report.audit.find((candidate) => candidate.id === occurrence.auditId);
+    if (!audit) return [];
+    const category: VisualValidationCategory | null = occurrence.kind === "pullback"
+      ? "pullback"
+      : occurrence.kind === "patience"
+        ? occurrence.direction === "long" ? "bullish_patience_candle" : occurrence.direction === "short" ? "bearish_patience_candle" : null
+        : occurrence.kind === "risk"
+          ? "rejected_setup"
+          : "qualified_trade";
+    if (!category) return [];
     const trade = matchingTrade(audit, report.trades);
-    return categoriesFor(audit, trade)
-      .map((category) => ({ audit, trade, category }))
+    return [{ audit, trade, category, occurrence }];
+  }) ?? [];
+  const candidates = ledgerCandidates.length > 0
+    ? ledgerCandidates
+    : report.audit.flatMap((audit) => {
+      const trade = matchingTrade(audit, report.trades);
+      return categoriesFor(audit, trade)
+        .map((category) => ({ audit, trade, category, occurrence: undefined }));
+    });
+  const visibleCandidates = candidates
       .filter((candidate) => mode === "trades_and_diagnostics"
         || candidate.trade !== null
         || (mode === "confirmed_signals" && hasConfirmedSignal(candidate.audit)))
-      .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles) !== null);
-  });
-  const snapshots = candidates.map((candidate, candidateIndex) => {
+      .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
+  const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
       ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
       : Date.parse(candidate.audit.evaluatedCandleOpenTime) + 5 * 60_000;
@@ -1617,6 +1658,7 @@ export function buildHistoricalVisualValidationSetFromReport(
       candidate.category,
       reviewCloseTime,
       request.premarketAvailable !== false,
+      candidate.occurrence,
     );
   });
   const funnelDiagnostics = report.dataset && report.contract
@@ -1625,6 +1667,7 @@ export function buildHistoricalVisualValidationSetFromReport(
         return {
           sessionCount: funnel.sessionCount,
           candidateCount: funnel.candidateCount,
+          occurrenceCount: funnel.occurrenceCount,
           stages: funnel.stages,
           rejectionCounts: funnel.rejectionCounts,
         };

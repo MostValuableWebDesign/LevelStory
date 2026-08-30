@@ -2943,7 +2943,40 @@ components:
         grossPnl: { type: ["number", "null"] }
         netPnl: { type: ["number", "null"] }
         exitReason: { type: ["string", "null"] }
+        confirmationBufferTicks: { type: ["number", "null"] }
+        pullbackOccurrences: { type: array, items: { type: object, additionalProperties: true } }
+        patienceOccurrences: { type: array, items: { type: object, additionalProperties: true } }
       required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason]
+    HistoricalOccurrence:
+      type: object
+      additionalProperties: false
+      properties:
+        occurrenceId: { type: string }
+        auditId: { type: string }
+        kind: { type: string, enum: [pullback, patience, risk, trade] }
+        strategyCandidate: { type: string }
+        secondaryStrategyMatches: { type: array, items: { type: string } }
+        tradingDate: { type: string }
+        contractSymbol: { type: string }
+        contractMonth: { type: string }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        lTimestamp: { type: ["string", "null"], format: date-time }
+        lCandle: { type: ["object", "null"], additionalProperties: true }
+        patienceTimestamp: { type: ["string", "null"], format: date-time }
+        patienceCandle: { type: ["object", "null"], additionalProperties: true }
+        entryTimestamp: { type: ["string", "null"], format: date-time }
+        entryCandle: { type: ["object", "null"], additionalProperties: true }
+        levelIdentifiers: { type: array, items: { type: string } }
+        levelValues: { type: object, additionalProperties: { type: number } }
+        levelDistancesTicks: { type: object, additionalProperties: { type: number } }
+        confirmationBufferTicks: { type: ["number", "null"] }
+        status: { type: string }
+        reasonCode: { type: string }
+        evaluationCursor: { type: string, format: date-time }
+        formulaVersion: { type: string }
+        sourceFingerprint: { type: string }
+        canonicalTrade: { type: boolean }
+      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, confirmationBufferTicks, status, reasonCode, evaluationCursor, formulaVersion, sourceFingerprint, canonicalTrade]
     BacktestAuditPage:
       type: object
       additionalProperties: false
@@ -3187,6 +3220,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BacktestAuditRecord"
+        occurrences:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalOccurrence"
         auditPage:
           type: object
           properties:
@@ -3251,7 +3288,7 @@ components:
             earlyCloseDates: { type: array, items: { type: string } }
             overnightCoverageObserved: { type: boolean }
           required: [missingMinuteGaps, missingGapSegments, unexpectedMissingMinutes, unexpectedOpenSessionMissingMinutes, unexpectedOvernightMissingMinutes, unexpectedRegularSessionMissingMinutes, regularSessionGapSegments, overnightGapSegments, regularSessionMissingMinutes, expectedClosedMarketMinutes, expectedClosedMinutes, weekendHolidayClosedMinutes, earlyCloseMinutes, inactiveContractMinutes, lowLiquidityInactiveMinutes, coverageScope, inactiveContractThresholdPercent, inactiveContractDays, missingRegularSessionDates, missingOvernightSessionDates, completeRegularSessionDates, maintenanceGapMinutes, weekendHolidayGapMinutes, earlyCloseDates, overnightCoverageObserved]
-      required: [mode, dataSource, symbol, formulaHash, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
+      required: [mode, dataSource, symbol, formulaHash, contract, dataResolution, dataset, replay, metrics, inSample, outOfSample, segments, trades, audit, occurrences, auditPage, assumptions, executionMode, fillLabel, executionPolicy, gapReport]
     BatchBacktestRequest:
       allOf:
         - $ref: "#/components/schemas/BacktestRequest"
@@ -3711,6 +3748,7 @@ components:
           properties:
             sessionCount: { type: number, minimum: 0 }
             candidateCount: { type: number, minimum: 0 }
+            occurrenceCount: { type: number, minimum: 0 }
             stages:
               type: array
               items: { $ref: "#/components/schemas/QualificationFunnelStageCount" }
@@ -3722,7 +3760,7 @@ components:
                   stage: { $ref: "#/components/schemas/QualificationFunnelStage" }
                   count: { type: number, minimum: 0 }
                 required: [stage, count]
-          required: [sessionCount, candidateCount, stages, rejectionCounts]
+          required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts]
       required: [reviewSetId, createdAt, formulaHash, formulaVersion, source, symbol, request, reviewPeriod, snapshots, categoryCoverage]
     VisualValidationReviewRequest:
       type: object

@@ -20,6 +20,7 @@ import type { BacktestReportTiming } from './backtestReportTiming';
 import type { BacktestSegment } from './backtestSegment';
 import type { BacktestTrade } from './backtestTrade';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
+import type { HistoricalOccurrence } from './historicalOccurrence';
 
 export interface BacktestReport {
   mode: BacktestReportMode;
@@ -37,6 +38,7 @@ export interface BacktestReport {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   audit: BacktestAuditRecord[];
+  occurrences: HistoricalOccurrence[];
   auditPage: BacktestReportAuditPage;
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;

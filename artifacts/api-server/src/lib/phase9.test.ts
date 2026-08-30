@@ -7,9 +7,11 @@ import {
   buildReplayIndexes,
   resolveEntryAndInvalidation,
   resolveIntrabarOutcome,
+  buildHistoricalOccurrenceLedger,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
+  type CausalReplayDataset,
 } from "./phase9.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
@@ -322,4 +324,248 @@ test("ambiguity metrics separate rejected entries from ambiguous exits", () => {
   assert.equal(metrics.ambiguousExitCount, 1);
   assert.equal(metrics.ambiguousTradeCount, 1);
   assert.equal(metrics.ambiguityCount, 2);
+});
+
+function occurrenceAudit(
+  setupType: string,
+  overrides: Partial<BacktestAuditRecord> = {},
+): BacktestAuditRecord {
+  const lOpen = 300_000;
+  const pOpen = 600_000;
+  const eOpen = 900_000;
+  const lCandle = { openTime: lOpen, closeTime: lOpen + 300_000, open: 100, high: 103, low: 99, close: 101, volume: 10, isComplete: true };
+  const pCandle = { openTime: pOpen, closeTime: pOpen + 300_000, open: 101, high: 102, low: 98, close: 100, volume: 11, isComplete: true };
+  const eCandle = { openTime: eOpen, closeTime: eOpen + 300_000, open: 100, high: 105, low: 100, close: 104, volume: 12, isComplete: true };
+  return {
+    id: `${setupType}-audit`,
+    tradingDate: "2026-08-25",
+    contractSymbol: "MESU26",
+    contractMonth: "2026-09",
+    period: "in_sample",
+    evaluatedCandleOpenTime: new Date(eOpen).toISOString(),
+    setupType,
+    direction: "long",
+    decision: "SETUP QUALIFIED",
+    alertOnly: true,
+    rejectionReason: null,
+    rejectionCategory: "QUALIFIED",
+    rejectionSummary: null,
+    ruleEvidence: [],
+    orbState: "ENTRY_TRIGGERED",
+    breakoutEvidence: "",
+    volumeEvidence: "",
+    pullbackEvidence: "",
+    criticalLevelEvidence: "",
+    trendEvidence: "",
+    patienceState: "PATIENCE_CANDLE_VALID",
+    patienceCandle: pCandle,
+    triggerCandle: eCandle,
+    patienceCandleOpenTime: new Date(pOpen).toISOString(),
+    patienceCandleCloseTime: new Date(pOpen + 300_000).toISOString(),
+    triggerCandleOpenTime: new Date(eOpen).toISOString(),
+    triggerCandleCloseTime: new Date(eOpen + 300_000).toISOString(),
+    modeledFillObservationTime: null,
+    exitCandleOpenTime: null,
+    exitCandleCloseTime: null,
+    entryTriggerPrice: 104,
+    strategyStopPrice: 97.75,
+    catastropheStopPrice: 95,
+    targetPrice: 110,
+    eventLabels: [],
+    ambiguityLabels: [],
+    executionMode: "ohlcv_modeled",
+    fees: 0,
+    slippage: 0,
+    grossPnl: null,
+    netPnl: null,
+    exitReason: null,
+    confirmationBufferTicks: 3,
+    pullbackOccurrences: [{
+      type: "touch",
+      time: new Date(lOpen).toISOString(),
+      level: "ORB",
+      price: 101,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      candle: lCandle,
+      detail: "ORB retest touched the causal level.",
+    }],
+    patienceOccurrences: [{
+      occurrenceId: "p1",
+      direction: "long",
+      entryBufferTicks: 3,
+      stopBufferTicks: 1,
+      eligibilityReason: "pullback",
+      eligibilityTime: lOpen,
+      previousCandle: lCandle,
+      patienceCandle: pCandle,
+      triggerCandle: eCandle,
+      status: "PATIENCE_CANDLE_VALID",
+      reasonCode: "waiting for immediate E",
+      evaluationCursor: eCandle.closeTime,
+    }],
+    ...overrides,
+  };
+}
+
+function occurrenceDataset(): CausalReplayDataset {
+  return {
+    source: "historical_databento",
+    contractSymbol: "MESU26",
+    contractMonth: "2026-09",
+    selectedDates: ["2026-08-25"],
+    inSampleDates: ["2026-08-25"],
+    outOfSampleDates: [],
+    candles: [],
+  } as unknown as CausalReplayDataset;
+}
+
+test("historical occurrence ledger is repeatable and retains causal L/P/E evidence", () => {
+  const report = buildHistoricalOccurrenceLedger(occurrenceDataset(), [occurrenceAudit("ORB_PULLBACK_CONTINUATION")], []);
+  const repeat = buildHistoricalOccurrenceLedger(occurrenceDataset(), [occurrenceAudit("ORB_PULLBACK_CONTINUATION")], []);
+  assert.deepEqual(report, repeat);
+  const patience = report.find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.equal(patience.confirmationBufferTicks, 3);
+  assert.equal(patience.lCandle?.openTime, 300_000);
+  assert.equal(patience.patienceCandle?.openTime, 600_000);
+  assert.equal(patience.entryCandle?.openTime, 900_000);
+  assert.equal(patience.evaluationCursor, new Date(900_000).toISOString());
+});
+
+test("ledger merges the same causal occurrence and preserves canonical plus secondary strategies", () => {
+  const primary = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const secondary = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", { id: "patience-audit" });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [secondary, primary], []);
+  const patience = occurrences.find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.equal(patience.strategyCandidate, "ORB_PULLBACK_CONTINUATION");
+  assert.deepEqual(patience.secondaryStrategyMatches, ["PATIENCE_CANDLE_CONTINUATION"]);
+  assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
+});
+
+test("ledger retains diagnostic risk rejection without fabricating a trade", () => {
+  const risk = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "risk-audit",
+    decision: "SETUP REJECTED — RISK",
+    rejectionCategory: "RISK_REJECTION",
+    rejectionReason: "risk budget",
+    patienceState: "ENTRY_TRIGGERED",
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [risk], []);
+  const riskOccurrence = occurrences.find((occurrence) => occurrence.kind === "risk");
+  assert.ok(riskOccurrence);
+  assert.equal(riskOccurrence.canonicalTrade, false);
+  assert.equal(occurrences.some((occurrence) => occurrence.kind === "trade"), false);
+});
+
+test("ledger retains an expired patience attempt without inventing an E candle", () => {
+  const expired = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "expired-audit",
+    patienceState: "PATIENCE_CANDLE_EXPIRED",
+    patienceOccurrences: [{
+      occurrenceId: "expired-p1",
+      direction: "long",
+      entryBufferTicks: 3,
+      stopBufferTicks: 1,
+      eligibilityReason: "pullback",
+      eligibilityTime: 300_000,
+      previousCandle: {
+        openTime: 300_000,
+        closeTime: 600_000,
+        open: 100,
+        high: 103,
+        low: 99,
+        close: 101,
+        volume: 10,
+        isComplete: true,
+      },
+      patienceCandle: {
+        openTime: 600_000,
+        closeTime: 900_000,
+        open: 101,
+        high: 102,
+        low: 98,
+        close: 100,
+        volume: 11,
+        isComplete: true,
+      },
+      triggerCandle: null,
+      status: "PATIENCE_CANDLE_EXPIRED",
+      reasonCode: "immediate E missing",
+      evaluationCursor: 900_000,
+    }],
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [expired], []).find((item) => item.kind === "patience");
+  assert.ok(occurrence);
+  assert.equal(occurrence.status, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(occurrence.entryCandle, null);
+});
+
+test("an empty causal evaluation produces no patience or trade ledger rows", () => {
+  const audit = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "no-patience-audit",
+    patienceState: "WAITING_FOR_VALID_CONTEXT",
+    patienceCandle: null,
+    triggerCandle: null,
+    pullbackOccurrences: [],
+    patienceOccurrences: [],
+  });
+  assert.deepEqual(buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], []), []);
+});
+
+test("failed immediate confirmation remains a no-trade patience occurrence", () => {
+  const failed = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "failed-confirmation-audit",
+    decision: "SETUP EXPIRED",
+    rejectionCategory: "EXPIRED",
+    patienceState: "PATIENCE_CANDLE_EXPIRED",
+    patienceOccurrences: [{
+      occurrenceId: "failed-p1",
+      direction: "long",
+      entryBufferTicks: 4,
+      stopBufferTicks: 1,
+      eligibilityReason: "pullback",
+      eligibilityTime: 300_000,
+      previousCandle: {
+        openTime: 300_000,
+        closeTime: 600_000,
+        open: 100,
+        high: 103,
+        low: 99,
+        close: 101,
+        volume: 10,
+        isComplete: true,
+      },
+      patienceCandle: {
+        openTime: 600_000,
+        closeTime: 900_000,
+        open: 101,
+        high: 102,
+        low: 98,
+        close: 100,
+        volume: 11,
+        isComplete: true,
+      },
+      triggerCandle: {
+        openTime: 900_000,
+        closeTime: 1_200_000,
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100,
+        volume: 12,
+        isComplete: true,
+      },
+      status: "PATIENCE_CANDLE_EXPIRED",
+      reasonCode: "confirmation buffer not reached",
+      evaluationCursor: 1_200_000,
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [failed], []);
+  assert.ok(occurrences.some((occurrence) => occurrence.kind === "patience" && occurrence.status === "PATIENCE_CANDLE_EXPIRED"));
+  assert.equal(occurrences.some((occurrence) => occurrence.kind === "trade" || occurrence.kind === "risk"), false);
 });

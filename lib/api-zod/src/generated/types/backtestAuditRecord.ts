@@ -8,7 +8,9 @@
 import type { BacktestAuditRecordDirection } from './backtestAuditRecordDirection';
 import type { BacktestAuditRecordExecutionMode } from './backtestAuditRecordExecutionMode';
 import type { BacktestAuditRecordPatienceCandle } from './backtestAuditRecordPatienceCandle';
+import type { BacktestAuditRecordPatienceOccurrencesItem } from './backtestAuditRecordPatienceOccurrencesItem';
 import type { BacktestAuditRecordPeriod } from './backtestAuditRecordPeriod';
+import type { BacktestAuditRecordPullbackOccurrencesItem } from './backtestAuditRecordPullbackOccurrencesItem';
 import type { BacktestAuditRecordRejectionCategory } from './backtestAuditRecordRejectionCategory';
 import type { BacktestAuditRecordTriggerCandle } from './backtestAuditRecordTriggerCandle';
 
@@ -74,4 +76,8 @@ export interface BacktestAuditRecord {
   netPnl: number | null;
   /** @nullable */
   exitReason: string | null;
+  /** @nullable */
+  confirmationBufferTicks?: number | null;
+  pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
+  patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
 }

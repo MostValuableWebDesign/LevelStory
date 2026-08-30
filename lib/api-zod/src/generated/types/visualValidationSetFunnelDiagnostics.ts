@@ -13,6 +13,8 @@ export type VisualValidationSetFunnelDiagnostics = {
   sessionCount: number;
   /** @minimum 0 */
   candidateCount: number;
+  /** @minimum 0 */
+  occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: VisualValidationSetFunnelDiagnosticsRejectionCountsItem[];
 };

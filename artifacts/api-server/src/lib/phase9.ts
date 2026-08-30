@@ -22,9 +22,12 @@ import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
+import type { PatienceOccurrence } from "./strategy/phase5.js";
 import type { Direction } from "./strategy/types.js";
+import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
-import { formulaConfigurationHash } from "./formula-hash.js";
+import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
+import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 
 export type ReplayCursor = {
@@ -243,6 +246,21 @@ export type BacktestAuditRecord = {
   grossPnl: number | null;
   netPnl: number | null;
   exitReason: string | null;
+  confirmationBufferTicks?: number;
+  pullbackOccurrences?: Array<{
+    type: string;
+    time: string;
+    level: string;
+    price: number;
+    distancePoints?: number;
+    distanceTicks?: number;
+    tolerancePoints?: number;
+    toleranceTicks?: number;
+    qualifies?: boolean;
+    candle?: { openTime: number; closeTime: number; open: number; high: number; low: number; close: number; volume: number };
+    detail: string;
+  }>;
+  patienceOccurrences?: PatienceOccurrence[];
 };
 
 export type BacktestSegmentation = {
@@ -347,6 +365,7 @@ export type BacktestReport = {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   audit: BacktestAuditRecord[];
+  occurrences: HistoricalOccurrence[];
   auditPage?: {
     runId: string;
     page: number;
@@ -368,6 +387,34 @@ export type BacktestReport = {
     commissionPerContract: number;
   };
   gapReport: BacktestGapReport;
+};
+
+export type HistoricalOccurrence = {
+  occurrenceId: string;
+  auditId: string;
+  kind: "pullback" | "patience" | "risk" | "trade";
+  strategyCandidate: string;
+  secondaryStrategyMatches: string[];
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  direction: Direction | null;
+  lTimestamp: string | null;
+  lCandle: Record<string, number | boolean> | null;
+  patienceTimestamp: string | null;
+  patienceCandle: Record<string, number | boolean> | null;
+  entryTimestamp: string | null;
+  entryCandle: Record<string, number | boolean> | null;
+  levelIdentifiers: string[];
+  levelValues: Record<string, number>;
+  levelDistancesTicks: Record<string, number>;
+  confirmationBufferTicks: number | null;
+  status: string;
+  reasonCode: string;
+  evaluationCursor: string;
+  formulaVersion: string;
+  sourceFingerprint: string;
+  canonicalTrade: boolean;
 };
 
 export const QUALIFICATION_FUNNEL_STAGES = [
@@ -449,6 +496,7 @@ export type QualificationFunnelComparison = {
 export type QualificationFunnel = {
   sessionCount: number;
   candidateCount: number;
+  occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: Array<{ stage: QualificationFunnelStage; count: number }>;
   comparisons: QualificationFunnelComparison[];
@@ -1057,6 +1105,9 @@ function auditForEvaluation(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
+    confirmationBufferTicks: snapshot.patience.entryBufferTicks,
+    pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
+    patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
   };
 }
 
@@ -1148,6 +1199,188 @@ function tradeForRecord(record: BacktestAuditRecord, trades: readonly BacktestTr
   ));
 }
 
+function occurrenceCandle(candle: { openTime: number; closeTime: number; open: number; high: number; low: number; close: number; volume?: number; isComplete?: boolean } | null | undefined): Record<string, number | boolean> | null {
+  if (!candle) return null;
+  return {
+    openTime: candle.openTime,
+    closeTime: candle.closeTime,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    ...(candle.volume === undefined ? {} : { volume: candle.volume }),
+    isComplete: candle.isComplete ?? true,
+  };
+}
+
+function occurrenceId(seed: string): string {
+  return `occ-${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
+}
+
+function sourceFingerprint(dataset: CausalReplayDataset): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      source: dataset.source ?? "simulated",
+      contractSymbol: dataset.contractSymbol,
+      contractMonth: dataset.contractMonth,
+      selectedDates: dataset.selectedDates ?? [...dataset.inSampleDates, ...dataset.outOfSampleDates],
+      candleCount: dataset.candles.length,
+      firstCandle: dataset.candles[0]?.openTime ?? null,
+      lastCandle: dataset.candles.at(-1)?.closeTime ?? null,
+      schedule: dataset.contractSchedule?.version ?? null,
+    }))
+    .digest("hex");
+}
+
+export function buildHistoricalOccurrenceLedger(
+  dataset: CausalReplayDataset,
+  audits: readonly BacktestAuditRecord[],
+  trades: readonly BacktestTrade[],
+): HistoricalOccurrence[] {
+  const fingerprint = sourceFingerprint(dataset);
+  const byIdentity = new Map<string, HistoricalOccurrence>();
+  const auditsAtCursor = new Map<string, BacktestAuditRecord[]>();
+  for (const record of audits) {
+    const key = `${record.tradingDate}|${record.contractSymbol}|${record.evaluatedCandleOpenTime}|${record.direction ?? "unknown"}`;
+    auditsAtCursor.set(key, [...(auditsAtCursor.get(key) ?? []), record]);
+  }
+  const upsert = (identity: string, value: HistoricalOccurrence) => {
+    const existing = byIdentity.get(identity);
+    if (!existing) {
+      byIdentity.set(identity, value);
+      return;
+    }
+    const precedence = (setupType: string): number => [
+      "ORB_PULLBACK_CONTINUATION",
+      "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      "EQUIVALENT_CANDLE_REVERSAL",
+      "PATIENCE_CANDLE_CONTINUATION",
+    ].indexOf(canonicalStrategyId(setupType) ?? setupType);
+    const primary = precedence(value.strategyCandidate) < precedence(existing.strategyCandidate) ? value : existing;
+    const matches = [...new Set([
+      existing.strategyCandidate,
+      value.strategyCandidate,
+      ...existing.secondaryStrategyMatches,
+      ...value.secondaryStrategyMatches,
+    ])];
+    byIdentity.set(identity, {
+      ...primary,
+      secondaryStrategyMatches: matches.filter((match) => match !== primary.strategyCandidate),
+      canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
+    });
+  };
+  for (const record of audits) {
+    const trade = tradeForRecord(record, trades);
+    const cursor = record.evaluatedCandleOpenTime;
+    const auditKey = `${record.tradingDate}|${record.contractSymbol}|${cursor}|${record.direction ?? "unknown"}`;
+    const secondary = (auditsAtCursor.get(auditKey) ?? [])
+      .filter((candidate) => candidate.id !== record.id && candidate.decision === "SETUP QUALIFIED")
+      .map((candidate) => canonicalStrategyId(candidate.setupType) ?? candidate.setupType);
+    for (const event of record.pullbackOccurrences ?? []) {
+      const identity = `pullback|${record.tradingDate}|${record.contractSymbol}|${event.type}|${event.level}|${event.time}`;
+      const id = occurrenceId(identity);
+      upsert(identity, {
+        occurrenceId: id,
+        auditId: record.id,
+        kind: "pullback",
+        strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+        secondaryStrategyMatches: secondary,
+        tradingDate: record.tradingDate,
+        contractSymbol: record.contractSymbol,
+        contractMonth: record.contractMonth,
+        direction: record.direction,
+        lTimestamp: event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
+        lCandle: occurrenceCandle(event.candle),
+        patienceTimestamp: null,
+        patienceCandle: null,
+        entryTimestamp: null,
+        entryCandle: null,
+        levelIdentifiers: [event.level],
+        levelValues: { [event.level]: event.price },
+        levelDistancesTicks: { [event.level]: event.distanceTicks ?? 0 },
+        confirmationBufferTicks: null,
+        status: event.type,
+        reasonCode: event.detail,
+        evaluationCursor: cursor,
+        formulaVersion: FIXED_FORMULA_VERSION,
+        sourceFingerprint: fingerprint,
+        canonicalTrade: false,
+      });
+    }
+    for (const patience of record.patienceOccurrences ?? []) {
+      const linkedPullback = (record.pullbackOccurrences ?? [])
+        .filter((event) => Date.parse(event.time) <= patience.patienceCandle.openTime)
+        .at(-1);
+      const identity = `patience|${record.tradingDate}|${record.contractSymbol}|${patience.direction}|${patience.occurrenceId}`;
+      const id = occurrenceId(identity);
+      upsert(identity, {
+        occurrenceId: id,
+        auditId: record.id,
+        kind: "patience",
+        strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+        secondaryStrategyMatches: secondary,
+        tradingDate: record.tradingDate,
+        contractSymbol: record.contractSymbol,
+        contractMonth: record.contractMonth,
+        direction: patience.direction,
+        lTimestamp: linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : null,
+        lCandle: occurrenceCandle(linkedPullback?.candle),
+        patienceTimestamp: new Date(patience.patienceCandle.openTime).toISOString(),
+        patienceCandle: occurrenceCandle(patience.patienceCandle),
+        entryTimestamp: patience.triggerCandle ? new Date(patience.triggerCandle.openTime).toISOString() : null,
+        entryCandle: occurrenceCandle(patience.triggerCandle),
+        levelIdentifiers: linkedPullback ? [linkedPullback.level] : [],
+        levelValues: linkedPullback ? { [linkedPullback.level]: linkedPullback.price } : {},
+        levelDistancesTicks: linkedPullback ? { [linkedPullback.level]: linkedPullback.distanceTicks ?? 0 } : {},
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        status: patience.status,
+        reasonCode: patience.reasonCode,
+        evaluationCursor: cursor,
+        formulaVersion: FIXED_FORMULA_VERSION,
+        sourceFingerprint: fingerprint,
+        canonicalTrade: trade !== undefined,
+      });
+    }
+    if (record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade) {
+      const identity = `decision|${record.id}|${record.patienceState}|${record.rejectionCategory}|${trade?.id ?? "none"}`;
+      upsert(identity, {
+        occurrenceId: occurrenceId(identity),
+        auditId: record.id,
+        kind: trade ? "trade" : "risk",
+        strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+        secondaryStrategyMatches: secondary,
+        tradingDate: record.tradingDate,
+        contractSymbol: record.contractSymbol,
+        contractMonth: record.contractMonth,
+        direction: record.direction,
+        lTimestamp: null,
+        lCandle: null,
+        patienceTimestamp: record.patienceCandleOpenTime,
+        patienceCandle: record.patienceCandle,
+        entryTimestamp: record.triggerCandleOpenTime,
+        entryCandle: record.triggerCandle,
+        levelIdentifiers: [],
+        levelValues: {},
+        levelDistancesTicks: {},
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        status: trade ? "QUALIFIED_TRADE" : "RISK_REJECTED",
+        reasonCode: record.rejectionSummary ?? record.decision,
+        evaluationCursor: cursor,
+        formulaVersion: FIXED_FORMULA_VERSION,
+        sourceFingerprint: fingerprint,
+        canonicalTrade: trade !== undefined,
+      });
+    }
+  }
+  const stageRank: Record<HistoricalOccurrence["kind"], number> = { pullback: 0, patience: 1, risk: 2, trade: 3 };
+  return [...byIdentity.values()].sort((first, second) => {
+    const firstTime = first.lTimestamp ?? first.patienceTimestamp ?? first.entryTimestamp ?? first.evaluationCursor;
+    const secondTime = second.lTimestamp ?? second.patienceTimestamp ?? second.entryTimestamp ?? second.evaluationCursor;
+    return `${first.tradingDate}|${firstTime}|${stageRank[first.kind]}|${first.occurrenceId}`
+      .localeCompare(`${second.tradingDate}|${secondTime}|${stageRank[second.kind]}|${second.occurrenceId}`);
+  });
+}
+
 function candidateDimensionValue(
   candidate: QualificationCandidate,
   dimension: QualificationFunnelComparison["dimension"],
@@ -1181,7 +1414,7 @@ function funnelStageCounts(
 }
 
 export function buildQualificationFunnel(
-  reports: readonly Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">[],
+  reports: readonly (Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract"> & Partial<Pick<BacktestReport, "occurrences">>)[],
 ): QualificationFunnel {
   const allAudits = reports.flatMap((report) => report.audit);
   const allTrades = reports.flatMap((report) => report.trades);
@@ -1289,6 +1522,7 @@ export function buildQualificationFunnel(
   return {
     sessionCount: sessionKeys.size,
     candidateCount: candidates.length,
+    occurrenceCount: reports.reduce((total, report) => total + (report.occurrences?.length ?? 0), 0),
     stages,
     rejectionCounts,
     comparisons,
@@ -1741,13 +1975,15 @@ export function runCausalBacktest(
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
   const allMetrics = calculateBacktestMetrics(trades, rejectedByPeriod.in_sample + rejectedByPeriod.out_of_sample, audit);
+  const reportFormulaHash = formulaConfigurationHash(request);
+  const occurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades);
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
     symbol: dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
       ? historicalContractSymbol
       : specification.rootSymbol,
-    formulaHash: formulaConfigurationHash(request),
+    formulaHash: reportFormulaHash,
     contract: reportContract,
     dataResolution: dataset.ticks?.length ? "tick" : "one-minute-fallback",
     dataset: {
@@ -1781,6 +2017,7 @@ export function runCausalBacktest(
     segments: buildSegments(trades, allMetrics.rejectedSetupCount),
     trades,
     audit,
+    occurrences,
     assumptions: [
       "Every strategy decision is recomputed from the visible candle prefix at that historical cursor.",
       "No current or future candle, indicator, volume value, level reaction, or setup state is available before its close time.",

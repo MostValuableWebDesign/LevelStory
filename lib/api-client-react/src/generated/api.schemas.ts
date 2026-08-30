@@ -2071,6 +2071,10 @@ export const BacktestAuditRecordExecutionMode = {
   ohlcv_modeled: 'ohlcv_modeled',
 } as const;
 
+export type BacktestAuditRecordPullbackOccurrencesItem = { [key: string]: unknown };
+
+export type BacktestAuditRecordPatienceOccurrencesItem = { [key: string]: unknown };
+
 export interface BacktestAuditRecord {
   id: string;
   tradingDate: string;
@@ -2133,6 +2137,86 @@ export interface BacktestAuditRecord {
   netPnl: number | null;
   /** @nullable */
   exitReason: string | null;
+  /** @nullable */
+  confirmationBufferTicks?: number | null;
+  pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
+  patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
+}
+
+export type HistoricalOccurrenceKind = typeof HistoricalOccurrenceKind[keyof typeof HistoricalOccurrenceKind];
+
+
+export const HistoricalOccurrenceKind = {
+  pullback: 'pullback',
+  patience: 'patience',
+  risk: 'risk',
+  trade: 'trade',
+} as const;
+
+/**
+ * @nullable
+ */
+export type HistoricalOccurrenceDirection = typeof HistoricalOccurrenceDirection[keyof typeof HistoricalOccurrenceDirection] | null;
+
+
+export const HistoricalOccurrenceDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+/**
+ * @nullable
+ */
+export type HistoricalOccurrenceLCandle = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type HistoricalOccurrencePatienceCandle = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type HistoricalOccurrenceEntryCandle = { [key: string]: unknown } | null;
+
+export type HistoricalOccurrenceLevelValues = {[key: string]: number};
+
+export type HistoricalOccurrenceLevelDistancesTicks = {[key: string]: number};
+
+export interface HistoricalOccurrence {
+  occurrenceId: string;
+  auditId: string;
+  kind: HistoricalOccurrenceKind;
+  strategyCandidate: string;
+  secondaryStrategyMatches: string[];
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  /** @nullable */
+  direction: HistoricalOccurrenceDirection;
+  /** @nullable */
+  lTimestamp: string | null;
+  /** @nullable */
+  lCandle: HistoricalOccurrenceLCandle;
+  /** @nullable */
+  patienceTimestamp: string | null;
+  /** @nullable */
+  patienceCandle: HistoricalOccurrencePatienceCandle;
+  /** @nullable */
+  entryTimestamp: string | null;
+  /** @nullable */
+  entryCandle: HistoricalOccurrenceEntryCandle;
+  levelIdentifiers: string[];
+  levelValues: HistoricalOccurrenceLevelValues;
+  levelDistancesTicks: HistoricalOccurrenceLevelDistancesTicks;
+  /** @nullable */
+  confirmationBufferTicks: number | null;
+  status: string;
+  reasonCode: string;
+  evaluationCursor: string;
+  formulaVersion: string;
+  sourceFingerprint: string;
+  canonicalTrade: boolean;
 }
 
 export type BacktestAuditPageFilters = { [key: string]: unknown };
@@ -2706,6 +2790,7 @@ export interface BacktestReport {
   segments: BacktestSegment[];
   trades: BacktestTrade[];
   audit: BacktestAuditRecord[];
+  occurrences: HistoricalOccurrence[];
   auditPage: BacktestReportAuditPage;
   assumptions: string[];
   executionMode: BacktestReportExecutionMode;
@@ -3511,6 +3596,8 @@ export type VisualValidationSetFunnelDiagnostics = {
   sessionCount: number;
   /** @minimum 0 */
   candidateCount: number;
+  /** @minimum 0 */
+  occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: VisualValidationSetFunnelDiagnosticsRejectionCountsItem[];
 };
@@ -4350,4 +4437,3 @@ export const ListJournalEntriesOutcome = {
   expired: 'expired',
   ambiguous: 'ambiguous',
 } as const;
-// Generated file terminator.

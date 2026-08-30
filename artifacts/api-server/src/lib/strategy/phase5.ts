@@ -30,13 +30,15 @@ export type PatienceCandleSnapshot = {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume?: number;
   isComplete: boolean;
 };
 
 export type PatienceOccurrence = {
   occurrenceId: string;
   direction: Direction;
+  entryBufferTicks: number;
+  stopBufferTicks: number;
   eligibilityReason: PatienceEligibilityReason;
   eligibilityTime: number;
   previousCandle: PatienceCandleSnapshot;
@@ -63,7 +65,7 @@ export type PatienceAnalysis = {
   triggerPrice: number | null;
   stateTime: number | null;
   detail: string;
-  occurrences: PatienceOccurrence[];
+  occurrences?: PatienceOccurrence[];
 };
 
 export type PatienceEngineOptions = {
@@ -114,11 +116,11 @@ export function patienceCandleEngine(
   const candidateIndexes = completed
     .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
-  const occurrences = buildPatienceOccurrences(candidateIndexes, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
+  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []);
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, occurrences });
   const candidate = candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
-    if (!next || next.openTime !== candle.closeTime) return false;
+    if (!next || !next.isComplete || next.openTime !== candle.closeTime) return false;
     const confirmationPrice = direction === "long"
       ? roundPrice(candle.high + entryBufferTicks * tickSize, tickSize)
       : roundPrice(candle.low - entryBufferTicks * tickSize, tickSize);
@@ -161,7 +163,7 @@ export function patienceCandleEngine(
       });
     }
     if (next.openTime !== candidate.candle.closeTime) {
-      return {
+      return finalize({
         ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: patience,
@@ -170,7 +172,7 @@ export function patienceCandleEngine(
         strategyStopPrice,
         stateTime: next.openTime,
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
-      };
+      });
     }
     return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []));
   }
@@ -366,8 +368,73 @@ function snapshot(candle: Candle): PatienceCandleSnapshot {
     high: candle.high,
     low: candle.low,
     close: candle.close,
+    volume: candle.volume,
     isComplete: candle.isComplete,
   };
+}
+
+function buildPatienceOccurrences(
+  candidates: readonly { candle: Candle; index: number; event?: PatienceEligibilityEvent }[],
+  completed: readonly Candle[],
+  sorted: readonly Candle[],
+  direction: Direction,
+  trend: TrendDirection,
+  tickSize: number,
+  entryBufferTicks: number,
+  stopBufferTicks: number,
+  intrabarEvidence: readonly IntrabarEvidence[],
+): PatienceOccurrence[] {
+  const evaluationCursor = sorted.filter((candle) => candle.isComplete).at(-1)?.closeTime ?? sorted.at(-1)?.closeTime ?? 0;
+  return candidates.map((candidate) => {
+    const previous = completed[candidate.index - 1];
+    const trigger = sorted.find((item) => item.openTime > candidate.candle.openTime && item.openTime <= evaluationCursor && item.isComplete);
+    const event = candidate.event!;
+    let analysis: PatienceAnalysis;
+    if (!previous) {
+      analysis = waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, event);
+    } else if (!directionTrendMatches(direction, trend)) {
+      analysis = {
+        ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
+        patienceCandle: snapshot(candidate.candle),
+        stateTime: candidate.candle.closeTime,
+        detail: "The detected patience candle is not aligned with the continuation trend.",
+      };
+    } else if (!trigger) {
+      analysis = {
+        ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
+        patienceCandle: snapshot(candidate.candle),
+        stateTime: candidate.candle.closeTime,
+        detail: "Detected patience candle has no immediately following candle in the visible replay prefix.",
+      };
+    } else if (trigger.openTime !== candidate.candle.closeTime) {
+      analysis = {
+        ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
+        previousCandle: snapshot(previous),
+        patienceCandle: snapshot(candidate.candle),
+        triggerCandle: snapshot(trigger),
+        stateTime: trigger.openTime,
+        detail: "The immediately following candle is missing; this P→E attempt expired.",
+      };
+    } else {
+      analysis = evaluateTrigger(candidate.candle, previous, trigger, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
+    }
+    return {
+      occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
+      direction,
+      entryBufferTicks,
+      stopBufferTicks,
+      eligibilityReason: event.reason,
+      eligibilityTime: event.time,
+      previousCandle: snapshot(previous),
+      patienceCandle: snapshot(candidate.candle),
+      triggerCandle: trigger ? snapshot(trigger) : null,
+      status: analysis.state,
+      reasonCode: analysis.detail,
+      evaluationCursor,
+    };
+  });
 }
 
 function baseAnalysis(

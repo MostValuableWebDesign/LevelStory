@@ -1097,7 +1097,37 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "grossPnl": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
-  "exitReason": zod.string().nullable()
+  "exitReason": zod.string().nullable(),
+  "confirmationBufferTicks": zod.number().nullish(),
+  "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+})),
+  "occurrences": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "auditId": zod.string(),
+  "kind": zod.enum(['pullback', 'patience', 'risk', 'trade']),
+  "strategyCandidate": zod.string(),
+  "secondaryStrategyMatches": zod.array(zod.string()),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "lTimestamp": zod.coerce.date().nullable(),
+  "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceTimestamp": zod.coerce.date().nullable(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "entryTimestamp": zod.coerce.date().nullable(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "levelIdentifiers": zod.array(zod.string()),
+  "levelValues": zod.record(zod.string(), zod.number()),
+  "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "confirmationBufferTicks": zod.number().nullable(),
+  "status": zod.string(),
+  "reasonCode": zod.string(),
+  "evaluationCursor": zod.coerce.date(),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "canonicalTrade": zod.boolean()
 })),
   "auditPage": zod.object({
   "runId": zod.string().regex(runBacktestResponseAuditPageRunIdRegExp),
@@ -1575,7 +1605,37 @@ export const StartBatchBacktestResponse = zod.object({
   "slippage": zod.number(),
   "grossPnl": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
-  "exitReason": zod.string().nullable()
+  "exitReason": zod.string().nullable(),
+  "confirmationBufferTicks": zod.number().nullish(),
+  "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+})),
+  "occurrences": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "auditId": zod.string(),
+  "kind": zod.enum(['pullback', 'patience', 'risk', 'trade']),
+  "strategyCandidate": zod.string(),
+  "secondaryStrategyMatches": zod.array(zod.string()),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "lTimestamp": zod.coerce.date().nullable(),
+  "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceTimestamp": zod.coerce.date().nullable(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "entryTimestamp": zod.coerce.date().nullable(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "levelIdentifiers": zod.array(zod.string()),
+  "levelValues": zod.record(zod.string(), zod.number()),
+  "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "confirmationBufferTicks": zod.number().nullable(),
+  "status": zod.string(),
+  "reasonCode": zod.string(),
+  "evaluationCursor": zod.coerce.date(),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "canonicalTrade": zod.boolean()
 })),
   "auditPage": zod.object({
   "runId": zod.string().regex(startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp),
@@ -2454,7 +2514,37 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "slippage": zod.number(),
   "grossPnl": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
-  "exitReason": zod.string().nullable()
+  "exitReason": zod.string().nullable(),
+  "confirmationBufferTicks": zod.number().nullish(),
+  "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+})),
+  "occurrences": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "auditId": zod.string(),
+  "kind": zod.enum(['pullback', 'patience', 'risk', 'trade']),
+  "strategyCandidate": zod.string(),
+  "secondaryStrategyMatches": zod.array(zod.string()),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "lTimestamp": zod.coerce.date().nullable(),
+  "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceTimestamp": zod.coerce.date().nullable(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "entryTimestamp": zod.coerce.date().nullable(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "levelIdentifiers": zod.array(zod.string()),
+  "levelValues": zod.record(zod.string(), zod.number()),
+  "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "confirmationBufferTicks": zod.number().nullable(),
+  "status": zod.string(),
+  "reasonCode": zod.string(),
+  "evaluationCursor": zod.coerce.date(),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "canonicalTrade": zod.boolean()
 })),
   "auditPage": zod.object({
   "runId": zod.string().regex(getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp),
@@ -3333,7 +3423,37 @@ export const CancelBatchBacktestResponse = zod.object({
   "slippage": zod.number(),
   "grossPnl": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
-  "exitReason": zod.string().nullable()
+  "exitReason": zod.string().nullable(),
+  "confirmationBufferTicks": zod.number().nullish(),
+  "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+})),
+  "occurrences": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "auditId": zod.string(),
+  "kind": zod.enum(['pullback', 'patience', 'risk', 'trade']),
+  "strategyCandidate": zod.string(),
+  "secondaryStrategyMatches": zod.array(zod.string()),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "lTimestamp": zod.coerce.date().nullable(),
+  "lCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "patienceTimestamp": zod.coerce.date().nullable(),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "entryTimestamp": zod.coerce.date().nullable(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullable(),
+  "levelIdentifiers": zod.array(zod.string()),
+  "levelValues": zod.record(zod.string(), zod.number()),
+  "levelDistancesTicks": zod.record(zod.string(), zod.number()),
+  "confirmationBufferTicks": zod.number().nullable(),
+  "status": zod.string(),
+  "reasonCode": zod.string(),
+  "evaluationCursor": zod.coerce.date(),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "canonicalTrade": zod.boolean()
 })),
   "auditPage": zod.object({
   "runId": zod.string().regex(cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp),
@@ -3985,7 +4105,10 @@ export const GetBacktestAuditPageResponse = zod.object({
   "slippage": zod.number(),
   "grossPnl": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
-  "exitReason": zod.string().nullable()
+  "exitReason": zod.string().nullable(),
+  "confirmationBufferTicks": zod.number().nullish(),
+  "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }))
 })
 
@@ -4074,6 +4197,8 @@ export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 export const getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
 
 export const getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin = 0;
+
+export const getVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin = 0;
 
 export const getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
 
@@ -4318,6 +4443,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "funnelDiagnostics": zod.object({
   "sessionCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
   "candidateCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
+  "occurrenceCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
@@ -4417,6 +4543,8 @@ export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 export const createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
 
 export const createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin = 0;
+
+export const createVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin = 0;
 
 export const createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin = 0;
 
@@ -4661,6 +4789,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "funnelDiagnostics": zod.object({
   "sessionCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin),
   "candidateCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
+  "occurrenceCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),

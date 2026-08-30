@@ -80,6 +80,46 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.patienceCandle?.openTime, candles[3].openTime);
   assert.equal(result.triggerCandle?.openTime, candles[4].openTime);
+  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.status), ["PATIENCE_CANDLE_EXPIRED", "ENTRY_TRIGGERED"]);
+  assert.equal(result.occurrences?.[0]?.patienceCandle.openTime, candles[1].openTime);
+  assert.equal(result.occurrences?.[1]?.patienceCandle.openTime, candles[3].openTime);
+});
+
+test("two successful P→E sequences remain ordered in one visible session", () => {
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 12.1, 10.2, 12),
+    candle(3, 12, 12.2, 10, 11.5),
+    candle(4, 11.5, 11.5, 9, 11),
+    candle(5, 11, 12.5, 10, 12.4),
+  ];
+  const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.deepEqual(
+    result.occurrences?.filter((occurrence) => occurrence.status === "ENTRY_TRIGGERED").map((occurrence) => occurrence.patienceCandle.openTime),
+    [candles[1].openTime, candles[4].openTime],
+  );
+  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[1].openTime)?.triggerCandle?.openTime, candles[2].openTime);
+  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[4].openTime)?.triggerCandle?.openTime, candles[5].openTime);
+});
+
+test("an occurrence never reads an entry candle beyond the visible evaluation cursor", () => {
+  const visible = setup("long", candle(2, 10.8, 10.95, 9.2, 10.9)).slice(0, 2);
+  visible.push(candle(2, 10.8, 10.95, 9.2, 10.9, false));
+  const result = patienceCandleEngine(visible, "long", { eligibilityEvents: eligibility() });
+  assert.equal(result.occurrences?.[0]?.triggerCandle, null);
+  assert.equal(result.occurrences?.[0]?.evaluationCursor, visible[1].closeTime);
+});
+
+test("configured confirmation and stop buffers are retained on every patience occurrence", () => {
+  const result = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
+    eligibilityEvents: eligibility(),
+    entryBufferTicks: 3,
+    stopBufferTicks: 1,
+  });
+  assert.equal(result.occurrences?.[0]?.entryBufferTicks, 3);
+  assert.equal(result.occurrences?.[0]?.stopBufferTicks, 1);
 });
 
 test("an active trigger candle does not need to close", () => {
@@ -221,4 +261,11 @@ test("no qualifying location remains waiting", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10.8, 11.1, 10.2, 11)), "long");
   assert.equal(result.state, "WAITING_FOR_VALID_CONTEXT");
   assert.equal(result.eligible, false);
+  assert.deepEqual(result.occurrences ?? [], []);
+});
+
+test("wrong-side invalidation remains a diagnostic patience occurrence", () => {
+  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 10.5, 6.5, 8)), "long", { eligibilityEvents: eligibility() });
+  assert.equal(result.occurrences?.[0]?.status, "OPPOSITE_SIDE_INVALIDATION");
+  assert.equal(result.occurrences?.[0]?.triggerCandle?.openTime, candle(2, 8.8, 10.5, 6.5, 8).openTime);
 });

@@ -14,7 +14,7 @@ import {
   type VisualValidationCategory,
 } from "./visual-validation.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
-import type { BacktestAuditRecord, BacktestTrade } from "./phase9.js";
+import type { BacktestAuditRecord, BacktestTrade, HistoricalOccurrence } from "./phase9.js";
 import {
   buildVisualValidationDiscrepancyReport,
   getVisualValidationSet,
@@ -141,6 +141,65 @@ test("historical visual review retains every occurrence in a category", () => {
   assert.equal(strong.length, 2);
   assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 2);
   assert.notEqual(strong[0]?.snapshotId, strong[1]?.snapshotId);
+});
+
+test("historical Visual Review maps a ledger occurrence to its exact L anchor", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "pullback");
+  assert.ok(fixture);
+  const lCandle = fixture.dataset.candles.find((candle) => candle.isComplete);
+  assert.ok(lCandle);
+  const occurrence: HistoricalOccurrence = {
+    occurrenceId: "occurrence-pullback-exact",
+    auditId: fixture.audit.id,
+    kind: "pullback",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    secondaryStrategyMatches: [],
+    tradingDate: fixture.audit.tradingDate,
+    contractSymbol: fixture.audit.contractSymbol,
+    contractMonth: fixture.audit.contractMonth,
+    direction: fixture.audit.direction,
+    lTimestamp: new Date(lCandle.openTime).toISOString(),
+    lCandle: {
+      openTime: lCandle.openTime,
+      closeTime: lCandle.closeTime,
+      open: lCandle.open,
+      high: lCandle.high,
+      low: lCandle.low,
+      close: lCandle.close,
+      volume: lCandle.volume,
+      isComplete: lCandle.isComplete,
+    },
+    patienceTimestamp: null,
+    patienceCandle: null,
+    entryTimestamp: null,
+    entryCandle: null,
+    levelIdentifiers: ["ORB"],
+    levelValues: { ORB: lCandle.close },
+    levelDistancesTicks: { ORB: 0 },
+    confirmationBufferTicks: null,
+    status: "touch",
+    reasonCode: "causal pullback interaction",
+    evaluationCursor: new Date(lCandle.closeTime).toISOString(),
+    formulaVersion: "test",
+    sourceFingerprint: "test",
+    canonicalTrade: false,
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    { ...fixture.dataset, source: "historical_databento_multicontract" as const },
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [fixture.audit],
+      trades: [],
+      occurrences: [occurrence],
+    },
+  );
+  const snapshot = set.snapshots.find((item) => item.category === "pullback");
+  assert.ok(snapshot);
+  assert.equal(snapshot.categoryAnchor?.occurrenceId, occurrence.occurrenceId);
+  assert.equal(snapshot.categoryAnchor?.openTime, occurrence.lTimestamp);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
