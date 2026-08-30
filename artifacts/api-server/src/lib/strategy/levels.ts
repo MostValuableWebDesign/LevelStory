@@ -1,5 +1,5 @@
 import type { Candle, Level } from "./types.js";
-import { completedEma, emaSlope, fibonacci, regularSessionVwap, rsi, volumeRatio } from "./indicators.js";
+import { causalEmaSeries, fibonacci, regularSessionVwap, rsi, volumeRatio } from "./indicators.js";
 import type { StrategyConfig } from "./config.js";
 import { FUTURES_CONTRACT_SPECS, type FuturesContractSpecification } from "../futures/contracts.js";
 import type { SimulatedHourlyCandle } from "../futures/simulated-feed.js";
@@ -19,6 +19,7 @@ export type SessionWindows = {
   replayCursor?: number;
   premarketAvailable?: boolean;
   historicalHourly?: readonly SimulatedHourlyCandle[];
+  historicalFeed?: readonly Candle[];
 };
 
 export type NtzEventType =
@@ -126,8 +127,29 @@ export function sessionLevels(
   if (ntz) levels.push({ name: "NTZ high", price: ntz.high }, { name: "NTZ low", price: ntz.low });
 
   const indicatorCandles = [...previousDay, ...regular];
-  const emaValues = completedEma(candles, config.emaPeriod);
-  const currentEma = emaValues.at(-1) ?? NaN;
+  const sourceCandles = [...(windows.historicalFeed ?? []), ...candles];
+  const contractSymbols = new Set(
+    candles
+      .map((candle) => (candle as Candle & { contractSymbol?: string }).contractSymbol)
+      .filter((symbol): symbol is string => Boolean(symbol)),
+  );
+  const emaSource = sourceCandles.filter((candle) => {
+    const contractSymbol = (candle as Candle & { contractSymbol?: string }).contractSymbol;
+    const visibleAtCursor = windows.replayCursor === undefined || candle.closeTime <= windows.replayCursor;
+    return visibleAtCursor && (contractSymbols.size === 0 || (contractSymbol !== undefined && contractSymbols.has(contractSymbol)));
+  });
+  const uniqueEmaSource = [...new Map(emaSource.map((candle) => [candle.openTime, candle])).values()];
+  const emaSeries = causalEmaSeries(uniqueEmaSource, config.emaPeriod);
+  const currentCandle = candles
+    .filter((candle) => candle.isComplete && (windows.replayCursor === undefined || candle.closeTime <= windows.replayCursor))
+    .sort((first, second) => first.closeTime - second.closeTime)
+    .at(-1);
+  const currentEma = currentCandle
+    ? emaSeries.points.find((point) => point.candle.openTime === currentCandle.openTime)?.value ?? NaN
+    : emaSeries.points.at(-1)?.value ?? NaN;
+  const currentPointIndex = currentCandle
+    ? emaSeries.points.findIndex((point) => point.candle.openTime === currentCandle.openTime)
+    : emaSeries.points.length - 1;
   const currentVwap = regularSessionVwap(candles, calendar, currentDate);
   const fibonacciLevels = fibonacci(regular);
   const referenceComponents = [
@@ -156,7 +178,11 @@ export function sessionLevels(
     previousDayClose: previousDay.at(-1)?.close ?? null,
     vwap: currentVwap,
     ema: currentEma,
-    emaSlope: emaSlope(candles, config.emaPeriod, config.emaSlopeWindow),
+    emaSlope: currentPointIndex >= config.emaSlopeWindow
+      && emaSeries.points[currentPointIndex]?.value !== null
+      && emaSeries.points[currentPointIndex - config.emaSlopeWindow]?.value !== null
+      ? emaSeries.points[currentPointIndex]!.value! - emaSeries.points[currentPointIndex - config.emaSlopeWindow]!.value!
+      : NaN,
     rsi: rsi(indicatorCandles.map((candle) => candle.close), config.rsiPeriod).at(-1) ?? 50,
     volumeRatio: volumeRatio(regular, config.volumeLookback),
     fibonacci: fibonacciLevels,

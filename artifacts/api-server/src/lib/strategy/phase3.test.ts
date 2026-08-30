@@ -4,7 +4,7 @@ import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { completedSimulatedHourlyCandles, generateSimulatedFuturesFeed, type SimulatedHourlyCandle } from "../futures/simulated-feed.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { completedEma, emaSlope, regularSessionVwap } from "./indicators.js";
+import { causalEmaSeries, completedEma, emaSlope, regularSessionVwap } from "./indicators.js";
 import { majorLevels } from "./major-levels.js";
 import { trendEvidence } from "./rules.js";
 import type { Candle } from "./types.js";
@@ -68,8 +68,18 @@ function fifteenMinuteCandles(
 test("completed EMA and slope ignore an incomplete five-minute candle", () => {
   const candles = [10, 11, 12, 13, 100].map((close, index) => fiveMinuteCandle(index, close, close, index < 4));
   const values = completedEma(candles, 3);
-  assert.deepEqual(values.map((value) => Number(value.toFixed(3))), [10, 10.5, 11.25, 12.125]);
-  assert.equal(Number(emaSlope(candles, 3, 2).toFixed(3)), 1.625);
+  assert.deepEqual(values.map((value) => Number(value.toFixed(3))), [11, 12]);
+  assert.equal(Number.isNaN(emaSlope(candles, 3, 2)), true);
+});
+
+test("causal EMA seeds from SMA and carries continuously across session dates", () => {
+  const candles = [10, 11, 12, 13, 14].map((close, index) => fiveMinuteCandle(index, close, close, true));
+  const series = causalEmaSeries(candles, 3);
+  assert.deepEqual(series.values.map((value) => value === null ? null : Number(value.toFixed(6))), [null, null, 11, 12, 13]);
+  assert.equal(series.initialization, "sma");
+  assert.equal(series.warmupCount, 3);
+  assert.equal(series.sourceStartTime, candles[0]!.openTime);
+  assert.equal(series.sourceEndTime, candles.at(-1)!.closeTime);
 });
 
 test("regular-session VWAP resets at 09:30 ET and excludes other sessions", () => {

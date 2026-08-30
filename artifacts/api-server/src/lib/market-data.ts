@@ -412,7 +412,7 @@ export function createMarketSnapshot(
         calendar,
         days: config.historicalLookbackTradingDays,
         seed: config.simulationSeed,
-        includePremarket: false,
+        includePremarket: true,
         startDate: tradingDate,
       });
   const currentCursor = replayOptions?.cursor ?? (session === "premarket"
@@ -450,6 +450,7 @@ export function createMarketSnapshot(
        premarketAvailable,
       replayCursor: currentCursor,
       historicalHourly,
+       historicalFeed,
     },
     config,
     calendar,

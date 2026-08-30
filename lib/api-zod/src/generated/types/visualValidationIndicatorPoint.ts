@@ -5,6 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationIndicatorPointAvailability } from './visualValidationIndicatorPointAvailability';
+import type { VisualValidationIndicatorPointInitializationMethod } from './visualValidationIndicatorPointInitializationMethod';
+import type { VisualValidationIndicatorPointNoResetPolicy } from './visualValidationIndicatorPointNoResetPolicy';
 import type { VisualValidationIndicatorPointVisibility } from './visualValidationIndicatorPointVisibility';
 
 export interface VisualValidationIndicatorPoint {
@@ -14,5 +17,16 @@ export interface VisualValidationIndicatorPoint {
   vwap: number | null;
   /** @nullable */
   ema200: number | null;
+  contractSymbol: string;
+  sessionTemplate: string;
+  noResetPolicy: VisualValidationIndicatorPointNoResetPolicy;
+  /** @minimum 0 */
+  warmupCount: number;
+  initializationMethod: VisualValidationIndicatorPointInitializationMethod;
+  /** @nullable */
+  sourceStartTime: Date | null;
+  /** @nullable */
+  sourceEndTime: Date | null;
+  availability: VisualValidationIndicatorPointAvailability;
   visibility: VisualValidationIndicatorPointVisibility;
 }

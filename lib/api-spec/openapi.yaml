@@ -3459,8 +3459,16 @@ components:
         closeTime: { type: string, format: date-time }
         vwap: { type: ["number", "null"] }
         ema200: { type: ["number", "null"] }
+        contractSymbol: { type: string }
+        sessionTemplate: { type: string }
+        noResetPolicy: { type: string, enum: [continuous_contract_local] }
+        warmupCount: { type: number, minimum: 0 }
+        initializationMethod: { type: string, enum: [sma_of_period_closes, unavailable] }
+        sourceStartTime: { type: ["string", "null"], format: date-time }
+        sourceEndTime: { type: ["string", "null"], format: date-time }
+        availability: { type: string, enum: [available, insufficient_warmup] }
         visibility: { type: string, enum: [machine, human_only] }
-      required: [openTime, closeTime, vwap, ema200, visibility]
+      required: [openTime, closeTime, vwap, ema200, contractSymbol, sessionTemplate, noResetPolicy, warmupCount, initializationMethod, sourceStartTime, sourceEndTime, availability, visibility]
     VisualValidationTradeEvent:
       type: object
       properties:

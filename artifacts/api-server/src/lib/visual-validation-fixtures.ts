@@ -415,8 +415,13 @@ export function createVisualValidationFixtures(request: VisualValidationRequest)
     const premarket = request.premarketAvailable === false
       ? []
       : buildCandles(category, specification, calendar, tradingDate, request.seed ?? 11, "premarket");
+    const warmupDates = listTradingDates(tradingDate, 3).slice(0, -1);
+    const warmupCandles = warmupDates.flatMap((warmupDate) => [
+      ...buildCandles("consolidation", specification, calendar, warmupDate, request.seed ?? 11, "premarket"),
+      ...buildCandles("consolidation", specification, calendar, warmupDate, request.seed ?? 11),
+    ]);
     const dataset: CausalReplayDataset = {
-      candles: [...premarket, ...candles],
+      candles: [...warmupCandles, ...premarket, ...candles],
       contractSymbol: specification.fullContractSymbol,
       contractMonth: specification.contractMonth,
       inSampleDates: dates.slice(0, Math.max(1, request.inSampleDays)),

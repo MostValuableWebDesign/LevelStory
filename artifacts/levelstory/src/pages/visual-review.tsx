@@ -1080,7 +1080,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       if (!point || value == null || point.visibility !== visibility) return [];
       return [{ x: x(getCandleSlotIndex(candle, sessionView)), y: y(value) }];
     });
-    return points.length > 1 ? points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ") : "";
+    return points.length > 1 ? points.map((point, index) => {
+      const previous = points[index - 1];
+      const slotGap = previous ? Math.abs(point.x - previous.x) / step : 0;
+      return `${index === 0 || slotGap > 1.01 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+    }).join(" ") : "";
   };
   const visibleAtEvaluation = candles.filter((candle) => candle.machineVisible).length;
   const machineSlots = candles.filter((candle) => candle.machineVisible).map((candle) => getCandleSlotIndex(candle, sessionView));
@@ -1361,7 +1365,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         <line x1={left} x2={plotRight} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
          <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
         <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
-        <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
+        <text x={plotRight} y={CHART_FOOTER_LABEL_Y} textAnchor="end" fill="hsl(145 45% 42%)" fontSize="9" fontFamily="DM Mono">EMA 200 · CAUSAL / SMA-SEEDED</text>
+        <text x={plotRight} y={CHART_FOOTER_LABEL_Y + 13} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">VOLUME · COMPLETED 5M</text>
       </svg>
      <div className="sr-only" aria-live="polite" data-testid="selected-candle-announcement">
         {activeDetails ? `Active ${activeDetails.interval}. Open ${activeDetails.open.toFixed(2)}, high ${activeDetails.high.toFixed(2)}, low ${activeDetails.low.toFixed(2)}, close ${activeDetails.close.toFixed(2)}, volume ${formatExactVolume(activeDetails.volume)}. ${activeDetails.machineVisible ? "Machine visible." : "Human-only context."}` : activeSlot === null ? "No candle selected." : `Active fixed slot ${activeSlot + 1}; no historical candle is available.`}

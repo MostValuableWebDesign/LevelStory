@@ -94,6 +94,25 @@ test("missing premarket data does not infer or backfill premarket levels", () =>
   assert.equal(levels.levels.some((level) => level.name.startsWith("Premarket")), false);
 });
 
+test("EMA and slope remain causal when future feed candles change after the replay cursor", () => {
+  const prior = [...regularSession("2026-08-21", 110, 90, 100), ...regularSession("2026-08-24", 110, 90, 100)];
+  const currentFull = regularSession("2026-08-25", 110, 90, 100);
+  const visible = currentFull.slice(0, 8);
+  const cursor = visible.at(-1)!.closeTime;
+  const windows: SessionWindows = {
+    premarket: [],
+    regular: visible,
+    tradingDate: "2026-08-25",
+    replayCursor: cursor,
+    historicalFeed: [...prior, ...currentFull],
+  };
+  const baseline = sessionLevels([...prior, ...visible], windows, config, calendar);
+  const changedFuture = currentFull.map((item, index) => index >= visible.length ? { ...item, close: item.close + 10_000, open: item.open + 10_000 } : item);
+  const changed = sessionLevels([...prior, ...visible], { ...windows, historicalFeed: [...prior, ...changedFuture] }, config, calendar);
+  assert.equal(changed.ema, baseline.ema);
+  assert.equal(changed.emaSlope, baseline.emaSlope);
+});
+
 test("NTZ remains forming before the third candle and completes exactly at 9:45 ET", () => {
   const forming = fixture({ includeThird: false });
   assert.equal(forming.ntzPhase, "forming");

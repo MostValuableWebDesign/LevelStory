@@ -3186,6 +3186,29 @@ export interface VisualValidationAnnotation {
   visibility: VisualValidationAnnotationVisibility;
 }
 
+export type VisualValidationIndicatorPointNoResetPolicy = typeof VisualValidationIndicatorPointNoResetPolicy[keyof typeof VisualValidationIndicatorPointNoResetPolicy];
+
+
+export const VisualValidationIndicatorPointNoResetPolicy = {
+  continuous_contract_local: 'continuous_contract_local',
+} as const;
+
+export type VisualValidationIndicatorPointInitializationMethod = typeof VisualValidationIndicatorPointInitializationMethod[keyof typeof VisualValidationIndicatorPointInitializationMethod];
+
+
+export const VisualValidationIndicatorPointInitializationMethod = {
+  sma_of_period_closes: 'sma_of_period_closes',
+  unavailable: 'unavailable',
+} as const;
+
+export type VisualValidationIndicatorPointAvailability = typeof VisualValidationIndicatorPointAvailability[keyof typeof VisualValidationIndicatorPointAvailability];
+
+
+export const VisualValidationIndicatorPointAvailability = {
+  available: 'available',
+  insufficient_warmup: 'insufficient_warmup',
+} as const;
+
 export type VisualValidationIndicatorPointVisibility = typeof VisualValidationIndicatorPointVisibility[keyof typeof VisualValidationIndicatorPointVisibility];
 
 
@@ -3201,6 +3224,17 @@ export interface VisualValidationIndicatorPoint {
   vwap: number | null;
   /** @nullable */
   ema200: number | null;
+  contractSymbol: string;
+  sessionTemplate: string;
+  noResetPolicy: VisualValidationIndicatorPointNoResetPolicy;
+  /** @minimum 0 */
+  warmupCount: number;
+  initializationMethod: VisualValidationIndicatorPointInitializationMethod;
+  /** @nullable */
+  sourceStartTime: string | null;
+  /** @nullable */
+  sourceEndTime: string | null;
+  availability: VisualValidationIndicatorPointAvailability;
   visibility: VisualValidationIndicatorPointVisibility;
 }
 

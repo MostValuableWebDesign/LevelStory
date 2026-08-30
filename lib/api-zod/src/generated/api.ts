@@ -4039,6 +4039,8 @@ export const getVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegEx
 export const getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
+export const getVisualValidationSetResponseSnapshotsItemIndicatorSeriesItemWarmupCountMin = 0;
+
 export const getVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin = 0;
 
 export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
@@ -4171,6 +4173,14 @@ export const GetVisualValidationSetResponse = zod.object({
   "closeTime": zod.coerce.date(),
   "vwap": zod.number().nullable(),
   "ema200": zod.number().nullable(),
+  "contractSymbol": zod.string(),
+  "sessionTemplate": zod.string(),
+  "noResetPolicy": zod.enum(['continuous_contract_local']),
+  "warmupCount": zod.number().min(getVisualValidationSetResponseSnapshotsItemIndicatorSeriesItemWarmupCountMin),
+  "initializationMethod": zod.enum(['sma_of_period_closes', 'unavailable']),
+  "sourceStartTime": zod.coerce.date().nullable(),
+  "sourceEndTime": zod.coerce.date().nullable(),
+  "availability": zod.enum(['available', 'insufficient_warmup']),
   "visibility": zod.enum(['machine', 'human_only'])
 })),
   "tradeEvents": zod.array(zod.object({
@@ -4356,6 +4366,8 @@ export const createVisualValidationSetResponseReviewPeriodEndDateRegExp = new Re
 export const createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
 
+export const createVisualValidationSetResponseSnapshotsItemIndicatorSeriesItemWarmupCountMin = 0;
+
 export const createVisualValidationSetResponseSnapshotsItemTradeEventsItemContractsMin = 0;
 
 export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
@@ -4488,6 +4500,14 @@ export const CreateVisualValidationSetResponse = zod.object({
   "closeTime": zod.coerce.date(),
   "vwap": zod.number().nullable(),
   "ema200": zod.number().nullable(),
+  "contractSymbol": zod.string(),
+  "sessionTemplate": zod.string(),
+  "noResetPolicy": zod.enum(['continuous_contract_local']),
+  "warmupCount": zod.number().min(createVisualValidationSetResponseSnapshotsItemIndicatorSeriesItemWarmupCountMin),
+  "initializationMethod": zod.enum(['sma_of_period_closes', 'unavailable']),
+  "sourceStartTime": zod.coerce.date().nullable(),
+  "sourceEndTime": zod.coerce.date().nullable(),
+  "availability": zod.enum(['available', 'insufficient_warmup']),
   "visibility": zod.enum(['machine', 'human_only'])
 })),
   "tradeEvents": zod.array(zod.object({

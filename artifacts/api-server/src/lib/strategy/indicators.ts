@@ -19,7 +19,82 @@ export function completedEma(candles: readonly Candle[], period: number): number
   const completed = candles
     .filter((candle) => candle.isComplete)
     .sort((first, second) => first.closeTime - second.closeTime);
-  return ema(completed.map((candle) => candle.close), period);
+  const result = causalEmaSeries(completed, period).values;
+  return result.filter((value): value is number => value !== null);
+}
+
+export type CausalEmaPoint = {
+  candle: Candle;
+  value: number | null;
+};
+
+export type CausalEmaSeries = {
+  period: number;
+  alpha: number;
+  values: (number | null)[];
+  points: CausalEmaPoint[];
+  initialized: boolean;
+  warmupCount: number;
+  sourceStartTime: number | null;
+  sourceEndTime: number | null;
+  initialization: "sma" | "unavailable";
+};
+
+/**
+ * Calculate EMA causally from completed closes. Values remain unavailable until
+ * the SMA seed has period valid closes; the recursive value then carries across
+ * trading dates and extended-session boundaries without a reset.
+ */
+export function causalEmaSeries(candles: readonly Candle[], period: number): CausalEmaSeries {
+  if (!Number.isInteger(period) || period <= 0) throw new Error("EMA period must be a positive integer");
+  const ordered = candles
+    .filter((candle) =>
+      candle.isComplete
+      && Number.isFinite(candle.close)
+      && Number.isFinite(candle.openTime)
+      && Number.isFinite(candle.closeTime),
+    )
+    .sort((first, second) => first.closeTime - second.closeTime || first.openTime - second.openTime);
+  const alpha = 2 / (period + 1);
+  const values: (number | null)[] = [];
+  const points: CausalEmaPoint[] = [];
+  let emaValue: number | null = null;
+  let seedSum = 0;
+  for (let index = 0; index < ordered.length; index++) {
+    const candle = ordered[index]!;
+    let value: number | null = null;
+    if (emaValue === null) {
+      seedSum += candle.close;
+      if (index + 1 >= period) {
+        emaValue = seedSum / period;
+        value = emaValue;
+      }
+    } else {
+      emaValue = candle.close * alpha + emaValue * (1 - alpha);
+      value = emaValue;
+    }
+    values.push(value);
+    points.push({ candle, value });
+  }
+  return {
+    period,
+    alpha,
+    values,
+    points,
+    initialized: emaValue !== null,
+    warmupCount: Math.min(ordered.length, period),
+    sourceStartTime: ordered[0]?.openTime ?? null,
+    sourceEndTime: ordered.at(-1)?.closeTime ?? null,
+    initialization: emaValue === null ? "unavailable" : "sma",
+  };
+}
+
+export function causalEmaValueAt(
+  candles: readonly Candle[],
+  period: number,
+  openTime: number,
+): number | null {
+  return causalEmaSeries(candles, period).points.find((point) => point.candle.openTime === openTime)?.value ?? null;
 }
 
 export function emaSlope(
@@ -28,9 +103,12 @@ export function emaSlope(
   window: number,
 ): number {
   if (!Number.isInteger(window) || window <= 0) throw new Error("EMA slope window must be a positive integer");
-  const series = completedEma(candles, period);
-  if (series.length <= window) return NaN;
-  return series.at(-1)! - series.at(-(window + 1))!;
+  const series = causalEmaSeries(candles, period).points.map((point) => point.value);
+  const latest = series.at(-1);
+  const prior = series.at(-(window + 1));
+  return latest !== null && latest !== undefined && prior !== null && prior !== undefined
+    ? latest - prior
+    : NaN;
 }
 
 export function rsi(values: readonly number[], period = 14): number[] {

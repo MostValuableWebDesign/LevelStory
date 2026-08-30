@@ -25,6 +25,7 @@ import {
   sessionWindow,
   tradingDateForTimestamp,
 } from "./futures/session-calendar.js";
+import { causalEmaSeries } from "./strategy/indicators.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
@@ -100,6 +101,14 @@ export type VisualValidationIndicatorPoint = {
   closeTime: string;
   vwap: number | null;
   ema200: number | null;
+  contractSymbol: string;
+  sessionTemplate: string;
+  noResetPolicy: "continuous_contract_local";
+  warmupCount: number;
+  initializationMethod: "sma_of_period_closes" | "unavailable";
+  sourceStartTime: string | null;
+  sourceEndTime: string | null;
+  availability: "available" | "insufficient_warmup";
   visibility: "machine" | "human_only";
 };
 
@@ -1215,20 +1224,18 @@ function buildIndicatorSeries(
   calendar: ReturnType<typeof sessionCalendarForContract>,
 ): VisualValidationIndicatorPoint[] {
   const config = strategyConfig();
-  const orderedHistory = historicalCandles
+  const orderedHistory = [...historicalCandles, ...displayedCandles]
     .filter((candle) =>
       candle.contractSymbol === contractSymbol
       && candle.isComplete
-      && classifyFuturesSession(candle.openTime, calendar) === "regular",
+      && classifyFuturesSession(candle.openTime, calendar) !== "closed",
     )
     .sort((first, second) => first.closeTime - second.closeTime);
-  const alpha = 2 / (config.emaPeriod + 1);
-  let emaValue: number | null = null;
-  const emaByOpenTime = new Map<number, number>();
-  for (const candle of orderedHistory) {
-    emaValue = emaValue === null ? candle.close : candle.close * alpha + emaValue * (1 - alpha);
-    emaByOpenTime.set(candle.openTime, emaValue);
-  }
+  const dedupedHistory = [...new Map(orderedHistory.map((candle) => [candle.openTime, candle])).values()];
+  const emaSeries = causalEmaSeries(dedupedHistory, config.emaPeriod);
+  const emaByOpenTime = new Map(emaSeries.points.map((point) => [point.candle.openTime, point.value]));
+  const sourceStartTime = emaSeries.sourceStartTime === null ? null : new Date(emaSeries.sourceStartTime).toISOString();
+  const sourceEndTime = emaSeries.sourceEndTime === null ? null : new Date(emaSeries.sourceEndTime).toISOString();
   const sessionCandles = regularSessionCandlesForDate(historicalCandles, tradingDate, contractSymbol, calendar);
   const sessionTotals = new Map<number, { priceVolume: number; volume: number }>();
   let priceVolume = 0;
@@ -1246,6 +1253,16 @@ function buildIndicatorSeries(
       closeTime: new Date(candle.closeTime).toISOString(),
       vwap: totals && totals.volume > 0 ? totals.priceVolume / totals.volume : null,
       ema200: emaByOpenTime.get(candle.openTime) ?? null,
+      contractSymbol,
+      sessionTemplate: calendar.calendarVersion,
+      noResetPolicy: "continuous_contract_local",
+      warmupCount: emaSeries.warmupCount,
+      initializationMethod: emaSeries.initialization === "sma" ? "sma_of_period_closes" : "unavailable",
+      sourceStartTime,
+      sourceEndTime,
+      availability: emaSeries.initialized && emaByOpenTime.get(candle.openTime) !== null && emaByOpenTime.get(candle.openTime) !== undefined
+        ? "available"
+        : "insufficient_warmup",
       visibility: visible ? "machine" : "human_only",
     };
   });
