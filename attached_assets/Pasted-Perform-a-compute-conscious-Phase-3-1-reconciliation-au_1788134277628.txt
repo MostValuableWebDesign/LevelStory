@@ -1,0 +1,139 @@
+Perform a compute-conscious Phase 3.1 reconciliation audit of the completed Phase 3 pilot.
+
+Do not change strategy rules, tolerances, entry rules, formula behavior, grading, or management behavior yet. Diagnose the 150-confirmed-signal-to-6-candidate funnel first.
+
+Use the existing pilot, manifest, partitions, checkpoints, and historical index:
+
+Pilot ID:
+f6f556e2-aa4e-4be5-9dc0-f08e90ec9820
+
+Manifest:
+aaa31e663bc16d409daacfae06c51e804621dfe97c6910906be9616de24ad387
+
+Do not rebuild the historical index or rerun all 30 sessions unless cached artifacts are genuinely insufficient.
+
+PRIMARY INVARIANT
+
+Every one of the 150 canonical confirmed physical P→E signals must have exactly one final disposition:
+
+1. AUTHORITATIVE_CANDIDATE_CREATED
+2. OUTSIDE_PRIMARY_ENTRY_WINDOW
+3. INVALID_CAUSAL_IDENTITY
+4. MISSING_EDGE_REQUIREMENT
+5. MISSING_QUALIFYING_LEVEL_INTERACTION
+6. STRUCTURALLY_INVALIDATED
+7. DUPLICATE_PHYSICAL_SIGNAL_MERGED
+8. OTHER_EXPLICIT_REJECTION
+
+No confirmed signal may disappear between the canonical ledger and candidate projection.
+
+Required reconciliation:
+
+confirmed signals
+= authoritative candidates
++ uniquely rejected signals
++ duplicate physical signals merged
+
+Reason-code totals may exceed rejected-signal totals when one signal has multiple reasons, but the unique disposition count must reconcile exactly.
+
+AUDIT EACH CONFIRMED SIGNAL
+
+For every confirmed signal, persist and report:
+
+- Canonical occurrence ID
+- Contract and New York trading date
+- Direction
+- P and immediate E timestamps
+- Confirmation threshold and whether E reached it
+- Direction source
+- Primary edge considered
+- All matched secondary edges
+- Qualifying level identities and values
+- Pullback distance in MES ticks
+- Entry observation time in New York
+- Final candidate disposition
+- Every rejection reason
+- Exact rule predicate that failed
+- Whether a candidate and modeled trade exist
+
+EDGE ATTRIBUTION AUDIT
+
+Explain why all six candidates were attributed to ORB_PULLBACK_CONTINUATION and why these produced zero candidates:
+
+- PATIENCE_CANDLE_CONTINUATION
+- CONSOLIDATION_BREAKOUT_CONTINUATION
+- EQUIVALENT_CANDLE_REVERSAL
+
+Verify that:
+
+- Canonical attribution precedence is not incorrectly swallowing independent edges.
+- Generic patience continuation can qualify when its own requirements pass.
+- Consolidation breakout is evaluated from a frozen stable range, not an obsolete duration requirement.
+- Equivalent reversal may oppose the preceding continuation trend.
+- ORB qualification is not being assigned merely because ORB data exists.
+- Secondary matches are preserved as confluences without creating duplicate trades.
+
+CONFLUENCE AUDIT
+
+The report gave every candidate the same confluence list. Verify whether these are actual per-signal facts or generic labels.
+
+For each candidate, report its individual supporting confluences with:
+
+- Evidence timestamp
+- Evidence value
+- Rule result
+- Source audit ID
+
+Do not award confluence credit unless that candidate’s causal evidence proves it.
+
+ORPHAN-TRADE AUDIT
+
+Reconcile all 15 excluded orphan modeled trades individually:
+
+- Legacy trade ID
+- Exact P/E identity, if available
+- Matching canonical signal, if any
+- Why no candidate matched
+- Whether it is a genuine stale legacy artifact, identity mismatch, entry-window mismatch, or missing-edge mismatch
+
+Do not restore an orphan to authoritative metrics unless it matches exactly one eligible candidate.
+
+TIME-BUCKET AUDIT
+
+Explain why there were zero candidates from 9:30–10:00 a.m. ET.
+
+Report confirmed signals and rejection reasons by these buckets:
+
+- 9:30–10:00
+- 10:00–11:00
+- 11:00–12:00
+- 12:00–1:00
+
+Do not relax the strict no-entry-at-or-after-1:00 p.m. rule.
+
+SOURCE-FINGERPRINT CHECK
+
+Validate every component of the source fingerprint.
+
+Specifically inspect the MESH7 component, whose displayed hash appears duplicated or malformed. Confirm that each file contributes exactly one valid deterministic checksum and that the manifest cannot silently accept a malformed fingerprint.
+
+DELIVERABLE
+
+Return:
+
+1. A reconciliation table proving where all 150 confirmed signals went.
+2. Counts by final disposition.
+3. Counts by edge, direction source, session, and time bucket.
+4. Per-candidate truthful confluences.
+5. All orphan-trade explanations.
+6. Any accounting defect or edge-attribution defect found.
+7. A verdict:
+   - FUNNEL CORRECT — SAMPLE IS GENUINELY SPARSE
+   - CANDIDATE PROJECTION DEFECT
+   - EDGE ATTRIBUTION DEFECT
+   - REPORTING/ACCOUNTING DEFECT
+   - MULTIPLE DEFECTS
+
+Only implement a correction if it is an objective identity, projection, or accounting defect. Do not loosen strategy requirements merely to generate more trades.
+
+Add focused deterministic regression tests for any defect fixed. Run focused tests, API typecheck, and git diff --check. Preserve Shadow Mode and make no broker, live, or paper-order changes.
