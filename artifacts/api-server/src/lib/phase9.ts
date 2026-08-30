@@ -162,9 +162,9 @@ export type BacktestTrade = {
   setupType: string;
   direction: Direction;
   entryTime: string;
-  exitTime: string;
+  exitTime: string | null;
   entryPrice: number;
-  exitPrice: number;
+  exitPrice: number | null;
   contracts: number;
   grossPnl: number;
   fees: number;
@@ -1191,7 +1191,7 @@ function stageEvidence(
     || (record.rejectionReason !== "RISK_REJECTED"
       && (record.decision === "SETUP QUALIFIED" || passedRule(record, /risk|stop|target|contract|daily/i)));
   const entry = trade !== undefined;
-  const exit = trade !== undefined && trade.exitTime.length > 0;
+  const exit = trade !== undefined && trade.exitTime !== null;
   return [
     true,
     orbCompleted,
@@ -1990,6 +1990,9 @@ export function runCausalBacktest(
     const setupGrade: BacktestTrade["setupGrade"] = matchedEdges.length >= 3
       ? "A++"
       : matchedEdges.length === 2 ? "A+" : "A";
+    const selectedPatience = selected && ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(selected.setupType)
+      ? snapshot.reversalPatience ?? snapshot.patience
+      : snapshot.patience;
     const selectedAudit = selected
       ? evaluationAudits.find((record) => record.setupType === selected.setupType)
       : undefined;
@@ -2007,8 +2010,8 @@ export function runCausalBacktest(
        continue;
      }
     if (executionMode === "ohlcv_modeled") {
-       const patienceSummary = snapshot.patience.patienceCandle;
-       const triggerSummary = snapshot.patience.triggerCandle;
+       const patienceSummary = selectedPatience?.patienceCandle;
+       const triggerSummary = selectedPatience?.triggerCandle;
        const contractCandleIndexByOpenTime = dataset.contractSchedule
          ? replayIndexes.candleIndexByContractOpenTime.get(currentContractSymbol)
          : candleIndexByOpenTime;
@@ -2023,20 +2026,21 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
         continue;
       }
-      const entryKey = `${currentContractSymbol}|${selected.setupType}|${selected.direction}|${trigger.openTime}`;
-      if (executedEntryKeys.has(entryKey)) continue;
-       const entry = snapshot.patience.entryBufferPrice
+        const entry = selectedPatience?.entryBufferPrice
          ?? snapshot.riskPlan.entry
          ?? (selected.direction === "long"
            ? patienceCandle.high + entryBufferTicks * specification.tickSize
            : patienceCandle.low - entryBufferTicks * specification.tickSize);
-       const strategyStop = snapshot.riskPlan.strategyStop
+       const strategyStop = selectedPatience?.strategyStopPrice
+         ?? snapshot.riskPlan.strategyStop
          ?? (selected.direction === "long"
            ? patienceCandle.low - stopBufferTicks * specification.tickSize
            : patienceCandle.high + stopBufferTicks * specification.tickSize);
        const target = snapshot.riskPlan.target
          ?? targetPriceForDollars(selected.direction, entry, request.targetDollars ?? 75, specification);
        const contracts = Math.max(1, snapshot.riskPlan.contracts);
+       const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;
+       if (executedEntryKeys.has(entryKey)) continue;
        const entryResolution = resolveEntryAndInvalidation({
         direction: selected.direction,
         candle: trigger,
@@ -2118,9 +2122,9 @@ export function runCausalBacktest(
         setupType: selected.setupType,
         direction: selected.direction,
          entryTime: new Date(trigger.closeTime).toISOString(),
-         exitTime: isOpen ? "" : new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
+          exitTime: isOpen ? null : new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
         entryPrice: modeled.modeledFill,
-         exitPrice: modeled.exitPrice ?? modeled.modeledFill,
+          exitPrice: modeled.exitPrice,
          contracts,
         grossPnl: modeled.accounting.grossPnl,
         fees: modeled.accounting.fees,

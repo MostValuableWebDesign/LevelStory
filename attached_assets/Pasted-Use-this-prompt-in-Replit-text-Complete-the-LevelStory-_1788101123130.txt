@@ -1,0 +1,310 @@
+Use this prompt in Replit:
+
+```text
+Complete the LevelStory signal-to-trade simplification. The previous implementation is directionally correct but incomplete.
+
+This is a correctness-focused task. Do not broaden the formula, rebuild the historical index, run a large backtest, add broker integration, or create live/paper orders.
+
+AUTHORITATIVE WORKFLOW
+
+The active user-facing workflow is only:
+
+1. EDGE_FOUND
+2. PATIENCE_FOUND
+3. SIGNAL_CONFIRMED
+4. TRADE_TAKEN
+5. TRADE_OUTCOME
+
+A recognized edge plus a valid completed patience candle P plus its immediate completed confirmation candle E creates one trade.
+
+Risk, quote availability, spread, liquidity, fill availability, or exit availability must not redefine or erase EDGE_FOUND, SIGNAL_CONFIRMED, or TRADE_TAKEN.
+
+FIX 1 — REMOVE THE REMAINING RISK GATE
+
+Equivalent Candle Reversal still includes riskApproval as a mandatory Phase 6 rule.
+
+Remove riskApproval from every strategy’s authoritative qualification:
+
+- ORB_PULLBACK_CONTINUATION
+- CONSOLIDATION_BREAKOUT_CONTINUATION
+- PATIENCE_CANDLE_CONTINUATION
+- EQUIVALENT_CANDLE_REVERSAL
+- PEAK_RETRACEMENT_REVERSAL
+
+Search the entire repository for remaining strategy-qualification paths that make risk approval mandatory.
+
+Do not delete reusable risk-management code. Isolate it for potential future live execution, but it must not affect historical formula qualification.
+
+FIX 2 — CORRECT PEAK-RETRACEMENT REVERSAL DIRECTION
+
+PEAK_RETRACEMENT_REVERSAL currently derives direction from the existing trend. That is incorrect.
+
+Derive direction from the causal impulse:
+
+- Retracement greater than 50% from a causal intraday high after an upward impulse means the candidate reversal direction is short.
+- Retracement greater than 50% from a causal intraday low after a downward impulse means the candidate reversal direction is long.
+
+Requirements:
+
+- Freeze the causal impulse anchors using machine-visible completed candles only.
+- Record impulse direction, peak timestamp, anchor timestamp, peak price, anchor price, retracement percentage, and reversal direction.
+- Do not use the final session peak.
+- Do not use future candles.
+- Require a reversal-direction P.
+- Require immediate E confirmation.
+- If E fails, expire P and continue scanning for a new P2→E2.
+- Do not use the continuation trend direction as the reversal direction.
+
+FIX 3 — USE THE EXACT P→E PAIR OWNED BY EACH EDGE
+
+Equivalent and peak-retracement strategies can qualify with reversalPatience, but Phase 9 currently creates trades from snapshot.patience.
+
+Create an authoritative confirmed-signal structure containing:
+
+- edgeId
+- direction
+- patienceCandle
+- entryCandle
+- entryBufferPrice
+- strategyStopPrice
+- confirmationBufferTicks
+- eligibility provenance
+
+Every qualified edge must return its exact confirmed P→E pair.
+
+When creating a trade:
+
+- Use the selected edge’s own P→E pair.
+- Reversal edges must use reversalPatience.
+- Continuation edges must use continuation patience.
+- Never substitute snapshot.patience globally.
+- Audit records, Visual Review markers, entry calculations, and trade records must reference the same P and E candles.
+
+Add an invariant that fails if the trade’s P/E timestamps differ from the selected edge’s confirmed-signal timestamps.
+
+FIX 4 — CORRECT CROSS-EDGE DEDUPLICATION
+
+The current deduplication key includes setupType. Remove it.
+
+Use this deterministic trade identity:
+
+contractSymbol
++ New York trading date
++ direction
++ entry candle open timestamp
++ tick-aligned entry trigger price
+
+Do not include primaryEdge or setupType.
+
+If multiple edges match this identity:
+
+- Create exactly one trade.
+- Select one deterministic primaryEdge.
+- Store every matching edge in matchedEdges[].
+- Store supporting evidence in supportingConfluences[].
+- Increase the grade.
+- Do not create another trade later merely because another edge becomes the primary attribution.
+
+The trade ID must also be independent of primaryEdge.
+
+FIX 5 — CORRECT PRIMARY-EDGE PRIORITY
+
+Use specific edges before the generic Patience Continuation edge:
+
+1. ORB_PULLBACK_CONTINUATION
+2. CONSOLIDATION_BREAKOUT_CONTINUATION
+3. EQUIVALENT_CANDLE_REVERSAL
+4. PEAK_RETRACEMENT_REVERSAL
+5. PATIENCE_CANDLE_CONTINUATION
+
+PATIENCE_CANDLE_CONTINUATION must never take primary ownership away from a more specific matching edge.
+
+FIX 6 — APPLY THE SAME TRADE MODEL TO BOTH DATA PATHS
+
+The OHLCV branch received the new metadata, but the quote-based Shadow branch did not.
+
+Both paths must produce the same canonical trade structure:
+
+- primaryEdge
+- matchedEdges[]
+- supportingConfluences[]
+- setupGrade
+- patienceCandle
+- entryCandle
+- entryPrice
+- direction
+- outcome
+
+Both paths must use the same cross-edge deduplication key.
+
+Historical OHLCV:
+
+- Default to one MES contract when no configured quantity is supplied.
+- Missing bid/ask, spread, liquidity, or freshness must not block the trade.
+- Use deterministic configured fees and slippage.
+
+Quote-based Shadow:
+
+- Do not create a zero-contract trade.
+- Use at least one contract when the confirmed-signal backtest configuration does not provide quantity.
+- Do not require riskPlan.allowed.
+- Preserve genuine quote evidence when available.
+
+FIX 7 — BUILD TRUE CONFLUENCE EVIDENCE
+
+Do not populate supportingConfluences from only the primary edge’s passed mandatory rules.
+
+Aggregate genuine evidence across every matched edge and the causal snapshot.
+
+Allowed supporting confluences include:
+
+- ORB/NTZ boundary
+- VWAP
+- 200 EMA
+- premarket high/low
+- previous-day high/low
+- day-before-previous high/low
+- major support/resistance
+- causal Fibonacci interaction
+- supported breakout volume
+- confirmed 15-minute trend
+- strong breakout after consolidation
+- equivalent-candle reversal evidence
+- greater-than-50% peak retracement evidence
+
+Exclude workflow mechanics:
+
+- patience candle found
+- immediate confirmation passed
+- entry candle exists
+- trade taken
+- mandatory rule passed
+
+Deterministically deduplicate and sort supportingConfluences.
+
+GRADING
+
+Grade by independent matched edges:
+
+- A = one recognized edge
+- A+ = two independent matched edges
+- A++ = three or more independent matched edges
+
+Indicators and levels belong in supportingConfluences. They do not independently increase the grade unless they form another complete recognized edge.
+
+FIX 8 — COMPLETE THE PUBLIC TAXONOMY MIGRATION
+
+Remove these statuses from active public occurrence schemas, generated API clients, Visual Review, backtest explanations, dashboard projections, and active strategy-outcome types:
+
+- QUALIFIED_TRADE
+- MODELED_TRADE
+- RISK_REJECTED
+- RISK_APPROVED_EXECUTION_UNAVAILABLE
+- ENTRY_CONFIRMED
+- CONFIRMED
+
+The active occurrence status enum must contain only:
+
+- EDGE_FOUND
+- PATIENCE_FOUND
+- SIGNAL_CONFIRMED
+- TRADE_TAKEN
+- TRADE_OUTCOME
+
+Expired or failed P→E attempts should use a separate diagnostic reason/status field, not expand the canonical workflow enum.
+
+Examples:
+
+status: PATIENCE_FOUND
+diagnosticOutcome: ENTRY_CONFIRMATION_FAILED
+
+status: PATIENCE_FOUND
+diagnosticOutcome: EXPIRED_MISSING_E
+
+Internal engine states may remain where necessary, but they must not leak into the active public workflow.
+
+Rename remaining public fields such as riskApprovedEntries to tradesTaken.
+
+Update the generated API client and Zod types.
+
+FIX 9 — CORRECT OPEN-TRADE HANDLING
+
+If no permitted exit occurs within available history:
+
+- Keep the trade.
+- Set status to TRADE_TAKEN.
+- Set outcome to open.
+- Keep exitTime and exitPrice null rather than an empty string or entry-price substitute.
+- Do not treat the position as closed at the trigger candle.
+- Prevent overlapping entries while that trade remains open.
+- Do not classify this as a rejection or unavailable execution.
+
+When an exit occurs, update the occurrence to TRADE_OUTCOME.
+
+FIX 10 — UPDATE STALE TESTS
+
+Current Phase 6 tests still claim that strict trend and risk approval must block ORB qualification. Correct those tests.
+
+Add deterministic regression tests proving:
+
+1. Equivalent reversal qualifies with valid edge + reversal P→E even when riskApproved is false.
+2. Every other recognized edge also remains qualified when riskApproved is false.
+3. A bullish impulse retracing more than 50% produces a short reversal candidate.
+4. A bearish impulse retracing more than 50% produces a long reversal candidate.
+5. Peak reversal never copies the continuation trend direction.
+6. A reversal trade uses reversalPatience P and E.
+7. A continuation trade uses continuation patience P and E.
+8. Trade P/E timestamps equal the selected edge’s confirmed-signal timestamps.
+9. Two edges sharing one P→E create one A+ trade.
+10. Three edges sharing one P→E create one A++ trade.
+11. Generic Patience Continuation does not take primary ownership from a specific edge.
+12. Different edge attribution at a later cursor does not create a duplicate trade.
+13. Quote and OHLCV paths return identical canonical metadata.
+14. Missing historical quotes do not block a trade.
+15. An unfinished trade remains open and blocks overlapping entries.
+16. Legacy workflow statuses are absent from active API responses.
+17. Genuine confluences are aggregated across all matched edges.
+18. Workflow mechanics do not appear in supportingConfluences.
+
+VERIFICATION
+
+Run:
+
+- git diff --check
+- focused Phase 5 tests
+- focused Phase 6 tests
+- focused Phase 9/backtest tests
+- focused Visual Review tests
+- API typecheck after building required workspace libraries
+- frontend typecheck
+- API production build
+- frontend production build
+
+Do not claim tests passed if they were not actually executed.
+
+Do not run:
+
+- historical-index rebuild
+- cold 20+2 backtest
+- qualification batch
+- live or paper orders
+- broker integration
+
+REPORT
+
+Return:
+
+1. Files changed.
+2. Remaining risk-gate searches and how each was resolved.
+3. Peak-reversal direction derivation.
+4. Exact edge-owned P→E representation.
+5. Final deduplication identity.
+6. Primary-edge priority.
+7. Confluence aggregation method.
+8. Grade calculation.
+9. Public taxonomy before and after.
+10. Open-trade behavior.
+11. Focused test totals.
+12. Typecheck and build results.
+13. Remaining limitations.
+```

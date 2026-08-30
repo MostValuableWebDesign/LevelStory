@@ -1323,7 +1323,7 @@ function buildAnnotations(
   addLevel("target", "Target", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "Modeled target.", "positive");
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
   const exitOpen = audit.exitCandleOpenTime ? Date.parse(audit.exitCandleOpenTime) : trade?.audit?.exitCandleOpenTime ? Date.parse(trade.audit.exitCandleOpenTime) : null;
-  const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade ? Date.parse(trade.exitTime) : null;
+  const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade?.exitTime ? Date.parse(trade.exitTime) : null;
   const eventLabels = new Set([...(audit.eventLabels ?? []), ...(trade?.audit?.eventLabels ?? [])]);
   const stopHitTime = exitOpen ?? exitClose;
   if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
@@ -1475,8 +1475,8 @@ function buildTradeEvents(
   const fillTime = tradeAudit?.modeledFillObservationTime
     ? Date.parse(tradeAudit.modeledFillObservationTime)
     : Date.parse(trade.entryTime);
-  const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : Date.parse(trade.exitTime);
-  const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : Date.parse(trade.exitTime);
+  const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
+  const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
   const events: VisualValidationTradeEvent[] = [
     tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, occurrence ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
     tradeEvent("entry", "entry", "E", audit.direction, entryOpen, entryClose, occurrence?.confirmationThreshold ?? audit.entryTriggerPrice, occurrence ? evidenceNumber(occurrence.entryCandle, "close") : evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next entry candle after P; no later candle can authorize entry.", evaluationCloseTime),

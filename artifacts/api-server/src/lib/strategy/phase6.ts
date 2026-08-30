@@ -207,7 +207,6 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
     rule("directionalConfirmation", "Directional reversal confirmation", evidence.directionalConfirmation === true, evidence.directionalConfirmation ? "A completed opposing candle structure confirms the reversal direction." : "A reversed direction label is not sufficient; completed opposing-candle evidence must confirm it."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
-    rule("riskApproval", "Risk approval", context.riskApproved, context.riskApproved ? "Risk controls approved the descriptive plan." : "Risk controls blocked the setup."),
   ];
   const mandatoryPassed = rules.every((item) => item.passed);
   const decision = !evidence.alert
@@ -238,7 +237,11 @@ export const evaluateBonusReversal = evaluateEquivalentCandleReversal;
 
 export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEvaluation {
   const patience = context.reversalPatience ?? context.patience;
-  const direction = directionFromTrend(context.trend.direction);
+  const direction: Direction | null = context.fibonacci.direction === "bullish"
+    ? "short"
+    : context.fibonacci.direction === "bearish"
+      ? "long"
+      : null;
   const retracement = context.fibonacci.retracementPercent;
   const deepRetracement = retracement !== null && retracement > 50;
   const rules: SetupRuleEvidence[] = [

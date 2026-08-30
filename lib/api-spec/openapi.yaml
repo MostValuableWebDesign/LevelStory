@@ -3146,9 +3146,9 @@ components:
         setupType: { type: string }
         direction: { type: string, enum: [long, short] }
         entryTime: { type: string, format: date-time, description: Modeled or observed entry event time in UTC. }
-        exitTime: { type: string, description: Modeled or observed exit event time in UTC; empty while the trade is open. }
+        exitTime: { type: ["string", "null"], format: date-time, description: Modeled or observed exit event time in UTC; null while the trade is open. }
         entryPrice: { type: number }
-        exitPrice: { type: number }
+        exitPrice: { type: ["number", "null"] }
         contracts: { type: number }
         grossPnl: { type: number }
         fees: { type: number }

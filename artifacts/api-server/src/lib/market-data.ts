@@ -198,6 +198,7 @@ export type MarketSnapshot = {
     eligibilityArmStateReason?: string | null;
     eligibilityProvenance?: PatienceOccurrence["eligibilityProvenance"] | null;
   };
+  reversalPatience?: MarketSnapshot["patience"];
   fibonacci: {
     direction: "bullish" | "bearish" | null;
     impulseLow: number | null;

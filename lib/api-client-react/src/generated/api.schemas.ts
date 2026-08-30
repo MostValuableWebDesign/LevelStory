@@ -2750,10 +2750,14 @@ export interface BacktestTrade {
   direction: BacktestTradeDirection;
   /** Modeled or observed entry event time in UTC. */
   entryTime: string;
-  /** Modeled or observed exit event time in UTC; empty while the trade is open. */
-  exitTime: string;
+  /**
+     * Modeled or observed exit event time in UTC; null while the trade is open.
+     * @nullable
+     */
+  exitTime: string | null;
   entryPrice: number;
-  exitPrice: number;
+  /** @nullable */
+  exitPrice: number | null;
   contracts: number;
   grossPnl: number;
   fees: number;
