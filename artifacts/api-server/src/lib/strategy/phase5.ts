@@ -99,7 +99,14 @@ export function patienceCandleEngine(
   const candidateIndexes = completed
     .map((candle, index) => ({ candle, index, event: latestEligibilityBefore(eligibility, candle.openTime) }))
     .filter(({ event, candle, index }) => event !== undefined && index > 0 && patienceShape(candle, completed[index - 1], direction));
-  const candidate = candidateIndexes.at(-1);
+  const candidate = candidateIndexes.find(({ candle }) => {
+    const next = sorted.find((item) => item.openTime > candle.openTime);
+    if (!next || next.openTime !== candle.closeTime) return false;
+    const confirmationPrice = direction === "long"
+      ? roundPrice(candle.high + entryBufferTicks * tickSize, tickSize)
+      : roundPrice(candle.low - entryBufferTicks * tickSize, tickSize);
+    return direction === "long" ? next.high >= confirmationPrice : next.low <= confirmationPrice;
+  }) ?? candidateIndexes.at(-1);
   if (candidate) {
     const previous = completed[candidate.index - 1];
     if (!previous) return waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event);
