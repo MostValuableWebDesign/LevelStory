@@ -576,18 +576,25 @@ export function validateVisualValidationTeaching(
     ? structuredLevels.map((selection) => ({ selection, resolved: levelCandle ? resolveQualifyingLevelAtCandle(snapshot, levelCandle, selection.levelId, levelToleranceTicks) : null }))
     : legacyAnnotations.map(({ annotation, level }) => ({
         selection: null,
-        resolved: levelCandle && (annotation.id === "vwap" || annotation.id === "ema-200")
-          ? resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks)
-          : levelCandle
-            ? {
-                ...resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks),
+        resolved: levelCandle
+          ? (() => {
+              const resolved = resolveQualifyingLevelAtCandle(snapshot, levelCandle, annotation.id, levelToleranceTicks);
+              if (annotation.id === "vwap" || annotation.id === "ema-200") return resolved;
+              const interaction = qualifyLevelInteraction(
+                levelInteractionDistance(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh),
+                levelTolerancePointsValue,
+                TEACHING_TICK_SIZE,
+              );
+              return {
+                ...resolved,
                 valueAtInteraction: level,
-                distancePoints: levelInteractionDistance(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh),
-                distanceTicks: Math.ceil(Math.max(0, levelInteractionDistance(level, levelCandle.high, levelCandle.low, annotation.rangeLow, annotation.rangeHigh)) / TEACHING_TICK_SIZE - 1e-10),
+                ...interaction,
+                qualifies: resolved.machineVisible && interaction.qualifies,
                 rangeLow: annotation.rangeLow ?? null,
                 rangeHigh: annotation.rangeHigh ?? null,
-              }
-            : null,
+              };
+            })()
+          : null,
       }));
   const dynamicStructuredValues = structuredLevels
     .filter((selection) => selection.levelType === "dynamic_indicator")

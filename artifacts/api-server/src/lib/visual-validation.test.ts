@@ -571,7 +571,7 @@ test("detector and Visual Review return identical distance, ticks, and qualifica
   const snapshot = structuredClone(source);
   const levelCandle = snapshot.reviewCandles[1]!;
   const breakoutCandle = snapshot.reviewCandles[0]!;
-  const level = levelCandle.high + 3;
+  const level = levelCandle.high + 3.00000000005;
   snapshot.annotations.push({
     id: "parity-level",
     kind: "level",

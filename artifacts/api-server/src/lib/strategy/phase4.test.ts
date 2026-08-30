@@ -158,9 +158,14 @@ test("complete pullback detector handles above-level, below-level, and wick-cros
 
 test("shared qualification helper accepts the exact floating-point tolerance boundary", () => {
   const result = qualifyLevelInteraction(3.00000000005, 3, 0.25);
-  assert.equal(result.distanceTicks, 13);
+  assert.equal(result.distanceTicks, 12);
   assert.equal(result.qualifies, true);
-  assert.equal(qualifyLevelInteraction(3.00000000011, 3, 0.25).qualifies, false);
+  const outsideEpsilon = qualifyLevelInteraction(3.00000000011, 3, 0.25);
+  assert.equal(outsideEpsilon.distanceTicks, 13);
+  assert.equal(outsideEpsilon.qualifies, false);
+  const beyondTolerance = qualifyLevelInteraction(3.01, 3, 0.25);
+  assert.equal(beyondTolerance.distanceTicks, 13);
+  assert.equal(beyondTolerance.qualifies, false);
   assert.equal(levelInteractionDistance(100, 103, 99, 99.5, 100.5), 0, "ranged levels use their complete zone");
 });
 

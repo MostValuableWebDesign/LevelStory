@@ -97,6 +97,8 @@ export type QualifyingLevelInteraction = {
   qualifies: boolean;
 };
 
+export const LEVEL_QUALIFICATION_EPSILON = 1e-10;
+
 export type PullbackAnalysisOptions = {
   /**
    * Historical contract-local candles used to resolve dynamic levels at each
@@ -575,19 +577,20 @@ export function qualifyLevelInteraction(
   const toleranceTicks = Number.isFinite(tolerancePoints)
     ? Math.round(tolerancePoints / tickSize)
     : Number.POSITIVE_INFINITY;
+  const qualifies = Number.isFinite(distancePoints)
+    && Number.isFinite(tolerancePoints)
+    && distancePoints <= tolerancePoints + LEVEL_QUALIFICATION_EPSILON;
   return {
     distancePoints,
-    distanceTicks,
+    distanceTicks: qualifies ? Math.min(distanceTicks, toleranceTicks) : distanceTicks,
     tolerancePoints,
     toleranceTicks,
-    qualifies: Number.isFinite(distancePoints)
-      && Number.isFinite(tolerancePoints)
-      && distancePoints <= tolerancePoints + 1e-10,
+    qualifies,
   };
 }
 
 function distanceInTicks(distance: number, tickSize: number): number {
-  return Math.max(0, Math.ceil(Math.max(0, distance) / tickSize - 1e-10));
+  return Math.max(0, Math.ceil(Math.max(0, distance) / tickSize - LEVEL_QUALIFICATION_EPSILON));
 }
 
 function resolvePullbackLevel(
