@@ -114,6 +114,7 @@ export type Phase3PilotCandidateEvidence = {
     | "entry_ambiguous"
     | "ambiguous_outcome"
     | "missing_management_context"
+     | "invalid_management_context"
     | "unscored";
   exclusionReason: string | null;
 };
@@ -125,6 +126,7 @@ export type Phase3PilotMetrics = {
   openCount: number;
   ambiguousCount: number;
   missingContextCount: number;
+  invalidContextCount: number;
   unscoredCount: number;
   excludedCount: number;
   realized: BacktestMetrics;
@@ -397,6 +399,7 @@ function emptyMetrics(): Phase3PilotMetrics {
     openCount: 0,
     ambiguousCount: 0,
     missingContextCount: 0,
+    invalidContextCount: 0,
     unscoredCount: 0,
     excludedCount: 0,
     realized: calculateBacktestMetrics([]),
@@ -445,8 +448,11 @@ function summarizeEvidence(
       exclusionReason = "INSUFFICIENT_CANDLE_DATA";
     } else if (candidate.executionStatus === "MODELED_TRADE_CREATED") {
       if (!isValidCandidateManagementContext(candidate)) {
-        disposition = "missing_management_context";
-        exclusionReason = candidate.managementContext?.missingEvidenceReasons.join(", ") || "INVALID_MANAGEMENT_CONTEXT";
+        const status = candidate.managementContext?.managementEvidenceStatus;
+        disposition = status === "invalid" ? "invalid_management_context" : "missing_management_context";
+        exclusionReason = status === "invalid"
+          ? candidate.managementContext?.missingEvidenceReasons.join(", ") || "INVALID_MANAGEMENT_GEOMETRY"
+          : candidate.managementContext?.missingEvidenceReasons.join(", ") || "MISSING_MANAGEMENT_CONTEXT";
       } else if (!trade) {
         disposition = "unscored";
         exclusionReason = "MODELED_TRADE_MISSING";
@@ -501,7 +507,13 @@ function metricsForEvidence(evidence: readonly Phase3PilotCandidateEvidence[]): 
     if (item.disposition === "missing_management_context") {
       result.missingContextCount += 1;
       result.excludedCount += 1;
-      addReason(result, item.exclusionReason ?? "INVALID_MANAGEMENT_CONTEXT");
+      addReason(result, item.exclusionReason ?? "MISSING_MANAGEMENT_CONTEXT");
+      continue;
+    }
+    if (item.disposition === "invalid_management_context") {
+      result.invalidContextCount += 1;
+      result.excludedCount += 1;
+      addReason(result, item.exclusionReason ?? "INVALID_MANAGEMENT_GEOMETRY");
       continue;
     }
     result.enteredCount += 1;

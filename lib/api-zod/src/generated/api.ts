@@ -1165,6 +1165,7 @@ export const RunBacktestResponse = zod.object({
   "pOpenTimestamp": zod.coerce.date().nullable(),
   "eOpenTimestamp": zod.coerce.date().nullable(),
   "entryObservationTimestamp": zod.coerce.date().nullable(),
+  "identityInvariantViolations": zod.array(zod.string()),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -1740,6 +1741,7 @@ export const StartBatchBacktestResponse = zod.object({
   "pOpenTimestamp": zod.coerce.date().nullable(),
   "eOpenTimestamp": zod.coerce.date().nullable(),
   "entryObservationTimestamp": zod.coerce.date().nullable(),
+  "identityInvariantViolations": zod.array(zod.string()),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -2716,6 +2718,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "pOpenTimestamp": zod.coerce.date().nullable(),
   "eOpenTimestamp": zod.coerce.date().nullable(),
   "entryObservationTimestamp": zod.coerce.date().nullable(),
+  "identityInvariantViolations": zod.array(zod.string()),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -3692,6 +3695,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "pOpenTimestamp": zod.coerce.date().nullable(),
   "eOpenTimestamp": zod.coerce.date().nullable(),
   "entryObservationTimestamp": zod.coerce.date().nullable(),
+  "identityInvariantViolations": zod.array(zod.string()),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({

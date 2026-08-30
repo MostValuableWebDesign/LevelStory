@@ -72,6 +72,7 @@ export interface HistoricalOccurrence {
   eOpenTimestamp: Date | null;
   /** @nullable */
   entryObservationTimestamp: Date | null;
+  identityInvariantViolations: string[];
   /** @nullable */
   confirmationBufferTicks: number | null;
   /** @nullable */

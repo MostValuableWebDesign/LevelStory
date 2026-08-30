@@ -3085,6 +3085,7 @@ components:
         pOpenTimestamp: { type: ["string", "null"], format: date-time }
         eOpenTimestamp: { type: ["string", "null"], format: date-time }
         entryObservationTimestamp: { type: ["string", "null"], format: date-time }
+        identityInvariantViolations: { type: array, items: { type: string } }
         confirmationBufferTicks: { type: ["number", "null"] }
         nextObservedCandle: { type: ["object", "null"], additionalProperties: true }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
@@ -3109,7 +3110,7 @@ components:
         entryPrice: { type: ["number", "null"] }
         patienceEntryPrice: { type: ["number", "null"] }
         confirmationEntryPrice: { type: ["number", "null"] }
-      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lEventId, lInteractionType, lCandle, previousComparisonTimestamp, patienceTimestamp, patienceCandle, candidateShapeResult, expectedEntryTimestamp, confirmationThreshold, confirmationExcursion, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, levelTolerancePoints, levelToleranceTicks, levelInteractionTypes, pOpenTimestamp, eOpenTimestamp, entryObservationTimestamp, confirmationBufferTicks, nextObservedCandle, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, formulaHash, sourceFingerprint, canonicalTrade]
+      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lEventId, lInteractionType, lCandle, previousComparisonTimestamp, patienceTimestamp, patienceCandle, candidateShapeResult, expectedEntryTimestamp, confirmationThreshold, confirmationExcursion, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, levelTolerancePoints, levelToleranceTicks, levelInteractionTypes, pOpenTimestamp, eOpenTimestamp, entryObservationTimestamp, identityInvariantViolations, confirmationBufferTicks, nextObservedCandle, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, formulaHash, sourceFingerprint, canonicalTrade]
     BacktestAuditPage:
       type: object
       additionalProperties: false

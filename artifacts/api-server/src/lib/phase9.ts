@@ -531,8 +531,8 @@ function candidateManagementValidationReasons(
     if (!Number.isFinite(context.runnerActivationPrice)) {
       reasons.push("runnerActivationPrice_NOT_FINITE");
     } else if (
-      (context.direction === "long" && context.runnerActivationPrice! < context.entryPrice)
-      || (context.direction === "short" && context.runnerActivationPrice! > context.entryPrice)
+      (context.direction === "long" && context.runnerActivationPrice! <= context.entryPrice)
+      || (context.direction === "short" && context.runnerActivationPrice! >= context.entryPrice)
     ) {
       reasons.push("runnerActivationPrice_order");
     }
@@ -2348,7 +2348,7 @@ function freezeCandidateManagementContext(
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
     ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
     ...(targetPrice === null ? ["targetPrice"] : []),
-    ...(management?.sessionCloseTime === null ? ["sessionCloseTime"] : []),
+    ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {
     candidateId,

@@ -196,8 +196,8 @@ test("Phase 3 reports four independent edges, preserves confluence, and excludes
       ...candidate().managementContext!,
       candidateId: "candidate-invalid",
       signalOccurrenceId: "signal-invalid",
-      managementEvidenceStatus: "missing",
-      missingEvidenceReasons: ["TARGET_MISSING"],
+       managementEvidenceStatus: "invalid",
+       missingEvidenceReasons: ["INVALID_MANAGEMENT_GEOMETRY", "LONG_STOP_TARGET_ORDER"],
     },
   });
   const saved: Phase3Checkpoint[] = [];
@@ -219,7 +219,7 @@ test("Phase 3 reports four independent edges, preserves confluence, and excludes
   assert.deepEqual(result.edgeResults.map((item) => item.edge), [...PHASE3_EDGES]);
   const orb = result.edgeResults.find((item) => item.edge === "ORB_PULLBACK_CONTINUATION")!;
   assert.equal(orb.all.candidateCount, 2);
-  assert.equal(orb.all.missingContextCount, 1);
+  assert.equal(orb.all.invalidContextCount, 1);
   assert.equal(orb.all.realized.tradeCount, 0);
   assert.equal(orb.candidates[0]?.candidate.supportingConfluences[0], "volume");
   assert.equal(result.edgeResults.find((item) => item.edge === "PATIENCE_CANDLE_CONTINUATION")?.all.candidateCount, 0);

@@ -31,3 +31,4 @@
 - [Candidate-driven execution](candidate-driven-execution.md) — eligible confirmed candidates initiate deterministic Shadow Mode entry; legacy modeled trades are reconciliation evidence only.
 - [Phase 3 edge projections](phase3-edge-projection.md) — primary edge owns independent totals; secondary matches remain confluence evidence without multiplying physical candidates.
 - [Entry observation timing](entry-observation-timing.md) — historical eligibility, cutoff, fill observation, and time buckets use completed E close; E open remains identity evidence.
+- [Management evidence status](management-evidence-status.md) — absent management evidence is missing; present but geometrically or temporally contradictory evidence is invalid and must not be simulated.

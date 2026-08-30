@@ -622,6 +622,11 @@ test("historical occurrences preserve exact L identity, all same-candle levels, 
   const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], []).find((item) => item.kind === "patience");
   assert.ok(occurrence);
   assert.equal(occurrence.lEventId, "l-orb");
+  assert.equal(occurrence.pOpenTimestamp, new Date(patienceCandle.openTime).toISOString());
+  assert.equal(occurrence.eOpenTimestamp, new Date(triggerCandle.openTime).toISOString());
+  assert.equal(occurrence.entryObservationTimestamp, new Date(triggerCandle.closeTime).toISOString());
+  assert.deepEqual(occurrence.identityInvariantViolations, ["P_E_TRADING_DATE_MISMATCH"]);
+  assert.notEqual(occurrence.pOpenTimestamp, occurrence.lTimestamp);
   assert.deepEqual(occurrence.levelIdentifiers, ["ORB", "VWAP"]);
   assert.deepEqual(occurrence.levelInteractionTypes, { ORB: ["touch"], VWAP: ["proximity"] });
   assert.equal(occurrence.formulaHash.length, 64);
@@ -667,6 +672,56 @@ test("ledger merges multiple qualifying levels into one physical P to E signal",
   assert.deepEqual(patience[0]?.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
 });
 
+test("ledger keeps two P candles linked to the same L as separate physical occurrences", () => {
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const basePatience = first.patienceOccurrences![0]!;
+  const second = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "second-p-candle-audit",
+    evaluatedCandleOpenTime: new Date(1_500_000).toISOString(),
+    patienceCandle: { ...first.patienceCandle!, openTime: 1_200_000, closeTime: 1_500_000 },
+    triggerCandle: { ...first.triggerCandle!, openTime: 1_500_000, closeTime: 1_800_000 },
+    patienceCandleOpenTime: new Date(1_200_000).toISOString(),
+    patienceCandleCloseTime: new Date(1_500_000).toISOString(),
+    triggerCandleOpenTime: new Date(1_500_000).toISOString(),
+    triggerCandleCloseTime: new Date(1_800_000).toISOString(),
+    patienceOccurrences: [{
+      ...basePatience,
+      occurrenceId: "p2",
+      previousCandle: { ...basePatience.previousCandle },
+      patienceCandle: { ...basePatience.patienceCandle, openTime: 1_200_000, closeTime: 1_500_000 },
+      triggerCandle: { ...basePatience.triggerCandle!, openTime: 1_500_000, closeTime: 1_800_000 },
+      expectedEntryCandleOpenTime: 1_500_000,
+      evaluationCursor: 1_800_000,
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [first, second], []);
+  const patience = occurrences.filter((occurrence) => occurrence.kind === "patience");
+  assert.equal(patience.length, 2);
+  assert.deepEqual(patience.map((occurrence) => occurrence.pOpenTimestamp).sort(), [
+    new Date(600_000).toISOString(),
+    new Date(1_200_000).toISOString(),
+  ]);
+  assert.ok(patience.every((occurrence) => occurrence.lTimestamp === new Date(300_000).toISOString()));
+});
+
+test("ledger diagnoses a confirmed sequence whose trigger is not the immediate E candle", () => {
+  const source = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const basePatience = source.patienceOccurrences![0]!;
+  const audit = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    patienceOccurrences: [{
+      ...basePatience,
+      triggerCandle: { ...basePatience.triggerCandle!, openTime: 1_200_000, closeTime: 1_500_000 },
+      expectedEntryCandleOpenTime: 900_000,
+    }],
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], [])
+    .find((item) => item.kind === "patience");
+  assert.ok(occurrence);
+  assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
+  assert.ok(occurrence.identityInvariantViolations.includes("CONFIRMATION_NOT_ON_IMMEDIATE_E"));
+  assert.ok(occurrence.identityInvariantViolations.includes("E_CLOSE_OBSERVATION_MISMATCH"));
+});
+
 test("authoritative candidate identity preserves one candidate across merged signal provenance", () => {
   const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
   const second = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
@@ -684,6 +739,31 @@ test("authoritative candidate identity preserves one candidate across merged sig
     .find((occurrence) => occurrence.kind === "patience")?.occurrenceId);
   assert.deepEqual(patience.levelIdentifiers, ["ORB", "VWAP"]);
   assert.deepEqual(patience.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+});
+
+test("changing only the qualifying L leaves the physical P to E identity unchanged", () => {
+  const original = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const changedL = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    pullbackOccurrences: [{
+      ...original.pullbackOccurrences![0]!,
+      eventId: "different-l",
+      time: new Date(0).toISOString(),
+      candle: { ...original.pullbackOccurrences![0]!.candle!, openTime: 0, closeTime: 300_000 },
+    }],
+    patienceOccurrences: [{
+      ...original.patienceOccurrences![0]!,
+      eligibilityTime: 0,
+      eligibilityEventId: "different-l",
+    }],
+  });
+  const originalPatience = buildHistoricalOccurrenceLedger(occurrenceDataset(), [original], [])
+    .find((occurrence) => occurrence.kind === "patience")!;
+  const changedPatience = buildHistoricalOccurrenceLedger(occurrenceDataset(), [changedL], [])
+    .find((occurrence) => occurrence.kind === "patience")!;
+  assert.equal(changedPatience.occurrenceId, originalPatience.occurrenceId);
+  assert.notEqual(changedPatience.lTimestamp, originalPatience.lTimestamp);
+  assert.equal(changedPatience.pOpenTimestamp, originalPatience.pOpenTimestamp);
+  assert.equal(changedPatience.eOpenTimestamp, originalPatience.eOpenTimestamp);
 });
 
 test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {
@@ -887,8 +967,8 @@ test("invalid frozen long and short management stay open and unscored without P&
         catastropheStopPrice: direction === "long" ? 100 : 100,
         targetPrice: direction === "long" ? 105 : 95,
         contracts: 1,
-        runnerActivationPrice: null,
-        runnerExitRule: null,
+        runnerActivationPrice: direction === "long" ? 101.25 : 98.75,
+        runnerExitRule: "40% retracement",
         sessionCloseTime: "2026-08-25T20:00:00.000Z",
         sourceAuditId: "invalid-geometry-audit",
         missingEvidenceReasons: [],
@@ -904,7 +984,9 @@ test("invalid frozen long and short management stay open and unscored without P&
       },
     );
     assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED", direction);
-    assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing", direction);
+    assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "invalid", direction);
+    assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /INVALID_MANAGEMENT_GEOMETRY/);
+    assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /runnerActivationPrice_order/);
     assert.equal(result.authoritativeTrades[0]?.outcome, "open", direction);
     assert.equal(result.authoritativeTrades[0]?.exitPrice, null, direction);
     assert.equal(result.authoritativeTrades[0]?.netPnl, 0, direction);
