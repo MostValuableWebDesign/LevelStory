@@ -326,6 +326,15 @@ export type BacktestMetrics = {
   consecutiveLosses: number;
 };
 
+export type BacktestExecutionSummary = {
+  eligibleCandidateCount: number;
+  enteredTradeCount: number;
+  finalizedTradeCount: number;
+  openTradeCount: number;
+  ambiguousEntryCount: number;
+  unscoredTradeCount: number;
+};
+
 export type BacktestSegment = BacktestMetrics & {
   dimension: string;
   value: string;
@@ -374,6 +383,7 @@ export type BacktestReport = {
     futureCandleAccess: false;
   };
   metrics: BacktestMetrics;
+  executionSummary: BacktestExecutionSummary;
   inSample: BacktestMetrics;
   outOfSample: BacktestMetrics;
   segments: BacktestSegment[];
@@ -423,7 +433,7 @@ export type HistoricalTradeCandidate = {
   qualifyingLevelValues: Record<string, number>;
   patienceTimestamp: string;
   expectedEntryTimestamp: string;
-  confirmationPrice: number;
+  confirmationPrice: number | null;
   confirmationBufferTicks: number;
   grade: "A" | "A+" | "A++";
   eligible: true;
@@ -434,6 +444,11 @@ export type HistoricalTradeCandidate = {
   entryHigh: number | null;
   entryLow: number | null;
   entryReachedThreshold: boolean | null;
+};
+
+type CandidateEntryDisposition = {
+  status: HistoricalTradeCandidate["executionStatus"];
+  reached: boolean | null;
 };
 
 export type RejectedCandidateSignal = {
@@ -489,6 +504,7 @@ export type HistoricalReplayDiagnostics = {
   duplicateModeledTradesPerCandidate: number;
   candidateRejectionReasons: Record<string, string>;
   orphanModeledTradesExcluded: number;
+  candidateInvariantViolations: string[];
 };
 
 export type HistoricalOccurrence = {
@@ -1074,21 +1090,22 @@ export function calculateBacktestMetrics(
   rejectedSetupCount = 0,
   audits: readonly BacktestAuditRecord[] = [],
 ): BacktestMetrics {
-  if (!trades.length) {
+  const realizedTrades = trades.filter((trade) => trade.outcome !== "open");
+  if (!realizedTrades.length) {
     const empty = emptyMetrics(rejectedSetupCount);
     empty.expiredPatienceSetups = audits.filter((record) => record.patienceState === "PATIENCE_CANDLE_EXPIRED").length;
     empty.ambiguousEntryCount = audits.filter((record) => record.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length;
     empty.ambiguityCount = empty.ambiguousEntryCount;
     return empty;
   }
-  const wins = trades.filter((trade) => trade.netPnl > 0);
-  const losses = trades.filter((trade) => trade.netPnl < 0);
+  const wins = realizedTrades.filter((trade) => trade.netPnl > 0);
+  const losses = realizedTrades.filter((trade) => trade.netPnl < 0);
   let equity = 0;
   let peak = 0;
   let maximumDrawdown = 0;
   let consecutiveLosses = 0;
   let currentLosses = 0;
-  for (const trade of trades) {
+  for (const trade of realizedTrades) {
     equity += trade.netPnl;
     peak = Math.max(peak, equity);
     maximumDrawdown = Math.max(maximumDrawdown, peak - equity);
@@ -1098,36 +1115,36 @@ export function calculateBacktestMetrics(
   const grossWins = wins.reduce((sum, trade) => sum + trade.netPnl, 0);
   const grossLosses = Math.abs(losses.reduce((sum, trade) => sum + trade.netPnl, 0));
   return {
-    tradeCount: trades.length,
-    winRate: Number(((wins.length / trades.length) * 100).toFixed(1)),
+    tradeCount: realizedTrades.length,
+    winRate: Number(((wins.length / realizedTrades.length) * 100).toFixed(1)),
     averageWin: wins.length ? money(grossWins / wins.length) : null,
     averageLoss: losses.length ? money(losses.reduce((sum, trade) => sum + trade.netPnl, 0) / losses.length) : null,
-    expectancy: money(trades.reduce((sum, trade) => sum + trade.netPnl, 0) / trades.length),
+    expectancy: money(realizedTrades.reduce((sum, trade) => sum + trade.netPnl, 0) / realizedTrades.length),
     profitFactor: grossLosses > 0 ? Number((grossWins / grossLosses).toFixed(2)) : grossWins > 0 ? null : 0,
     maximumDrawdown: money(maximumDrawdown),
-    grossPnl: money(trades.reduce((sum, trade) => sum + trade.grossPnl, 0)),
-    fees: money(trades.reduce((sum, trade) => sum + trade.fees, 0)),
-    slippage: money(trades.reduce((sum, trade) => sum + trade.slippage, 0)),
-    netPnl: money(trades.reduce((sum, trade) => sum + trade.netPnl, 0)),
-     ambiguousTradeCount: trades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
+    grossPnl: money(realizedTrades.reduce((sum, trade) => sum + trade.grossPnl, 0)),
+    fees: money(realizedTrades.reduce((sum, trade) => sum + trade.fees, 0)),
+    slippage: money(realizedTrades.reduce((sum, trade) => sum + trade.slippage, 0)),
+    netPnl: money(realizedTrades.reduce((sum, trade) => sum + trade.netPnl, 0)),
+     ambiguousTradeCount: realizedTrades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
     rejectedSetupCount,
     setupsDetected: trades.length,
     setupsRejected: rejectedSetupCount,
-     patienceCandles: trades.filter((trade) => trade.audit?.patienceCandleOpenTime !== null).length,
-    entryTriggers: trades.filter((trade) => trade.audit?.entryTriggerPrice !== null).length,
-    modeledFills: trades.filter((trade) => trade.executionMode === "ohlcv_modeled").length,
-    stopExits: trades.filter((trade) => trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop").length,
-    targetExits: trades.filter((trade) => trade.audit?.targetHit === true).length,
-     runnerExits: trades.filter((trade) => trade.audit?.runnerExited === true || trade.audit?.legs?.some((leg) => leg.kind === "runner") === true).length,
+     patienceCandles: realizedTrades.filter((trade) => trade.audit?.patienceCandleOpenTime !== null).length,
+    entryTriggers: realizedTrades.filter((trade) => trade.audit?.entryTriggerPrice !== null).length,
+    modeledFills: realizedTrades.filter((trade) => trade.executionMode === "ohlcv_modeled").length,
+    stopExits: realizedTrades.filter((trade) => trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop").length,
+    targetExits: realizedTrades.filter((trade) => trade.audit?.targetHit === true).length,
+      runnerExits: realizedTrades.filter((trade) => trade.audit?.runnerExited === true || trade.audit?.legs?.some((leg) => leg.kind === "runner") === true).length,
      ambiguityCount: audits.filter((record) => record.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length
-       + trades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
-     ambiguousExitCount: trades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
+        + realizedTrades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
+      ambiguousExitCount: realizedTrades.filter((trade) => (trade.audit?.ambiguityLabels.length ?? 0) > 0).length,
     expiredPatienceSetups: audits.filter((record) => record.patienceState === "PATIENCE_CANDLE_EXPIRED").length,
     ambiguousEntryCount: audits.filter((record) => record.rejectionReason === "AMBIGUOUS_ENTRY_INVALIDATION").length,
-    strategyStopExits: trades.filter((trade) => trade.outcome === "strategy stop").length,
-    catastropheStopExits: trades.filter((trade) => trade.outcome === "catastrophe stop").length,
-    sessionCloseExits: trades.filter((trade) => trade.outcome === "session close").length,
-     partialTargetExits: trades.filter((trade) => trade.audit?.legs?.some((leg) => leg.kind === "target") && trade.audit?.legs?.some((leg) => leg.kind === "runner")).length,
+     strategyStopExits: realizedTrades.filter((trade) => trade.outcome === "strategy stop").length,
+     catastropheStopExits: realizedTrades.filter((trade) => trade.outcome === "catastrophe stop").length,
+     sessionCloseExits: realizedTrades.filter((trade) => trade.outcome === "session close").length,
+      partialTargetExits: realizedTrades.filter((trade) => trade.audit?.legs?.some((leg) => leg.kind === "target") && trade.audit?.legs?.some((leg) => leg.kind === "runner")).length,
      consecutiveLosses,
   };
 }
@@ -1179,6 +1196,14 @@ export function historicalReplayDiagnostics(
   const modeledTradeCandidateIds = authoritativeModeledTrades.map((trade) => trade.candidateId).filter((id): id is string => Boolean(id));
   const duplicateModeledTradesPerCandidate = Object.values(countBy(modeledTradeCandidateIds))
     .reduce((total, count) => total + Math.max(0, count - 1), 0);
+  const candidateInvariantViolations = confirmedPatience.flatMap((occurrence) => {
+    const candidate = tradeCandidates.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+    if (!candidate || candidate.executionStatus !== "MODELED_TRADE_CREATED") return [];
+    const reached = candidate.entryReachedThreshold;
+    return reached === true
+      ? []
+      : [`${occurrence.occurrenceId}: SIGNAL_CONFIRMED candidate did not reach its stored confirmation threshold.`];
+  });
   const armTransitionReferences = patience
     .filter((item) => item.eligibilityArmId && item.eligibilityArmState && item.eligibilityArmState !== "active")
     .map((item) => [
@@ -1261,6 +1286,7 @@ export function historicalReplayDiagnostics(
         ? [[rejection.signalOccurrenceId, rejection.details.join(" ")]]
         : [])),
     orphanModeledTradesExcluded: orphanModeledTrades.length,
+    candidateInvariantViolations,
   };
 }
 
@@ -2029,6 +2055,32 @@ function historicalCandidateId(occurrence: HistoricalOccurrence): string {
   ].join("|"));
 }
 
+function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateEntryDisposition {
+  const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
+  const entryHigh = numericCandleValue(occurrence.entryCandle, "high");
+  const entryLow = numericCandleValue(occurrence.entryCandle, "low");
+  const threshold = occurrence.confirmationThreshold;
+  if (
+    patienceHigh === null
+    || patienceLow === null
+    || entryHigh === null
+    || entryLow === null
+    || threshold === null
+  ) {
+    return { status: "INSUFFICIENT_CANDLE_DATA", reached: null };
+  }
+  const reached = occurrence.direction === "long"
+    ? entryHigh >= threshold
+    : occurrence.direction === "short"
+      ? entryLow <= threshold
+      : false;
+  return {
+    status: reached ? "MODELED_TRADE_CREATED" : "ENTRY_NOT_REACHED",
+    reached,
+  };
+}
+
 export function projectHistoricalTradeCandidates(
   occurrences: readonly HistoricalOccurrence[],
   rawTrades: readonly BacktestTrade[],
@@ -2094,9 +2146,7 @@ export function projectHistoricalTradeCandidates(
       && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
     );
     const firstTrade = linked[0];
-    const candidateTrade = !firstTrade && executionContext
-      ? candidateDrivenEntryTrade(occurrenceForExecution, candidateId, executionContext)
-      : undefined;
+    const entryDisposition = candidateEntryDisposition(occurrenceForExecution);
     for (const trade of linked) usedRawTradeIds.add(trade.id);
     candidates.push({
       candidateId,
@@ -2114,7 +2164,7 @@ export function projectHistoricalTradeCandidates(
       qualifyingLevelValues: { ...occurrence.levelValues },
       patienceTimestamp: occurrence.patienceTimestamp!,
       expectedEntryTimestamp: occurrence.expectedEntryTimestamp!,
-      confirmationPrice: occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? 0,
+      confirmationPrice: occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? null,
       confirmationBufferTicks: occurrence.confirmationBufferTicks ?? 0,
       grade: occurrence.setupGrade ?? "A",
       eligible: true,
@@ -2123,16 +2173,10 @@ export function projectHistoricalTradeCandidates(
       patienceLow: numericCandleValue(occurrence.patienceCandle, "low"),
       entryHigh: numericCandleValue(occurrenceForExecution.entryCandle, "high"),
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
-      entryReachedThreshold: occurrenceForExecution.entryCandle
-        ? occurrence.direction === "long"
-          ? numericCandleValue(occurrenceForExecution.entryCandle, "high")! >= (occurrence.confirmationThreshold ?? Number.POSITIVE_INFINITY)
-          : numericCandleValue(occurrenceForExecution.entryCandle, "low")! <= (occurrence.confirmationThreshold ?? Number.NEGATIVE_INFINITY)
-        : null,
-      executionStatus: firstTrade || candidateTrade
+      entryReachedThreshold: entryDisposition.reached,
+      executionStatus: firstTrade && entryDisposition.status === "MODELED_TRADE_CREATED"
         ? "MODELED_TRADE_CREATED"
-        : occurrenceForExecution.entryCandle === null
-          ? "INSUFFICIENT_CANDLE_DATA"
-          : "ENTRY_NOT_REACHED",
+        : entryDisposition.status,
     });
   }
   const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
@@ -2194,7 +2238,11 @@ export function projectHistoricalTradeCandidates(
         candidateId,
         executionContext,
       );
-      if (candidateTrade) authoritativeTrades.push(candidateTrade);
+      const candidate = candidates.find((item) => item.candidateId === candidateId);
+      if (candidateTrade && candidate) {
+        authoritativeTrades.push(candidateTrade);
+        candidate.executionStatus = "MODELED_TRADE_CREATED";
+      }
     }
   }
   if (executionContext) {
@@ -2233,7 +2281,8 @@ function candidateDrivenEntryTrade(
   const patience = occurrence.patienceCandle;
   const entryCandle = occurrence.entryCandle;
   const entryPrice = occurrence.confirmationThreshold;
-  if (!patience || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
+  const disposition = candidateEntryDisposition(occurrence);
+  if (disposition.status !== "MODELED_TRADE_CREATED" || !patience || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
   const period = periodForDate(tradingDate, context.dataset);
@@ -2963,6 +3012,14 @@ export function runCausalBacktest(
     reconciliation.rejected,
     reconciliation.orphans,
   );
+  const executionSummary: BacktestExecutionSummary = {
+    eligibleCandidateCount: reconciliation.candidates.length,
+    enteredTradeCount: authoritativeTrades.length,
+    finalizedTradeCount: authoritativeTrades.filter((trade) => trade.outcome !== "open").length,
+    openTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open").length,
+    ambiguousEntryCount: reconciliation.candidates.filter((candidate) => candidate.executionStatus === "ENTRY_AMBIGUOUS").length,
+    unscoredTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
+  };
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
     dataSource: dataset.source ?? "simulated",
@@ -2998,6 +3055,7 @@ export function runCausalBacktest(
       futureCandleAccess: false,
     },
     metrics: allMetrics,
+    executionSummary,
     inSample: calculateBacktestMetrics(inSampleTrades, rejectedByPeriod.in_sample, audit.filter((record) => record.period === "in_sample")),
     outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejectedByPeriod.out_of_sample, audit.filter((record) => record.period === "out_of_sample")),
     segments: buildSegments(authoritativeTrades, allMetrics.rejectedSetupCount),
