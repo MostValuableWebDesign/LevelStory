@@ -827,7 +827,12 @@ function evidenceNumber(value: Record<string, number | boolean> | null, key: str
 
 function evidenceTime(value: Record<string, number | boolean> | null, key: string): number | null {
   const candidate = value?.[key];
-  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  if (typeof candidate === "string") {
+    const parsed = Date.parse(candidate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function toRawCandle(candle: SimulatedFuturesCandle): VisualValidationCandle {

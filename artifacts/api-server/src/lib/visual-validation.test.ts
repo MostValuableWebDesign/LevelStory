@@ -166,6 +166,19 @@ test("visual-validation exposes separate premarket, causal indicator, coverage, 
   assert.equal(qualified.indicatorSeries.length, qualified.reviewCandles.length);
   assert.ok(qualified.indicatorSeries.some((point) => point.visibility === "machine" && point.vwap !== null && point.ema200 !== null));
   assert.ok(qualified.indicatorSeries.some((point) => point.visibility === "human_only"));
+  const patienceEvidence = qualified.machineEvidence.audit.patienceCandle as Record<string, unknown> | null;
+  const patienceOpen = typeof patienceEvidence?.openTime === "number"
+    ? patienceEvidence.openTime
+    : typeof patienceEvidence?.openTime === "string" ? Date.parse(patienceEvidence.openTime) : Number.NaN;
+  const patienceClose = typeof patienceEvidence?.closeTime === "number"
+    ? patienceEvidence.closeTime
+    : typeof patienceEvidence?.closeTime === "string" ? Date.parse(patienceEvidence.closeTime) : Number.NaN;
+  const patienceIndicator = patienceEvidence
+    ? qualified.indicatorSeries.find((point) => Date.parse(point.openTime) === patienceOpen && Date.parse(point.closeTime) === patienceClose)
+    : undefined;
+  const vwapAnnotation = qualified.annotations.find((annotation) => annotation.id === "vwap");
+  assert.ok(patienceIndicator);
+  assert.equal(vwapAnnotation?.price, patienceIndicator?.vwap);
   assert.ok(qualified.tradeEvents.some((event) => event.event === "entry"));
   assert.ok(qualified.tradeEvents.some((event) => event.event === "target"));
   assert.equal(rejected.tradeEvents.length, 0);
