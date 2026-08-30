@@ -1,0 +1,52 @@
+Implement the attached historical pullback and patience-candle detection correction now.
+
+This is an explicit authorization to modify the code, tests, API contracts and Visual Review UI required by the attached brief.
+
+Implementation requirements:
+
+- Separate pullback, patience, next-candle confirmation, risk approval and qualified-trade stages.
+- Preserve detected pullbacks and patience candles even when later confirmation or risk gates fail.
+- Scan and retain every distinct occurrence per historical session.
+- Apply the authoritative 12-tick / 3.00-point MES level tolerance consistently.
+- Resolve VWAP and EMA 200 at each candle’s exact historical timestamp.
+- Remove or replace remaining executable four-tick defaults, while preserving previously saved four-tick evidence.
+- Add occurrence navigation and detection-funnel diagnostics.
+- Add focused deterministic regression tests.
+- Compare results against a small known historical range.
+
+Do not stop after reviewing or planning. Make the code changes and verify them.
+
+Before editing:
+
+1. Identify the authoritative detector and tolerance configuration.
+2. List the files you expect to change.
+3. Confirm that pullback/patience recognition will remain separate from trade qualification.
+
+Then implement.
+
+Compute constraints:
+
+- Do not rebuild the complete historical index.
+- Do not run a full backtest or qualification batch.
+- Use a small cached historical range for comparison.
+- Run only focused tests, relevant typechecks and the smallest necessary builds.
+- Reuse existing indexed data and caches.
+
+Safeguards:
+
+- Do not fabricate candles, indicators, levels, quotes or fills.
+- Do not weaken the trend, patience, immediate-next-candle or risk rules.
+- Do not automatically activate any strategy proposal.
+- Preserve teaching evidence and approval/audit history.
+- Preserve deterministic replay, Shadow Mode and no-live-orders protections.
+
+Completion report:
+
+1. Root causes found.
+2. Files changed.
+3. Remaining four-tick paths and whether each was changed or intentionally preserved.
+4. Before/after pullback and patience occurrence counts for the small test range.
+5. Detection-funnel totals.
+6. Focused test, typecheck and build results.
+7. Known limitations.
+8. Confirmation that no strategy was activated and no orders were created.
