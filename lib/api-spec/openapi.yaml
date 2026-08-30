@@ -332,6 +332,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/edge-pilot:
+    post:
+      operationId: startEdgeValidationPilot
+      tags: [backtest]
+      summary: Start the bounded Phase 3 historical edge-validation pilot
+      description: Runs exactly 20 chronological in-sample and 10 later untouched out-of-sample MES sessions from the ready multi-contract historical index. The pilot is immutable, resumable, causal, and Shadow Mode only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeValidationPilotRequest"
+      responses:
+        "202":
+          description: Pilot accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeValidationPilotStatus"
+        "400":
+          description: Invalid pilot request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A pilot is already running or the Phase 2G gate is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The ready historical index is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/edge-pilot-status:
+    get:
+      operationId: getEdgeValidationPilotStatus
+      tags: [backtest]
+      summary: Read Phase 3 pilot progress or evidence
+      parameters:
+        - name: pilotId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Pilot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeValidationPilotStatus"
+        "404":
+          description: Pilot not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/edge-pilot-cancel:
+    delete:
+      operationId: cancelEdgeValidationPilot
+      tags: [backtest]
+      summary: Cancel a running Phase 3 pilot
+      parameters:
+        - name: pilotId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeValidationPilotStatus"
+        "404":
+          description: Pilot not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/audit:
     get:
       operationId: getBacktestAuditPage
