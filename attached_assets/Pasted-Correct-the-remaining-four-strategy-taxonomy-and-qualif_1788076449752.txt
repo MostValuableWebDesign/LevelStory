@@ -1,0 +1,207 @@
+Correct the remaining four-strategy taxonomy and qualification defects identified in the latest review.
+
+Work from the current implementation. Make the smallest correctness-focused changes necessary. Do not change live execution, broker integration, historical data, fill modeling, risk amounts, or Shadow Mode safeguards.
+
+AUTHORITATIVE STRATEGY TAXONOMY
+
+Preserve these four independent strategies:
+
+1. PATIENCE_CANDLE_CONTINUATION
+2. CONSOLIDATION_BREAKOUT_CONTINUATION
+3. ORB_PULLBACK_CONTINUATION
+4. EQUIVALENT_CANDLE_REVERSAL
+
+Pullback, consolidation, patience candles, entry, stop, target, and runner are components or actions—not additional strategy identities.
+
+All entries must use this sequence:
+
+1. A completed patience candle P.
+2. The immediately following completed candle E.
+3. E must break P in the trade direction by the configured confirmation buffer.
+4. If E does not confirm P, that pair expires.
+5. Continue scanning for a new patience candle P2 and evaluate only its immediate next candle E2.
+6. Never use a later candle to confirm an earlier patience candle.
+
+CANONICAL ATTRIBUTION
+
+When the same trade satisfies more than one strategy, use this deterministic precedence:
+
+1. ORB_PULLBACK_CONTINUATION
+2. CONSOLIDATION_BREAKOUT_CONTINUATION
+3. EQUIVALENT_CANDLE_REVERSAL
+4. PATIENCE_CANDLE_CONTINUATION
+
+Do not allow generic Patience continuation to claim a trade that has more specific ORB, consolidation-breakout, or equivalent-reversal evidence.
+
+Secondary matched strategies may be retained as diagnostic metadata, but only one canonical strategy owns the trade.
+
+FIX 1 — EQUIVALENT-CANDLE REVERSAL
+
+Equivalent reversal must not require the reversal direction to agree with the preceding continuation trend.
+
+Qualify it using separately governed reversal evidence:
+
+- A valid equivalent opposing full-body candle pattern.
+- Evidence of rejection or reversal at an important level.
+- Directional reversal confirmation.
+- A valid patience candle after the reversal evidence.
+- Immediate next-candle confirmation of that patience candle.
+- Risk approval.
+
+A reversal may oppose the established 15-minute trend. Do not route this strategy through bullish-continuation or bearish-continuation trend-agreement gates.
+
+Require the patience/entry sequence for this strategy, but do not let generic Patience continuation take canonical ownership of it.
+
+FIX 2 — ORB FIBONACCI INTERACTION
+
+Do not qualify ORB pullback continuation merely because Fibonacci levels were calculated or frozen.
+
+ORB_PULLBACK_CONTINUATION must require all of:
+
+- Completed ORB/NTZ construction.
+- A completed breakout beyond ORB/NTZ.
+- A qualifying pullback after the breakout.
+- Actual interaction with at least one causal qualifying level.
+- A completed patience candle.
+- Immediate next-candle confirmation.
+- Risk approval.
+
+A qualifying interaction may be with:
+
+- ORB/NTZ boundary
+- VWAP
+- 200 EMA
+- Premarket high or low
+- Previous-day high or low
+- Day-before-previous high or low
+- Support/resistance
+- A valid Fibonacci retracement level
+
+For Fibonacci, require the pullback candle’s high-low range to touch or come within the configured 12-MES-tick tolerance of a specific Fibonacci level. Merely having a frozen Fibonacci object or a nonempty levels array must not pass the rule.
+
+Evaluate dynamic indicators such as VWAP and 200 EMA at the exact causal candle timestamp—not from their final session values.
+
+Do not require strong-breakout volume/body classification for ORB pullback continuation.
+
+FIX 3 — PATIENCE RE-ARMING AND OCCURRENCE RETENTION
+
+Correct the authoritative Phase 5 patience detector so a failed patience pair does not stop the session scan.
+
+Required behavior:
+
+- P1 forms.
+- Only E1 may confirm P1.
+- If E1 fails, expires, or breaks the wrong side, record the failed P1/E1 occurrence.
+- Resume scanning after E1.
+- If P2 forms later, only E2 may confirm P2.
+- Continue for every completed occurrence in the causal session.
+- Retain all detected pullbacks, patience candles, failed confirmations, valid confirmations, invalidations, and qualified entries.
+- Do not stop at the first candidate or first failure.
+- Do not reuse one entry candle for multiple patience candles.
+- Do not read beyond the evaluation cursor.
+
+A successful sequence must retain explicit timestamps and candle identities for:
+
+- Pullback/level-interaction candle L
+- Patience candle P
+- Entry-confirmation candle E
+
+FIX 4 — CONSOLIDATION DETECTION
+
+Remove the hard-coded 1.5-point maximum consolidation range.
+
+Consolidation must be based on a configurable, deterministic tight-range/stability rule. Prefer an existing governed configuration value. If none exists, add a named configuration field expressed in MES ticks.
+
+Requirements:
+
+- At least a documented minimum number of completed five-minute candles.
+- Stable overlapping price action.
+- No material range expansion.
+- No exact 45–60-minute duration requirement.
+- A consolidation may be shorter or longer when its structure qualifies.
+- The threshold must not be an unexplained magic number.
+- Persist the threshold and detection evidence in the audit record.
+
+CONSOLIDATION_BREAKOUT_CONTINUATION must require:
+
+- Valid tight/stable consolidation.
+- Directional breakout from that consolidation.
+- Strong continuation evidence after the breakout.
+- A valid patience candle.
+- Immediate next-candle confirmation.
+- Risk approval.
+
+The patience candle may form after the breakout pullback or after valid post-breakout consolidation. Do not require an unrelated ORB pullback.
+
+CONFIRMED TREND
+
+PATIENCE_CANDLE_CONTINUATION must require confirmed causal 15-minute trend evidence, not merely a non-neutral direction value.
+
+Use the same governed trend-structure evidence used elsewhere, including applicable:
+
+- 15-minute directional structure
+- VWAP relationship
+- 200 EMA relationship and slope
+- Completed-candle-only evidence
+
+Store named evidence fields. Do not infer evidence meaning from array position.
+
+INTRA-SWING REVERSAL RULE
+
+Preserve the separate rule that a pullback greater than 50% from a causal intraday swing peak may signal a reversal.
+
+This is reversal evidence only. It does not create an entry by itself.
+
+Any trade based on this reversal evidence must still wait for:
+
+- A new patience candle
+- Its immediate next-candle confirmation
+- Risk approval
+
+TESTS REQUIRED
+
+Add deterministic tests proving:
+
+1. Equivalent reversal can qualify against the preceding trend.
+2. Equivalent reversal takes canonical precedence over generic Patience.
+3. ORB pullback does not qualify from frozen Fibonacci levels without actual interaction.
+4. An actual Fibonacci interaction inside the 12-tick zone qualifies.
+5. Dynamic VWAP and 200 EMA use their values at L/P, not final-session values.
+6. P1 failure followed by valid P2/E2 qualifies P2.
+7. E2 cannot confirm P1.
+8. Multiple valid patience occurrences are retained in one session.
+9. Failed patience occurrences remain available for diagnostics.
+10. A consolidation outside 45–60 minutes can qualify when structurally tight.
+11. A loose or expanding range fails regardless of duration.
+12. ORB continuation does not depend on strong-breakout gates.
+13. Generic Patience cannot take ownership from ORB, consolidation breakout, or equivalent reversal.
+14. All entry strategies require an immediate P→E sequence.
+15. No detector accesses candles after the evaluation cursor.
+
+VERIFICATION
+
+Run only focused, cost-conscious verification:
+
+- Relevant Phase 5 tests
+- Relevant Phase 6 tests
+- Taxonomy/mapping tests
+- API typecheck
+- Frontend typecheck if shared response types changed
+- git diff --check
+
+Do not run a cold 20+2 historical backtest, qualification batch, or historical-index rebuild unless required by a changed data schema.
+
+REPORT
+
+Return:
+
+1. Files changed.
+2. Root causes fixed.
+3. Final qualification rules for each of the four strategies.
+4. Canonical attribution order.
+5. Patience re-arming behavior.
+6. Consolidation threshold/configuration used.
+7. Tests added and exact results.
+8. Any remaining limitations.
+
+Do not report completion if equivalent reversal still depends on continuation-trend agreement, Fibonacci existence can substitute for interaction, the scan stops after P1 failure, or consolidation still relies on an unexplained fixed-point range.
