@@ -1,0 +1,241 @@
+Yes—after Phase 2G.1 is completed, you’re ready for Phase 3.
+
+Phase 3 should be **edge validation**, not live trading. It should test whether each strategy has a repeatable historical advantage across many sessions without changing the formula to fit past results.
+
+Recommended sequence:
+
+1. Freeze the current formula/configuration hash.
+2. Run candidates across larger historical periods asynchronously.
+3. Separate in-sample and untouched out-of-sample results.
+4. Report performance by edge:
+   - ORB break → pullback → patience → entry
+   - Patience continuation
+   - Strong breakout after consolidation → patience → entry
+   - Equivalent-candle reversal → patience → entry
+5. Grade confluence without creating duplicate trades.
+6. Keep open, ambiguous, and unscored trades out of realized results.
+7. Compare morning periods while enforcing no entries at or after 1:00 p.m. ET.
+8. Produce evidence—not automatically optimize rules.
+
+Use this first Phase 3 prompt:
+
+```text
+Begin Phase 3: deterministic historical edge validation.
+
+Prerequisite:
+Confirm that Phase 2G.1 is complete:
+
+- No modeled entry can occur at or after 1:00 p.m. ET.
+- Management geometry is directionally valid.
+- Invalid management contexts cannot affect realized metrics.
+
+Do not begin Phase 3 if either invariant fails.
+
+Phase 3 objective
+
+Determine whether the frozen LevelStory formula demonstrates a repeatable historical edge in MES data.
+
+This phase is Shadow Mode research only. Do not add live trading, paper trading, broker connectivity, parameter optimization, or automatic formula changes.
+
+1. Freeze the research version
+
+Create an immutable Phase 3 research manifest containing:
+
+- Source-data fingerprint
+- Formula hash
+- Configuration hash
+- Strategy version
+- Session-calendar version
+- Candidate-identity version
+- Execution-model version
+- Pullback tolerance: 12 MES ticks
+- Entry confirmation buffer
+- Entry window: 9:30 a.m.–1:00 p.m. ET, exclusive at 1:00
+- Fees and slippage assumptions
+- Created timestamp
+
+Every result must reference this manifest.
+
+2. Validate the four independent edges
+
+Report candidates and results separately for:
+
+A. ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+
+- Finalized ORB/NTZ breakout
+- Pullback to a qualifying structural or dynamic level
+- Patience candle
+- Immediate next-candle confirmation
+- Entry before 1:00 p.m. ET
+
+B. PATIENCE_CANDLE_CONTINUATION
+
+- Confirmed causal 15-minute directional trend
+- Qualifying continuation context
+- Patience candle
+- Immediate next-candle confirmation
+- Entry before 1:00 p.m. ET
+
+C. STRONG_BREAKOUT_AFTER_CONSOLIDATION
+
+- Causal tight/stable consolidation
+- Directional strong breakout and continuation
+- Patience candle
+- Immediate next-candle confirmation
+- Entry before 1:00 p.m. ET
+
+D. EQUIVALENT_CANDLE_REVERSAL
+
+- Governed equivalent-candle reversal evidence
+- Reversal direction source
+- Patience candle
+- Immediate next-candle confirmation
+- Entry before 1:00 p.m. ET
+
+One physical P→E sequence must produce at most one candidate and one trade. Multiple matched edges and levels become supporting confluences, not duplicate trades.
+
+3. Preserve immediate P→E behavior
+
+- P may only be confirmed by its immediate next completed candle E.
+- If E fails, P expires.
+- Continue scanning for a later P2.
+- Only the immediate E2 may confirm P2.
+- Never allow a later candle to confirm an expired P.
+- Retain failed occurrences diagnostically.
+
+4. Create compute-conscious qualification batches
+
+Use asynchronous, resumable batches over historical trading dates.
+
+Requirements:
+
+- Reuse the ready historical index.
+- Never rebuild the index for an identical source fingerprint.
+- Cache results by research-manifest hash and date range.
+- Process bounded date chunks.
+- Persist progress and completed chunks.
+- Resume after restart without recomputing completed chunks.
+- Avoid loading the entire history into memory simultaneously.
+- Do not fabricate missing candles.
+
+Start with a small qualification pilot before a full run:
+
+- 20 in-sample sessions
+- 10 chronologically later out-of-sample sessions
+- No overlapping dates
+- No parameter changes after viewing out-of-sample results
+
+5. Produce truthful metrics
+
+For all edges and each edge separately report:
+
+- Sessions evaluated
+- Sessions with complete data
+- Candidates
+- Entered trades
+- Finalized trades
+- Open trades
+- Unscored trades
+- Ambiguous entries
+- Ambiguous exits
+- Long/short counts
+- Wins and losses
+- Win rate
+- Gross profit
+- Gross loss
+- Profit factor
+- Average win
+- Average loss
+- Expectancy per finalized trade
+- Net P&L
+- Fees
+- Slippage
+- Maximum drawdown
+- Consecutive wins/losses
+- Target exits
+- Strategy-stop exits
+- Catastrophe-stop exits
+- Runner exits
+- Session-close exits
+
+Do not include open, invalid-management, unresolved ambiguity, or missing-evidence trades in realized performance metrics.
+
+Show those exclusions separately.
+
+6. Confluence analysis
+
+For each candidate preserve a list of supporting confluences, including:
+
+- ORB/NTZ boundary
+- VWAP
+- 200 EMA
+- Premarket high/low
+- Prior-day high/low
+- Two-days-ago high/low
+- Major support/resistance
+- Valid causal Fibonacci interaction
+- Confirmed 15-minute trend
+- Volume evidence
+- Consolidation evidence
+- Equivalent-candle evidence
+
+Create deterministic grades based on existing governed grading rules.
+
+Do not invent weights or tune grades for profitability. Report performance grouped by the existing grade.
+
+7. Time-of-day analysis
+
+Report candidates and performance in these ET entry-time groups:
+
+- 9:30–10:00
+- 10:00–11:00
+- 11:00–12:00
+- 12:00–1:00
+
+No group may contain an entry at or after 1:00 p.m. ET.
+
+8. Auditability
+
+Every candidate must link to:
+
+- Exact P and E candles
+- Entry threshold
+- Direction source
+- Primary edge
+- Secondary matched edges
+- Qualifying levels
+- Confluences
+- Frozen management context
+- Entry disposition
+- Outcome events
+- Final metric eligibility
+
+Provide drill-down from aggregate metrics to the exact candidate and candles.
+
+9. Verification and stopping point
+
+For this prompt, implement and run only the 20-session in-sample plus 10-session out-of-sample pilot.
+
+Do not launch a full-year qualification run yet.
+
+Report:
+
+- Files changed
+- Research manifest
+- Date partitions
+- Batch/cache behavior
+- Counts by edge
+- In-sample metrics
+- Out-of-sample metrics
+- Confluence-grade results
+- Time-of-day results
+- Excluded/unscored evidence
+- Invariant violations
+- Test and build results
+- Runtime and compute usage
+- Remaining limitations
+
+Do not declare that the formula has an edge solely from the pilot. The pilot verifies the Phase 3 research pipeline and provides preliminary evidence.
+```
+
+This pilot is the right next step because it validates the research system before spending compute on months of data.
