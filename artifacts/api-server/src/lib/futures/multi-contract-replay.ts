@@ -588,6 +588,7 @@ type PersistedMultiContractIndex = {
 let cachedImport: { indexKey: string; value: HistoricalMultiContractImport } | null = null;
 let importPromise: Promise<HistoricalMultiContractImport> | null = null;
 let activeIndexKey: string | null = null;
+let readyIndexLoad: Promise<HistoricalMultiContractImport | null> | null = null;
 let indexStatus: MultiContractIndexStatus = {
   state: "not_started",
   indexKey: null,
@@ -1118,24 +1119,34 @@ export async function getHistoricalMultiContractIndexStatus(): Promise<MultiCont
  * generation from rebuilding the historical source.
  */
 export async function getReadyHistoricalMultiContractIndex(): Promise<HistoricalMultiContractImport | null> {
+  if (cachedImport) return cachedImport.value;
+  if (readyIndexLoad) return readyIndexLoad;
+  readyIndexLoad = (async () => {
+    try {
+      const identity = await resolveMultiContractIdentity();
+      const alreadyLoaded = cachedImport as { indexKey: string; value: HistoricalMultiContractImport } | null;
+      if (alreadyLoaded?.indexKey === identity.indexKey) return alreadyLoaded.value;
+      const persisted = await readPersistedIndex(identity);
+      if (!persisted) return null;
+      cachedImport = { indexKey: identity.indexKey, value: persisted };
+      updateIndexStatus({
+        state: "ready",
+        indexKey: identity.indexKey,
+        progress: 100,
+        discoveredFileCount: identity.resolved.accepted.length,
+        indexedFileCount: identity.resolved.accepted.length,
+        message: "Historical MES index loaded from the persistent cache.",
+        error: null,
+      });
+      return persisted;
+    } catch {
+      return null;
+    }
+  })();
   try {
-    const identity = await resolveMultiContractIdentity();
-    if (cachedImport?.indexKey === identity.indexKey) return cachedImport.value;
-    const persisted = await readPersistedIndex(identity);
-    if (!persisted) return null;
-    cachedImport = { indexKey: identity.indexKey, value: persisted };
-    updateIndexStatus({
-      state: "ready",
-      indexKey: identity.indexKey,
-      progress: 100,
-      discoveredFileCount: identity.resolved.accepted.length,
-      indexedFileCount: identity.resolved.accepted.length,
-      message: "Historical MES index loaded from the persistent cache.",
-      error: null,
-    });
-    return persisted;
-  } catch {
-    return null;
+    return await readyIndexLoad;
+  } finally {
+    readyIndexLoad = null;
   }
 }
 

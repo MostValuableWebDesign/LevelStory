@@ -85,7 +85,9 @@ export function createVisualValidationRouter(): IRouter {
       const set = storeVisualValidationSet(built);
       res.json(GetVisualValidationSetResponse.parse(set));
     } catch (error) {
-      req.log?.error({ error: error instanceof Error ? error.message : "unknown" }, "Visual-validation generation failed");
+      req.log?.error({
+        error: error instanceof Error ? { message: error.message, stack: error.stack } : "unknown",
+      }, "Visual-validation generation failed");
       const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
       res.status(unavailable ? 503 : 500).json({ error: detail });
@@ -109,7 +111,9 @@ export function createVisualValidationRouter(): IRouter {
       const set = storeVisualValidationSet(built);
       res.json(GetVisualValidationSetResponse.parse(set));
     } catch (error) {
-      req.log?.error({ error: error instanceof Error ? error.message : "unknown" }, "Visual-validation generation failed");
+      req.log?.error({
+        error: error instanceof Error ? { message: error.message, stack: error.stack } : "unknown",
+      }, "Visual-validation generation failed");
       const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
       res.status(unavailable ? 503 : 500).json({ error: detail });

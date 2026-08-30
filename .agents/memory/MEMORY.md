@@ -24,3 +24,4 @@
 - [Visual review invariant isolation](visual-review-invariant-isolation.md) — review evidence must remain inspectable when a reconstructed historical snapshot exposes a dashboard consistency contradiction.
 - [Historical occurrence identity](historical-occurrence-identity.md) — merge ledger rows by causal occurrence, not setup label, then retain canonical ownership and secondary strategy matches.
 - [Consolidation threshold governance](consolidation-threshold-governance.md) — active threshold config must fingerprint caches and travel with audit and occurrence provenance.
+- [Historical index load concurrency](historical-index-load-concurrency.md) — serialize reads of the large persisted multi-contract index so overlapping visual-review requests do not exhaust string memory.
