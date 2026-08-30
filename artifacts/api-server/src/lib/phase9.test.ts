@@ -638,6 +638,25 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
   assert.equal(result.authoritativeTrades[0]?.signalOccurrenceId, occurrence.occurrenceId);
   assert.equal(result.authoritativeTrades[0]?.fillLabel, "OHLCV_CONFIRMATION_THRESHOLD");
   assert.equal(result.authoritativeTrades[0]?.entryPrice, 101.25);
+  assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing");
+
+  const legacyTrade = { ...result.authoritativeTrades[0]!, id: "legacy-conflicts-with-entry" };
+  const failedOccurrence = {
+    ...occurrence,
+    confirmationThreshold: 101.5,
+  };
+  const failedResult = projectHistoricalTradeCandidates([failedOccurrence], [legacyTrade], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(failedResult.candidates[0]?.executionStatus, "ENTRY_NOT_REACHED");
+  assert.equal(failedResult.authoritativeTrades.length, 0);
+  assert.deepEqual(failedResult.orphans, [{
+    tradeId: "legacy-conflicts-with-entry",
+    matchingSignalOccurrenceId: occurrence.occurrenceId,
+    reason: "LEGACY_TRADE_CONFLICTS_WITH_CANDIDATE_ENTRY_DISPOSITION",
+  }]);
 });
 
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {

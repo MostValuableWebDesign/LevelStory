@@ -250,6 +250,7 @@ export type BacktestAuditRecord = {
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
+  contracts?: number | null;
   eventLabels: string[];
   ambiguityLabels: string[];
   executionMode: "quote_based_shadow" | "ohlcv_modeled";
@@ -332,6 +333,8 @@ export type BacktestExecutionSummary = {
   finalizedTradeCount: number;
   openTradeCount: number;
   ambiguousEntryCount: number;
+  unresolvedAmbiguousTradeCount: number;
+  conservativelyResolvedTradeCount: number;
   unscoredTradeCount: number;
 };
 
@@ -444,8 +447,26 @@ export type HistoricalTradeCandidate = {
   entryHigh: number | null;
   entryLow: number | null;
   entryReachedThreshold: boolean | null;
+  managementContext?: CandidateManagementContext;
 };
 
+export type CandidateManagementContext = {
+  candidateId: string;
+  signalOccurrenceId: string;
+  frozenAt: string;
+  direction: Direction;
+  contracts: number;
+  entryPrice: number;
+  strategyStopPrice: number | null;
+  catastropheStopPrice: number | null;
+  targetPrice: number | null;
+  runnerActivationPrice: number | null;
+  runnerExitRule: string | null;
+  sessionCloseTime: string | null;
+  sourceAuditId: string;
+  managementEvidenceStatus: "complete" | "missing";
+  missingEvidenceReasons: string[];
+};
 type CandidateEntryDisposition = {
   status: HistoricalTradeCandidate["executionStatus"];
   reached: boolean | null;
@@ -568,6 +589,17 @@ export type HistoricalOccurrence = {
     reason: "pullback" | "consolidation" | "ntz consolidation";
     time: string;
     detail: string | null;
+  };
+  management?: {
+    strategyStopPrice: number | null;
+    catastropheStopPrice: number | null;
+    targetPrice: number | null;
+    contracts: number | null;
+    runnerActivationPrice: number | null;
+    runnerExitRule: string | null;
+    sessionCloseTime: string | null;
+    sourceAuditId: string;
+    missingEvidenceReasons: string[];
   };
 };
 
@@ -1304,6 +1336,41 @@ function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Reco
   };
 }
 
+function managementFromAudit(
+  record: BacktestAuditRecord,
+  trade: BacktestTrade | undefined,
+): HistoricalOccurrence["management"] {
+  const specification = getFuturesContractSpecification(
+    parseMesContractSymbol(record.contractSymbol)?.rootSymbol ?? record.contractSymbol,
+  );
+  const calendar = sessionCalendarForContract(specification);
+  const close = sessionWindow(record.tradingDate, "regular", calendar)?.closeTime ?? null;
+  const strategyStopPrice = trade?.audit?.strategyStopPrice ?? record.strategyStopPrice;
+  const catastropheStopPrice = trade?.audit?.catastropheStopPrice ?? record.catastropheStopPrice;
+  const targetPrice = trade?.audit?.targetPrice ?? record.targetPrice;
+  const contracts = trade?.contracts ?? record.contracts ?? null;
+  const missingEvidenceReasons = [
+    ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
+    ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
+    ...(targetPrice === null ? ["targetPrice"] : []),
+    ...(contracts === null ? ["contracts"] : []),
+    ...(close === null ? ["sessionCloseTime"] : []),
+  ];
+  return {
+    strategyStopPrice,
+    catastropheStopPrice,
+    targetPrice,
+    contracts,
+    runnerActivationPrice: targetPrice,
+    runnerExitRule: targetPrice === null
+      ? null
+      : "Existing governed runner exits at the 40% adverse retracement after target activation.",
+    sessionCloseTime: close === null ? null : new Date(close).toISOString(),
+    sourceAuditId: record.id,
+    missingEvidenceReasons,
+  };
+}
+
 function classifyRejection(reason: string | null, decision: string): BacktestAuditRecord["rejectionCategory"] {
   if (decision === "SETUP QUALIFIED" && reason === null) return "QUALIFIED";
   if (!reason) return "FAILURE";
@@ -1373,6 +1440,7 @@ function auditForEvaluation(
     strategyStopPrice: snapshot.riskPlan.strategyStop,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
+    contracts: snapshot.riskPlan.contracts,
     eventLabels: [],
     ambiguityLabels: [],
     executionMode,
@@ -1926,6 +1994,7 @@ export function buildHistoricalOccurrenceLedger(
            patienceEntryPrice: linkedTrade.audit?.entryTriggerPrice ?? null,
            confirmationEntryPrice: linkedTrade.entryPrice,
          } : {}),
+          management: managementFromAudit(record, linkedTrade),
          ...(outcomeStatus !== "CANDIDATE"
             ? { signalStatus: outcomeStatus === "SIGNAL_CONFIRMED" ? "SIGNAL_CONFIRMED" as const : "ENTRY_CONFIRMATION_FAILED" as const }
            : {}),
@@ -2081,6 +2150,44 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
   };
 }
 
+function freezeCandidateManagementContext(
+  occurrence: HistoricalOccurrence,
+  candidateId: string,
+  linkedTrade: BacktestTrade | undefined,
+): CandidateManagementContext {
+  const management = occurrence.management;
+  const entryPrice = occurrence.confirmationThreshold;
+  const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
+  const strategyStopPrice = management?.strategyStopPrice ?? linkedTrade?.audit?.strategyStopPrice ?? null;
+  const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
+  const targetPrice = management?.targetPrice ?? linkedTrade?.audit?.targetPrice ?? null;
+  const missingEvidenceReasons = [
+    ...(entryPrice === null ? ["entryPrice"] : []),
+    ...(contracts === null ? ["contracts"] : []),
+    ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
+    ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
+    ...(targetPrice === null ? ["targetPrice"] : []),
+    ...(management?.sessionCloseTime === null ? ["sessionCloseTime"] : []),
+  ];
+  return {
+    candidateId,
+    signalOccurrenceId: occurrence.occurrenceId,
+    frozenAt: occurrence.evaluationCursor,
+    direction: occurrence.direction!,
+    contracts: contracts ?? 0,
+    entryPrice: entryPrice ?? 0,
+    strategyStopPrice,
+    catastropheStopPrice,
+    targetPrice,
+    runnerActivationPrice: management?.runnerActivationPrice ?? targetPrice,
+    runnerExitRule: management?.runnerExitRule ?? null,
+    sessionCloseTime: management?.sessionCloseTime ?? null,
+    sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
+    managementEvidenceStatus: missingEvidenceReasons.length ? "missing" : "complete",
+    missingEvidenceReasons,
+  };
+}
+
 export function projectHistoricalTradeCandidates(
   occurrences: readonly HistoricalOccurrence[],
   rawTrades: readonly BacktestTrade[],
@@ -2177,6 +2284,7 @@ export function projectHistoricalTradeCandidates(
       executionStatus: firstTrade && entryDisposition.status === "MODELED_TRADE_CREATED"
         ? "MODELED_TRADE_CREATED"
         : entryDisposition.status,
+      managementContext: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade),
     });
   }
   const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
@@ -2204,6 +2312,15 @@ export function projectHistoricalTradeCandidates(
         reason: matchingSignal
           ? "The modeled trade matched a confirmed signal, but that signal failed complete edge or primary-window eligibility."
           : "No canonical confirmed signal matched the trade's exact contract/date/direction/P/E identity.",
+      });
+      continue;
+    }
+    if (matchingCandidate.executionStatus !== "MODELED_TRADE_CREATED"
+      || matchingCandidate.entryReachedThreshold !== true) {
+      orphans.push({
+        tradeId: trade.id,
+        matchingSignalOccurrenceId: matchingCandidate.signalOccurrenceId,
+        reason: "LEGACY_TRADE_CONFLICTS_WITH_CANDIDATE_ENTRY_DISPOSITION",
       });
       continue;
     }
@@ -2236,6 +2353,7 @@ export function projectHistoricalTradeCandidates(
       const candidateTrade = candidateDrivenEntryTrade(
         occurrence,
         candidateId,
+        candidates.find((item) => item.candidateId === candidateId)!,
         executionContext,
       );
       const candidate = candidates.find((item) => item.candidateId === candidateId);
@@ -2265,6 +2383,7 @@ export function projectHistoricalTradeCandidates(
           ? occurrence
           : { ...occurrence, entryCandle: occurrenceCandle(datasetEntryCandle) },
         candidateId,
+        candidates.find((item) => item.candidateId === candidateId)!,
         executionContext,
       );
       if (candidateTrade) authoritativeTrades.push(candidateTrade);
@@ -2276,6 +2395,7 @@ export function projectHistoricalTradeCandidates(
 function candidateDrivenEntryTrade(
   occurrence: HistoricalOccurrence,
   candidateId: string,
+  candidate: HistoricalTradeCandidate,
   context: { dataset: CausalReplayDataset; specification: ReturnType<typeof getFuturesContractSpecification>; executionMode: BacktestRequest["executionMode"] },
 ): BacktestTrade | undefined {
   const patience = occurrence.patienceCandle;
@@ -2289,6 +2409,70 @@ function candidateDrivenEntryTrade(
   const entryTime = typeof entryCandle.closeTime === "number"
     ? new Date(entryCandle.closeTime).toISOString()
     : occurrence.expectedEntryTimestamp!;
+  const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
+  const contractCandles = context.dataset.candles
+    .filter((item) => item.contractSymbol === occurrence.contractSymbol)
+    .sort((first, second) => first.openTime - second.openTime);
+  const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.expectedEntryTimestamp!);
+  const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? entryOpenTime;
+  const postEntry = contractCandles.filter((item) =>
+    item.isComplete && item.openTime > entryOpenTime && item.closeTime > entryCloseTime,
+  );
+  const missingContext = management.managementEvidenceStatus === "missing";
+  const sessionCloseCandle = !missingContext
+    ? (() => {
+      const calendar = sessionCalendarForContract(context.specification);
+      const regular = sessionWindow(tradingDate, "regular", calendar);
+      return regular
+        ? contractCandles.filter((item) =>
+          item.isComplete && item.openTime >= regular.openTime && item.closeTime <= regular.closeTime,
+        ).at(-1) ?? null
+        : null;
+    })()
+    : null;
+  let modeled: ReturnType<typeof simulateOhlcvExecution> | null = null;
+  if (!missingContext) {
+    modeled = simulateOhlcvExecution({
+      direction: occurrence.direction,
+      entry: entryPrice,
+      patienceCandle: patience as any,
+      immediateTriggerCandle: entryCandle as any,
+      evaluateEntryCandleForExit: false,
+      subsequentCompletedCandles: postEntry,
+      contracts: management.contracts,
+      targetQuantity: Math.min(1, management.contracts),
+      target: management.targetPrice,
+      strategyStop: management.strategyStopPrice,
+      catastropheStop: management.catastropheStopPrice,
+      sessionCloseCandle: sessionCloseCandle as any,
+      tickSize: context.specification.tickSize,
+      tickValue: context.specification.dollarValuePerTick,
+      pointMultiplier: context.specification.pointValue * context.specification.contractMultiplier,
+      entrySlippageTicks: 0,
+      exitSlippageTicks: 0,
+      fees: {
+        commission: context.specification.commissionPerContract,
+        exchange: context.specification.exchangeFeePerContract ?? context.specification.exchangeAndRegulatoryFeesPerContract,
+        regulatory: context.specification.regulatoryFeePerContract,
+        clearing: context.specification.clearingFeePerContract,
+      },
+    });
+  }
+  const isOpen = missingContext || modeled?.exitPrice === null || !modeled?.legs.length;
+  const outcome: BacktestTrade["outcome"] = missingContext
+    ? "open"
+    : modeled?.exitReason === "target"
+      ? "target"
+      : modeled?.exitReason === "stop"
+        ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
+        : modeled?.exitReason === "runner"
+          ? "manual"
+          : modeled?.exitReason === "session_close"
+            ? "session close"
+            : "open";
+  const exitCandle = modeled?.audit.exitCandle ?? null;
+  const ambiguityLabel = modeled?.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
+  const accounting = modeled?.accounting ?? { grossPnl: 0, fees: 0, slippage: 0, netPnl: 0 };
   return {
     id: `${candidateId}-ohlcv-confirmation`,
     signalOccurrenceId: occurrence.occurrenceId,
@@ -2300,17 +2484,17 @@ function candidateDrivenEntryTrade(
     setupType: occurrence.primaryEdge ?? occurrence.strategyCandidate,
     direction: occurrence.direction,
     entryTime,
-    exitTime: null,
+    exitTime: isOpen ? null : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     entryPrice,
     exitPrice: null,
-    contracts: 1,
-    grossPnl: 0,
-    fees: 0,
-    slippage: 0,
-    netPnl: 0,
-    outcome: "open",
-    ambiguityLabel: null,
-    source: "ohlc",
+    contracts: management.contracts,
+    grossPnl: accounting.grossPnl,
+    fees: accounting.fees,
+    slippage: accounting.slippage,
+    netPnl: accounting.netPnl,
+    outcome,
+    ambiguityLabel,
+    source: modeled?.audit.exitCandle ? "ohlc" : "ohlc",
     executionMode: context.executionMode,
     fillLabel: "OHLCV_CONFIRMATION_THRESHOLD",
     primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate,
@@ -2337,27 +2521,34 @@ function candidateDrivenEntryTrade(
     audit: {
       entryTriggerPrice: entryPrice,
       modeledFillPrice: entryPrice,
-      stopPrice: null,
-      targetPrice: null,
-      strategyStopPrice: null,
-      catastropheStopPrice: null,
-      stopLevel: null,
+      stopPrice: management.catastropheStopPrice ?? management.strategyStopPrice,
+      targetPrice: management.targetPrice,
+      strategyStopPrice: management.strategyStopPrice,
+      catastropheStopPrice: management.catastropheStopPrice,
+      stopLevel: modeled?.audit.stopLevel ?? null,
       patienceCandleOpenTime: occurrence.patienceTimestamp,
       patienceCandleCloseTime: typeof patience.closeTime === "number" ? new Date(patience.closeTime).toISOString() : null,
       triggerCandleOpenTime: occurrence.expectedEntryTimestamp,
       triggerCandleCloseTime: entryTime,
       modeledFillObservationTime: entryTime,
-      exitCandleOpenTime: null,
-      exitCandleCloseTime: null,
-      assumptions: ["Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.", "No exit is modeled without authoritative stop/target evidence."],
-      eventLabels: ["CANDIDATE_DRIVEN_ENTRY", "OHLCV_CONFIRMATION_THRESHOLD"],
-      ambiguityLabels: [],
-      targetHit: false,
-      runnerActivated: false,
-      runnerExited: false,
-      remainingQuantity: 1,
-      exitReason: "open",
-      legs: [],
+      exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
+      exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
+      assumptions: [
+        "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
+        ...(missingContext ? [`Management context unavailable: ${management.missingEvidenceReasons.join(", ")}.`] : []),
+        ...(modeled?.assumptions ?? []),
+      ],
+      eventLabels: ["CANDIDATE_DRIVEN_ENTRY", "OHLCV_CONFIRMATION_THRESHOLD", ...(modeled?.eventLabels ?? [])],
+      ambiguityLabels: modeled?.ambiguityLabels ?? [],
+      targetHit: modeled?.audit.targetHit ?? false,
+      runnerActivated: modeled?.audit.runnerActivated ?? false,
+      runnerExited: modeled?.audit.runnerExited ?? false,
+      runnerReferencePrice: modeled?.audit.runnerReferencePrice ?? null,
+      runnerImpulse: modeled?.audit.runnerImpulse ?? null,
+      runnerMostFavorablePrice: modeled?.audit.runnerMostFavorablePrice ?? null,
+      remainingQuantity: modeled?.audit.remainingQuantity ?? management.contracts,
+      exitReason: modeled?.exitReason ?? "not filled",
+      legs: modeled?.legs ?? [],
     },
   };
 }
@@ -3018,6 +3209,8 @@ export function runCausalBacktest(
     finalizedTradeCount: authoritativeTrades.filter((trade) => trade.outcome !== "open").length,
     openTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open").length,
     ambiguousEntryCount: reconciliation.candidates.filter((candidate) => candidate.executionStatus === "ENTRY_AMBIGUOUS").length,
+    unresolvedAmbiguousTradeCount: authoritativeTrades.filter((trade) => trade.ambiguityLabel !== null).length,
+    conservativelyResolvedTradeCount: authoritativeTrades.filter((trade) => trade.ambiguityLabel !== null && trade.outcome !== "open").length,
     unscoredTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
   };
   return {

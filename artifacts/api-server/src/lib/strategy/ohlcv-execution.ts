@@ -95,6 +95,12 @@ export type OhlcvExecutionInput = {
   entry: number;
   patienceCandle: OhlcvCandle;
   immediateTriggerCandle?: OhlcvCandle | null;
+  /**
+   * Candidate-driven entries are observed at the trigger close. Their
+   * trigger candle is evidence for entry only; exits begin on the next
+   * completed candle.
+   */
+  evaluateEntryCandleForExit?: boolean;
   subsequentCompletedCandles?: readonly OhlcvCandle[];
   /** Alias retained for callers that describe these simply as completed candles. */
   completedCandles?: readonly OhlcvCandle[];
@@ -209,7 +215,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       : (trigger.open < entryReference ? trigger.open : entryReference) - (input.entrySlippageTicks ?? 0) * size,
     size,
   );
-  const candles = [trigger, ...subsequentCandles];
+  const candles = [
+    ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
+    ...subsequentCandles,
+  ];
   const runnerQuantity = quantity - targetQuantity;
   let remaining = quantity;
   let targetHit = false;

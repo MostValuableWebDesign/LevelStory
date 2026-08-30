@@ -14,3 +14,9 @@ Realized performance must be computed from finalized trades only; keep open and 
 **Why:** Candidate-driven entries can be valid while management evidence is incomplete, so counting them as zero-dollar outcomes would distort win rate, expectancy, and drawdown.
 
 **How to apply:** Separate entered, finalized, open, ambiguous, and unscored counts from realized metrics in every historical report.
+
+Candidate-driven OHLCV management must use the E candle for entry evidence only; exit replay starts with the first completed candle after E.
+
+**Why:** The modeled fill is observed at E close, so using E's earlier high/low would leak pre-entry movement into stop, target, or runner outcomes.
+
+**How to apply:** Keep the immediate trigger candle in the candidate audit, but pass only post-E candles to the management simulator.

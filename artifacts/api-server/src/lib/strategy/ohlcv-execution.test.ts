@@ -18,6 +18,20 @@ test("expires when the immediate trigger does not reach entry", () => {
   assert.equal(result.exitReason, "not filled");
 });
 
+test("candidate entry observation does not evaluate exits inside the entry candle", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 102, 98, 100.5),
+    evaluateEntryCandleForExit: false,
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [candle(100.5, 100.75, 100.25, 100.5)],
+  });
+  assert.equal(result.modeledFill, 100);
+  assert.equal(result.exitReason, "manual");
+  assert.equal(result.audit.exitCandle, null);
+});
+
 test("models bearish entry and stop-first ambiguity", () => {
   const result = simulateOhlcvExecution({ ...base, direction: "short", immediateTriggerCandle: candle(99, 101.5, 98, 99), target: 98, stop: 101, exitSlippageTicks: 1 });
   assert.equal(result.modeledFill, 99);
