@@ -2974,8 +2974,13 @@ components:
         lEventId: { type: ["string", "null"] }
         lInteractionType: { type: ["string", "null"] }
         lCandle: { type: ["object", "null"], additionalProperties: true }
+        previousComparisonTimestamp: { type: ["string", "null"], format: date-time }
         patienceTimestamp: { type: ["string", "null"], format: date-time }
         patienceCandle: { type: ["object", "null"], additionalProperties: true }
+        candidateShapeResult: { type: ["boolean", "null"] }
+        expectedEntryTimestamp: { type: ["string", "null"], format: date-time }
+        confirmationThreshold: { type: ["number", "null"] }
+        confirmationExcursion: { type: ["number", "null"] }
         entryTimestamp: { type: ["string", "null"], format: date-time }
         entryCandle: { type: ["object", "null"], additionalProperties: true }
         levelIdentifiers: { type: array, items: { type: string } }
@@ -2994,7 +2999,7 @@ components:
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         sourceFingerprint: { type: string }
         canonicalTrade: { type: boolean }
-      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lEventId, lInteractionType, lCandle, patienceTimestamp, patienceCandle, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, levelTolerancePoints, levelToleranceTicks, levelInteractionTypes, confirmationBufferTicks, nextObservedCandle, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, formulaHash, sourceFingerprint, canonicalTrade]
+      required: [occurrenceId, auditId, kind, strategyCandidate, secondaryStrategyMatches, tradingDate, contractSymbol, contractMonth, direction, lTimestamp, lEventId, lInteractionType, lCandle, previousComparisonTimestamp, patienceTimestamp, patienceCandle, candidateShapeResult, expectedEntryTimestamp, confirmationThreshold, confirmationExcursion, entryTimestamp, entryCandle, levelIdentifiers, levelValues, levelDistancesTicks, levelTolerancePoints, levelToleranceTicks, levelInteractionTypes, confirmationBufferTicks, nextObservedCandle, consolidationThresholds, status, reasonCode, evaluationCursor, formulaVersion, formulaHash, sourceFingerprint, canonicalTrade]
     BacktestAuditPage:
       type: object
       additionalProperties: false

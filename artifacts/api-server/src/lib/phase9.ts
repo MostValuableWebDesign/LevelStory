@@ -407,8 +407,13 @@ export type HistoricalOccurrence = {
   lEventId: string | null;
   lInteractionType: string | null;
   lCandle: Record<string, number | boolean> | null;
+  previousComparisonTimestamp: string | null;
   patienceTimestamp: string | null;
   patienceCandle: Record<string, number | boolean> | null;
+  candidateShapeResult: boolean | null;
+  expectedEntryTimestamp: string | null;
+  confirmationThreshold: number | null;
+  confirmationExcursion: number | null;
   entryTimestamp: string | null;
   entryCandle: Record<string, number | boolean> | null;
   levelIdentifiers: string[];
@@ -1387,8 +1392,13 @@ export function buildHistoricalOccurrenceLedger(
         lEventId: pullbackEventId(event),
         lInteractionType: event.type,
         lCandle: occurrenceCandle(event.candle),
+        previousComparisonTimestamp: null,
         patienceTimestamp: null,
         patienceCandle: null,
+        candidateShapeResult: null,
+        expectedEntryTimestamp: null,
+        confirmationThreshold: null,
+        confirmationExcursion: null,
         entryTimestamp: null,
         entryCandle: null,
         levelIdentifiers: evidence.identifiers,
@@ -1413,7 +1423,44 @@ export function buildHistoricalOccurrenceLedger(
       const linkedEvents = linkedPullbackEvents(record, patience);
       const linkedPullback = linkedEvents[0];
       const linkedEvidence = levelEvidence(linkedEvents);
-      const trigger = patience.triggerCandle?.isComplete ? patience.triggerCandle : null;
+      const expectedEntryCandleOpenTime = patience.expectedEntryCandleOpenTime ?? patience.patienceCandle.closeTime;
+      const outcomeStatus = patience.outcomeStatus ?? (
+        patience.status === "ENTRY_TRIGGERED"
+          ? "CONFIRMED"
+          : patience.status === "OPPOSITE_SIDE_INVALIDATION"
+            ? "EXPIRED_WRONG_DIRECTION"
+            : patience.status === "PATIENCE_CANDLE_EXPIRED"
+              ? "EXPIRED_NO_IMMEDIATE_CONFIRMATION"
+              : patience.status === "AMBIGUOUS_EVENT_ORDER"
+                ? "INVALIDATED"
+                : "CANDIDATE"
+      );
+      const observedImmediate = patience.triggerCandle?.isComplete
+        ? patience.triggerCandle
+        : patience.nextObservedCandle ?? null;
+      const confirmedEntry = outcomeStatus === "CONFIRMED"
+        && patience.triggerCandle?.isComplete
+        && patience.triggerCandle.openTime === expectedEntryCandleOpenTime
+        ? patience.triggerCandle
+        : null;
+      const confirmationThreshold = patience.confirmationThreshold ?? (
+        patience.direction === "long"
+          ? patience.patienceCandle.high + patience.entryBufferTicks * 0.25
+          : patience.patienceCandle.low - patience.entryBufferTicks * 0.25
+      );
+      const confirmationExcursion = patience.actualConfirmationExcursion ?? (
+        observedImmediate
+          ? patience.direction === "long"
+            ? Math.max(0, observedImmediate.high - patience.patienceCandle.high)
+            : Math.max(0, patience.patienceCandle.low - observedImmediate.low)
+          : null
+      );
+      const linkedTrade = trade
+        && confirmedEntry
+        && trade.audit?.patienceCandleOpenTime === new Date(patience.patienceCandle.openTime).toISOString()
+        && trade.audit?.triggerCandleOpenTime === new Date(confirmedEntry.openTime).toISOString()
+        ? trade
+        : undefined;
       const identity = `patience|${record.tradingDate}|${record.contractSymbol}|${patience.direction}|${patience.occurrenceId}`;
       const id = occurrenceId(identity);
       upsert(identity, {
@@ -1430,10 +1477,15 @@ export function buildHistoricalOccurrenceLedger(
         lEventId: linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? null,
         lInteractionType: linkedPullback?.type ?? null,
         lCandle: occurrenceCandle(linkedPullback?.candle),
+        previousComparisonTimestamp: new Date(patience.previousComparisonTimestamp ?? patience.previousCandle.openTime).toISOString(),
         patienceTimestamp: new Date(patience.patienceCandle.openTime).toISOString(),
         patienceCandle: occurrenceCandle(patience.patienceCandle),
-        entryTimestamp: trigger ? new Date(trigger.openTime).toISOString() : null,
-        entryCandle: occurrenceCandle(trigger),
+        candidateShapeResult: patience.candidateShapeResult ?? true,
+        expectedEntryTimestamp: new Date(expectedEntryCandleOpenTime).toISOString(),
+        confirmationThreshold,
+        confirmationExcursion,
+        entryTimestamp: confirmedEntry ? new Date(confirmedEntry.openTime).toISOString() : null,
+        entryCandle: occurrenceCandle(confirmedEntry),
         levelIdentifiers: linkedEvidence.identifiers,
         levelValues: linkedEvidence.values,
         levelDistancesTicks: linkedEvidence.distancesTicks,
@@ -1441,15 +1493,15 @@ export function buildHistoricalOccurrenceLedger(
         levelToleranceTicks: linkedEvidence.toleranceTicks,
         levelInteractionTypes: linkedEvidence.interactionTypes,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
-        nextObservedCandle: occurrenceCandle(patience.nextObservedCandle),
+        nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
-        status: patience.status,
+        status: outcomeStatus,
         reasonCode: patience.reasonCode,
         evaluationCursor: new Date(patience.evaluationCursor).toISOString(),
         formulaVersion: FIXED_FORMULA_VERSION,
         formulaHash,
         sourceFingerprint: fingerprint,
-        canonicalTrade: trade !== undefined,
+        canonicalTrade: linkedTrade !== undefined,
       });
     }
     if (record.patienceState === "ENTRY_TRIGGERED" || record.rejectionCategory === "RISK_REJECTION" || trade) {
@@ -1468,8 +1520,13 @@ export function buildHistoricalOccurrenceLedger(
         lEventId: null,
         lInteractionType: null,
         lCandle: null,
+        previousComparisonTimestamp: null,
         patienceTimestamp: record.patienceCandleOpenTime,
         patienceCandle: record.patienceCandle,
+        candidateShapeResult: record.patienceCandle !== null,
+        expectedEntryTimestamp: record.patienceCandleCloseTime,
+        confirmationThreshold: record.entryTriggerPrice,
+        confirmationExcursion: null,
         entryTimestamp: record.triggerCandleOpenTime,
         entryCandle: record.triggerCandle,
         levelIdentifiers: [],

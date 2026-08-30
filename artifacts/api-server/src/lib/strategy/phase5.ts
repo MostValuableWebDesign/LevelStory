@@ -34,6 +34,15 @@ export type PatienceCandleSnapshot = {
   isComplete: boolean;
 };
 
+export type PatienceOccurrenceStatus =
+  | "CANDIDATE"
+  | "CONFIRMED"
+  | "EXPIRED_NO_IMMEDIATE_CONFIRMATION"
+  | "EXPIRED_WRONG_DIRECTION"
+  | "EXPIRED_MISSING_E"
+  | "EXPIRED_INCOMPLETE_E"
+  | "INVALIDATED";
+
 export type PatienceOccurrence = {
   occurrenceId: string;
   direction: Direction;
@@ -42,10 +51,16 @@ export type PatienceOccurrence = {
   eligibilityReason: PatienceEligibilityReason;
   eligibilityTime: number;
   eligibilityEventId?: string | null;
+  previousComparisonTimestamp?: number;
+  candidateShapeResult?: boolean;
+  expectedEntryCandleOpenTime?: number;
+  confirmationThreshold?: number;
+  actualConfirmationExcursion?: number | null;
   previousCandle: PatienceCandleSnapshot;
   patienceCandle: PatienceCandleSnapshot;
   triggerCandle: PatienceCandleSnapshot | null;
   nextObservedCandle?: PatienceCandleSnapshot | null;
+  outcomeStatus?: PatienceOccurrenceStatus;
   status: PatienceState;
   reasonCode: string;
   evaluationCursor: number;
@@ -399,6 +414,14 @@ function buildPatienceOccurrences(
       ?? completed.at(-1)?.closeTime
       ?? candidate.candle.closeTime;
     const event = candidate.event!;
+    const confirmationThreshold = direction === "long"
+      ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
+      : roundPrice(candidate.candle.low - entryBufferTicks * tickSize, tickSize);
+    const actualConfirmationExcursion = nextObserved
+      ? direction === "long"
+        ? Math.max(0, nextObserved.high - candidate.candle.high)
+        : Math.max(0, candidate.candle.low - nextObserved.low)
+      : null;
     let analysis: PatienceAnalysis;
     if (!previous) {
       analysis = waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, event);
@@ -440,6 +463,24 @@ function buildPatienceOccurrences(
     } else {
       analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
     }
+    const laterIntervalObserved = nextObserved
+      ? sorted.some((item) => item.openTime > nextObserved.openTime)
+      : false;
+    const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
+      ? "CANDIDATE"
+      : nextObserved.openTime !== candidate.candle.closeTime
+        ? "EXPIRED_MISSING_E"
+        : !nextObserved.isComplete
+          ? laterIntervalObserved ? "EXPIRED_INCOMPLETE_E" : "CANDIDATE"
+          : analysis.state === "ENTRY_TRIGGERED"
+            ? "CONFIRMED"
+            : analysis.state === "OPPOSITE_SIDE_INVALIDATION"
+              ? "EXPIRED_WRONG_DIRECTION"
+              : analysis.state === "PATIENCE_CANDLE_EXPIRED"
+                ? "EXPIRED_NO_IMMEDIATE_CONFIRMATION"
+                : analysis.state === "AMBIGUOUS_EVENT_ORDER"
+                  ? "INVALIDATED"
+                  : "CANDIDATE";
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
       direction,
@@ -448,10 +489,16 @@ function buildPatienceOccurrences(
       eligibilityReason: event.reason,
       eligibilityTime: event.time,
       eligibilityEventId: event.eventId ?? null,
+      previousComparisonTimestamp: previous.openTime,
+      candidateShapeResult: true,
+      expectedEntryCandleOpenTime: candidate.candle.closeTime,
+      confirmationThreshold,
+      actualConfirmationExcursion,
       previousCandle: snapshot(previous),
       patienceCandle: snapshot(candidate.candle),
       triggerCandle: trigger ? snapshot(trigger) : null,
-      nextObservedCandle: nextObserved && nextObserved !== trigger ? snapshot(nextObserved) : null,
+      nextObservedCandle: nextObserved && (nextObserved !== trigger || outcomeStatus !== "CONFIRMED") ? snapshot(nextObserved) : null,
+      outcomeStatus,
       status: analysis.state,
       reasonCode: analysis.detail,
       evaluationCursor,

@@ -1206,14 +1206,29 @@ function buildAnnotations(
     for (const level of snapshot.fibonacci.levels) addLevel(`fib-${level.name}`, `Fib ${level.label}`, level.price, `${(level.ratio * 100).toFixed(1)}% retracement`, "blue");
   }
 
-  const patienceOpen = occurrence?.patienceTimestamp ? Date.parse(occurrence.patienceTimestamp) : evidenceTime(audit.patienceCandle, "openTime");
-  const patienceClose = occurrence?.patienceCandle ? Number(occurrence.patienceCandle.closeTime) : evidenceTime(audit.patienceCandle, "closeTime");
-  const entryOpen = occurrence?.entryTimestamp ? Date.parse(occurrence.entryTimestamp) : evidenceTime(audit.triggerCandle, "openTime");
-  const entryClose = occurrence?.entryCandle ? Number(occurrence.entryCandle.closeTime) : evidenceTime(audit.triggerCandle, "closeTime");
-  const patiencePrice = occurrence?.patienceCandle ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close");
-  const entryPrice = occurrence?.entryCandle ? evidenceNumber(occurrence.entryCandle, "close") : evidenceNumber(audit.triggerCandle, "close");
-  lines.push(annotation("patience-candle", "Patience candle", "candle", patiencePrice, "positive", occurrence?.reasonCode ?? snapshot.patience.detail, patienceOpen, patienceClose));
-  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as a completed E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.", entryOpen, entryClose));
+  const patienceOpen = occurrence
+    ? occurrence.patienceTimestamp ? Date.parse(occurrence.patienceTimestamp) : null
+    : evidenceTime(audit.patienceCandle, "openTime");
+  const patienceClose = occurrence
+    ? occurrence.patienceCandle ? Number(occurrence.patienceCandle.closeTime) : null
+    : evidenceTime(audit.patienceCandle, "closeTime");
+  const entryOpen = occurrence
+    ? occurrence.entryTimestamp ? Date.parse(occurrence.entryTimestamp) : null
+    : evidenceTime(audit.triggerCandle, "openTime");
+  const entryClose = occurrence
+    ? occurrence.entryCandle ? Number(occurrence.entryCandle.closeTime) : null
+    : evidenceTime(audit.triggerCandle, "closeTime");
+  const patiencePrice = occurrence
+    ? evidenceNumber(occurrence.patienceCandle, "close")
+    : evidenceNumber(audit.patienceCandle, "close");
+  const entryPrice = occurrence
+    ? evidenceNumber(occurrence.entryCandle, "close")
+    : evidenceNumber(audit.triggerCandle, "close");
+  const patienceLabel = occurrence && occurrence.status !== "CONFIRMED"
+    ? "Expired patience candidate"
+    : "Patience candle";
+  lines.push(annotation("patience-candle", patienceLabel, "candle", patiencePrice, occurrence && occurrence.status !== "CONFIRMED" ? "muted" : "positive", occurrence?.reasonCode ?? snapshot.patience.detail, patienceOpen, patienceClose));
+  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.", entryOpen, entryClose));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
@@ -1349,21 +1364,37 @@ function buildTradeEvents(
   audit: BacktestAuditRecord,
   trade: BacktestTrade | null,
   evaluationCloseTime: number,
+  occurrence?: HistoricalOccurrence,
 ): VisualValidationTradeEvent[] {
   if (!trade) return [];
   const tradeAudit = trade.audit;
-  const patienceOpen = evidenceTime(audit.patienceCandle, "openTime");
-  const patienceClose = evidenceTime(audit.patienceCandle, "closeTime");
-  const entryOpen = evidenceTime(audit.triggerCandle, "openTime");
-  const entryClose = evidenceTime(audit.triggerCandle, "closeTime");
+  const patienceOpen = occurrence?.patienceTimestamp
+    ? Date.parse(occurrence.patienceTimestamp)
+    : evidenceTime(audit.patienceCandle, "openTime");
+  const patienceClose = occurrence?.patienceCandle
+    ? evidenceTime(occurrence.patienceCandle, "closeTime")
+    : evidenceTime(audit.patienceCandle, "closeTime");
+  const entryOpen = occurrence?.entryTimestamp
+    ? Date.parse(occurrence.entryTimestamp)
+    : evidenceTime(audit.triggerCandle, "openTime");
+  const entryClose = occurrence?.entryCandle
+    ? evidenceTime(occurrence.entryCandle, "closeTime")
+    : evidenceTime(audit.triggerCandle, "closeTime");
+  if (occurrence && (
+    !occurrence.canonicalTrade
+    || occurrence.status !== "CONFIRMED" && occurrence.kind !== "trade"
+    || entryOpen === null
+    || patienceClose === null
+    || entryOpen !== patienceClose
+  )) return [];
   const fillTime = tradeAudit?.modeledFillObservationTime
     ? Date.parse(tradeAudit.modeledFillObservationTime)
     : Date.parse(trade.entryTime);
   const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : Date.parse(trade.exitTime);
   const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : Date.parse(trade.exitTime);
   const events: VisualValidationTradeEvent[] = [
-    tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
-    tradeEvent("entry", "entry", "E", audit.direction, entryOpen, entryClose, audit.entryTriggerPrice, evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next entry candle after P; no later candle can authorize entry.", evaluationCloseTime),
+    tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, occurrence ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
+    tradeEvent("entry", "entry", "E", audit.direction, entryOpen, entryClose, occurrence?.confirmationThreshold ?? audit.entryTriggerPrice, occurrence ? evidenceNumber(occurrence.entryCandle, "close") : evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next entry candle after P; no later candle can authorize entry.", evaluationCloseTime),
     tradeEvent("fill", "fill", `FILL ${trade.entryPrice.toFixed(2)}`, trade.direction, fillTime, fillTime, audit.entryTriggerPrice, trade.entryPrice, trade.contracts, "Modeled shadow entry observation; no live order was created.", evaluationCloseTime),
   ];
   if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
@@ -1549,7 +1580,7 @@ function buildMachineSnapshot(
     reviewCandles,
     premarketCandles,
     indicatorSeries,
-    tradeEvents: buildTradeEvents(audit, trade, evaluationCloseTime),
+    tradeEvents: buildTradeEvents(audit, trade, evaluationCloseTime, occurrence),
     coverage: buildCoverage(visibleReview, audit.tradingDate, calendar),
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
@@ -1670,7 +1701,7 @@ export function buildHistoricalVisualValidationSetFromReport(
           ? "rejected_setup"
           : "qualified_trade";
     if (!category) return [];
-    const trade = matchingTrade(audit, report.trades);
+    const trade = occurrence.canonicalTrade ? matchingTrade(audit, report.trades) : null;
     return [{ audit, trade, category, occurrence }];
   }) ?? [];
   const uniqueLedgerCandidates = [...new Map(
