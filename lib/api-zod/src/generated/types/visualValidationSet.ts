@@ -11,6 +11,7 @@ import type { VisualValidationReviewPeriod } from './visualValidationReviewPerio
 import type { VisualValidationSetFunnelDiagnostics } from './visualValidationSetFunnelDiagnostics';
 import type { VisualValidationSetSource } from './visualValidationSetSource';
 import type { VisualValidationSnapshot } from './visualValidationSnapshot';
+import type { VisualValidationTradeCandidate } from './visualValidationTradeCandidate';
 
 export interface VisualValidationSet {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -37,6 +38,7 @@ export interface VisualValidationSet {
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
+  tradeCandidates: VisualValidationTradeCandidate[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;

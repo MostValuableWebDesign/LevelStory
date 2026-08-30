@@ -3777,6 +3777,37 @@ components:
         count: { type: number, minimum: 0 }
         available: { type: boolean }
       required: [category, label, count, available]
+    VisualValidationTradeCandidate:
+      type: object
+      properties:
+        candidateId: { type: string, description: "Canonical identity: contract, New York trading date, entry candle, and direction." }
+        snapshotId: { type: string }
+        contractSymbol: { type: string }
+        tradingDate: { type: string }
+        entryCandleOpenTime: { type: string, format: date-time }
+        entryCandleCloseTime: { type: string, format: date-time }
+        direction: { type: string, enum: [long, short] }
+        entryTriggerPrice: { type: ["number", "null"] }
+        primaryEdge: { type: string, enum: [ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION, PATIENCE_CANDLE_CONTINUATION, STRONG_BREAKOUT_AFTER_CONSOLIDATION, EQUIVALENT_CANDLE_REVERSAL, PEAK_RETRACEMENT_REVERSAL] }
+        matchedEdges:
+          type: array
+          items: { type: string }
+        supportingConfluences:
+          type: array
+          items: { type: string }
+        setupGrade: { type: string, enum: [A, A+, A++] }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        outcome: { type: string }
+        causalEvidence:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [level, patience, entry] }
+              timestamp: { type: string, format: date-time }
+              detail: { type: string }
+            required: [kind, timestamp, detail]
+      required: [candidateId, snapshotId, contractSymbol, tradingDate, entryCandleOpenTime, entryCandleCloseTime, direction, entryTriggerPrice, primaryEdge, matchedEdges, supportingConfluences, setupGrade, period, outcome, causalEvidence]
     VisualValidationReviewPeriod:
       type: object
       properties:
@@ -3801,6 +3832,9 @@ components:
         snapshots:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationSnapshot" }
+        tradeCandidates:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationTradeCandidate" }
         categoryCoverage:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
@@ -3835,7 +3869,7 @@ components:
                 outsidePrimaryWindowOccurrences: { type: number, minimum: 0 }
               required: [breakoutOccurrences, qualifyingPullbacks, patienceCandidates, expiredPatienceCandidates, confirmedPairs, riskApprovedEntries, primaryWindowOccurrences, outsidePrimaryWindowOccurrences]
           required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, window]
-      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, categoryCoverage, defaultSelectionReason]
+      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, tradeCandidates, categoryCoverage, defaultSelectionReason]
     VisualValidationReviewRequest:
       type: object
       properties:

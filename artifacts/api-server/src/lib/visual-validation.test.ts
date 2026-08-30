@@ -52,6 +52,26 @@ test("simulated visual-validation requests default their persisted source", () =
   assert.equal(set.request.source, "simulated");
 });
 
+test("trade candidates are entry-centered, canonical, and deduplicated", () => {
+  const set = buildVisualValidationSet(request);
+  const candidates = set.tradeCandidates;
+  assert.ok(candidates.length > 0);
+  assert.equal(new Set(candidates.map((candidate) => candidate.candidateId)).size, candidates.length);
+  assert.ok(candidates.every((candidate) => candidate.candidateId.includes(candidate.contractSymbol)
+    && candidate.candidateId.includes(candidate.tradingDate)
+    && candidate.candidateId.includes(candidate.entryCandleOpenTime)
+    && candidate.candidateId.endsWith(candidate.direction)));
+  assert.ok(candidates.every((candidate) => [
+    "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    "PATIENCE_CANDLE_CONTINUATION",
+    "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    "EQUIVALENT_CANDLE_REVERSAL",
+    "PEAK_RETRACEMENT_REVERSAL",
+  ].includes(candidate.primaryEdge)));
+  assert.ok(candidates.every((candidate) => candidate.causalEvidence.some((evidence) => evidence.kind === "patience")
+    && candidate.causalEvidence.some((evidence) => evidence.kind === "entry")));
+});
+
 test("visual-validation sets expose build, formula, source, and freshness provenance", () => {
   const set = buildVisualValidationSet(request);
   assert.ok(set.buildId.length > 0);

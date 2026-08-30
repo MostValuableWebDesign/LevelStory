@@ -4712,6 +4712,27 @@ export const GetVisualValidationSetResponse = zod.object({
 }).optional()
 })
 })),
+  "tradeCandidates": zod.array(zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+})),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "label": zod.string(),
@@ -5101,6 +5122,27 @@ export const CreateVisualValidationSetResponse = zod.object({
   "createdAt": zod.coerce.date()
 }).optional()
 })
+})),
+  "tradeCandidates": zod.array(zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
 })),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),

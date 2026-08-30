@@ -243,6 +243,24 @@ export type VisualValidationCategoryCoverage = {
   available: boolean;
 };
 
+export type VisualValidationTradeCandidate = {
+  candidateId: string;
+  snapshotId: string;
+  contractSymbol: string;
+  tradingDate: string;
+  entryCandleOpenTime: string;
+  entryCandleCloseTime: string;
+  direction: "long" | "short";
+  entryTriggerPrice: number | null;
+  primaryEdge: string;
+  matchedEdges: string[];
+  supportingConfluences: string[];
+  setupGrade: "A" | "A+" | "A++";
+  period: "in_sample" | "out_of_sample";
+  outcome: BacktestTrade["outcome"] | "open";
+  causalEvidence: Array<{ kind: "level" | "patience" | "entry"; timestamp: string; detail: string }>;
+};
+
 export type VisualValidationReviewPeriod = {
   startDate: string;
   endDate: string;
@@ -262,6 +280,7 @@ export type VisualValidationSet = {
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
+  tradeCandidates: VisualValidationTradeCandidate[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "occurrenceCount" | "stages" | "rejectionCounts"> & {
@@ -277,6 +296,55 @@ export type VisualValidationSet = {
     };
   };
 };
+
+function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualValidationTradeCandidate[] {
+  const canonicalEdgeId = (edge: string): string => ({
+    ORB_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    ORB_BREAK_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    CONSOLIDATION_BREAKOUT_CONTINUATION: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+  }[edge] ?? edge);
+  const candidateById = new Map<string, VisualValidationTradeCandidate>();
+  for (const snapshot of snapshots) {
+    if (snapshot.category !== "qualified_trade" || !snapshot.categoryAnchor.direction) continue;
+    const trade = snapshot.machineEvidence.trade;
+    const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? snapshot.categoryAnchor.openTime;
+    const entryCloseTime = trade?.audit?.triggerCandleCloseTime ?? snapshot.categoryAnchor.closeTime;
+    const candidateId = `${snapshot.contractSymbol}|${snapshot.tradingDate}|${entryOpenTime}|${snapshot.categoryAnchor.direction}`;
+    const primaryEdge = canonicalEdgeId(trade?.primaryEdge ?? trade?.setupType ?? snapshot.strategyKey);
+    const causalEvidence = snapshot.categoryAnchor.relatedCandles
+      .filter((candle) => candle.role === "evaluation" || candle.role === "patience" || candle.role === "entry")
+      .map((candle) => ({
+        kind: candle.role === "evaluation" ? "level" as const : candle.role === "patience" ? "patience" as const : "entry" as const,
+        timestamp: candle.closeTime,
+        detail: `${candle.role} candle`,
+      }));
+    const existing = candidateById.get(candidateId);
+    if (!existing) {
+      candidateById.set(candidateId, {
+        candidateId,
+        snapshotId: snapshot.snapshotId,
+        contractSymbol: snapshot.contractSymbol,
+        tradingDate: snapshot.tradingDate,
+        entryCandleOpenTime: entryOpenTime,
+        entryCandleCloseTime: entryCloseTime,
+        direction: snapshot.categoryAnchor.direction,
+        entryTriggerPrice: trade?.audit?.entryTriggerPrice ?? snapshot.categoryAnchor.price,
+        primaryEdge,
+        matchedEdges: [...new Set((trade?.matchedEdges ?? [primaryEdge]).map(canonicalEdgeId))],
+        supportingConfluences: [...new Set(trade?.supportingConfluences ?? [])],
+        setupGrade: trade?.setupGrade ?? "A",
+        period: snapshot.period,
+        outcome: trade?.outcome ?? "open",
+        causalEvidence,
+      });
+    } else {
+      existing.matchedEdges = [...new Set([...existing.matchedEdges, ...(trade?.matchedEdges ?? [primaryEdge]).map(canonicalEdgeId)])];
+      existing.supportingConfluences = [...new Set([...existing.supportingConfluences, ...(trade?.supportingConfluences ?? [])])];
+      existing.causalEvidence = [...existing.causalEvidence, ...causalEvidence.filter((evidence) => !existing.causalEvidence.some((item) => item.timestamp === evidence.timestamp && item.kind === evidence.kind))];
+    }
+  }
+  return [...candidateById.values()];
+}
 
 export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
   "qualified_trade",
@@ -1838,6 +1906,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     request: { ...request, source: "simulated" },
     reviewPeriod,
     snapshots,
+     tradeCandidates: buildTradeCandidates(snapshots),
     defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,
@@ -2006,6 +2075,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     request: { ...request, source: "historical_databento" },
     reviewPeriod: reviewPeriodForDataset(dataset, request.endDate),
     snapshots,
+    tradeCandidates: buildTradeCandidates(snapshots),
     defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,

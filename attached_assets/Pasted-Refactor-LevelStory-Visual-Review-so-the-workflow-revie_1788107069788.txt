@@ -1,0 +1,276 @@
+Refactor LevelStory Visual Review so the workflow reviews trade candidates and edges only.
+
+This is a taxonomy and presentation correction. Preserve the underlying causal evidence, but stop presenting individual detection functions and outcomes as selectable setup categories.
+
+GOAL
+
+The Build a review set panel should search only for confirmed trade candidates.
+
+The Coverage / Strategy-linked samples panel should show only actual trading edges. It must not show individual detection stages, indicators, or trade outcomes as selectable categories.
+
+1. BUILD A REVIEW SET
+
+Remove the Review mode selector from the primary Visual Review workflow.
+
+The default and only behavior on this page should be:
+
+Trade candidates only
+
+A trade candidate exists when:
+
+- At least one governed edge is satisfied.
+- A valid patience candle P exists.
+- The immediate next completed candle E crosses the configured entry buffer in the trade direction.
+- The occurrence is causal and completed-candle-only.
+
+Do not require the following to include a confirmed trade candidate:
+
+- TRADE_INTENT_CREATED
+- RISK_APPROVED or RISK_BLOCKED
+- MODELED_FILL
+- EXECUTION_AVAILABLE or EXECUTION_UNAVAILABLE
+- A finalized target, stop, or runner outcome
+
+Those may remain downstream simulation metadata but must not determine whether the setup appears in Visual Review.
+
+Remove confirmed-signals and diagnostics choices from this panel.
+
+If diagnostic inspection is still needed for development, place it behind a separate clearly labeled developer-only route or advanced diagnostics page. Do not mix it into the trader’s review-set workflow.
+
+Change the generation button copy to:
+
+Generate trade candidates
+
+Change the result copy to:
+
+Generated {count} trade candidates
+
+2. CANONICAL EDGES
+
+Only show these governed edges as top-level filters:
+
+- ORB Break–Pullback–Patience Continuation
+- Patience Candle Continuation
+- Strong Breakout After Consolidation
+- Equivalent-Candle Reversal
+
+Use the canonical internal identifiers consistently:
+
+- ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+- PATIENCE_CANDLE_CONTINUATION
+- STRONG_BREAKOUT_AFTER_CONSOLIDATION
+- EQUIVALENT_CANDLE_REVERSAL
+
+If existing identifiers must remain for compatibility, map them at the API boundary. Do not expose old or inconsistent names in the UI.
+
+Bullish and bearish are directions, not separate edges.
+
+Show direction inside the candidate:
+
+- Long
+- Short
+
+3. REMOVE INDIVIDUAL FUNCTIONS AS CATEGORIES
+
+Remove these selectable tiles from Coverage / Strategy-linked samples:
+
+- Qualified trade
+- Bullish patience candle
+- Bearish patience candle
+- Strong breakout
+- Pullback
+- Consolidation
+- Stop exit
+- Target exit
+- Runner exit
+- Rejected setup
+- Weak ORB probe
+- Ambiguous candle
+
+These concepts must not disappear from the audit record. Move them to the selected candidate’s evidence or outcome details.
+
+Examples:
+
+- Pullback → causal setup evidence
+- Patience candle → P evidence
+- Entry candle → E evidence
+- Consolidation → supporting setup evidence
+- Strong breakout → supporting evidence for the consolidation edge
+- Stop/target/runner → outcome details
+- Weak ORB probe/rejection → developer diagnostics
+- Bullish/bearish → candidate direction
+
+4. STRATEGY-LINKED SAMPLE PANEL
+
+Rename the panel to:
+
+Coverage / Trade Candidates
+
+Rename its heading to:
+
+Select a trade candidate
+
+Display only edge filters and actual trade-candidate cards.
+
+Each candidate card should show:
+
+- Trading date
+- Contract
+- Entry time in America/New_York
+- Long or short
+- Entry trigger price
+- Primary edge
+- Every additionally matched edge
+- Setup grade
+- Number of supporting confluences
+- In-sample or holdout status
+
+Do not display unavailable function tiles.
+
+If an edge has zero candidates, either:
+
+- Show the edge filter with a zero count in a compact disabled state; or
+- Hide zero-count edges and show them in a short “No candidates found for” summary.
+
+Do not fill the page with large disabled tiles.
+
+5. MULTIPLE EDGES ON ONE ENTRY
+
+When multiple edges qualify on the same entry candle, create one trade candidate—not duplicate candidates.
+
+Use a deterministic candidate identity based on:
+
+- Contract
+- New York trading date
+- Entry candle timestamp
+- Direction
+
+The candidate should contain:
+
+primaryEdge
+matchedEdges[]
+supportingConfluences[]
+causalEvidence[]
+entryTrigger
+grade
+
+Example:
+
+Primary edge:
+ORB Break–Pullback–Patience Continuation
+
+Also matched:
+Patience Candle Continuation
+Strong Breakout After Consolidation
+
+Do not let canonical attribution erase secondary matches.
+
+The All edges count must count unique trade candidates.
+
+Individual edge-filter counts should count candidates containing that edge in matchedEdges. Therefore, the same candidate may appear under multiple edge filters but only once under All edges.
+
+6. CANDIDATE DETAIL
+
+Inside the selected trade candidate, show its causal sequence clearly:
+
+- ORB breakout, when applicable
+- Consolidation range, when applicable
+- Pullback interaction
+- Qualifying key levels
+- Patience candle P
+- Immediate entry candle E
+- Confirmation buffer
+- Entry trigger price
+- Direction
+- Supporting confluences
+- Subsequent outcome, if available
+
+Keep functions such as P, E, pullback, breakout, and exits inside this evidence view rather than treating them as independent strategies.
+
+7. EMPTY STATE
+
+When no candidates are found, show:
+
+No confirmed trade candidates were found in this review period.
+
+Then provide useful causes without creating selectable diagnostic categories:
+
+- Sessions searched
+- Confirmed P→E sequences found
+- Edge qualification failures
+- Data gaps
+- Suggested action: extend the review period
+
+Do not render the old grid of unavailable function tiles.
+
+8. API AND DATA CONTRACT
+
+Return trade candidates organized around entries, not category snapshots.
+
+Expected shape:
+
+{
+  candidateId,
+  contract,
+  tradingDate,
+  direction,
+  patienceCandle,
+  entryCandle,
+  entryTriggerPrice,
+  primaryEdge,
+  matchedEdges,
+  supportingConfluences,
+  causalEvidence,
+  grade,
+  outcome,
+  samplePartition
+}
+
+Preserve immutable source evidence and causal timestamps.
+
+Do not generate separate top-level samples for:
+
+- Pullback only
+- Patience only
+- Breakout only
+- Consolidation only
+- Exit only
+
+9. TESTS
+
+Add focused deterministic tests proving:
+
+1. A pullback without confirmed P→E does not appear as a trade candidate.
+2. A patience candle whose immediate next candle fails does not appear.
+3. P1/E1 failure followed by P2/E2 confirmation creates one candidate for P2/E2.
+4. A bullish candidate shows Long but does not create a “Bullish patience” edge.
+5. A bearish candidate shows Short but does not create a “Bearish patience” edge.
+6. Stop, target, and runner outcomes do not become selectable categories.
+7. One entry matching two edges creates one candidate with two matchedEdges.
+8. All edges counts unique candidates.
+9. Each edge filter includes candidates whose matchedEdges contain that edge.
+10. Risk or modeled-fill absence does not remove a causally confirmed edge candidate.
+11. The empty state contains no obsolete function tiles.
+12. No future candles are used to qualify or grade the candidate.
+
+10. VERIFICATION
+
+Run only:
+
+- Focused API tests
+- Focused Visual Review frontend tests
+- API typecheck
+- Frontend typecheck
+- Production builds only if inexpensive
+
+Do not run a historical-index rebuild or broad backtest solely for this UI/taxonomy correction.
+
+Report:
+
+- Files changed
+- Old categories removed
+- Final canonical edge list
+- Candidate API shape
+- Multi-edge deduplication behavior
+- Before/after candidate counts for a small cached review period
+- Focused test results

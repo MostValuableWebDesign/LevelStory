@@ -3769,6 +3769,77 @@ export interface VisualValidationCategoryCoverage {
   available: boolean;
 }
 
+export type VisualValidationTradeCandidateDirection = typeof VisualValidationTradeCandidateDirection[keyof typeof VisualValidationTradeCandidateDirection];
+
+
+export const VisualValidationTradeCandidateDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type VisualValidationTradeCandidatePrimaryEdge = typeof VisualValidationTradeCandidatePrimaryEdge[keyof typeof VisualValidationTradeCandidatePrimaryEdge];
+
+
+export const VisualValidationTradeCandidatePrimaryEdge = {
+  ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION: 'ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION',
+  PATIENCE_CANDLE_CONTINUATION: 'PATIENCE_CANDLE_CONTINUATION',
+  STRONG_BREAKOUT_AFTER_CONSOLIDATION: 'STRONG_BREAKOUT_AFTER_CONSOLIDATION',
+  EQUIVALENT_CANDLE_REVERSAL: 'EQUIVALENT_CANDLE_REVERSAL',
+  PEAK_RETRACEMENT_REVERSAL: 'PEAK_RETRACEMENT_REVERSAL',
+} as const;
+
+export type VisualValidationTradeCandidateSetupGrade = typeof VisualValidationTradeCandidateSetupGrade[keyof typeof VisualValidationTradeCandidateSetupGrade];
+
+
+export const VisualValidationTradeCandidateSetupGrade = {
+  A: 'A',
+  'A+': 'A+',
+  'A++': 'A++',
+} as const;
+
+export type VisualValidationTradeCandidatePeriod = typeof VisualValidationTradeCandidatePeriod[keyof typeof VisualValidationTradeCandidatePeriod];
+
+
+export const VisualValidationTradeCandidatePeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type VisualValidationTradeCandidateCausalEvidenceItemKind = typeof VisualValidationTradeCandidateCausalEvidenceItemKind[keyof typeof VisualValidationTradeCandidateCausalEvidenceItemKind];
+
+
+export const VisualValidationTradeCandidateCausalEvidenceItemKind = {
+  level: 'level',
+  patience: 'patience',
+  entry: 'entry',
+} as const;
+
+export type VisualValidationTradeCandidateCausalEvidenceItem = {
+  kind: VisualValidationTradeCandidateCausalEvidenceItemKind;
+  timestamp: string;
+  detail: string;
+};
+
+export interface VisualValidationTradeCandidate {
+  /** Canonical identity: contract, New York trading date, entry candle, and direction. */
+  candidateId: string;
+  snapshotId: string;
+  contractSymbol: string;
+  tradingDate: string;
+  entryCandleOpenTime: string;
+  entryCandleCloseTime: string;
+  direction: VisualValidationTradeCandidateDirection;
+  /** @nullable */
+  entryTriggerPrice: number | null;
+  primaryEdge: VisualValidationTradeCandidatePrimaryEdge;
+  matchedEdges: string[];
+  supportingConfluences: string[];
+  setupGrade: VisualValidationTradeCandidateSetupGrade;
+  period: VisualValidationTradeCandidatePeriod;
+  outcome: string;
+  causalEvidence: VisualValidationTradeCandidateCausalEvidenceItem[];
+}
+
 export interface VisualValidationReviewPeriod {
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   startDate: string;
@@ -3846,6 +3917,7 @@ export interface VisualValidationSet {
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
   snapshots: VisualValidationSnapshot[];
+  tradeCandidates: VisualValidationTradeCandidate[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;

@@ -58,7 +58,9 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /Example \{String\(index \+ 1\)\.padStart\(2, "0"\)/);
   assert.match(page, /reviewPeriod\.startDate/);
   assert.match(page, /reviewPeriod\.endDate/);
-  assert.match(page, /confirmed_signals/);
+  assert.match(page, /Generate trade candidates/);
+  assert.match(page, /Coverage \/ Trade Candidates/);
+  assert.match(page, /button-trade-candidate/);
   assert.doesNotMatch(page, /data-testid="category-coverage-summary"/);
   assert.doesNotMatch(page, /SetManifest/);
   assert.doesNotMatch(page, /Stated category/);
@@ -67,11 +69,13 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /pointerEvents="none"/);
 });
 
-test("visual review keeps no-entry diagnostics collapsed behind an explicit mode", () => {
+test("visual review exposes only confirmed trade candidates", () => {
   assert.match(page, /trades_only/);
-  assert.match(page, /trades_and_diagnostics/);
-  assert.match(page, /data-testid="diagnostic-categories"/);
-  assert.match(page, /No-entry diagnostics/);
+  assert.doesNotMatch(page, /data-testid="diagnostic-categories"/);
+  assert.doesNotMatch(page, /No-entry diagnostics/);
+  assert.doesNotMatch(page, /Bullish patience candle/);
+  assert.doesNotMatch(page, /Bearish patience candle/);
+  assert.doesNotMatch(page, /Weak ORB probe/);
 });
 
 test("human judgment teaches only from an explicitly locked causal candle pair", () => {

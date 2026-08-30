@@ -97,37 +97,30 @@ import {
   type CandleInspection,
 } from "@/lib/visual-review-chart";
 
-const CATEGORIES: Array<{ value: VisualValidationCategory; label: string; short: string }> = [
-  { value: "qualified_trade", label: "Qualified trade", short: "Qualified" },
-  { value: "rejected_setup", label: "Rejected setup", short: "Rejected" },
-  { value: "bullish_patience_candle", label: "Bullish patience candle", short: "Bullish patience" },
-  { value: "bearish_patience_candle", label: "Bearish patience candle", short: "Bearish patience" },
-  { value: "weak_orb_probe", label: "Weak ORB probe", short: "Weak ORB" },
-  { value: "strong_breakout", label: "Strong breakout", short: "Breakout" },
-  { value: "pullback", label: "Pullback", short: "Pullback" },
-  { value: "consolidation", label: "Consolidation", short: "Consolidation" },
-  { value: "ambiguous_candle", label: "Ambiguous candle", short: "Ambiguous" },
-  { value: "stop_exit", label: "Stop exit", short: "Stop exit" },
-  { value: "target_exit", label: "Target exit", short: "Target exit" },
-  { value: "runner_exit", label: "Runner exit", short: "Runner exit" },
-];
 const TRADE_CATEGORY_VALUES = new Set<VisualValidationCategory>([
   "qualified_trade",
-  "bullish_patience_candle",
-  "bearish_patience_candle",
-  "strong_breakout",
-  "pullback",
-  "consolidation",
-  "stop_exit",
-  "target_exit",
-  "runner_exit",
 ]);
 const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
-  { id: "ORB_PULLBACK_CONTINUATION", label: "ORB pullback continuation" },
-  { id: "CONSOLIDATION_BREAKOUT_CONTINUATION", label: "Consolidation breakout continuation" },
-  { id: "PATIENCE_CANDLE_CONTINUATION", label: "Patience continuation" },
-  { id: "EQUIVALENT_CANDLE_REVERSAL", label: "Equivalent-candle reversal" },
+  { id: "ORB_PULLBACK_CONTINUATION", label: "ORB Break–Pullback–Patience Continuation" },
+  { id: "PATIENCE_CANDLE_CONTINUATION", label: "Patience Candle Continuation" },
+  { id: "CONSOLIDATION_BREAKOUT_CONTINUATION", label: "Strong Breakout After Consolidation" },
+  { id: "EQUIVALENT_CANDLE_REVERSAL", label: "Equivalent-Candle Reversal" },
 ];
+type CandidateTradeView = {
+  entryPrice?: number;
+  primaryEdge?: string;
+  matchedEdges?: string[];
+  supportingConfluences?: string[];
+  setupGrade?: "A" | "A+" | "A++";
+};
+type CandidateAuditView = { entryTriggerPrice?: number };
+const CANONICAL_EDGE_BY_STRATEGY: Record<string, string> = {
+  ORB_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+  ORB_BREAK_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+  CONSOLIDATION_BREAKOUT_CONTINUATION: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+};
+const canonicalEdgeForStrategy = (strategy: StrategyId) => CANONICAL_EDGE_BY_STRATEGY[strategy] ?? strategy;
+const edgeDisplayLabel = (edge: string) => STRATEGY_TABS.find((item) => item.id === edge || canonicalEdgeForStrategy(item.id) === edge)?.label ?? edge;
 
 const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unreviewed">; label: string; detail: string }> = [
   { value: "correct", label: "Correct", detail: "Machine story matches the candles." },
@@ -165,7 +158,7 @@ function storedReviewSetId(): string {
 function requestedReviewCategory(): VisualValidationCategory | null {
   if (typeof window === "undefined") return null;
   const candidate = new URLSearchParams(window.location.search).get("category");
-  return CATEGORIES.some((category) => category.value === candidate) ? candidate as VisualValidationCategory : null;
+  return candidate === "qualified_trade" ? "qualified_trade" : null;
 }
 
 function requestedSessionView(): SessionView {
@@ -178,10 +171,6 @@ function requestedSessionView(): SessionView {
 function requestedPremarket(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("premarket") === "1";
-}
-
-function prettyCategory(category: string): string {
-  return category.replaceAll("_", " ");
 }
 
 function formatReviewTime(value: string): string {
@@ -293,7 +282,9 @@ export default function VisualReview() {
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
   const strategySnapshots = useMemo(
-    () => selectedStrategyKey ? snapshots.filter((snapshot) => snapshot.strategyKey === selectedStrategyKey) : snapshots,
+    () => (selectedStrategyKey
+      ? snapshots.filter((snapshot) => snapshot.category === "qualified_trade" && snapshot.strategyKey === selectedStrategyKey)
+      : snapshots.filter((snapshot) => snapshot.category === "qualified_trade")),
     [selectedStrategyKey, snapshots],
   );
   const availableCategories = useMemo(() => coverage
@@ -321,11 +312,7 @@ export default function VisualReview() {
       setSelectedCategory(null);
       return;
     }
-    const selectedIsExplicitDiagnostic = selectedCategory !== null
-      && !TRADE_CATEGORY_VALUES.has(selectedCategory)
-      && (data.source === "simulated" || data.request.reviewMode === "trades_and_diagnostics")
-      && snapshots.some((snapshot) => snapshot.category === selectedCategory);
-    if (!selectedCategory || (!availableCategories.includes(selectedCategory) && !selectedIsExplicitDiagnostic)) {
+    if (!selectedCategory || !availableCategories.includes(selectedCategory)) {
       setSelectedCategory(availableCategories[0]);
     }
   }, [availableCategories, data, selectedCategory, selectedStrategyKey]);
@@ -450,7 +437,7 @@ export default function VisualReview() {
          setReviewNote("");
          setAnalysis(null);
         if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
-        setMessage(`Generated ${nextSet.snapshots.length} causal snapshots.`);
+        setMessage(`Generated ${nextSet.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length} trade candidates.`);
       },
        onError: (error) => setMessage(apiErrorMessage(error) ?? "The deterministic set could not be generated. Check the date window and try again."),
     });
@@ -565,7 +552,7 @@ export default function VisualReview() {
                  setSelectedCategory(null);
                  setSelectedSnapshotId("");
                }}
-               onSelect={selectCategory}
+                 onSelectSnapshot={selectSnapshot}
                onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
                onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
              />
@@ -696,12 +683,6 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
           <option value="simulated">Simulated fixture data · testing only</option>
         </select>
       </Field>
-      <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Review presents only confirmed edges that represent trades. An edge is confirmed when EDGE_FOUND, PATIENCE_FOUND, and SIGNAL_CONFIRMED are all present." /></span>}>
-        <select className="field" value="trades_only" disabled data-testid="select-visual-review-mode">
-          <option value="trades_only">Trade only · confirmed edges</option>
-        </select>
-        <span className="mt-1 block text-[10px] text-muted-foreground">Only edge occurrences that complete the causal confirmation sequence appear as trades.</span>
-      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
         <Field label={<span className="inline-flex items-center gap-1.5">Seed <InfoTip label="Seed" text="Seeds affect simulated fixture generation only. Historical mode is immutable, so this control is disabled." /></span>}>
@@ -722,54 +703,43 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
       </label>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
-         {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating causal set..." : request.source === "historical_databento" ? "Generate historical set" : "Generate simulated set"}
+          {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating trade candidates..." : "Generate trade candidates"}
       </button>
        <LockedNote>{request.source === "historical_databento" ? "Historical mode reads the existing indexed MES contract candles only. It never rebuilds the index, connects to a broker, creates orders, or produces live execution." : "Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here."}</LockedNote>
     </form>
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelect, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelect: (category: VisualValidationCategory) => void; onPrevious: () => void; onNext: () => void }) {
+function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void }) {
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
-  const historical = data.source === "historical_databento";
-  const strategySnapshots = selectedStrategyKey ? data.snapshots.filter((snapshot) => snapshot.strategyKey === selectedStrategyKey) : data.snapshots;
-  const tradeCategories = CATEGORIES.filter((category) => TRADE_CATEGORY_VALUES.has(category.value));
-  const diagnostics = CATEGORIES.filter((category) => !TRADE_CATEGORY_VALUES.has(category.value));
-  const coverageFor = (category: VisualValidationCategory) => data.categoryCoverage.find((entry) => entry.category === category);
-  const isAvailable = (category: VisualValidationCategory) => {
-    return strategySnapshots.some((snapshot) => snapshot.category === category);
-  };
-  const renderCategory = (category: (typeof CATEGORIES)[number]) => {
-    const item = coverageFor(category.value);
-    const count = strategySnapshots.filter((snapshot) => snapshot.category === category.value).length;
-    const available = isAvailable(category.value);
-    const selected = selectedCategory === category.value;
-    return <button type="button" key={category.value} disabled={!available} onClick={() => onSelect(category.value)} className={`group min-h-[76px] bg-card px-4 py-3 text-left transition ${selected ? "bg-accent/12 ring-1 ring-inset ring-accent" : available ? "hover:bg-muted/55" : "cursor-not-allowed opacity-55"}`} aria-pressed={selected} data-testid={`button-category-${category.value}`}>
-      <span className="flex items-start justify-between gap-2"><span className="text-xs font-semibold leading-4">{category.label}</span>{available ? <span className={`mono text-[11px] ${selected ? "text-accent-foreground" : "text-muted-foreground"}`}>{count}</span> : <X size={13} className="text-muted-foreground" aria-label="Unavailable" />}</span>
-      <span className={`mt-3 block text-[9px] font-bold uppercase tracking-[.1em] ${available ? selected ? "text-accent-foreground" : "text-muted-foreground" : "text-muted-foreground"}`}>{available ? selected ? "Inspecting" : "Available" : historical ? "No trade-linked sample." : "Unavailable"}</span>
-    </button>;
-  };
-  const diagnosticsEnabled = data.request.reviewMode === "trades_and_diagnostics" || data.source === "simulated";
-  const diagnosticAvailable = diagnosticsEnabled && diagnostics.some((category) => isAvailable(category.value));
+  const candidates = selectedStrategyKey
+    ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
+    : data.tradeCandidates;
+  const edgeCount = (strategy: StrategyId) => data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(strategy) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(strategy))).length;
   return <Panel>
-     <PanelTitle eyebrow="Coverage / strategy-linked samples" title="Select an available example" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+     <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
     <div className="flex flex-wrap gap-1 border-t border-border bg-muted/20 p-2" role="tablist" aria-label="Strategy review tabs">
-      <button type="button" onClick={() => onSelectStrategy(null)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === null} role="tab">All strategies</button>
+       <button type="button" onClick={() => onSelectStrategy(null)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === null} role="tab">All edges · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</button>
       {STRATEGY_TABS.map((strategy) => {
-        const count = data.snapshots.filter((snapshot) => snapshot.strategyKey === strategy.id).length;
-        return <button type="button" key={strategy.id} onClick={() => onSelectStrategy(strategy.id)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === strategy.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === strategy.id} role="tab">{strategy.label} · {count}</button>;
+         const count = edgeCount(strategy.id);
+         return <button type="button" key={strategy.id} onClick={() => onSelectStrategy(strategy.id)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === strategy.id ? "bg-primary text-primary-foreground" : count ? "text-muted-foreground hover:bg-muted" : "cursor-not-allowed text-muted-foreground/50"}`} aria-selected={selectedStrategyKey === strategy.id} role="tab" disabled={!count}>{strategy.label} · {count}</button>;
       })}
     </div>
-    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-      {tradeCategories.map(renderCategory)}
+     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
+       {candidates.map((candidate) => {
+         const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
+         if (!snapshot) return null;
+         const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
+         const audit = snapshot.machineEvidence.audit as CandidateAuditView;
+         const direction = candidate.direction === "short" ? "Short" : "Long";
+         return <button type="button" key={candidate.candidateId} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`bg-card p-4 text-left transition hover:bg-muted/55 ${selectedSnapshot?.snapshotId === candidate.snapshotId ? "ring-1 ring-inset ring-accent" : ""}`} data-testid="button-trade-candidate">
+           <div className="flex items-start justify-between gap-3"><div><div className="eyebrow text-muted-foreground">Trade candidate</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className="border border-accent/40 bg-accent/10 px-2 py-1 text-[10px] font-bold">{direction}</span></div>
+           <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div><span className="text-muted-foreground">Entry</span><div className="mono mt-1">{safeValue(candidate.entryTriggerPrice ?? audit.entryTriggerPrice)}</div></div><div><span className="text-muted-foreground">Grade</span><div className="mono mt-1">{candidate.setupGrade}</div></div><div><span className="text-muted-foreground">Primary edge</span><div className="mt-1 font-semibold">{edgeDisplayLabel(candidate.primaryEdge)}</div></div><div><span className="text-muted-foreground">Matched edges</span><div className="mt-1">{candidate.matchedEdges.length} · {candidate.supportingConfluences.length} confluences</div></div></div>
+           <div className="mt-3 mono text-[10px] text-muted-foreground">{candidate.period === "in_sample" ? "In-sample" : "Holdout"} · Entry {formatReviewTime(candidate.entryCandleOpenTime)}</div>
+         </button>;
+       })}
     </div>
-    {diagnosticAvailable && <details className="border-t border-border" data-testid="diagnostic-categories">
-      <summary className="cursor-pointer px-5 py-3 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground sm:px-6">No-entry diagnostics · {diagnostics.filter((category) => isAvailable(category.value)).length} available</summary>
-      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        {diagnostics.map(renderCategory)}
-      </div>
-    </details>}
      {selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
   </Panel>;
 }
@@ -793,7 +763,7 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
         <div className="eyebrow mb-2 text-muted-foreground">Example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period === "in_sample" ? "formula-development sample" : "holdout sample"} <InfoTip label="Dataset role" text="Formula-development examples are in-sample. Holdout examples are out-of-sample and are not used to tune the rule." /></div>
-        <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">{snapshot.categoryLabel}</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{snapshot.machineLabel}</span></div>
+         <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{STRATEGY_TABS.find((item) => item.id === ((snapshot.machineEvidence.trade as CandidateTradeView | null)?.primaryEdge ?? snapshot.strategyKey))?.label ?? snapshot.machineLabel}</span></div>
          <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
          <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>
       </div>
@@ -1643,11 +1613,11 @@ function ProposedRulePanel({ analysis, pending, onAnalyze }: { analysis: VisualV
 
 function UnavailableWorkspace({ coverage, source }: { coverage: VisualValidationSet["categoryCoverage"]; source: VisualValidationSet["source"] }) {
   const historical = source === "historical_databento";
-  return <Panel accent><div className="flex min-h-[280px] flex-col items-center justify-center px-8 py-12 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><AlertTriangle size={22} /></div><h2 className="display text-xl font-bold">No category sample is available.</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{historical ? "No qualifying historical example found. The room will not fabricate a chart." : "This set did not produce an available category. The room will not fabricate a chart."} Generate another set or select an available category above.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{coverage.filter((item) => item.count > 0).map((item) => <span key={item.category} className="border border-border bg-muted/35 px-2.5 py-1.5 text-[10px] font-bold uppercase">{prettyCategory(item.category)}</span>)}</div></div></Panel>;
+  return <Panel accent><div className="flex min-h-[280px] flex-col items-center justify-center px-8 py-12 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><AlertTriangle size={22} /></div><h2 className="display text-xl font-bold">No confirmed trade candidates found.</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{historical ? "No confirmed trade candidates were found in this review period." : "This deterministic set did not produce a confirmed trade candidate."}</p><p className="mt-3 max-w-lg text-xs leading-5 text-muted-foreground">Sessions searched and causal P→E outcomes remain available in the audit evidence. Extend the review period to search for more candidates.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{coverage.filter((item) => item.category === "qualified_trade" && item.count > 0).map((item) => <span key={item.category} className="border border-border bg-muted/35 px-2.5 py-1.5 text-[10px] font-bold uppercase">Trade candidates · {item.count}</span>)}</div></div></Panel>;
 }
 
 function EmptyReview() {
-  return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">The review room is empty.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Choose a simulated fixture or Historical Databento source to begin inspecting machine evidence against raw candles.</p></div>;
+  return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">No confirmed trade candidates were found in this review period.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic review set to search for causal edge → P → immediate E candidates.</p><p className="mt-3 text-xs text-muted-foreground">Suggested action: extend the review period.</p></div>;
 }
 
 function moveSnapshot(snapshots: VisualValidationSnapshot[], active: VisualValidationSnapshot, direction: -1 | 1, setSelected: (id: string) => void) {
