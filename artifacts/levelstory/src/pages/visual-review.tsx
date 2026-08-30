@@ -913,24 +913,17 @@ function formatExactVolume(value: number): string {
 
 function CandleInspector({
   inspection,
-  activeEvents,
   selectedSlot,
-  selectedIndicators,
-  finalIndicators,
   activeCandle,
   onLockCandle,
 }: {
   inspection: CandleInspection | null;
-  activeEvents: string[];
   selectedSlot: number | null;
-  selectedIndicators: { vwap: number | null; ema200: number | null } | null;
-  finalIndicators: { vwap: number | null; ema200: number | null } | null;
   activeCandle: SessionCandle | null;
   onLockCandle: (candle: SessionCandle | null) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const selectedLabel = selectedSlot == null ? "Select a five-minute candle" : `Fixed slot ${String(selectedSlot + 1).padStart(2, "0")}`;
-  const indicatorValue = (value: number | null | undefined) => value == null ? "—" : formatPriceAxisValue(value);
   return <section className={`candle-inspector ${collapsed ? "is-collapsed" : ""}`} aria-label="Selected candle inspector" data-testid="candle-inspector">
     <div className="flex items-center justify-between gap-3">
       <div>
@@ -947,12 +940,7 @@ function CandleInspector({
       {inspection ? <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
         {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
       </div> : <p className="mt-3 border border-accent/25 bg-accent/5 px-3 py-2 text-[10px] leading-4 text-muted-foreground">No historical candle available for this fixed timestamp slot. The gap is preserved; no neighboring candle was substituted.</p>}
-      <div className="inspector-meta mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground">
-        {inspection && <span><span className="font-semibold text-foreground">{inspection.contractSymbol}</span> · {inspection.newYork} ET · {inspection.utc} UTC · Exact raw OHLCV</span>}
-        <span><span className="font-semibold text-foreground">EMA 200</span> selected {indicatorValue(selectedIndicators?.ema200)} · final {indicatorValue(finalIndicators?.ema200)}</span>
-        <span><span className="font-semibold text-foreground">VWAP</span> selected {indicatorValue(selectedIndicators?.vwap)} · final {indicatorValue(finalIndicators?.vwap)}</span>
-        <span><span className="font-semibold text-foreground">Events:</span> {activeEvents.length ? activeEvents.join(" · ") : "none on this candle"}</span>
-      </div>
+      <div className="inspector-meta mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground" aria-hidden="true" />
     </div>}
   </section>;
 }
@@ -1259,6 +1247,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           </div>}
         </section>
         <CandleInspector inspection={activeDetails} activeEvents={activeEvents} selectedSlot={activeSlot} selectedIndicators={selectedIndicators} finalIndicators={finalIndicators} activeCandle={activeCandle} onLockCandle={onLockCandle} />
+        <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} />
        <div className="chart-plot-shell mt-3">
          <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>

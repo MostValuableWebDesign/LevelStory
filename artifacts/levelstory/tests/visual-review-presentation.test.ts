@@ -12,7 +12,9 @@ test("visual review presentation keeps the inspector and event strip outside the
   assert.ok(page.includes("inspector-meta"));
   assert.match(page, /data-testid="toggle-candle-inspector"/);
   assert.match(page, /No historical candle available/);
-  assert.match(page, /selected .* final/);
+  assert.doesNotMatch(page, /Exact raw OHLCV/);
+  assert.doesNotMatch(page, /selected .* final/);
+  assert.doesNotMatch(page, /Events:<\/span>/);
   assert.match(page, /hover or arrow-key selection/);
   assert.match(page, /data-testid="event-strip"/);
   assert.ok(page.indexOf('data-testid="event-strip"') < page.indexOf('className="visual-review-svg'));
