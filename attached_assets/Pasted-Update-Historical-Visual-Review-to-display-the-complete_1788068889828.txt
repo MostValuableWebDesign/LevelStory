@@ -1,0 +1,65 @@
+Update Historical Visual Review to display the complete pullback and patience-candle occurrence ledger.
+
+Requirements:
+
+1. Historical Visual Review must default to:
+   trades_and_diagnostics
+
+Do not default historical review to trades_only.
+
+2. Provide clear filters:
+   - All detected occurrences
+   - Qualified trades
+   - Pullbacks
+   - Bullish patience candles
+   - Bearish patience candles
+   - Confirmed entries
+   - Failed confirmations
+   - Risk-rejected setups
+
+3. A category can exist without a completed trade.
+   Examples:
+   - Pullback found
+   - Patience candle found
+   - Confirmation failed
+   These are valid diagnostic examples and must remain visible.
+
+4. Simplify each example description:
+   - What was detected
+   - Where it occurred
+   - Qualifying level
+   - Distance from the level in ticks
+   - What happened next
+   - Why a trade was or was not qualified
+
+5. Mark the exact candles:
+   - L = level-interaction candle
+   - P = patience candle
+   - E = immediately following entry-confirmation candle
+   Do not show E unless the next candle actually satisfies the confirmation rule.
+
+6. Selecting an occurrence must center or highlight its L/P/E sequence without hiding the rest of the session’s candles.
+
+7. Display funnel totals for the selected review set:
+   - Candles evaluated
+   - Pullbacks detected
+   - Patience candles detected
+   - Next-candle confirmations
+   - Risk-approved setups
+   - Qualified simulated trades
+   - Rejections grouped by reason
+
+8. Preserve causal integrity:
+   - Machine-visible evidence remains immutable.
+   - Future candles may be displayed as review context but cannot affect detection.
+   - Human judgments remain teaching evidence and cannot directly mutate the active formula.
+
+Add focused frontend/API tests for:
+- Historical default mode
+- Non-trade pullback visibility
+- Non-trade patience-candle visibility
+- Multiple same-category occurrences
+- Correct L/P/E mapping
+- Stable occurrence selection after refresh
+
+Do not rebuild the historical index for this UI/API change.

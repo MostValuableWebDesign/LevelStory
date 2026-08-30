@@ -1,0 +1,76 @@
+Separate historical pattern detection from trade qualification and retain every causal occurrence during the selected session.
+
+Current problem:
+The pullback detector examines only a short six-candle / 30-minute post-breakout window. Pullbacks and patience candles that occur later in the session are missed or discarded when entry confirmation fails.
+
+Requirements:
+
+1. Create a session-wide occurrence detector for the selected review window:
+   - Primary trading window: 9:30 a.m.–1:00 p.m. America/New_York.
+   - Permit full regular-session review through 4:00 p.m. when explicitly selected.
+   - Process completed 5-minute candles only.
+   - Preserve contract, trading date, and causal-boundary isolation.
+
+2. Scan and retain every occurrence of:
+   - Pullback into a qualifying 12-tick level area
+   - Consolidation near a qualifying level
+   - Bullish patience candle
+   - Bearish patience candle
+   - Immediate next-candle confirmation
+   - Failed confirmation
+   - Invalidation
+   - Qualified trade
+
+3. Detection stages must be independent:
+   Stage A: directional 15-minute trend
+   Stage B: ORB/NTZ breakout or valid consolidation-breakout context
+   Stage C: pullback to a qualifying level area
+   Stage D: patience candle
+   Stage E: immediately following confirmation candle
+   Stage F: risk approval
+   Stage G: simulated trade qualification
+
+4. Preserve evidence when later stages fail.
+   Examples:
+   - Pullback found but no patience candle
+   - Patience candle found but next candle did not confirm
+   - Confirmation found but risk controls rejected the trade
+   These must remain reviewable historical occurrences.
+
+5. Apply my patience-candle definition:
+   - A bullish patience candle requires a bullish trend.
+   - Its trend-direction high must remain inside/not exceed the preceding candle’s high.
+   - A bearish patience candle requires a bearish trend.
+   - Its trend-direction low must remain inside/not exceed the preceding candle’s low.
+   - The entire candle does not have to be an inside candle.
+
+6. Entry confirmation:
+   - E must be the immediately following completed 5-minute candle after P.
+   - Long: E must break above P’s high by the configured entry confirmation buffer.
+   - Short: E must break below P’s low by the configured entry confirmation buffer.
+   - A later candle cannot replace the immediately following E candle.
+   - Keep the 12-tick pullback-area tolerance separate from the entry confirmation buffer.
+
+7. Store occurrences using stable deterministic identifiers containing:
+   - Contract
+   - New York trading date
+   - Event type
+   - L timestamp
+   - P timestamp when available
+   - E timestamp when available
+   - Direction
+   - Qualifying level and value at L
+
+8. Do not change trading rules merely to increase the number of trades. The goal is complete detection and evidence preservation.
+
+Add focused tests proving:
+- Multiple pullbacks can be retained in one session.
+- Multiple patience candles can be retained in one session.
+- A failed entry confirmation does not erase P or L.
+- A later candle cannot confirm an earlier P.
+- Occurrences after the old six-candle/30-minute boundary are retained.
+- Duplicate scans produce identical stable IDs without duplicate records.
+
+Do not run a full historical-index rebuild or a long qualification batch.
+
+Report the before/after behavior of the old bounded detector and the new occurrence detector.
