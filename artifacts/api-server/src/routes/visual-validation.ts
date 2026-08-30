@@ -25,6 +25,7 @@ import {
   recordVisualValidationReview,
   storeVisualValidationSet,
 } from "../lib/visual-validation-store.js";
+import { DEFAULT_LEVEL_TOLERANCE_TICKS } from "@workspace/api-spec/constants";
 
 const defaultRequest = {
   symbol: "MES" as const,
@@ -133,7 +134,7 @@ export function createVisualValidationRouter(): IRouter {
             entryCandleCloseTime: parsed.data.teaching.entryCandleCloseTime.toISOString(),
             patienceCandleOpenTime: parsed.data.teaching.patienceCandleOpenTime.toISOString(),
             patienceCandleCloseTime: parsed.data.teaching.patienceCandleCloseTime.toISOString(),
-            levelToleranceTicks: parsed.data.teaching.levelToleranceTicks ?? 4,
+            levelToleranceTicks: parsed.data.teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
             qualifyingLevels: parsed.data.teaching.qualifyingLevels?.map((level) => ({
               ...level,
               sourceTimestamp: level.sourceTimestamp.toISOString(),

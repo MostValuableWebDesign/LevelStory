@@ -21,6 +21,7 @@ import type {
 import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
 import { buildCandidateConfiguration, compareCandidate, PROPOSAL_VALIDATOR_VERSION } from "./proposal-validator.js";
 import { refreshActiveShadowStrategy } from "./active-shadow-strategy.js";
+import { DEFAULT_LEVEL_TOLERANCE_TICKS } from "@workspace/api-spec/constants";
 
 export const PROPOSAL_STATUSES = [
   "draft",
@@ -117,7 +118,7 @@ export async function persistTeachingEvidence(args: {
     patienceCandleTimestamp: teaching.patienceCandleOpenTime || null,
     direction: teaching.direction,
     entryBufferTicks: teaching.entryBufferTicks,
-    levelToleranceTicks: teaching.levelToleranceTicks ?? 4,
+    levelToleranceTicks: teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
     qualifyingLevelId: teaching.qualifyingLevels?.[0]?.levelId ?? teaching.qualifyingLevelId ?? teaching.validation.levelInteractions[0]?.levelId ?? null,
     qualifyingLevelValue: teaching.validation.levelInteractions[0]?.levelPrice != null ? String(teaching.validation.levelInteractions[0].levelPrice) : null,
     qualifyingLevelRangeLow: teaching.validation.levelInteractions[0]?.levelRangeLow != null ? String(teaching.validation.levelInteractions[0].levelRangeLow) : null,

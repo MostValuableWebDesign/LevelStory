@@ -1,4 +1,6 @@
 /** Every default is deliberately explicit: these are strategy assumptions, not facts. */
+import { DEFAULT_LEVEL_TOLERANCE_POINTS } from "@workspace/api-spec/constants";
+
 export type StrategyConfig = {
   defaultContractSymbol: string;
   simulationSeed: number;
@@ -92,7 +94,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   maxRiskTrades: 1,
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,
-  levelTolerance: 0.05,
+  levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: 4,
   patienceStopBufferTicks: 1,
   dojiBodyRatio: 0.1,

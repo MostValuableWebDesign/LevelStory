@@ -9,6 +9,7 @@ import type { VisualValidationQualifyingLevel } from './visualValidationQualifyi
 import type { VisualValidationTeachingConfidence } from './visualValidationTeachingConfidence';
 import type { VisualValidationTeachingExampleDirection } from './visualValidationTeachingExampleDirection';
 import type { VisualValidationTeachingExampleEntryBufferTicks } from './visualValidationTeachingExampleEntryBufferTicks';
+import type { VisualValidationTeachingExampleLevelToleranceTicks } from './visualValidationTeachingExampleLevelToleranceTicks';
 import type { VisualValidationTeachingExampleMachineEvidenceSnapshot } from './visualValidationTeachingExampleMachineEvidenceSnapshot';
 import type { VisualValidationTeachingJudgment } from './visualValidationTeachingJudgment';
 import type { VisualValidationTeachingSetup } from './visualValidationTeachingSetup';
@@ -30,12 +31,8 @@ export interface VisualValidationTeachingExample {
   patienceCandleOpenTime: Date;
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
-  /**
-     * MES ticks; integer values only.
-     * @minimum 0
-     * @maximum 4
-     */
-  levelToleranceTicks: number;
+  /** MES ticks; approved MES tolerances only. */
+  levelToleranceTicks: VisualValidationTeachingExampleLevelToleranceTicks;
   /**
      * Stable annotation ID for the qualifying level.
      * @maxLength 120
@@ -50,10 +47,7 @@ export interface VisualValidationTeachingExample {
      * @maxItems 20
      */
   qualifyingLevels?: VisualValidationQualifyingLevel[];
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
+  /** @maxItems 20 */
   pullbackLevels: number[];
   /**
      * Legacy single-level field retained for older saved reviews.

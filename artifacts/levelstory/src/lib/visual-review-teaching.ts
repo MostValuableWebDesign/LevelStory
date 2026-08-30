@@ -1,6 +1,6 @@
 import type { VisualValidationQualifyingLevel } from "@workspace/api-client-react";
+import { MES_TICK_SIZE } from "@workspace/api-spec/constants";
 
-const MES_TICK_SIZE = 0.25;
 
 function isMesTick(value: number): boolean {
   return Number.isFinite(value) && Math.abs(value / MES_TICK_SIZE - Math.round(value / MES_TICK_SIZE)) < 1e-8;

@@ -8,6 +8,7 @@
 import type { VisualValidationQualifyingLevel } from './visualValidationQualifyingLevel';
 import type { VisualValidationReviewRequestTeachingDirection } from './visualValidationReviewRequestTeachingDirection';
 import type { VisualValidationReviewRequestTeachingEntryBufferTicks } from './visualValidationReviewRequestTeachingEntryBufferTicks';
+import type { VisualValidationReviewRequestTeachingLevelToleranceTicks } from './visualValidationReviewRequestTeachingLevelToleranceTicks';
 import type { VisualValidationTeachingConfidence } from './visualValidationTeachingConfidence';
 import type { VisualValidationTeachingJudgment } from './visualValidationTeachingJudgment';
 import type { VisualValidationTeachingSetup } from './visualValidationTeachingSetup';
@@ -24,12 +25,8 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleOpenTime: Date;
   patienceCandleCloseTime: Date;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
-  /**
-     * MES ticks; integer values only.
-     * @minimum 0
-     * @maximum 4
-     */
-  levelToleranceTicks: number;
+  /** MES ticks; approved MES tolerances only. */
+  levelToleranceTicks: VisualValidationReviewRequestTeachingLevelToleranceTicks;
   /** @maxLength 120 */
   qualifyingLevelId?: string;
   /** @nullable */
@@ -41,10 +38,7 @@ export type VisualValidationReviewRequestTeaching = {
      * @maxItems 20
      */
   qualifyingLevels?: VisualValidationQualifyingLevel[];
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
+  /** @maxItems 20 */
   pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;

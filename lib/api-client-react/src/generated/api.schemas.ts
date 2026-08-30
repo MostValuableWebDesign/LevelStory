@@ -3071,6 +3071,18 @@ export const VisualValidationTeachingExampleEntryBufferTicks = {
   NUMBER_4: 4,
 } as const;
 
+/**
+ * MES ticks; approved MES tolerances only.
+ */
+export type VisualValidationTeachingExampleLevelToleranceTicks = typeof VisualValidationTeachingExampleLevelToleranceTicks[keyof typeof VisualValidationTeachingExampleLevelToleranceTicks];
+
+
+export const VisualValidationTeachingExampleLevelToleranceTicks = {
+  NUMBER_4: 4,
+  NUMBER_8: 8,
+  NUMBER_12: 12,
+} as const;
+
 export type VisualValidationTeachingExampleMachineEvidenceSnapshot = { [key: string]: unknown };
 
 export interface VisualValidationTeachingExample {
@@ -3089,12 +3101,8 @@ export interface VisualValidationTeachingExample {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
-  /**
-     * MES ticks; integer values only.
-     * @minimum 0
-     * @maximum 4
-     */
-  levelToleranceTicks: number;
+  /** MES ticks; approved MES tolerances only. */
+  levelToleranceTicks: VisualValidationTeachingExampleLevelToleranceTicks;
   /**
      * Stable annotation ID for the qualifying level.
      * @maxLength 120
@@ -3109,10 +3117,7 @@ export interface VisualValidationTeachingExample {
      * @maxItems 20
      */
   qualifyingLevels?: VisualValidationQualifyingLevel[];
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
+  /** @maxItems 20 */
   pullbackLevels: number[];
   /**
      * Legacy single-level field retained for older saved reviews.
@@ -3521,6 +3526,18 @@ export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
   NUMBER_4: 4,
 } as const;
 
+/**
+ * MES ticks; approved MES tolerances only.
+ */
+export type VisualValidationReviewRequestTeachingLevelToleranceTicks = typeof VisualValidationReviewRequestTeachingLevelToleranceTicks[keyof typeof VisualValidationReviewRequestTeachingLevelToleranceTicks];
+
+
+export const VisualValidationReviewRequestTeachingLevelToleranceTicks = {
+  NUMBER_4: 4,
+  NUMBER_8: 8,
+  NUMBER_12: 12,
+} as const;
+
 export type VisualValidationReviewRequestTeaching = {
   judgment: VisualValidationTeachingJudgment;
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -3533,12 +3550,8 @@ export type VisualValidationReviewRequestTeaching = {
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
-  /**
-     * MES ticks; integer values only.
-     * @minimum 0
-     * @maximum 4
-     */
-  levelToleranceTicks: number;
+  /** MES ticks; approved MES tolerances only. */
+  levelToleranceTicks: VisualValidationReviewRequestTeachingLevelToleranceTicks;
   /** @maxLength 120 */
   qualifyingLevelId?: string;
   /** @nullable */
@@ -3550,10 +3563,7 @@ export type VisualValidationReviewRequestTeaching = {
      * @maxItems 20
      */
   qualifyingLevels?: VisualValidationQualifyingLevel[];
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
+  /** @maxItems 20 */
   pullbackLevels: number[];
   setupType: VisualValidationTeachingSetup;
   confidence: VisualValidationTeachingConfidence;
@@ -4319,4 +4329,3 @@ export const ListJournalEntriesOutcome = {
   expired: 'expired',
   ambiguous: 'ambiguous',
 } as const;
-

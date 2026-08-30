@@ -42,6 +42,12 @@ import type {
   VisualValidationSnapshot,
   StrategyId,
 } from "@workspace/api-client-react";
+import {
+  DEFAULT_LEVEL_TOLERANCE_TICKS,
+  LEVEL_TOLERANCE_TICKS,
+  MES_TICK_SIZE,
+  levelTolerancePoints,
+} from "@workspace/api-spec/constants";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 import { deriveTeachingCompatibilityFields, evaluateDynamicLevelInteraction, normalizeTeachingQualifyingLevels } from "@/lib/visual-review-teaching";
@@ -350,7 +356,7 @@ export default function VisualReview() {
       patienceCandleOpenTime: savedTeaching.patienceCandleOpenTime,
       patienceCandleCloseTime: savedTeaching.patienceCandleCloseTime,
       entryBufferTicks: savedTeaching.entryBufferTicks,
-      levelToleranceTicks: savedTeaching.levelToleranceTicks ?? 4,
+      levelToleranceTicks: savedTeaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
       qualifyingLevelId: savedTeaching.qualifyingLevelId,
       qualifyingLevelRangeLow: savedTeaching.qualifyingLevelRangeLow,
       qualifyingLevelRangeHigh: savedTeaching.qualifyingLevelRangeHigh,
@@ -377,7 +383,7 @@ export default function VisualReview() {
     patienceCandleOpenTime: activeSnapshot.review.teaching.patienceCandleOpenTime,
     patienceCandleCloseTime: activeSnapshot.review.teaching.patienceCandleCloseTime,
     entryBufferTicks: activeSnapshot.review.teaching.entryBufferTicks,
-    levelToleranceTicks: activeSnapshot.review.teaching.levelToleranceTicks ?? 4,
+    levelToleranceTicks: activeSnapshot.review.teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
     qualifyingLevelId: activeSnapshot.review.teaching.qualifyingLevelId,
     qualifyingLevelRangeLow: activeSnapshot.review.teaching.qualifyingLevelRangeLow,
     qualifyingLevelRangeHigh: activeSnapshot.review.teaching.qualifyingLevelRangeHigh,
@@ -481,7 +487,7 @@ export default function VisualReview() {
           patienceCandleOpenTime: saved.teaching.patienceCandleOpenTime,
           patienceCandleCloseTime: saved.teaching.patienceCandleCloseTime,
           entryBufferTicks: saved.teaching.entryBufferTicks,
-          levelToleranceTicks: saved.teaching.levelToleranceTicks ?? 4,
+          levelToleranceTicks: saved.teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
           qualifyingLevelId: saved.teaching.qualifyingLevelId,
           qualifyingLevelRangeLow: saved.teaching.qualifyingLevelRangeLow,
           qualifyingLevelRangeHigh: saved.teaching.qualifyingLevelRangeHigh,
@@ -572,14 +578,14 @@ export default function VisualReview() {
                         const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
                         const patience = entryIndex > 0 ? activeSnapshot.reviewCandles[entryIndex - 1] : null;
                         const direction = activeSnapshot.categoryAnchor.direction === "short" ? "short" : "long";
-                        const tolerancePoints = (teachingDraft?.levelToleranceTicks ?? 4) * 0.25;
+                        const tolerancePoints = levelTolerancePoints(teachingDraft?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS);
                         const containedLevels = activeSnapshot.annotations
                           .filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")
                           .filter((annotation) => !patience || Math.max(0, (annotation.rangeLow ?? annotation.price as number) - patience.high, patience.low - (annotation.rangeHigh ?? annotation.price as number)) <= tolerancePoints);
                         const selectedLevel = containedLevels[0];
                         const pullbackLevel = selectedLevel?.price ?? candle.close;
                         const existingLevels = (current: NonNullable<typeof teachingDraft>) => current.pullbackLevels
-                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= (current.levelToleranceTicks ?? 4) * 0.25);
+                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= levelTolerancePoints(current.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS));
                         setTeachingDraft((current) => ({
                           judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
                           direction: current?.direction ?? direction,
@@ -590,7 +596,7 @@ export default function VisualReview() {
                           patienceCandleOpenTime: patience?.openTime ?? "",
                           patienceCandleCloseTime: patience?.closeTime ?? "",
                           entryBufferTicks: current?.entryBufferTicks ?? 4,
-                          levelToleranceTicks: current?.levelToleranceTicks ?? 4,
+                            levelToleranceTicks: current?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
                           qualifyingLevelId: current?.qualifyingLevelId ?? selectedLevel?.id,
                           qualifyingLevelRangeLow: current?.qualifyingLevelRangeLow ?? selectedLevel?.rangeLow,
                           qualifyingLevelRangeHigh: current?.qualifyingLevelRangeHigh ?? selectedLevel?.rangeHigh,
@@ -1465,8 +1471,8 @@ function ReviewPanel({
       return { ...annotation, price, rangeLow: dynamic ? null : annotation.rangeLow, rangeHigh: dynamic ? null : annotation.rangeHigh };
     })
     .filter((annotation): annotation is typeof annotation & { price: number } => annotation.price !== null);
-  const levelToleranceTicks = teaching?.levelToleranceTicks ?? 4;
-  const levelTolerancePoints = levelToleranceTicks * 0.25;
+  const levelToleranceTicks = teaching?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS;
+  const levelTolerancePointsValue = levelTolerancePoints(levelToleranceTicks);
   const dynamicEvidence = (levelId: "vwap" | "ema-200") => {
     const level = availableLevels.find((candidate) => candidate.id === levelId);
     return evaluateDynamicLevelInteraction(level?.price, levelCandle?.high, levelCandle?.low, levelToleranceTicks);
@@ -1474,7 +1480,7 @@ function ReviewPanel({
   const containedLevels = availableLevels.filter((level) => {
     if (!levelCandle) return false;
     if (level.id === "vwap" || level.id === "ema-200") return dynamicEvidence(level.id).qualifies;
-    return Math.max(0, (level.rangeLow ?? level.price as number) - levelCandle.high, levelCandle.low - (level.rangeHigh ?? level.price as number)) <= levelTolerancePoints;
+    return Math.max(0, (level.rangeLow ?? level.price as number) - levelCandle.high, levelCandle.low - (level.rangeHigh ?? level.price as number)) <= levelTolerancePointsValue;
   });
   const selectableLevelCandles = snapshot.reviewCandles.filter((candle) => {
     const candleIndex = snapshot.reviewCandles.indexOf(candle);
@@ -1528,11 +1534,11 @@ function ReviewPanel({
            <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
            <Field label="Qualifying level candle · L"><select className="field" value={levelCandle ? `${levelCandle.openTime}|${levelCandle.closeTime}` : ""} onChange={(event) => { const selected = selectableLevelCandles.find((candle) => `${candle.openTime}|${candle.closeTime}` === event.target.value); if (selected) updateTeaching({ levelCandleOpenTime: selected.openTime, levelCandleCloseTime: selected.closeTime }); }} data-testid="select-level-candle"><option value="" disabled>Select a causal L candle</option>{selectableLevelCandles.map((candle) => <option key={`${candle.openTime}|${candle.closeTime}`} value={`${candle.openTime}|${candle.closeTime}`}>{formatInterval(candle.openTime, candle.closeTime)}{patience && candle.openTime === patience.openTime ? " · direct L=P" : ""}</option>)}</select><span className="mt-1 block text-[9px] text-muted-foreground">L is the completed, machine-visible candle that qualifies the level. P and E remain locked.</span></Field>
            <div className="border border-border bg-card px-3 py-2" data-testid="level-indicator-evidence"><div className="eyebrow text-muted-foreground">Indicators at L</div><div className="mono mt-1 text-[10px]">VWAP {selectedIndicator?.vwap?.toFixed(3) ?? "—"} · EMA 200 {selectedIndicator?.ema200?.toFixed(3) ?? "—"}</div><div className="mt-1 text-[9px] text-muted-foreground">{selectedIndicator ? `Source ${formatInterval(selectedIndicator.openTime, selectedIndicator.closeTime)}` : "No causal indicator point at L"}</div></div>
-           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price; const dynamicId = level.id === "vwap" || level.id === "ema-200" ? level.id : null; const dynamic = dynamicId !== null; const evidence = dynamicId ? dynamicEvidence(dynamicId) : null; const selected = (teaching.qualifyingLevels ?? []).some((item) => item.levelId === level.id); const contained = containedLevels.includes(level); const levelType = dynamic ? "dynamic_indicator" as const : level.rangeLow !== null || level.rangeHigh !== null ? "level_range" as const : "fixed_level" as const; return <label key={`${level.id}-${level.price}`} className={`flex items-start gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => { const nextStructured = event.target.checked ? [...(teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id), { levelId: level.id, levelType, valueAtInteraction: price, sourceTimestamp: selectedIndicator?.openTime ?? levelCandle?.openTime ?? "", rangeLow: levelType === "dynamic_indicator" ? null : level.rangeLow ?? null, rangeHigh: levelType === "dynamic_indicator" ? null : level.rangeHigh ?? null }] : (teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id); updateTeaching({ qualifyingLevels: nextStructured, ...deriveTeachingCompatibilityFields(nextStructured) }); }} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)} · {level.id}</span>{dynamic && <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">Value at L: {evidence?.value === null ? "—" : evidence?.value.toFixed(3)} · L range: {levelCandle ? `${levelCandle.low.toFixed(2)}–${levelCandle.high.toFixed(2)}` : "—"} · Tolerance: {levelToleranceTicks} ticks / {levelTolerancePoints.toFixed(2)} pt · Distance: {Number.isFinite(evidence?.distanceTicks) ? `${evidence?.distanceTicks} ticks` : "—"}<br /><span className={evidence?.qualifies ? "text-positive" : "text-negative"}>{evidence?.reason}</span></span>}{!dynamic && !contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone at L</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels intersect L within the configured {levelToleranceTicks}-tick MES proximity zone. Dynamic VWAP and EMA values are captured from the indicator point at L; fixed levels retain their causal ranges.</p></fieldset>
+           <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price; const dynamicId = level.id === "vwap" || level.id === "ema-200" ? level.id : null; const dynamic = dynamicId !== null; const evidence = dynamicId ? dynamicEvidence(dynamicId) : null; const selected = (teaching.qualifyingLevels ?? []).some((item) => item.levelId === level.id); const contained = containedLevels.includes(level); const levelType = dynamic ? "dynamic_indicator" as const : level.rangeLow !== null || level.rangeHigh !== null ? "level_range" as const : "fixed_level" as const; return <label key={`${level.id}-${level.price}`} className={`flex items-start gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => { const nextStructured = event.target.checked ? [...(teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id), { levelId: level.id, levelType, valueAtInteraction: price, sourceTimestamp: selectedIndicator?.openTime ?? levelCandle?.openTime ?? "", rangeLow: levelType === "dynamic_indicator" ? null : level.rangeLow ?? null, rangeHigh: levelType === "dynamic_indicator" ? null : level.rangeHigh ?? null }] : (teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id); updateTeaching({ qualifyingLevels: nextStructured, ...deriveTeachingCompatibilityFields(nextStructured) }); }} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)} · {level.id}</span>{dynamic && <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">Value at L: {evidence?.value === null ? "—" : evidence?.value.toFixed(3)} · L range: {levelCandle ? `${levelCandle.low.toFixed(2)}–${levelCandle.high.toFixed(2)}` : "—"} · Tolerance: {levelToleranceTicks} ticks / {levelTolerancePointsValue.toFixed(2)} pt · Distance: {Number.isFinite(evidence?.distanceTicks) ? `${evidence?.distanceTicks} ticks` : "—"}<br /><span className={evidence?.qualifies ? "text-positive" : "text-negative"}>{evidence?.reason}</span></span>}{!dynamic && !contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone at L</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels intersect L within the configured {levelToleranceTicks}-tick MES proximity zone. Dynamic VWAP and EMA values are captured from the indicator point at L; fixed levels retain their causal ranges.</p></fieldset>
             <Field label="Strategy"><select className="field" value={teaching.setupType} onChange={(event) => updateTeaching({ setupType: event.target.value as NonNullable<typeof teaching>["setupType"] })}><option value="PATIENCE_CANDLE_CONTINUATION">Patience candle continuation</option><option value="STRONG_BREAKOUT_AFTER_CONSOLIDATION">Strong breakout after consolidation</option><option value="ORB_BREAK_PULLBACK_CONTINUATION">ORB break / pullback / continuation</option><option value="EQUIVALENT_CANDLE_REVERSAL">Equivalent candle reversal</option></select></Field>
            <Field label="Confidence"><select className="field" value={teaching.confidence} onChange={(event) => updateTeaching({ confidence: event.target.value as NonNullable<typeof teaching>["confidence"] })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
            <div className="border border-border bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Calculated MES entry</div><div className="mono mt-1 text-sm font-bold" data-testid="calculated-mes-entry">{calculatedEntryPrice}</div><div className="mt-1 text-[9px] text-muted-foreground">{teaching.direction === "long" ? "P high" : "P low"} {teaching.direction === "long" ? "+" : "−"} {teaching.entryBufferTicks} × 0.25</div></div>
-           <Field label="Level tolerance"><select className="field" value={teaching.levelToleranceTicks ?? 4} onChange={(event) => updateTeaching({ levelToleranceTicks: Number(event.target.value) })}><option value={4}>4 ticks · 1.00 pt (default)</option><option value={3}>3 ticks · 0.75 pt</option><option value={2}>2 ticks · 0.50 pt</option><option value={1}>1 tick · 0.25 pt</option><option value={0}>0 ticks · exact touch</option></select><span className="mt-1 block text-[9px] text-muted-foreground">Maximum is 4 ticks unless a separate governed proposal changes the rule.</span></Field>
+           <Field label="Level tolerance"><select className="field" value={teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS} onChange={(event) => updateTeaching({ levelToleranceTicks: Number(event.target.value) as 4 | 8 | 12 })}>{LEVEL_TOLERANCE_TICKS.map((ticks) => <option key={ticks} value={ticks}>{ticks} ticks · {levelTolerancePoints(ticks).toFixed(2)} pt{ticks === DEFAULT_LEVEL_TOLERANCE_TICKS ? " (default)" : ""}</option>)}</select><span className="mt-1 block text-[9px] text-muted-foreground">Allowed qualifying proximity: {DEFAULT_LEVEL_TOLERANCE_TICKS} MES ticks / {levelTolerancePoints(DEFAULT_LEVEL_TOLERANCE_TICKS).toFixed(2)} points by default. Saved reviews retain their selected tolerance.</span></Field>
            <label className="block sm:col-span-2"><span className="eyebrow mb-1.5 block text-muted-foreground">Teaching explanation · required</span><textarea maxLength={4000} rows={4} value={teaching.explanation} onChange={(event) => updateTeaching({ explanation: event.target.value })} className="field resize-none" placeholder="Explain what the formula missed or why this correction needs clarification." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{teaching.explanation.length} / 4000</span></label>
          </div>}
          {status === "rule_needs_clarification" && <div className="text-[10px] leading-4 text-muted-foreground">If the candle pair fails validation, save this as <strong>Rule needs clarification</strong>. A direct Missed trade submission is accepted only when timing, direction, level proximity, causal visibility, and buffer checks all pass.</div>}

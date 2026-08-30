@@ -15,8 +15,6 @@ import * as zod from 'zod';
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
-
-
 /**
  * Returns simulated five-minute candles, levels, indicators, and discipline signals. This endpoint never connects to a broker or places orders.
  * @summary Get the simulated market snapshot
@@ -43,7 +41,6 @@ export const GetMarketSnapshotQueryParams = zod.object({
   "targetDollars": zod.coerce.number().min(getMarketSnapshotQueryTargetDollarsMin).max(getMarketSnapshotQueryTargetDollarsMax).default(getMarketSnapshotQueryTargetDollarsDefault).describe('Selected profit target in dollars. Presets are $50, $75, and $100; custom values must remain within that range.'),
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(getMarketSnapshotQuerySlippageModeDefault).describe('Descriptive slippage regime used by the shadow cost model.')
 })
-
 export const GetMarketSnapshotResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
   "symbol": zod.string(),
@@ -4049,11 +4046,7 @@ export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCand
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
-export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 4;
-export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin = 0;
-export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax = 4;
-export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf = 1;
-
+export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax = 120;
 
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax = 120;
@@ -4256,7 +4249,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "levelToleranceTicks": zod.number().min(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax).multipleOf(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf).default(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
   "qualifyingLevelRangeHigh": zod.number().nullish(),
@@ -4268,7 +4261,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullable(),
   "rangeHigh": zod.number().nullable()
 })).min(1).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
-  "pullbackLevels": zod.array(zod.number()).min(1).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevels": zod.array(zod.number()).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
@@ -4376,11 +4369,7 @@ export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedC
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
-export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 4;
-export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin = 0;
-export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax = 4;
-export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf = 1;
-
+export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax = 120;
 
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax = 120;
@@ -4583,7 +4572,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "levelToleranceTicks": zod.number().min(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMin).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMax).multipleOf(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksMultipleOf).default(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
   "qualifyingLevelRangeHigh": zod.number().nullish(),
@@ -4595,7 +4584,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullable(),
   "rangeHigh": zod.number().nullable()
 })).min(1).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
-  "pullbackLevels": zod.array(zod.number()).min(1).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevels": zod.array(zod.number()).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
@@ -4645,11 +4634,7 @@ export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0
 export const recordVisualValidationReviewBodyNoteMax = 2000;
 
 export const recordVisualValidationReviewBodyTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
-export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault = 4;
-export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMin = 0;
-export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMax = 4;
-export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksMultipleOf = 1;
-
+export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault = 12;
 export const recordVisualValidationReviewBodyTeachingQualifyingLevelIdMax = 120;
 
 export const recordVisualValidationReviewBodyTeachingQualifyingLevelsItemLevelIdMax = 120;
@@ -4678,7 +4663,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "levelToleranceTicks": zod.number().min(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMin).max(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMax).multipleOf(recordVisualValidationReviewBodyTeachingLevelToleranceTicksMultipleOf).default(recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(recordVisualValidationReviewBodyTeachingQualifyingLevelIdMax).optional(),
   "qualifyingLevelRangeLow": zod.number().nullish(),
   "qualifyingLevelRangeHigh": zod.number().nullish(),
@@ -4690,7 +4675,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "rangeLow": zod.number().nullable(),
   "rangeHigh": zod.number().nullable()
 })).min(1).max(recordVisualValidationReviewBodyTeachingQualifyingLevelsMax).optional(),
-  "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewBodyTeachingPullbackLevelsMax),
+  "pullbackLevels": zod.array(zod.number()).max(recordVisualValidationReviewBodyTeachingPullbackLevelsMax),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(recordVisualValidationReviewBodyTeachingExplanationMax)
@@ -4701,11 +4686,7 @@ export const recordVisualValidationReviewResponseReviewIdRegExp = new RegExp('^[
 export const recordVisualValidationReviewResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewResponseTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
-export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault = 4;
-export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMin = 0;
-export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMax = 4;
-export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksMultipleOf = 1;
-
+export const recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault = 12;
 export const recordVisualValidationReviewResponseTeachingQualifyingLevelIdMax = 120;
 
 export const recordVisualValidationReviewResponseTeachingQualifyingLevelsItemLevelIdMax = 120;
@@ -4743,7 +4724,7 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
   "entryBufferTicks": zod.union([zod.literal(3),zod.literal(4)]),
-  "levelToleranceTicks": zod.number().min(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMin).max(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMax).multipleOf(recordVisualValidationReviewResponseTeachingLevelToleranceTicksMultipleOf).default(recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault).describe('MES ticks; integer values only.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(recordVisualValidationReviewResponseTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
   "qualifyingLevelRangeHigh": zod.number().nullish(),
@@ -4755,7 +4736,7 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "rangeLow": zod.number().nullable(),
   "rangeHigh": zod.number().nullable()
 })).min(1).max(recordVisualValidationReviewResponseTeachingQualifyingLevelsMax).optional(),
-  "pullbackLevels": zod.array(zod.number()).min(1).max(recordVisualValidationReviewResponseTeachingPullbackLevelsMax),
+  "pullbackLevels": zod.array(zod.number()).max(recordVisualValidationReviewResponseTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
   "setupType": zod.enum(['PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'ORB_BREAK_PULLBACK_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
@@ -6737,8 +6718,6 @@ export const GetStrategyReadinessResponse = zod.object({
 }),
   "message": zod.string()
 })
-
-
 /**
  * @summary Set owner-approved fitness thresholds for one strategy
  */

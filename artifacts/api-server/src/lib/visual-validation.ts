@@ -30,6 +30,12 @@ import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
+import {
+  DEFAULT_LEVEL_TOLERANCE_TICKS,
+  LEVEL_TOLERANCE_TICKS,
+  MES_TICK_SIZE,
+  levelTolerancePoints,
+} from "@workspace/api-spec/constants";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -386,9 +392,8 @@ export type VisualValidationProposedRuleAnalysis = {
   generatedAt: string;
 };
 
-const TEACHING_TICK_SIZE = 0.25;
-export const DEFAULT_LEVEL_TOLERANCE_TICKS = 4;
-export const MAX_LEVEL_TOLERANCE_TICKS = 4;
+const TEACHING_TICK_SIZE = MES_TICK_SIZE;
+export { DEFAULT_LEVEL_TOLERANCE_TICKS };
 const TEACHING_ENTRY_WINDOW_START = 9 * 60 + 30;
 const TEACHING_ENTRY_WINDOW_END = 14 * 60;
 
@@ -424,8 +429,8 @@ function distanceToLevel(level: number, candleHigh: number, candleLow: number, r
 
 function normalizedLevelTolerance(input: VisualValidationTeachingInput, messages: string[]): number {
   const value = input.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS;
-  if (!Number.isInteger(value) || value < 0 || value > MAX_LEVEL_TOLERANCE_TICKS) {
-    messages.push(`Level tolerance must be an integer from 0 to ${MAX_LEVEL_TOLERANCE_TICKS} MES ticks.`);
+  if (!LEVEL_TOLERANCE_TICKS.includes(value as typeof LEVEL_TOLERANCE_TICKS[number])) {
+    messages.push(`Level tolerance must be one of ${LEVEL_TOLERANCE_TICKS.join(", ")} MES ticks.`);
     return DEFAULT_LEVEL_TOLERANCE_TICKS;
   }
   return value;
@@ -439,7 +444,7 @@ export function resolveQualifyingLevelAtCandle(
   snapshot: VisualValidationSnapshot,
   levelCandle: VisualValidationCandle,
   levelId: string,
-  toleranceTicks = DEFAULT_LEVEL_TOLERANCE_TICKS,
+  toleranceTicks: number = DEFAULT_LEVEL_TOLERANCE_TICKS,
 ): ResolvedQualifyingLevel {
   const annotation = snapshot.annotations.find((item) => item.id === levelId);
   const indicator = levelId === "vwap" || levelId === "ema-200"
@@ -460,7 +465,7 @@ export function resolveQualifyingLevelAtCandle(
   const distanceTicks = Number.isFinite(distancePoints)
     ? Math.ceil(Math.max(0, distancePoints) / TEACHING_TICK_SIZE - 1e-10)
     : Number.POSITIVE_INFINITY;
-  const tolerancePoints = toleranceTicks * TEACHING_TICK_SIZE;
+  const tolerancePoints = levelTolerancePoints(toleranceTicks);
   const qualifies = machineVisible && distancePoints <= tolerancePoints + 1e-10;
   const reason = !annotation
     ? `Level ${levelId} is not present in the immutable snapshot.`
@@ -495,7 +500,7 @@ export function validateVisualValidationTeaching(
   const messages: string[] = [];
   const levelInteractions: VisualValidationLevelInteraction[] = [];
   const levelToleranceTicks = normalizedLevelTolerance(input, messages);
-  const levelTolerancePoints = levelToleranceTicks * TEACHING_TICK_SIZE;
+  const levelTolerancePointsValue = levelTolerancePoints(levelToleranceTicks);
   const evaluationClose = Date.parse(snapshot.evaluationCursor.closeTime);
   const entry = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.entryCandleOpenTime, input.entryCandleCloseTime));
   const patience = snapshot.reviewCandles.find((candle) => sameCandle(candle, input.patienceCandleOpenTime, input.patienceCandleCloseTime));
@@ -621,7 +626,7 @@ export function validateVisualValidationTeaching(
       distanceTicks: resolved.distanceTicks,
       distancePoints: Number(resolved.distancePoints.toFixed(2)),
       allowedToleranceTicks: levelToleranceTicks,
-      allowedTolerancePoints: levelTolerancePoints,
+      allowedTolerancePoints: levelTolerancePointsValue,
       machineVisible: resolved.machineVisible,
       passed,
       reason: resolved.reason,

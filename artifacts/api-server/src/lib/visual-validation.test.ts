@@ -523,14 +523,14 @@ test("migration preserves existing rows while adding validator and calendar fing
   assert.doesNotMatch(migration, /\b(DROP TABLE|TRUNCATE|DELETE FROM)\b/i);
 });
 
-test("teaching validation uses a four-tick proximity zone instead of exact containment", () => {
+test("teaching validation uses the default twelve-tick proximity zone instead of exact containment", () => {
   const snapshot = structuredClone(buildVisualValidationSet(request).snapshots[0]!);
   const input = teachingInput(snapshot, "long");
   snapshot.annotations.push({ id: "test-pdl", kind: "level", label: "Previous Day Low", price: 102.25, available: true, color: "blue", detail: "Test level.", visibility: "machine", openTime: null, closeTime: null });
   const result = validateVisualValidationTeaching(snapshot, { ...input, pullbackLevels: [102.25] });
   assert.equal(result.valid, true, result.messages.join("; "));
   assert.equal(result.levelInteractions[0]?.distanceTicks, 3);
-  assert.equal(result.levelInteractions[0]?.allowedToleranceTicks, 4);
+  assert.equal(result.levelInteractions[0]?.allowedToleranceTicks, 12);
   assert.match(result.levelInteractions[0]?.reason ?? "", /Previous Day Low/);
 });
 
