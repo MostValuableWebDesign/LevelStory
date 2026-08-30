@@ -1,0 +1,175 @@
+Correct the LevelStory strategy taxonomy and detection architecture. The current interface incorrectly treats setup components and trade outcomes as separate strategy edges.
+
+Authoritative clarification:
+
+My independent strategy edges are:
+
+1. ORB pullback continuation
+2. Consolidation breakout continuation
+3. Equivalent-candle reversal
+
+A patience candle is the universal entry trigger used by every strategy. A pullback, consolidation, breakout, stop, target, or runner exit is not an independent strategy.
+
+STRATEGY 1 — ORB PULLBACK CONTINUATION
+
+Required causal sequence:
+
+A. A valid completed-candle breakout outside the finalized ORB/NTZ.
+B. Breakout direction agrees with the directional trend.
+C. Price pulls back within the configured 12-tick area of at least one qualifying level.
+D. A trend-aligned patience candle P forms.
+E. The immediately following completed five-minute candle confirms P by the configured 3–4 tick entry buffer.
+F. Risk controls approve the entry.
+G. Only then may a simulated entry be recorded.
+
+Support both directions:
+
+Long:
+ORB/NTZ breakout upward → pullback → bullish P → immediate E breaks above P.
+
+Short:
+ORB/NTZ breakout downward → pullback → bearish P → immediate E breaks below P.
+
+Do not create separate strategy IDs for bullish and bearish patience. Store direction as long or short under the ORB pullback continuation strategy.
+
+STRATEGY 2 — CONSOLIDATION BREAKOUT CONTINUATION
+
+Required causal sequence:
+
+A. A valid consolidation exists.
+B. Price produces a strong directional breakout supported by volume and continuation.
+C. After the breakout, either:
+   - Price pulls back to a qualifying level area; or
+   - Price forms a valid post-breakout consolidation when no pullback occurs.
+D. A trend-aligned patience candle P forms.
+E. The immediately following five-minute E candle confirms P using the configured entry buffer.
+F. Risk controls approve the entry.
+G. Only then may a simulated entry be recorded.
+
+A strong breakout alone is not a trade and is not a complete edge.
+
+Rename the current “Strong breakout” strategy tab to:
+
+Consolidation breakout
+
+The complete strategy must include the patience-entry sequence.
+
+STRATEGY 3 — EQUIVALENT-CANDLE REVERSAL
+
+Required causal sequence:
+
+A. Equivalent opposing full-body candles occur at or within the qualifying area of a major level.
+B. The candles satisfy the configured body-size and wick tolerances.
+C. Reversal context is recorded.
+D. A directionally appropriate patience candle P forms.
+E. The immediate E candle confirms P.
+F. Risk controls approve the entry.
+G. Only then may a simulated reversal entry be recorded.
+
+Do not enter solely because equivalent candles were detected.
+
+TAXONOMY
+
+Strategy IDs:
+
+- ORB_PULLBACK_CONTINUATION
+- CONSOLIDATION_BREAKOUT_CONTINUATION
+- EQUIVALENT_CANDLE_REVERSAL
+
+Setup-component event types:
+
+- ORB_BREAKOUT
+- PULLBACK_INTERACTION
+- CONSOLIDATION
+- STRONG_BREAKOUT
+- BULLISH_PATIENCE
+- BEARISH_PATIENCE
+- ENTRY_CONFIRMATION
+- ENTRY_CONFIRMATION_FAILED
+- RISK_REJECTED
+
+Outcome types:
+
+- QUALIFIED_TRADE
+- STOP_EXIT
+- TARGET_EXIT
+- RUNNER_EXIT
+
+UI REQUIREMENTS
+
+1. The top-level tabs must show only actual strategies:
+   - All strategies
+   - ORB pullback continuation
+   - Consolidation breakout continuation
+   - Equivalent-candle reversal
+
+2. Remove “Patience continuation” as a separate strategy because patience is the shared entry mechanism.
+
+3. Inside each strategy, provide component filters:
+   - Complete setups
+   - Pullbacks
+   - Consolidations
+   - Strong breakouts
+   - Bullish patience
+   - Bearish patience
+   - Confirmed entries
+   - Failed confirmations
+   - Risk rejections
+   - Stops
+   - Targets
+   - Runner exits
+
+4. Components may be reviewed even when the complete strategy did not qualify.
+
+5. Clearly distinguish:
+   - “Component detected”
+   - “Complete edge qualified”
+   - “Entry confirmed”
+   - “Trade simulated”
+   - “Trade outcome”
+
+6. A qualified trade must belong to exactly one strategy ID and one direction.
+
+7. Do not count a single pullback, patience candle, consolidation, or breakout as a qualified edge.
+
+8. Preserve every component occurrence for diagnostics, even when the full sequence fails.
+
+9. Store the exact failure stage:
+   - No valid breakout
+   - No qualifying pullback or consolidation
+   - No patience candle
+   - Immediate next candle failed
+   - Entry buffer not reached
+   - Risk rejected
+
+10. Preserve Shadow Mode:
+   - No live orders
+   - No paper orders
+   - No broker integration
+   - No automatic formula mutation from human reviews
+
+TESTS
+
+Add deterministic tests proving:
+
+- A pullback without P does not qualify.
+- P without a valid strategy context does not qualify.
+- A strong breakout without prior consolidation does not qualify the consolidation-breakout edge.
+- Consolidation plus strong breakout without P does not qualify.
+- A later candle cannot replace the immediate E candle.
+- Bullish and bearish cases use one strategy ID with different directions.
+- Stops, targets, and runners are outcomes—not strategies.
+- One component may appear in diagnostics without generating a trade.
+- A complete causal sequence generates one qualified strategy occurrence without duplicate counting.
+
+Do not run a historical-index rebuild or long backtest. Run focused taxonomy, detector, API, and frontend tests plus typechecks and builds.
+
+Report:
+
+- Old-to-new strategy mapping
+- Files changed
+- Strategy IDs
+- Component event types
+- Outcome types
+- Focused test totals
+- Any remaining code that treats components or outcomes as strategies
