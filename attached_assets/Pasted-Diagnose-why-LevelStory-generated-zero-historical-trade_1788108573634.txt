@@ -1,0 +1,88 @@
+Diagnose why LevelStory generated zero historical trade candidates for the cached review period July 13, 2026 through July 27, 2026.
+
+This phase is diagnostic only. Do not change strategy behavior, frontend behavior, thresholds, or candidate definitions yet.
+
+Use the existing historical index and cached data. Do not:
+
+- Rebuild the historical index.
+- Run a broad backtest.
+- Connect to a broker.
+- Add live or paper trading.
+- Fabricate candles, events, or candidates.
+
+AUTHORITATIVE PATTERN TO TRACE
+
+For the ORB edge, trace this causal sequence:
+
+1. The first three completed five-minute candles establish ORB/NTZ high and low.
+2. Price completes a breakout above or below ORB/NTZ.
+3. Price pulls back or retests a qualifying level within the governed 12-MES-tick zone.
+4. A valid completed patience candle P forms.
+5. Only the immediately following completed five-minute candle E may confirm P.
+6. If E fails, P expires and scanning continues for a new P2 followed by E2.
+7. A confirmed P→E pair is a trade candidate even without a modeled fill, risk approval, or finalized outcome.
+
+DIAGNOSTIC FUNNEL
+
+For every session in the July 13–27 range, report:
+
+1. Total completed five-minute candles.
+2. ORB/NTZ finalized.
+3. Bullish completed ORB breaks.
+4. Bearish completed ORB breaks.
+5. Pullbacks/retests detected after each break.
+6. Pullbacks within 12 MES ticks of:
+   - ORB/NTZ high or low
+   - VWAP at the candle timestamp
+   - 200 EMA at the candle timestamp
+   - Premarket high or low
+   - Previous-day high or low
+   - Day-before-previous high or low
+   - Governed support/resistance levels
+   - Valid Fibonacci levels
+7. Patience-candle shapes detected after eligible pullbacks.
+8. Patience candidates rejected, grouped by exact reason.
+9. Immediate next-candle confirmations.
+10. Failed P1→E1 pairs followed by later P2 candidates.
+11. SIGNAL_CONFIRMED occurrences written to the ledger.
+12. Trade candidates projected by the API.
+13. Trade candidates received and displayed by the frontend.
+
+INSPECT THESE POSSIBLE BLOCKERS
+
+Specifically confirm whether candidates are being removed by:
+
+- The hard-coded 30-minute patience-arm expiration.
+- A mandatory non-neutral or agreeing 15-minute trend.
+- Pullback status or validContext requirements.
+- A four-tick path that was not migrated to 12 ticks.
+- Dynamic VWAP/EMA evaluated using the wrong timestamp.
+- Incorrect L, P, or E selection.
+- Candle-open versus candle-close timestamp comparisons.
+- Requiring a linked trade or modeled fill.
+- Requiring category === qualified_trade.
+- The frontend rebuilding candidates from snapshots instead of using API tradeCandidates.
+- Deduplication or canonical attribution.
+- Review-window or morning-session filtering.
+- A failure to retain more than one occurrence per session.
+
+DELIVERABLE
+
+Do not provide only a general explanation. Report:
+
+1. Funnel counts per session.
+2. Aggregate funnel counts.
+3. The first gate where valid-looking sequences disappear.
+4. Exact code paths responsible.
+5. A small table with at least three representative rejected sequences showing:
+   - trading date
+   - breakout time and direction
+   - qualifying level
+   - L time
+   - P time
+   - E time
+   - rejection reason
+6. Whether zero candidates is caused by detection, occurrence storage, candidate projection, frontend display, or multiple stages.
+7. The smallest recommended corrections for Phase 2.
+
+Verification should use only the existing cached 11-session review and focused read-only diagnostics.
