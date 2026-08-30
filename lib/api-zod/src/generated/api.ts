@@ -1162,6 +1162,9 @@ export const RunBacktestResponse = zod.object({
   "levelTolerancePoints": zod.record(zod.string(), zod.number()),
   "levelToleranceTicks": zod.record(zod.string(), zod.number()),
   "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
+  "pOpenTimestamp": zod.coerce.date().nullable(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "entryObservationTimestamp": zod.coerce.date().nullable(),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -1734,6 +1737,9 @@ export const StartBatchBacktestResponse = zod.object({
   "levelTolerancePoints": zod.record(zod.string(), zod.number()),
   "levelToleranceTicks": zod.record(zod.string(), zod.number()),
   "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
+  "pOpenTimestamp": zod.coerce.date().nullable(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "entryObservationTimestamp": zod.coerce.date().nullable(),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -2707,6 +2713,9 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "levelTolerancePoints": zod.record(zod.string(), zod.number()),
   "levelToleranceTicks": zod.record(zod.string(), zod.number()),
   "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
+  "pOpenTimestamp": zod.coerce.date().nullable(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "entryObservationTimestamp": zod.coerce.date().nullable(),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({
@@ -3680,6 +3689,9 @@ export const CancelBatchBacktestResponse = zod.object({
   "levelTolerancePoints": zod.record(zod.string(), zod.number()),
   "levelToleranceTicks": zod.record(zod.string(), zod.number()),
   "levelInteractionTypes": zod.record(zod.string(), zod.array(zod.string())),
+  "pOpenTimestamp": zod.coerce.date().nullable(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "entryObservationTimestamp": zod.coerce.date().nullable(),
   "confirmationBufferTicks": zod.number().nullable(),
   "nextObservedCandle": zod.record(zod.string(), zod.unknown()).nullable(),
   "consolidationThresholds": zod.object({

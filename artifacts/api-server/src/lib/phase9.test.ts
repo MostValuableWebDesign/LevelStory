@@ -17,6 +17,7 @@ import {
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;
@@ -109,6 +110,122 @@ function constituentMinutes(start: number, base: number): IntrabarBar[] {
     source: "one-minute" as const,
     sequenceKnown: false,
   }));
+}
+
+function confirmedCandidateOccurrence(input: {
+  pOpen: string;
+  eOpen: string;
+  eClose: string;
+  direction?: "long" | "short";
+  entryHigh?: number;
+  entryLow?: number;
+  management?: Record<string, unknown>;
+}): any {
+  const direction = input.direction ?? "long";
+  return {
+    occurrenceId: `confirmed-${input.eOpen}-${direction}`,
+    auditId: "confirmed-audit",
+    kind: "patience",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    secondaryStrategyMatches: [],
+    tradingDate: input.pOpen.slice(0, 10),
+    contractSymbol: "MESU26",
+    contractMonth: "U26",
+    direction,
+    lTimestamp: input.pOpen,
+    lEventId: "confirmed-l",
+    lInteractionType: "touch",
+    lCandle: null,
+    previousComparisonTimestamp: input.pOpen,
+    patienceTimestamp: input.pOpen,
+    patienceCandle: {
+      openTime: Date.parse(input.pOpen),
+      closeTime: Date.parse(input.eOpen),
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100.5,
+      volume: 1_000,
+      isComplete: true,
+    },
+    candidateShapeResult: true,
+    expectedEntryTimestamp: input.eOpen,
+    confirmationThreshold: direction === "long" ? 101.25 : 98.75,
+    confirmationExcursion: 0.25,
+    entryTimestamp: input.eOpen,
+    entryCandle: {
+      openTime: Date.parse(input.eOpen),
+      closeTime: Date.parse(input.eClose),
+      open: 100,
+      high: input.entryHigh ?? (direction === "long" ? 102 : 101),
+      low: input.entryLow ?? (direction === "short" ? 98 : 99),
+      close: 100.5,
+      volume: 1_000,
+      isComplete: true,
+    },
+    levelIdentifiers: ["ORB"],
+    levelValues: { ORB: 100 },
+    levelDistancesTicks: {},
+    levelTolerancePoints: {},
+    levelToleranceTicks: {},
+    levelInteractionTypes: {},
+    pOpenTimestamp: input.pOpen,
+    eOpenTimestamp: input.eOpen,
+    entryObservationTimestamp: input.eClose,
+    confirmationBufferTicks: 1,
+    nextObservedCandle: null,
+    consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
+    status: "SIGNAL_CONFIRMED",
+    signalStatus: "SIGNAL_CONFIRMED",
+    reasonCode: "Immediate E confirmed.",
+    evaluationCursor: input.eClose,
+    formulaVersion: "phase9-fixed-formula-v2",
+    formulaHash: "f".repeat(64),
+    sourceFingerprint: "s".repeat(64),
+    canonicalTrade: false,
+    canonicalOccurrence: true,
+    primaryEdge: "ORB_PULLBACK_CONTINUATION",
+    matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
+    supportingConfluences: [],
+    setupGrade: "A",
+    ...(input.management ? { management: input.management } : {}),
+  };
+}
+
+function candidateProjectionDataset(
+  occurrence: any,
+  postEntryOverrides: Partial<SimulatedFuturesCandle> = {},
+): CausalReplayDataset {
+  const entry = occurrence.entryCandle;
+  return {
+    source: "historical_databento_multicontract",
+    contractSymbol: occurrence.contractSymbol,
+    candles: [
+      {
+        ...candle(Date.parse(occurrence.pOpenTimestamp) / 300_000, {
+          openTime: Date.parse(occurrence.pOpenTimestamp),
+          closeTime: Date.parse(occurrence.eOpenTimestamp),
+          contractSymbol: occurrence.contractSymbol,
+        }),
+      },
+      {
+        ...candle(Date.parse(occurrence.eOpenTimestamp) / 300_000, {
+          ...entry,
+          timestamp: entry.openTime,
+          contractSymbol: occurrence.contractSymbol,
+        }),
+      },
+      candle(Date.parse(occurrence.entryObservationTimestamp) / 300_000, {
+        openTime: Date.parse(occurrence.entryObservationTimestamp),
+        closeTime: Date.parse(occurrence.entryObservationTimestamp) + 300_000,
+        contractSymbol: occurrence.contractSymbol,
+        ...postEntryOverrides,
+      }),
+    ],
+    inSampleDates: [occurrence.tradingDate],
+    outOfSampleDates: [],
+    contractMonth: "U26",
+  } as CausalReplayDataset;
 }
 
 test("causal replay only exposes the visible prefix and cannot leak a future candle", () => {
@@ -601,6 +718,9 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     levelTolerancePoints: {},
     levelToleranceTicks: {},
     levelInteractionTypes: {},
+    pOpenTimestamp: patienceTimestamp,
+    eOpenTimestamp: entryTimestamp,
+    entryObservationTimestamp: new Date(Date.parse(entryTimestamp) + 300_000).toISOString(),
     confirmationBufferTicks: 1,
     nextObservedCandle: null,
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
@@ -638,9 +758,10 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
   assert.equal(result.authoritativeTrades[0]?.signalOccurrenceId, occurrence.occurrenceId);
   assert.equal(result.authoritativeTrades[0]?.fillLabel, "OHLCV_CONFIRMATION_THRESHOLD");
   assert.equal(result.authoritativeTrades[0]?.entryPrice, 101.25);
-  assert.equal(result.authoritativeTrades[0]?.entryTime, entryTimestamp);
+  assert.equal(result.authoritativeTrades[0]?.entryTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
   assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleOpenTime, entryTimestamp);
   assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleCloseTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
+  assert.equal(result.authoritativeTrades[0]?.audit?.modeledFillObservationTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
   assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing");
 
   const legacyTrade = { ...result.authoritativeTrades[0]!, id: "legacy-conflicts-with-entry" };
@@ -650,7 +771,7 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     executionMode: "ohlcv_modeled",
   });
   assert.equal(reconciledResult.authoritativeTrades.length, 1);
-  assert.equal(reconciledResult.authoritativeTrades[0]?.entryTime, entryTimestamp);
+  assert.equal(reconciledResult.authoritativeTrades[0]?.entryTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
   assert.equal(reconciledResult.authoritativeTrades[0]?.audit?.triggerCandleCloseTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
 
   const failedOccurrence = {
@@ -669,6 +790,158 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     matchingSignalOccurrenceId: occurrence.occurrenceId,
     reason: "LEGACY_TRADE_CONFLICTS_WITH_CANDIDATE_ENTRY_DISPOSITION",
   }]);
+});
+
+test("candidate window uses completed E observation time across EST and EDT cutoffs", () => {
+  const cases = [
+    {
+      label: "EDT before cutoff",
+      pOpen: "2026-08-25T16:45:00.000Z",
+      eOpen: "2026-08-25T16:50:00.000Z",
+      eClose: "2026-08-25T16:55:00.000Z",
+      expectedCandidates: 1,
+    },
+    {
+      label: "EDT cutoff candle",
+      pOpen: "2026-08-25T16:50:00.000Z",
+      eOpen: "2026-08-25T16:55:00.000Z",
+      eClose: "2026-08-25T17:00:00.000Z",
+      expectedCandidates: 0,
+    },
+    {
+      label: "EDT one o'clock open",
+      pOpen: "2026-08-25T16:55:00.000Z",
+      eOpen: "2026-08-25T17:00:00.000Z",
+      eClose: "2026-08-25T17:05:00.000Z",
+      expectedCandidates: 0,
+    },
+    {
+      label: "EST before cutoff",
+      pOpen: "2026-01-15T17:45:00.000Z",
+      eOpen: "2026-01-15T17:50:00.000Z",
+      eClose: "2026-01-15T17:55:00.000Z",
+      expectedCandidates: 1,
+    },
+    {
+      label: "EST cutoff candle",
+      pOpen: "2026-01-15T17:50:00.000Z",
+      eOpen: "2026-01-15T17:55:00.000Z",
+      eClose: "2026-01-15T18:00:00.000Z",
+      expectedCandidates: 0,
+    },
+  ];
+  for (const item of cases) {
+    const occurrence = confirmedCandidateOccurrence(item);
+    const result = projectHistoricalTradeCandidates(
+      [occurrence],
+      [],
+      {
+        dataset: candidateProjectionDataset(occurrence),
+        specification: {} as any,
+        executionMode: "ohlcv_modeled",
+      },
+    );
+    assert.equal(result.candidates.length, item.expectedCandidates, item.label);
+    if (item.expectedCandidates === 0) {
+      assert.deepEqual(result.rejected[0]?.reasonCodes, ["OUTSIDE_PRIMARY_ENTRY_WINDOW"], item.label);
+    }
+  }
+});
+
+test("physical candidate identity keeps opposite directions separate", () => {
+  const long = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    direction: "long",
+  });
+  const short = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    direction: "short",
+  });
+  const dataset = candidateProjectionDataset(long);
+  const result = projectHistoricalTradeCandidates(
+    [long, short],
+    [],
+    {
+      dataset,
+      specification: {} as any,
+      executionMode: "ohlcv_modeled",
+    },
+  );
+  assert.equal(result.candidates.length, 2);
+  assert.deepEqual(result.candidates.map((candidate) => candidate.direction).sort(), ["long", "short"]);
+});
+
+test("invalid frozen long and short management stay open and unscored without P&L", () => {
+  for (const direction of ["long", "short"] as const) {
+    const occurrence = confirmedCandidateOccurrence({
+      pOpen: "2026-08-25T15:00:00.000Z",
+      eOpen: "2026-08-25T15:05:00.000Z",
+      eClose: "2026-08-25T15:10:00.000Z",
+      direction,
+      management: {
+        strategyStopPrice: direction === "long" ? 99 : 101,
+        catastropheStopPrice: direction === "long" ? 100 : 100,
+        targetPrice: direction === "long" ? 105 : 95,
+        contracts: 1,
+        runnerActivationPrice: null,
+        runnerExitRule: null,
+        sessionCloseTime: "2026-08-25T20:00:00.000Z",
+        sourceAuditId: "invalid-geometry-audit",
+        missingEvidenceReasons: [],
+      },
+    });
+    const result = projectHistoricalTradeCandidates(
+      [occurrence],
+      [],
+      {
+        dataset: candidateProjectionDataset(occurrence, { high: 106, low: 94 }),
+        specification: getFuturesContractSpecification("MES"),
+        executionMode: "ohlcv_modeled",
+      },
+    );
+    assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED", direction);
+    assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing", direction);
+    assert.equal(result.authoritativeTrades[0]?.outcome, "open", direction);
+    assert.equal(result.authoritativeTrades[0]?.exitPrice, null, direction);
+    assert.equal(result.authoritativeTrades[0]?.netPnl, 0, direction);
+    assert.equal(result.authoritativeTrades[0]?.audit?.legs.length, 0, direction);
+  }
+});
+
+test("valid frozen geometry preserves deterministic target replay and starts after E", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    management: {
+      strategyStopPrice: 99,
+      catastropheStopPrice: 98,
+      targetPrice: 105,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "valid-geometry-audit",
+      missingEvidenceReasons: [],
+    },
+  });
+  const result = projectHistoricalTradeCandidates(
+    [occurrence],
+    [],
+    {
+      dataset: candidateProjectionDataset(occurrence, { high: 106, low: 101 }),
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+    },
+  );
+  assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "complete");
+  assert.equal(result.authoritativeTrades[0]?.outcome, "target");
+  assert.equal(result.authoritativeTrades[0]?.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
+  assert.equal(result.authoritativeTrades[0]?.audit?.exitCandleOpenTime, occurrence.entryObservationTimestamp);
 });
 
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {

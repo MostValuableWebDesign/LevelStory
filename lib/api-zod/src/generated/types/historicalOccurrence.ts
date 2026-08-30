@@ -67,6 +67,12 @@ export interface HistoricalOccurrence {
   levelToleranceTicks: HistoricalOccurrenceLevelToleranceTicks;
   levelInteractionTypes: HistoricalOccurrenceLevelInteractionTypes;
   /** @nullable */
+  pOpenTimestamp: Date | null;
+  /** @nullable */
+  eOpenTimestamp: Date | null;
+  /** @nullable */
+  entryObservationTimestamp: Date | null;
+  /** @nullable */
   confirmationBufferTicks: number | null;
   /** @nullable */
   nextObservedCandle: HistoricalOccurrenceNextObservedCandle;

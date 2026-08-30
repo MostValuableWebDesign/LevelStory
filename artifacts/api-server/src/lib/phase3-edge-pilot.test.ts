@@ -84,6 +84,9 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     supportingConfluences: ["volume"],
     qualifyingLevelIdentifiers: ["ORB"],
     qualifyingLevelValues: { ORB: 100 },
+    pOpenTimestamp: "2026-07-01T14:55:00.000Z",
+    eOpenTimestamp: "2026-07-01T15:00:00.000Z",
+    entryObservationTimestamp: "2026-07-01T15:05:00.000Z",
     patienceTimestamp: "2026-07-01T14:55:00.000Z",
     expectedEntryTimestamp: "2026-07-01T15:00:00.000Z",
     confirmationPrice: 101,
@@ -159,6 +162,10 @@ test("Phase 3 manifest is immutable and stable across creation timestamps", () =
   assert.equal(first.source.selectedDates.length, 30);
   assert.equal(first.source.inSampleDates.length, 20);
   assert.equal(first.source.outOfSampleDates.length, 10);
+  assert.equal(
+    first.candidateIdentity.physicalOccurrenceKey,
+    "sourceFingerprint|formulaHash|contractSymbol|tradingDate|direction|pOpenTimestamp|eOpenTimestamp",
+  );
   assert.equal(first.candidateIdentity.oneCandidatePerPhysicalSequence, true);
   assert.equal(first.assumptions.noOptimization, true);
   assert.equal(first.execution.entryWindow.endMinutesExclusive, 780);
@@ -180,6 +187,9 @@ test("Phase 3 reports four independent edges, preserves confluence, and excludes
   const invalid = candidate({
     candidateId: "candidate-invalid",
     signalOccurrenceId: "signal-invalid",
+    pOpenTimestamp: "2026-07-01T15:05:00.000Z",
+    eOpenTimestamp: "2026-07-01T15:10:00.000Z",
+    entryObservationTimestamp: "2026-07-01T15:15:00.000Z",
     patienceTimestamp: "2026-07-01T15:05:00.000Z",
     expectedEntryTimestamp: "2026-07-01T15:10:00.000Z",
     managementContext: {
@@ -288,8 +298,11 @@ test("Phase 3 refuses a late entry before persisting that partition", async () =
   const baseDataset = dataset();
   const manifest = buildPhase3PilotManifest({ dataset: baseDataset, request });
   const lateCandidate = candidate({
-    expectedEntryTimestamp: "2026-07-01T17:00:00.000Z",
-    patienceTimestamp: "2026-07-01T16:55:00.000Z",
+    pOpenTimestamp: "2026-07-01T16:55:00.000Z",
+    eOpenTimestamp: "2026-07-01T16:55:00.000Z",
+    entryObservationTimestamp: "2026-07-01T17:00:00.000Z",
+    expectedEntryTimestamp: "2026-07-01T16:55:00.000Z",
+    patienceTimestamp: "2026-07-01T16:50:00.000Z",
   });
   let checkpoints = 0;
   await assert.rejects(
@@ -307,6 +320,30 @@ test("Phase 3 refuses a late entry before persisting that partition", async () =
     /refuses late entry evidence/,
   );
   assert.equal(checkpoints, 0);
+});
+
+test("Phase 3 time buckets use E close rather than E open", async () => {
+  const baseDataset = dataset();
+  const manifest = buildPhase3PilotManifest({ dataset: baseDataset, request });
+  const bucketBoundaryCandidate = candidate({
+    pOpenTimestamp: "2026-07-01T15:50:00.000Z",
+    eOpenTimestamp: "2026-07-01T15:55:00.000Z",
+    entryObservationTimestamp: "2026-07-01T16:00:00.000Z",
+    patienceTimestamp: "2026-07-01T15:50:00.000Z",
+    expectedEntryTimestamp: "2026-07-01T15:55:00.000Z",
+  });
+  const result = await runPhase3EdgePilot(
+    { manifest, request, partitions: buildPhase3PilotPartitions(baseDataset) },
+    {
+      timeoutMs: 1_000,
+      runPartition: async ({ replayDataset }) => report(
+        replayDataset!,
+        replayDataset!.selectedDates?.[0] === dates[0] ? [bucketBoundaryCandidate] : [],
+      ),
+    },
+  );
+  assert.equal(result.overall.all.entryTimeBuckets["12:00-13:00"], 1);
+  assert.equal(result.overall.all.entryTimeBuckets["11:00-12:00"], 0);
 });
 
 test("Phase 3 deduplicates a physical candidate and trade across partition reports", async () => {

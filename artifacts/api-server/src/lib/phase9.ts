@@ -434,6 +434,12 @@ export type HistoricalTradeCandidate = {
   supportingConfluences: string[];
   qualifyingLevelIdentifiers: string[];
   qualifyingLevelValues: Record<string, number>;
+  /** The P candle open; retained as physical identity evidence. */
+  pOpenTimestamp: string;
+  /** The immediate E candle open; retained as physical identity evidence. */
+  eOpenTimestamp: string;
+  /** The completed E candle close where threshold confirmation is observed. */
+  entryObservationTimestamp: string;
   patienceTimestamp: string;
   expectedEntryTimestamp: string;
   confirmationPrice: number | null;
@@ -467,6 +473,84 @@ export type CandidateManagementContext = {
   managementEvidenceStatus: "complete" | "missing";
   missingEvidenceReasons: string[];
 };
+
+function candidateManagementValidationReasons(
+  context: CandidateManagementContext,
+  entryObservationTimestamp: string | null,
+): string[] {
+  const reasons: string[] = [];
+  if (context.managementEvidenceStatus !== "complete") reasons.push("managementEvidenceStatus");
+  if (context.missingEvidenceReasons.length > 0) reasons.push("missingEvidenceReasons");
+  const finitePrices = [
+    ["entryPrice", context.entryPrice],
+    ["strategyStopPrice", context.strategyStopPrice],
+    ["catastropheStopPrice", context.catastropheStopPrice],
+    ["targetPrice", context.targetPrice],
+  ] as const;
+  for (const [name, value] of finitePrices) {
+    if (value === null) reasons.push(name);
+    else if (!Number.isFinite(value)) reasons.push(`${name}_NOT_FINITE`);
+  }
+  if (!Number.isInteger(context.contracts) || context.contracts <= 0) reasons.push("contracts");
+  if (context.sessionCloseTime === null || !Number.isFinite(Date.parse(context.sessionCloseTime))) {
+    reasons.push("sessionCloseTime");
+  }
+  const frozenAt = Date.parse(context.frozenAt);
+  const observedAt = entryObservationTimestamp === null ? Number.NaN : Date.parse(entryObservationTimestamp);
+  if (!Number.isFinite(frozenAt)) reasons.push("frozenAt");
+  if (!Number.isFinite(observedAt)) reasons.push("entryObservationTimestamp");
+  else if (Number.isFinite(frozenAt) && frozenAt > observedAt) reasons.push("frozenAt_after_entry_observation");
+  if (
+    context.strategyStopPrice !== null
+    && context.catastropheStopPrice !== null
+    && context.targetPrice !== null
+  ) {
+    if (context.direction === "long") {
+      if (!(context.strategyStopPrice < context.entryPrice && context.entryPrice < context.targetPrice)) {
+        reasons.push("LONG_STOP_TARGET_ORDER");
+      }
+      if (!(context.catastropheStopPrice < context.strategyStopPrice)) {
+        reasons.push("LONG_CATASTROPHE_STOP_ORDER");
+      }
+    } else {
+      if (!(context.targetPrice < context.entryPrice && context.entryPrice < context.strategyStopPrice)) {
+        reasons.push("SHORT_STOP_TARGET_ORDER");
+      }
+      if (!(context.catastropheStopPrice > context.strategyStopPrice)) {
+        reasons.push("SHORT_CATASTROPHE_STOP_ORDER");
+      }
+    }
+  }
+  const hasRunnerActivation = context.runnerActivationPrice !== null;
+  const hasRunnerRule = context.runnerExitRule !== null;
+  if (hasRunnerActivation !== hasRunnerRule) {
+    reasons.push("runnerSettings_incomplete");
+  } else if (hasRunnerActivation && context.runnerExitRule!.trim().length === 0) {
+    reasons.push("runnerExitRule");
+  } else if (hasRunnerActivation) {
+    if (!Number.isFinite(context.runnerActivationPrice)) {
+      reasons.push("runnerActivationPrice_NOT_FINITE");
+    } else if (
+      (context.direction === "long" && context.runnerActivationPrice! < context.entryPrice)
+      || (context.direction === "short" && context.runnerActivationPrice! > context.entryPrice)
+    ) {
+      reasons.push("runnerActivationPrice_order");
+    }
+  }
+  if (Number.isFinite(Date.parse(context.sessionCloseTime ?? ""))
+    && Number.isFinite(observedAt)
+    && Date.parse(context.sessionCloseTime!) <= observedAt) {
+    reasons.push("sessionCloseTime_before_entry_observation");
+  }
+  return [...new Set(reasons)];
+}
+
+export function isValidCandidateManagementContext(candidate: HistoricalTradeCandidate): boolean {
+  const context = candidate.managementContext;
+  return context !== undefined
+    && context.managementEvidenceStatus === "complete"
+    && candidateManagementValidationReasons(context, candidate.entryObservationTimestamp).length === 0;
+}
 type CandidateEntryDisposition = {
   status: HistoricalTradeCandidate["executionStatus"];
   reached: boolean | null;
@@ -557,6 +641,12 @@ export type HistoricalOccurrence = {
   levelTolerancePoints: Record<string, number>;
   levelToleranceTicks: Record<string, number>;
   levelInteractionTypes: Record<string, string[]>;
+  /** The P candle open; retained as physical identity evidence. */
+  pOpenTimestamp: string | null;
+  /** The immediate E candle open; retained as physical identity evidence. */
+  eOpenTimestamp: string | null;
+  /** The completed E candle close where threshold confirmation is observed. */
+  entryObservationTimestamp: string | null;
   confirmationBufferTicks: number | null;
   nextObservedCandle: Record<string, number | boolean> | null;
   consolidationThresholds: ConsolidationThresholds;
@@ -1581,7 +1671,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
       value.tradingDate,
       value.direction,
       value.patienceTimestamp,
-      value.expectedEntryTimestamp,
+      value.eOpenTimestamp,
     ].map((part) => part ?? "absent").join("|"));
   }
   const actualObservedE = value.nextObservedCandle && typeof value.nextObservedCandle.openTime === "number"
@@ -1870,6 +1960,9 @@ export function buildHistoricalOccurrenceLedger(
         levelTolerancePoints: evidence.tolerancePoints,
         levelToleranceTicks: evidence.toleranceTicks,
         levelInteractionTypes: evidence.interactionTypes,
+        pOpenTimestamp: event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
+        eOpenTimestamp: null,
+        entryObservationTimestamp: null,
         confirmationBufferTicks: null,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
@@ -1970,6 +2063,15 @@ export function buildHistoricalOccurrenceLedger(
         levelTolerancePoints: linkedEvidence.tolerancePoints,
         levelToleranceTicks: linkedEvidence.toleranceTicks,
         levelInteractionTypes: linkedEvidence.interactionTypes,
+         pOpenTimestamp: linkedPullback?.candle
+           ? new Date(linkedPullback.candle.openTime).toISOString()
+           : linkedPullback
+             ? new Date(linkedPullback.time).toISOString()
+             : null,
+         eOpenTimestamp: new Date(expectedEntryCandleOpenTime).toISOString(),
+         entryObservationTimestamp: confirmedEntry && typeof confirmedEntry.closeTime === "number"
+           ? new Date(confirmedEntry.closeTime).toISOString()
+           : null,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
@@ -2061,6 +2163,9 @@ export function buildHistoricalOccurrenceLedger(
         levelTolerancePoints: {},
         levelToleranceTicks: {},
         levelInteractionTypes: {},
+         pOpenTimestamp: record.patienceCandleOpenTime,
+         eOpenTimestamp: record.triggerCandleOpenTime ?? record.patienceCandleCloseTime,
+         entryObservationTimestamp: record.triggerCandleCloseTime,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
@@ -2093,15 +2198,15 @@ export function buildHistoricalOccurrenceLedger(
 }
 
 function candidateWindowEligible(occurrence: HistoricalOccurrence): boolean {
-  if (!occurrence.expectedEntryTimestamp || !occurrence.direction) return false;
-  const entryTimestamp = Date.parse(occurrence.expectedEntryTimestamp);
-  if (!Number.isFinite(entryTimestamp)) return false;
+  if (!occurrence.entryObservationTimestamp || !occurrence.direction) return false;
+  const observationTimestamp = Date.parse(occurrence.entryObservationTimestamp);
+  if (!Number.isFinite(observationTimestamp)) return false;
   const config = activeShadowStrategySnapshot().config;
   const root = occurrence.contractSymbol.replace(/[FGHJKMNQUVXZ]\d$/, "");
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(root || occurrence.contractSymbol));
-  return tradingDateForTimestamp(entryTimestamp, calendar) === occurrence.tradingDate
-    && wallClockMinutesForTimestamp(entryTimestamp, config.sessionTimeZone) >= config.primaryEntryStartMinutes
-    && wallClockMinutesForTimestamp(entryTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
+  return tradingDateForTimestamp(observationTimestamp, calendar) === occurrence.tradingDate
+    && wallClockMinutesForTimestamp(observationTimestamp, config.sessionTimeZone) >= config.primaryEntryStartMinutes
+    && wallClockMinutesForTimestamp(observationTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
 }
 
 function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
@@ -2169,7 +2274,7 @@ function freezeCandidateManagementContext(
     ...(targetPrice === null ? ["targetPrice"] : []),
     ...(management?.sessionCloseTime === null ? ["sessionCloseTime"] : []),
   ];
-  return {
+  const context: CandidateManagementContext = {
     candidateId,
     signalOccurrenceId: occurrence.occurrenceId,
     frozenAt: occurrence.evaluationCursor,
@@ -2179,12 +2284,20 @@ function freezeCandidateManagementContext(
     strategyStopPrice,
     catastropheStopPrice,
     targetPrice,
-    runnerActivationPrice: management?.runnerActivationPrice ?? targetPrice,
+    runnerActivationPrice: management?.runnerActivationPrice
+      ?? (management?.runnerExitRule ? targetPrice : null),
     runnerExitRule: management?.runnerExitRule ?? null,
     sessionCloseTime: management?.sessionCloseTime ?? null,
     sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
-    managementEvidenceStatus: missingEvidenceReasons.length ? "missing" : "complete",
-    missingEvidenceReasons,
+    managementEvidenceStatus: "complete",
+    missingEvidenceReasons: [],
+  };
+  const validationReasons = candidateManagementValidationReasons(context, occurrence.entryObservationTimestamp);
+  const allReasons = [...new Set([...missingEvidenceReasons, ...validationReasons])];
+  return {
+    ...context,
+    managementEvidenceStatus: allReasons.length ? "missing" : "complete",
+    missingEvidenceReasons: allReasons,
   };
 }
 
@@ -2204,7 +2317,10 @@ export function projectHistoricalTradeCandidates(
     && occurrence.status === "SIGNAL_CONFIRMED"
     && occurrence.direction !== null
     && occurrence.patienceTimestamp !== null
-    && occurrence.expectedEntryTimestamp !== null,
+    && occurrence.expectedEntryTimestamp !== null
+    && occurrence.pOpenTimestamp !== null
+    && occurrence.eOpenTimestamp !== null
+    && occurrence.entryObservationTimestamp !== null,
   );
   const candidates: HistoricalTradeCandidate[] = [];
   const rejected: RejectedCandidateSignal[] = [];
@@ -2221,27 +2337,57 @@ export function projectHistoricalTradeCandidates(
         ],
         details: [
           ...(edge.reason ? [edge.reason] : []),
-          ...(!inWindow ? ["Immediate E opens outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
+          ...(!inWindow ? ["Entry confirmation is observed outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
         ],
       });
       continue;
     }
     const physicalIdentity = [
+      occurrence.sourceFingerprint,
+      occurrence.formulaHash,
       occurrence.contractSymbol,
       occurrence.tradingDate,
       occurrence.direction,
-      occurrence.patienceTimestamp,
-      occurrence.expectedEntryTimestamp,
+      occurrence.pOpenTimestamp,
+      occurrence.eOpenTimestamp,
     ].join("|");
-    if (signalByPhysicalIdentity.has(physicalIdentity)) continue;
-    signalByPhysicalIdentity.set(physicalIdentity, occurrence);
+    const existing = signalByPhysicalIdentity.get(physicalIdentity);
+    if (!existing) {
+      signalByPhysicalIdentity.set(physicalIdentity, occurrence);
+      continue;
+    }
+    signalByPhysicalIdentity.set(physicalIdentity, {
+      ...existing,
+      levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...occurrence.levelIdentifiers])],
+      levelValues: { ...occurrence.levelValues, ...existing.levelValues },
+      levelDistancesTicks: { ...occurrence.levelDistancesTicks, ...existing.levelDistancesTicks },
+      levelTolerancePoints: { ...occurrence.levelTolerancePoints, ...existing.levelTolerancePoints },
+      levelToleranceTicks: { ...occurrence.levelToleranceTicks, ...existing.levelToleranceTicks },
+      levelInteractionTypes: Object.fromEntries(
+        [...new Set([...Object.keys(existing.levelInteractionTypes), ...Object.keys(occurrence.levelInteractionTypes)])]
+          .map((level) => [
+            level,
+            [...new Set([
+              ...(existing.levelInteractionTypes[level] ?? []),
+              ...(occurrence.levelInteractionTypes[level] ?? []),
+            ])],
+          ]),
+      ),
+      matchedEdges: [...new Set([...(existing.matchedEdges ?? []), ...(occurrence.matchedEdges ?? [])])],
+      supportingConfluences: [...new Set([
+        ...(existing.supportingConfluences ?? []),
+        ...(occurrence.supportingConfluences ?? []),
+      ])],
+      directionSources: [...new Set([...(existing.directionSources ?? []), ...(occurrence.directionSources ?? [])])],
+      auditIds: [...new Set([...(existing.auditIds ?? []), ...(occurrence.auditIds ?? []), existing.auditId, occurrence.auditId])],
+    });
   }
   const usedRawTradeIds = new Set<string>();
   for (const occurrence of signalByPhysicalIdentity.values()) {
     const candidateId = historicalCandidateId(occurrence);
     const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
       candle.contractSymbol === occurrence.contractSymbol
-      && candle.openTime === Date.parse(occurrence.expectedEntryTimestamp!));
+      && candle.openTime === Date.parse(occurrence.eOpenTimestamp!));
     const occurrenceForExecution = occurrence.entryCandle || !datasetEntryCandle
       ? occurrence
       : { ...occurrence, entryCandle: occurrenceCandle(datasetEntryCandle) };
@@ -2250,7 +2396,7 @@ export function projectHistoricalTradeCandidates(
       && trade.tradingDate === occurrence.tradingDate
       && trade.direction === occurrence.direction
       && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-      && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+      && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
     );
     const firstTrade = linked[0];
     const entryDisposition = candidateEntryDisposition(occurrenceForExecution);
@@ -2269,6 +2415,9 @@ export function projectHistoricalTradeCandidates(
       supportingConfluences: [...new Set(occurrence.supportingConfluences ?? [])].sort(),
       qualifyingLevelIdentifiers: [...occurrence.levelIdentifiers].sort(),
       qualifyingLevelValues: { ...occurrence.levelValues },
+      pOpenTimestamp: occurrence.pOpenTimestamp!,
+      eOpenTimestamp: occurrence.eOpenTimestamp!,
+      entryObservationTimestamp: occurrence.entryObservationTimestamp!,
       patienceTimestamp: occurrence.patienceTimestamp!,
       expectedEntryTimestamp: occurrence.expectedEntryTimestamp!,
       confirmationPrice: occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? null,
@@ -2296,7 +2445,7 @@ export function projectHistoricalTradeCandidates(
       && candidate.tradingDate === trade.tradingDate
       && candidate.direction === trade.direction
       && trade.audit?.patienceCandleOpenTime === candidate.patienceTimestamp
-      && trade.audit?.triggerCandleOpenTime === candidate.expectedEntryTimestamp,
+      && trade.audit?.triggerCandleOpenTime === candidate.eOpenTimestamp,
     );
     if (!matchingCandidate) {
       const matchingSignal = confirmed.find((occurrence) =>
@@ -2304,7 +2453,7 @@ export function projectHistoricalTradeCandidates(
         && occurrence.tradingDate === trade.tradingDate
         && occurrence.direction === trade.direction
         && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-        && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+        && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
       );
       orphans.push({
         tradeId: trade.id,
@@ -2329,7 +2478,7 @@ export function projectHistoricalTradeCandidates(
       const matchingOccurrence = confirmed.find((occurrence) => occurrence.occurrenceId === matchingCandidate.signalOccurrenceId);
       const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
         candle.contractSymbol === matchingCandidate.contractSymbol
-        && candle.openTime === Date.parse(matchingCandidate.expectedEntryTimestamp),
+        && candle.openTime === Date.parse(matchingCandidate.eOpenTimestamp),
       );
       const candidateExecution = executionContext
         && ["historical_databento", "historical_databento_multicontract"].includes(executionContext.dataset.source ?? "")
@@ -2364,7 +2513,7 @@ export function projectHistoricalTradeCandidates(
       && trade.tradingDate === occurrence.tradingDate
       && trade.direction === occurrence.direction
       && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-      && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+       && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
     );
     if (!linked && executionContext) {
       const candidateTrade = candidateDrivenEntryTrade(
@@ -2389,12 +2538,12 @@ export function projectHistoricalTradeCandidates(
         && trade.tradingDate === occurrence.tradingDate
         && trade.direction === occurrence.direction
         && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-        && trade.audit?.triggerCandleOpenTime === occurrence.expectedEntryTimestamp,
+         && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
       );
       if (linked) continue;
       const datasetEntryCandle = executionContext.dataset.candles.find((candle) =>
         candle.contractSymbol === occurrence.contractSymbol
-        && candle.openTime === Date.parse(occurrence.expectedEntryTimestamp!));
+         && candle.openTime === Date.parse(occurrence.eOpenTimestamp!));
       const candidateTrade = candidateDrivenEntryTrade(
         occurrence.entryCandle || !datasetEntryCandle
           ? occurrence
@@ -2423,19 +2572,26 @@ function candidateDrivenEntryTrade(
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
   const period = periodForDate(tradingDate, context.dataset);
-  const entryTime = typeof entryCandle.openTime === "number"
-    ? new Date(entryCandle.openTime).toISOString()
-    : occurrence.expectedEntryTimestamp!;
+  const entryCloseTimestamp = numericCandleValue(entryCandle, "closeTime");
+  const entryObservationTimestamp = entryCloseTimestamp !== null
+    ? new Date(entryCloseTimestamp).toISOString()
+    : occurrence.entryObservationTimestamp;
+  if (!entryObservationTimestamp) return undefined;
+  const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
-  const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.expectedEntryTimestamp!);
-  const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? entryOpenTime;
+  const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
+  const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
   const postEntry = contractCandles.filter((item) =>
     item.isComplete && item.openTime > entryOpenTime && item.closeTime > entryCloseTime,
   );
-  const missingContext = management.managementEvidenceStatus === "missing";
+  const managementValidationReasons = candidateManagementValidationReasons(
+    management,
+    entryObservationTimestamp,
+  );
+  const missingContext = managementValidationReasons.length > 0;
   const sessionCloseCandle = !missingContext
     ? (() => {
       const calendar = sessionCalendarForContract(context.specification);
@@ -2545,7 +2701,7 @@ function candidateDrivenEntryTrade(
       stopLevel: modeled?.audit.stopLevel ?? null,
       patienceCandleOpenTime: occurrence.patienceTimestamp,
       patienceCandleCloseTime: typeof patience.closeTime === "number" ? new Date(patience.closeTime).toISOString() : null,
-      triggerCandleOpenTime: occurrence.expectedEntryTimestamp,
+      triggerCandleOpenTime: occurrence.eOpenTimestamp,
        triggerCandleCloseTime: typeof entryCandle.closeTime === "number"
          ? new Date(entryCandle.closeTime).toISOString()
          : null,
@@ -2554,7 +2710,12 @@ function candidateDrivenEntryTrade(
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
-        ...(missingContext ? [`Management context unavailable: ${management.missingEvidenceReasons.join(", ")}.`] : []),
+        ...(missingContext
+          ? [`Management context unavailable or invalid: ${[...new Set([
+            ...management.missingEvidenceReasons,
+            ...managementValidationReasons,
+          ])].join(", ")}.`]
+          : []),
         ...(modeled?.assumptions ?? []),
       ],
       eventLabels: ["CANDIDATE_DRIVEN_ENTRY", "OHLCV_CONFIRMATION_THRESHOLD", ...(modeled?.eventLabels ?? [])],

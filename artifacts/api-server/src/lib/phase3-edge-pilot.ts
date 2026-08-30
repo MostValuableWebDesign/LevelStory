@@ -14,6 +14,7 @@ import {
   type HistoricalOccurrence,
   type HistoricalTradeCandidate,
 } from "./phase9.js";
+import { isValidCandidateManagementContext } from "./phase9.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import {
   getFuturesContractSpecification,
@@ -297,8 +298,8 @@ export function buildPhase3PilotManifest(input: {
       rolloverScheduleVersion: input.dataset.contractSchedule?.version ?? null,
     },
     candidateIdentity: {
-      version: "physical-p-to-e-sequence-v1",
-      physicalOccurrenceKey: "contractSymbol|tradingDate|lTimestamp|patienceTimestamp|expectedEntryTimestamp",
+      version: "physical-p-to-e-sequence-v2",
+      physicalOccurrenceKey: "sourceFingerprint|formulaHash|contractSymbol|tradingDate|direction|pOpenTimestamp|eOpenTimestamp",
       oneCandidatePerPhysicalSequence: true,
       immediateNextCandleOnly: true,
     },
@@ -379,20 +380,6 @@ export function buildPhase3PilotPartitions(
   });
 }
 
-function validManagementContext(candidate: HistoricalTradeCandidate): boolean {
-  const context = candidate.managementContext;
-  if (!context || context.managementEvidenceStatus !== "complete") return false;
-  if (![context.entryPrice, context.strategyStopPrice, context.catastropheStopPrice, context.targetPrice]
-    .every((value) => value === null || Number.isFinite(value))) return false;
-  if (context.strategyStopPrice === null || context.targetPrice === null) return false;
-  if (candidate.direction === "long") {
-    return context.strategyStopPrice < context.entryPrice && context.entryPrice < context.targetPrice
-      && (context.catastropheStopPrice === null || context.catastropheStopPrice < context.strategyStopPrice);
-  }
-  return context.targetPrice < context.entryPrice && context.entryPrice < context.strategyStopPrice
-    && (context.catastropheStopPrice === null || context.catastropheStopPrice > context.strategyStopPrice);
-}
-
 function timeBucket(timestamp: string): keyof Phase3PilotMetrics["entryTimeBuckets"] | null {
   const minutes = wallClockMinutesForTimestamp(Date.parse(timestamp));
   if (minutes < 570 || minutes >= PHASE3_ENTRY_CUTOFF_MINUTES) return null;
@@ -457,7 +444,7 @@ function summarizeEvidence(
       disposition = "unscored";
       exclusionReason = "INSUFFICIENT_CANDLE_DATA";
     } else if (candidate.executionStatus === "MODELED_TRADE_CREATED") {
-      if (!validManagementContext(candidate)) {
+      if (!isValidCandidateManagementContext(candidate)) {
         disposition = "missing_management_context";
         exclusionReason = candidate.managementContext?.missingEvidenceReasons.join(", ") || "INVALID_MANAGEMENT_CONTEXT";
       } else if (!trade) {
@@ -492,7 +479,7 @@ function metricsForEvidence(evidence: readonly Phase3PilotCandidateEvidence[]): 
     result.candidateCount += 1;
     result.grades[item.candidate.grade] += 1;
     result.directions[item.candidate.direction] += 1;
-    const bucket = timeBucket(item.candidate.expectedEntryTimestamp);
+    const bucket = timeBucket(item.candidate.entryObservationTimestamp);
     if (bucket) result.entryTimeBuckets[bucket] += 1;
     if (item.disposition === "not_entered") {
       result.excludedCount += 1;
@@ -547,16 +534,27 @@ function deduplicateCandidates(reports: readonly BacktestReport[]): {
   for (const report of reports) {
     for (const candidate of report.tradeCandidates) {
       const key = [
+        candidate.sourceFingerprint,
+        candidate.formulaHash,
         candidate.contractSymbol,
         candidate.tradingDate,
-        candidate.patienceTimestamp,
-        candidate.expectedEntryTimestamp,
+        candidate.direction,
+        candidate.pOpenTimestamp,
+        candidate.eOpenTimestamp,
       ].join("|");
       const previous = byPhysical.get(key);
       if (previous) {
         duplicateCount += 1;
         previous.matchedEdges = [...new Set([...previous.matchedEdges, ...candidate.matchedEdges, candidate.primaryEdge])];
         previous.supportingConfluences = [...new Set([...previous.supportingConfluences, ...candidate.supportingConfluences])];
+        previous.qualifyingLevelIdentifiers = [...new Set([
+          ...previous.qualifyingLevelIdentifiers,
+          ...candidate.qualifyingLevelIdentifiers,
+        ])].sort();
+        previous.qualifyingLevelValues = {
+          ...candidate.qualifyingLevelValues,
+          ...previous.qualifyingLevelValues,
+        };
       } else {
         byPhysical.set(key, { ...candidate, matchedEdges: [...candidate.matchedEdges] });
       }
@@ -576,11 +574,11 @@ function gateReports(
       violations.push("HOLDOUT_INTEGRITY_GATE_FAILED");
     }
     for (const candidate of report.tradeCandidates) {
-      const entryTimestamp = Date.parse(candidate.expectedEntryTimestamp);
+      const entryTimestamp = Date.parse(candidate.entryObservationTimestamp);
       if (!Number.isFinite(entryTimestamp) || wallClockMinutesForTimestamp(entryTimestamp) >= PHASE3_ENTRY_CUTOFF_MINUTES) {
         violations.push(`LATE_ENTRY:${candidate.candidateId}`);
       }
-      if (candidate.executionStatus === "MODELED_TRADE_CREATED" && !validManagementContext(candidate)) {
+      if (candidate.executionStatus === "MODELED_TRADE_CREATED" && !isValidCandidateManagementContext(candidate)) {
         // This is a reportable exclusion, not a reason to fabricate a realized result.
         continue;
       }
@@ -588,7 +586,15 @@ function gateReports(
   }
   const physicalKeys = new Set<string>();
   for (const candidate of candidates) {
-    const key = `${candidate.contractSymbol}|${candidate.tradingDate}|${candidate.patienceTimestamp}|${candidate.expectedEntryTimestamp}`;
+    const key = [
+      candidate.sourceFingerprint,
+      candidate.formulaHash,
+      candidate.contractSymbol,
+      candidate.tradingDate,
+      candidate.direction,
+      candidate.pOpenTimestamp,
+      candidate.eOpenTimestamp,
+    ].join("|");
     if (physicalKeys.has(key)) violations.push(`DUPLICATE_PHYSICAL_CANDIDATE:${key}`);
     physicalKeys.add(key);
   }
@@ -666,8 +672,8 @@ export async function runPhase3EdgePilot(
       },
       { timeoutMs: options.timeoutMs, signal },
     );
-    if (report.tradeCandidates.some((candidate) => Date.parse(candidate.expectedEntryTimestamp) >= 0
-      && wallClockMinutesForTimestamp(Date.parse(candidate.expectedEntryTimestamp)) >= PHASE3_ENTRY_CUTOFF_MINUTES)) {
+    if (report.tradeCandidates.some((candidate) => Date.parse(candidate.entryObservationTimestamp) >= 0
+      && wallClockMinutesForTimestamp(Date.parse(candidate.entryObservationTimestamp)) >= PHASE3_ENTRY_CUTOFF_MINUTES)) {
       throw new Error(`Phase 3 refuses late entry evidence on ${partition.tradingDate}.`);
     }
     const item = { tradingDate: partition.tradingDate, contractSymbol: partition.contractSymbol, period: partition.period, report };
@@ -711,7 +717,7 @@ export async function runPhase3EdgePilot(
   }
   const lateEntryCount = reportList.flatMap((report) => report.tradeCandidates)
     .filter((candidate) => {
-      const timestamp = Date.parse(candidate.expectedEntryTimestamp);
+    const timestamp = Date.parse(candidate.entryObservationTimestamp);
       return Number.isFinite(timestamp) && wallClockMinutesForTimestamp(timestamp) >= PHASE3_ENTRY_CUTOFF_MINUTES;
     }).length;
   const completedAtMs = now();
