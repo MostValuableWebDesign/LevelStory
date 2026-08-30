@@ -1596,6 +1596,46 @@ export interface HistoricalDataIndexStatus {
   updatedAt: string;
 }
 
+export interface HistoricalEmaComparisonCandidate {
+  timestamp: string;
+  contract: string;
+  available: boolean;
+}
+
+export type HistoricalEmaComparisonRowSourceRange = {
+  /** @nullable */
+  earliest: string | null;
+  /** @nullable */
+  latest: string | null;
+};
+
+export interface HistoricalEmaComparisonRow {
+  timestamp: string;
+  contract: string;
+  cmeSessionTemplate: string;
+  warmupCount: number;
+  period: number;
+  sourceRange: HistoricalEmaComparisonRowSourceRange;
+  available: boolean;
+  /** @nullable */
+  sourceClose: number | null;
+  /** @nullable */
+  independentEma: number | null;
+  /** @nullable */
+  differencePoints: number | null;
+  /** @nullable */
+  differenceTicks: number | null;
+}
+
+export interface HistoricalEmaComparisonReport {
+  source: string;
+  methodology: string;
+  inputMatch: boolean;
+  inputMatchNote: string;
+  candidates: HistoricalEmaComparisonCandidate[];
+  rows: HistoricalEmaComparisonRow[];
+}
+
 export type HistoricalImportSummarySource = typeof HistoricalImportSummarySource[keyof typeof HistoricalImportSummarySource];
 
 
@@ -4226,6 +4266,22 @@ export type GetHistoricalDataSource = typeof GetHistoricalDataSource[keyof typeo
 
 
 export const GetHistoricalDataSource = {
+  historical_databento: 'historical_databento',
+  historical_databento_multicontract: 'historical_databento_multicontract',
+} as const;
+
+export type GetHistoricalEmaComparisonParams = {
+source?: GetHistoricalEmaComparisonSource;
+/**
+ * Comma-separated UTC candle-open timestamps; at most three are compared.
+ */
+timestamps?: string;
+};
+
+export type GetHistoricalEmaComparisonSource = typeof GetHistoricalEmaComparisonSource[keyof typeof GetHistoricalEmaComparisonSource];
+
+
+export const GetHistoricalEmaComparisonSource = {
   historical_databento: 'historical_databento',
   historical_databento_multicontract: 'historical_databento_multicontract',
 } as const;

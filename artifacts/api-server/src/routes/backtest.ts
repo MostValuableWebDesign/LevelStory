@@ -7,6 +7,7 @@ import {
   GetBatchFunnelResponse,
   GetHistoricalDataResponse,
   GetHistoricalDataIndexStatusResponse,
+  GetHistoricalEmaComparisonResponse,
   RunBacktestBody,
   RunBacktestResponse,
   StartBatchBacktestBody,
@@ -52,12 +53,90 @@ import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
+import type { NormalizedCandle } from "../lib/futures/market-data-provider.js";
 
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
 export const BACKTEST_REQUEST_TIMEOUT_MS = 120_000;
 export const BACKTEST_WORKER_DEADLINE_MS = 110_000;
 export const BATCH_BACKTEST_MAX_PARTITIONS = 60;
+const EMA_COMPARISON_PERIOD = 200;
+const EMA_COMPARISON_MAX_SELECTIONS = 3;
+
+type EmaComparisonSeries = {
+  contract: string;
+  candles: NormalizedCandle[];
+  values: Map<number, number>;
+  warmup: Map<number, number>;
+};
+
+function independentlyCalculateEma(candles: NormalizedCandle[], period: number): EmaComparisonSeries {
+  const sorted = candles
+    .filter((candle) => candle.isComplete && candle.intervalMinutes === 5 && Number.isFinite(candle.close))
+    .sort((left, right) => left.openTime - right.openTime);
+  const values = new Map<number, number>();
+  const warmup = new Map<number, number>();
+  let ema: number | null = null;
+  let sum = 0;
+  for (let index = 0; index < sorted.length; index += 1) {
+    sum += sorted[index].close;
+    if (index === period - 1) ema = sum / period;
+    else if (index >= period) {
+      const multiplier = 2 / (period + 1);
+      ema = sorted[index].close * multiplier + ema! * (1 - multiplier);
+    }
+    if (ema !== null) {
+      values.set(sorted[index].openTime, ema);
+      warmup.set(sorted[index].openTime, index + 1);
+    }
+  }
+  return { contract: sorted[0]?.contractSymbol ?? "MES", candles: sorted, values, warmup };
+}
+
+function buildHistoricalEmaComparison(
+  source: "historical_databento" | typeof MULTI_CONTRACT_SOURCE,
+  series: EmaComparisonSeries[],
+  requestedTimestamps: string[],
+) {
+  const candidates = series.flatMap((item) => [...item.values.keys()].map((timestamp) => ({
+    timestamp: new Date(timestamp).toISOString(),
+    contract: item.contract,
+    available: true,
+  }))).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  const selected = (requestedTimestamps.length ? requestedTimestamps : candidates.slice(-3).map((item) => item.timestamp))
+    .slice(0, EMA_COMPARISON_MAX_SELECTIONS);
+  const rows = selected.map((isoTimestamp) => {
+    const timestamp = Date.parse(isoTimestamp);
+    const item = series.find((candidate) => candidate.values.has(timestamp));
+    const candle = item?.candles.find((candidate) => candidate.openTime === timestamp);
+    const independentEma = item?.values.get(timestamp) ?? null;
+    const sourceClose = candle?.close ?? null;
+    return {
+      timestamp: new Date(timestamp).toISOString(),
+      contract: item?.contract ?? "MES",
+      cmeSessionTemplate: "CME equity-index / America/New_York · 04:00–16:00 ET with 16:00–18:00 maintenance",
+      warmupCount: item?.warmup.get(timestamp) ?? 0,
+      period: EMA_COMPARISON_PERIOD,
+      sourceRange: {
+        earliest: item?.candles[0] ? new Date(item.candles[0].openTime).toISOString() : null,
+        latest: item?.candles.at(-1) ? new Date(item.candles.at(-1)!.openTime).toISOString() : null,
+      },
+      available: Boolean(candle && independentEma !== null),
+      sourceClose,
+      independentEma,
+      differencePoints: sourceClose !== null && independentEma !== null ? sourceClose - independentEma : null,
+      differenceTicks: sourceClose !== null && independentEma !== null ? (sourceClose - independentEma) / 0.25 : null,
+    };
+  });
+  return {
+    source,
+    methodology: "Independent 200-period EMA, seeded with the SMA of the first 200 complete uploaded 5-minute closes; no NinjaTrader calculation was imported.",
+    inputMatch: false,
+    inputMatchNote: "NinjaTrader inputs are not available in this report. This uses uploaded Databento OHLCV, a fixed 5-minute interval, and the CME session template shown per row; it does not claim broker or platform equivalence.",
+    candidates: candidates.slice(-12),
+    rows,
+  };
+}
 
 type RiskSnapshot = NonNullable<BacktestWorkerInput["risk"]>;
 type BacktestRunner = (
@@ -497,6 +576,34 @@ router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), asy
     const message = error instanceof Error ? error.message : "Unable to import the historical CSV.";
     req.log.warn({ error: message }, "Historical CSV import failed");
     res.status(400).json({ error: message });
+  }
+});
+
+router.get("/historical-data/ema-comparison", historicalRateLimit, requestTimeout(120_000), async (req, res): Promise<void> => {
+  try {
+    const source = String(req.query.source ?? MULTI_CONTRACT_SOURCE) as "historical_databento" | typeof MULTI_CONTRACT_SOURCE;
+    if (source !== "historical_databento" && source !== MULTI_CONTRACT_SOURCE) {
+      res.status(400).json({ error: "Unsupported historical EMA comparison source." });
+      return;
+    }
+    const requestedTimestamps = typeof req.query.timestamps === "string"
+      ? req.query.timestamps.split(",").map((value) => value.trim()).filter((value) => value.length > 0 && Number.isFinite(Date.parse(value))).slice(0, EMA_COMPARISON_MAX_SELECTIONS)
+      : [];
+    const series: EmaComparisonSeries[] = [];
+    if (source === MULTI_CONTRACT_SOURCE) {
+      const imported = await importHistoricalMultiContract();
+      for (const contract of imported.contracts.values()) {
+        const calculated = independentlyCalculateEma(contract.fiveMinute, EMA_COMPARISON_PERIOD);
+        if (calculated.values.size > 0) series.push(calculated);
+      }
+    } else {
+      const imported = await getHistoricalCsvImport(getFuturesContractSpecification("MES"));
+      series.push(independentlyCalculateEma(imported.fiveMinute, EMA_COMPARISON_PERIOD));
+    }
+    res.json(GetHistoricalEmaComparisonResponse.parse(buildHistoricalEmaComparison(source, series, requestedTimestamps)));
+  } catch (error) {
+    if (res.headersSent) return;
+    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to calculate the historical EMA comparison." });
   }
 });
 

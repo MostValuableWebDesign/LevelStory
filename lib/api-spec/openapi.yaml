@@ -581,6 +581,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoricalDataIndexStatus"
+  /historical-data/ema-comparison:
+    get:
+      operationId: getHistoricalEmaComparison
+      tags: [backtest]
+      summary: Compare independently calculated EMA values at uploaded-history timestamps
+      description: Returns candidate MES timestamps and up to three selected comparisons. This is an audit report, not a broker-equivalence claim.
+      parameters:
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [historical_databento, historical_databento_multicontract]
+            default: historical_databento_multicontract
+        - name: timestamps
+          in: query
+          required: false
+          description: Comma-separated UTC candle-open timestamps; at most three are compared.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Independent EMA comparison report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalEmaComparisonReport"
+        "400":
+          description: Historical EMA comparison failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /journal:
     get:
       operationId: listJournalEntries
@@ -2604,6 +2636,47 @@ components:
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
       required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, message, error, updatedAt]
+    HistoricalEmaComparisonCandidate:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        contract: { type: string }
+        available: { type: boolean }
+      required: [timestamp, contract, available]
+    HistoricalEmaComparisonRow:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        contract: { type: string }
+        cmeSessionTemplate: { type: string }
+        warmupCount: { type: number }
+        period: { type: number }
+        sourceRange:
+          type: object
+          properties:
+            earliest: { type: ["string", "null"], format: date-time }
+            latest: { type: ["string", "null"], format: date-time }
+          required: [earliest, latest]
+        available: { type: boolean }
+        sourceClose: { type: ["number", "null"] }
+        independentEma: { type: ["number", "null"] }
+        differencePoints: { type: ["number", "null"] }
+        differenceTicks: { type: ["number", "null"] }
+      required: [timestamp, contract, cmeSessionTemplate, warmupCount, period, sourceRange, available, sourceClose, independentEma, differencePoints, differenceTicks]
+    HistoricalEmaComparisonReport:
+      type: object
+      properties:
+        source: { type: string }
+        methodology: { type: string }
+        inputMatch: { type: boolean }
+        inputMatchNote: { type: string }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/HistoricalEmaComparisonCandidate" }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/HistoricalEmaComparisonRow" }
+      required: [source, methodology, inputMatch, inputMatchNote, candidates, rows]
     HistoricalImportSummary:
       type: object
       properties:

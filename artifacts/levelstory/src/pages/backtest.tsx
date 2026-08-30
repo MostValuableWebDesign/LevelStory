@@ -5,6 +5,7 @@ import {
   useGetBatchBacktestStatus,
   useGetBatchFunnel,
   useGetHistoricalData,
+  useGetHistoricalEmaComparison,
   useGetHistoricalDataIndexStatus,
   useRunBacktest,
   useStartBatchBacktest,
@@ -15,6 +16,7 @@ import type {
   BacktestReport,
   BatchBacktestReport,
   HistoricalImportSummary,
+  HistoricalEmaComparisonReport,
   QualificationFunnelStage,
   WalkForwardEdgeStatus,
   WalkForwardReport,
@@ -159,6 +161,52 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
           </>}
         </div>}
     </div>
+  </Panel>;
+}
+
+function HistoricalEmaComparisonPanel({ report, isLoading, isError, selectedTimestamps, onToggle }: {
+  report?: HistoricalEmaComparisonReport;
+  isLoading: boolean;
+  isError: boolean;
+  selectedTimestamps: string[];
+  onToggle: (timestamp: string) => void;
+}) {
+  if (isLoading) return <Panel><div className="p-6 text-center text-xs text-muted-foreground">Calculating an independent EMA from the uploaded 5-minute closes…</div></Panel>;
+  if (isError || !report) return <Panel><div className="p-6 text-xs text-destructive">The independent EMA comparison could not be loaded.</div></Panel>;
+  const formatTimestamp = (value: string) => new Date(value).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+  return <Panel accent data-testid="panel-ema-comparison">
+    <PanelTitle eyebrow="Independent audit / uploaded history" title="EMA comparison report" right={<span className="mono text-[10px] text-muted-foreground">EMA {report.rows[0]?.period ?? 200} · MES</span>} />
+    <div className="border-t border-border bg-accent/5 px-5 py-4 text-xs leading-5">
+      <p className="font-semibold">Not a NinjaTrader equivalence test.</p>
+      <p className="mt-1 text-muted-foreground">{report.inputMatchNote}</p>
+    </div>
+    <div className="border-t border-border px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div><div className="eyebrow text-muted-foreground">Choose three timestamps</div><div className="mt-1 text-[11px] text-muted-foreground">Selections are limited to timestamps with an independently warmed-up EMA.</div></div>
+        <span className={`mono text-[10px] font-bold ${selectedTimestamps.length === 3 ? "text-[hsl(var(--positive))]" : "text-accent"}`}>{selectedTimestamps.length}/3 selected</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {report.candidates.map((candidate) => <label key={`${candidate.contract}-${candidate.timestamp}`} className={`inline-flex cursor-pointer items-center gap-2 border px-2.5 py-2 text-[10px] transition-colors ${selectedTimestamps.includes(candidate.timestamp) ? "border-accent bg-accent/10" : "border-border hover:bg-muted/50"}`}>
+          <input type="checkbox" checked={selectedTimestamps.includes(candidate.timestamp)} onChange={() => onToggle(candidate.timestamp)} disabled={!selectedTimestamps.includes(candidate.timestamp) && selectedTimestamps.length >= 3} className="accent-[hsl(var(--accent))]" />
+          <span className="mono">{formatTimestamp(candidate.timestamp)}</span><span className="text-muted-foreground">{candidate.contract}</span>
+        </label>)}
+      </div>
+    </div>
+    <div className="overflow-x-auto border-t border-border">
+      <table className="w-full min-w-[1050px] text-left text-xs">
+        <thead className="bg-muted/40 text-[10px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Timestamp</th><th className="px-4 py-3">Contract / session template</th><th className="px-4 py-3">Warm-up / source range</th><th className="px-4 py-3">Uploaded close</th><th className="px-4 py-3">Independent EMA</th><th className="px-4 py-3">Difference</th><th className="px-4 py-3">Availability</th></tr></thead>
+        <tbody className="divide-y divide-border">{report.rows.map((row) => <tr key={row.timestamp} data-testid={`ema-comparison-row-${row.timestamp}`}>
+          <td className="mono px-4 py-3">{formatTimestamp(row.timestamp)}<span className="mt-1 block text-[10px] text-muted-foreground">{row.timestamp}</span></td>
+          <td className="px-4 py-3"><strong>{row.contract}</strong><span className="mt-1 block max-w-[250px] text-[10px] leading-4 text-muted-foreground">{row.cmeSessionTemplate}</span></td>
+          <td className="mono px-4 py-3 text-[10px]">{row.warmupCount} candles<span className="mt-1 block text-muted-foreground">{row.sourceRange.earliest ?? "—"} → {row.sourceRange.latest ?? "—"}</span></td>
+          <td className="mono px-4 py-3">{row.sourceClose?.toFixed(2) ?? "—"}</td>
+          <td className="mono px-4 py-3">{row.independentEma?.toFixed(4) ?? "—"}</td>
+          <td className="mono px-4 py-3">{row.differencePoints == null ? "—" : `${row.differencePoints >= 0 ? "+" : ""}${row.differencePoints.toFixed(4)} pts`}<span className="mt-1 block text-[10px] text-muted-foreground">{row.differenceTicks == null ? "—" : `${row.differenceTicks >= 0 ? "+" : ""}${row.differenceTicks.toFixed(2)} MES ticks`}</span></td>
+          <td className={`px-4 py-3 font-semibold ${row.available ? "text-[hsl(var(--positive))]" : "text-destructive"}`}>{row.available ? "Available" : "Unavailable"}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <div className="border-t border-border px-5 py-3 text-[10px] leading-4 text-muted-foreground">Method: 200-period EMA seeded with the first 200 complete uploaded 5-minute closes. Differences are close minus independent EMA; one MES tick = 0.25 points. This report validates source assumptions only and makes no broker/platform equivalence claim.</div>
   </Panel>;
 }
 
@@ -589,6 +637,7 @@ export default function Backtest() {
   const [stopBufferTicks, setStopBufferTicks] = useState("1");
   const [ohlcvSlippageTicks, setOhlcvSlippageTicks] = useState("1");
   const [commissionPerContract, setCommissionPerContract] = useState("");
+  const [selectedEmaTimestamps, setSelectedEmaTimestamps] = useState<string[]>([]);
   const run = useRunBacktest();
   const startBatch = useStartBatchBacktest();
   const cancelBatch = useCancelBatchBacktest();
@@ -597,6 +646,19 @@ export default function Backtest() {
     symbol: "MES",
     source: source === "simulated" ? "historical_databento" : source,
   });
+  const emaComparison = useGetHistoricalEmaComparison({
+    source: source === "historical_databento" ? "historical_databento" : MULTI_CONTRACT_SOURCE,
+    ...(selectedEmaTimestamps.length ? { timestamps: selectedEmaTimestamps.join(",") } : {}),
+  }, {
+    query: {
+      enabled: source !== "simulated",
+      queryKey: ["historical-ema-comparison", source, selectedEmaTimestamps.join(",")],
+    },
+  });
+  useEffect(() => {
+    const defaults = emaComparison.data?.candidates.slice(-3).map((candidate) => candidate.timestamp) ?? [];
+    if (!selectedEmaTimestamps.length && defaults.length === 3) setSelectedEmaTimestamps(defaults);
+  }, [emaComparison.data?.candidates, selectedEmaTimestamps.length]);
   const multiContractIndex = useGetHistoricalDataIndexStatus({
     query: {
       enabled: source === MULTI_CONTRACT_SOURCE,
@@ -678,7 +740,7 @@ export default function Backtest() {
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
-         {source !== "simulated" && <div className="mb-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /></div>}
+         {source !== "simulated" && <div className="mb-5 space-y-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /><HistoricalEmaComparisonPanel report={emaComparison.data} isLoading={emaComparison.isLoading || emaComparison.isFetching} isError={emaComparison.isError} selectedTimestamps={selectedEmaTimestamps} onToggle={(timestamp) => setSelectedEmaTimestamps((current) => current.includes(timestamp) ? current.filter((item) => item !== timestamp) : current.length < 3 ? [...current, timestamp] : current)} /></div>}
          {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div></Panel>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />

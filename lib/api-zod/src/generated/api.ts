@@ -5085,6 +5085,46 @@ export const GetHistoricalDataIndexStatusResponse = zod.object({
 
 
 /**
+ * Returns candidate MES timestamps and up to three selected comparisons. This is an audit report, not a broker-equivalence claim.
+ * @summary Compare independently calculated EMA values at uploaded-history timestamps
+ */
+export const getHistoricalEmaComparisonQuerySourceDefault = `historical_databento_multicontract`;
+
+export const GetHistoricalEmaComparisonQueryParams = zod.object({
+  "source": zod.enum(['historical_databento', 'historical_databento_multicontract']).default(getHistoricalEmaComparisonQuerySourceDefault),
+  "timestamps": zod.coerce.string().optional().describe('Comma-separated UTC candle-open timestamps; at most three are compared.')
+})
+
+export const GetHistoricalEmaComparisonResponse = zod.object({
+  "source": zod.string(),
+  "methodology": zod.string(),
+  "inputMatch": zod.boolean(),
+  "inputMatchNote": zod.string(),
+  "candidates": zod.array(zod.object({
+  "timestamp": zod.coerce.date(),
+  "contract": zod.string(),
+  "available": zod.boolean()
+})),
+  "rows": zod.array(zod.object({
+  "timestamp": zod.coerce.date(),
+  "contract": zod.string(),
+  "cmeSessionTemplate": zod.string(),
+  "warmupCount": zod.number(),
+  "period": zod.number(),
+  "sourceRange": zod.object({
+  "earliest": zod.coerce.date().nullable(),
+  "latest": zod.coerce.date().nullable()
+}),
+  "available": zod.boolean(),
+  "sourceClose": zod.number().nullable(),
+  "independentEma": zod.number().nullable(),
+  "differencePoints": zod.number().nullable(),
+  "differenceTicks": zod.number().nullable()
+}))
+})
+
+
+/**
  * @summary List shadow journal entries
  */
 export const listJournalEntriesQueryLimitDefault = 20;

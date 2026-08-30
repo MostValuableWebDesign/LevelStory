@@ -38,12 +38,14 @@ import type {
   GetBatchFunnelParams,
   GetDashboardOverviewParams,
   GetHistoricalDataParams,
+  GetHistoricalEmaComparisonParams,
   GetMarketDataStatusParams,
   GetMarketSnapshotParams,
   GetVisualValidationSetParams,
   GovernanceReasonInput,
   HealthStatus,
   HistoricalDataIndexStatus,
+  HistoricalEmaComparisonReport,
   HistoricalImportSummary,
   JournalEntry,
   JournalEntryInput,
@@ -1517,6 +1519,91 @@ export function useGetHistoricalDataIndexStatus<TData = Awaited<ReturnType<typeo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetHistoricalDataIndexStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalEmaComparisonUrl = (params?: GetHistoricalEmaComparisonParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/historical-data/ema-comparison?${stringifiedParams}` : `/api/historical-data/ema-comparison`
+}
+
+/**
+ * Returns candidate MES timestamps and up to three selected comparisons. This is an audit report, not a broker-equivalence claim.
+ * @summary Compare independently calculated EMA values at uploaded-history timestamps
+ */
+export const getHistoricalEmaComparison = async (params?: GetHistoricalEmaComparisonParams, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalEmaComparisonReport> => {
+
+  return customFetch<HistoricalEmaComparisonReport>(getGetHistoricalEmaComparisonUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalEmaComparisonQueryKey = (params?: GetHistoricalEmaComparisonParams,) => {
+    return [
+    `/api/historical-data/ema-comparison`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetHistoricalEmaComparisonQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalEmaComparison>>, TError = ErrorType<ErrorResponse>>(params?: GetHistoricalEmaComparisonParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalEmaComparison>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalEmaComparisonQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalEmaComparison>>> = ({ signal }) => getHistoricalEmaComparison(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalEmaComparison>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalEmaComparisonQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalEmaComparison>>>
+export type GetHistoricalEmaComparisonQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Compare independently calculated EMA values at uploaded-history timestamps
+ */
+
+export function useGetHistoricalEmaComparison<TData = Awaited<ReturnType<typeof getHistoricalEmaComparison>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetHistoricalEmaComparisonParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalEmaComparison>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalEmaComparisonQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
