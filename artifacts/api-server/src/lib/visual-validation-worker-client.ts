@@ -47,6 +47,7 @@ export function buildHistoricalVisualValidationSetInWorker(
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let worker: WorkerLike | undefined;
+    let messageReceived = false;
 
     const cleanup = (): void => {
       if (timer) clearTimeout(timer);
@@ -76,16 +77,26 @@ export function buildHistoricalVisualValidationSetInWorker(
     try {
       worker = new Worker(workerUrl, { workerData: request }) as unknown as WorkerLike;
       worker.once("message", (message) => {
-        if (message.type === "result") finish(() => resolve(message.set));
-        else if (message.type === "progress" && !settled) onProgress?.(message.progress);
-        else if (message.type === "error") finish(() => reject(new VisualValidationWorkerError(message.message)));
+        if (message.type === "result") {
+          messageReceived = true;
+          finish(() => resolve(message.set));
+        } else if (message.type === "progress" && !settled) {
+          onProgress?.(message.progress);
+        } else if (message.type === "error") {
+          messageReceived = true;
+          finish(() => reject(new VisualValidationWorkerError(message.message)));
+        }
       });
       worker.once("error", (error) => {
         finish(() => reject(new VisualValidationWorkerError(error.message)));
       });
       worker.once("exit", (code) => {
         if (code !== 0) finish(() => reject(new VisualValidationWorkerError(`Worker exited with code ${code}.`)));
-        else if (!settled) finish(() => reject(new VisualValidationWorkerError()));
+        else if (!settled) {
+          setTimeout(() => {
+            if (!settled && !messageReceived) finish(() => reject(new VisualValidationWorkerError()));
+          }, 25);
+        }
       });
     } catch (error) {
       finish(() => reject(error instanceof Error ? error : new VisualValidationWorkerError()));

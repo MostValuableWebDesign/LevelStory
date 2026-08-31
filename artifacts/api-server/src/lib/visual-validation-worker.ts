@@ -108,5 +108,6 @@ try {
     message: error instanceof Error ? error.message : "Visual-validation worker failed.",
   });
 } finally {
-  parentPort.close();
+  // Give the parent thread a turn to receive the final result/error message.
+  setImmediate(() => parentPort?.close());
 }
