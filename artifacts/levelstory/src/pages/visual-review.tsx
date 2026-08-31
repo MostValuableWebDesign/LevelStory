@@ -1210,7 +1210,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const finalCandle = candles.at(-1);
   const finalIndicators = finalCandle ? indicatorByOpenTime.get(finalCandle.openTime) ?? null : null;
    const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
-   const entryEvent = snapshot.tradeEvents.find((event) => event.event === "entry");
+   const entryEvent = snapshot.tradeEvents.find((event) => event.event === "entry_fill" || event.event === "entry");
    const entryOpenTime = entryEvent?.openTime ?? trade?.entryTime ?? null;
    const exitTime = trade?.exitTime ?? trade?.audit?.exitCandleCloseTime ?? null;
    const entryIndex = entryOpenTime ? findCandleIndexAtTimestamp(candles, entryOpenTime) : -1;
@@ -1218,7 +1218,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
    const entryX = entryIndex >= 0 ? left + getCandleSlotIndex(candles[entryIndex]!, sessionView) * step + step / 2 : null;
    const exitX = exitIndex >= 0 ? left + getCandleSlotIndex(candles[exitIndex]!, sessionView) * step + step / 2 : null;
    const lifetimeEndX = exitX ?? plotRight;
-   const entryPrice = trade?.entryPrice ?? snapshot.tradeEvents.find((event) => event.event === "fill")?.modeledPrice ?? null;
+   const entryPrice = trade?.entryPrice ?? snapshot.tradeEvents.find((event) => event.event === "entry_fill" || event.event === "fill")?.modeledPrice ?? null;
    const exitPrice = trade?.exitPrice ?? null;
    const tradeLegs = trade?.audit?.legs ?? [];
    const legOverlays = tradeLegs.map((leg, index) => {

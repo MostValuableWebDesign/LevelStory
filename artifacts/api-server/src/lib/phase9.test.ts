@@ -921,6 +921,150 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
   }]);
 });
 
+test("6725.75 short E crossing creates exactly one candidate-owned threshold fill", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    direction: "short",
+    entryHigh: 6728,
+    entryLow: 6713.25,
+  });
+  occurrence.patienceCandle = {
+    ...occurrence.patienceCandle,
+    open: 6729,
+    high: 6730,
+    low: 6727.75,
+    close: 6728.25,
+  };
+  occurrence.entryCandle = {
+    ...occurrence.entryCandle,
+    open: 6728.25,
+    high: 6728.5,
+    low: 6713.25,
+    close: 6715,
+  };
+  occurrence.confirmationThreshold = 6725.75;
+  occurrence.confirmationBufferTicks = 8;
+  const duplicateReference = {
+    ...occurrence,
+    auditId: "duplicate-audit-reference",
+    auditIds: ["duplicate-audit-reference"],
+  };
+  const result = projectHistoricalTradeCandidates(
+    [duplicateReference, occurrence],
+    [],
+    {
+      dataset: candidateProjectionDataset(occurrence),
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+    },
+  );
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.entryReachedThreshold, true);
+  assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
+  assert.equal(result.authoritativeTrades.length, 1);
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(trade.entryPrice, 6725.75);
+  assert.equal(trade.audit?.modeledFillPrice, 6725.75);
+  assert.equal(trade.audit?.triggerCandleOpenTime, occurrence.eOpenTimestamp);
+  assert.equal(trade.entryTime, occurrence.entryObservationTimestamp);
+  assert.equal(trade.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
+  assert.equal(trade.candidateId, candidate.candidateId);
+  assert.equal(trade.signalOccurrenceId, candidate.signalOccurrenceId);
+
+  const reconciliationRow = {
+    signalOccurrenceId: candidate.signalOccurrenceId,
+    candidateId: candidate.candidateId,
+    pOpen: candidate.pOpenTimestamp,
+    eOpen: candidate.eOpenTimestamp,
+    eClose: candidate.entryObservationTimestamp,
+    threshold: candidate.confirmationPrice,
+    eRange: [candidate.entryLow, candidate.entryHigh],
+    disposition: candidate.executionStatus,
+    fill: trade.audit?.modeledFillPrice,
+    tradeId: trade.id,
+    exitStatus: trade.outcome,
+  };
+  assert.deepEqual(reconciliationRow, {
+    signalOccurrenceId: occurrence.occurrenceId,
+    candidateId: candidate.candidateId,
+    pOpen: occurrence.pOpenTimestamp,
+    eOpen: occurrence.eOpenTimestamp,
+    eClose: occurrence.entryObservationTimestamp,
+    threshold: 6725.75,
+    eRange: [6713.25, 6728.5],
+    disposition: "MODELED_TRADE_CREATED",
+    fill: 6725.75,
+    tradeId: `${candidate.candidateId}-ohlcv-confirmation`,
+    exitStatus: "open",
+  });
+});
+
+test("candidate projection rejects finalized NTZ entries and does not emit a fill", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  occurrence.finalizedNtzComplete = true;
+  occurrence.finalizedNtzLow = 101;
+  occurrence.finalizedNtzHigh = 101.5;
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.deepEqual(result.rejected[0]?.reasonCodes, ["REJECTED_INSIDE_NTZ"]);
+});
+
+test("candidate diagnostics report missing, duplicate, and identity-mismatched fills", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  }) as HistoricalOccurrence;
+  const projected = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.deepEqual(
+    historicalReplayDiagnostics([], [occurrence], projected.candidates, projected.authoritativeTrades)
+      .candidateInvariantViolations,
+    [],
+  );
+  const missing = historicalReplayDiagnostics([], [occurrence], projected.candidates, []);
+  assert.match(missing.candidateInvariantViolations.join(" "), /expected exactly one/);
+
+  const trade = projected.authoritativeTrades[0]!;
+  const duplicate = historicalReplayDiagnostics(
+    [],
+    [occurrence],
+    projected.candidates,
+    [trade, { ...trade, id: `${trade.id}-duplicate` }],
+  );
+  assert.match(duplicate.candidateInvariantViolations.join(" "), /has 2 authoritative trades/);
+
+  const mismatched = historicalReplayDiagnostics(
+    [],
+    [occurrence],
+    projected.candidates,
+    [{ ...trade, signalOccurrenceId: "wrong-signal" }],
+  );
+  assert.match(mismatched.candidateInvariantViolations.join(" "), /mismatched signalOccurrenceId/);
+
+  const contradictoryCandidate = {
+    ...projected.candidates[0]!,
+    executionStatus: "ENTRY_NOT_REACHED" as const,
+  };
+  const contradictory = historicalReplayDiagnostics([], [occurrence], [contradictoryCandidate], []);
+  assert.match(contradictory.candidateInvariantViolations.join(" "), /does not match executionStatus/);
+});
+
 test("invalid confirmed P to E identity is rejected diagnostically without a candidate or trade", () => {
   const occurrence = {
     ...confirmedCandidateOccurrence({
@@ -1100,7 +1244,7 @@ test("candidate window uses E open time across EST and EDT cutoffs", () => {
     );
     assert.equal(result.candidates.length, item.expectedCandidates, item.label);
     if (item.expectedCandidates === 0) {
-      assert.deepEqual(result.rejected[0]?.reasonCodes, ["OUTSIDE_PRIMARY_ENTRY_WINDOW"], item.label);
+      assert.deepEqual(result.rejected[0]?.reasonCodes, ["REJECTED_OUTSIDE_ENTRY_WINDOW"], item.label);
     }
   }
 });

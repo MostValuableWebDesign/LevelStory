@@ -40,3 +40,4 @@
 - [Phase 5 threshold authority](phase5-phase6-threshold-authority.md) — Phase 5 owns executable thresholds; Phase 6 reuses shared NTZ geometry without reinterpreting legacy patience prices.
 - [Dynamite identity](dynamite-identity.md) — cluster IDs must include source, formula, contract, date, observation time, bounds, and sorted canonical families; unknown families are excluded.
 - [Execution-leg timestamp optionality](execution-leg-timestamp-optionality.md) — modeled leg exit timestamps are emitted only when the source candle provides valid times, preserving legacy fixture compatibility.
+- [Candidate-first fill authority](candidate-first-fill-authority.md) — threshold disposition creates the candidate-owned fill before legacy-trade reconciliation; legacy evidence cannot suppress execution.

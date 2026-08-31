@@ -722,6 +722,7 @@ const EVENT_RAIL_PRIORITY: Record<EventRailEventKind, number> = {
 };
 
 function railKindForTradeEvent(event: VisualValidationTradeEvent): EventRailEventKind {
+  if (event.event === "entry_fill") return "entry";
   if (event.event === "entry") return "entry";
   if (event.event === "fill") return "fill";
   if (event.event === "stop") return "stop";

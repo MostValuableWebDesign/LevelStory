@@ -224,7 +224,6 @@ function makeAudit(
   const tradeLike = ["qualified_trade", "stop_exit", "target_exit", "runner_exit"].includes(category);
   const patience = candles[PATIENCE_INDEX]!;
   const trigger = candles[TRIGGER_INDEX]!;
-  const fill = candles[FILL_INDEX]!;
   const exit = candles[EXIT_INDEX]!;
   const target = evidence.direction === "long" ? trigger.close + 4 : trigger.close - 4;
   const strategyStop = evidence.direction === "long" ? trigger.close - 2 : trigger.close + 2;
@@ -275,7 +274,7 @@ function makeAudit(
     patienceCandleCloseTime: new Date(patience.closeTime).toISOString(),
     triggerCandleOpenTime: new Date(trigger.openTime).toISOString(),
     triggerCandleCloseTime: new Date(trigger.closeTime).toISOString(),
-    modeledFillObservationTime: tradeLike ? new Date(fill.closeTime).toISOString() : null,
+    modeledFillObservationTime: tradeLike ? new Date(trigger.closeTime).toISOString() : null,
     exitCandleOpenTime: tradeLike ? new Date(exit.openTime).toISOString() : null,
     exitCandleCloseTime: tradeLike ? new Date(exit.closeTime).toISOString() : null,
     entryTriggerPrice: trigger.close,
@@ -301,10 +300,9 @@ function makeTrade(
   contract: FuturesContractSpecification,
 ): BacktestTrade | null {
   if (!["qualified_trade", "stop_exit", "target_exit", "runner_exit"].includes(category)) return null;
-  const entry = candles[FILL_INDEX]!;
   const exit = candles[EXIT_INDEX]!;
   const direction = audit.direction!;
-  const entryPrice = entry.close;
+  const entryPrice = audit.entryTriggerPrice!;
   const exitPrice = category === "stop_exit"
     ? audit.strategyStopPrice!
     : category === "target_exit" || category === "runner_exit"
@@ -387,6 +385,8 @@ function makeTrade(
   };
   return {
     id: `visual-trade-${category}-${audit.tradingDate}`,
+    signalOccurrenceId: `visual-signal-${category}-${audit.tradingDate}`,
+    candidateId: `visual-candidate-${category}-${audit.tradingDate}`,
     tradingDate: audit.tradingDate,
     contractSymbol: contract.fullContractSymbol,
     contractMonth: contract.contractMonth,

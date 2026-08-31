@@ -376,18 +376,30 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   });
   const expired = occurrence("expired-p1", p1, failedImmediate, false);
   const confirmed = occurrence("confirmed-p2", p2, e2, true);
+  const candidateId = "candidate-confirmed-p2";
+  const linkedTrade = {
+    ...fixture.trade,
+    candidateId,
+    signalOccurrenceId: confirmed.occurrenceId,
+  };
   const report = {
     symbol: "MES",
     formulaHash: "a".repeat(64),
     executionMode: "ohlcv_modeled" as const,
     audit: [fixture.audit],
-    trades: [fixture.trade],
+    trades: [linkedTrade],
     occurrences: [expired, confirmed],
+    tradeCandidates: [{
+      candidateId,
+      signalOccurrenceId: confirmed.occurrenceId,
+    }] as any,
   };
   const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, report);
   const tradePatience = tradeOnly.snapshots.filter((snapshot) => snapshot.category === "bullish_patience_candle");
   assert.deepEqual(tradePatience.map((snapshot) => snapshot.occurrenceId), ["confirmed-p2"]);
-  assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "entry")?.openTime, confirmed.entryTimestamp);
+  assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "entry_fill")?.openTime, confirmed.entryTimestamp);
+  assert.equal(tradePatience[0]?.machineEvidence.trade?.candidateId, candidateId);
+  assert.equal(tradePatience[0]?.machineEvidence.trade?.signalOccurrenceId, confirmed.occurrenceId);
   assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "patience")?.closeTime, confirmed.entryTimestamp);
 
   const diagnostics = buildHistoricalVisualValidationSetFromReport(
@@ -494,7 +506,9 @@ test("visual-validation exposes separate premarket, causal indicator, coverage, 
   const vwapAnnotation = qualified.annotations.find((annotation) => annotation.id === "vwap");
   assert.ok(patienceIndicator);
   assert.equal(vwapAnnotation?.price, patienceIndicator?.vwap);
-  assert.ok(qualified.tradeEvents.some((event) => event.event === "entry"));
+  assert.equal(qualified.tradeEvents.filter((event) => event.event === "entry_fill").length, 1);
+  assert.equal(qualified.tradeEvents.some((event) => event.event === "entry"), false);
+  assert.equal(qualified.tradeEvents.some((event) => event.event === "fill"), false);
   assert.ok(qualified.tradeEvents.some((event) => event.event === "target"));
   assert.equal(rejected.tradeEvents.length, 0);
   assert.equal(rejected.coverage.find((item) => item.session === "primary")?.expectedCandleCount, 42);

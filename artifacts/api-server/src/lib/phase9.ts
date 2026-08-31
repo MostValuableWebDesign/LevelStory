@@ -714,6 +714,9 @@ export type HistoricalOccurrence = {
   eOpenTimestamp: string | null;
   /** The completed E candle close where threshold confirmation is observed. */
   entryObservationTimestamp: string | null;
+  finalizedNtzHigh?: number | null;
+  finalizedNtzLow?: number | null;
+  finalizedNtzComplete?: boolean;
   /** Non-empty only when a confirmed P→E sequence violates causal identity invariants. */
   identityInvariantViolations: string[];
   confirmationBufferTicks: number | null;
@@ -1405,13 +1408,50 @@ export function historicalReplayDiagnostics(
   const modeledTradeCandidateIds = authoritativeModeledTrades.map((trade) => trade.candidateId).filter((id): id is string => Boolean(id));
   const duplicateModeledTradesPerCandidate = Object.values(countBy(modeledTradeCandidateIds))
     .reduce((total, count) => total + Math.max(0, count - 1), 0);
-  const candidateInvariantViolations = confirmedPatience.flatMap((occurrence) => {
-    const candidate = tradeCandidates.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
-    if (!candidate || candidate.executionStatus !== "MODELED_TRADE_CREATED") return [];
-    const reached = candidate.entryReachedThreshold;
-    return reached === true
-      ? []
-      : [`${occurrence.occurrenceId}: SIGNAL_CONFIRMED candidate did not reach its stored confirmation threshold.`];
+  const candidateInvariantViolations = tradeCandidates.flatMap((candidate) => {
+    const violations: string[] = [];
+    const triggered = candidate.entryReachedThreshold === true;
+    const modeled = candidate.executionStatus === "MODELED_TRADE_CREATED";
+    const candidateTrades = authoritativeModeledTrades.filter((trade) => trade.candidateId === candidate.candidateId);
+    const exactLinkedTrades = candidateTrades.filter((trade) =>
+      trade.signalOccurrenceId === candidate.signalOccurrenceId);
+    if (triggered !== modeled) {
+      violations.push(
+        `${candidate.signalOccurrenceId}: entryReachedThreshold=${String(candidate.entryReachedThreshold)} does not match executionStatus=${candidate.executionStatus}.`,
+      );
+    }
+    if (triggered && exactLinkedTrades.length !== 1) {
+      violations.push(
+        `${candidate.signalOccurrenceId}: triggered candidate ${candidate.candidateId} has ${exactLinkedTrades.length} authoritative trades linked by candidateId and signalOccurrenceId; expected exactly one.`,
+      );
+    }
+    if (!triggered && candidateTrades.length > 0) {
+      violations.push(
+        `${candidate.signalOccurrenceId}: non-triggered candidate ${candidate.candidateId} has ${candidateTrades.length} authoritative modeled trades; expected none.`,
+      );
+    }
+    for (const trade of candidateTrades) {
+      if (trade.signalOccurrenceId !== candidate.signalOccurrenceId) {
+        violations.push(
+          `${candidate.signalOccurrenceId}: trade ${trade.id} has mismatched signalOccurrenceId ${trade.signalOccurrenceId ?? "missing"}.`,
+        );
+      }
+      if (trade.entryPrice !== candidate.confirmationPrice
+        || trade.audit?.modeledFillPrice !== candidate.confirmationPrice
+        || trade.audit?.entryTriggerPrice !== candidate.confirmationPrice) {
+        violations.push(
+          `${candidate.signalOccurrenceId}: trade ${trade.id} is not filled at candidate threshold ${candidate.confirmationPrice}.`,
+        );
+      }
+      if (trade.audit?.triggerCandleOpenTime !== candidate.eOpenTimestamp
+        || trade.audit?.modeledFillObservationTime !== candidate.entryObservationTimestamp
+        || trade.entryTime !== candidate.entryObservationTimestamp) {
+        violations.push(
+          `${candidate.signalOccurrenceId}: trade ${trade.id} does not preserve E-open identity and E-close fill observation.`,
+        );
+      }
+    }
+    return violations;
   });
   const armTransitionReferences = patience
     .filter((item) => item.eligibilityArmId && item.eligibilityArmState && item.eligibilityArmState !== "active")
@@ -2371,6 +2411,9 @@ export function buildHistoricalOccurrenceLedger(
          pOpenTimestamp,
          eOpenTimestamp,
          entryObservationTimestamp,
+         finalizedNtzHigh: record.finalizedNtzHigh ?? null,
+         finalizedNtzLow: record.finalizedNtzLow ?? null,
+         finalizedNtzComplete: record.finalizedNtzComplete ?? false,
          identityInvariantViolations,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
@@ -2525,6 +2568,24 @@ function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible:
   return { eligible: true };
 }
 
+function candidateNtzEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
+  const threshold = occurrence.confirmationThreshold;
+  if (
+    occurrence.finalizedNtzComplete !== true
+    || typeof occurrence.finalizedNtzHigh !== "number"
+    || typeof occurrence.finalizedNtzLow !== "number"
+    || threshold === null
+  ) return { eligible: true };
+  const low = Math.min(occurrence.finalizedNtzLow, occurrence.finalizedNtzHigh);
+  const high = Math.max(occurrence.finalizedNtzLow, occurrence.finalizedNtzHigh);
+  return threshold >= low && threshold <= high
+    ? {
+      eligible: false,
+      reason: `REJECTED_INSIDE_NTZ: confirmation threshold ${threshold} is inside finalized NTZ ${low}-${high}.`,
+    }
+    : { eligible: true };
+}
+
 function historicalCandidateId(occurrence: HistoricalOccurrence): string {
   return occurrenceId([
     "historical-trade-candidate-v1",
@@ -2643,18 +2704,21 @@ export function projectHistoricalTradeCandidates(
       continue;
     }
     const edge = candidateEdgeEligibility(occurrence);
+    const ntz = candidateNtzEligibility(occurrence);
     const inWindow = candidateWindowEligible(occurrence);
     const identityValid = !(occurrence.identityInvariantViolations?.length);
-    if (!edge.eligible || !inWindow || !identityValid) {
+    if (!edge.eligible || !ntz.eligible || !inWindow || !identityValid) {
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: [
           ...(!edge.eligible ? ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"] : []),
-          ...(!inWindow ? ["OUTSIDE_PRIMARY_ENTRY_WINDOW"] : []),
+          ...(!ntz.eligible ? ["REJECTED_INSIDE_NTZ"] : []),
+          ...(!inWindow ? ["REJECTED_OUTSIDE_ENTRY_WINDOW"] : []),
           ...(!identityValid ? ["INVALID_CAUSAL_IDENTITY"] : []),
         ],
         details: [
           ...(edge.reason ? [edge.reason] : []),
+          ...(ntz.reason ? [ntz.reason] : []),
           ...(!inWindow ? ["Entry confirmation is observed outside the exclusive 9:30 a.m.–1:00 p.m. America/New_York entry window."] : []),
           ...(!identityValid ? occurrence.identityInvariantViolations : []),
         ],
@@ -2749,15 +2813,30 @@ export function projectHistoricalTradeCandidates(
       entryHigh: numericCandleValue(occurrenceForExecution.entryCandle, "high"),
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
       entryReachedThreshold: entryDisposition.reached,
-      executionStatus: firstTrade && entryDisposition.status === "MODELED_TRADE_CREATED"
-        ? "MODELED_TRADE_CREATED"
-        : entryDisposition.status,
+      executionStatus: entryDisposition.status,
       managementContext: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade),
     });
   }
   const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
   const authoritativeTrades: BacktestTrade[] = [];
   const orphans: OrphanModeledTrade[] = [];
+  for (const occurrence of signalByPhysicalIdentity.values()) {
+    const candidateId = historicalCandidateId(occurrence);
+    const candidate = candidateById.get(candidateId);
+    if (!candidate || candidate.executionStatus !== "MODELED_TRADE_CREATED" || !executionContext) continue;
+    const datasetEntryCandle = executionContext.dataset.candles.find((candle) =>
+      candle.contractSymbol === occurrence.contractSymbol
+      && candle.openTime === Date.parse(occurrence.eOpenTimestamp!));
+    const candidateTrade = candidateDrivenEntryTrade(
+      occurrence.entryCandle || !datasetEntryCandle
+        ? occurrence
+        : { ...occurrence, entryCandle: occurrenceCandle(datasetEntryCandle) },
+      candidateId,
+      candidate,
+      executionContext,
+    );
+    if (candidateTrade) authoritativeTrades.push(candidateTrade);
+  }
   for (const trade of rawTrades) {
     const matchingCandidate = candidates.find((candidate) =>
       candidate.contractSymbol === trade.contractSymbol
@@ -2792,86 +2871,20 @@ export function projectHistoricalTradeCandidates(
       });
       continue;
     }
-    if (candidateById.has(matchingCandidate.candidateId)
-      && !authoritativeTrades.some((existing) => existing.candidateId === matchingCandidate.candidateId)) {
-      const matchingOccurrence = confirmed.find((occurrence) => occurrence.occurrenceId === matchingCandidate.signalOccurrenceId);
-      const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
-        candle.contractSymbol === matchingCandidate.contractSymbol
-        && candle.openTime === Date.parse(matchingCandidate.eOpenTimestamp),
-      );
-      const candidateExecution = executionContext
-        && ["historical_databento", "historical_databento_multicontract"].includes(executionContext.dataset.source ?? "")
-        && matchingOccurrence
-        ? candidateDrivenEntryTrade(
-          datasetEntryCandle && !matchingOccurrence.entryCandle
-            ? { ...matchingOccurrence, entryCandle: occurrenceCandle(datasetEntryCandle) }
-            : matchingOccurrence,
-          matchingCandidate.candidateId,
-          matchingCandidate,
-          executionContext,
-        )
-        : undefined;
+    if (!authoritativeTrades.some((existing) => existing.candidateId === matchingCandidate.candidateId)) {
       authoritativeTrades.push({
-        ...(candidateExecution ?? trade),
+        ...trade,
         signalOccurrenceId: matchingCandidate.signalOccurrenceId,
         candidateId: matchingCandidate.candidateId,
       });
-    } else if (candidateById.has(matchingCandidate.candidateId)) {
+    } else if (authoritativeTrades.some((existing) =>
+      existing.candidateId === matchingCandidate.candidateId
+      && existing.signalOccurrenceId !== matchingCandidate.signalOccurrenceId)) {
       orphans.push({
         tradeId: trade.id,
         matchingSignalOccurrenceId: matchingCandidate.signalOccurrenceId,
-        reason: `Duplicate legacy modeled trade for candidate ${matchingCandidate.candidateId}; only the first deterministic trade is authoritative.`,
+        reason: `Legacy modeled trade conflicts with the authoritative signal identity for candidate ${matchingCandidate.candidateId}.`,
       });
-    }
-  }
-  for (const occurrence of signalByPhysicalIdentity.values()) {
-    const candidateId = historicalCandidateId(occurrence);
-    if (authoritativeTrades.some((trade) => trade.candidateId === candidateId)) continue;
-    const linked = rawTrades.some((trade) =>
-      trade.contractSymbol === occurrence.contractSymbol
-      && trade.tradingDate === occurrence.tradingDate
-      && trade.direction === occurrence.direction
-      && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-       && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
-    );
-    if (!linked && executionContext) {
-      const candidateTrade = candidateDrivenEntryTrade(
-        occurrence,
-        candidateId,
-        candidates.find((item) => item.candidateId === candidateId)!,
-        executionContext,
-      );
-      const candidate = candidates.find((item) => item.candidateId === candidateId);
-      if (candidateTrade && candidate) {
-        authoritativeTrades.push(candidateTrade);
-        candidate.executionStatus = "MODELED_TRADE_CREATED";
-      }
-    }
-  }
-  if (executionContext) {
-    for (const occurrence of signalByPhysicalIdentity.values()) {
-      const candidateId = historicalCandidateId(occurrence);
-      if (authoritativeTrades.some((trade) => trade.candidateId === candidateId)) continue;
-      const linked = rawTrades.some((trade) =>
-        trade.contractSymbol === occurrence.contractSymbol
-        && trade.tradingDate === occurrence.tradingDate
-        && trade.direction === occurrence.direction
-        && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-         && trade.audit?.triggerCandleOpenTime === occurrence.eOpenTimestamp,
-      );
-      if (linked) continue;
-      const datasetEntryCandle = executionContext.dataset.candles.find((candle) =>
-        candle.contractSymbol === occurrence.contractSymbol
-         && candle.openTime === Date.parse(occurrence.eOpenTimestamp!));
-      const candidateTrade = candidateDrivenEntryTrade(
-        occurrence.entryCandle || !datasetEntryCandle
-          ? occurrence
-          : { ...occurrence, entryCandle: occurrenceCandle(datasetEntryCandle) },
-        candidateId,
-        candidates.find((item) => item.candidateId === candidateId)!,
-        executionContext,
-      );
-      if (candidateTrade) authoritativeTrades.push(candidateTrade);
     }
   }
   return { candidates, rejected, authoritativeTrades, orphans };

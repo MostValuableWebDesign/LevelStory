@@ -11,6 +11,7 @@ import {
   type BacktestTrade,
   type CausalReplayDataset,
   type HistoricalOccurrence,
+  type HistoricalTradeCandidate,
   buildQualificationFunnel,
   type QualificationFunnel,
   sourceFingerprint as datasetSourceFingerprint,
@@ -1002,10 +1003,19 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
 function matchingTradeForOccurrence(
   occurrence: HistoricalOccurrence,
   record: BacktestAuditRecord,
+  tradeCandidates: readonly HistoricalTradeCandidate[],
   trades: readonly BacktestTrade[],
 ): BacktestTrade | null {
-  if (!occurrence.patienceTimestamp || !occurrence.entryTimestamp) return null;
-  if (primaryEntryOpenIsLate(Date.parse(occurrence.entryTimestamp))) return null;
+  const candidate = tradeCandidates.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+  if (candidate) {
+    const exact = trades.filter((trade) =>
+      trade.candidateId === candidate.candidateId
+      && trade.signalOccurrenceId === occurrence.occurrenceId);
+    return exact.length === 1 ? exact[0]! : null;
+  }
+  const entryOpen = occurrence.eOpenTimestamp ?? occurrence.entryTimestamp;
+  if (!occurrence.patienceTimestamp || !entryOpen) return null;
+  if (primaryEntryOpenIsLate(Date.parse(entryOpen))) return null;
   const candidates = trades.filter((trade) =>
     trade.tradingDate === occurrence.tradingDate
     && trade.contractSymbol === occurrence.contractSymbol
@@ -1013,7 +1023,7 @@ function matchingTradeForOccurrence(
     && trade.direction === occurrence.direction
     && trade.period === record.period
     && trade.audit?.patienceCandleOpenTime === occurrence.patienceTimestamp
-    && trade.audit?.triggerCandleOpenTime === occurrence.entryTimestamp,
+    && trade.audit?.triggerCandleOpenTime === entryOpen,
   );
   return candidates.length === 1 ? candidates[0]! : null;
 }
@@ -1581,8 +1591,7 @@ function buildTradeEvents(
     ? evidenceTime(occurrence.entryCandle, "closeTime")
     : evidenceTime(audit.triggerCandle, "closeTime");
   if (occurrence && (
-    !occurrence.canonicalTrade
-    || !["SIGNAL_CONFIRMED", "TRADE_TAKEN", "TRADE_OUTCOME"].includes(occurrence.status) && occurrence.kind !== "trade"
+    !["SIGNAL_CONFIRMED", "TRADE_TAKEN", "TRADE_OUTCOME"].includes(occurrence.status) && occurrence.kind !== "trade"
     || entryOpen === null
     || patienceClose === null
     || entryOpen !== patienceClose
@@ -1592,10 +1601,29 @@ function buildTradeEvents(
     : Date.parse(trade.entryTime);
   const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
   const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
+  const authoritativeFill = trade.candidateId
+    && trade.signalOccurrenceId
+    && (!occurrence || trade.signalOccurrenceId === occurrence.occurrenceId)
+    && tradeAudit?.modeledFillPrice === trade.entryPrice
+    && tradeAudit?.entryTriggerPrice === trade.entryPrice
+    && tradeAudit?.triggerCandleOpenTime
+    && tradeAudit?.modeledFillObservationTime;
+  if (!authoritativeFill) return [];
   const events: VisualValidationTradeEvent[] = [
     tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, occurrence ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
-    tradeEvent("entry", "entry", "E", audit.direction, entryOpen, entryClose, occurrence?.confirmationThreshold ?? audit.entryTriggerPrice, occurrence ? evidenceNumber(occurrence.entryCandle, "close") : evidenceNumber(audit.triggerCandle, "close"), trade.contracts, "Immediate-next entry candle after P; no later candle can authorize entry.", evaluationCloseTime),
-    tradeEvent("fill", "fill", `FILL ${trade.entryPrice.toFixed(2)}`, trade.direction, fillTime, fillTime, audit.entryTriggerPrice, trade.entryPrice, trade.contracts, "Modeled shadow entry observation; no live order was created.", evaluationCloseTime),
+    tradeEvent(
+      "entry-fill",
+      "entry_fill",
+      `Entry + fill ${trade.entryPrice.toFixed(2)}`,
+      trade.direction,
+      entryOpen,
+      entryClose ?? fillTime,
+      tradeAudit.entryTriggerPrice,
+      trade.entryPrice,
+      trade.contracts,
+      `Candidate ${trade.candidateId} filled once at the immediate E threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`,
+      evaluationCloseTime,
+    ),
   ];
   if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
     events.push(tradeEvent("stop", "stop", "STOP", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.exitPrice, trade.contracts, `${trade.outcome} exit.`, evaluationCloseTime));
@@ -1984,7 +2012,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   request: VisualValidationRequest,
   dataset: CausalReplayDataset,
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
-    & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences">>,
+    & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -2003,9 +2031,12 @@ export function buildHistoricalVisualValidationSetFromReport(
           ? "rejected_setup"
           : "qualified_trade";
     if (!category) return [];
-    const trade = occurrence.canonicalTrade
-      ? matchingTradeForOccurrence(occurrence, audit, report.trades) ?? matchingTrade(audit, report.trades)
-      : null;
+    const candidate = report.tradeCandidates?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+    const trade = candidate
+      ? matchingTradeForOccurrence(occurrence, audit, report.tradeCandidates ?? [], report.trades)
+      : occurrence.canonicalTrade
+        ? matchingTradeForOccurrence(occurrence, audit, [], report.trades) ?? matchingTrade(audit, report.trades)
+        : null;
     if (category === "qualified_trade" && !hasConfirmedTradeOccurrence(occurrence)) return [];
     const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
     if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED") {
