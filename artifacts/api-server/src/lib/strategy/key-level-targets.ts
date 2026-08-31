@@ -12,6 +12,8 @@ export type KeyLevelTargetInput = {
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
+  /** The audit cursor that first supplied this completed-E snapshot, when known. */
+  sourceAuditCursor?: string;
   sourceAuditId: string;
   eOpenTimestamp: string | null;
   eCloseTimestamp: string | null;
