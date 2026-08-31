@@ -1,0 +1,115 @@
+Implement a focused LevelStory strategy correction for NTZ entry eligibility and “Dynamite Level” confluence. Keep this compute-conscious: run focused tests and typechecks only. Do not rebuild the historical index or run a broad replay.
+
+1. Mandatory outside-NTZ entry rule
+
+Add this as authoritative strategy knowledge and durable project memory:
+
+“No entry may be taken inside or on the boundary of the finalized NTZ/ORB range.”
+
+The NTZ and ORB are the same finalized range: the high and low of the first three completed five-minute regular-session candles from 9:30–9:45 a.m. ET.
+
+For every edge and every authoritative trade candidate:
+
+- Long entry confirmation price must be strictly greater than NTZ/ORB high.
+- Short entry confirmation price must be strictly less than NTZ/ORB low.
+- Equality with either boundary is not outside and must not qualify.
+- The completed E candle must reach both:
+  - The P-candle confirmation threshold, and
+  - A price strictly outside the finalized NTZ in the trade direction.
+- Use the later/more restrictive threshold when these differ.
+- The modeled entry price must never be inside the NTZ.
+- Entries remain prohibited at or after 1:00 p.m. ET.
+- Do not fabricate a breakout or infer one from future candles.
+
+Apply this rule to all entry-producing edges:
+
+- ORB break–pullback–patience continuation
+- Patience candle continuation
+- Strong breakout after consolidation
+- Equivalent-candle reversal
+
+A patience shape, pullback, consolidation, or reversal may still be recorded diagnostically inside the NTZ, but it cannot become an eligible trade candidate until its immediate E candle confirms outside the NTZ.
+
+Add an explicit rejection/status reason such as:
+
+ENTRY_NOT_OUTSIDE_FINALIZED_NTZ
+
+Preserve immediate P→E behavior:
+
+- Only the immediately following completed candle may confirm P.
+- If E fails, P expires.
+- Continue scanning for a later P2 followed by its own immediate E2.
+
+2. Dynamite Level confluence
+
+Add a governed setting:
+
+dynamiteLevelToleranceTicks = 8
+
+For MES:
+
+- 8 ticks = 2.00 points.
+- A Dynamite Level exists when at least two distinct, causally available level families fall inside one cluster whose total maximum-to-minimum width is no greater than eight ticks.
+- Use deterministic clustering and MES tick rounding.
+
+Eligible level families may include:
+
+- ORB/NTZ boundary
+- Premarket high/low
+- Previous trading-day high/low
+- Two-trading-days-ago high/low
+- Causal VWAP value at the evaluated candle
+- Causal 200 EMA value at the evaluated candle
+- Confirmed support/resistance zone
+- Valid causal Fibonacci retracement level
+
+Do not inflate confluence by counting aliases or duplicated sources:
+
+- ORB high and NTZ high are one level family/value, not two.
+- ORB low and NTZ low are one level family/value.
+- “Critical premarket high” and “premarket high” must not count twice if they are the same underlying level.
+- Repeated audit references must not create additional confluences.
+
+Persist for each Dynamite Level:
+
+- Deterministic cluster ID
+- Lower and upper price boundaries
+- Representative price
+- Included level IDs, types, values, and source families
+- Number of distinct confluences
+- Causal observation timestamp
+- Whether the trade’s pullback interacted with the cluster
+
+A Dynamite Level is:
+
+- A stronger qualifying level/confluence
+- Supporting evidence that increases the candidate grade
+- Not a separate strategy or automatic entry
+- Never a replacement for a valid P→immediate-E sequence
+- Never permission to enter inside the NTZ
+
+Display Dynamite Levels in royal blue on the chart:
+
+- Use a royal-blue line or narrow shaded zone.
+- Suggested color: #4169E1.
+- Label it “Dynamite · N confluences” with its price or price range.
+- Keep individual constituent levels available in details, but avoid unreadable duplicate lines and labels.
+
+3. Tests
+
+Add focused deterministic tests proving:
+
+- Long entry at or below NTZ high is rejected.
+- Short entry at or above NTZ low is rejected.
+- Entry exactly on a boundary is rejected.
+- A valid immediate E outside the NTZ qualifies.
+- A failed E expires P and a later P2/E2 can qualify.
+- No entry at or after 1:00 p.m. ET.
+- Two distinct level families within eight ticks form one Dynamite Level.
+- Levels more than eight ticks apart do not.
+- ORB and NTZ aliases do not double-count.
+- Repeated audit references do not double-count.
+- Dynamite evidence increases grade but does not create a separate trade.
+- One physical P→E signal still creates at most one candidate and one Shadow Mode trade.
+
+Report changed files, rule keys, focused test totals, and typecheck results. Do not run a full historical replay unless an existing warm cache makes it inexpensive.
