@@ -5,7 +5,6 @@ import {
 } from "./market-data.js";
 import {
   visibleReplayPrefix,
-  runCausalBacktest,
   type BacktestAuditRecord,
   type BacktestReport,
   type BacktestTrade,
@@ -16,15 +15,11 @@ import {
   type QualificationFunnel,
   sourceFingerprint as datasetSourceFingerprint,
 } from "./phase9.js";
+import { buildHistoricalVisualValidationSetInWorker } from "./visual-validation-worker-client.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { APPLICATION_BUILD_ID } from "./build-metadata.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
-import {
-  getReadyHistoricalMultiContractIndex,
-  multiContractImportToReplayDataset,
-  MULTI_CONTRACT_SOURCE,
-} from "./futures/multi-contract-replay.js";
 import {
   classifyFuturesSession,
   sessionCalendarForContract,
@@ -2010,34 +2005,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
 export async function buildHistoricalVisualValidationSet(
   request: VisualValidationRequest,
 ): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> {
-  if (request.symbol !== "MES") {
-    throw new Error("Historical Databento visual review supports MES only.");
-  }
-  const imported = await getReadyHistoricalMultiContractIndex();
-  if (!imported) {
-    throw new Error("Historical Databento visual review is unavailable because the ready multi-contract index was not found. Load the existing historical index before generating a review set.");
-  }
-  const firstEligibleDate = imported.summary.eligibleTradingDates[0];
-  if (!firstEligibleDate) {
-    throw new Error("Historical Databento visual review is unavailable because the ready index contains no eligible MES trading dates.");
-  }
-  const dataset = multiContractImportToReplayDataset(
-    imported,
-    firstEligibleDate,
-    request.endDate,
-    request.inSampleDays,
-    request.outOfSampleDays,
-  );
-  const report = runCausalBacktest({
-    symbol: request.symbol,
-    endDate: request.endDate,
-    inSampleDays: request.inSampleDays,
-    outOfSampleDays: request.outOfSampleDays,
-    premarketAvailable: request.premarketAvailable,
-    source: MULTI_CONTRACT_SOURCE,
-    executionMode: "ohlcv_modeled",
-  }, undefined, dataset);
-  return buildHistoricalVisualValidationSetFromReport(request, dataset, report);
+  return buildHistoricalVisualValidationSetInWorker(request, 300_000);
 }
 
 export function buildHistoricalVisualValidationSetFromReport(

@@ -47,6 +47,7 @@ const historicalGenerationInFlight = new Map<
   string,
   ReturnType<typeof buildHistoricalVisualValidationSet>
 >();
+let historicalGenerationTail = Promise.resolve();
 
 function historicalGenerationKey(request: VisualValidationRequest): string {
   return JSON.stringify({
@@ -66,7 +67,19 @@ function buildHistoricalVisualValidationSetOnce(
   const existing = historicalGenerationInFlight.get(key);
   if (existing) return existing;
 
-  const promise = buildHistoricalVisualValidationSet(request);
+  const promise = (async () => {
+    const previous = historicalGenerationTail;
+    let release!: () => void;
+    historicalGenerationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await buildHistoricalVisualValidationSet(request);
+    } finally {
+      release();
+    }
+  })();
   historicalGenerationInFlight.set(key, promise);
   void promise.then(
     () => {

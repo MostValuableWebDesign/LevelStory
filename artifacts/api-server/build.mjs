@@ -31,6 +31,7 @@ async function buildAll() {
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/lib/backtest-worker.ts"),
+      path.resolve(artifactDir, "src/lib/visual-validation-worker.ts"),
       path.resolve(artifactDir, "src/lib/futures/multi-contract-index-worker.ts"),
     ],
     platform: "node",
