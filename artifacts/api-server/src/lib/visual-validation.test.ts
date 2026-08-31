@@ -28,6 +28,7 @@ import { analyzePullback, type BreakoutEvent } from "./strategy/phase4.js";
 import { strategyConfig } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import type { Candle } from "./strategy/types.js";
+import { buildKeyLevelTargetPlan } from "./strategy/key-level-targets.js";
 
 const request: VisualValidationRequest = {
   symbol: "MES",
@@ -377,10 +378,16 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   const expired = occurrence("occ-353fe4fc714e747e8280", p1, failedImmediate, false);
   const confirmed = occurrence("occ-91377c979c13164ac403", p2, e2, true);
   const candidateId = "candidate-confirmed-p2";
+  const candidateTargetPlan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: confirmed.confirmationThreshold!,
+    levels: [{ id: "candidate-resistance", type: "major resistance", price: 7000 }],
+  });
   const linkedTrade: BacktestTrade = {
     ...fixture.trade,
     candidateId,
     signalOccurrenceId: confirmed.occurrenceId,
+    targetPlan: candidateTargetPlan,
     entryPrice: confirmed.confirmationThreshold!,
     entryTime: confirmed.entryObservationTimestamp!,
     audit: {
@@ -392,6 +399,8 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
       triggerCandleOpenTime: confirmed.eOpenTimestamp,
       triggerCandleCloseTime: new Date(e2.closeTime).toISOString(),
       modeledFillObservationTime: confirmed.entryObservationTimestamp,
+      targetPrice: 130,
+      targetPlan: candidateTargetPlan,
     },
   };
   const report = {
@@ -439,6 +448,8 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
       entryLow: typeof confirmed.entryCandle?.low === "number" ? confirmed.entryCandle.low : null,
       entryReachedThreshold: true,
       executionStatus: "MODELED_TRADE_CREATED" as const,
+      targetPlan: candidateTargetPlan,
+      targetDisposition: "KEY_LEVEL_SELECTED" as const,
     }],
   };
   const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, report);
@@ -451,6 +462,9 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   assert.equal(tradePatience[0]?.machineEvidence.trade?.candidateId, candidateId);
   assert.equal(tradePatience[0]?.machineEvidence.trade?.signalOccurrenceId, confirmed.occurrenceId);
   assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "patience")?.closeTime, confirmed.entryTimestamp);
+  assert.equal(tradePatience[0]?.annotations.find((annotation) => annotation.id === "target")?.price, candidateTargetPlan.targetPrice);
+  assert.match(tradePatience[0]?.annotations.find((annotation) => annotation.id === "selected-target-level")?.label ?? "", /candidate-resistance/);
+  assert.equal(tradePatience[0]?.annotations.find((annotation) => annotation.id === "target-hit")?.price, candidateTargetPlan.targetPrice);
 
   const diagnostics = buildHistoricalVisualValidationSetFromReport(
     { ...request, reviewMode: "trades_and_diagnostics" },

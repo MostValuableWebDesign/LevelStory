@@ -10,6 +10,17 @@ export type KeyLevelTargetInput = {
   rangeHigh?: number | null;
 };
 
+export type TargetLevelSnapshot = {
+  frozenAt: string;
+  sourceAuditId: string;
+  eOpenTimestamp: string | null;
+  eCloseTimestamp: string | null;
+  sourceFingerprint: string;
+  formulaHash: string;
+  configurationHash: string;
+  frozenLevelInputs: readonly KeyLevelTargetInput[];
+};
+
 export type FrozenTargetLevel = {
   id: string;
   type: string;
@@ -26,6 +37,7 @@ export type SkippedTargetLevel = FrozenTargetLevel & {
 
 export type KeyLevelTargetPlan = {
   placementMode: ProfitTargetPlacement;
+  disposition: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL";
   entryPrice: number;
   direction: Direction;
   tickSize: number;
@@ -36,7 +48,53 @@ export type KeyLevelTargetPlan = {
   selectedTargetLevel: FrozenTargetLevel | null;
   subsequentTargetLevels: FrozenTargetLevel[];
   targetPrice: number | null;
+  targetLevelSnapshot?: TargetLevelSnapshot;
 };
+
+function normalizedLevelText(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+}
+
+/**
+ * Target selection is deliberately narrower than the set of levels used by
+ * qualification. Management artifacts and generic critical aliases are not
+ * valid profit-target inputs even when they carry a finite price.
+ */
+export function isEligibleKeyLevelInput(level: KeyLevelTargetInput): boolean {
+  if (!level.id.trim() || !level.type.trim()) return false;
+  const id = normalizedLevelText(level.id);
+  const type = normalizedLevelText(level.type);
+  const text = `${id} ${type}`;
+  if (/\b(?:fib|fibonacci)\b/.test(text)) return false;
+  if (/\bcritical\b/.test(text)) return false;
+  if (/\bprevious day close\b|\bprior day close\b|\bprevious session close\b|\bprior session close\b/.test(text)) return false;
+  if (/\b(?:entry buffer|confirmation buffer|stop|runner|target|management)\b/.test(text)) return false;
+  if (/\b(?:vwap)\b/.test(text)) return true;
+  if (/\b(?:ema ?200|200 ema)\b/.test(text)) return true;
+  if (/\b(?:dynamite)\b/.test(text)) return true;
+  if (/\b(?:major|support|resistance)\b/.test(text) && !/\bcritical\b/.test(text)) return true;
+  if (/\b(?:orb|opening range)\b/.test(text)) return true;
+  if (/\b(?:ntz|no trade zone)\b/.test(text)) return true;
+  if (/\b(?:premarket|pre market)\b/.test(text)) return true;
+  if (/\b(?:previous|prior)(?: (?:day|session))?\b/.test(text) && /\b(?:high|low)\b/.test(text)) return true;
+  if (/\b(?:two days ago|two sessions ago|day before yesterday)\b/.test(text)
+    && /\b(?:high|low)\b/.test(text)) return true;
+  return false;
+}
+
+export function filterEligibleKeyLevelInputs(
+  levels: readonly KeyLevelTargetInput[],
+): KeyLevelTargetInput[] {
+  return levels
+    .filter(isEligibleKeyLevelInput)
+    .map((level) => ({
+      id: level.id,
+      type: level.type,
+      ...(typeof level.price === "number" ? { price: level.price } : {}),
+      ...(typeof level.rangeLow === "number" ? { rangeLow: level.rangeLow } : {}),
+      ...(typeof level.rangeHigh === "number" ? { rangeHigh: level.rangeHigh } : {}),
+    }));
+}
 
 function priceForLevel(level: KeyLevelTargetInput): number | null {
   const low = typeof level.rangeLow === "number" ? level.rangeLow : null;
@@ -51,7 +109,7 @@ function normalizePrice(price: number, tickSize: number): number {
 
 function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): FrozenTargetLevel[] {
   const merged = new Map<string, FrozenTargetLevel>();
-  for (const level of levels) {
+  for (const level of filterEligibleKeyLevelInputs(levels)) {
     const low = typeof level.rangeLow === "number" ? Math.min(level.rangeLow, level.rangeHigh ?? level.rangeLow) : null;
     const high = typeof level.rangeHigh === "number" ? Math.max(level.rangeHigh, level.rangeLow ?? level.rangeHigh) : null;
     const price = priceForLevel(level);
@@ -125,6 +183,7 @@ export function buildKeyLevelTargetPlan(input: {
       );
   return {
     placementMode,
+    disposition: selectedTargetLevel === null ? "NO_ELIGIBLE_KEY_LEVEL" : "KEY_LEVEL_SELECTED",
     entryPrice: normalizePrice(input.entryPrice, tickSize),
     direction: input.direction,
     tickSize,

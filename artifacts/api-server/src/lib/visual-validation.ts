@@ -1475,7 +1475,11 @@ function buildAnnotations(
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
   addLevel("strategy-stop", "Strategy stop", audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice, "Formula-defined thesis stop.", "negative");
-  const targetPlan = trade?.targetPlan ?? audit.targetPlan;
+  // Candidate-owned plans are authoritative. Audit target fields are legacy
+  // evidence and may only be used for a non-candidate legacy visualization.
+  const targetPlan = trade?.targetPlan ?? occurrence?.management?.targetPlan ?? (
+    trade?.candidateId ? undefined : audit.targetPlan
+  );
   if (targetPlan?.selectedTargetLevel) {
     const selected = targetPlan.selectedTargetLevel;
     addLevel(
@@ -1500,13 +1504,18 @@ function buildAnnotations(
       );
     }
   }
+  const targetPrice = trade?.candidateId
+    ? trade.targetPlan?.targetPrice ?? null
+    : targetPlan?.targetPrice ?? null;
   addLevel(
     "target",
-    "Target",
-    trade ? audit.targetPrice ?? trade.audit?.targetPrice ?? targetPlan?.targetPrice ?? null : null,
+    targetPrice === null && targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL"
+      ? "No eligible key-level target"
+      : "Target",
+    targetPrice,
     targetPlan?.selectedTargetLevel
       ? `${targetPlan.bufferTicks} ticks before ${targetPlan.selectedTargetLevel.id}.`
-      : "Modeled target.",
+      : "No eligible key-level target; candidate remains open and unscored.",
     "positive",
   );
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
@@ -1517,8 +1526,9 @@ function buildAnnotations(
   if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
     lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", audit.strategyStopPrice ?? trade?.audit?.strategyStopPrice ?? null, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
   }
-  if (eventLabels.has("TARGET_REACHED") || trade?.audit?.targetHit === true || trade?.outcome === "target") {
-    lines.push(annotation("target-hit", "Target hit", "candle", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "positive", "The modeled target was reached.", exitOpen, exitClose, eventVisibility(exitOpen)));
+  if (targetPrice !== null
+    && (eventLabels.has("TARGET_REACHED") || trade?.audit?.targetHit === true || trade?.outcome === "target")) {
+    lines.push(annotation("target-hit", "Target hit", "candle", targetPrice, "positive", "The candidate-owned key-level target was reached.", exitOpen, exitClose, eventVisibility(exitOpen)));
   }
   if (eventLabels.has("RUNNER_ACTIVATED") || trade?.audit?.runnerActivated === true) {
     lines.push(annotation("runner-activation", "Runner activation", "candle", trade?.audit?.runnerReferencePrice ?? null, "positive", "The target leg completed and the runner became active.", exitOpen, exitClose, eventVisibility(exitOpen)));

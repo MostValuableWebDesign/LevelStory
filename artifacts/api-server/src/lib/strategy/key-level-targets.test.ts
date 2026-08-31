@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildKeyLevelTargetPlan } from "./key-level-targets.js";
+import {
+  buildKeyLevelTargetPlan,
+  filterEligibleKeyLevelInputs,
+} from "./key-level-targets.js";
 
 test("long key-level targets bypass nearby and behind levels", () => {
   const plan = buildKeyLevelTargetPlan({
@@ -63,4 +66,37 @@ test("exact-level placement is an explicit comparison mode", () => {
   assert.equal(plan.targetPrice, 108);
   assert.equal(plan.bufferTicks, 12);
   assert.equal(plan.bufferPoints, 3);
+});
+
+test("allowlist excludes Fibonacci, close, critical, and management artifacts", () => {
+  const filtered = filterEligibleKeyLevelInputs([
+    { id: "fib-618", type: "Fibonacci", price: 105 },
+    { id: "critical-fib", type: "Critical · Fib", price: 106 },
+    { id: "previous-day-close", type: "PREVIOUS_DAY", price: 107 },
+    { id: "entry-buffer", type: "confirmation buffer", price: 108 },
+    { id: "strategy-stop", type: "stop", price: 95 },
+    { id: "runner-threshold", type: "runner", price: 110 },
+    { id: "generic-critical", type: "critical", price: 111 },
+    { id: "major-resistance", type: "major resistance", price: 115 },
+  ]);
+  assert.deepEqual(filtered.map((level) => level.id), ["major-resistance"]);
+  assert.equal(buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [
+      { id: "fib-618", type: "Fibonacci", price: 115 },
+      { id: "major-resistance", type: "major resistance", price: 115 },
+    ],
+  }).selectedTargetLevel?.id, "major-resistance");
+});
+
+test("a plan with no eligible level is explicit and cannot create a target", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [{ id: "previous-day-close", type: "PREVIOUS_DAY", price: 120 }],
+  });
+  assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
+  assert.equal(plan.selectedTargetLevel, null);
+  assert.equal(plan.targetPrice, null);
 });

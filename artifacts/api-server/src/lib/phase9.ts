@@ -35,8 +35,10 @@ import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
 import {
   buildKeyLevelTargetPlan,
+  filterEligibleKeyLevelInputs,
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
+  type TargetLevelSnapshot,
 } from "./strategy/key-level-targets.js";
 
 export type ReplayCursor = {
@@ -481,6 +483,7 @@ export type HistoricalTradeCandidate = {
   entryReachedThreshold: boolean | null;
   strategyStopPrice?: number | null;
   targetPlan?: KeyLevelTargetPlan;
+  targetDisposition?: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL";
   managementContext?: CandidateManagementContext;
 };
 
@@ -788,6 +791,7 @@ export type HistoricalOccurrence = {
     sourceAuditId: string;
     missingEvidenceReasons: string[];
   };
+  targetLevelSnapshot?: TargetLevelSnapshot;
   /** Causal evidence copied from the source audit; labels are intentionally excluded. */
   causalEvidence?: {
     sourceAuditId: string;
@@ -1592,7 +1596,11 @@ function managementFromAudit(
   const close = sessionWindow(record.tradingDate, "regular", calendar)?.closeTime ?? null;
   const strategyStopPrice = trade?.audit?.strategyStopPrice ?? record.strategyStopPrice;
   const catastropheStopPrice = trade?.audit?.catastropheStopPrice ?? record.catastropheStopPrice;
-  const targetPrice = trade?.audit?.targetPrice ?? record.targetPrice;
+  const candidateTargetPlan = trade?.candidateId ? trade.targetPlan : undefined;
+  const targetPlan = candidateTargetPlan ?? record.targetPlan;
+  const targetPrice = candidateTargetPlan
+    ? candidateTargetPlan.targetPrice
+    : trade?.audit?.targetPrice ?? record.targetPrice;
   const contracts = trade?.contracts ?? record.contracts ?? null;
   const missingEvidenceReasons = [
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
@@ -1605,6 +1613,7 @@ function managementFromAudit(
     strategyStopPrice,
     catastropheStopPrice,
     targetPrice,
+    ...(targetPlan ? { targetPlan } : {}),
     contracts,
     runnerActivationPrice: targetPrice,
     runnerExitRule: targetPrice === null
@@ -1642,7 +1651,6 @@ function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[
   add("premarket-low", "PREMARKET", snapshot.levels.premarketLow);
   add("previous-day-high", "PREVIOUS_DAY", snapshot.levels.previousDayHigh);
   add("previous-day-low", "PREVIOUS_DAY", snapshot.levels.previousDayLow);
-  add("previous-day-close", "PREVIOUS_DAY", snapshot.levels.previousDayClose);
   add("two-days-ago-high", "TWO_DAYS_AGO", snapshot.levels.dayBeforeYesterdayHigh);
   add("two-days-ago-low", "TWO_DAYS_AGO", snapshot.levels.dayBeforeYesterdayLow);
   add("orb-high", "ORB", snapshot.levels.openingRangeHigh);
@@ -1651,7 +1659,6 @@ function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[
   add("ntz-low", "NTZ", snapshot.levels.ntzLow);
   add("vwap", "VWAP", snapshot.indicators.vwap);
   add("ema-200", "EMA200", snapshot.indicators.ema200);
-  for (const level of snapshot.levels.critical) add(`critical-${level.name}`, level.kind, level.price);
   for (const level of snapshot.majorLevels) {
     levels.push({
       id: `major-${level.name}`,
@@ -1670,7 +1677,67 @@ function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[
       rangeHigh: level.upper,
     });
   }
-  return levels;
+  return filterEligibleKeyLevelInputs(levels);
+}
+
+function targetLevelSnapshotForOccurrence(
+  occurrence: Pick<
+    HistoricalOccurrence,
+    | "auditId"
+    | "eOpenTimestamp"
+    | "entryObservationTimestamp"
+    | "sourceFingerprint"
+    | "formulaHash"
+    | "evaluationCursor"
+  >,
+  levels: readonly KeyLevelTargetInput[],
+): TargetLevelSnapshot {
+  const frozenLevelInputs = filterEligibleKeyLevelInputs(levels).map((level) => ({ ...level }));
+  return Object.freeze({
+    frozenAt: occurrence.entryObservationTimestamp ?? occurrence.evaluationCursor,
+    sourceAuditId: occurrence.auditId,
+    eOpenTimestamp: occurrence.eOpenTimestamp,
+    eCloseTimestamp: occurrence.entryObservationTimestamp,
+    sourceFingerprint: occurrence.sourceFingerprint,
+    formulaHash: occurrence.formulaHash,
+    configurationHash: activeShadowStrategySnapshot().formulaHash,
+    frozenLevelInputs: Object.freeze(frozenLevelInputs),
+  });
+}
+
+function targetLevelSnapshotForAudit(
+  record: BacktestAuditRecord,
+  sourceFingerprint: string,
+  formulaHash: string,
+  eOpenTimestamp: string | null,
+  eCloseTimestamp: string | null,
+): TargetLevelSnapshot {
+  return Object.freeze({
+    // The audit cursor is the causal snapshot boundary. E close remains
+    // separately recorded as the completed observation timestamp.
+    frozenAt: record.evaluatedCandleOpenTime,
+    sourceAuditId: record.id,
+    eOpenTimestamp,
+    eCloseTimestamp,
+    sourceFingerprint,
+    formulaHash,
+    configurationHash: activeShadowStrategySnapshot().formulaHash,
+    frozenLevelInputs: Object.freeze(filterEligibleKeyLevelInputs(record.targetLevelInputs ?? []).map((level) => ({ ...level }))),
+  });
+}
+
+function preferredTargetLevelSnapshot(
+  snapshots: readonly (TargetLevelSnapshot | undefined)[],
+  eOpenTimestamp: string | null,
+): TargetLevelSnapshot | undefined {
+  const available = snapshots.filter((snapshot): snapshot is TargetLevelSnapshot => snapshot !== undefined);
+  const exactE = available
+    .filter((snapshot) => snapshot.frozenAt === eOpenTimestamp)
+    .sort((left, right) => left.sourceAuditId.localeCompare(right.sourceAuditId))[0];
+  return exactE
+    ?? [...available].sort((left, right) =>
+      Date.parse(left.frozenAt) - Date.parse(right.frozenAt)
+      || left.sourceAuditId.localeCompare(right.sourceAuditId))[0];
 }
 
 function auditForEvaluation(
@@ -2210,6 +2277,10 @@ export function buildHistoricalOccurrenceLedger(
     const primaryByEvidence = existing.kind === "patience" && value.kind === "patience"
       ? compareEvidence(existing, value)
       : primaryByEdge;
+    const selectedTargetSnapshot = preferredTargetLevelSnapshot(
+      [existing.targetLevelSnapshot, value.targetLevelSnapshot],
+      primaryByEvidence.eOpenTimestamp,
+    );
     const matches = [...new Set([
       existing.strategyCandidate,
       value.strategyCandidate,
@@ -2231,13 +2302,14 @@ export function buildHistoricalOccurrenceLedger(
       ])].sort(),
       levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...value.levelIdentifiers])].sort(),
       levelValues: { ...value.levelValues, ...existing.levelValues },
-      targetLevelInputs: [...new Map([
-        ...(existing.targetLevelInputs ?? []),
-        ...(value.targetLevelInputs ?? []),
-      ].map((level) => [
-        `${level.id}|${level.type}|${level.price ?? ""}|${level.rangeLow ?? ""}|${level.rangeHigh ?? ""}`,
-        level,
-      ])).values()],
+      // Target inputs belong to the completed-E snapshot, not to the union of
+      // every diagnostic cursor that happens to share the physical P→E key.
+      targetLevelInputs: selectedTargetSnapshot
+        ? [...selectedTargetSnapshot.frozenLevelInputs]
+        : primaryByEvidence.targetLevelInputs
+          ? filterEligibleKeyLevelInputs(primaryByEvidence.targetLevelInputs)
+        : undefined,
+      targetLevelSnapshot: selectedTargetSnapshot,
       levelDistancesTicks: { ...value.levelDistancesTicks, ...existing.levelDistancesTicks },
       levelTolerancePoints: { ...value.levelTolerancePoints, ...existing.levelTolerancePoints },
       levelToleranceTicks: { ...value.levelToleranceTicks, ...existing.levelToleranceTicks },
@@ -2479,6 +2551,13 @@ export function buildHistoricalOccurrenceLedger(
         levelIdentifiers: linkedEvidence.identifiers,
         levelValues: linkedEvidence.values,
         targetLevelInputs: record.targetLevelInputs,
+         targetLevelSnapshot: targetLevelSnapshotForAudit(
+           record,
+           fingerprint,
+           formulaHash,
+           eOpenTimestamp,
+           entryObservationTimestamp,
+         ),
         levelDistancesTicks: linkedEvidence.distancesTicks,
         levelTolerancePoints: linkedEvidence.tolerancePoints,
         levelToleranceTicks: linkedEvidence.toleranceTicks,
@@ -2714,26 +2793,29 @@ function targetPlanForOccurrence(
   entryPrice: number | null,
 ): KeyLevelTargetPlan | null {
   if (entryPrice === null || !occurrence.direction) return null;
-  const levels: KeyLevelTargetInput[] = [
+  const snapshot = occurrence.targetLevelSnapshot ?? targetLevelSnapshotForOccurrence(occurrence, [
     ...(occurrence.targetLevelInputs ?? []),
     ...Object.entries(occurrence.levelValues)
-      .filter(([id]) => !/fib/i.test(id))
       .map(([id, price]) => ({ id, type: id, price })),
-  ]
-  if (typeof occurrence.finalizedNtzHigh === "number") {
-    levels.push({
-      id: "ntz",
-      type: "NTZ",
-      rangeLow: occurrence.finalizedNtzLow ?? occurrence.finalizedNtzHigh,
-      rangeHigh: occurrence.finalizedNtzHigh,
-    });
-  }
-  return buildKeyLevelTargetPlan({
+    ...(typeof occurrence.finalizedNtzHigh === "number"
+      ? [{
+        id: "ntz",
+        type: "NTZ",
+        rangeLow: occurrence.finalizedNtzLow ?? occurrence.finalizedNtzHigh,
+        rangeHigh: occurrence.finalizedNtzHigh,
+      }]
+      : []),
+  ]);
+  const plan = buildKeyLevelTargetPlan({
     direction: occurrence.direction,
     entryPrice,
-    levels,
+    levels: snapshot.frozenLevelInputs,
     placementMode: activeShadowStrategySnapshot().config.profitTargetPlacement,
   });
+  return {
+    ...plan,
+    targetLevelSnapshot: snapshot,
+  };
 }
 
 function freezeCandidateManagementContext(
@@ -2749,15 +2831,13 @@ function freezeCandidateManagementContext(
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
-  const targetPrice = targetPlan?.targetPrice
-    ?? management?.targetPrice
-    ?? linkedTrade?.audit?.targetPrice
-    ?? null;
+  const targetPrice = targetPlan?.targetPrice ?? null;
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
     ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
+    ...(targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" ? ["NO_ELIGIBLE_KEY_LEVEL"] : []),
     ...(targetPrice === null ? ["targetPrice"] : []),
     ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
@@ -2770,11 +2850,7 @@ function freezeCandidateManagementContext(
     stopBufferTicks: 8,
     tickSize: 0.25,
     derivedStrategyStop: strategyStopPrice,
-    targetPlan: targetPlan ?? buildKeyLevelTargetPlan({
-      direction: occurrence.direction!,
-      entryPrice: entryPrice ?? 0,
-      levels: [],
-    }),
+    targetPlan: targetPlan ?? undefined,
     frozenAt: occurrence.evaluationCursor,
     direction: occurrence.direction!,
     contracts: contracts ?? 0,
@@ -2783,7 +2859,7 @@ function freezeCandidateManagementContext(
     catastropheStopPrice,
     targetPrice,
     runnerActivationPrice: management?.runnerActivationPrice
-      ?? (management?.runnerExitRule ? targetPrice : null),
+      ?? (management?.runnerExitRule && targetPrice !== null ? targetPrice : null),
     runnerExitRule: management?.runnerExitRule ?? null,
     sessionCloseTime: management?.sessionCloseTime ?? null,
     sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
@@ -2871,8 +2947,16 @@ export function projectHistoricalTradeCandidates(
       signalByPhysicalIdentity.set(physicalIdentity, occurrence);
       continue;
     }
+    const selectedTargetSnapshot = preferredTargetLevelSnapshot(
+      [existing.targetLevelSnapshot, occurrence.targetLevelSnapshot],
+      existing.eOpenTimestamp,
+    );
     signalByPhysicalIdentity.set(physicalIdentity, {
       ...existing,
+      ...(selectedTargetSnapshot ? {
+        targetLevelSnapshot: selectedTargetSnapshot,
+        targetLevelInputs: [...selectedTargetSnapshot.frozenLevelInputs],
+      } : {}),
       levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...occurrence.levelIdentifiers])],
       levelValues: { ...occurrence.levelValues, ...existing.levelValues },
       levelDistancesTicks: { ...occurrence.levelDistancesTicks, ...existing.levelDistancesTicks },
@@ -2915,6 +2999,7 @@ export function projectHistoricalTradeCandidates(
     );
     const firstTrade = linked[0];
     const entryDisposition = candidateEntryDisposition(occurrenceForExecution);
+    const managementContext = freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade);
     for (const trade of linked) usedRawTradeIds.add(trade.id);
     candidates.push({
       candidateId,
@@ -2947,8 +3032,9 @@ export function projectHistoricalTradeCandidates(
       entryReachedThreshold: entryDisposition.reached,
       executionStatus: entryDisposition.status,
       strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
-      targetPlan: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade).targetPlan,
-      managementContext: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade),
+      targetPlan: managementContext.targetPlan,
+      targetDisposition: managementContext.targetPlan?.disposition ?? "NO_ELIGIBLE_KEY_LEVEL",
+      managementContext,
     });
   }
   const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
@@ -3006,19 +3092,19 @@ export function projectHistoricalTradeCandidates(
       continue;
     }
     if (!authoritativeTrades.some((existing) => existing.candidateId === matchingCandidate.candidateId)) {
-      authoritativeTrades.push({
-        ...trade,
-        signalOccurrenceId: matchingCandidate.signalOccurrenceId,
-        candidateId: matchingCandidate.candidateId,
+      // A legacy modeled trade is evidence for reconciliation only. It must
+      // never become authoritative when the candidate-owned execution was not
+      // produced, because its target and P/L may come from the old model.
+      orphans.push({
+        tradeId: trade.id,
+        matchingSignalOccurrenceId: matchingCandidate.signalOccurrenceId,
+        reason: matchingCandidate.targetDisposition === "NO_ELIGIBLE_KEY_LEVEL"
+          ? "NO_ELIGIBLE_KEY_LEVEL: legacy modeled trade cannot supply a target or outcome."
+          : "CANDIDATE_OWNED_EXECUTION_MISSING: legacy modeled trade cannot become authoritative.",
       });
     } else if (authoritativeTrades.some((existing) =>
       existing.candidateId === matchingCandidate.candidateId
       && existing.signalOccurrenceId !== matchingCandidate.signalOccurrenceId)) {
-      orphans.push({
-        tradeId: trade.id,
-        matchingSignalOccurrenceId: matchingCandidate.signalOccurrenceId,
-        reason: `Legacy modeled trade conflicts with the authoritative signal identity for candidate ${matchingCandidate.candidateId}.`,
-      });
     }
   }
   return { candidates, rejected, authoritativeTrades, orphans };
@@ -3052,12 +3138,8 @@ function candidateDrivenEntryTrade(
   if (!entryObservationTimestamp) return undefined;
   const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
-  const targetPlan = management.targetPlan ?? targetPlanForOccurrence(occurrence, entryPrice) ?? buildKeyLevelTargetPlan({
-    direction: occurrence.direction,
-    entryPrice,
-    levels: [],
-  });
-  const targetPrice = targetPlan.targetPrice ?? management.targetPrice;
+  const targetPlan = management.targetPlan;
+  const targetPrice = targetPlan?.targetPrice ?? null;
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
@@ -3070,7 +3152,8 @@ function candidateDrivenEntryTrade(
     management,
     entryObservationTimestamp,
   );
-  const missingContext = managementValidationReasons.length > 0;
+  const missingContext = managementValidationReasons.length > 0
+    || targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL";
   const sessionCloseCandle = !missingContext
     ? (() => {
       const calendar = sessionCalendarForContract(context.specification);
@@ -3191,7 +3274,9 @@ function candidateDrivenEntryTrade(
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
-        `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`,
+        targetPlan
+          ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
+          : "No eligible key-level target plan was available; the candidate remains open and unscored.",
         ...(missingContext
           ? [`Management context unavailable or invalid: ${[...new Set([
             ...management.missingEvidenceReasons,

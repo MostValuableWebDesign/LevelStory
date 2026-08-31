@@ -1335,6 +1335,11 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
       missingEvidenceReasons: [],
     },
   });
+  occurrence.targetLevelInputs = [{
+    id: "major-resistance",
+    type: "major resistance",
+    price: 105,
+  }];
   const result = projectHistoricalTradeCandidates(
     [occurrence],
     [],
@@ -1348,6 +1353,98 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
   assert.equal(result.authoritativeTrades[0]?.outcome, "target");
   assert.equal(result.authoritativeTrades[0]?.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
   assert.equal(result.authoritativeTrades[0]?.audit?.exitCandleOpenTime, occurrence.entryObservationTimestamp);
+});
+
+test("candidate target snapshot rejects legacy target fallback and stays open", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    entryHigh: 102,
+    management: {
+      strategyStopPrice: 97,
+      catastropheStopPrice: 96,
+      targetPrice: 125,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "legacy-target-audit",
+      missingEvidenceReasons: [],
+    },
+  });
+  occurrence.targetLevelInputs = [
+    { id: "fibonacci-618", type: "Fibonacci", price: 110 },
+    { id: "previous-day-close", type: "PREVIOUS_DAY", price: 115 },
+  ];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence, { high: 130, low: 101 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
+  assert.equal(candidate.targetPlan?.targetPrice, null);
+  assert.equal(candidate.managementContext?.missingEvidenceReasons.includes("NO_ELIGIBLE_KEY_LEVEL"), true);
+  assert.equal(trade.outcome, "open");
+  assert.equal(trade.exitPrice, null);
+  assert.equal(trade.netPnl, 0);
+  assert.equal(trade.audit?.targetPrice, null);
+  assert.equal(trade.audit?.targetHit, false);
+});
+
+test("completed-E target snapshots do not inherit later audit cursor levels", () => {
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    targetLevelInputs: [{ id: "first-resistance", type: "major resistance", price: 110 }],
+  });
+  const later = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "later-cursor-audit",
+    evaluatedCandleOpenTime: new Date(1_200_000).toISOString(),
+    targetLevelInputs: [{ id: "later-closer-resistance", type: "major resistance", price: 104.5 }],
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [later, first], [])
+    .find((item) => item.kind === "patience")!;
+  assert.equal(occurrence.targetLevelSnapshot?.sourceAuditId, first.id);
+  assert.equal(occurrence.targetLevelSnapshot?.frozenAt, new Date(900_000).toISOString());
+  assert.deepEqual(
+    occurrence.targetLevelSnapshot?.frozenLevelInputs.map((level) => level.id),
+    ["first-resistance"],
+  );
+});
+
+test("same-session confirmed occurrences freeze independent target plans", () => {
+  const first = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  const second = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:10:00.000Z",
+    eOpen: "2026-08-25T15:15:00.000Z",
+    eClose: "2026-08-25T15:20:00.000Z",
+  });
+  first.auditId = "first-audit";
+  second.auditId = "second-audit";
+  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 110 }];
+  second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 120 }];
+  const firstDataset = candidateProjectionDataset(first);
+  const secondDataset = candidateProjectionDataset(second);
+  const result = projectHistoricalTradeCandidates([first, second], [], {
+    dataset: {
+      ...firstDataset,
+      candles: [...firstDataset.candles, ...secondDataset.candles],
+    },
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 2);
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.targetPlan?.selectedTargetLevel?.id).sort(),
+    ["first-resistance", "second-resistance"],
+  );
+  assert.notEqual(result.candidates[0]?.targetPlan?.targetLevelSnapshot?.sourceAuditId,
+    result.candidates[1]?.targetPlan?.targetLevelSnapshot?.sourceAuditId);
 });
 
 test("ledger stores one pullback for repeated strategy references to the same level interaction", () => {
