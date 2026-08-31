@@ -1,0 +1,103 @@
+Paste this into Replit:
+
+```text
+Implement one narrow correctness pass for LevelStory’s deterministic key-level profit-target strategy.
+
+Do not redesign the strategy, chart, entry rules, pullback rules, eight-tick confirmation rule, eight-tick patience stop, historical index, broker behavior, or live/paper trading. Fix only the two remaining target-management defects below.
+
+1. Freeze targets from the completed E-candle snapshot
+
+The target snapshot must represent the causal market state available when the immediate entry candle E completed.
+
+Current defect:
+preferredTargetLevelSnapshot compares snapshot.frozenAt with eOpenTimestamp and may select the audit cursor where E has only opened and is still incomplete. Its earliest-snapshot fallback can also choose incomplete or pre-confirmation evidence.
+
+Required behavior:
+
+- Match snapshots using the canonical physical signal identity and `snapshot.eOpenTimestamp === occurrence.eOpenTimestamp`.
+- A target snapshot is eligible only when E is completed:
+  - `eCloseTimestamp` is finite and present.
+  - It corresponds to the canonical E candle’s close/entry-observation timestamp.
+  - The signal has reached `SIGNAL_CONFIRMED`.
+- Freeze exactly one snapshot at E close.
+- Prefer the earliest valid completed-E snapshot if several audits observed the same completed E.
+- Never use:
+  - A pre-E snapshot.
+  - An open/incomplete-E snapshot.
+  - A later audit cursor’s newly discovered levels.
+  - A union of target levels from multiple audit cursors.
+- Preserve the chosen snapshot through occurrence merging, candidate projection, execution, reporting, caching, and Visual Review.
+- Update `frozenAt` semantics so it truthfully represents the completed-E causal freeze time.
+- Preserve source audit ID, E open/close timestamps, source fingerprint, formula hash, configuration hash, and frozen eligible levels.
+
+Add deterministic tests proving:
+
+- An incomplete-E snapshot cannot win.
+- A valid completed-E snapshot replaces an earlier incomplete snapshot.
+- A later audit with a new closer level cannot change the frozen target.
+- Merged strategy audits for one physical P→E signal still produce one immutable target plan.
+- Repeated identical runs produce the same target snapshot and target price.
+
+2. A missing profit target must not disable separately governed exits
+
+Current defect:
+`NO_ELIGIBLE_KEY_LEVEL` is treated as missing management context, so `simulateOhlcvExecution` is skipped completely. This incorrectly disables the strategy stop and session-close exit.
+
+Required behavior:
+
+- Separate target availability from management-context validity.
+- If no eligible target exists:
+  - Set `target = null`.
+  - Set target disposition to `NO_ELIGIBLE_KEY_LEVEL`.
+  - Do not fabricate or fall back to a legacy target.
+  - Do not create target-exit evidence.
+- Continue running any independently valid management rules:
+  - The candidate-owned patience stop.
+  - The session-close exit.
+  - Any other separately governed exit already supported by the authoritative management context.
+- A trade may remain open/unscored only if no valid independent exit occurs in the available data.
+- Missing target evidence must not automatically mark all management evidence as missing.
+- Missing or invalid stop context must remain distinct from missing target context.
+- Preserve conservative OHLC ambiguity handling.
+
+Add deterministic tests for:
+
+- No target + stop hit → strategy-stop exit occurs.
+- No target + no stop hit + session close → session-close exit occurs.
+- No target + neither independent exit available → trade remains open/unscored.
+- No target never causes legacy-target fallback.
+- A valid target still behaves exactly as before.
+- Realized metrics include independently finalized no-target trades but exclude genuinely open trades.
+
+Visual Review
+
+Verify that Visual Review:
+
+- Displays the candidate-owned frozen target and target provenance.
+- Shows “No eligible key-level target” when appropriate.
+- Still displays the authoritative stop or session-close exit if one occurs.
+- Does not display a fabricated target or legacy target.
+- Displays entry, exit, realized P/L, and exit reason from the authoritative candidate-owned trade.
+
+Verification constraints
+
+Be compute-conscious:
+
+- Run only focused target-selector, occurrence-merge, candidate-management, OHLCV-execution, Phase 9, and Visual Review tests.
+- Run API and frontend typechecks.
+- Run `git diff --check`.
+- Do not rebuild the historical index.
+- Do not run a broad historical qualification batch.
+- Use one cached/preloaded replay smoke test only if available without rebuilding.
+- Do not add broker, live-order, or paper-order behavior.
+
+Report:
+
+1. Files changed.
+2. Root cause of each defect.
+3. Exact completed-E snapshot-selection policy.
+4. Exact no-target management behavior.
+5. Tests and typechecks run.
+6. Cached replay result if available.
+7. Any remaining honest limitations.
+```
