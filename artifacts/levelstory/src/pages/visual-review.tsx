@@ -751,16 +751,21 @@ export default function VisualReview() {
 }
 
 function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["funnelDiagnostics"]> }) {
+  const hiddenStageKeys = new Set([
+    "session_loaded",
+    "critical_level_interaction",
+    "fibonacci_context_available",
+    "volume_condition_passed",
+    "modeled_entry",
+    "final_exit",
+  ]);
   return <Panel>
     <PanelTitle eyebrow="Detection funnel / every causal occurrence" title="Where evidence was retained" right={<span className="mono text-[10px] text-muted-foreground">{data.occurrenceCount} ledger occurrences · {data.sessionCount} sessions</span>} />
-    <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="window-diagnostics">
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Primary window</div><div className="display mt-1 text-xl font-bold">{data.window.primaryWindowOccurrences}</div><div className="mono mt-1 text-[10px] text-muted-foreground">9:30 a.m.–1:00 p.m. ET</div></div>
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Outside window</div><div className="display mt-1 text-xl font-bold">{data.window.outsidePrimaryWindowOccurrences}</div><div className="mono mt-1 text-[10px] text-muted-foreground">retained as diagnostics</div></div>
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmed P→E</div><div className="display mt-1 text-xl font-bold">{data.window.confirmedPairs}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{data.window.expiredPatienceCandidates} expired candidates</div></div>
+    <div className="grid gap-px border-t border-border bg-border" data-testid="window-diagnostics">
       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Trades taken</div><div className="display mt-1 text-xl font-bold">{data.window.riskApprovedEntries}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{data.window.qualifyingPullbacks} qualifying pullbacks</div></div>
     </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="detection-funnel">
-      {data.stages.map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
+      {data.stages.filter((stage) => !hiddenStageKeys.has(stage.stage)).map((stage) => <div key={stage.stage} className="bg-card px-4 py-3">
         <div className="text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">{stage.stage.replaceAll("_", " ")}</div>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="display text-2xl font-bold">{stage.count}</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfPreceding}% of prior candidates</span><span className="mono text-[10px] text-muted-foreground">{stage.percentOfSessions}% of sessions</span></div>
       </div>)}
