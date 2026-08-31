@@ -198,6 +198,24 @@ test("configured confirmation and stop buffers are retained on every patience oc
   });
   assert.equal(result.occurrences?.[0]?.entryBufferTicks, 3);
   assert.equal(result.occurrences?.[0]?.stopBufferTicks, 1);
+  assert.equal(result.occurrences?.[0]?.patienceCandleExtreme, result.occurrences?.[0]?.patienceCandle.low);
+  assert.equal(result.occurrences?.[0]?.stopBufferPoints, 0.25);
+  assert.equal(result.occurrences?.[0]?.finalStopBoundary, 6.75);
+});
+
+test("governed default patience stops use twelve ticks on the P extreme", () => {
+  const long = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
+    eligibilityEvents: eligibility(),
+  }).occurrences?.[0];
+  const short = patienceCandleEngine(setup("short", candle(2, 10.8, 11.75, 10.1, 9.7)), "short", {
+    eligibilityEvents: eligibility(),
+  }).occurrences?.[0];
+  assert.equal(long?.stopBufferTicks, 12);
+  assert.equal(long?.stopBufferPoints, 3);
+  assert.equal(long?.finalStopBoundary, long ? Math.round((long.patienceCandle.low - 3) / 0.25) * 0.25 : undefined);
+  assert.equal(short?.stopBufferTicks, 12);
+  assert.equal(short?.stopBufferPoints, 3);
+  assert.equal(short?.finalStopBoundary, short ? Math.round((short.patienceCandle.high + 3) / 0.25) * 0.25 : undefined);
 });
 
 test("an active trigger candle does not need to close", () => {

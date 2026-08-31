@@ -69,6 +69,9 @@ export type PatienceOccurrence = {
   directionSource?: PatienceDirectionSource;
   entryBufferTicks: number;
   stopBufferTicks: number;
+  patienceCandleExtreme?: number;
+  stopBufferPoints?: number;
+  finalStopBoundary?: number;
   eligibilityReason: PatienceEligibilityReason;
   eligibilityTime: number;
   eligibilityEventId?: string | null;
@@ -163,7 +166,7 @@ export function patienceCandleEngine(
   const trend = options.trend ?? (direction === "long" ? "bullish" : "bearish");
   const tickSize = options.tickSize ?? 0.25;
   const entryBufferTicks = options.entryBufferTicks ?? 4;
-  const stopBufferTicks = options.stopBufferTicks ?? 1;
+  const stopBufferTicks = options.stopBufferTicks ?? 12;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
   const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
   const trendRequired = directionSource === "CONFIRMED_15M_TREND";
@@ -515,6 +518,12 @@ function buildPatienceOccurrences(
               ? candidate.candle.closeTime
               : candidate.candle.closeTime);
     const event = candidate.event!;
+    const patienceCandleExtreme = direction === "long" ? candidate.candle.low : candidate.candle.high;
+    const stopBufferPoints = stopBufferTicks * tickSize;
+    const finalStopBoundary = roundPrice(
+      direction === "long" ? patienceCandleExtreme - stopBufferPoints : patienceCandleExtreme + stopBufferPoints,
+      tickSize,
+    );
     const armId = candidate.armId ?? eligibilityArmId(event);
     const arm = armStates.get(armId) ?? { state: "active" as const, reason: "Eligibility context opened by the causal level interaction." };
     const provenance = {
@@ -532,6 +541,9 @@ function buildPatienceOccurrences(
         directionSource,
         entryBufferTicks,
         stopBufferTicks,
+        patienceCandleExtreme,
+        stopBufferPoints,
+        finalStopBoundary,
         eligibilityReason: event.reason,
         eligibilityTime: event.time,
         eligibilityEventId: event.eventId ?? null,
@@ -645,6 +657,9 @@ function buildPatienceOccurrences(
       directionSource,
       entryBufferTicks,
       stopBufferTicks,
+      patienceCandleExtreme,
+      stopBufferPoints,
+      finalStopBoundary,
       eligibilityReason: event.reason,
       eligibilityTime: event.time,
       eligibilityEventId: event.eventId ?? null,

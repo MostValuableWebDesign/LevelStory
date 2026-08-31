@@ -1,0 +1,73 @@
+Implement a governed Shadow Mode formula correction for ORB pullback entries and patience-candle stops.
+
+Do not change live or broker behavior. Do not rebuild the historical index or run a broad replay.
+
+A. Patience-candle stop range
+
+The stop is a buffered range, not the exact patience-candle extreme.
+
+For a long trade:
+
+strategy stop = patience candle low - 12 MES ticks
+
+For a short trade:
+
+strategy stop = patience candle high + 12 MES ticks
+
+MES tick size is 0.25, so the default 12-tick buffer equals 3.00 points.
+
+Requirements:
+
+- Add a governed setting named `patienceStopBufferTicks`.
+- Default it to 12 ticks.
+- Preserve the catastrophe stop as a separate control.
+- Freeze the calculated strategy stop when the candidate is created.
+- Do not move the original stop closer after entry.
+- Record:
+  - Patience-candle extreme.
+  - Buffer ticks and points.
+  - Final stop boundary.
+  - Direction.
+  - Source P candle and audit ID.
+- Bump the formula/configuration hash because this changes modeled outcomes.
+
+B. ORB break → pullback → patience → immediate entry
+
+A qualifying pullback may contain one or more completed five-minute candles.
+
+The patience candle may itself be the first and only pullback candle.
+
+Required causal sequence:
+
+1. Finalize the ORB/NTZ from the first three completed five-minute candles.
+2. Require a completed directional break outside the ORB.
+3. Begin a pullback sequence after the break.
+4. Allow the pullback sequence to contain one or more completed candles.
+5. Qualify when any pullback candle reaches or comes within the governed 12-tick tolerance of an allowed key level.
+6. That same candle may also qualify as P if it satisfies the patience-candle shape.
+7. Only the immediate next completed candle may act as E.
+8. Long: E must break above P high by the configured entry-confirmation buffer.
+9. Short: E must break below P low by the configured entry-confirmation buffer.
+10. If immediate E fails, expire P and continue scanning for a later P2→E2 pair.
+11. Never let a later candle confirm an expired P.
+12. Entry confirmation must complete before 1:00 p.m. ET.
+
+Do not require two or more pullback candles.
+
+Keep these governed settings distinct:
+
+- Pullback proximity: 12 ticks.
+- Entry confirmation: existing 3–4 tick setting.
+- Stop buffer: 12 ticks.
+
+Add deterministic tests for:
+
+- One-candle pullback where that candle is P.
+- Multi-candle pullback.
+- Immediate E confirms P.
+- Immediate E fails and P expires.
+- Later P2 is confirmed only by immediate E2.
+- Long and short 12-tick stops.
+- No entries at or after 1:00 p.m. ET.
+
+Run focused strategy tests, API typecheck, and git diff --check only. Do not perform a full historical replay yet.

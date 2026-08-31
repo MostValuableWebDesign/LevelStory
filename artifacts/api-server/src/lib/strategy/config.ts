@@ -128,7 +128,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   runnerTriggerR: 1.5,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: 4,
-  patienceStopBufferTicks: 1,
+  patienceStopBufferTicks: 12,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
   trendCandleCount: 8, // assumption: eight completed 15m candles

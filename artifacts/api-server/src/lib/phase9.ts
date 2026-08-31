@@ -241,6 +241,12 @@ export type BacktestAuditRecord = {
   triggerCandle: Record<string, number | boolean> | null;
   patienceCandleOpenTime: string | null;
   patienceCandleCloseTime: string | null;
+  patienceCandleExtreme?: number | null;
+  stopBufferTicks?: number | null;
+  stopBufferPoints?: number | null;
+  finalStrategyStopBoundary?: number | null;
+  stopDirection?: Direction | null;
+  stopSourceAuditId?: string | null;
   triggerCandleOpenTime: string | null;
   triggerCandleCloseTime: string | null;
   modeledFillObservationTime: string | null;
@@ -1599,6 +1605,18 @@ function auditForEvaluation(
     triggerCandle: evidenceCandle(snapshot.patience.triggerCandle as SimulatedFuturesCandle | null),
     patienceCandleOpenTime: snapshot.patience.patienceCandle?.openTime ?? null,
     patienceCandleCloseTime: snapshot.patience.patienceCandle?.closeTime ?? null,
+    patienceCandleExtreme: snapshot.patience.patienceCandle
+      ? evaluation.direction === "long"
+        ? snapshot.patience.patienceCandle.low
+        : snapshot.patience.patienceCandle.high
+      : null,
+    stopBufferTicks: snapshot.patience.stopBufferTicks,
+    stopBufferPoints: snapshot.patience.stopBufferTicks * getFuturesContractSpecification(
+      parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
+    ).tickSize,
+    finalStrategyStopBoundary: snapshot.patience.strategyStopPrice,
+    stopDirection: evaluation.direction ?? null,
+    stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     triggerCandleOpenTime: snapshot.patience.triggerCandle?.openTime ?? null,
     triggerCandleCloseTime: snapshot.patience.triggerCandle?.closeTime ?? null,
     modeledFillObservationTime: null,
