@@ -1,0 +1,219 @@
+Paste this into Replit:
+
+```text
+Implement one focused correctness pass for LevelStory’s deterministic key-level profit-target strategy.
+
+Do not broaden scope. Preserve Shadow Mode only. Do not rebuild the historical index, run a large qualification batch, connect a broker, or add live/paper trading.
+
+AUTHORITATIVE PROFIT-TARGET RULE
+
+For each independently confirmed trade:
+
+1. Freeze the available causal key levels at that trade’s completed entry candle E.
+2. Never merge target levels from later audit cursors or later candles into that trade.
+3. Search only in the trade direction:
+   - Long: levels or zones above entry.
+   - Short: levels or zones below entry.
+4. If entry is within 12 MES ticks, equal to 3.00 points, of the first level’s near-side boundary, skip that level and inspect the next level.
+5. Default target:
+   - Long: 12 ticks below the selected level’s lower/near-side boundary.
+   - Short: 12 ticks above the selected level’s upper/near-side boundary.
+6. Preserve the explicit exact-level placement mode for comparison.
+7. Each trade must own its immutable target plan. A later trade must independently freeze and select its own levels and target.
+
+ELIGIBLE TARGET LEVELS
+
+Allow only:
+
+- ORB/NTZ high and low
+- Premarket high and low
+- Previous-day high and low
+- Two-days-ago high and low
+- Major support/resistance zones
+- Dynamite zones
+- VWAP value frozen at E
+- 200 EMA value frozen at E
+
+Do not include:
+
+- Fibonacci or Critical · Fib levels
+- Previous-day close
+- Entry buffer
+- Stops
+- Runner thresholds
+- Other trade-management artifacts
+- Generic “critical” aliases
+- Levels discovered after E
+
+REQUIRED FIXES
+
+1. Eliminate later-cursor contamination
+
+The canonical occurrence merger currently unions targetLevelInputs from repeated audit observations. Do not do this.
+
+Create an immutable targetLevelSnapshot associated with the exact physical P→E occurrence. Freeze it from the completed E-candle causal snapshot. Once frozen, later audits may add diagnostic provenance but may not change:
+
+- Level IDs
+- Level values
+- Zone boundaries
+- VWAP
+- 200 EMA
+- Selected target
+- Skipped levels
+- Subsequent target levels
+
+Record:
+
+- frozenAt
+- source audit ID
+- E open and close timestamps
+- source fingerprint
+- formula/configuration hash
+
+2. Remove legacy target fallback
+
+When the deterministic key-level plan has no eligible target, do not fall back to:
+
+- management.targetPrice
+- linkedTrade.audit.targetPrice
+- A fixed dollar target
+- Any legacy target
+
+Return an explicit disposition such as:
+
+NO_ELIGIBLE_KEY_LEVEL
+
+Keep the trade open/unscored unless another separately governed exit rule applies. Do not fabricate a target or outcome.
+
+3. Remove Fibonacci and unwanted inputs from every path
+
+Filtering only occurrence.levelValues is insufficient because Fibonacci can enter through targetLevelInputs and critical levels.
+
+Filter eligible target types before constructing the frozen snapshot and again defensively inside buildKeyLevelTargetPlan.
+
+Add a deterministic allowlist. Reject every Fibonacci, generic critical, previous-day-close, stop, entry-buffer, target, and runner-management input.
+
+4. Make the candidate-owned target authoritative
+
+In Visual Review and reporting, use this priority:
+
+trade.targetPlan.targetPrice
+or
+candidate.managementContext.targetPlan.targetPrice
+
+Do not prefer audit.targetPrice or a legacy trade target.
+
+The following must all use the same candidate-owned target:
+
+- Selected target annotation
+- Target line
+- Target-hit evaluation
+- Exit event
+- Realized P/L
+- Report metrics
+- Exported audit evidence
+
+If no selected target exists, show “No eligible key-level target” and do not draw a target line.
+
+5. Preserve per-trade ownership
+
+Two trades on the same session must have separate:
+
+- Candidate IDs
+- Signal occurrence IDs
+- Frozen target snapshots
+- Selected target levels
+- Target prices
+- Skipped-level lists
+- Exit and P/L results
+
+Never reuse the first trade’s levels or target for a later trade.
+
+6. Chart behavior
+
+For a finalized trade, display:
+
+- Entry line
+- Selected target line
+- Actual exit line
+- Trade P/L
+- Selected level or zone
+- Levels skipped because entry was within 12 ticks
+
+Do not display Fibonacci targets or previous-day close.
+
+TESTS REQUIRED
+
+Add focused deterministic tests proving:
+
+A. Long selection:
+- Ignore levels behind entry.
+- Skip levels at or within 12 ticks.
+- Choose the next level.
+- Target equals 12 ticks below its near-side boundary.
+
+B. Short selection:
+- Ignore levels behind entry.
+- Skip levels at or within 12 ticks.
+- Choose the next level.
+- Target equals 12 ticks above its near-side boundary.
+
+C. Freeze behavior:
+- Build a target from E-time levels.
+- Add a closer level in a later audit cursor.
+- Confirm the original selected level and target do not change.
+
+D. No eligible level:
+- Return NO_ELIGIBLE_KEY_LEVEL.
+- Do not use a legacy target.
+- Do not fabricate an exit or P/L.
+
+E. Fibonacci exclusion:
+- Supply Fibonacci through levelValues, targetLevelInputs, and critical levels.
+- Confirm it is never available or selected.
+
+F. Input allowlist:
+- Confirm previous-day close, stops, entry buffer, runner threshold, and generic critical aliases are excluded.
+
+G. Independent trades:
+- Two trades in one session with different E snapshots select different targets.
+- Confirm neither trade reuses the other’s plan.
+
+H. Visual authority:
+- Provide conflicting legacy and candidate target prices.
+- Confirm the chart, exit, and P/L use only the candidate-owned target.
+
+I. Zone boundaries:
+- Long uses the lower boundary.
+- Short uses the upper boundary.
+- Dynamite and major zones remain zones rather than arbitrary representative prices.
+
+VERIFICATION
+
+Run only focused, compute-conscious checks:
+
+- key-level-target unit tests
+- affected Phase 9 candidate/management tests
+- affected OHLCV execution tests
+- affected Visual Review tests
+- API typecheck
+- frontend typecheck only if frontend files change
+- git diff --check
+
+Do not run a cold historical rebuild or broad qualification batch solely for this correction.
+
+REPORT
+
+Return:
+
+1. Files changed.
+2. Root causes fixed.
+3. Exact immutable target snapshot identity.
+4. Eligible-level allowlist.
+5. No-target disposition behavior.
+6. Visual/report authority order.
+7. Focused test totals.
+8. Any remaining limitations.
+
+Do not claim completion if later audit cursors can still alter a trade’s target, Fibonacci can still enter through any path, or a no-level plan can still fall back to a legacy target.
+```
