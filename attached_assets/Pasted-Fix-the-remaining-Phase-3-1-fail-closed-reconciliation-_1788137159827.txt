@@ -1,0 +1,133 @@
+Fix the remaining Phase 3.1 fail-closed reconciliation defect.
+
+Do not modify strategy definitions, edge requirements, tolerances, patience rules, entry cutoff, grading, execution, risk management, or historical data.
+
+PROBLEM
+
+The current reconciliation can assign `rejected_multiple_predicates` when a confirmed signal has neither:
+
+- An authoritative candidate, nor
+- An explicit RejectedCandidateSignal
+
+That fallback makes `dispositionReconciles` pass even though the signal’s actual disposition is unexplained.
+
+Additionally, projectHistoricalTradeCandidates filters some canonical SIGNAL_CONFIRMED occurrences before producing an INVALID_CAUSAL_IDENTITY rejection when required identity fields are missing.
+
+REQUIRED FIX
+
+1. Every canonical SIGNAL_CONFIRMED occurrence must enter candidate projection.
+
+2. Validate the required physical identity fields inside projection:
+
+- Source fingerprint
+- Formula hash
+- Contract
+- Trading date
+- Direction
+- P open timestamp
+- Immediate E open timestamp
+- E-close entry observation timestamp
+
+3. If any required identity field is absent or invalid:
+
+- Create exactly one RejectedCandidateSignal.
+- Use reason code INVALID_CAUSAL_IDENTITY.
+- Include each missing or invalid field in `details`.
+- Do not create a candidate or trade.
+
+4. Remove the silent fallback behavior from dispositionForSignal.
+
+A confirmed signal with neither candidate nor rejection must become an invariant violation such as:
+
+UNEXPLAINED_CONFIRMED_SIGNAL
+
+It must cause:
+
+- dispositionReconciles = false
+- Phase 3 gate failure
+- No qualification verdict based on the incomplete report
+
+Do not describe an unexplained signal as `rejected_multiple_predicates`.
+
+5. Enforce exactly one projection result per confirmed signal:
+
+- Candidate XOR rejection
+- Never both
+- Never neither
+
+6. Strengthen disposition reconciliation to verify:
+
+confirmedSignalCount
+= unique candidate-owned signals
++ unique explicitly rejected signals
+
+Also verify:
+
+- No candidate and rejection share the same signal ID.
+- Every authoritative trade belongs to exactly one candidate.
+- Every candidate references exactly one confirmed signal.
+- Disposition totals equal confirmed-signal totals.
+- No duplicate confirmed physical P→E identity exists.
+
+CONFLUENCE EVIDENCE
+
+Do not present generic supporting-confluence labels as proven evidence.
+
+For every retained confluence provide:
+
+- Confluence type
+- Evidence timestamp
+- Evidence value or rule state
+- Source audit ID
+- Exact predicate result
+
+If structured evidence is unavailable, classify it as:
+
+UNVERIFIED_CONFLUENCE_LABEL
+
+Do not use it to increase the candidate grade.
+
+EDGE AUDIT
+
+For every confirmed signal, report the exact predicate result for all four edges:
+
+- ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+- PATIENCE_CANDLE_CONTINUATION
+- STRONG_BREAKOUT_AFTER_CONSOLIDATION
+- EQUIVALENT_CANDLE_REVERSAL
+
+Each predicate should be PASS, FAIL, or NOT_APPLICABLE with an exact reason. This must explain why an edge produced zero candidates without changing its requirements.
+
+TESTS
+
+Add deterministic tests proving:
+
+1. A confirmed signal missing P produces INVALID_CAUSAL_IDENTITY.
+2. A confirmed signal missing E produces INVALID_CAUSAL_IDENTITY.
+3. A confirmed signal missing E-close observation produces INVALID_CAUSAL_IDENTITY.
+4. A valid confirmed signal receiving neither candidate nor rejection fails reconciliation.
+5. A signal receiving both candidate and rejection fails reconciliation.
+6. A candidate referencing a nonexistent confirmed signal fails reconciliation.
+7. A trade without one exact candidate fails reconciliation.
+8. Generic confluence text without structured evidence cannot increase grade.
+9. A complete collection of confirmed signals reconciles exactly.
+
+VERIFICATION
+
+After focused tests and API typecheck pass:
+
+- Reuse the existing 30-session checkpoints.
+- Do not rebuild the historical index.
+- Rebuild only the ledger, projection, and reconciliation report from persisted audit evidence.
+- Report the exact disposition of all previously reported 150 confirmed signals.
+- The gate must fail if even one signal remains unexplained.
+
+Return one final verdict:
+
+- FUNNEL CORRECT — SAMPLE IS GENUINELY SPARSE
+- CANDIDATE PROJECTION DEFECT
+- EDGE ATTRIBUTION DEFECT
+- REPORTING/ACCOUNTING DEFECT
+- MULTIPLE DEFECTS
+
+Preserve Shadow Mode. Add no broker, live-order, or paper-order behavior.
