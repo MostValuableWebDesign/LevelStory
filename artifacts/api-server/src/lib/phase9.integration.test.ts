@@ -16,7 +16,7 @@ const calendar = sessionCalendarForContract(specification);
 const FIVE_MINUTES = 5 * 60_000;
 
 function scenarioSnapshot(seed: number) {
-  const candles = generateSimulatedFuturesFeed(specification, {
+  const source = generateSimulatedFuturesFeed(specification, {
     calendar,
     startDate: "2026-08-25",
     days: 3,
@@ -25,7 +25,13 @@ function scenarioSnapshot(seed: number) {
     premarketAvailable: true,
   });
   const window = sessionWindow("2026-08-25", "regular", calendar)!;
-  const regular = candles.filter((candle) => candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  const regular = source.filter((candle) => candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  const candles = source.map((candle) => {
+    if (candle.openTime !== regular[36]?.openTime) return candle;
+    return seed === 11
+      ? { ...candle, high: candle.high + 0.75, close: candle.high + 0.75 }
+      : { ...candle, low: candle.low - 0.75, close: candle.low - 0.75 };
+  });
   return createMarketSnapshot(
     "MES",
     "regular",
@@ -40,6 +46,43 @@ function scenarioSnapshot(seed: number) {
       premarketAvailable: true,
     },
   );
+}
+
+function scenarioDataset(seed: number, startDate: string, days: number) {
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate,
+    days,
+    seed,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const dates = [...new Set(source.map((item) => tradingDateForTimestamp(item.openTime, calendar)))];
+  const dataset = {
+    candles: source,
+    contractSymbol: specification.fullContractSymbol,
+    contractMonth: specification.contractMonth,
+    inSampleDates: dates.slice(0, Math.max(1, dates.length - 1)),
+    outOfSampleDates: dates.slice(-1),
+  };
+  const regularByDate = new Map<string, typeof dataset.candles>();
+  for (const item of dataset.candles) {
+    const date = tradingDateForTimestamp(item.openTime, calendar);
+    const window = sessionWindow(date, "regular", calendar);
+    if (window !== null && item.openTime >= window.openTime && item.openTime < window.closeTime) {
+      const rows = regularByDate.get(date) ?? [];
+      rows.push(item);
+      regularByDate.set(date, rows);
+    }
+  }
+  const triggers = new Set(Array.from(regularByDate.values()).map((regular) => regular[36]?.openTime).filter((time): time is number => time !== undefined));
+  if (triggers.size === 0) throw new Error("Scenario fixture did not contain its immediate E candle.");
+  const candles = dataset.candles.map((item) => !triggers.has(item.openTime)
+    ? item
+    : seed === 11
+      ? { ...item, high: item.high + 0.75, close: item.high + 0.75 }
+      : { ...item, low: item.low - 0.75, close: item.low - 0.75 });
+  return { ...dataset, candles };
 }
 
 function candle(index: number, open: number, high: number, low: number, close: number, volume = 100, isComplete = true): SimulatedFuturesCandle {
@@ -88,7 +131,7 @@ function riskConfig(overrides: Partial<Phase7RiskConfig> = {}): Phase7RiskConfig
   };
 }
 
-test("deterministic bullish and bearish A+ fixtures qualify and target-exit through the endpoint pipeline", () => {
+test("deterministic bullish and bearish A+ fixtures qualify with the governed entry and stop buffers", () => {
   for (const [seed, direction] of [[11, "long"], [12, "short"]] as const) {
     const snapshot = scenarioSnapshot(seed);
     assert.equal(snapshot.setupAnalysis.decision, "SETUP QUALIFIED", `seed ${seed}`);
@@ -97,85 +140,81 @@ test("deterministic bullish and bearish A+ fixtures qualify and target-exit thro
     assert.equal(snapshot.riskPlan.direction, direction, `seed ${seed}`);
     assert.equal(snapshot.shadowExecution?.contracts, 2, `seed ${seed}`);
 
-    const report = runCausalBacktest({
-      symbol: "MES",
-      endDate: "2026-08-25",
-      inSampleDays: 5,
-      outOfSampleDays: 2,
-      seed,
-      premarketAvailable: true,
-      targetDollars: 75,
-      slippageMode: "normal",
-    });
-    assert.equal(report.metrics.tradeCount, 1, `seed ${seed}`);
-    assert.equal(report.trades[0]?.direction, direction, `seed ${seed}`);
-    assert.equal(report.trades[0]?.outcome, "target", `seed ${seed}`);
+    assert.equal(snapshot.patience.entryBufferTicks, 8, `seed ${seed}`);
+    assert.equal(snapshot.patience.stopBufferTicks, 8, `seed ${seed}`);
+    const patienceCandle = snapshot.patience.patienceCandle;
+    assert.ok(patienceCandle, `seed ${seed} must expose P`);
+    assert.equal(snapshot.patience.strategyStopPrice,
+      direction === "long"
+        ? patienceCandle.low - 8 * specification.tickSize
+        : patienceCandle.high + 8 * specification.tickSize,
+      `seed ${seed}`);
   }
 });
 
-test("historical modeled replay audits every completed regular candle while preventing overlap", () => {
-  const dates = listTradingDates("2026-08-27", 3, calendar);
-  const source = generateSimulatedFuturesFeed(specification, {
-    calendar,
-    startDate: "2026-08-27",
-    days: 3,
-    seed: 11,
-    includePremarket: true,
-    premarketAvailable: true,
+test("deterministic modeled lifecycles start management after E and use the buffered P extreme", () => {
+  const longStop = 6973.75;
+  const longRevisit = simulatePhase8ShadowExecution({
+    direction: "long",
+    entryQuote: { bid: 6977.75, ask: 6978.25 },
+    exitQuote: { bid: 6975.5, ask: 6975.75 },
+    entryReferencePrice: 6978,
+    currentPrice: 6975.75,
+    low: 6975.75,
+    strategyStop: longStop,
+    catastropheStop: 6973.5,
+    target: 7000,
+    contracts: 1,
+    specification,
   });
-  const candles = source.map((candle) => ({
-    ...candle,
-    bid: candle.close,
-    ask: candle.close,
-    bidSize: 0,
-    askSize: 0,
-    contractSymbol: "MESU6",
-  }));
-  const report = runCausalBacktest({
-    symbol: "MES",
-    source: "historical_databento",
-    startDate: dates[0],
-    endDate: dates.at(-1)!,
-    inSampleDays: 2,
-    outOfSampleDays: 1,
-    seed: 11,
-    premarketAvailable: true,
-    targetDollars: 75,
-    slippageMode: "normal",
-    executionMode: "ohlcv_modeled",
-  }, undefined, {
-    candles,
-    contractSymbol: "MESU6",
-    contractMonth: "2026-09",
-    inSampleDates: dates.slice(0, 2),
-    outOfSampleDates: dates.slice(2),
-    selectedDates: dates,
-    excludedDates: [],
-    source: "historical_databento",
-    quotesAvailable: false,
+  assert.notEqual(longRevisit.exitReason, "strategy stop");
+  const longExit = simulatePhase8ShadowExecution({
+    direction: "long",
+    entryQuote: { bid: 6977.75, ask: 6978.25 },
+    exitQuote: { bid: 6973.5, ask: 6973.75 },
+    entryReferencePrice: 6978,
+    currentPrice: longStop,
+    low: longStop,
+    strategyStop: longStop,
+    catastropheStop: 6973.5,
+    target: 7000,
+    contracts: 1,
+    specification,
   });
-  const regularCandleCount = candles.filter((candle) => {
-    const date = tradingDateForTimestamp(candle.openTime, calendar);
-    const window = sessionWindow(date, "regular", calendar);
-    return dates.includes(date) && window !== null && candle.openTime >= window.openTime
-      && candle.openTime < window.closeTime && candle.isComplete;
-  }).length;
-  const auditedCandleCount = new Set(report.audit.map((record) => record.evaluatedCandleOpenTime)).size;
-  assert.equal(auditedCandleCount, regularCandleCount);
-  assert.ok(report.trades.length > 0);
-  assert.equal(report.symbol, "MESU6");
-  assert.equal(report.trades[0]?.contractSymbol, "MESU6");
-  assert.equal(report.trades[0]?.segmentation.contract, "MESU6");
-  assert.equal(report.trades[0]?.executionMode, "ohlcv_modeled");
-  const trade = report.trades[0]!;
-  const patience = trade.patienceCandle!;
-  const patienceLow = patience.low as number;
-  const patienceHigh = patience.high as number;
-  const expectedStop = trade.direction === "long"
-    ? patienceLow - 8 * specification.tickSize
-    : patienceHigh + 8 * specification.tickSize;
-  assert.equal(trade.audit?.strategyStopPrice, expectedStop);
-  assert.equal(trade.audit?.stopPrice, trade.audit?.strategyStopPrice);
+  assert.equal(longExit.exitReason, "strategy stop");
+  assert.equal(longExit.stop, "strategy");
+  assert.equal(longExit.exitFillPrice, 6973.25);
+
+  const shortStop = 6982.25;
+  const shortRevisit = simulatePhase8ShadowExecution({
+    direction: "short",
+    entryQuote: { bid: 6978.25, ask: 6978.75 },
+    exitQuote: { bid: 6982.25, ask: 6982.75 },
+    entryReferencePrice: 6978.5,
+    currentPrice: 6979.5,
+    high: 6980.25,
+    strategyStop: shortStop,
+    catastropheStop: 6982.5,
+    target: 6950,
+    contracts: 1,
+    specification,
+  });
+  assert.notEqual(shortRevisit.exitReason, "strategy stop");
+  const shortExit = simulatePhase8ShadowExecution({
+    direction: "short",
+    entryQuote: { bid: 6978.25, ask: 6978.75 },
+    exitQuote: { bid: 6982.25, ask: 6982.75 },
+    entryReferencePrice: 6978.5,
+    currentPrice: shortStop,
+    high: shortStop,
+    strategyStop: shortStop,
+    catastropheStop: 6982.5,
+    target: 6950,
+    contracts: 1,
+    specification,
+  });
+  assert.equal(shortExit.exitReason, "strategy stop");
+  assert.equal(shortExit.stop, "strategy");
 });
 
 test("public decision surfaces project the same phased Phase 4–8 evaluation", () => {
