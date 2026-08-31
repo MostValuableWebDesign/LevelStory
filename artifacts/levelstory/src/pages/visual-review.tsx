@@ -220,10 +220,13 @@ function safeValue(value: unknown): string {
 }
 
 function apiErrorMessage(error: unknown): string | null {
-  if (!error || typeof error !== "object" || !("data" in error)) return null;
-  const data = error.data;
-  if (!data || typeof data !== "object" || !("error" in data) || typeof data.error !== "string") return null;
-  return data.error;
+  if (error && typeof error === "object" && "data" in error) {
+    const data = error.data;
+    if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
+      return data.error;
+    }
+  }
+  return error instanceof Error ? error.message : null;
 }
 
 function apiErrorStatus(error: unknown): number | null {
@@ -471,9 +474,12 @@ export default function VisualReview() {
          setReviewNote("");
          setAnalysis(null);
         if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
-        setMessage(`Generated ${nextSet.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length} trade candidates.`);
+        const qualifiedCount = nextSet.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length;
+        setMessage(qualifiedCount > 0
+          ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
+          : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
       },
-       onError: (error) => setMessage(apiErrorMessage(error) ?? "The deterministic set could not be generated. Check the date window and try again."),
+        onError: (error) => setMessage(apiErrorMessage(error) ?? "The deterministic set could not be generated."),
     });
   };
 

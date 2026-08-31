@@ -17,6 +17,7 @@ import {
   buildHistoricalVisualValidationSet,
   buildVisualValidationSet,
 } from "../lib/visual-validation.js";
+import type { VisualValidationRequest } from "../lib/visual-validation.js";
 import {
   buildVisualValidationDiscrepancyReport,
   getLatestVisualValidationSet,
@@ -40,6 +41,42 @@ const defaultRequest = {
 
 function isoOptional(value: string | Date | undefined): string | undefined {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+const historicalGenerationInFlight = new Map<
+  string,
+  ReturnType<typeof buildHistoricalVisualValidationSet>
+>();
+
+function historicalGenerationKey(request: VisualValidationRequest): string {
+  return JSON.stringify({
+    symbol: request.symbol,
+    endDate: request.endDate,
+    inSampleDays: request.inSampleDays,
+    outOfSampleDays: request.outOfSampleDays,
+    premarketAvailable: request.premarketAvailable !== false,
+    reviewMode: request.reviewMode ?? "trades_only",
+  });
+}
+
+function buildHistoricalVisualValidationSetOnce(
+  request: VisualValidationRequest,
+): ReturnType<typeof buildHistoricalVisualValidationSet> {
+  const key = historicalGenerationKey(request);
+  const existing = historicalGenerationInFlight.get(key);
+  if (existing) return existing;
+
+  const promise = buildHistoricalVisualValidationSet(request);
+  historicalGenerationInFlight.set(key, promise);
+  void promise.then(
+    () => {
+      if (historicalGenerationInFlight.get(key) === promise) historicalGenerationInFlight.delete(key);
+    },
+    () => {
+      if (historicalGenerationInFlight.get(key) === promise) historicalGenerationInFlight.delete(key);
+    },
+  );
+  return promise;
 }
 
 export function createVisualValidationRouter(): IRouter {
@@ -80,7 +117,7 @@ export function createVisualValidationRouter(): IRouter {
     };
     try {
       const built = request.source === "historical_databento"
-        ? await buildHistoricalVisualValidationSet(request)
+        ? await buildHistoricalVisualValidationSetOnce(request)
         : buildVisualValidationSet(request);
       const set = storeVisualValidationSet(built);
       res.json(GetVisualValidationSetResponse.parse(set));
@@ -106,7 +143,7 @@ export function createVisualValidationRouter(): IRouter {
         premarketAvailable: parsed.data.premarketAvailable ?? true,
       };
       const built = request.source === "historical_databento"
-        ? await buildHistoricalVisualValidationSet(request)
+        ? await buildHistoricalVisualValidationSetOnce(request)
         : buildVisualValidationSet(request);
       const set = storeVisualValidationSet(built);
       res.json(GetVisualValidationSetResponse.parse(set));
