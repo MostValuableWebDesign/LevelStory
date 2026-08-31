@@ -149,6 +149,21 @@ test("rejects an explicit sparse sample when one requested date is ineligible", 
   );
 });
 
+test("explains when a requested range does not overlap eligible history", () => {
+  const imported = {
+    summary: {
+      eligibleTradingDates: ["2025-08-27", "2025-08-28"],
+      acceptedContracts: ["MESU5"],
+    },
+    contracts: new Map(),
+  } as unknown as HistoricalMultiContractImport;
+
+  assert.throws(
+    () => multiContractImportToReplayDataset(imported, "2025-08-26", "2025-08-26", 5, 2),
+    /range 2025-08-26 through 2025-08-26 contains 0 eligible trading dates; 7 are required.*2025-08-27 through 2025-08-28/i,
+  );
+});
+
 function summaryForDates(
   availableTradingDates: string[],
   completeRegularSessionDates: string[] = availableTradingDates,

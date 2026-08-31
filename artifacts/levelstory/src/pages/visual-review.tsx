@@ -249,6 +249,15 @@ function apiErrorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : null;
 }
 
+function historicalRangeRecovery(error: string | null): { requestedEndDate: string; availableEndDate: string } | null {
+  if (!error) return null;
+  const match = error.match(
+    /Multi-contract historical range \d{4}-\d{2}-\d{2} through (\d{4}-\d{2}-\d{2}) contains 0 eligible trading dates; \d+ are required\. Available eligible history spans \d{4}-\d{2}-\d{2} through (\d{4}-\d{2}-\d{2})\./i,
+  );
+  if (!match || !match[1] || !match[2]) return null;
+  return { requestedEndDate: match[1], availableEndDate: match[2] };
+}
+
 function apiErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object" || !("status" in error) || typeof error.status !== "number") return null;
   return error.status;
@@ -378,8 +387,14 @@ export default function VisualReview() {
       setMessage(qualifiedCount > 0
         ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
         : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
+    } else if (generationJob.status === "failed" && request.source === "historical_databento") {
+      const recovery = historicalRangeRecovery(generationJob.error);
+      if (recovery && request.endDate === recovery.requestedEndDate) {
+        setRequest((current) => ({ ...current, endDate: recovery.availableEndDate }));
+        setMessage(`The saved review date ended before eligible MES history. The date was reset to ${recovery.availableEndDate}; retry generation.`);
+      }
     }
-  }, [generationJob]);
+  }, [generationJob, request.endDate, request.source]);
 
   const data = generationActive ? null : localSet ?? setQuery.data;
   const coverage = data?.categoryCoverage ?? [];

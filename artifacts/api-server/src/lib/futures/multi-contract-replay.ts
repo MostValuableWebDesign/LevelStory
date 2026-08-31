@@ -464,7 +464,12 @@ function aggregateSummaries(summaries: HistoricalCsvImportSummary[]): ReturnType
 function selectedDatesInRange(dates: string[], startDate: string, endDate: string, count: number): string[] {
   const requested = dates.filter((date) => date >= startDate && date <= endDate);
   if (requested.length < count) {
-    throw new Error(`Multi-contract historical range contains ${requested.length} trading dates; ${count} are required.`);
+    const availableRange = dates.length
+      ? `Available eligible history spans ${dates[0]} through ${dates.at(-1)}.`
+      : "The ready index contains no eligible history.";
+    throw new Error(
+      `Multi-contract historical range ${startDate} through ${endDate} contains ${requested.length} eligible trading dates; ${count} are required. ${availableRange}`,
+    );
   }
   return requested.slice(-count);
 }
