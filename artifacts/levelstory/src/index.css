@@ -430,6 +430,15 @@
   }
   .chart-plot-shell {
     min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .visual-review-svg {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: clamp(640px, 78vh, 900px);
   }
   .event-index {
     border: 1px solid hsl(var(--border));
@@ -620,7 +629,9 @@
     padding: 1.5rem;
   }
   .visual-review-chart-fullscreen .visual-review-svg {
-    min-height: min(72dvh, 760px);
+    min-width: 0;
+    height: calc(100dvh - 8rem);
+    min-height: 760px;
   }
   .chart-control {
     display: inline-flex;

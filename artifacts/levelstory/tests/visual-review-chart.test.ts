@@ -4,6 +4,9 @@ import type { VisualValidationAnnotation, VisualValidationCandle, VisualValidati
 import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
+  CHART_LEFT,
+  CHART_RIGHT,
+  CHART_WIDTH,
   DOJI_BODY_HEIGHT,
   MES_TICK_SIZE,
   layoutEventRail,
@@ -298,7 +301,7 @@ test("fixed slot geometry leaves gaps empty instead of compressing observed cand
   const first = makeCandle(0);
   const third = makeCandle(2);
   const domain = getCandleDomain([first, third]);
-  const step = (1040 - 58 - 150) / 42;
+  const step = (CHART_WIDTH - CHART_LEFT - CHART_RIGHT) / 42;
   const firstGeometry = getCandleGeometry(first, getCandleSlotIndex(first, "primary"), step, domain);
   const thirdGeometry = getCandleGeometry(third, getCandleSlotIndex(third, "primary"), step, domain);
   assert.equal(thirdGeometry.x - firstGeometry.x, step * 2);

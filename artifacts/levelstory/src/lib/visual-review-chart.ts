@@ -7,17 +7,17 @@ import type {
   VisualValidationTradeEvent,
 } from "@workspace/api-client-react";
 
-export const CHART_WIDTH = 1040;
-export const CHART_HEIGHT = 748;
-export const CHART_LEFT = 58;
-export const CHART_RIGHT = 150;
-export const CHART_TOP = 112;
-export const CHART_PLOT_BOTTOM = 558;
-export const CHART_VOLUME_TOP = 582;
-export const CHART_VOLUME_HEIGHT = 64;
-export const CHART_TIME_TICK_Y = 668;
-export const CHART_DATE_LABEL_Y = 702;
-export const CHART_FOOTER_LABEL_Y = 730;
+export const CHART_WIDTH = 1200;
+export const CHART_HEIGHT = 820;
+export const CHART_LEFT = 34;
+export const CHART_RIGHT = 86;
+export const CHART_TOP = 96;
+export const CHART_PLOT_BOTTOM = 652;
+export const CHART_VOLUME_TOP = 674;
+export const CHART_VOLUME_HEIGHT = 82;
+export const CHART_TIME_TICK_Y = 770;
+export const CHART_DATE_LABEL_Y = 795;
+export const CHART_FOOTER_LABEL_Y = 812;
 export const CHART_EVENT_RAIL_TOP = 3;
 export const CHART_EVENT_RAIL_HEIGHT = 96;
 export const CHART_EVENT_RAIL_LANE_HEIGHT = 18;
