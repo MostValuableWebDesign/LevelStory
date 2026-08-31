@@ -1,0 +1,215 @@
+Use this consolidated Replit prompt:
+
+```text
+Implement one narrow, compute-conscious Visual Review and historical-entry correctness pass.
+
+Do not rebuild the historical index. Do not run a broad qualification batch or cold 20+2 replay. Use focused deterministic tests and one cached or short historical smoke test only.
+
+PART 1 — ENFORCE THE 1:00 P.M. ET ENTRY CUTOFF EVERYWHERE
+
+No trade entry may be selected, projected, linked, or simulated at or after 1:00 p.m. America/New_York.
+
+Apply the same exclusive cutoff to:
+
+- Patience occurrence construction
+- Canonical signal ledger
+- Trade-candidate projection
+- Visual Review category selection
+- Candidate-driven Shadow Mode execution
+- Legacy-trade reconciliation
+- Modeled-trade reporting and metrics
+
+Requirements:
+
+- E candle open time must be strictly before 1:00 p.m. ET.
+- An E candle opening at exactly 1:00 p.m. ET is ineligible.
+- Signals after the cutoff may remain diagnostic evidence but cannot become candidates or trades.
+- Pass `entryCutoffMinutes` and `requireFinalizedNtz` into `buildPatienceOccurrences()` and every internal `evaluateTrigger()` call.
+- Do not allow the occurrence-ledger path to bypass the cutoff or finalized-NTZ requirements.
+- Use DST-safe `America/New_York` conversion.
+
+Add tests for:
+
+- 12:55 p.m. E is eligible.
+- 1:00 p.m. E is rejected.
+- Later E candles are rejected.
+- Legacy trades cannot bypass the cutoff.
+- Visual Review does not select an after-1:00-p.m. trade.
+
+PART 2 — INTERACTIVE LEVEL LEGEND
+
+Make every visible price-level legend item interactive.
+
+When the user hovers, focuses, or selects a legend item:
+
+- Highlight its corresponding line or zone on the chart.
+- Increase its stroke width and opacity.
+- Dim unrelated levels slightly without dimming candles.
+- Keep the highlight active after clicking until another level is selected or the user clears it.
+- Hovering away should clear only temporary hover state, not a clicked selection.
+- Support keyboard focus, Enter/Space selection, Escape clearing, and appropriate ARIA labels.
+- Clicking or hovering a chart level should highlight its corresponding legend item.
+
+Use stable annotation IDs rather than matching by display text or price.
+
+PART 3 — DYNAMITE LEVELS AS ZONES
+
+Dynamite levels are confluence zones, not individual price lines.
+
+For authoritative levels whose prices are within eight MES ticks:
+
+- Cluster them causally into one Dynamite zone.
+- Preserve the exact constituent level IDs, names, prices, source fingerprint, formula hash, contract, trading date, and observation time.
+- Zone lower bound = minimum constituent price.
+- Zone upper bound = maximum constituent price.
+- Do not merge unrelated observations, sessions, contracts, or configurations.
+- Render the zone across the chart as a translucent light-blue band with a royal-blue border.
+- Use a minimum one-tick visual height when identical prices would otherwise make the band invisible; do not alter its stored exact bounds.
+- Show one legend item per zone, for example:
+  `Dynamite zone · 2 confluences · 7686.25–7687.50`
+- Do not display separate Dynamite legend prices for every constituent.
+- Hovering or selecting the zone legend must highlight the entire band.
+- Dynamite remains grading confluence; it must not create a trade by itself.
+
+PART 4 — PRIOR-DAY AND TWO-DAYS-AGO LEVELS
+
+Always render the canonical session levels when their causal data is available:
+
+- Prior-day high
+- Prior-day low
+- Two-days-ago high
+- Two-days-ago low
+
+Requirements:
+
+- Prior-day levels retain their established presentation color.
+- Two-days-ago levels use purple.
+- Show exact prices in the upper legend.
+- Render their lines across the chart.
+- Do not replace them with “Critical” duplicates.
+- Missing source data must remain explicitly unavailable; never fabricate a level.
+
+Remove these redundant presentation annotations:
+
+- `Critical · Prior day high`
+- `Critical · Prior day low`
+- `Critical · Two days ago high`
+- `Critical · Two days ago low`
+
+Preserve the canonical base levels and their engine provenance.
+
+PART 5 — MAJOR SUPPORT AND RESISTANCE
+
+Render authoritative long-term level zones when present:
+
+- Major support
+- Major resistance
+
+These must come from the existing causal six-month-to-one-year rejection/bounce detector. Do not infer or fabricate them in the frontend.
+
+Requirements:
+
+- Show a black line for a point level.
+- Show a lightly shaded black/gray band when the backend provides zone bounds.
+- Include the type, exact price or range, touch count, lookback period, and source identity in the legend/details.
+- Ensure these levels are not discarded by primary-level limits or critical-level filtering.
+- If no authoritative major level exists, display none.
+
+PART 6 — REMOVE REDUNDANT FIBONACCI PRESENTATION
+
+Remove every Fibonacci annotation from Visual Review:
+
+- Chart lines
+- Upper level legend
+- Edge indicators
+- Additional-level panels
+- Hover/highlight targets
+
+Do not rely only on:
+
+`annotation.id.startsWith("fib-")`
+
+Create one shared semantic predicate such as `isFibonacciAnnotation()` that recognizes normalized IDs and labels including:
+
+- `fib-*`
+- `critical-fib-*`
+- `fibonacci-*`
+- Labels containing `Fib` or `Fibonacci`
+
+Use it consistently throughout Visual Review.
+
+This is a presentation-only change. Preserve Fibonacci calculations and historical strategy evidence unless separately governed.
+
+PART 7 — STOP PRESENTATION AND MANAGEMENT
+
+Remove `Catastrophe stop` from the Visual Review chart and legend because the governed patience-candle stop is the strategy stop with its configured 12-tick range.
+
+Requirements:
+
+- Display only the authoritative strategy stop.
+- Do not create duplicate stop lines.
+- Ensure candidate-driven management uses one authoritative strategy-stop identity.
+- If legacy records contain a catastrophe stop, keep it only in technical/audit diagnostics and exclude it from active chart presentation and duplicate exit handling.
+- Do not silently change already finalized historical outcomes.
+
+PART 8 — LEVEL DEDUPLICATION
+
+Deduplicate visual levels by semantic identity, not price alone.
+
+Rules:
+
+- ORB and NTZ remain one canonical `ORB / NTZ` boundary.
+- Canonical prior-session levels replace their redundant Critical versions.
+- Dynamite zones aggregate their constituent levels visually but preserve all provenance.
+- Major support/resistance remain independently identifiable.
+- VWAP and EMA remain curved indicator series.
+- Strategy stop remains distinct.
+- Fibonacci remains hidden from Visual Review.
+
+PART 9 — RESPONSIVE CHART LAYOUT
+
+Keep the wrapping price-level legend above the chart.
+
+- Do not reintroduce the right-side label rail.
+- The chart should use nearly the full panel width.
+- The legend may wrap onto multiple rows without reducing plot width.
+- Dynamite zones must not obscure candles; use low-opacity fill.
+- Preserve fullscreen, zoom, pan, candle inspection, free crosshair, and responsive layouts.
+
+FOCUSED TESTS
+
+Add deterministic tests proving:
+
+1. No candidate or trade is created for E at or after 1:00 p.m. ET.
+2. Occurrence-ledger construction uses the same cutoff and finalized-NTZ rules.
+3. Legend hover/focus/select highlights the exact corresponding level.
+4. Clicking a different level changes the active highlight.
+5. Two-days-ago high and low render when supplied.
+6. Redundant Critical prior-day/two-days-ago annotations do not render.
+7. Every Fibonacci naming variant is absent from Visual Review.
+8. Major support/resistance render when authoritative annotations exist.
+9. Dynamite constituents within eight ticks create one royal-blue/light-blue zone.
+10. Separate Dynamite observations are not incorrectly merged.
+11. Catastrophe stop is absent from active chart presentation.
+12. Strategy stop remains visible and authoritative.
+
+Verification:
+
+- Run only focused Phase 5, Phase 9, major-level, Dynamite, visual-chart, and presentation tests.
+- Run API and frontend typechecks.
+- Run `git diff --check`.
+- Do not rebuild the historical index.
+- Do not run a cold broad replay solely for this change.
+- Remove any temporary prompt attachment before committing.
+
+Report:
+
+- Files changed.
+- Root causes corrected.
+- Exact entry-cutoff behavior.
+- Dynamite-zone clustering and bounds.
+- Level deduplication rules.
+- Focused test totals.
+- Typecheck results.
+- Any honest remaining limitations.
+```
