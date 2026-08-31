@@ -1,0 +1,229 @@
+The latest push correctly changes the patience confirmation buffer to **8 MES ticks (2.00 index points)** across configuration, API schemas, validation, and tests. The five items below still need a focused pass. GitHub currently shows no CI status checks for the latest commit.
+
+Use this prompt in Replit:
+
+```text
+Implement one focused trade-correctness and Visual Review pass on the latest main branch.
+
+Keep this compute-conscious:
+
+- Do not rebuild the historical index.
+- Do not run a broad qualification batch or cold multi-month backtest.
+- Use focused deterministic fixtures, affected tests, typechecks, and at most one cached/small replay.
+- Preserve Shadow Mode only. Do not add broker, live-order, or paper-order behavior.
+
+Preserve the rules already implemented:
+
+- Pullback/key-level proximity tolerance: 12 MES ticks = 3.00 index points.
+- Patience confirmation buffer: 8 MES ticks = 2.00 index points.
+- Patience stop-loss range: 12 MES ticks = 3.00 index points.
+- Entry candle E must be the immediate completed candle following patience candle P.
+- No entry at or after 1:00 p.m. America/New_York.
+- No patience candle or entry inside the finalized ORB/NTZ.
+- VWAP and EMA 200 must render only as curved time-series indicators.
+- Fibonacci must remain hidden from the chart and legend.
+- Catastrophe-stop presentation remains removed.
+- Existing causal-boundary and no-future-data protections must remain unchanged.
+
+## 1. Make key-level pullback interaction a hard trade gate
+
+IMPORTANT: A confirmed P→E pair alone must never create a trade.
+
+Every authoritative trade candidate, regardless of edge, must have a persisted causal pullback interaction with at least one qualifying key level.
+
+Eligible key levels are:
+
+- ORB/NTZ high or low
+- Premarket high or low
+- Previous-day high or low
+- Two-days-ago high or low
+- Causal VWAP value at the level-interaction candle
+- Causal EMA 200 value at the level-interaction candle
+- Major support/resistance zone
+- Dynamite confluence zone
+
+Fibonacci may remain internal supporting evidence, but Fibonacci alone must not satisfy the key-level pullback gate.
+
+The pullback may contain one or more completed candles. A one-candle pullback is valid, and the level-interaction candle L may also be the patience candle P.
+
+Qualification rule:
+
+- Use the configured 12-tick MES proximity range.
+- For a fixed level, the L/P candle range must touch, cross, or come within 12 ticks of the level.
+- For VWAP and EMA 200, use the causal indicator value at L—not the final session value.
+- For a level zone, the candle must intersect the zone or its permitted 12-tick proximity envelope.
+- The level and indicator evidence must have been machine-visible at that time.
+- Persist the level ID, type, causal value/range, candle timestamp, distance in ticks, and tolerance used.
+
+If no qualifying key-level interaction exists:
+
+- Do not create an authoritative candidate.
+- Do not create an entry or modeled trade.
+- Preserve the signal diagnostically with a specific reason such as:
+  `REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK`
+- Do not infer a level after the fact.
+- Do not allow legacy trade reconciliation to bypass this gate.
+
+Apply this gate before candidate-driven Shadow Mode execution.
+
+## 2. Keep the modeled fill on entry candle E
+
+The fill belongs to the immediate entry candle E, not the candle after it.
+
+For a long:
+
+`confirmationThreshold = P.high + 8 ticks`
+
+For a short:
+
+`confirmationThreshold = P.low - 8 ticks`
+
+Requirements:
+
+- Long E must have `E.high >= confirmationThreshold`.
+- Short E must have `E.low <= confirmationThreshold`.
+- Associate the fill and entry marker with E’s exact five-minute interval.
+- Store `entryCandleOpenTime = E.openTime`.
+- Preserve `modeledFillObservationTime = E.closeTime`, because OHLCV only confirms the threshold after E completes.
+- Record the modeled entry price at the confirmation threshold.
+- Do not shift the fill marker or trade entry to the following candle.
+- Exit evaluation may begin with the first completed candle after E, preserving the rule that stops are not taken before the entry candle closes.
+- If E does not reach the threshold, use `ENTRY_NOT_REACHED` and create no trade.
+
+## 3. Draw authoritative entry and exit lines
+
+For every actual candidate-linked modeled trade, render:
+
+- An entry marker on E.
+- An entry-price line at the exact modeled entry price.
+- An exit marker on the actual exit candle.
+- An exit-price line at the exact finalized exit price.
+
+Use horizontal trade overlays spanning the trade’s lifetime from E through the exit candle, rather than extending unrelated trade prices across the entire session.
+
+Suggested presentation:
+
+- Entry: blue or amber line labeled `Entry` with its price.
+- Profitable exit: green line labeled `Exit` with its price.
+- Losing exit: red line labeled `Exit` with its price.
+- Open trade: entry line only, labeled `Open`; do not invent an exit.
+
+If a trade has partial exits or runner legs:
+
+- Draw one marker/line for each real exit leg.
+- Identify target, runner, stop, or session-close exit in the trade-details panel.
+- Do not collapse multiple exit prices into a fabricated average line.
+
+Only render these overlays for authoritative trades linked by `candidateId` and `signalOccurrenceId`.
+
+## 4. Display P/L for every finalized entry-to-exit result
+
+Show the result near the trade summary and when selecting its entry or exit marker.
+
+For each finalized exit leg display:
+
+- Entry price
+- Exit price
+- Direction
+- Quantity
+- Gross P/L
+- Fees
+- Slippage
+- Net realized P/L
+- Exit reason
+
+Use MES economics correctly:
+
+`grossPnl = directionSign × (exitPrice - entryPrice) × 5.00 × quantity`
+
+where one MES index point equals $5.00 per contract.
+
+For multi-leg trades:
+
+- Show P/L for each exit leg.
+- Show one total realized P/L for the complete trade.
+- Apply fees and slippage exactly once according to the existing authoritative model.
+- Do not double-count partial exits.
+
+For an open trade:
+
+- Display `Open / unscored`.
+- Do not show realized P/L.
+- Do not fabricate a mark-to-market outcome from future candles.
+
+The chart should remain readable: detailed P/L belongs in the trade/candle inspector, while the chart marker may show a compact value such as `+$72.30` or `−$48.10`.
+
+## 5. Remove every “Critical” value from chart presentation
+
+Remove all `Critical · ...` values from:
+
+- Legend
+- Level chips
+- Right-side price labels
+- Hover/highlight controls
+- Additional-level sections
+- Chart lines and zones
+
+Filter by both normalized ID/type and labels beginning with `Critical ·`; do not rely on exact display text alone.
+
+This is presentation deduplication only:
+
+- Preserve underlying causal audit evidence if still required by the engine.
+- Keep the canonical non-critical level visible.
+- Do not render duplicate critical aliases for premarket, prior-day, two-days-ago, Fibonacci, ORB, or other levels.
+
+## 6. Preserve the existing chart cleanup
+
+Confirm that:
+
+- The level legend remains above the chart.
+- Hovering or focusing a legend item highlights its corresponding line or zone.
+- VWAP and EMA 200 have only their curved lines—no extra horizontal/dotted snapshots.
+- Dynamite levels render as light-blue zones with royal-blue borders.
+- Previous-day and two-days-ago levels remain visible.
+- Major support/resistance zones remain visible.
+- ORB/NTZ remains one canonical pair of levels.
+- No Fibonacci or Critical items appear.
+- The chart remains the majority of the review panel width.
+
+## Required deterministic tests
+
+Add focused tests proving:
+
+1. P→E confirmation without a qualifying key-level pullback creates no candidate and no trade.
+2. A one-candle pullback where L=P and the candle is within 12 ticks of a key level may qualify.
+3. A multi-candle pullback within 12 ticks may qualify.
+4. Dynamic VWAP and EMA use their value at L.
+5. Fibonacci alone cannot satisfy the key-level gate.
+6. The fill is associated with E, not E+1.
+7. E failing to reach the 8-tick threshold creates `ENTRY_NOT_REACHED`.
+8. Entry at exactly 1:00 p.m. ET is rejected.
+9. Entry before 1:00 p.m. ET remains eligible.
+10. Entry and exit lines use authoritative prices and timestamps.
+11. Partial exits produce separate leg P/L and one correct total.
+12. Open trades display no fabricated exit or realized P/L.
+13. All Critical values are absent from every visual surface.
+14. Legacy trade reconciliation cannot bypass the key-level gate.
+15. Candidate and trade counts remain one-per-physical P→E signal.
+
+Because this changes authoritative candidate eligibility, bump the formula/rule version and include it in deterministic cache keys. Do not rebuild the historical data index.
+
+## Final report
+
+Report:
+
+- Files changed
+- Root cause of any trade created without a key-level pullback
+- Exact authoritative key-level gate implemented
+- Entry/fill timestamp semantics
+- Entry and exit line behavior
+- P/L calculation and MES multiplier
+- Open and partial-exit behavior
+- Critical-value presentation cleanup
+- Focused test totals
+- Typecheck/build results
+- Confirmation that no historical index rebuild or broad qualification run occurred
+- Confirmation that Shadow Mode remains simulation-only
+
+Remove any temporary pasted prompt attachment before completion.
+```
