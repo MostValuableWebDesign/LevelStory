@@ -1321,8 +1321,8 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
     management: {
-      strategyStopPrice: 99,
-      catastropheStopPrice: 98,
+      strategyStopPrice: 97,
+      catastropheStopPrice: 96,
       targetPrice: 105,
       contracts: 1,
       runnerActivationPrice: null,
