@@ -23,6 +23,7 @@ export type VisualValidationWorkerProgress = CausalReplayProgress & {
 };
 
 type WorkerLike = {
+  on(event: "message", listener: (message: WorkerMessage) => void): WorkerLike;
   once(event: "message", listener: (message: WorkerMessage) => void): WorkerLike;
   once(event: "error", listener: (error: Error) => void): WorkerLike;
   once(event: "exit", listener: (code: number) => void): WorkerLike;
@@ -76,7 +77,7 @@ export function buildHistoricalVisualValidationSetInWorker(
 
     try {
       worker = new Worker(workerUrl, { workerData: request }) as unknown as WorkerLike;
-      worker.once("message", (message) => {
+      worker.on("message", (message) => {
         if (message.type === "result") {
           messageReceived = true;
           finish(() => resolve(message.set));
