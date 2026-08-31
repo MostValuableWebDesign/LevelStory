@@ -1,0 +1,162 @@
+Add an honest progress display to LevelStory’s historical trade-candidate generation workflow.
+
+Place it in the empty right-hand panel that currently says:
+
+“Generate a set to open the review room.”
+
+Do not display a fake percentage based only on a timer. Progress must come from actual backend work completed.
+
+## Progress-circle design
+
+While candidate generation is running, replace the empty message with a centered progress display containing:
+
+- A large circular progress indicator.
+- Percentage value in the center, such as `47%`.
+- Royal-blue progress fill around the outer circle.
+- A smaller royal-blue highlight arc that continuously rotates around the circle while work remains active.
+- Current processing stage beneath the percentage.
+- Completed sessions versus total sessions.
+- Elapsed time.
+- Optional estimated time remaining only when enough runtime evidence exists.
+
+Example:
+
+```text
+        47%
+
+Replaying historical sessions
+6 of 12 sessions completed
+Elapsed: 18 seconds
+Use the existing royal-blue Dynamite-level color for visual consistency.
+At completion:
+Animate the ring to 100%.
+Stop the rotating highlight.
+Briefly show a checkmark and:
+Trade candidates ready
+Automatically open the generated review room.
+On failure:
+Stop the animation.
+Preserve the selected form settings.
+Display the actual error.
+Offer a Retry generation button.
+Do not automatically start another expensive job.
+Actual backend progress
+Convert generation into a trackable job if it is currently one long synchronous request.
+Suggested API flow:
+POST /visual-validation/generation-jobs
+→ returns jobId
+
+GET /visual-validation/generation-jobs/:jobId
+→ returns current progress and final result when complete
+A lightweight polling endpoint is preferred over adding unnecessary infrastructure. Poll approximately every 1–2 seconds.
+The progress response should include:
+type CandidateGenerationProgress = {
+  jobId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  phase:
+    | "preparing"
+    | "loading_sessions"
+    | "replaying_sessions"
+    | "building_ledger"
+    | "projecting_candidates"
+    | "building_snapshots"
+    | "completed";
+  completedUnits: number;
+  totalUnits: number;
+  percent: number;
+  completedSessions: number;
+  totalSessions: number;
+  elapsedMs: number;
+  estimatedRemainingMs: number | null;
+  message: string;
+  error: string | null;
+};
+Calculate progress from completed work units, not elapsed time.
+Recommended stage weighting:
+Preparing request and validating coverage: 0–5%
+Loading selected sessions: 5–15%
+Replaying sessions: 15–75%
+Building canonical signal ledger: 75–85%
+Projecting authoritative candidates/trades: 85–94%
+Building Visual Review snapshots: 94–99%
+Completed response stored: 100%
+Within session-based stages, calculate progress using:
+completed sessions / total sessions
+Keep percentage monotonic. It must never move backward.
+Do not report 100% until the completed review set has been stored and can be opened successfully.
+Compute protection
+Because the current Replit plan is compute-limited:
+Disable the Generate button while a job is active.
+Prevent duplicate jobs for the same request.
+Reuse an existing active job with the same deterministic request fingerprint.
+Reuse a completed cached result when available.
+Store the active jobId in session storage so refreshing the page resumes the display instead of starting another generation.
+Stop polling when the component unmounts, the job completes, or the job fails.
+Do not rebuild the historical index.
+Do not run multiple generation workers for one request.
+Show a small message:
+You may leave this page open. Refreshing will resume this generation job.
+Visual behavior
+Use an SVG progress ring:
+Neutral gray background track.
+Royal-blue determinate progress stroke.
+Rounded stroke endings.
+A shorter royal-blue rotating highlight arc while active.
+Smooth transition when percentage changes.
+No layout shift as text changes.
+Responsive sizing for desktop and mobile.
+Respect reduced-motion preferences:
+Keep the percentage ring functional.
+Disable continuous rotation for prefers-reduced-motion.
+Use a static highlight instead.
+Accessibility requirements:
+Use role="progressbar".
+Set aria-valuemin="0".
+Set aria-valuemax="100".
+Update aria-valuenow.
+Announce major phase changes through an aria-live="polite" region.
+Do not announce every individual percentage update.
+Suggested status messages
+Use plain-language messages:
+Preparing historical replay
+Loading 12 trading sessions
+Replaying session 6 of 12
+Finding confirmed P → E signals
+Checking key-level pullbacks
+Creating authoritative trade candidates
+Building chart review snapshots
+Trade candidates ready
+Do not expose internal technical labels unless the user expands a Technical details section.
+Required tests
+Add focused tests proving:
+The progress panel replaces the empty right pane while generating.
+Percentage comes from backend progress.
+Percentage never moves backward.
+The ring reaches 100% only after the review set is available.
+The correct completed/total session count is shown.
+The Generate button is disabled while active.
+Repeated clicks cannot create duplicate jobs.
+Refreshing resumes the active job by jobId.
+A cached result avoids starting another worker.
+Failure preserves the user’s selected form settings.
+Failure provides a retry action.
+Polling stops after completion or failure.
+Reduced-motion behavior disables continuous rotation.
+The progress indicator exposes correct accessibility attributes.
+Completion automatically opens the resulting review room.
+Verification
+Keep verification compute-conscious:
+Run focused API job/progress tests.
+Run focused frontend progress-panel tests.
+Run API and frontend typechecks.
+Run git diff --check.
+Do not run a cold historical rebuild or broad qualification batch.
+Report:
+Files changed
+Progress calculation method
+API/job lifecycle
+Duplicate-job protection
+Cache behavior
+Refresh/resume behavior
+Focused test totals
+Confirmation that percentages represent actual completed work
