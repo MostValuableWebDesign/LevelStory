@@ -2634,7 +2634,13 @@ function freezeCandidateManagementContext(
   const management = occurrence.management;
   const entryPrice = occurrence.confirmationThreshold;
   const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
-  const strategyStopPrice = management?.strategyStopPrice ?? linkedTrade?.audit?.strategyStopPrice ?? null;
+  const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
+  const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  const strategyStopPrice = occurrence.direction === "long" && patienceLow !== null
+    ? authoritativePatienceStopPrice("long", patienceLow, 8, 0.25)
+    : occurrence.direction === "short" && patienceHigh !== null
+      ? authoritativePatienceStopPrice("short", patienceHigh, 8, 0.25)
+      : null;
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = management?.targetPrice ?? linkedTrade?.audit?.targetPrice ?? null;
   const missingEvidenceReasons = [
