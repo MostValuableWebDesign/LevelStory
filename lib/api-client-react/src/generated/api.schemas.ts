@@ -266,6 +266,15 @@ export interface LongTermZone {
   configurationHash: string;
 }
 
+export type DynamiteLevelPullbackInteractionsItem = {
+  /** @nullable */
+  eventId: string | null;
+  eventTime: number;
+  candleOpenTime: number;
+  price: number;
+  level: string;
+};
+
 export interface DynamiteLevel {
   id: string;
   lower: number;
@@ -278,6 +287,7 @@ export interface DynamiteLevel {
   confluenceCount: number;
   observedAt: number;
   pullbackInteracted: boolean;
+  pullbackInteractions: DynamiteLevelPullbackInteractionsItem[];
 }
 
 export type NtzStateStatus = typeof NtzStateStatus[keyof typeof NtzStateStatus];
@@ -920,6 +930,7 @@ export interface SetupEvaluation {
   explanation: string;
   grade: number;
   dynamiteConfluenceCount: number;
+  supportingConfluences: string[];
 }
 
 export type SetupAnalysisDecision = typeof SetupAnalysisDecision[keyof typeof SetupAnalysisDecision];

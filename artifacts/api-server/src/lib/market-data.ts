@@ -348,6 +348,9 @@ export type MarketSnapshot = {
         detail: string;
       } | null;
       explanation: string;
+      grade?: number;
+      dynamiteConfluenceCount?: number;
+      supportingConfluences?: string[];
     }>;
   };
   assumptions: string[];
@@ -519,17 +522,34 @@ export function createMarketSnapshot(
     });
     fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   }
+  const dynamiteInteractions = pullback.events
+    .filter((event) =>
+      event.qualifies
+      && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type),
+    )
+    .map((event) => ({
+      eventId: event.eventId ?? null,
+      eventTime: event.time,
+      candleOpenTime: event.candle?.openTime ?? event.time,
+      price: event.price,
+      level: event.level,
+    }));
   const dynamite = dynamiteLevels([
-    { name: "ORB high", price: levels.orb?.high ?? NaN, family: "orb-high", id: "orb-high" },
-    { name: "NTZ high", price: levels.ntz?.high ?? NaN, family: "orb-high", id: "ntz-high" },
-    { name: "ORB low", price: levels.orb?.low ?? NaN, family: "orb-low", id: "orb-low" },
-    { name: "NTZ low", price: levels.ntz?.low ?? NaN, family: "orb-low", id: "orb-low" },
-    ...levels.levels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
+    { name: "ORB high", price: levels.orb?.high ?? NaN, family: "orb-ntz-high", id: "orb-high" },
+    { name: "NTZ high", price: levels.ntz?.high ?? NaN, family: "orb-ntz-high", id: "ntz-high" },
+    { name: "ORB low", price: levels.orb?.low ?? NaN, family: "orb-ntz-low", id: "orb-low" },
+    { name: "NTZ low", price: levels.ntz?.low ?? NaN, family: "orb-ntz-low", id: "ntz-low" },
+    ...levels.levels.map((level) => ({ name: level.name, price: level.price, id: level.name })),
     { name: "VWAP", price: levels.vwap, family: "vwap", id: "vwap" },
     { name: "EMA 200", price: levels.ema, family: "ema-200", id: "ema-200" },
-    ...levels.majorLevels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
-    ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
-  ], config.dynamiteLevelToleranceTicks, specification.tickSize, currentCursor, pullback.events.map((event) => event.price));
+    ...levels.majorLevels.map((level) => ({
+      name: level.name,
+      price: level.price,
+      family: level.kind === "resistance" ? "resistance-zone" : "support-zone",
+      id: level.name,
+    })),
+    ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, family: "fibonacci", id: level.name })),
+  ], config.dynamiteLevelToleranceTicks, specification.tickSize, currentCursor, dynamiteInteractions);
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
@@ -1026,6 +1046,7 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
       explanation: evaluation.explanation,
       grade: evaluation.grade ?? 0,
       dynamiteConfluenceCount: evaluation.dynamiteConfluenceCount ?? 0,
+      supportingConfluences: evaluation.supportingConfluences ?? [],
     })),
   };
 }

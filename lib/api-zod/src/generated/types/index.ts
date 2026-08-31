@@ -89,6 +89,7 @@ export * from './consolidationThresholds';
 export * from './criticalLevel';
 export * from './dashboardOverview';
 export * from './dynamiteLevel';
+export * from './dynamiteLevelPullbackInteractionsItem';
 export * from './edgeValidationPilotReport';
 export * from './edgeValidationPilotReportCompute';
 export * from './edgeValidationPilotReportDiagnostics';

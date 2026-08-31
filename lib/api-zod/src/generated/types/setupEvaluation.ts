@@ -25,4 +25,5 @@ export interface SetupEvaluation {
   explanation: string;
   grade: number;
   dynamiteConfluenceCount: number;
+  supportingConfluences: string[];
 }

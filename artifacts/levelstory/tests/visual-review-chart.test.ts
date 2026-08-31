@@ -4,9 +4,13 @@ import type { VisualValidationAnnotation, VisualValidationCandle, VisualValidati
 import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
+  CHART_ASPECT_RATIO,
+  CHART_HEIGHT,
   CHART_LEFT,
   CHART_RIGHT,
   CHART_WIDTH,
+  chartHeightForWidth,
+  chartWidthForHeight,
   DOJI_BODY_HEIGHT,
   MES_TICK_SIZE,
   layoutEventRail,
@@ -295,6 +299,13 @@ test("fixed session domains preserve 42 and 78 timestamp slots", () => {
   assert.equal(getFixedTimeAxisTicks("primary").at(-1)?.label, "1:00 PM");
   assert.equal(getFixedTimeAxisTicks("full_regular").at(-1)?.label, "4:00 PM");
   assert.equal(getFixedTimeAxisTicks("primary", true).at(-1)?.index, 108);
+});
+
+test("chart sizing preserves the 1200 by 820 viewBox ratio", () => {
+  assert.equal(CHART_ASPECT_RATIO, CHART_WIDTH / CHART_HEIGHT);
+  assert.equal(chartHeightForWidth(1200), 820);
+  assert.equal(chartWidthForHeight(820), 1200);
+  assert.equal(chartHeightForWidth(900), 900 / CHART_ASPECT_RATIO);
 });
 
 test("fixed slot geometry leaves gaps empty instead of compressing observed candles", () => {

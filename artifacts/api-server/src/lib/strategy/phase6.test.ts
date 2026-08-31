@@ -13,7 +13,7 @@ import {
   type Phase6Context,
 } from "./phase6.js";
 import { strategyConfig } from "./config.js";
-import type { MajorLevel } from "./major-levels.js";
+import type { DynamiteLevel, MajorLevel } from "./major-levels.js";
 import type { Candle } from "./types.js";
 import { STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
 
@@ -173,6 +173,37 @@ test("ORB continuation qualifies only when every mandatory rule passes", () => {
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);
   assert.ok(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed));
+});
+
+test("Dynamite boosts only a matching qualified signal and preserves its confluence evidence", () => {
+  const result = phase6Analysis(baseContext({
+    patience: { ...patience(), direction: "long" },
+    dynamiteLevels: [{
+      id: "dynamite|10.00|10.25",
+      lower: 10,
+      upper: 10.25,
+      representative: 10.125,
+      includedLevelIds: ["vwap", "ema-200"],
+      includedTypes: ["VWAP", "EMA 200"],
+      includedLevelValues: [10, 10.25],
+      sourceFamilies: ["vwap", "ema-200"],
+      confluenceCount: 2,
+      observedAt: 3,
+      pullbackInteracted: true,
+      pullbackInteractions: [{
+        eventId: "pullback-1",
+        eventTime: 2,
+        candleOpenTime: 2,
+        price: 10,
+        level: "VWAP",
+      }],
+    } satisfies DynamiteLevel],
+  }));
+  const orb = result.evaluations.find((evaluation) => evaluation.setupType === "ORB_PULLBACK_CONTINUATION");
+  assert.equal(orb?.decision, "SETUP QUALIFIED");
+  assert.equal(orb?.dynamiteConfluenceCount, 2);
+  assert.equal(orb?.grade, 1);
+  assert.ok(orb?.supportingConfluences?.some((item) => item.includes("Dynamite dynamite|10.00|10.25")));
 });
 
 test("ORB qualification does not require strong-breakout volume or body classification", () => {

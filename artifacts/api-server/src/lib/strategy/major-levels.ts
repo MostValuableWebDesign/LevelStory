@@ -4,11 +4,33 @@ import type { StrategyConfig } from "./config.js";
 
 export type MajorLevelKind = "support" | "resistance";
 export type ConfluenceClass = "normal" | "strong" | "dynamite";
+export type CanonicalDynamiteFamily =
+  | "orb-ntz-high"
+  | "orb-ntz-low"
+  | "premarket-high"
+  | "premarket-low"
+  | "previous-day-high"
+  | "previous-day-low"
+  | "two-days-ago-high"
+  | "two-days-ago-low"
+  | "vwap"
+  | "ema-200"
+  | "support-zone"
+  | "resistance-zone"
+  | "fibonacci";
+
+export type DynamitePullbackInteraction = {
+  eventId: string | null;
+  eventTime: number;
+  candleOpenTime: number;
+  price: number;
+  level: string;
+};
 
 export type LevelComponent = {
   name: string;
   price: number;
-  family?: string;
+  family?: CanonicalDynamiteFamily | string;
   id?: string;
 };
 
@@ -20,10 +42,11 @@ export type DynamiteLevel = {
   includedLevelIds: string[];
   includedTypes: string[];
   includedLevelValues: number[];
-  sourceFamilies: string[];
+  sourceFamilies: CanonicalDynamiteFamily[];
   confluenceCount: number;
   observedAt: number;
   pullbackInteracted: boolean;
+  pullbackInteractions: DynamitePullbackInteraction[];
 };
 
 export function dynamiteLevels(
@@ -31,14 +54,14 @@ export function dynamiteLevels(
   toleranceTicks: number,
   tickSize: number,
   observedAt: number,
-  interactedPrices: readonly number[] = [],
+  interactions: readonly DynamitePullbackInteraction[] = [],
 ): DynamiteLevel[] {
   const unique = levels
     .filter((level) => Number.isFinite(level.price))
     .map((level, index) => ({
       ...level,
       price: Number((Math.round(level.price / tickSize) * tickSize).toFixed(10)),
-      family: level.family ?? level.name.replace(/^(ORB|NTZ) /i, "").replace(/^Critical /i, "").toLowerCase(),
+      family: canonicalDynamiteFamily(level),
       id: level.id ?? `${level.name}|${level.price}|${index}`,
     }))
     .filter((level, index, all) => all.findIndex((candidate) => candidate.family === level.family && candidate.price === level.price) === index);
@@ -48,7 +71,7 @@ export function dynamiteLevels(
     const cluster = clusters.at(-1);
     if (!cluster || level.price - cluster.lower > maxWidth) {
       clusters.push({
-        id: `dynamite|${level.price.toFixed(2)}`,
+        id: `dynamite|${level.price.toFixed(2)}|${level.price.toFixed(2)}`,
         lower: level.price,
         upper: level.price,
         representative: level.price,
@@ -58,20 +81,46 @@ export function dynamiteLevels(
         sourceFamilies: [level.family!],
         confluenceCount: 1,
         observedAt,
-        pullbackInteracted: interactedPrices.some((price) => Math.abs(price - level.price) <= maxWidth),
+        pullbackInteracted: false,
+        pullbackInteractions: [],
       });
     } else {
       cluster.upper = level.price;
       cluster.representative = Number(((cluster.lower + cluster.upper) / 2).toFixed(10));
+      cluster.id = `dynamite|${cluster.lower.toFixed(2)}|${cluster.upper.toFixed(2)}`;
       cluster.includedLevelIds.push(level.id!);
       cluster.includedTypes.push(level.name);
       cluster.includedLevelValues.push(level.price);
       if (!cluster.sourceFamilies.includes(level.family!)) cluster.sourceFamilies.push(level.family!);
       cluster.confluenceCount = cluster.sourceFamilies.length;
-      cluster.pullbackInteracted ||= interactedPrices.some((price) => Math.abs(price - level.price) <= maxWidth);
     }
   }
+  for (const cluster of clusters) {
+    cluster.pullbackInteractions = interactions.filter((interaction) =>
+      cluster.includedLevelValues.some((price) => Math.abs(interaction.price - price) <= maxWidth),
+    );
+    cluster.pullbackInteracted = cluster.pullbackInteractions.length > 0;
+  }
   return clusters.filter((cluster) => cluster.confluenceCount >= 2);
+}
+
+export function canonicalDynamiteFamily(level: Pick<LevelComponent, "name" | "family">): CanonicalDynamiteFamily {
+  const explicit = level.family?.toLowerCase();
+  const name = level.name.toLowerCase();
+  const value = explicit || name;
+  if (value.includes("orb") && value.includes("high") || value.includes("ntz") && value.includes("high")) return "orb-ntz-high";
+  if (value.includes("orb") && value.includes("low") || value.includes("ntz") && value.includes("low")) return "orb-ntz-low";
+  if (value.includes("premarket") && value.includes("high")) return "premarket-high";
+  if (value.includes("premarket") && value.includes("low")) return "premarket-low";
+  if ((value.includes("two") || value.includes("2")) && value.includes("day") && value.includes("high")) return "two-days-ago-high";
+  if ((value.includes("two") || value.includes("2")) && value.includes("day") && value.includes("low")) return "two-days-ago-low";
+  if ((value.includes("previous") || value.includes("prior")) && value.includes("day") && value.includes("high")) return "previous-day-high";
+  if ((value.includes("previous") || value.includes("prior")) && value.includes("day") && value.includes("low")) return "previous-day-low";
+  if (value.includes("vwap")) return "vwap";
+  if (value.includes("ema")) return "ema-200";
+  if (value.includes("fib")) return "fibonacci";
+  if (value.includes("resistance") || value.includes("supply")) return "resistance-zone";
+  return "support-zone";
 }
 
 export type MajorLevel = {

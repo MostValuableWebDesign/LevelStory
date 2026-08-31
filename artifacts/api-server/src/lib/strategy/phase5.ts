@@ -215,11 +215,15 @@ export function patienceCandleEngine(
     : undefined) ?? candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
     if (!next || !next.isComplete || next.openTime !== candle.closeTime) return false;
-    const confirmationPrice = direction === "long"
-      ? roundPrice(candle.high + entryBufferTicks * tickSize, tickSize)
-      : roundPrice(candle.low - entryBufferTicks * tickSize, tickSize);
-    return (direction === "long" ? next.high >= confirmationPrice : next.low <= confirmationPrice)
-      && isStrictlyOutsideNtz(next, direction, options.finalizedNtz);
+    const confirmationPrice = effectiveConfirmationThreshold(
+      candle,
+      direction,
+      entryBufferTicks,
+      tickSize,
+      options.finalizedNtz,
+    );
+    return reachesEffectiveConfirmation(next, direction, confirmationPrice)
+      && isStrictlyOutsideNtz(next, direction, options.finalizedNtz, true, confirmationPrice);
   }) ?? candidateIndexes.at(-1);
   if (candidate) {
     const previous = completed[candidate.index - 1];
@@ -240,9 +244,13 @@ export function patienceCandleEngine(
     }
     const next = sorted.find((candle) => candle.openTime > candidate.candle.openTime);
     const patience = snapshot(candidate.candle);
-    const entryBufferPrice = direction === "long"
-      ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
-      : roundPrice(candidate.candle.low - entryBufferTicks * tickSize, tickSize);
+    const entryBufferPrice = effectiveConfirmationThreshold(
+      candidate.candle,
+      direction,
+      entryBufferTicks,
+      tickSize,
+      options.finalizedNtz,
+    );
     const strategyStopPrice = direction === "long"
       ? roundPrice(candidate.candle.low - stopBufferTicks * tickSize, tickSize)
       : roundPrice(candidate.candle.high + stopBufferTicks * tickSize, tickSize);
@@ -381,19 +389,14 @@ function evaluateTrigger(
 ): PatienceAnalysis {
   const intendedPrice = direction === "long" ? patience.high : patience.low;
   const oppositePrice = direction === "long" ? patience.low : patience.high;
-  const entryBufferPrice = direction === "long"
-    ? roundPrice(intendedPrice + entryBufferTicks * tickSize, tickSize)
-    : roundPrice(intendedPrice - entryBufferTicks * tickSize, tickSize);
-  const strictNtzPrice = finalizedNtz?.complete
-    ? direction === "long"
-      ? roundPrice(finalizedNtz.high + tickSize, tickSize)
-      : roundPrice(finalizedNtz.low - tickSize, tickSize)
-    : null;
-  const modeledEntryPrice = strictNtzPrice === null
-    ? entryBufferPrice
-    : direction === "long"
-      ? Math.max(entryBufferPrice, strictNtzPrice)
-      : Math.min(entryBufferPrice, strictNtzPrice);
+  const entryBufferPrice = effectiveConfirmationThreshold(
+    patience,
+    direction,
+    entryBufferTicks,
+    tickSize,
+    finalizedNtz,
+  );
+  const modeledEntryPrice = entryBufferPrice;
   const strategyStopPrice = direction === "long"
     ? roundPrice(oppositePrice - stopBufferTicks * tickSize, tickSize)
     : roundPrice(oppositePrice + stopBufferTicks * tickSize, tickSize);
@@ -436,7 +439,7 @@ function evaluateTrigger(
     return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
   }
   if (bufferReached || gapBuffer) {
-    if (!isStrictlyOutsideNtz(trigger, direction, finalizedNtz, requireFinalizedNtz)) {
+    if (!isStrictlyOutsideNtz(trigger, direction, finalizedNtz, requireFinalizedNtz, modeledEntryPrice)) {
       return {
         ...base,
         state: "PATIENCE_CANDLE_EXPIRED",
@@ -449,8 +452,8 @@ function evaluateTrigger(
       state: trigger.isComplete ? "ENTRY_TRIGGERED" : "ENTRY_BUFFER_REACHED",
       triggerPrice: modeledEntryPrice,
       detail: trigger.isComplete
-        ? `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is triggered at ${entryBufferPrice}.`
-        : `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is pending the completed-candle record.`,
+        ? `The immediate-next entry candle (E) reached the effective ${entryBufferTicks}-tick confirmation threshold of ${entryBufferPrice}; shadow entry is triggered at ${entryBufferPrice}.`
+        : `The immediate-next entry candle (E) reached the effective ${entryBufferTicks}-tick confirmation threshold of ${entryBufferPrice}; shadow entry is pending the completed-candle record.`,
     };
   }
   if (intendedTouched) {
@@ -473,11 +476,48 @@ function patienceShape(candle: Candle, previous: Candle, direction: Direction): 
   return direction === "long" ? candle.high <= previous.high : candle.low >= previous.low;
 }
 
-function isStrictlyOutsideNtz(candle: Pick<Candle, "high" | "low" | "close">, direction: Direction, ntz?: NtzRange | null, required = false): boolean {
+export function effectiveConfirmationThreshold(
+  patience: Pick<Candle, "high" | "low">,
+  direction: Direction,
+  entryBufferTicks: number,
+  tickSize: number,
+  ntz?: NtzRange | null,
+): number {
+  const patienceThreshold = direction === "long"
+    ? patience.high + entryBufferTicks * tickSize
+    : patience.low - entryBufferTicks * tickSize;
+  if (!ntz?.complete) return roundPrice(patienceThreshold, tickSize);
+  const ntzThreshold = direction === "long"
+    ? ntz.high + tickSize
+    : ntz.low - tickSize;
+  return roundPrice(
+    direction === "long"
+      ? Math.max(patienceThreshold, ntzThreshold)
+      : Math.min(patienceThreshold, ntzThreshold),
+    tickSize,
+  );
+}
+
+export function reachesEffectiveConfirmation(
+  candle: Pick<Candle, "high" | "low">,
+  direction: Direction,
+  threshold: number,
+): boolean {
+  return direction === "long" ? candle.high >= threshold : candle.low <= threshold;
+}
+
+export function isStrictlyOutsideNtz(
+  candle: Pick<Candle, "high" | "low">,
+  direction: Direction,
+  ntz?: NtzRange | null,
+  required = false,
+  threshold?: number,
+): boolean {
   if (!ntz?.complete) return !required;
+  const effectiveThreshold = threshold ?? (direction === "long" ? ntz.high + 0.25 : ntz.low - 0.25);
   return direction === "long"
-    ? candle.high > ntz.high && candle.close > ntz.high
-    : candle.low < ntz.low && candle.close < ntz.low;
+    ? candle.high > ntz.high && candle.high >= effectiveThreshold
+    : candle.low < ntz.low && candle.low <= effectiveThreshold;
 }
 
 function directionTrendMatches(direction: Direction, trend: TrendDirection): boolean {
@@ -606,9 +646,13 @@ function buildPatienceOccurrences(
         eligibilityProvenance: provenance,
       };
     }
-    const confirmationThreshold = direction === "long"
-      ? roundPrice(candidate.candle.high + entryBufferTicks * tickSize, tickSize)
-      : roundPrice(candidate.candle.low - entryBufferTicks * tickSize, tickSize);
+    const confirmationThreshold = effectiveConfirmationThreshold(
+      candidate.candle,
+      direction,
+      entryBufferTicks,
+      tickSize,
+      finalizedNtz,
+    );
     const actualConfirmationExcursion = nextObserved
       ? direction === "long"
         ? Math.max(0, nextObserved.high - candidate.candle.high)

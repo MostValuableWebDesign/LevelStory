@@ -8,6 +8,7 @@ import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
 import { hasConfirmedDirectionalTrend } from "./rules.js";
+import { isStrictlyOutsideNtz } from "./phase5.js";
 
 export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
@@ -76,6 +77,7 @@ export type SetupEvaluation = {
   explanation: string;
   grade?: number;
   dynamiteConfluenceCount?: number;
+  supportingConfluences?: string[];
 };
 
 export type Phase6Analysis = {
@@ -114,8 +116,31 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluateEquivalentCandleReversal(context),
     evaluatePeakRetracementReversal(context),
   ].map((evaluation) => {
-    const dynamiteConfluenceCount = context.dynamiteLevels?.filter((level) => level.pullbackInteracted).reduce((max, level) => Math.max(max, level.confluenceCount), 0) ?? 0;
-    return { ...evaluation, dynamiteConfluenceCount, grade: dynamiteConfluenceCount > 0 ? 1 : 0 };
+    const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
+      ? context.reversalPatience
+      : context.patience;
+    const signalDynamite = evaluation.decision === "SETUP QUALIFIED"
+      ? context.dynamiteLevels?.filter((level) =>
+        level.pullbackInteracted
+        && signalPatience?.patienceCandle
+        && (evaluation.direction === signalPatience.direction || !evaluation.direction)
+        && level.pullbackInteractions.some((interaction) =>
+          interaction.candleOpenTime <= signalPatience.patienceCandle!.openTime
+          || interaction.eventId === signalPatience.eligibilityProvenance?.eventId,
+        ),
+      ) ?? []
+      : [];
+    const dynamiteConfluenceCount = signalDynamite.reduce((max, level) => Math.max(max, level.confluenceCount), 0);
+    const supportingConfluences = [
+      ...(evaluation.supportingConfluences ?? []),
+      ...signalDynamite.map((level) => `Dynamite ${level.id}: ${level.sourceFamilies.join(", ")}`),
+    ];
+    return {
+      ...evaluation,
+      dynamiteConfluenceCount,
+      grade: (evaluation.grade ?? 0) + (dynamiteConfluenceCount > 0 ? 1 : 0),
+      supportingConfluences: [...new Set(supportingConfluences)],
+    };
   });
   const attributionOrder: SetupType[] = [
     "ORB_PULLBACK_CONTINUATION",
@@ -434,6 +459,7 @@ function buildEvaluation(
       ? `${setupType} passed every mandatory rule.`
       : `${setupType} is ${decision}; ${mandatory.filter((item) => !item.passed).map((item) => item.label).join(", ")}.`,
     grade: 0,
+    supportingConfluences: rules.filter((item) => item.passed).map((item) => item.label),
     dynamiteConfluenceCount: 0,
   };
 }
@@ -496,9 +522,10 @@ function strictNtzEntry(context: Phase6Context, patience: PatienceAnalysis, dire
   // Phase 5 is authoritative when a trigger candle is available; do not
   // invent a contradictory rejection from an incomplete synthetic context.
   if (!trigger) return false;
-  return direction === "long"
-    ? trigger.high > context.levels.ntz.high && trigger.close > context.levels.ntz.high
-    : trigger.low < context.levels.ntz.low && trigger.close < context.levels.ntz.low;
+  // Phase 5 owns the effective P-buffer threshold. This Phase 6 gate only
+  // verifies strict geometric NTZ separation on the already-confirmed E.
+  const ntzBoundary = direction === "long" ? context.levels.ntz.high : context.levels.ntz.low;
+  return isStrictlyOutsideNtz(trigger, direction, context.levels.ntz, true, ntzBoundary);
 }
 
 function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {

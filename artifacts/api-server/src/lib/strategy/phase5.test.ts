@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { patienceCandleEngine, phase5PatienceAnalysis, type PatienceEligibilityEvent } from "./phase5.js";
+import {
+  effectiveConfirmationThreshold,
+  isStrictlyOutsideNtz,
+  patienceCandleEngine,
+  phase5PatienceAnalysis,
+  type PatienceEligibilityEvent,
+} from "./phase5.js";
 import type { PullbackAnalysis } from "./phase4.js";
 import type { Candle } from "./types.js";
 
@@ -32,6 +38,25 @@ test("valid bearish patience candle triggers below the patience low", () => {
   const result = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 7.8, 8)), "short", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.triggerPrice, 8);
+});
+
+test("effective confirmation uses the stricter NTZ threshold and accepts wick-only reach", () => {
+  const patience = candle(1, 10.5, 11, 7, 10.8);
+  const ntz = { high: 12, low: 9, complete: true };
+  const threshold = effectiveConfirmationThreshold(patience, "long", 4, 0.25, ntz);
+  assert.equal(threshold, 12.25);
+  assert.equal(isStrictlyOutsideNtz({ high: 12.25, low: 10, }, "long", ntz, true, threshold), true);
+  assert.equal(isStrictlyOutsideNtz({ high: 12, low: 10 }, "long", ntz, true, threshold), false);
+
+  const result = patienceCandleEngine(
+    setup("long", candle(2, 10.8, 12.25, 11.5, 11.75)),
+    "long",
+    { eligibilityEvents: eligibility(), tickSize: 0.25, finalizedNtz: ntz, requireFinalizedNtz: true },
+  );
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.entryBufferPrice, threshold);
+  assert.equal(result.triggerPrice, threshold);
+  assert.match(result.detail, /effective .*12\.25/);
 });
 
 test("an incomplete patience candle cannot be validated", () => {

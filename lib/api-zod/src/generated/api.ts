@@ -292,7 +292,8 @@ export const GetMarketSnapshotResponse = zod.object({
 }),zod.null()]),
   "explanation": zod.string(),
   "grade": zod.number(),
-  "dynamiteConfluenceCount": zod.number()
+  "dynamiteConfluenceCount": zod.number(),
+  "supportingConfluences": zod.array(zod.string())
 }))
 }),
   "fibonacci": zod.object({
@@ -383,7 +384,14 @@ export const GetMarketSnapshotResponse = zod.object({
   "sourceFamilies": zod.array(zod.string()),
   "confluenceCount": zod.number(),
   "observedAt": zod.number(),
-  "pullbackInteracted": zod.boolean()
+  "pullbackInteracted": zod.boolean(),
+  "pullbackInteractions": zod.array(zod.object({
+  "eventId": zod.string().nullable(),
+  "eventTime": zod.number(),
+  "candleOpenTime": zod.number(),
+  "price": zod.number(),
+  "level": zod.string()
+}))
 })),
   "trend": zod.object({
   "direction": zod.enum(['bullish', 'bearish', 'neutral']),

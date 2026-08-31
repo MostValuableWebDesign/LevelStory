@@ -37,3 +37,4 @@
 - [Reconciliation fixture boundary](reconciliation-fixture-boundary.md) — keep metric-only fixtures compatible while enforcing strict populated-signal projection invariants.
 - [Exact edge predicate mapping](exact-edge-predicate-mapping.md) — Phase 3 predicates must map one-to-one to stored Phase 6 rule keys; overlapping prose can borrow another requirement’s PASS.
 - [Visual chart pointer separation](visual-chart-pointer-separation.md) — keep free pointer geometry independent from fixed candle-slot inspection, with an explicit hit surface for empty plot space and edges.
+- [Phase 5 threshold authority](phase5-phase6-threshold-authority.md) — Phase 5 owns executable thresholds; Phase 6 reuses shared NTZ geometry without reinterpreting legacy patience prices.

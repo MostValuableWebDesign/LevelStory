@@ -25,6 +25,7 @@ import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecu
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { PatienceOccurrence } from "./strategy/phase5.js";
+import { effectiveConfirmationThreshold } from "./strategy/phase5.js";
 import type { Direction } from "./strategy/types.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
@@ -266,6 +267,11 @@ export type BacktestAuditRecord = {
   netPnl: number | null;
   exitReason: string | null;
   confirmationBufferTicks?: number;
+  finalizedNtzHigh?: number | null;
+  finalizedNtzLow?: number | null;
+  finalizedNtzComplete?: boolean;
+  supportingConfluences?: string[];
+  setupGrade?: "A" | "A+" | "A++";
   consolidationThresholds: ConsolidationThresholds;
   pullbackOccurrences?: Array<{
     eventId?: string;
@@ -1636,6 +1642,11 @@ function auditForEvaluation(
     netPnl: null,
     exitReason: null,
     confirmationBufferTicks: snapshot.patience.entryBufferTicks,
+    finalizedNtzHigh: snapshot.ntz.high ?? null,
+    finalizedNtzLow: snapshot.ntz.low ?? null,
+    finalizedNtzComplete: snapshot.ntz.complete,
+    supportingConfluences: evaluation.supportingConfluences ?? [],
+    setupGrade: evaluation.grade && evaluation.grade >= 2 ? "A++" : evaluation.grade && evaluation.grade >= 1 ? "A+" : "A",
     consolidationThresholds: governedConsolidation,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
     patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
@@ -2216,10 +2227,20 @@ export function buildHistoricalOccurrenceLedger(
         && patience.triggerCandle.openTime === expectedEntryCandleOpenTime
         ? patience.triggerCandle
         : null;
-      const confirmationThreshold = patience.confirmationThreshold ?? (
-        patience.direction === "long"
-          ? patience.patienceCandle.high + patience.entryBufferTicks * 0.25
-          : patience.patienceCandle.low - patience.entryBufferTicks * 0.25
+      const confirmationThreshold = patience.confirmationThreshold ?? effectiveConfirmationThreshold(
+        patience.patienceCandle,
+        patience.direction,
+        patience.entryBufferTicks,
+        0.25,
+        record.finalizedNtzComplete
+          && typeof record.finalizedNtzHigh === "number"
+          && typeof record.finalizedNtzLow === "number"
+          ? {
+            high: record.finalizedNtzHigh,
+            low: record.finalizedNtzLow,
+            complete: true,
+          }
+          : null,
       );
       const confirmationExcursion = patience.actualConfirmationExcursion ?? (
         observedImmediate
@@ -2326,8 +2347,11 @@ export function buildHistoricalOccurrenceLedger(
          ...(linkedTrade ? {
            primaryEdge: linkedTrade.primaryEdge ?? linkedTrade.setupType,
            matchedEdges: linkedTrade.matchedEdges ?? [linkedTrade.setupType],
-           supportingConfluences: linkedTrade.supportingConfluences ?? [],
-           setupGrade: linkedTrade.setupGrade ?? "A",
+      supportingConfluences: [...new Set([
+        ...(record.supportingConfluences ?? []),
+        ...(linkedTrade?.supportingConfluences ?? []),
+      ])],
+      setupGrade: record.setupGrade ?? linkedTrade?.setupGrade ?? "A",
            entryPrice: linkedTrade.entryPrice,
            patienceEntryPrice: linkedTrade.audit?.entryTriggerPrice ?? null,
            confirmationEntryPrice: linkedTrade.entryPrice,
@@ -3287,11 +3311,15 @@ export function runCausalBacktest(
       .filter((evaluation) => evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly)
       .map((evaluation) => evaluation.setupType);
     const supportingConfluences = selected
-      ? selected.rules.filter((item) => item.passed).map((item) => item.label)
+      ? [...new Set([
+        ...(selected.supportingConfluences ?? []),
+        ...selected.rules.filter((item) => item.passed).map((item) => item.label),
+      ])]
       : [];
-    const setupGrade: BacktestTrade["setupGrade"] = matchedEdges.length >= 3
+    const gradeScore = matchedEdges.length + (selected?.grade ?? 0);
+    const setupGrade: BacktestTrade["setupGrade"] = gradeScore >= 3
       ? "A++"
-      : matchedEdges.length === 2 ? "A+" : "A";
+      : gradeScore >= 2 ? "A+" : "A";
     const selectedPatience = selected && ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(selected.setupType)
       ? snapshot.reversalPatience ?? snapshot.patience
       : snapshot.patience;
@@ -3329,9 +3357,21 @@ export function runCausalBacktest(
       }
         const entry = selectedPatience?.entryBufferPrice
          ?? snapshot.riskPlan.entry
-         ?? (selected.direction === "long"
-           ? patienceCandle.high + entryBufferTicks * specification.tickSize
-           : patienceCandle.low - entryBufferTicks * specification.tickSize);
+         ?? effectiveConfirmationThreshold(
+           patienceCandle,
+           selected.direction,
+           entryBufferTicks,
+           specification.tickSize,
+           snapshot.ntz.complete
+             && typeof snapshot.ntz.high === "number"
+             && typeof snapshot.ntz.low === "number"
+             ? {
+               high: snapshot.ntz.high,
+               low: snapshot.ntz.low,
+               complete: true,
+             }
+             : null,
+         );
        const strategyStop = selectedPatience?.strategyStopPrice
          ?? snapshot.riskPlan.strategyStop
          ?? (selected.direction === "long"

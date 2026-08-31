@@ -9,6 +9,7 @@ import type {
 
 export const CHART_WIDTH = 1200;
 export const CHART_HEIGHT = 820;
+export const CHART_ASPECT_RATIO = CHART_WIDTH / CHART_HEIGHT;
 export const CHART_LEFT = 34;
 export const CHART_RIGHT = 86;
 export const CHART_TOP = 96;
@@ -36,6 +37,14 @@ export const PREMARKET_END_MINUTES = PRIMARY_SESSION_START_MINUTES;
 export const PREMARKET_SLOT_COUNT = (PREMARKET_END_MINUTES - PREMARKET_START_MINUTES) / 5;
 export const PRIMARY_SLOT_COUNT = (PRIMARY_SESSION_END_MINUTES - PRIMARY_SESSION_START_MINUTES) / 5;
 export const REGULAR_SLOT_COUNT = (REGULAR_SESSION_END_MINUTES - PRIMARY_SESSION_START_MINUTES) / 5;
+
+export function chartHeightForWidth(width: number): number {
+  return width > 0 ? width / CHART_ASPECT_RATIO : 0;
+}
+
+export function chartWidthForHeight(height: number): number {
+  return height > 0 ? height * CHART_ASPECT_RATIO : 0;
+}
 
 export type FocusedCandle = VisualValidationCandle & {
   machineVisible: boolean;

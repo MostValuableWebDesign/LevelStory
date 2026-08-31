@@ -431,6 +431,7 @@
   .chart-plot-shell {
     min-width: 0;
     width: 100%;
+    aspect-ratio: 1200 / 820;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -438,7 +439,8 @@
     display: block;
     width: 100%;
     min-width: 760px;
-    height: clamp(640px, 78vh, 900px);
+    height: auto;
+    aspect-ratio: 1200 / 820;
   }
   .event-index {
     border: 1px solid hsl(var(--border));
@@ -630,8 +632,12 @@
   }
   .visual-review-chart-fullscreen .visual-review-svg {
     min-width: 0;
-    height: calc(100dvh - 8rem);
-    min-height: 760px;
+    height: auto;
+  }
+  .visual-review-chart-fullscreen .chart-plot-shell {
+    width: min(100%, calc((100dvh - 8rem) * 1200 / 820));
+    min-width: 0;
+    margin-inline: auto;
   }
   .chart-control {
     display: inline-flex;

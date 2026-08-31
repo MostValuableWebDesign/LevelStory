@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DynamiteLevelPullbackInteractionsItem } from './dynamiteLevelPullbackInteractionsItem';
 
 export interface DynamiteLevel {
   id: string;
@@ -18,4 +19,5 @@ export interface DynamiteLevel {
   confluenceCount: number;
   observedAt: number;
   pullbackInteracted: boolean;
+  pullbackInteractions: DynamiteLevelPullbackInteractionsItem[];
 }
