@@ -1,0 +1,165 @@
+## 7. Enforce the entry-triggered → fill invariant
+
+The screenshot exposes an important inconsistency: the application displays an authoritative Entry candle and confirmed trade edge, but no modeled fill or trade is linked to it.
+
+Establish this invariant:
+
+ENTRY_TRIGGERED
+⇔ entryReachedThreshold === true
+⇔ candidate.executionStatus === "MODELED_TRADE_CREATED"
+⇔ exactly one candidate-driven Shadow Mode fill exists
+⇔ exactly one trade is linked by candidateId and signalOccurrenceId
+
+This invariant applies only after all mandatory eligibility gates pass:
+
+- Valid strategy edge
+- Qualifying pullback within 12 ticks of a causal key level
+- Patience candle P
+- Immediate next candle E
+- E reaches the configured 8-tick confirmation threshold
+- Entry is outside the finalized NTZ
+- Entry occurs before 1:00 p.m. America/New_York
+
+If these gates pass, create the Shadow Mode fill. Do not allow legacy reconciliation, missing bid/ask quotes, a separate risk-approval event, or the absence of a pre-existing trade record to suppress the fill.
+
+### Entry disposition rules
+
+For a long:
+
+confirmationThreshold = P.high + 8 MES ticks
+
+E must satisfy:
+
+E.high >= confirmationThreshold
+
+For a short:
+
+confirmationThreshold = P.low - 8 MES ticks
+
+E must satisfy:
+
+E.low <= confirmationThreshold
+
+When reached:
+
+- Set `entryReachedThreshold = true`.
+- Set `executionStatus = MODELED_TRADE_CREATED`.
+- Create exactly one candidate-driven trade.
+- Fill at the exact confirmation threshold.
+- Associate the fill with E’s five-minute interval.
+- Set `entryCandleOpenTime = E.openTime`.
+- Set `entryCandleCloseTime = E.closeTime`.
+- Set `modeledFillObservationTime = E.closeTime`.
+- Do not move the fill to E+1.
+- Do not wait for another candle to create the entry.
+
+OHLCV does not provide an exact intrabar timestamp, so the fill price is the crossed confirmation threshold and the fill is observed when E closes. The chart marker must still be placed on E.
+
+### Do not display false entry events
+
+The Visual Review event rail must use authoritative candidate execution state.
+
+If a fill exists, display one event:
+
+`Entry + fill`
+
+with:
+
+- Entry time range
+- Direction
+- Fill price
+- Candidate ID
+- Signal occurrence ID
+- Fill model
+
+If no fill exists, do not label the candle “Entry candle.” Display the truthful diagnostic disposition instead:
+
+- `ENTRY_NOT_REACHED`
+- `REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK`
+- `REJECTED_INSIDE_NTZ`
+- `REJECTED_OUTSIDE_ENTRY_WINDOW`
+- `ENTRY_AMBIGUOUS`
+- `INSUFFICIENT_CANDLE_DATA`
+
+A patience shape or confirmed P→E signal is not automatically an entry unless every mandatory gate passes. Conversely, once the authoritative status becomes `ENTRY_TRIGGERED`, a missing fill is an invariant violation.
+
+### Visual Review trade linkage
+
+Visual Review must resolve the trade through:
+
+snapshot signalOccurrenceId
+→ authoritative candidate
+→ candidateId
+→ modeled trade
+→ entry and exit legs
+
+Do not depend on approximate timestamps, display labels, or legacy trade IDs.
+
+Once filled:
+
+- Draw an entry marker on E.
+- Draw an entry-price line at the modeled fill price.
+- Label it `Entry` with the exact price.
+- Keep the entry line visible through the trade’s lifetime.
+
+Once finalized:
+
+- Draw the exit marker on the actual exit candle.
+- Draw an exit-price line using the authoritative exit price.
+- Show the exit reason.
+- Show gross P/L, fees, slippage, and net realized P/L.
+
+If the trade remains open:
+
+- Show the entry line.
+- Display `Open / unscored`.
+- Do not fabricate an exit line or realized P/L.
+
+### Required regression tests
+
+Add deterministic tests proving:
+
+1. The screenshot-equivalent short case fills:
+   - threshold = 6725.75
+   - E low = 6713.25
+   - result = exactly one `MODELED_TRADE_CREATED` trade
+   - fill price = 6725.75
+   - fill candle = E
+
+2. An eligible long E crossing its threshold creates exactly one fill.
+
+3. An eligible short E crossing its threshold creates exactly one fill.
+
+4. E not reaching the threshold creates no fill and no “Entry candle” event.
+
+5. Missing key-level pullback creates no entry status and no fill.
+
+6. Inside-NTZ P→E creates no entry status and no fill.
+
+7. Entry at or after 1:00 p.m. ET creates no entry status and no fill.
+
+8. Repeated audit references cannot create duplicate fills.
+
+9. A triggered entry without a linked fill is reported in:
+   `candidateInvariantViolations`
+
+10. Visual Review renders an entry line for a filled open trade.
+
+11. Visual Review renders entry and exit lines plus realized P/L for a finalized trade.
+
+12. Open trades never receive fabricated exit lines or P/L.
+
+Include in the final report a reconciliation table with:
+
+signalOccurrenceId
+candidateId
+P timestamp
+E timestamp
+threshold
+E high/low
+entry disposition
+fill price
+trade ID
+exit status
+
+Keep this focused and compute-conscious. Do not rebuild the historical index or run a broad qualification batch.
