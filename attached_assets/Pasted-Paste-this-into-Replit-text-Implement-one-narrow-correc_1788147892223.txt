@@ -1,0 +1,250 @@
+Paste this into Replit:
+
+```text
+Implement one narrow correctness pass for the latest NTZ-entry, Dynamite Level, and visual-review chart changes.
+
+Keep this compute-conscious:
+
+- Do not rebuild the historical index.
+- Do not run a broad historical replay.
+- Run focused tests, typechecks, and diff validation only.
+- Preserve Shadow Mode with no broker, live-order, or paper-order path.
+
+Current reviewed head:
+
+6227b0442d6c0cf64455bffb66845741e1a61e11
+
+1. Correct the outside-NTZ entry rule
+
+The authoritative rule is:
+
+“No modeled entry may occur inside or exactly on the finalized NTZ/ORB boundary.”
+
+Do not require the E candle to close outside the NTZ.
+
+Entry qualification must use the executable confirmation threshold:
+
+Long:
+
+effectiveEntryThreshold =
+  max(
+    P.high + configured entry-buffer ticks,
+    NTZ.high + one MES tick
+  )
+
+E qualifies when:
+
+E.high >= effectiveEntryThreshold
+
+Short:
+
+effectiveEntryThreshold =
+  min(
+    P.low - configured entry-buffer ticks,
+    NTZ.low - one MES tick
+  )
+
+E qualifies when:
+
+E.low <= effectiveEntryThreshold
+
+Requirements:
+
+- Equality with NTZ high or low is not outside.
+- A wick reaching the effective threshold is sufficient.
+- The E candle does not have to close outside the NTZ.
+- Preserve existing conservative same-candle ambiguity handling.
+- Preserve immediate-only P→E confirmation.
+- If E fails, P expires and scanning continues for P2→E2.
+- Entries remain prohibited at or after 1:00 p.m. ET.
+- The authoritative trigger price and Shadow Mode entry price must equal `effectiveEntryThreshold`.
+- Audit explanations must report the effective modeled entry price, not the original patience-only buffer.
+- Continue emitting `ENTRY_NOT_OUTSIDE_FINALIZED_NTZ` when E does not reach the effective outside threshold.
+- Every entry-producing edge must use the same authoritative predicate:
+  - ORB break–pullback–patience continuation
+  - Patience candle continuation
+  - Strong breakout after consolidation
+  - Equivalent-candle reversal
+  - Peak-retracement reversal, if it remains an enabled edge
+- Remove duplicate implementations of the predicate where practical. Use one shared helper so Phase 5 and Phase 6 cannot disagree.
+
+2. Correct Dynamite Level family identity
+
+A Dynamite Level requires at least two genuinely distinct level families inside a cluster whose complete maximum-to-minimum width is no greater than eight MES ticks.
+
+Use explicit canonical families, including:
+
+- `orb-ntz-high`
+- `orb-ntz-low`
+- `premarket-high`
+- `premarket-low`
+- `previous-day-high`
+- `previous-day-low`
+- `two-days-ago-high`
+- `two-days-ago-low`
+- `vwap`
+- `ema-200`
+- `support-zone`
+- `resistance-zone`
+- `fibonacci`
+
+Deduplication requirements:
+
+- ORB high and NTZ high count once.
+- ORB low and NTZ low count once.
+- Premarket high and Critical Premarket high count once when they represent the same underlying level.
+- Premarket low and Critical Premarket low count once.
+- A major-level wrapper must not duplicate its underlying source level.
+- Multiple Fibonacci ratios may be retained as constituent prices, but they count as one `fibonacci` family.
+- Repeated audit references count once.
+- Identical family and tick-rounded price values count once.
+- A cluster must contain at least two distinct canonical families.
+- Keep the full constituent IDs, labels, values, and provenance for inspection.
+
+Make the deterministic Dynamite ID include:
+
+- Canonical source/configuration identity
+- Tick-rounded lower and upper boundaries
+- Sorted canonical family identities
+- Causal observation timestamp or trading-date identity where appropriate
+
+Do not derive the ID only from the lowest price.
+
+3. Require a genuine qualifying interaction
+
+Set `pullbackInteracted: true` only when a causal, qualifying pullback event interacts with the Dynamite cluster.
+
+Do not use every diagnostic pullback event.
+
+Filter interaction evidence to events that are authoritatively qualifying, such as:
+
+- `qualifies === true`
+- Or the equivalent canonical qualifying-pullback status in the current data model
+
+The interaction must fall within the cluster’s price band plus the governed pullback tolerance. Preserve the exact source event ID and candle timestamp.
+
+4. Make Dynamite grading signal-specific
+
+Do not apply one Dynamite boost to every Phase 6 evaluation.
+
+A Dynamite Level may increase the grade only when it supports the same physical signal:
+
+- Same contract and New York trading date
+- Same causal breakout/pullback arm
+- Same pullback or qualifying L candle
+- Same direction
+- Observed no later than the signal’s evaluation boundary
+
+Requirements:
+
+- Attach Dynamite evidence to the canonical P→E occurrence and authoritative trade candidate.
+- Preserve one physical signal → one candidate → at most one Shadow Mode trade.
+- Store the Dynamite Level in the candidate’s supporting-confluences list.
+- Increase the existing candidate grade; do not replace the grade with only `0` or `1`.
+- Other unrelated edges and candidates receive no boost.
+- A Dynamite Level never creates a trade by itself.
+- It never bypasses patience, immediate E, outside-NTZ, or entry-window rules.
+
+5. Preserve chart presentation
+
+Keep Dynamite Levels royal blue:
+
+#4169E1
+
+Display:
+
+- “Dynamite · N confluences”
+- Representative price or lower–upper range
+- Constituent details in the expandable evidence section
+
+Avoid duplicate constituent labels over the plot.
+
+6. Correct chart sizing without letterboxing
+
+The chart must fill most of its panel while preserving geometry and pointer accuracy.
+
+Current fixed width and independently calculated height can produce letterboxing with:
+
+preserveAspectRatio="xMidYMid meet"
+
+Correct this by making the rendered chart container preserve the SVG viewBox aspect ratio.
+
+Requirements:
+
+- Chart width: 100%.
+- Rendered height should derive from the `1200 / 820` viewBox ratio.
+- The price plot should occupy approximately 90–95% of the usable chart width.
+- Remove avoidable internal whitespace.
+- Do not stretch X and Y independently or distort candles.
+- Keep a narrow right gutter for price values and level labels.
+- Fullscreen should use nearly the whole viewport.
+- Preserve crosshair, hover, candle-slot, zoom, and pan accuracy.
+- Verify desktop and narrow responsive layouts.
+- Preserve the external candle inspector.
+
+7. Durable memory
+
+Add a concise durable memory entry recording:
+
+- Entries must be strictly outside the finalized NTZ/ORB.
+- Entry is determined by the effective executable threshold, not by requiring E to close outside.
+- Dynamite Level means at least two distinct canonical level families within eight MES ticks.
+- Dynamite is confluence/grade evidence, not an independent entry edge.
+- It cannot bypass P→immediate-E or the 1:00 p.m. cutoff.
+
+Do not store implementation-specific details that are already obvious from the code.
+
+8. Focused deterministic tests
+
+Add tests proving:
+
+NTZ:
+
+- Long threshold inside NTZ is moved to NTZ high plus one tick.
+- Short threshold inside NTZ is moved to NTZ low minus one tick.
+- Entry exactly on an NTZ boundary is rejected.
+- A wick reaching the effective outside threshold qualifies even if E closes back inside.
+- A wick that does not reach the effective threshold is rejected.
+- Trigger and modeled entry prices equal the effective threshold.
+- Audit text reports the effective threshold.
+- P1 failure followed by valid P2→E2 works.
+- No entry at or after 1:00 p.m. ET.
+
+Dynamite:
+
+- Two distinct families inside eight ticks form one Dynamite Level.
+- Exactly eight ticks qualifies.
+- More than eight ticks does not.
+- ORB/NTZ aliases do not double-count.
+- Critical/premarket aliases do not double-count.
+- Multiple Fibonacci ratios count as one family.
+- Repeated audit references do not double-count.
+- A nonqualifying pullback event cannot set `pullbackInteracted`.
+- An unrelated strategy receives no grade boost.
+- A related candidate receives one confluence boost with the full supporting-level list.
+- One physical P→E signal still produces only one candidate/trade.
+
+Chart:
+
+- The chart preserves the viewBox aspect ratio.
+- The plot occupies the expected usable-width percentage.
+- Pointer-to-price and pointer-to-slot resolution remain correct after responsive resizing.
+- Fullscreen and normal modes do not introduce chart distortion.
+
+9. Verification report
+
+Return:
+
+- Files changed
+- Root causes corrected
+- Final authoritative NTZ predicate
+- Final Dynamite family and clustering rules
+- How candidate-specific grading is linked
+- Focused test totals
+- API and frontend typecheck results
+- `git diff --check` result
+- Confirmation that no historical index rebuild or broad replay occurred
+- Any remaining limitation
+
+Do not claim completion if the tests above are missing.
+```
