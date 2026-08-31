@@ -220,8 +220,11 @@ export type Phase3SignalLevelEvidence = {
 };
 
 export type Phase3SignalEdgePredicate = {
-  result: "PASS" | "FAIL" | "NOT_APPLICABLE";
+  predicateName: string;
+  result: "PASS" | "FAIL" | "EVIDENCE_UNAVAILABLE";
   reason: string;
+  sourceAuditId: string | null;
+  evidenceTimestamp: string | null;
 };
 
 export type Phase3ConfluenceEvidence = {
@@ -258,7 +261,7 @@ export type Phase3SignalReconciliation = {
   primaryEdge: string | null;
   matchedEdges: string[];
   levelEvidence: Phase3SignalLevelEvidence[];
-  edgePredicates: Record<Phase3Edge, Phase3SignalEdgePredicate>;
+  edgePredicates: Record<Phase3Edge, Phase3SignalEdgePredicate[]>;
   confluenceEvidence: Phase3ConfluenceEvidence[];
   timing: {
     entryTimeBucket: keyof Phase3PilotMetrics["entryTimeBuckets"] | null;
@@ -609,29 +612,176 @@ function dispositionForSignal(
   return "candidate_entered_finalized";
 }
 
-function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<Phase3Edge, Phase3SignalEdgePredicate> {
-  const matched = new Set([
-    occurrence.primaryEdge,
-    ...(occurrence.matchedEdges ?? []),
-  ].filter((edge): edge is string => Boolean(edge)));
-  return Object.fromEntries(PHASE3_EDGES.map((edge) => {
-    if (matched.has(edge)) {
-      return [edge, {
-        result: "PASS" as const,
-        reason: `Canonical occurrence recorded ${edge} as a primary or matched edge.`,
-      }];
+const EDGE_PREDICATE_NAMES: Record<Phase3Edge, string[]> = {
+  ORB_PULLBACK_CONTINUATION: [
+    "finalized_orb_or_ntz",
+    "directional_break_completed",
+    "qualifying_pullback",
+    "permitted_level_within_tolerance",
+    "valid_p_candle",
+    "immediate_e_confirmation_buffer",
+    "e_completed_before_cutoff",
+  ],
+  PATIENCE_CANDLE_CONTINUATION: [
+    "confirmed_15m_trend",
+    "valid_continuation_context",
+    "valid_p_candle",
+    "immediate_e_confirmation_buffer",
+    "e_completed_before_cutoff",
+  ],
+  CONSOLIDATION_BREAKOUT_CONTINUATION: [
+    "frozen_causal_consolidation_range",
+    "governed_consolidation_stability",
+    "directional_breakout_closed_outside_range",
+    "continuation_evidence",
+    "valid_p_immediate_e_confirmation",
+    "e_completed_before_cutoff",
+  ],
+  EQUIVALENT_CANDLE_REVERSAL: [
+    "equivalent_candle_reversal_evidence",
+    "reversal_direction_confirmed",
+    "valid_p_immediate_e_confirmation",
+    "e_completed_before_cutoff",
+  ],
+};
+
+type StoredPredicate = {
+  predicateName: string;
+  result: "PASS" | "FAIL" | "EVIDENCE_UNAVAILABLE";
+  reason: string;
+  sourceAuditId: string | null;
+  evidenceTimestamp: string | null;
+};
+
+function storedPredicate(
+  occurrence: HistoricalOccurrence,
+  predicateName: string,
+  predicate: RegExp,
+): StoredPredicate {
+  const evidence = occurrence.causalEvidence;
+  const matchingRule = evidence?.ruleEvidence.find((item) => predicate.test(item));
+  if (matchingRule) {
+    const passed = matchingRule.startsWith("PASS ");
+    return {
+      predicateName,
+      result: passed ? "PASS" : "FAIL",
+      reason: matchingRule.replace(/^(PASS|FAIL)\s+/, ""),
+      sourceAuditId: evidence?.sourceAuditId ?? null,
+      evidenceTimestamp: evidence?.evidenceTimestamp ?? null,
+    };
+  }
+  return {
+    predicateName,
+    result: "EVIDENCE_UNAVAILABLE",
+    reason: `Stored audit evidence does not contain a result for ${predicateName}.`,
+    sourceAuditId: evidence?.sourceAuditId ?? null,
+    evidenceTimestamp: evidence?.evidenceTimestamp ?? null,
+  };
+}
+
+function storedPredicateKeys(
+  occurrence: HistoricalOccurrence,
+  predicateName: string,
+  keys: string[],
+): StoredPredicate {
+  const predicates = keys.map((key) => storedPredicate(occurrence, predicateName, new RegExp(`^(PASS|FAIL)\\s+${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`, "i")));
+  const result = predicates.some((item) => item.result === "FAIL")
+    ? "FAIL"
+    : predicates.some((item) => item.result === "EVIDENCE_UNAVAILABLE")
+      ? "EVIDENCE_UNAVAILABLE"
+      : "PASS";
+  return {
+    predicateName,
+    result,
+    reason: predicates.map((item) => item.reason).join("; "),
+    sourceAuditId: predicates.find((item) => item.sourceAuditId !== null)?.sourceAuditId ?? null,
+    evidenceTimestamp: predicates.find((item) => item.evidenceTimestamp !== null)?.evidenceTimestamp ?? null,
+  };
+}
+
+function directPredicate(
+  occurrence: HistoricalOccurrence,
+  predicateName: string,
+  passed: boolean | null,
+  reason: string,
+  timestamp: string | null = occurrence.entryObservationTimestamp,
+): StoredPredicate {
+  const evidence = occurrence.causalEvidence;
+  return {
+    predicateName,
+    result: passed === null ? "EVIDENCE_UNAVAILABLE" : passed ? "PASS" : "FAIL",
+    reason,
+    sourceAuditId: evidence?.sourceAuditId ?? null,
+    evidenceTimestamp: timestamp ?? evidence?.evidenceTimestamp ?? null,
+  };
+}
+
+function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<Phase3Edge, Phase3SignalEdgePredicate[]> {
+  const exactRule = (key: string) => new RegExp(`^(PASS|FAIL)\\s+${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`, "i");
+  const pExists = occurrence.patienceCandle !== null && occurrence.pOpenTimestamp !== null;
+  const beforeCutoff = occurrence.entryObservationTimestamp
+    ? Number.isFinite(Date.parse(occurrence.entryObservationTimestamp))
+      && wallClockMinutesForTimestamp(Date.parse(occurrence.entryObservationTimestamp)) < PHASE3_ENTRY_CUTOFF_MINUTES
+    : null;
+  const commonFor = (target: HistoricalOccurrence): Record<string, StoredPredicate> => ({
+    immediate_e_confirmation_buffer: storedPredicate(target, "immediate_e_confirmation_buffer", exactRule("immediateTrigger")),
+    e_completed_before_cutoff: directPredicate(target, "e_completed_before_cutoff", beforeCutoff,
+      beforeCutoff === null ? "Completed E timestamp is unavailable."
+        : beforeCutoff ? "Completed E observation is before the exclusive 1:00 p.m. ET cutoff." : "Completed E observation is at or after the exclusive 1:00 p.m. ET cutoff.",
+      target.entryObservationTimestamp),
+  });
+  const combinedConfirmation = (p: StoredPredicate, e: StoredPredicate): StoredPredicate => {
+    const result = p.result === "FAIL" || e.result === "FAIL"
+      ? "FAIL"
+      : p.result === "EVIDENCE_UNAVAILABLE" || e.result === "EVIDENCE_UNAVAILABLE"
+        ? "EVIDENCE_UNAVAILABLE"
+        : "PASS";
+    return {
+      predicateName: "valid_p_immediate_e_confirmation",
+      result,
+      reason: result === "PASS" ? "Exact stored P and immediate-E rules both passed." : `${p.reason}; ${e.reason}`,
+      sourceAuditId: p.sourceAuditId ?? e.sourceAuditId,
+      evidenceTimestamp: e.evidenceTimestamp ?? p.evidenceTimestamp,
+    };
+  };
+  const evidence = (name: string, key: string) => storedPredicate(occurrence, name, exactRule(key));
+  const evaluate = (edge: Phase3Edge): Phase3SignalEdgePredicate[] => {
+    const source = occurrence.causalEvidenceByAudit?.find((item) => item.sourceEdge === edge)
+      ?? (occurrence.causalEvidence?.sourceEdge === edge ? occurrence.causalEvidence : undefined);
+    const sourceOccurrence = source === occurrence.causalEvidence ? occurrence : { ...occurrence, causalEvidence: source };
+    const common = commonFor(sourceOccurrence);
+    const map: Record<string, StoredPredicate> = { ...common };
+    const edgeEvidence = (name: string, key: string) => storedPredicate(sourceOccurrence, name, exactRule(key));
+    if (edge === "ORB_PULLBACK_CONTINUATION") {
+      map.valid_p_candle = edgeEvidence("valid_p_candle", "validPatienceCandle");
+      map.finalized_orb_or_ntz = edgeEvidence("finalized_orb_or_ntz", "ntzComplete");
+      map.directional_break_completed = storedPredicateKeys(sourceOccurrence, "directional_break_completed", ["closeOutsideNtz", "breakoutContinuation"]);
+      map.qualifying_pullback = edgeEvidence("qualifying_pullback", "genuinePullback");
+      map.permitted_level_within_tolerance = edgeEvidence("permitted_level_within_tolerance", "levelContext");
+    } else if (edge === "PATIENCE_CANDLE_CONTINUATION") {
+      map.valid_p_candle = edgeEvidence("valid_p_candle", "patienceEligible");
+      map.confirmed_15m_trend = edgeEvidence("confirmed_15m_trend", "confirmedTrend");
+      map.valid_continuation_context = edgeEvidence("valid_continuation_context", "continuationContext");
+    } else if (edge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+      map.valid_p_candle = edgeEvidence("valid_p_candle", "validPatienceNearLevel");
+      map.frozen_causal_consolidation_range = edgeEvidence("frozen_causal_consolidation_range", "extendedConsolidation");
+      map.governed_consolidation_stability = edgeEvidence("governed_consolidation_stability", "rangeStable");
+      map.directional_breakout_closed_outside_range = edgeEvidence("directional_breakout_closed_outside_range", "strongBreakout");
+      map.continuation_evidence = edgeEvidence("continuation_evidence", "postBreakoutContext");
+    } else {
+      map.valid_p_candle = edgeEvidence("valid_p_candle", "validPatienceCandle");
+      map.equivalent_candle_reversal_evidence = edgeEvidence("equivalent_candle_reversal_evidence", "equivalentContext");
+      map.reversal_direction_confirmed = edgeEvidence("reversal_direction_confirmed", "directionalConfirmation");
     }
-    if (occurrence.primaryEdge) {
-      return [edge, {
-        result: "FAIL" as const,
-        reason: `Canonical occurrence primary edge is ${occurrence.primaryEdge}; ${edge} did not qualify for this physical signal.`,
-      }];
+    if (edge === "CONSOLIDATION_BREAKOUT_CONTINUATION" || edge === "EQUIVALENT_CANDLE_REVERSAL") {
+      map.valid_p_immediate_e_confirmation = combinedConfirmation(
+        map.valid_p_candle!,
+        map.immediate_e_confirmation_buffer!,
+      );
     }
-    return [edge, {
-      result: "NOT_APPLICABLE" as const,
-      reason: `No canonical edge predicate evidence was recorded for ${edge}.`,
-    }];
-  })) as Record<Phase3Edge, Phase3SignalEdgePredicate>;
+    return EDGE_PREDICATE_NAMES[edge].map((name) => map[name] ?? storedPredicate(occurrence, name, exactRule(name)));
+  };
+  return Object.fromEntries(PHASE3_EDGES.map((edge) => [edge, evaluate(edge)])) as Record<Phase3Edge, Phase3SignalEdgePredicate[]>;
 }
 
 function confluenceEvidenceForOccurrence(occurrence: HistoricalOccurrence): Phase3ConfluenceEvidence[] {

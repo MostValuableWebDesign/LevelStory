@@ -191,6 +191,34 @@ function confirmedSignal(overrides: Record<string, unknown> = {}): any {
   };
 }
 
+function orbEvidence(overrides: Record<string, unknown> = {}) {
+  return {
+    sourceAuditId: "audit-orb",
+    sourceEdge: "ORB_PULLBACK_CONTINUATION",
+    evidenceTimestamp: "2026-07-01T14:55:00.000Z",
+    ruleEvidence: [
+      "PASS ntzComplete: finalized ORB",
+      "PASS closeOutsideNtz: breakout completed",
+      "PASS breakoutContinuation: continuation confirmed",
+      "PASS genuinePullback: pullback qualified",
+      "PASS levelContext: level tolerance interaction",
+      "PASS validPatienceCandle: valid P candle",
+      "PASS immediateTrigger: immediate E reached buffer",
+    ],
+    orbState: "COMPLETED",
+    breakoutEvidence: "Directional breakout completed.",
+    pullbackEvidence: "Qualifying pullback recorded.",
+    criticalLevelEvidence: "ORB within governed tolerance.",
+    trendEvidence: "bullish: confirmed",
+    patienceState: "ENTRY_TRIGGERED",
+    patienceCandleOpenTime: "2026-07-01T14:55:00.000Z",
+    patienceCandleCloseTime: "2026-07-01T15:00:00.000Z",
+    triggerCandleOpenTime: "2026-07-01T15:00:00.000Z",
+    triggerCandleCloseTime: "2026-07-01T15:05:00.000Z",
+    ...overrides,
+  };
+}
+
 function reconcileFixture(input: {
   occurrence?: any;
   candidates?: HistoricalTradeCandidate[];
@@ -347,11 +375,229 @@ test("Phase 3 preserves unverified confluence labels and audits every edge predi
   const confluence = result.reconciliation.candidateConfluences[0]!;
   assert.equal(result.reconciliation.dispositionReconciles, true);
   assert.deepEqual(Object.keys(signal.edgePredicates).sort(), [...PHASE3_EDGES].sort());
-  assert.equal(signal.edgePredicates.ORB_PULLBACK_CONTINUATION.result, "PASS");
+  assert.equal(signal.edgePredicates.ORB_PULLBACK_CONTINUATION.every((predicate) =>
+    predicate.result === "PASS"), false);
   assert.ok(confluence.genericLabelsWithoutStructuredEvidence.includes("volume"));
   assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "volume")?.predicateResult, "UNVERIFIED_CONFLUENCE_LABEL");
   assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "volume")?.gradeEligible, false);
   assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "ORB")?.gradeEligible, true);
+});
+
+test("Phase 3 does not infer an edge pass from labels alone", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({
+      primaryEdge: "ORB_PULLBACK_CONTINUATION",
+      matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
+    }),
+    candidates: [candidate()],
+  });
+  const predicates = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION;
+  assert.equal(predicates.every((predicate) => predicate.result === "PASS"), false);
+  assert.ok(predicates.some((predicate) => predicate.result === "EVIDENCE_UNAVAILABLE"));
+});
+
+test("Phase 3 records one failed stored requirement without converting it to unavailable", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "ORB_PULLBACK_CONTINUATION",
+        ruleEvidence: [
+          "PASS ntzComplete: finalized ORB",
+          "PASS closeOutsideNtz: breakout completed",
+          "PASS breakoutContinuation: continuation confirmed",
+          "FAIL genuinePullback: no qualifying pullback",
+          "PASS levelContext: level tolerance interaction",
+        ],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const pullback = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION
+    .find((predicate) => predicate.predicateName === "qualifying_pullback");
+  assert.equal(pullback?.result, "FAIL");
+  assert.match(pullback?.reason ?? "", /genuinePullback/);
+});
+
+test("Phase 3 fails the ORB directional-break predicate when continuation evidence fails", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "ORB_PULLBACK_CONTINUATION",
+        ruleEvidence: [
+          "PASS ntzComplete: finalized ORB",
+          "PASS closeOutsideNtz: breakout completed",
+          "FAIL breakoutContinuation: continuation failed",
+          "PASS genuinePullback: pullback qualified",
+          "PASS levelContext: level tolerance interaction",
+          "PASS validPatienceCandle: valid P candle",
+          "PASS immediateTrigger: immediate E reached buffer",
+        ],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const predicate = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION
+    .find((item) => item.predicateName === "directional_break_completed");
+  assert.equal(predicate?.result, "FAIL");
+});
+
+test("Phase 3 uses the patience eligibility rule for continuation P evidence", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "PATIENCE_CANDLE_CONTINUATION",
+        ruleEvidence: [
+          "PASS confirmedTrend: trend confirmed",
+          "PASS continuationContext: continuation context",
+          "PASS patienceEligible: valid P candle",
+          "PASS immediateTrigger: immediate E reached buffer",
+        ],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const predicate = result.reconciliation.signals[0]!.edgePredicates.PATIENCE_CANDLE_CONTINUATION
+    .find((item) => item.predicateName === "valid_p_candle");
+  assert.equal(predicate?.result, "PASS");
+});
+
+test("Phase 3 uses consolidation-specific P evidence for the combined confirmation", () => {
+  const complete = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+        ruleEvidence: [
+          "PASS extendedConsolidation: frozen range",
+          "PASS rangeStable: governed stability",
+          "PASS strongBreakout: close outside range",
+          "PASS postBreakoutContext: continuation context",
+          "PASS validPatienceNearLevel: valid P candle",
+          "PASS immediateTrigger: immediate E reached buffer",
+        ],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const completePredicate = complete.reconciliation.signals[0]!.edgePredicates.CONSOLIDATION_BREAKOUT_CONTINUATION
+    .find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
+  assert.equal(completePredicate?.result, "PASS");
+
+  const unrelated = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+        ruleEvidence: [
+          "PASS extendedConsolidation: frozen range",
+          "PASS rangeStable: governed stability",
+          "PASS strongBreakout: close outside range",
+          "PASS postBreakoutContext: continuation context",
+          "FAIL validPatienceNearLevel: missing level context",
+          "PASS validPatienceCandle: unrelated P evidence",
+          "PASS immediateTrigger: immediate E reached buffer",
+        ],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const unrelatedPredicate = unrelated.reconciliation.signals[0]!.edgePredicates.CONSOLIDATION_BREAKOUT_CONTINUATION
+    .find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
+  assert.equal(unrelatedPredicate?.result, "FAIL");
+});
+
+test("Phase 3 selects merged edge evidence by exact source edge in either audit order", () => {
+  const patienceEvidence = {
+    ...orbEvidence(),
+    sourceAuditId: "audit-patience",
+    sourceEdge: "PATIENCE_CANDLE_CONTINUATION",
+    ruleEvidence: [
+      "PASS confirmedTrend: trend confirmed",
+      "PASS continuationContext: continuation context",
+      "PASS patienceEligible: valid P candle",
+      "PASS immediateTrigger: immediate E reached buffer",
+    ],
+  };
+  for (const causalEvidenceByAudit of [
+    [orbEvidence(), patienceEvidence],
+    [patienceEvidence, orbEvidence()],
+  ]) {
+    const result = reconcileFixture({
+      occurrence: confirmedSignal({
+        causalEvidence: causalEvidenceByAudit[0],
+        causalEvidenceByAudit,
+      }),
+      candidates: [candidate()],
+    });
+    const signals = result.reconciliation.signals[0]!;
+    const orb = signals.edgePredicates.ORB_PULLBACK_CONTINUATION
+      .find((item) => item.predicateName === "finalized_orb_or_ntz");
+    const patience = signals.edgePredicates.PATIENCE_CANDLE_CONTINUATION
+      .find((item) => item.predicateName === "confirmed_15m_trend");
+    assert.equal(orb?.sourceAuditId, "audit-orb");
+    assert.equal(orb?.result, "PASS");
+    assert.equal(patience?.sourceAuditId, "audit-patience");
+    assert.equal(patience?.result, "PASS");
+  }
+});
+
+test("Phase 3 does not reuse an ORB audit for unrelated edge confirmation", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
+    candidates: [candidate()],
+  });
+  const reversal = result.reconciliation.signals[0]!.edgePredicates.EQUIVALENT_CANDLE_REVERSAL;
+  const confirmation = reversal.find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
+  assert.equal(confirmation?.result, "EVIDENCE_UNAVAILABLE");
+  assert.equal(confirmation?.sourceAuditId, null);
+});
+
+test("Phase 3 marks missing stored evidence as EVIDENCE_UNAVAILABLE", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({
+      causalEvidence: orbEvidence({
+        sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+        ruleEvidence: [],
+      }),
+    }),
+    candidates: [candidate()],
+  });
+  const predicates = result.reconciliation.signals[0]!.edgePredicates.CONSOLIDATION_BREAKOUT_CONTINUATION;
+  assert.ok(predicates.some((predicate) => predicate.result === "EVIDENCE_UNAVAILABLE"));
+  assert.ok(predicates.every((predicate) =>
+    predicate.sourceAuditId === "audit-orb" || predicate.sourceAuditId === null));
+});
+
+test("Phase 3 marks a fully evidenced ORB sequence PASS only when every predicate passes", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
+    candidates: [candidate()],
+  });
+  const predicates = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION;
+  assert.deepEqual(predicates.map((predicate) => predicate.predicateName), [
+    "finalized_orb_or_ntz",
+    "directional_break_completed",
+    "qualifying_pullback",
+    "permitted_level_within_tolerance",
+    "valid_p_candle",
+    "immediate_e_confirmation_buffer",
+    "e_completed_before_cutoff",
+  ]);
+  assert.ok(predicates.every((predicate) => predicate.result === "PASS"));
+  assert.ok(predicates.every((predicate) => predicate.sourceAuditId === "audit-orb"));
+});
+
+test("Phase 3 exposes the complete required predicate set for all four edges", () => {
+  const result = reconcileFixture({
+    occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
+    candidates: [candidate()],
+  });
+  const signals = result.reconciliation.signals[0]!;
+  assert.deepEqual(PHASE3_EDGES.map((edge) => signals.edgePredicates[edge].length), [7, 5, 6, 4]);
+  assert.ok(PHASE3_EDGES.every((edge) =>
+    signals.edgePredicates[edge].every((predicate) =>
+      predicate.predicateName.length > 0
+      && predicate.reason.length > 0
+      && (predicate.sourceAuditId === "audit-orb" || predicate.sourceAuditId === null)
+      && (predicate.evidenceTimestamp !== null || predicate.sourceAuditId === null))));
 });
 
 test("Phase 3 reconciles a complete confirmed signal collection exactly once", () => {

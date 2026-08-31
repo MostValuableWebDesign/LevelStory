@@ -748,6 +748,24 @@ export type HistoricalOccurrence = {
     sourceAuditId: string;
     missingEvidenceReasons: string[];
   };
+  /** Causal evidence copied from the source audit; labels are intentionally excluded. */
+  causalEvidence?: {
+    sourceAuditId: string;
+    sourceEdge: string;
+    evidenceTimestamp: string | null;
+    ruleEvidence: string[];
+    orbState: string | null;
+    breakoutEvidence: string | null;
+    pullbackEvidence: string | null;
+    criticalLevelEvidence: string | null;
+    trendEvidence: string | null;
+    patienceState: string | null;
+    patienceCandleOpenTime: string | null;
+    patienceCandleCloseTime: string | null;
+    triggerCandleOpenTime: string | null;
+    triggerCandleCloseTime: string | null;
+  };
+  causalEvidenceByAudit?: NonNullable<HistoricalOccurrence["causalEvidence"]>[];
 };
 
 export const QUALIFICATION_FUNNEL_STAGES = [
@@ -1794,6 +1812,25 @@ export function sourceFingerprint(dataset: CausalReplayDataset): string {
 
 type HistoricalPullbackEvent = NonNullable<BacktestAuditRecord["pullbackOccurrences"]>[number];
 
+function causalEvidenceForAudit(record: BacktestAuditRecord): HistoricalOccurrence["causalEvidence"] {
+  return {
+    sourceAuditId: record.id,
+    sourceEdge: canonicalStrategyId(record.setupType) ?? record.setupType,
+    evidenceTimestamp: record.evaluatedCandleOpenTime,
+    ruleEvidence: [...record.ruleEvidence],
+    orbState: record.orbState,
+    breakoutEvidence: record.breakoutEvidence,
+    pullbackEvidence: record.pullbackEvidence,
+    criticalLevelEvidence: record.criticalLevelEvidence,
+    trendEvidence: record.trendEvidence,
+    patienceState: record.patienceState,
+    patienceCandleOpenTime: record.patienceCandleOpenTime,
+    patienceCandleCloseTime: record.patienceCandleCloseTime,
+    triggerCandleOpenTime: record.triggerCandleOpenTime,
+    triggerCandleCloseTime: record.triggerCandleCloseTime,
+  };
+}
+
 const QUALIFYING_PULLBACK_EVENT_TYPES = new Set([
   "touch",
   "proximity",
@@ -2040,6 +2077,17 @@ export function buildHistoricalOccurrenceLedger(
         ...(existing.supportingConfluences ?? []),
         ...(value.supportingConfluences ?? []),
       ])].sort(),
+      ...(
+        existing.causalEvidenceByAudit
+        || canonicalStrategyId(existing.strategyCandidate) !== canonicalStrategyId(value.strategyCandidate)
+        ? {
+          causalEvidenceByAudit: [...new Map([
+            ...(existing.causalEvidenceByAudit ?? (existing.causalEvidence ? [existing.causalEvidence] : [])),
+            ...(value.causalEvidenceByAudit ?? (value.causalEvidence ? [value.causalEvidence] : [])),
+          ].map((evidence) => [evidence.sourceAuditId, evidence])).values()],
+        }
+        : {}
+      ),
       matchedEdges: [...new Set([
         ...(existing.matchedEdges ?? [existing.primaryEdge ?? existing.strategyCandidate]),
         ...(value.matchedEdges ?? [value.primaryEdge ?? value.strategyCandidate]),
@@ -2116,6 +2164,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: null,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
+         causalEvidence: causalEvidenceForAudit(record),
          status: "EDGE_FOUND",
         reasonCode: event.detail,
         evaluationCursor: cursor,
@@ -2243,6 +2292,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
+         causalEvidence: causalEvidenceForAudit(record),
          status: canonicalPatienceStatus(patience),
         reasonCode: patience.reasonCode,
         evaluationCursor: new Date(patience.evaluationCursor).toISOString(),
@@ -2338,6 +2388,7 @@ export function buildHistoricalOccurrenceLedger(
         confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
+         causalEvidence: causalEvidenceForAudit(record),
         status: decisionStatus,
         reasonCode: record.rejectionSummary ?? record.decision,
         evaluationCursor: cursor,
