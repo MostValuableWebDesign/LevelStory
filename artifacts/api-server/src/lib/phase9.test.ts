@@ -1279,13 +1279,15 @@ test("physical candidate identity keeps opposite directions separate", () => {
   assert.deepEqual(result.candidates.map((candidate) => candidate.direction).sort(), ["long", "short"]);
 });
 
-test("invalid frozen long and short management stay open and unscored without P&L", () => {
+test("invalid frozen strategy-stop geometry stays open and unscored without P&L", () => {
   for (const direction of ["long", "short"] as const) {
     const occurrence = confirmedCandidateOccurrence({
       pOpen: "2026-08-25T15:00:00.000Z",
       eOpen: "2026-08-25T15:05:00.000Z",
       eClose: "2026-08-25T15:10:00.000Z",
       direction,
+      patienceLow: direction === "long" ? 104 : undefined,
+      patienceHigh: direction === "short" ? 96 : undefined,
       management: {
         strategyStopPrice: direction === "long" ? 99 : 101,
         catastropheStopPrice: direction === "long" ? 100 : 100,
@@ -1315,7 +1317,7 @@ test("invalid frozen long and short management stay open and unscored without P&
     assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED", direction);
     assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "invalid", direction);
     assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /INVALID_MANAGEMENT_GEOMETRY/);
-    assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /CATASTROPHE_STOP_ORDER/);
+    assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /STOP_TARGET_ORDER/);
     assert.equal(result.authoritativeTrades[0]?.outcome, "open", direction);
     assert.equal(result.authoritativeTrades[0]?.exitPrice, null, direction);
     assert.equal(result.authoritativeTrades[0]?.netPnl, 0, direction);
@@ -1400,6 +1402,38 @@ test("candidate target snapshot rejects legacy target fallback and stays open", 
   assert.equal(trade.audit?.targetHit, false);
 });
 
+test("a valid strategy stop is sufficient without catastrophe-stop evidence", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    management: {
+      strategyStopPrice: 97,
+      targetPrice: 125,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "strategy-only-audit",
+      missingEvidenceReasons: [],
+    },
+  });
+  occurrence.targetLevelInputs = [{ id: "fibonacci-618", type: "Fibonacci", price: 110 }];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence, { high: 103, low: 96.5 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
+  assert.equal(candidate.managementContext?.catastropheStopPrice, null);
+  assert.equal(trade.outcome, "strategy stop");
+  assert.equal(trade.audit?.strategyStopPrice, 97);
+  assert.equal(trade.audit?.catastropheStopPrice, null);
+  assert.equal(trade.audit?.stopLevel, "strategy");
+});
+
 test("no target does not disable the candidate-owned strategy stop", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -1407,7 +1441,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
     eClose: "2026-08-25T15:10:00.000Z",
     management: {
       strategyStopPrice: 97,
-      catastropheStopPrice: 96,
+      catastropheStopPrice: 100,
       targetPrice: 125,
       contracts: 1,
       runnerActivationPrice: null,
@@ -1430,6 +1464,10 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   assert.equal(trade.audit?.targetPrice, null);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
+  assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), false);
+  assert.equal(trade.audit?.stopPrice, 97);
+  assert.equal(trade.audit?.stopLevel, "strategy");
+  assert.equal(trade.audit?.catastropheStopPrice, 100);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 1);
 });
 
@@ -1440,7 +1478,6 @@ test("no target and no independent exit leaves the candidate open and unscored",
     eClose: "2026-08-25T15:10:00.000Z",
     management: {
       strategyStopPrice: 97,
-      catastropheStopPrice: 96,
       targetPrice: 125,
       contracts: 1,
       runnerActivationPrice: null,
@@ -1473,14 +1510,19 @@ test("completed-E target snapshots do not inherit later audit cursor levels", ()
     evaluatedCandleOpenTime: new Date(1_200_000).toISOString(),
     targetLevelInputs: [{ id: "later-closer-resistance", type: "major resistance", price: 104.5 }],
   });
-  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [later, first], [])
+  const tooLate = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "too-late-cursor-audit",
+    evaluatedCandleOpenTime: new Date(1_500_000).toISOString(),
+    targetLevelInputs: [{ id: "too-late-resistance", type: "major resistance", price: 103 }],
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [tooLate, later, first], [])
     .find((item) => item.kind === "patience")!;
-  assert.equal(occurrence.targetLevelSnapshot?.sourceAuditId, first.id);
+  assert.equal(occurrence.targetLevelSnapshot?.sourceAuditId, later.id);
   assert.equal(occurrence.targetLevelSnapshot?.frozenAt, new Date(1_200_000).toISOString());
-  assert.equal(occurrence.targetLevelSnapshot?.sourceAuditCursor, new Date(900_000).toISOString());
+  assert.equal(occurrence.targetLevelSnapshot?.sourceAuditCursor, new Date(1_200_000).toISOString());
   assert.deepEqual(
     occurrence.targetLevelSnapshot?.frozenLevelInputs.map((level) => level.id),
-    ["first-resistance"],
+    ["later-closer-resistance"],
   );
 });
 
@@ -1535,10 +1577,10 @@ test("merged strategy audits preserve one immutable completed-E target plan", ()
     [],
   ).filter((item) => item.kind === "patience");
   assert.equal(occurrences.length, 1);
-  assert.equal(occurrences[0]?.targetLevelSnapshot?.sourceAuditId, first.id);
+  assert.equal(occurrences[0]?.targetLevelSnapshot?.sourceAuditId, secondary.id);
   assert.deepEqual(
     occurrences[0]?.targetLevelSnapshot?.frozenLevelInputs.map((level) => level.id),
-    ["earliest-resistance"],
+    ["new-closer-resistance"],
   );
   const firstProjection = projectHistoricalTradeCandidates(occurrences, [], {
     dataset: candidateProjectionDataset(occurrences[0]!),

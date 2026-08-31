@@ -1602,7 +1602,6 @@ function managementFromAudit(
   const contracts = trade?.contracts ?? record.contracts ?? null;
   const missingEvidenceReasons = [
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
-    ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
     ...(targetPrice === null && targetPlan?.disposition !== "NO_ELIGIBLE_KEY_LEVEL" ? ["targetPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
     ...(close === null ? ["sessionCloseTime"] : []),
