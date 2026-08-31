@@ -36,3 +36,4 @@
 - [Orphan provenance](orphan-provenance.md) — checkpoint corrections must preserve prior orphan modeled-trade evidence so later resumes can explain each disposition.
 - [Reconciliation fixture boundary](reconciliation-fixture-boundary.md) — keep metric-only fixtures compatible while enforcing strict populated-signal projection invariants.
 - [Exact edge predicate mapping](exact-edge-predicate-mapping.md) — Phase 3 predicates must map one-to-one to stored Phase 6 rule keys; overlapping prose can borrow another requirement’s PASS.
+- [Visual chart pointer separation](visual-chart-pointer-separation.md) — keep free pointer geometry independent from fixed candle-slot inspection, with an explicit hit surface for empty plot space and edges.

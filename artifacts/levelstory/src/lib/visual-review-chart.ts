@@ -131,7 +131,15 @@ export type FixedSlotPointerOptions = {
   plotRight?: number;
   plotTop?: number;
   plotBottom?: number;
+  interactionRight?: number;
   slotCount: number;
+};
+
+export type ChartPointerPosition = {
+  x: number;
+  y: number;
+  slot: number;
+  price: number;
 };
 
 /**
@@ -177,6 +185,31 @@ export function resolveFixedSlotFromClientPoint(
   const step = (plotRight - plotLeft) / options.slotCount;
   const slot = Math.floor((svgX - plotLeft) / step);
   return slot >= 0 && slot < options.slotCount ? slot : null;
+}
+
+export function resolveChartPointerFromClientPoint(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  options: FixedSlotPointerOptions & { domain: ChartDomain },
+): ChartPointerPosition | null {
+  const viewBoxY = options.viewBoxY ?? 0;
+  const plotLeft = options.plotLeft ?? CHART_LEFT;
+  const plotRight = options.plotRight ?? CHART_WIDTH - CHART_RIGHT;
+  const plotTop = options.plotTop ?? CHART_TOP;
+  const plotBottom = options.plotBottom ?? CHART_PLOT_BOTTOM;
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY) || rect.width <= 0 || rect.height <= 0) return null;
+  const scale = Math.min(rect.width / options.viewBoxWidth, rect.height / options.viewBoxHeight);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const offsetX = (rect.width - options.viewBoxWidth * scale) / 2;
+  const offsetY = (rect.height - options.viewBoxHeight * scale) / 2;
+  const x = options.viewBoxX + (clientX - rect.left - offsetX) / scale;
+  const y = viewBoxY + (clientY - rect.top - offsetY) / scale;
+  if (x < plotLeft || x > (options.interactionRight ?? plotRight) || y < plotTop || y > plotBottom) return null;
+  const step = (plotRight - plotLeft) / options.slotCount;
+  const slot = Math.min(options.slotCount - 1, Math.max(0, Math.floor((x - plotLeft) / step)));
+  const rawPrice = options.domain.max - ((y - plotTop) / Math.max(plotBottom - plotTop, 1)) * (options.domain.max - options.domain.min);
+  return { x, y, slot, price: snapPrice(rawPrice) };
 }
 
 export type EventRailEventKind =

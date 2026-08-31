@@ -5,6 +5,7 @@ import {
   CANDLE_WINDOW_MAX,
   CANDLE_WINDOW_MIN,
   DOJI_BODY_HEIGHT,
+  MES_TICK_SIZE,
   layoutEventRail,
   getCandleSlotIndex,
   formatAxisDate,
@@ -30,6 +31,7 @@ import {
   mergeOrbNtzAnnotations,
   priceToY,
   resolveFixedSlotFromClientPoint,
+  resolveChartPointerFromClientPoint,
   selectSessionCandles,
   selectChartEvents,
   selectFocusedCandles,
@@ -302,6 +304,7 @@ test("fixed slot pointer resolver inverts SVG scaling and keeps empty slots addr
     plotRight: 1510,
     plotTop: 70,
     plotBottom: 700,
+    interactionRight: 1595,
     slotCount: 78,
   };
   const step = (options.plotRight - options.plotLeft) / options.slotCount;
@@ -328,6 +331,49 @@ test("fixed slot pointer resolver accounts for zoom and pan without snapping to 
   const selectedSvgX = options.plotLeft + step * 31.5;
   assert.equal(resolveFixedSlotFromClientPoint(selectedSvgX - options.viewBoxX, 200, rect, options), 31);
   assert.equal(resolveFixedSlotFromClientPoint(1500, 200, rect, options), null);
+});
+
+test("chart pointer keeps free Y coordinates, rounds MES price, and resolves the same candle by X", () => {
+  const rect = { left: 0, top: 0, width: 1600, height: 900 };
+  const options = {
+    viewBoxX: 0,
+    viewBoxWidth: 1600,
+    viewBoxHeight: 900,
+    plotLeft: 140,
+    plotRight: 1510,
+    plotTop: 70,
+    plotBottom: 700,
+    interactionRight: 1595,
+    slotCount: 78,
+    domain: { min: 6799.5, max: 6803.5, rawMin: 6800, rawMax: 6803, padding: .5 },
+  };
+  const x = options.plotLeft + ((options.plotRight - options.plotLeft) * 20.25) / options.slotCount;
+  const upper = resolveChartPointerFromClientPoint(x, 200, rect, options);
+  const lower = resolveChartPointerFromClientPoint(x, 500, rect, options);
+  assert.ok(upper && lower);
+  assert.equal(upper.slot, lower.slot);
+  assert.notEqual(upper.y, lower.y);
+  assert.equal(upper.price % MES_TICK_SIZE, 0);
+  assert.equal(lower.price % MES_TICK_SIZE, 0);
+  assert.ok(resolveChartPointerFromClientPoint(1540, 300, rect, options));
+});
+
+test("chart pointer accepts empty X slots without substituting a candle", () => {
+  const pointer = resolveChartPointerFromClientPoint(500, 350, {
+    left: 0, top: 0, width: 1040, height: 748,
+  }, {
+    viewBoxX: 0,
+    viewBoxWidth: 1040,
+    viewBoxHeight: 748,
+    plotLeft: 58,
+    plotRight: 890,
+    plotTop: 112,
+    plotBottom: 558,
+    slotCount: 42,
+    domain: { min: 99, max: 101, rawMin: 99.5, rawMax: 100.5, padding: .5 },
+  });
+  assert.ok(pointer);
+  assert.equal(pointer?.slot, Math.floor((500 - 58) / ((890 - 58) / 42)));
 });
 
 test("premarket remains separate and hidden by default while its levels stay primary references", () => {

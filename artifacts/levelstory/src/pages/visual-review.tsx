@@ -89,7 +89,7 @@ import {
   isPrimaryLevel,
   mergeOrbNtzAnnotations,
   priceToY,
-  resolveFixedSlotFromClientPoint,
+  resolveChartPointerFromClientPoint,
   selectSessionCandles,
   type SessionCandle,
   type SessionView,
@@ -946,11 +946,13 @@ function CandleInspector({
   selectedSlot,
   activeCandle,
   onLockCandle,
+  crosshairPrice,
 }: {
   inspection: CandleInspection | null;
   selectedSlot: number | null;
   activeCandle: SessionCandle | null;
   onLockCandle: (candle: SessionCandle | null) => void;
+  crosshairPrice: number | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const selectedLabel = selectedSlot == null ? "Select a five-minute candle" : `Fixed slot ${String(selectedSlot + 1).padStart(2, "0")}`;
@@ -967,10 +969,13 @@ function CandleInspector({
       </div>
     </div>
     {!collapsed && <div id="candle-inspector-content" className="inspector-content">
+      <div className="inspector-meta mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
+        <span>Crosshair price · </span><strong className="mono text-foreground">{crosshairPrice == null ? "Move across price plot" : formatPriceAxisValue(crosshairPrice)}</strong>
+        <span className="ml-3">Nearest candle OHLCV · X position only</span>
+      </div>
       {inspection ? <div className="inspector-ohlcv mt-3" data-testid="candle-inspector-ohlcv">
         {([["Open", inspection.open], ["High", inspection.high], ["Low", inspection.low], ["Close", inspection.close], ["Volume", formatExactVolume(inspection.volume)]] as const).map(([label, value]) => <div key={label} className="inspector-metric"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 text-[11px] font-bold">{typeof value === "number" ? value.toFixed(2) : value}</div></div>)}
       </div> : <p className="mt-3 border border-accent/25 bg-accent/5 px-3 py-2 text-[10px] leading-4 text-muted-foreground">No historical candle available for this fixed timestamp slot. The gap is preserved; no neighboring candle was substituted.</p>}
-      <div className="inspector-meta mt-2 border-t border-border pt-2 text-[9px] text-muted-foreground" aria-hidden="true" />
     </div>}
   </section>;
 }
@@ -1053,6 +1058,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   onLockCandle: (candle: SessionCandle | null) => void;
 }) {
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
+  const [pointerPosition, setPointerPosition] = useState<ReturnType<typeof resolveChartPointerFromClientPoint>>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
@@ -1066,6 +1072,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     const focusedIndex = findCandleIndexAtTimestamp(candles, focusOpenTime);
     setSelectedSlot(focusedIndex >= 0 ? getCandleSlotIndex(candles[focusedIndex]!, sessionView) : null);
     setHoveredSlot(null);
+    setPointerPosition(null);
     setZoom(1);
     setPan(0);
     const timer = window.setTimeout(() => interactionRef.current?.focus({ preventScroll: true }), 0);
@@ -1154,7 +1161,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     : null;
   const finalCandle = candles.at(-1);
   const finalIndicators = finalCandle ? indicatorByOpenTime.get(finalCandle.openTime) ?? null : null;
-  const resolvePointer = (clientX: number, clientY: number) => resolveFixedSlotFromClientPoint(
+  const resolvePointer = (clientX: number, clientY: number) => resolveChartPointerFromClientPoint(
     clientX,
     clientY,
     interactionRef.current?.getBoundingClientRect() ?? new DOMRect(),
@@ -1165,13 +1172,16 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       plotLeft: left,
       plotRight,
       plotTop: top,
-      plotBottom: volumeTop + CHART_VOLUME_HEIGHT,
+      plotBottom,
+      interactionRight: width - 5,
       slotCount,
+      domain,
     },
   );
   const updateHoveredSlot = (clientX: number, clientY: number) => {
-    const slot = resolvePointer(clientX, clientY);
-    if (slot !== null) setHoveredSlot(slot);
+    const pointer = resolvePointer(clientX, clientY);
+    setPointerPosition(pointer);
+    setHoveredSlot(pointer?.slot ?? null);
   };
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     pendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
@@ -1183,11 +1193,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     });
   };
   const selectPointerSlot = (event: ReactPointerEvent<SVGSVGElement>) => {
-    const slot = resolvePointer(event.clientX, event.clientY);
-    if (slot !== null) {
-      setSelectedSlot(slot);
-      setHoveredSlot(slot);
-      const selectedCandle = candles.find((candle) => getCandleSlotIndex(candle, sessionView) === slot);
+    const pointer = resolvePointer(event.clientX, event.clientY);
+    if (pointer !== null) {
+      setSelectedSlot(pointer.slot);
+      setHoveredSlot(pointer.slot);
+      const selectedCandle = candles.find((candle) => getCandleSlotIndex(candle, sessionView) === pointer.slot);
       if (selectedCandle?.isComplete && selectedCandle.machineVisible) onLockCandle(selectedCandle);
     }
   };
@@ -1204,6 +1214,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           : slotCount - 1;
     setSelectedSlot(nextSlot);
     setHoveredSlot(null);
+    setPointerPosition(null);
   };
   const focusChartEvent = (event: typeof chartEvents[number]) => {
     if (event.markerSlot !== null) setSelectedSlot(event.markerSlot);
@@ -1276,12 +1287,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             })}
           </div>}
         </section>
-        <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} />
-        <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} />
+         <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} crosshairPrice={pointerPosition?.price ?? null} />
        <div className="chart-plot-shell mt-3">
-         <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the plot and volume column or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
+          <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg h-[700px] min-w-[900px] w-full" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the price plot or volume column to inspect the nearest candle and free-roaming crosshair price, or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => { setPointerPosition(null); setHoveredSlot(null); }} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
-         <rect x={left} y={top} width={plotWidth} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="transparent" pointerEvents="none" data-testid="chart-interaction-layer" />
+          <rect x={left} y={top} width={plotWidth} height={plotBottom - top} fill="transparent" pointerEvents="all" data-testid="chart-interaction-layer" />
          {activeSlot !== null && <rect x={left + activeSlot * step} y={top} width={step} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--accent) / .08)" stroke="hsl(var(--accent) / .55)" strokeDasharray="3 3" pointerEvents="none" data-testid="selected-slot-column" />}
         {chartEvents.map((event) => {
           const index = markerIndex(event);
@@ -1384,10 +1394,13 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       })}
         <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
        <line x1={left} x2={width - right} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
-         {activeCandle && activeSlot !== null && <g pointerEvents="none" data-testid="chart-crosshair">
-           <line x1={left} x2={plotRight} y1={y(activeCandle.close)} y2={y(activeCandle.close)} stroke="hsl(var(--foreground))" strokeDasharray="4 3" strokeWidth="1" opacity=".65" />
-            <circle cx={x(activeSlot)} cy={y(activeCandle.close)} r="3.5" fill="hsl(var(--foreground))" />
-        </g>}
+          {pointerPosition && <g pointerEvents="none" data-testid="chart-crosshair">
+            <line x1={left} x2={plotRight} y1={pointerPosition.y} y2={pointerPosition.y} stroke="hsl(var(--accent))" strokeDasharray="4 3" strokeWidth="1.2" opacity=".9" data-testid="crosshair-horizontal-line" />
+            <line x1={pointerPosition.x} x2={pointerPosition.x} y1={top} y2={plotBottom} stroke="hsl(var(--accent))" strokeDasharray="4 3" strokeWidth="1.2" opacity=".9" data-testid="crosshair-vertical-line" />
+            <circle cx={pointerPosition.x} cy={pointerPosition.y} r="3.5" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="1" />
+            <rect x={plotRight + 3} y={pointerPosition.y - 10} width={right - 8} height="18" rx="2" fill="hsl(var(--accent))" data-testid="crosshair-price-label-background" />
+            <text x={width - 9} y={pointerPosition.y + 3.5} textAnchor="end" fill="hsl(var(--accent-foreground))" fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid="crosshair-price-label">{formatPriceAxisValue(pointerPosition.price)}</text>
+         </g>}
         <line x1={left} x2={plotRight} y1={volumeTop + CHART_VOLUME_HEIGHT + 2} y2={volumeTop + CHART_VOLUME_HEIGHT + 2} stroke="hsl(var(--border))" />
          <text x={left} y={CHART_DATE_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="10" fontWeight="700" fontFamily="DM Mono">{getDateLabel(candles)}</text>
         <text x={left} y={CHART_FOOTER_LABEL_Y} fill="hsl(var(--muted-foreground))" fontSize="9" fontFamily="DM Mono">PRICE · MES 0.25 TICK</text>
