@@ -522,7 +522,6 @@ function candidateManagementValidationReasons(
   const finitePrices = [
     ["entryPrice", context.entryPrice],
     ["strategyStopPrice", context.strategyStopPrice],
-    ["catastropheStopPrice", context.catastropheStopPrice],
   ] as const;
   for (const [name, value] of finitePrices) {
     if (value === null) reasons.push(name);
@@ -541,21 +540,13 @@ function candidateManagementValidationReasons(
   if (!Number.isFinite(frozenAt)) reasons.push("frozenAt");
   if (!Number.isFinite(observedAt)) reasons.push("entryObservationTimestamp");
   else if (Number.isFinite(frozenAt) && frozenAt > observedAt) reasons.push("frozenAt_after_entry_observation");
-  if (context.strategyStopPrice !== null && context.catastropheStopPrice !== null) {
+  if (context.strategyStopPrice !== null) {
     if (context.direction === "long") {
       if (!(context.strategyStopPrice < context.entryPrice)) {
         reasons.push("LONG_STOP_TARGET_ORDER");
       }
-      if (!(context.catastropheStopPrice < context.strategyStopPrice)) {
-        reasons.push("LONG_CATASTROPHE_STOP_ORDER");
-      }
-    } else {
-      if (!(context.entryPrice < context.strategyStopPrice)) {
-        reasons.push("SHORT_STOP_TARGET_ORDER");
-      }
-      if (!(context.catastropheStopPrice > context.strategyStopPrice)) {
-        reasons.push("SHORT_CATASTROPHE_STOP_ORDER");
-      }
+    } else if (!(context.entryPrice < context.strategyStopPrice)) {
+      reasons.push("SHORT_STOP_TARGET_ORDER");
     }
   }
   if (context.targetPlan?.disposition === "KEY_LEVEL_SELECTED" && context.targetPrice !== null) {
@@ -1728,9 +1719,9 @@ function targetLevelSnapshotForAudit(
   ) return undefined;
   return Object.freeze({
     // A target becomes causal only when the canonical immediate E candle has
-    // completed. The audit cursor is retained as provenance and a deterministic
-    // tie-break between audits that observed that same E.
-    frozenAt: eCloseTimestamp,
+    // completed. Preserve the audit's actual observation cursor rather than
+    // retimestamping an audit as if it were observed at E close.
+    frozenAt: record.evaluatedCandleOpenTime,
     sourceAuditCursor: record.evaluatedCandleOpenTime,
     sourceAuditId: record.id,
     eOpenTimestamp,
@@ -1784,7 +1775,8 @@ function preferredTargetLevelSnapshot(
     .filter((snapshot) =>
       snapshot.eOpenTimestamp === eOpenTimestamp
       && snapshot.eCloseTimestamp === eCloseTimestamp
-      && Date.parse(snapshot.frozenAt) === eClose
+       && Number.isFinite(Date.parse(snapshot.sourceAuditCursor ?? snapshot.frozenAt))
+       && Date.parse(snapshot.sourceAuditCursor ?? snapshot.frozenAt) >= eClose
       && snapshot.sourceFingerprint === occurrence.sourceFingerprint
       && snapshot.formulaHash === occurrence.formulaHash
     )
@@ -2892,7 +2884,6 @@ function freezeCandidateManagementContext(
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
-    ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
     ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {
@@ -3236,7 +3227,10 @@ function candidateDrivenEntryTrade(
       targetQuantity: Math.min(1, management.contracts),
       target: targetPrice,
       strategyStop: management.strategyStopPrice,
-      catastropheStop: management.catastropheStopPrice,
+      // Candidate-driven management deliberately ignores the legacy
+      // catastrophe barrier. Preserve that value in provenance below, but do
+      // not let it create a competing operative loss exit.
+      catastropheStop: null,
       sessionCloseCandle: sessionCloseCandle as any,
       tickSize: context.specification.tickSize,
       tickValue: context.specification.dollarValuePerTick,
@@ -3315,7 +3309,7 @@ function candidateDrivenEntryTrade(
     audit: {
       entryTriggerPrice: entryPrice,
       modeledFillPrice: entryPrice,
-      stopPrice: management.catastropheStopPrice ?? management.strategyStopPrice,
+      stopPrice: management.strategyStopPrice,
       targetPrice,
       targetPlan,
       strategyStopPrice: management.strategyStopPrice,
