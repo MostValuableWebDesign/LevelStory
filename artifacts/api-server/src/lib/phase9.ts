@@ -470,12 +470,19 @@ export type HistoricalTradeCandidate = {
   entryHigh: number | null;
   entryLow: number | null;
   entryReachedThreshold: boolean | null;
+  strategyStopPrice?: number | null;
   managementContext?: CandidateManagementContext;
 };
 
 export type CandidateManagementContext = {
   candidateId: string;
   signalOccurrenceId: string;
+  patienceCandleOpenTime: string | null;
+  patienceCandleHigh: number | null;
+  patienceCandleLow: number | null;
+  stopBufferTicks: 8;
+  tickSize: 0.25;
+  derivedStrategyStop: number | null;
   frozenAt: string;
   direction: Direction;
   contracts: number;
@@ -2626,6 +2633,18 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
   };
 }
 
+function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): number | null {
+  const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
+  const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  if (occurrence.direction === "long" && patienceLow !== null) {
+    return authoritativePatienceStopPrice("long", patienceLow, 8, 0.25);
+  }
+  if (occurrence.direction === "short" && patienceHigh !== null) {
+    return authoritativePatienceStopPrice("short", patienceHigh, 8, 0.25);
+  }
+  return null;
+}
+
 function freezeCandidateManagementContext(
   occurrence: HistoricalOccurrence,
   candidateId: string,
@@ -2636,11 +2655,7 @@ function freezeCandidateManagementContext(
   const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
-  const strategyStopPrice = occurrence.direction === "long" && patienceLow !== null
-    ? authoritativePatienceStopPrice("long", patienceLow, 8, 0.25)
-    : occurrence.direction === "short" && patienceHigh !== null
-      ? authoritativePatienceStopPrice("short", patienceHigh, 8, 0.25)
-      : null;
+  const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = management?.targetPrice ?? linkedTrade?.audit?.targetPrice ?? null;
   const missingEvidenceReasons = [
@@ -2654,6 +2669,12 @@ function freezeCandidateManagementContext(
   const context: CandidateManagementContext = {
     candidateId,
     signalOccurrenceId: occurrence.occurrenceId,
+    patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
+    patienceCandleHigh: patienceHigh,
+    patienceCandleLow: patienceLow,
+    stopBufferTicks: 8,
+    tickSize: 0.25,
+    derivedStrategyStop: strategyStopPrice,
     frozenAt: occurrence.evaluationCursor,
     direction: occurrence.direction!,
     contracts: contracts ?? 0,
@@ -2825,6 +2846,7 @@ export function projectHistoricalTradeCandidates(
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
       entryReachedThreshold: entryDisposition.reached,
       executionStatus: entryDisposition.status,
+       strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
       managementContext: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade),
     });
   }

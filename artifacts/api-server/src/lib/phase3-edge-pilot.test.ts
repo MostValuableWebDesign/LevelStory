@@ -104,6 +104,12 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     managementContext: {
       candidateId: "candidate-1",
       signalOccurrenceId: "signal-1",
+      patienceCandleOpenTime: "2026-07-01T14:55:00.000Z",
+      patienceCandleHigh: 101,
+      patienceCandleLow: 99,
+      stopBufferTicks: 8,
+      tickSize: 0.25,
+      derivedStrategyStop: 97,
       frozenAt: "2026-07-01T15:00:00.000Z",
       direction: "long",
       contracts: 1,
