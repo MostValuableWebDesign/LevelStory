@@ -306,7 +306,12 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
   }[edge] ?? edge);
   const candidateById = new Map<string, VisualValidationTradeCandidate>();
   for (const snapshot of snapshots) {
-    if (snapshot.category !== "qualified_trade" || !snapshot.categoryAnchor.direction) continue;
+    if (
+      snapshot.category !== "qualified_trade"
+      || !snapshot.categoryAnchor.direction
+      || !snapshot.machineEvidence.trade?.candidateId
+      || !snapshot.machineEvidence.trade.signalOccurrenceId
+    ) continue;
     const trade = snapshot.machineEvidence.trade;
     const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? snapshot.categoryAnchor.openTime;
     const entryCloseTime = trade?.audit?.triggerCandleCloseTime ?? snapshot.categoryAnchor.closeTime;
@@ -1008,9 +1013,7 @@ function matchingTradeForOccurrence(
 ): BacktestTrade | null {
   const candidate = tradeCandidates.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
   if (candidate) {
-    const exact = trades.filter((trade) =>
-      trade.candidateId === candidate.candidateId
-      && trade.signalOccurrenceId === occurrence.occurrenceId);
+    const exact = trades.filter((trade) => isAuthoritativeCandidateTrade(occurrence, candidate, trade));
     return exact.length === 1 ? exact[0]! : null;
   }
   const entryOpen = occurrence.eOpenTimestamp ?? occurrence.entryTimestamp;
@@ -1026,6 +1029,35 @@ function matchingTradeForOccurrence(
     && trade.audit?.triggerCandleOpenTime === entryOpen,
   );
   return candidates.length === 1 ? candidates[0]! : null;
+}
+
+function isAuthoritativeCandidateTrade(
+  occurrence: HistoricalOccurrence,
+  candidate: HistoricalTradeCandidate,
+  trade: BacktestTrade,
+): boolean {
+  const valid = candidate.executionStatus === "MODELED_TRADE_CREATED"
+    && candidate.entryReachedThreshold === true
+    && candidate.direction === occurrence.direction
+    && candidate.contractSymbol === occurrence.contractSymbol
+    && candidate.tradingDate === occurrence.tradingDate
+    && candidate.pOpenTimestamp === occurrence.pOpenTimestamp
+    && candidate.eOpenTimestamp === occurrence.eOpenTimestamp
+    && candidate.patienceTimestamp === occurrence.patienceTimestamp
+    && candidate.expectedEntryTimestamp === occurrence.expectedEntryTimestamp
+    && candidate.entryObservationTimestamp === occurrence.entryObservationTimestamp
+    && trade.candidateId === candidate.candidateId
+    && trade.signalOccurrenceId === occurrence.occurrenceId
+    && trade.direction === candidate.direction
+    && trade.contractSymbol === candidate.contractSymbol
+    && trade.tradingDate === candidate.tradingDate
+    && trade.entryPrice === candidate.confirmationPrice
+    && trade.audit?.entryTriggerPrice === candidate.confirmationPrice
+    && trade.audit?.modeledFillPrice === candidate.confirmationPrice
+    && trade.audit?.triggerCandleOpenTime === candidate.eOpenTimestamp
+    && trade.audit?.modeledFillObservationTime === candidate.entryObservationTimestamp
+    && trade.entryTime === candidate.entryObservationTimestamp;
+  return valid;
 }
 
 function primaryEntryOpenIsLate(timestamp: number): boolean {
@@ -2032,15 +2064,22 @@ export function buildHistoricalVisualValidationSetFromReport(
           : "qualified_trade";
     if (!category) return [];
     const candidate = report.tradeCandidates?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
-    const trade = candidate
+    const authoritativeTrade = candidate
       ? matchingTradeForOccurrence(occurrence, audit, report.tradeCandidates ?? [], report.trades)
-      : occurrence.canonicalTrade
-        ? matchingTradeForOccurrence(occurrence, audit, [], report.trades) ?? matchingTrade(audit, report.trades)
-        : null;
-    if (category === "qualified_trade" && !hasConfirmedTradeOccurrence(occurrence)) return [];
+      : null;
+    if (category === "qualified_trade" && (!candidate || !authoritativeTrade)) return [];
+    const trade = category === "qualified_trade"
+      ? authoritativeTrade
+      : candidate
+        ? authoritativeTrade
+        : occurrence.canonicalTrade
+          ? matchingTradeForOccurrence(occurrence, audit, [], report.trades) ?? matchingTrade(audit, report.trades)
+          : null;
     const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
     if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED") {
-      candidates.push({ audit, trade, category: "qualified_trade", occurrence });
+      if (candidate && authoritativeTrade) {
+        candidates.push({ audit, trade: authoritativeTrade, category: "qualified_trade", occurrence });
+      }
     }
     return candidates;
   }) ?? [];
@@ -2065,16 +2104,11 @@ export function buildHistoricalVisualValidationSetFromReport(
   ];
   const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
-        || (mode === "trades_only" && (
-          candidate.trade !== null
-          || (candidate.category === "qualified_trade"
-            && candidate.occurrence !== undefined
-            && hasConfirmedTradeOccurrence(candidate.occurrence))
-        ))
+        || (mode === "trades_only" && candidate.trade !== null)
         || (mode === "confirmed_signals"
-          && candidate.category === "qualified_trade"
           && candidate.occurrence !== undefined
-          && hasConfirmedTradeOccurrence(candidate.occurrence)))
+          && hasConfirmedTradeOccurrence(candidate.occurrence)
+          && (candidate.category !== "qualified_trade" || candidate.trade !== null)))
       .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
   const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime

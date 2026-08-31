@@ -374,29 +374,79 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     sourceFingerprint: "b".repeat(64),
     canonicalTrade: confirmed,
   });
-  const expired = occurrence("expired-p1", p1, failedImmediate, false);
-  const confirmed = occurrence("confirmed-p2", p2, e2, true);
+  const expired = occurrence("occ-353fe4fc714e747e8280", p1, failedImmediate, false);
+  const confirmed = occurrence("occ-91377c979c13164ac403", p2, e2, true);
   const candidateId = "candidate-confirmed-p2";
-  const linkedTrade = {
+  const linkedTrade: BacktestTrade = {
     ...fixture.trade,
     candidateId,
     signalOccurrenceId: confirmed.occurrenceId,
+    entryPrice: confirmed.confirmationThreshold!,
+    entryTime: confirmed.entryObservationTimestamp!,
+    audit: {
+      ...fixture.trade.audit!,
+      entryTriggerPrice: confirmed.confirmationThreshold!,
+      modeledFillPrice: confirmed.confirmationThreshold!,
+      patienceCandleOpenTime: confirmed.patienceTimestamp,
+      patienceCandleCloseTime: new Date(p2.closeTime).toISOString(),
+      triggerCandleOpenTime: confirmed.eOpenTimestamp,
+      triggerCandleCloseTime: new Date(e2.closeTime).toISOString(),
+      modeledFillObservationTime: confirmed.entryObservationTimestamp,
+    },
   };
   const report = {
     symbol: "MES",
     formulaHash: "a".repeat(64),
     executionMode: "ohlcv_modeled" as const,
-    audit: [fixture.audit],
+    audit: [{
+      ...fixture.audit,
+      patienceCandleOpenTime: confirmed.patienceTimestamp,
+      patienceCandleCloseTime: new Date(p2.closeTime).toISOString(),
+      triggerCandleOpenTime: confirmed.entryTimestamp,
+      triggerCandleCloseTime: new Date(e2.closeTime).toISOString(),
+      modeledFillObservationTime: confirmed.entryObservationTimestamp,
+      entryTriggerPrice: confirmed.confirmationThreshold,
+    }],
     trades: [linkedTrade],
     occurrences: [expired, confirmed],
     tradeCandidates: [{
       candidateId,
       signalOccurrenceId: confirmed.occurrenceId,
-    }] as any,
+      sourceFingerprint: confirmed.sourceFingerprint,
+      formulaHash: confirmed.formulaHash,
+      formulaVersion: confirmed.formulaVersion,
+      contractSymbol: confirmed.contractSymbol,
+      tradingDate: confirmed.tradingDate,
+      direction: confirmed.direction!,
+      primaryEdge: confirmed.strategyCandidate,
+      matchedEdges: [confirmed.strategyCandidate],
+      supportingConfluences: [],
+      qualifyingLevelIdentifiers: [],
+      qualifyingLevelValues: {},
+      pOpenTimestamp: confirmed.pOpenTimestamp!,
+      eOpenTimestamp: confirmed.eOpenTimestamp!,
+      entryObservationTimestamp: confirmed.entryObservationTimestamp!,
+      patienceTimestamp: confirmed.patienceTimestamp!,
+      expectedEntryTimestamp: confirmed.expectedEntryTimestamp!,
+      confirmationPrice: confirmed.confirmationThreshold,
+      confirmationBufferTicks: confirmed.confirmationBufferTicks!,
+      grade: "A" as const,
+      eligible: true as const,
+      fillModelType: "OHLCV_CONFIRMATION_THRESHOLD" as const,
+      patienceHigh: typeof confirmed.patienceCandle?.high === "number" ? confirmed.patienceCandle.high : null,
+      patienceLow: typeof confirmed.patienceCandle?.low === "number" ? confirmed.patienceCandle.low : null,
+      entryHigh: typeof confirmed.entryCandle?.high === "number" ? confirmed.entryCandle.high : null,
+      entryLow: typeof confirmed.entryCandle?.low === "number" ? confirmed.entryCandle.low : null,
+      entryReachedThreshold: true,
+      executionStatus: "MODELED_TRADE_CREATED" as const,
+    }],
   };
   const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, report);
   const tradePatience = tradeOnly.snapshots.filter((snapshot) => snapshot.category === "bullish_patience_candle");
-  assert.deepEqual(tradePatience.map((snapshot) => snapshot.occurrenceId), ["confirmed-p2"]);
+  assert.deepEqual(tradePatience.map((snapshot) => snapshot.occurrenceId), ["occ-91377c979c13164ac403"]);
+  assert.equal(tradeOnly.snapshots.some((snapshot) => snapshot.category === "qualified_trade"
+    && snapshot.occurrenceId === "occ-91377c979c13164ac403"), true);
+  assert.equal(tradeOnly.snapshots.some((snapshot) => snapshot.occurrenceId === "occ-353fe4fc714e747e8280"), false);
   assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "entry_fill")?.openTime, confirmed.entryTimestamp);
   assert.equal(tradePatience[0]?.machineEvidence.trade?.candidateId, candidateId);
   assert.equal(tradePatience[0]?.machineEvidence.trade?.signalOccurrenceId, confirmed.occurrenceId);
@@ -407,7 +457,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     fixture.dataset,
     report,
   );
-  const expiredSnapshot = diagnostics.snapshots.find((snapshot) => snapshot.occurrenceId === "expired-p1");
+  const expiredSnapshot = diagnostics.snapshots.find((snapshot) => snapshot.occurrenceId === "occ-353fe4fc714e747e8280");
   assert.ok(expiredSnapshot);
   assert.equal(expiredSnapshot.machineEvidence.trade, null);
   assert.deepEqual(expiredSnapshot.tradeEvents, []);
@@ -436,7 +486,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     },
   );
   assert.ok(confirmedSet.snapshots.some((snapshot) => snapshot.occurrenceId === confirmedWithoutTrade.occurrenceId));
-  assert.equal(confirmedSet.snapshots.some((snapshot) => snapshot.category === "qualified_trade"), true);
+  assert.equal(confirmedSet.snapshots.some((snapshot) => snapshot.category === "qualified_trade"), false);
 });
 
 test("visual-validation provides twelve distinct valid five-minute MES fixtures", () => {
