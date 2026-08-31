@@ -84,6 +84,7 @@ import {
   getVolumeAxisTicks,
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
+  isVisualPresentationAnnotation,
   isOpeningRangeCompleteAtEvaluation,
   isPrimaryLevel,
   INTRADAY_REFERENCE_PRESENTATION,
@@ -227,9 +228,8 @@ function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "ema-200") return "hsl(145 45% 42%)";
   if (annotation.id.startsWith("critical-") || annotation.id.includes("support") || annotation.id.includes("resistance")) return "hsl(214 37% 15%)";
   if (annotation.id === "entry-buffer") return "hsl(var(--positive))";
-  if (annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop") return "hsl(var(--negative))";
+  if (annotation.id === "strategy-stop") return "hsl(var(--negative))";
   if (annotation.id === "target" || annotation.id === "runner-threshold") return "hsl(var(--positive))";
-  if (annotation.id.startsWith("fib-")) return "hsl(var(--muted-foreground))";
   return annotationTone(annotation.color);
 }
 
@@ -1062,6 +1062,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [pointerPosition, setPointerPosition] = useState<ReturnType<typeof resolveChartPointerFromClientPoint>>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
+  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
   const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
   const [showRiskLevels, setShowRiskLevels] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -1074,6 +1076,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     setSelectedSlot(focusedIndex >= 0 ? getCandleSlotIndex(candles[focusedIndex]!, sessionView) : null);
     setHoveredSlot(null);
     setPointerPosition(null);
+    setActiveLevelId(null);
+    setSelectedLevelId(null);
     setZoom(1);
     setPan(0);
     const timer = window.setTimeout(() => interactionRef.current?.focus({ preventScroll: true }), 0);
@@ -1097,7 +1101,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const step = plotWidth / Math.max(slotCount, 1);
   const orbCandles = regularCandles.slice(0, 3);
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
-   const annotations = mergeOrbNtzAnnotations(snapshot.annotations.filter((annotation) => annotation.available
+   const annotations = mergeOrbNtzAnnotations(snapshot.annotations.filter((annotation) => isVisualPresentationAnnotation(annotation) && annotation.available
      && (!["orb-high", "orb-low", "ntz-high", "ntz-low"].includes(annotation.id) || orbCompleteAtEvaluation)));
   const chartEvents = selectChartEvents(snapshot, candles, sessionView, showAllAuditEvents);
   const domain = getCandleDomain(candles);
@@ -1129,7 +1133,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView) : -1;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
-   const allLevels = annotations.filter((annotation) => annotation.kind !== "candle" && annotation.price !== null && !annotation.id.startsWith("fib-"));
+    const allLevels = annotations.filter((annotation) =>
+      isVisualPresentationAnnotation(annotation)
+      && annotation.kind !== "candle"
+      && annotation.price !== null,
+    );
   const criticalLevels = allLevels.filter((annotation) =>
     annotation.id.startsWith("critical-")
     && annotation.label !== "Critical · Premarket high",
@@ -1140,11 +1148,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       ? 0
       : Math.abs((first.price ?? entryReference) - entryReference) - Math.abs((second.price ?? entryReference) - entryReference))
     .slice(0, 1);
-   const riskLevelIds = new Set(["entry-buffer", "strategy-stop", "catastrophe-stop"]);
+    const riskLevelIds = new Set(["entry-buffer", "strategy-stop"]);
    const primaryLevels = allLevels
      .filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-"))
      .concat(relevantCritical)
-     .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
+      .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
   const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
    const levelLegend = [...allLevels]
@@ -1233,6 +1241,22 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         : y(event.price);
     return Math.max(top + 5, Math.min(plotBottom - 5, rawY));
   };
+   const focusedLevelId = activeLevelId ?? selectedLevelId;
+   const focusLevel = (id: string) => setActiveLevelId(id);
+   const selectLevel = (id: string) => {
+     setSelectedLevelId((current) => current === id ? null : id);
+     setActiveLevelId(id);
+   };
+   const handleLevelKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+     if (event.key === "Escape") {
+       event.preventDefault();
+       setActiveLevelId(null);
+       setSelectedLevelId(null);
+     } else if (event.key === "Enter" || event.key === " ") {
+       event.preventDefault();
+       selectLevel(id);
+     }
+   };
   return <div className="relative w-full overflow-x-auto">
      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
        <span className="eyebrow text-muted-foreground">Inspect / fixed timestamp slots</span>
@@ -1294,11 +1318,30 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         <div className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
           {levelLegend.map((annotation) => {
             const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
-            return <span key={`legend-${annotation.id}`} className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px]" style={{ color: levelStroke(annotation), fontWeight: structural ? 700 : 500 }}>
+             const selected = focusedLevelId === annotation.id;
+             const exactPriceLabel = formatPriceAxisValue(annotation.price!);
+             const valueLabel = annotation.rangeLow != null && annotation.rangeHigh != null
+               ? `${formatPriceAxisValue(annotation.rangeLow)}–${formatPriceAxisValue(annotation.rangeHigh)}`
+               : exactPriceLabel;
+             return <button
+               key={`legend-${annotation.id}`}
+               type="button"
+               className={`inline-flex items-center gap-1 border bg-card px-2 py-1 text-[9px] transition ${selected ? "border-accent bg-accent/10" : "border-border hover:bg-muted/50"}`}
+               style={{ color: levelStroke(annotation), fontWeight: structural ? 700 : 500 }}
+               onMouseEnter={() => focusLevel(annotation.id)}
+               onMouseLeave={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
+               onFocus={() => focusLevel(annotation.id)}
+               onBlur={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
+               onClick={() => selectLevel(annotation.id)}
+               onKeyDown={(event) => handleLevelKeyDown(event, annotation.id)}
+               aria-pressed={selected}
+               aria-label={`${annotation.label}, ${valueLabel}. Press Enter or Space to keep highlighted; Escape clears selection.`}
+               data-testid={`legend-level-${annotation.id}`}
+             >
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
             <span>{annotation.label}</span>
-            <span className="mono font-bold">{formatPriceAxisValue(annotation.price!)}</span>
-            </span>;
+             <span className="mono font-bold">{valueLabel}</span>
+             </button>;
           })}
         </div>
         <div className="chart-plot-shell mt-3">
@@ -1348,15 +1391,38 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
         {indicatorPath("ema200", "human_only") && <path pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
-      {primaryLevels.map((annotation) => {
+       {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
         const critical = annotation.id.startsWith("critical-");
-        const stop = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop";
+         const stop = annotation.id === "strategy-stop";
         const target = annotation.id === "target";
-         const stroke = levelStroke(annotation);
-          return <g key={annotation.id} pointerEvents="none" data-testid={`chart-level-${annotation.id}`}>
-            <line pointerEvents="none" x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
+          const stroke = levelStroke(annotation);
+          const selected = focusedLevelId === annotation.id;
+          const hasRange = annotation.rangeLow != null && annotation.rangeHigh != null;
+          const rangeLow = hasRange ? Math.min(annotation.rangeLow!, annotation.rangeHigh!) : null;
+          const rangeHigh = hasRange ? Math.max(annotation.rangeLow!, annotation.rangeHigh!) : null;
+          const isDynamite = annotation.id.startsWith("dynamite|");
+          const rangeHeight = rangeLow != null && rangeHigh != null ? Math.abs(y(rangeLow) - y(rangeHigh)) : 0;
+          const minimumBandHeight = Math.abs(y(annotation.price) - y(annotation.price + MES_TICK_SIZE));
+          const bandHeight = Math.max(rangeHeight, minimumBandHeight);
+          const bandY = rangeLow != null && rangeHigh != null && rangeHeight < minimumBandHeight
+            ? y((rangeLow + rangeHigh) / 2) - minimumBandHeight / 2
+            : rangeLow != null && rangeHigh != null
+              ? Math.min(y(rangeLow), y(rangeHigh))
+              : y(annotation.price);
+          return <g
+            key={annotation.id}
+            pointerEvents="all"
+            data-testid={`chart-level-${annotation.id}`}
+            onMouseEnter={() => focusLevel(annotation.id)}
+            onMouseLeave={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
+            onClick={() => selectLevel(annotation.id)}
+            aria-label={`${annotation.label}, ${annotation.detail}`}
+          >
+            {hasRange && rangeLow != null && rangeHigh != null
+              ? <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
+              : <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />}
           </g>;
       })}
       {edgeIndicators.map(({ annotation, edge }) => {
@@ -1378,7 +1444,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           const entryMarkerY = Math.max(top + 12, geometry.highY - 15);
           const levelMarkerY = Math.max(top + 12, geometry.lowY + 15);
           const patienceMarkerY = Math.max(top + 12, geometry.lowY + (lockedAsLevel ? 31 : 15));
-          return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`} opacity={candle.machineVisible ? 1 : ".72"}>
+           return <g key={`${candle.openTime}-${index}`} data-testid={`chart-candle-${index}`}>
             <title>{`${formatCandleTime(candle.openTime, "America/New_York")} NY · ${formatCandleTime(candle.openTime, "UTC")} UTC · O ${candle.open.toFixed(2)} H ${candle.high.toFixed(2)} L ${candle.low.toFixed(2)} C ${candle.close.toFixed(2)} · volume ${candle.volume}`}</title>
             <line x1={geometry.x} x2={geometry.x} y1={geometry.highY} y2={geometry.lowY} stroke={color} strokeWidth="1.6" />
             <rect x={geometry.x - Math.max(step * .3, 2)} y={geometry.bodyTop} width={Math.max(step * .6, 4)} height={geometry.bodyHeight} fill={color} rx="1" />
@@ -1505,8 +1571,8 @@ function ReviewPanel({
     ? (teaching.direction === "long" ? patience.high + teaching.entryBufferTicks * 0.25 : patience.low - teaching.entryBufferTicks * 0.25).toFixed(2)
     : "—";
   const selectedIndicator = levelCandle ? snapshot.indicatorSeries.find((point) => point.openTime === levelCandle.openTime && point.closeTime === levelCandle.closeTime) : undefined;
-  const availableLevels = snapshot.annotations
-    .filter((annotation) => annotation.available && annotation.kind !== "candle" && (annotation.price !== null || annotation.id === "vwap" || annotation.id === "ema-200"))
+   const availableLevels = snapshot.annotations
+     .filter((annotation) => isVisualPresentationAnnotation(annotation) && annotation.available && annotation.kind !== "candle" && (annotation.price !== null || annotation.id === "vwap" || annotation.id === "ema-200"))
     .map((annotation) => {
       const dynamic = annotation.id === "vwap" || annotation.id === "ema-200";
       const price = dynamic ? annotation.id === "vwap" ? selectedIndicator?.vwap ?? null : selectedIndicator?.ema200 ?? null : annotation.price;

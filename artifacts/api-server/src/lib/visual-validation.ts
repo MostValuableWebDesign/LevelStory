@@ -976,7 +976,8 @@ export function matchingTrade(record: BacktestAuditRecord, trades: readonly Back
     && trade.contractSymbol === record.contractSymbol
     && canonicalStrategyId(trade.setupType) === canonicalStrategyId(record.setupType)
     && trade.direction === record.direction
-    && trade.period === record.period,
+     && trade.period === record.period
+     && tradeEntryIsBeforePrimaryCutoff(trade),
   );
   const causalMatches = candidates.filter((trade) => {
     const tradeAudit = trade.audit;
@@ -1005,6 +1006,7 @@ function matchingTradeForOccurrence(
   trades: readonly BacktestTrade[],
 ): BacktestTrade | null {
   if (!occurrence.patienceTimestamp || !occurrence.entryTimestamp) return null;
+  if (primaryEntryOpenIsLate(Date.parse(occurrence.entryTimestamp))) return null;
   const candidates = trades.filter((trade) =>
     trade.tradingDate === occurrence.tradingDate
     && trade.contractSymbol === occurrence.contractSymbol
@@ -1015,6 +1017,18 @@ function matchingTradeForOccurrence(
     && trade.audit?.triggerCandleOpenTime === occurrence.entryTimestamp,
   );
   return candidates.length === 1 ? candidates[0]! : null;
+}
+
+function primaryEntryOpenIsLate(timestamp: number): boolean {
+  return Number.isFinite(timestamp)
+    && wallClockMinutesForTimestamp(timestamp, "America/New_York") >= 13 * 60;
+}
+
+function tradeEntryIsBeforePrimaryCutoff(trade: BacktestTrade): boolean {
+  const entryOpen = trade.audit?.triggerCandleOpenTime
+    ? Date.parse(trade.audit.triggerCandleOpenTime)
+    : Date.parse(trade.entryTime);
+  return Number.isFinite(entryOpen) && !primaryEntryOpenIsLate(entryOpen);
 }
 
 function auditForOccurrence(
@@ -1369,9 +1383,18 @@ function buildAnnotations(
   addIndicator("vwap", "VWAP", patienceIndicator?.vwap ?? snapshot.indicators.vwap, "Causal regular-session volume-weighted average price at the patience-candle timestamp.", "negative");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
   lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
-  for (const level of snapshot.levels.critical) addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");
+  for (const level of snapshot.levels.critical) {
+    const normalizedName = level.name.toLowerCase().replace(/[-_]+/g, " ");
+    if (/(?:prior|previous|two days? ago|day before yesterday)/.test(normalizedName)) continue;
+    addLevel(`critical-${level.name}`, `Critical · ${level.name}`, level.price, level.kind, "muted");
+  }
   for (const level of snapshot.majorLevels) {
     addLevel(`major-${level.name}`, level.name, level.price, `${level.kind} · ${level.confluence} confluence`, "muted");
+    const major = lines.at(-1);
+    if (major) {
+      major.rangeLow = level.zoneLow ?? null;
+      major.rangeHigh = level.zoneHigh ?? null;
+    }
   }
   for (const level of snapshot.dynamiteLevels) {
     addLevel(
@@ -1381,14 +1404,11 @@ function buildAnnotations(
       `${level.lower.toFixed(2)}–${level.upper.toFixed(2)} · ${level.includedTypes.join(", ")} · observed ${new Date(level.observedAt).toISOString()}${level.pullbackInteracted ? " · pullback interacted" : ""}`,
       "blue",
     );
-  }
-  const fibonacciAvailable = snapshot.pullback.events.length > 0
-    && snapshot.fibonacci.classification !== "unavailable"
-    && snapshot.fibonacci.levels.length > 0;
-  if (fibonacciAvailable) {
-    addLevel("fib-low-anchor", "Fibonacci low anchor", snapshot.fibonacci.impulseLow, "Frozen impulse low anchor after confirmed pullback interaction.", "blue");
-    addLevel("fib-high-anchor", "Fibonacci high anchor", snapshot.fibonacci.impulseHigh, "Frozen impulse high anchor after confirmed pullback interaction.", "blue");
-    for (const level of snapshot.fibonacci.levels) addLevel(`fib-${level.name}`, `Fib ${level.label}`, level.price, `${(level.ratio * 100).toFixed(1)}% retracement`, "blue");
+    const dynamite = lines.at(-1);
+    if (dynamite) {
+      dynamite.rangeLow = level.lower;
+      dynamite.rangeHigh = level.upper;
+    }
   }
 
   const patienceOpen = occurrence
@@ -1419,7 +1439,6 @@ function buildAnnotations(
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
   addLevel("strategy-stop", "Strategy stop", audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice, "Formula-defined thesis stop.", "negative");
-  addLevel("catastrophe-stop", "Catastrophe stop", audit.catastropheStopPrice, "Hard catastrophe stop.", "negative");
   addLevel("target", "Target", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "Modeled target.", "positive");
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
   const exitOpen = audit.exitCandleOpenTime ? Date.parse(audit.exitCandleOpenTime) : trade?.audit?.exitCandleOpenTime ? Date.parse(trade.audit.exitCandleOpenTime) : null;
@@ -1428,9 +1447,6 @@ function buildAnnotations(
   const stopHitTime = exitOpen ?? exitClose;
   if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
     lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", audit.strategyStopPrice ?? trade?.audit?.strategyStopPrice ?? null, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
-  }
-  if (eventLabels.has("CATASTROPHE_STOP_REACHED") || trade?.outcome === "catastrophe stop") {
-    lines.push(annotation("catastrophe-stop-hit", "Catastrophe stop hit", "candle", audit.catastropheStopPrice ?? trade?.audit?.catastropheStopPrice ?? null, "negative", "The catastrophe stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
   }
   if (eventLabels.has("TARGET_REACHED") || trade?.audit?.targetHit === true || trade?.outcome === "target") {
     lines.push(annotation("target-hit", "Target hit", "candle", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "positive", "The modeled target was reached.", exitOpen, exitClose, eventVisibility(exitOpen)));

@@ -2460,15 +2460,15 @@ export function buildHistoricalOccurrenceLedger(
 }
 
 function candidateWindowEligible(occurrence: HistoricalOccurrence): boolean {
-  if (!occurrence.entryObservationTimestamp || !occurrence.direction) return false;
-  const observationTimestamp = Date.parse(occurrence.entryObservationTimestamp);
-  if (!Number.isFinite(observationTimestamp)) return false;
+  if (!occurrence.eOpenTimestamp || !occurrence.direction) return false;
+  const entryOpenTimestamp = Date.parse(occurrence.eOpenTimestamp);
+  if (!Number.isFinite(entryOpenTimestamp)) return false;
   const config = activeShadowStrategySnapshot().config;
   const root = occurrence.contractSymbol.replace(/[FGHJKMNQUVXZ]\d$/, "");
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(root || occurrence.contractSymbol));
-  return tradingDateForTimestamp(observationTimestamp, calendar) === occurrence.tradingDate
-    && wallClockMinutesForTimestamp(observationTimestamp, config.sessionTimeZone) >= config.primaryEntryStartMinutes
-    && wallClockMinutesForTimestamp(observationTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
+  return tradingDateForTimestamp(entryOpenTimestamp, calendar) === occurrence.tradingDate
+    && wallClockMinutesForTimestamp(entryOpenTimestamp, config.sessionTimeZone) >= config.primaryEntryStartMinutes
+    && wallClockMinutesForTimestamp(entryOpenTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
 }
 
 function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
@@ -2840,6 +2840,13 @@ function candidateDrivenEntryTrade(
   candidate: HistoricalTradeCandidate,
   context: { dataset: CausalReplayDataset; specification: ReturnType<typeof getFuturesContractSpecification>; executionMode: BacktestRequest["executionMode"] },
 ): BacktestTrade | undefined {
+  const entryOpenTimestamp = occurrence.eOpenTimestamp ? Date.parse(occurrence.eOpenTimestamp) : Number.NaN;
+  const config = activeShadowStrategySnapshot().config;
+  if (
+    !Number.isFinite(entryOpenTimestamp)
+    || wallClockMinutesForTimestamp(entryOpenTimestamp, config.sessionTimeZone) < config.primaryEntryStartMinutes
+    || wallClockMinutesForTimestamp(entryOpenTimestamp, config.sessionTimeZone) >= config.primaryEntryEndMinutes
+  ) return undefined;
   const patience = occurrence.patienceCandle;
   const entryCandle = occurrence.entryCandle;
   const entryPrice = occurrence.confirmationThreshold;

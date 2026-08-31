@@ -27,6 +27,17 @@ function setup(direction: "long" | "short", trigger: Candle): Candle[] {
   return [previous, patience, trigger];
 }
 
+function datedCandle(
+  openTime: string,
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+): Candle {
+  const timestamp = Date.parse(openTime);
+  return { openTime: timestamp, closeTime: timestamp + FIVE_MINUTES, open, high, low, close, volume: 100, isComplete: true };
+}
+
 test("valid bullish patience candle triggers only on the immediate next candle", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10.8, 12.1, 10.2, 12)), "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
@@ -38,6 +49,26 @@ test("valid bearish patience candle triggers below the patience low", () => {
   const result = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 7.8, 8)), "short", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.triggerPrice, 8);
+});
+
+test("the exclusive primary cutoff uses E open time and propagates into occurrences", () => {
+  const cases = [
+    { label: "EDT 12:55 E open", p: "2026-08-25T16:50:00.000Z", e: "2026-08-25T16:55:00.000Z", confirmed: true },
+    { label: "EDT 1:00 E open", p: "2026-08-25T16:55:00.000Z", e: "2026-08-25T17:00:00.000Z", confirmed: false },
+    { label: "EST 12:55 E open", p: "2026-01-15T17:50:00.000Z", e: "2026-01-15T17:55:00.000Z", confirmed: true },
+    { label: "EST 1:00 E open", p: "2026-01-15T17:55:00.000Z", e: "2026-01-15T18:00:00.000Z", confirmed: false },
+  ];
+  for (const item of cases) {
+    const pOpen = Date.parse(item.p);
+    const previous = datedCandle(new Date(pOpen - FIVE_MINUTES).toISOString(), 10, 12, 8, 10.5);
+    const patience = datedCandle(item.p, 10.5, 11, 7, 10.8);
+    const entry = datedCandle(item.e, 10.8, item.confirmed ? 12 : 12, 10.2, 12);
+    const result = patienceCandleEngine([previous, patience, entry], "long", {
+      eligibilityEvents: [{ time: pOpen, reason: "pullback", detail: "Cutoff regression" }],
+      entryCutoffMinutes: 780,
+    });
+    assert.equal(result.occurrences?.[0]?.outcomeStatus, item.confirmed ? "CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION", item.label);
+  }
 });
 
 test("effective confirmation uses the stricter NTZ threshold and accepts wick-only reach", () => {

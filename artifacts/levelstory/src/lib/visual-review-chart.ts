@@ -794,6 +794,7 @@ export function buildEventRailEvents(
   }
 
   for (const tradeEvent of snapshot.tradeEvents) {
+    if (isCatastropheStopTradeEvent(tradeEvent)) continue;
     const kind = railKindForTradeEvent(tradeEvent);
     add({
       id: `trade-${tradeEvent.id}`,
@@ -810,10 +811,11 @@ export function buildEventRailEvents(
 
   for (const annotation of snapshot.annotations) {
     if (!annotation.available) continue;
+    if (!isVisualPresentationAnnotation(annotation)) continue;
     if (!hasExactCandleAnchor(annotation)) continue;
     const duplicateEventIds = ["patience-candle", "entry-candle", "immediate-trigger", "entry-trigger", "modeled-fill"];
     if (duplicateEventIds.includes(annotation.id)) continue;
-    const kind: EventRailEventKind = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop"
+    const kind: EventRailEventKind = annotation.id === "strategy-stop"
       ? "invalidation"
       : annotation.id === "target"
         ? "target"
@@ -822,7 +824,7 @@ export function buildEventRailEvents(
           : annotation.kind === "candle"
             ? "supporting"
             : "supporting";
-    if (annotation.kind !== "candle" && !["strategy-stop", "catastrophe-stop", "target", "runner-threshold"].includes(annotation.id)) continue;
+    if (annotation.kind !== "candle" && !["strategy-stop", "target", "runner-threshold"].includes(annotation.id)) continue;
     add({
       id: `annotation-${annotation.id}`,
       kind,
@@ -1033,5 +1035,34 @@ export function formatDataSource(source: string, contractSymbol?: string): strin
 }
 
 export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean {
-  return /^(premarket-high|premarket-low|orb-high|orb-low|ntz-high|ntz-low|vwap|ema-200|critical-|entry-buffer|strategy-stop|catastrophe-stop|target$|runner-threshold)/i.test(annotation.id);
+  return isVisualPresentationAnnotation(annotation)
+    && /^(premarket-high|premarket-low|orb-high|orb-low|ntz-high|ntz-low|vwap|ema-200|critical-|major-|dynamite\||entry-buffer|strategy-stop|target$|runner-threshold)/i.test(annotation.id);
+}
+
+function normalizedAnnotationSemantic(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): string {
+  return `${annotation.id} ${annotation.label} ${annotation.kind}`.toLowerCase().replace(/[-_·/]+/g, " ");
+}
+
+export function isFibonacciAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
+  return annotation.kind === "fibonacci" || /\b(?:fib|fibonacci)\b/.test(normalizedAnnotationSemantic(annotation));
+}
+
+export function isCatastropheStopAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label">): boolean {
+  return /\bcatastrophe\b/.test(`${annotation.id} ${annotation.label}`.toLowerCase());
+}
+
+export function isRedundantPriorSessionAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label">): boolean {
+  const semantic = `${annotation.id} ${annotation.label}`.toLowerCase().replace(/[-_·/]+/g, " ");
+  return semantic.includes("critical")
+    && /(?:prior|previous|two days? ago|day before yesterday)/.test(semantic);
+}
+
+export function isVisualPresentationAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
+  return !isFibonacciAnnotation(annotation)
+    && !isCatastropheStopAnnotation(annotation)
+    && !isRedundantPriorSessionAnnotation(annotation);
+}
+
+function isCatastropheStopTradeEvent(event: Pick<VisualValidationTradeEvent, "event" | "label" | "detail">): boolean {
+  return /\bcatastrophe\b/i.test(`${event.event} ${event.label} ${event.detail}`);
 }

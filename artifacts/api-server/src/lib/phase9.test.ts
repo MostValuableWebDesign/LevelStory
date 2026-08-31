@@ -1000,7 +1000,7 @@ test("confirmed signal missing E-close observation is rejected with field-level 
   assert.ok(result.rejected[0]?.details.includes("MISSING_OR_INVALID_entryObservationTimestamp"));
 });
 
-test("candidate window uses completed E observation time across EST and EDT cutoffs", () => {
+test("candidate window uses E open time across EST and EDT cutoffs", () => {
   const cases = [
     {
       label: "EDT before cutoff",
@@ -1010,11 +1010,11 @@ test("candidate window uses completed E observation time across EST and EDT cuto
       expectedCandidates: 1,
     },
     {
-      label: "EDT cutoff candle",
+       label: "EDT 12:55 E open with 1:00 close",
       pOpen: "2026-08-25T16:50:00.000Z",
       eOpen: "2026-08-25T16:55:00.000Z",
       eClose: "2026-08-25T17:00:00.000Z",
-      expectedCandidates: 0,
+       expectedCandidates: 1,
     },
     {
       label: "EDT one o'clock open",
@@ -1031,11 +1031,11 @@ test("candidate window uses completed E observation time across EST and EDT cuto
       expectedCandidates: 1,
     },
     {
-      label: "EST cutoff candle",
+       label: "EST 12:55 E open with 1:00 close",
       pOpen: "2026-01-15T17:50:00.000Z",
       eOpen: "2026-01-15T17:55:00.000Z",
       eClose: "2026-01-15T18:00:00.000Z",
-      expectedCandidates: 0,
+       expectedCandidates: 1,
     },
   ];
   for (const item of cases) {

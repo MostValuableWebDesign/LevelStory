@@ -192,7 +192,23 @@ export function patienceCandleEngine(
       event !== undefined
       && index > 0
       && patienceShape(candle, completed[index - 1], direction));
-  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, directionSource, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend, trendRequired, options.finalizedNtz);
+  const occurrences = buildPatienceOccurrences(
+    candidateIndexes,
+    completed,
+    sorted,
+    direction,
+    directionSource,
+    trend,
+    tickSize,
+    entryBufferTicks,
+    stopBufferTicks,
+    options.intrabarEvidence ?? [],
+    allowOpposingTrend,
+    trendRequired,
+    options.finalizedNtz,
+    options.requireFinalizedNtz,
+    options.entryCutoffMinutes,
+  );
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => {
     const latestOccurrence = occurrences.at(-1);
     return {
@@ -213,7 +229,7 @@ export function patienceCandleEngine(
     && occurrence.patienceCandle.openTime !== undefined,
   );
   const executableCandidates = candidateIndexes.filter(({ candle }) =>
-    isPatienceCandleOutsideNtz(candle, direction, options.finalizedNtz));
+    isPatienceCandleOutsideNtz(candle, direction, options.finalizedNtz, options.requireFinalizedNtz));
   const candidate = (confirmedOccurrence
     ? candidateIndexes.find(({ candle }) => candle.openTime === confirmedOccurrence.patienceCandle.openTime)
     : undefined) ?? candidateIndexes.find(({ candle }) => {
@@ -227,7 +243,7 @@ export function patienceCandleEngine(
       options.finalizedNtz,
     );
     return reachesEffectiveConfirmation(next, direction, confirmationPrice)
-      && isStrictlyOutsideNtz(next, direction, options.finalizedNtz, true, confirmationPrice);
+      && isStrictlyOutsideNtz(next, direction, options.finalizedNtz, options.requireFinalizedNtz ?? true, confirmationPrice);
   }) ?? executableCandidates.at(-1);
   if (candidate) {
     const previous = completed[candidate.index - 1];
@@ -235,7 +251,7 @@ export function patienceCandleEngine(
     const event = candidate.event!;
     const shapeValid = patienceShape(candidate.candle, previous, direction);
     const trendValid = !trendRequired || allowOpposingTrend || directionTrendMatches(direction, trend);
-    if (!isPatienceCandleOutsideNtz(candidate.candle, direction, options.finalizedNtz)) {
+    if (!isPatienceCandleOutsideNtz(candidate.candle, direction, options.finalizedNtz, options.requireFinalizedNtz)) {
       return finalize({
         ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
@@ -290,7 +306,7 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
+      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
   }
 
   const forming = sorted.at(-1);
@@ -439,8 +455,8 @@ function evaluateTrigger(
     strategyStopPrice,
     stateTime: trigger.openTime,
   };
-  if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.closeTime) >= entryCutoffMinutes) {
-    return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: completed E is at or after 1:00 p.m. ET." };
+  if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.openTime) >= entryCutoffMinutes) {
+    return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: E opens at or after 1:00 p.m. ET." };
   }
   if ((bufferReached && oppositeTouched) || (gapBuffer && gapOpposite) || (intendedTouched && oppositeTouched)) {
     if (sequence === "opposite-first") {
@@ -599,6 +615,8 @@ function buildPatienceOccurrences(
   allowOpposingTrend: boolean,
   trendRequired: boolean,
   finalizedNtz: NtzRange | null | undefined,
+  requireFinalizedNtz = false,
+  entryCutoffMinutes?: number,
 ): PatienceOccurrence[] {
   const armStates = new Map<string, { state: PatienceEligibilityArmState; reason: string }>();
   const occurrences: PatienceOccurrence[] = candidates.map((candidate): PatienceOccurrence => {
@@ -672,7 +690,7 @@ function buildPatienceOccurrences(
         eligibilityProvenance: provenance,
       };
     }
-    if (!isPatienceCandleOutsideNtz(candidate.candle, direction, finalizedNtz)) {
+    if (!isPatienceCandleOutsideNtz(candidate.candle, direction, finalizedNtz, requireFinalizedNtz)) {
       return {
         occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
         direction,
@@ -756,7 +774,22 @@ function buildPatienceOccurrences(
         detail: "The immediately following candle is missing; this P→E attempt expired.",
       };
     } else {
-      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence, finalizedNtz);
+      analysis = evaluateTrigger(
+        candidate.candle,
+        previous,
+        nextObserved,
+        direction,
+        event,
+        trend,
+        directionSource,
+        tickSize,
+        entryBufferTicks,
+        stopBufferTicks,
+        intrabarEvidence,
+        finalizedNtz,
+        requireFinalizedNtz,
+        entryCutoffMinutes,
+      );
     }
     const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
       ? "CANDIDATE"

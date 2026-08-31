@@ -32,6 +32,10 @@ import {
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
   isOpeningRangeCompleteAtEvaluation,
+  isFibonacciAnnotation,
+  isCatastropheStopAnnotation,
+  isRedundantPriorSessionAnnotation,
+  isVisualPresentationAnnotation,
   isDisplacedLabel,
   isExactFiveMinuteCandle,
   isPrimaryLevel,
@@ -557,6 +561,30 @@ test("ORB and NTZ aliases collapse to one labeled upper and lower boundary", () 
   ]);
   assert.equal(merged.some((annotation) => annotation.id === "ntz-high" || annotation.id === "ntz-low"), false);
   assert.equal(merged.find((annotation) => annotation.id === "vwap")?.price, 100);
+});
+
+test("semantic presentation filtering removes Fibonacci, catastrophe, and redundant prior critical levels", () => {
+  const base = {
+    price: 100,
+    openTime: null,
+    closeTime: null,
+    available: true,
+    color: "blue" as const,
+    detail: "test",
+    visibility: "machine" as const,
+  };
+  const fibonacci = { ...base, id: "fib-0.618", label: "Fib 61.8%", kind: "level" as const };
+  const catastrophe = { ...base, id: "catastrophe-stop", label: "Catastrophe stop", kind: "level" as const };
+  const priorCritical = { ...base, id: "critical-Prior day high", label: "Critical · Prior day high", kind: "level" as const };
+  const major = { ...base, id: "major-resistance", label: "Major resistance", kind: "level" as const };
+  assert.equal(isFibonacciAnnotation(fibonacci), true);
+  assert.equal(isCatastropheStopAnnotation(catastrophe), true);
+  assert.equal(isRedundantPriorSessionAnnotation(priorCritical), true);
+  assert.equal(isVisualPresentationAnnotation(fibonacci), false);
+  assert.equal(isVisualPresentationAnnotation(catastrophe), false);
+  assert.equal(isVisualPresentationAnnotation(priorCritical), false);
+  assert.equal(isVisualPresentationAnnotation(major), true);
+  assert.equal(isPrimaryLevel(major), true);
 });
 
 test("planned levels without an exact candle anchor cannot become occurrence markers", () => {
