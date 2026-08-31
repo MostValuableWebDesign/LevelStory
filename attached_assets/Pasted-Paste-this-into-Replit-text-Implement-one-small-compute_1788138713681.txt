@@ -1,0 +1,94 @@
+Paste this into Replit:
+
+```text
+Implement one small, compute-conscious Phase 3 correctness pass.
+
+Do not run a new historical import, rebuild the historical index, run a cold 30-session replay, change strategy rules, or modify the frontend.
+
+Goal
+
+Replace the current attribution-only edge audit with truthful predicate evidence.
+
+Current problem
+
+`edgePredicatesForOccurrence()` marks an edge PASS mainly because the edge name appears in `primaryEdge` or `matchedEdges`. That does not prove the underlying edge requirements passed.
+
+Required changes
+
+1. For each confirmed signal, report the actual stored causal predicate results for all four edges:
+
+- ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION
+  - Finalized ORB/NTZ exists
+  - Completed directional break occurred
+  - Qualifying pullback occurred
+  - Pullback interacted with a permitted level within the governed 12-tick tolerance
+  - Valid P candle exists
+  - Immediate next E candle reached the confirmation buffer
+  - E completed before 1:00 p.m. ET
+
+- PATIENCE_CANDLE_CONTINUATION
+  - Confirmed causal 15-minute trend exists
+  - Valid continuation context exists
+  - Valid P candle exists
+  - Immediate next E candle reached the confirmation buffer
+  - E completed before 1:00 p.m. ET
+
+- STRONG_BREAKOUT_AFTER_CONSOLIDATION
+  - Frozen causal consolidation range exists
+  - Range satisfies the governed stability settings
+  - Directional breakout closed outside the frozen range
+  - Continuation evidence exists
+  - Valid P→immediate-E confirmation exists
+  - E completed before 1:00 p.m. ET
+
+- EQUIVALENT_CANDLE_REVERSAL
+  - Equivalent-candle reversal evidence exists
+  - Reversal direction is confirmed
+  - Valid P→immediate-E confirmation exists
+  - E completed before 1:00 p.m. ET
+
+2. Each predicate must contain:
+
+- Predicate name
+- PASS, FAIL, or EVIDENCE_UNAVAILABLE
+- Brief reason
+- Source audit ID
+- Evidence timestamp when available
+
+3. Do not infer evidence from the strategy label itself.
+
+4. An edge may be marked PASS only when all its required predicates pass.
+
+5. Preserve primary-edge ownership and secondary-edge matches. Continue producing only one candidate for one physical P→E sequence.
+
+6. Preserve unverified confluence labels, but do not let them increase the setup grade.
+
+7. Update focused deterministic tests proving:
+
+- An edge label alone cannot create a PASS.
+- One failed requirement makes that edge fail.
+- Missing stored evidence becomes EVIDENCE_UNAVAILABLE.
+- A fully evidenced ORB sequence passes.
+- All four edges expose their required predicate results.
+- Candidate/rejection reconciliation still fails closed.
+
+Verification only
+
+Run:
+
+- Focused `phase3-edge-pilot` tests
+- Any directly affected Phase 9 tests
+- API typecheck
+- `git diff --check`
+
+If an existing completed Phase 3 checkpoint is available, run reconciliation against that checkpoint only. Do not replay market data merely to verify this change.
+
+Report:
+
+- Files changed
+- Exact predicate model added
+- Focused test totals
+- Typecheck result
+- Whether checkpoint-only reconciliation was available
+- Any remaining blocker before the full Phase 3 qualification run
+```
