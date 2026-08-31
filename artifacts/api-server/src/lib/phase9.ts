@@ -523,11 +523,14 @@ function candidateManagementValidationReasons(
     ["entryPrice", context.entryPrice],
     ["strategyStopPrice", context.strategyStopPrice],
     ["catastropheStopPrice", context.catastropheStopPrice],
-    ["targetPrice", context.targetPrice],
   ] as const;
   for (const [name, value] of finitePrices) {
     if (value === null) reasons.push(name);
     else if (!Number.isFinite(value)) reasons.push(`${name}_NOT_FINITE`);
+  }
+  if (context.targetPlan?.disposition === "KEY_LEVEL_SELECTED") {
+    if (context.targetPrice === null) reasons.push("targetPrice");
+    else if (!Number.isFinite(context.targetPrice)) reasons.push("targetPrice_NOT_FINITE");
   }
   if (!Number.isInteger(context.contracts) || context.contracts <= 0) reasons.push("contracts");
   if (context.sessionCloseTime === null || !Number.isFinite(Date.parse(context.sessionCloseTime))) {
@@ -538,25 +541,29 @@ function candidateManagementValidationReasons(
   if (!Number.isFinite(frozenAt)) reasons.push("frozenAt");
   if (!Number.isFinite(observedAt)) reasons.push("entryObservationTimestamp");
   else if (Number.isFinite(frozenAt) && frozenAt > observedAt) reasons.push("frozenAt_after_entry_observation");
-  if (
-    context.strategyStopPrice !== null
-    && context.catastropheStopPrice !== null
-    && context.targetPrice !== null
-  ) {
+  if (context.strategyStopPrice !== null && context.catastropheStopPrice !== null) {
     if (context.direction === "long") {
-      if (!(context.strategyStopPrice < context.entryPrice && context.entryPrice < context.targetPrice)) {
+      if (!(context.strategyStopPrice < context.entryPrice)) {
         reasons.push("LONG_STOP_TARGET_ORDER");
       }
       if (!(context.catastropheStopPrice < context.strategyStopPrice)) {
         reasons.push("LONG_CATASTROPHE_STOP_ORDER");
       }
     } else {
-      if (!(context.targetPrice < context.entryPrice && context.entryPrice < context.strategyStopPrice)) {
+      if (!(context.entryPrice < context.strategyStopPrice)) {
         reasons.push("SHORT_STOP_TARGET_ORDER");
       }
       if (!(context.catastropheStopPrice > context.strategyStopPrice)) {
         reasons.push("SHORT_CATASTROPHE_STOP_ORDER");
       }
+    }
+  }
+  if (context.targetPlan?.disposition === "KEY_LEVEL_SELECTED" && context.targetPrice !== null) {
+    if (context.direction === "long" && !(context.entryPrice < context.targetPrice)) {
+      reasons.push("LONG_STOP_TARGET_ORDER");
+    }
+    if (context.direction === "short" && !(context.targetPrice < context.entryPrice)) {
+      reasons.push("SHORT_STOP_TARGET_ORDER");
     }
   }
   const hasRunnerActivation = context.runnerActivationPrice !== null;
@@ -1605,7 +1612,7 @@ function managementFromAudit(
   const missingEvidenceReasons = [
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
     ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
-    ...(targetPrice === null ? ["targetPrice"] : []),
+    ...(targetPrice === null && targetPlan?.disposition !== "NO_ELIGIBLE_KEY_LEVEL" ? ["targetPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
     ...(close === null ? ["sessionCloseTime"] : []),
   ];
@@ -1695,6 +1702,7 @@ function targetLevelSnapshotForOccurrence(
   const frozenLevelInputs = filterEligibleKeyLevelInputs(levels).map((level) => ({ ...level }));
   return Object.freeze({
     frozenAt: occurrence.entryObservationTimestamp ?? occurrence.evaluationCursor,
+    sourceAuditCursor: occurrence.evaluationCursor,
     sourceAuditId: occurrence.auditId,
     eOpenTimestamp: occurrence.eOpenTimestamp,
     eCloseTimestamp: occurrence.entryObservationTimestamp,
@@ -1711,11 +1719,19 @@ function targetLevelSnapshotForAudit(
   formulaHash: string,
   eOpenTimestamp: string | null,
   eCloseTimestamp: string | null,
-): TargetLevelSnapshot {
+): TargetLevelSnapshot | undefined {
+  if (
+    eOpenTimestamp === null
+    || eCloseTimestamp === null
+    || !Number.isFinite(Date.parse(eOpenTimestamp))
+    || !Number.isFinite(Date.parse(eCloseTimestamp))
+  ) return undefined;
   return Object.freeze({
-    // The audit cursor is the causal snapshot boundary. E close remains
-    // separately recorded as the completed observation timestamp.
-    frozenAt: record.evaluatedCandleOpenTime,
+    // A target becomes causal only when the canonical immediate E candle has
+    // completed. The audit cursor is retained as provenance and a deterministic
+    // tie-break between audits that observed that same E.
+    frozenAt: eCloseTimestamp,
+    sourceAuditCursor: record.evaluatedCandleOpenTime,
     sourceAuditId: record.id,
     eOpenTimestamp,
     eCloseTimestamp,
@@ -1728,16 +1744,55 @@ function targetLevelSnapshotForAudit(
 
 function preferredTargetLevelSnapshot(
   snapshots: readonly (TargetLevelSnapshot | undefined)[],
-  eOpenTimestamp: string | null,
+  occurrence: Pick<
+    HistoricalOccurrence,
+    | "status"
+    | "signalStatus"
+    | "sourceFingerprint"
+    | "formulaHash"
+    | "eOpenTimestamp"
+    | "entryObservationTimestamp"
+    | "entryCandle"
+  >,
 ): TargetLevelSnapshot | undefined {
-  const available = snapshots.filter((snapshot): snapshot is TargetLevelSnapshot => snapshot !== undefined);
-  const exactE = available
-    .filter((snapshot) => snapshot.frozenAt === eOpenTimestamp)
-    .sort((left, right) => left.sourceAuditId.localeCompare(right.sourceAuditId))[0];
-  return exactE
-    ?? [...available].sort((left, right) =>
-      Date.parse(left.frozenAt) - Date.parse(right.frozenAt)
-      || left.sourceAuditId.localeCompare(right.sourceAuditId))[0];
+  if (
+    occurrence.status !== "SIGNAL_CONFIRMED"
+    && occurrence.signalStatus !== "SIGNAL_CONFIRMED"
+  ) return undefined;
+  const eOpenTimestamp = occurrence.eOpenTimestamp;
+  const eCloseTimestamp = occurrence.entryObservationTimestamp;
+  const eOpen = eOpenTimestamp === null ? Number.NaN : Date.parse(eOpenTimestamp);
+  const eClose = eCloseTimestamp === null ? Number.NaN : Date.parse(eCloseTimestamp);
+  const canonicalEntryOpen = typeof occurrence.entryCandle?.openTime === "number"
+    ? occurrence.entryCandle.openTime
+    : Number.NaN;
+  const canonicalEntryClose = typeof occurrence.entryCandle?.closeTime === "number"
+    ? occurrence.entryCandle.closeTime
+    : Number.NaN;
+  if (
+    eOpenTimestamp === null
+    || eCloseTimestamp === null
+    || !Number.isFinite(eOpen)
+    || !Number.isFinite(eClose)
+    || !occurrence.entryCandle
+    || occurrence.entryCandle.isComplete !== true
+    || canonicalEntryOpen !== eOpen
+    || canonicalEntryClose !== eClose
+  ) return undefined;
+  return snapshots
+    .filter((snapshot): snapshot is TargetLevelSnapshot => snapshot !== undefined)
+    .filter((snapshot) =>
+      snapshot.eOpenTimestamp === eOpenTimestamp
+      && snapshot.eCloseTimestamp === eCloseTimestamp
+      && Date.parse(snapshot.frozenAt) === eClose
+      && snapshot.sourceFingerprint === occurrence.sourceFingerprint
+      && snapshot.formulaHash === occurrence.formulaHash
+    )
+    .sort((left, right) =>
+      (Date.parse(left.sourceAuditCursor ?? left.frozenAt) || Number.POSITIVE_INFINITY)
+      - (Date.parse(right.sourceAuditCursor ?? right.frozenAt) || Number.POSITIVE_INFINITY)
+      || left.sourceAuditId.localeCompare(right.sourceAuditId)
+    )[0];
 }
 
 function auditForEvaluation(
@@ -2279,7 +2334,7 @@ export function buildHistoricalOccurrenceLedger(
       : primaryByEdge;
     const selectedTargetSnapshot = preferredTargetLevelSnapshot(
       [existing.targetLevelSnapshot, value.targetLevelSnapshot],
-      primaryByEvidence.eOpenTimestamp,
+      primaryByEvidence,
     );
     const matches = [...new Set([
       existing.strategyCandidate,
@@ -2832,13 +2887,12 @@ function freezeCandidateManagementContext(
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = targetPlan?.targetPrice ?? null;
+  const hasTarget = targetPlan?.disposition === "KEY_LEVEL_SELECTED" && targetPrice !== null;
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
     ...(catastropheStopPrice === null ? ["catastropheStopPrice"] : []),
-    ...(targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" ? ["NO_ELIGIBLE_KEY_LEVEL"] : []),
-    ...(targetPrice === null ? ["targetPrice"] : []),
     ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {
@@ -2858,9 +2912,10 @@ function freezeCandidateManagementContext(
     strategyStopPrice,
     catastropheStopPrice,
     targetPrice,
-    runnerActivationPrice: management?.runnerActivationPrice
-      ?? (management?.runnerExitRule && targetPrice !== null ? targetPrice : null),
-    runnerExitRule: management?.runnerExitRule ?? null,
+    runnerActivationPrice: hasTarget
+      ? management?.runnerActivationPrice ?? (management?.runnerExitRule ? targetPrice : null)
+      : null,
+    runnerExitRule: hasTarget ? management?.runnerExitRule ?? null : null,
     sessionCloseTime: management?.sessionCloseTime ?? null,
     sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
     managementEvidenceStatus: "complete",
@@ -2949,7 +3004,7 @@ export function projectHistoricalTradeCandidates(
     }
     const selectedTargetSnapshot = preferredTargetLevelSnapshot(
       [existing.targetLevelSnapshot, occurrence.targetLevelSnapshot],
-      existing.eOpenTimestamp,
+      existing,
     );
     signalByPhysicalIdentity.set(physicalIdentity, {
       ...existing,
@@ -3152,15 +3207,18 @@ function candidateDrivenEntryTrade(
     management,
     entryObservationTimestamp,
   );
-  const missingContext = managementValidationReasons.length > 0
-    || targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL";
+  const missingContext = managementValidationReasons.length > 0;
   const sessionCloseCandle = !missingContext
     ? (() => {
       const calendar = sessionCalendarForContract(context.specification);
       const regular = sessionWindow(tradingDate, "regular", calendar);
       return regular
         ? contractCandles.filter((item) =>
-          item.isComplete && item.openTime >= regular.openTime && item.closeTime <= regular.closeTime,
+          item.isComplete
+          && item.openTime > entryOpenTime
+          && item.closeTime > entryCloseTime
+          && item.openTime >= regular.openTime
+          && item.closeTime <= regular.closeTime,
         ).at(-1) ?? null
         : null;
     })()

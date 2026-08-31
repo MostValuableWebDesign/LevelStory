@@ -119,6 +119,46 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(set.snapshots[0]?.futureCandleAccess, false);
 });
 
+test("Visual Review preserves no-target stop outcomes without target-hit evidence", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "stop_exit");
+  assert.ok(fixture);
+  assert.ok(fixture.trade);
+  const noTargetPlan = buildKeyLevelTargetPlan({
+    direction: fixture.audit.direction!,
+    entryPrice: fixture.trade.entryPrice,
+    levels: [],
+  });
+  const trade: BacktestTrade = {
+    ...fixture.trade,
+    targetPlan: noTargetPlan,
+    outcome: "strategy stop",
+    audit: {
+      ...fixture.trade.audit!,
+      targetPrice: null,
+      targetHit: false,
+      eventLabels: ["STRATEGY_STOP_REACHED"],
+    },
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    { ...fixture.dataset, source: "historical_databento_multicontract" },
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [fixture.audit],
+      trades: [trade],
+    },
+  );
+  const stop = set.snapshots.find((snapshot) => snapshot.category === "stop_exit");
+  assert.ok(stop);
+  const targetAnnotation = stop.annotations.find((annotation) => annotation.id === "target");
+  assert.equal(targetAnnotation?.label, "No eligible key-level target");
+  assert.equal(targetAnnotation?.price, null);
+  assert.equal(stop.annotations.some((annotation) => annotation.id === "target-hit"), false);
+  assert.equal(stop.annotations.some((annotation) => annotation.id === "strategy-stop-hit"), true);
+});
+
 test("historical visual review keeps confirmed signals ledger-only and opts into no-entry diagnostics", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
   assert.ok(fixture);
