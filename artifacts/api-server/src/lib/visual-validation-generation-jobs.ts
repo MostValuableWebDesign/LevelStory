@@ -92,11 +92,6 @@ function publicJob(job: JobRecord): CandidateGenerationJob {
   const elapsedMs = job.startedAt === null
     ? 0
     : Math.max(0, (job.completedAt ?? Date.now()) - job.startedAt);
-  const estimatedRemainingMs = job.status === "running"
-    && job.completedUnits >= 20
-    && elapsedMs >= 2_000
-    ? Math.max(0, Math.round((elapsedMs / job.completedUnits) * (job.totalUnits - job.completedUnits)))
-    : null;
   return {
     jobId: job.jobId,
     status: job.status,
@@ -107,12 +102,33 @@ function publicJob(job: JobRecord): CandidateGenerationJob {
     completedSessions: job.completedSessions,
     totalSessions: job.totalSessions,
     elapsedMs,
-    estimatedRemainingMs,
+    estimatedRemainingMs: job.status === "running" ? job.estimatedRemainingMs : null,
     message: job.message,
     error: job.error,
     reviewSetId: job.reviewSetId,
     ...(job.result ? { result: job.result } : {}),
   };
+}
+
+export function monotonicRemainingEstimate(
+  elapsedMs: number,
+  completedUnits: number,
+  totalUnits: number,
+  previousEstimateMs: number | null,
+): number | null {
+  if (completedUnits < 20 || elapsedMs < 2_000 || totalUnits <= completedUnits) return previousEstimateMs;
+  const estimate = Math.max(0, Math.round((elapsedMs / completedUnits) * (totalUnits - completedUnits)));
+  return previousEstimateMs === null ? estimate : Math.min(previousEstimateMs, estimate);
+}
+
+function updateEstimate(job: JobRecord): void {
+  if (job.status !== "running" || job.startedAt === null) return;
+  job.estimatedRemainingMs = monotonicRemainingEstimate(
+    Math.max(0, Date.now() - job.startedAt),
+    job.completedUnits,
+    job.totalUnits,
+    job.estimatedRemainingMs,
+  );
 }
 
 function updateJob(job: JobRecord, update: Partial<Omit<VisualValidationWorkerProgress, "phase">> & {
@@ -128,6 +144,7 @@ function updateJob(job: JobRecord, update: Partial<Omit<VisualValidationWorkerPr
   job.totalSessions = Math.max(job.totalSessions, update.totalSessions ?? job.totalSessions);
   job.message = update.message ?? job.message;
   job.error = update.error === undefined ? job.error : update.error;
+  updateEstimate(job);
 }
 
 async function runJob(job: JobRecord): Promise<void> {
@@ -217,6 +234,7 @@ export function startVisualValidationGenerationJob(request: VisualValidationRequ
     message: "Queued for historical replay",
     error: null,
     reviewSetId: null,
+    estimatedRemainingMs: null,
     startedAt: null,
     completedAt: null,
   };

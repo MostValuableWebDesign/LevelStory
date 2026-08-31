@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getVisualValidationGenerationJob,
+  monotonicRemainingEstimate,
   startVisualValidationGenerationJob,
 } from "./visual-validation-generation-jobs.js";
 import { getVisualValidationSet } from "./visual-validation-store.js";
@@ -54,4 +55,13 @@ test("visual-validation generation jobs reuse active work and publish completion
   assert.equal(cached.jobId, first.jobId);
   assert.equal(cached.status, "completed");
   assert.equal(cached.percent, 100);
+});
+
+test("remaining-time estimates never increase while progress is unchanged", () => {
+  const first = monotonicRemainingEstimate(10_000, 20, 100, null);
+  assert.ok(first);
+  const later = monotonicRemainingEstimate(30_000, 20, 100, first);
+  assert.equal(later, first);
+  const progressed = monotonicRemainingEstimate(30_000, 60, 100, later);
+  assert.ok(progressed !== null && progressed <= first);
 });
