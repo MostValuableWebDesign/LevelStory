@@ -41,3 +41,4 @@
 - [Dynamite identity](dynamite-identity.md) — cluster IDs must include source, formula, contract, date, observation time, bounds, and sorted canonical families; unknown families are excluded.
 - [Execution-leg timestamp optionality](execution-leg-timestamp-optionality.md) — modeled leg exit timestamps are emitted only when the source candle provides valid times, preserving legacy fixture compatibility.
 - [Candidate-first fill authority](candidate-first-fill-authority.md) — threshold disposition creates the candidate-owned fill before legacy-trade reconciliation; legacy evidence cannot suppress execution.
+- [Patience stop authority](patience-stop-authority.md) — derive every patience strategy stop from the frozen P extreme using the governed MES tick buffer; never trust stale legacy stops.

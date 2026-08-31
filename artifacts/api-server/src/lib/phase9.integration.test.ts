@@ -167,6 +167,15 @@ test("historical modeled replay audits every completed regular candle while prev
   assert.equal(report.trades[0]?.contractSymbol, "MESU6");
   assert.equal(report.trades[0]?.segmentation.contract, "MESU6");
   assert.equal(report.trades[0]?.executionMode, "ohlcv_modeled");
+  const trade = report.trades[0]!;
+  const patience = trade.patienceCandle!;
+  const patienceLow = patience.low as number;
+  const patienceHigh = patience.high as number;
+  const expectedStop = trade.direction === "long"
+    ? patienceLow - 8 * specification.tickSize
+    : patienceHigh + 8 * specification.tickSize;
+  assert.equal(trade.audit?.strategyStopPrice, expectedStop);
+  assert.equal(trade.audit?.stopPrice, trade.audit?.strategyStopPrice);
 });
 
 test("public decision surfaces project the same phased Phase 4–8 evaluation", () => {

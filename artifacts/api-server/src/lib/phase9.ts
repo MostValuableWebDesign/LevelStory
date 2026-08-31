@@ -25,7 +25,7 @@ import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecu
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import type { OrbBreakoutState } from "./strategy/phase4.js";
 import type { PatienceOccurrence } from "./strategy/phase5.js";
-import { effectiveConfirmationThreshold } from "./strategy/phase5.js";
+import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
 import type { Direction } from "./strategy/types.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
@@ -3256,7 +3256,8 @@ export function runCausalBacktest(
     throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
   }
   const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 8;
-  const stopBufferTicks = request.ohlcvStopBufferTicks ?? 1;
+  const stopBufferTicks: number = Number(request.ohlcvStopBufferTicks ?? activeStrategy.config.patienceStopBufferTicks);
+  if (stopBufferTicks !== 8) throw new Error("OHLCV patience stop buffer must be exactly eight MES ticks.");
   const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
   const commissionPerContract = request.ohlcvCommissionPerContract
     ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);
@@ -3461,11 +3462,16 @@ export function runCausalBacktest(
              }
              : null,
          );
-       const strategyStop = selectedPatience?.strategyStopPrice
-         ?? snapshot.riskPlan.strategyStop
-         ?? (selected.direction === "long"
-           ? patienceCandle.low - stopBufferTicks * specification.tickSize
-           : patienceCandle.high + stopBufferTicks * specification.tickSize);
+        const patienceExtreme = selected.direction === "long" ? patienceCandle.low : patienceCandle.high;
+        const authoritativeStop = authoritativePatienceStopPrice(
+          selected.direction,
+          patienceExtreme,
+          stopBufferTicks,
+          specification.tickSize,
+        );
+        // Recalculate from the frozen P extreme rather than trusting a stale
+        // legacy/risk-plan stop. A raw P extreme is never a valid strategy stop.
+        const strategyStop = authoritativeStop;
        const target = snapshot.riskPlan.target
          ?? targetPriceForDollars(selected.direction, entry, request.targetDollars ?? 75, specification);
        const contracts = Math.max(1, snapshot.riskPlan.contracts);
@@ -3834,7 +3840,7 @@ export function runCausalBacktest(
           MODELED_OHLCV_FILL_LABEL,
           "Only completed candles are visible. The entry uses the immediate next candle after the patience candle; later candles cannot trigger entry.",
           `Entry and exit slippage are ${modeledSlippageTicks} adverse tick${modeledSlippageTicks === 1 ? "" : "s"} per side.`,
-          `The patience stop buffer is ${stopBufferTicks} tick${stopBufferTicks === 1 ? "" : "s"} and the confirmation buffer is ${entryBufferTicks} ticks.`,
+          `The patience stop buffer is ${stopBufferTicks} ticks and the confirmation buffer is ${entryBufferTicks} ticks.`,
           "OHLCV barriers that share one candle are resolved adverse-first and labeled.",
           `Fees use the configurable ${commissionPerContract.toFixed(2)} per-contract round-trip assumption.`,
         ]
@@ -3849,7 +3855,7 @@ export function runCausalBacktest(
       entrySlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       exitSlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       stopRule: executionMode === "ohlcv_modeled"
-        ? `${stopBufferTicks} tick${stopBufferTicks === 1 ? "" : "s"} beyond the patience candle`
+        ? `${stopBufferTicks} ticks beyond the patience candle`
         : "Quote-based strategy and catastrophe stops",
       ambiguityRule: executionMode === "ohlcv_modeled"
         ? "Adverse-first when stop and target are both touched inside one OHLCV candle"

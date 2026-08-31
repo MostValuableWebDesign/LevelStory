@@ -2838,9 +2838,9 @@ components:
           description: Exactly 8 MES ticks / 2.00 index points.
         ohlcvStopBufferTicks:
           type: number
-          minimum: 1
-          maximum: 8
-          default: 1
+          enum: [8]
+          default: 8
+          description: Exactly eight MES ticks beyond the frozen patience-candle extreme.
         ohlcvSlippageTicks:
           type: number
           minimum: 0
@@ -3569,7 +3569,7 @@ components:
           maxItems: 30
           items: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
         ohlcvEntryBufferTicks: { type: number, enum: [8], default: 8, description: Exactly 8 MES ticks / 2.00 index points. }
-        ohlcvStopBufferTicks: { type: number, minimum: 0, maximum: 12, default: 1 }
+        ohlcvStopBufferTicks: { type: number, enum: [8], default: 8, description: Exactly eight MES ticks beyond the frozen patience-candle extreme. }
         ohlcvSlippageTicks: { type: number, minimum: 0, maximum: 12, default: 1 }
         ohlcvCommissionPerContract: { type: number, minimum: 0, maximum: 100, default: 3.2 }
       required: [symbol, selectedDates]

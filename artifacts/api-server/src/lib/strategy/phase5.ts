@@ -2,6 +2,7 @@ import type { PullbackAnalysis } from "./phase4.js";
 import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
+import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
 
 export type PatienceState =
   | "WAITING_FOR_VALID_CONTEXT"
@@ -145,6 +146,20 @@ export type PatienceEngineOptions = {
   entryCutoffMinutes?: number;
 };
 
+/** The single causal stop formula for a completed patience candle. */
+export function authoritativePatienceStopPrice(
+  direction: Direction,
+  patienceExtreme: number,
+  stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
+  tickSize = 0.25,
+): number {
+  validateBuffers(tickSize, 8, stopBufferTicks);
+  const stop = direction === "long"
+    ? patienceExtreme - stopBufferTicks * tickSize
+    : patienceExtreme + stopBufferTicks * tickSize;
+  return roundPrice(stop, tickSize);
+}
+
 const PATIENCE_STATES: readonly PatienceState[] = [
   "WAITING_FOR_VALID_CONTEXT",
   "WAITING_FOR_LEVEL",
@@ -172,7 +187,7 @@ export function patienceCandleEngine(
   const trend = options.trend ?? (direction === "long" ? "bullish" : "bearish");
   const tickSize = options.tickSize ?? 0.25;
   const entryBufferTicks = options.entryBufferTicks ?? 8;
-  const stopBufferTicks = options.stopBufferTicks ?? 12;
+  const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
   const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
   const trendRequired = directionSource === "CONFIRMED_15M_TREND";
@@ -280,9 +295,12 @@ export function patienceCandleEngine(
       tickSize,
       options.finalizedNtz,
     );
-    const strategyStopPrice = direction === "long"
-      ? roundPrice(candidate.candle.low - stopBufferTicks * tickSize, tickSize)
-      : roundPrice(candidate.candle.high + stopBufferTicks * tickSize, tickSize);
+    const strategyStopPrice = authoritativePatienceStopPrice(
+      direction,
+      direction === "long" ? candidate.candle.low : candidate.candle.high,
+      stopBufferTicks,
+      tickSize,
+    );
     if (!next) {
       return finalize({
         ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
@@ -344,7 +362,7 @@ export function phase5PatienceAnalysis(
   trend: TrendDirection = "neutral",
   tickSize = 0.25,
   entryBufferTicks = 8,
-  stopBufferTicks = 1,
+  stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
   allowOpposingTrend = false,
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
 ): PatienceAnalysis {
@@ -428,9 +446,12 @@ function evaluateTrigger(
     finalizedNtz,
   );
   const modeledEntryPrice = entryBufferPrice;
-  const strategyStopPrice = direction === "long"
-    ? roundPrice(oppositePrice - stopBufferTicks * tickSize, tickSize)
-    : roundPrice(oppositePrice + stopBufferTicks * tickSize, tickSize);
+  const strategyStopPrice = authoritativePatienceStopPrice(
+    direction,
+    oppositePrice,
+    stopBufferTicks,
+    tickSize,
+  );
   const intendedTouched = direction === "long" ? trigger.high >= intendedPrice : trigger.low <= intendedPrice;
   const bufferReached = direction === "long" ? trigger.high >= modeledEntryPrice : trigger.low <= modeledEntryPrice;
   // Touching the opposite wick is not a breach. Invalidation requires the
@@ -568,7 +589,7 @@ function directionTrendMatches(direction: Direction, trend: TrendDirection): boo
 function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
   if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
   if (entryBufferTicks !== 8) throw new Error("Patience entry confirmation buffer must be exactly eight MES ticks (2.00 index points).");
-  if (!Number.isInteger(stopBufferTicks) || stopBufferTicks < 1) throw new Error("Patience stop buffer must be at least one tick.");
+  if (stopBufferTicks !== 8) throw new Error("Patience stop buffer must be exactly eight MES ticks.");
 }
 
 function roundPrice(price: number, tickSize: number): number {
@@ -643,8 +664,10 @@ function buildPatienceOccurrences(
     const event = candidate.event!;
     const patienceCandleExtreme = direction === "long" ? candidate.candle.low : candidate.candle.high;
     const stopBufferPoints = stopBufferTicks * tickSize;
-    const finalStopBoundary = roundPrice(
-      direction === "long" ? patienceCandleExtreme - stopBufferPoints : patienceCandleExtreme + stopBufferPoints,
+    const finalStopBoundary = authoritativePatienceStopPrice(
+      direction,
+      patienceCandleExtreme,
+      stopBufferTicks,
       tickSize,
     );
     const armId = candidate.armId ?? eligibilityArmId(event);
