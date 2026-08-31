@@ -1,0 +1,68 @@
+Implement causal long-term support and resistance zones as a separate, cached analysis layer.
+
+This is the compute-heavy part. Do not run a full historical replay during implementation.
+
+Data and timeframe:
+
+- Use completed one-hour MES bars.
+- Build rolling six-month and one-year lookbacks using trading sessions.
+- At every historical evaluation cursor, use only bars completed before that cursor.
+- Never calculate historical zones using later candles.
+
+Detection:
+
+1. Identify confirmed one-hour swing highs and swing lows.
+2. A resistance touch is a confirmed rejection from a swing-high area.
+3. A support touch is a confirmed bounce from a swing-low area.
+4. Cluster nearby pivots into zones using a governed width.
+5. Start with a configurable default zone width of 12 MES ticks, not a hardcoded constant.
+6. Require at least three independent touches.
+7. Require touches on at least three separate trading dates.
+8. Prevent several adjacent candles from counting as several independent touches.
+9. Preserve role changes: a former resistance zone may later act as support, but store both histories.
+10. Never infer a zone from visual proximity alone.
+
+Each zone must store:
+
+- Zone ID.
+- Lower and upper price.
+- Midpoint.
+- Support, resistance, or role-flip classification.
+- Six-month or one-year lookback.
+- Touch count.
+- Independent trading dates.
+- First and latest qualifying timestamps.
+- Source pivot timestamps.
+- Strength grade based on verified evidence.
+- Formula/configuration hash.
+
+Chart behavior:
+
+- Render zones as shaded horizontal bands, not single hard-price lines.
+- Support zones: black/gray band with a support label.
+- Resistance zones: black band with a resistance label.
+- Show midpoint and zone boundaries in the inspector.
+- Allow the zone to qualify a pullback when the candle range comes within the governed 12-tick pullback tolerance.
+- Do not overcrowd the chart: show the strongest nearby zones by default and place the rest under “Additional levels.”
+
+Performance:
+
+- Cache zones by source fingerprint, contract schedule, lookback, timeframe, detector version, and configuration hash.
+- Recalculate only when those inputs change.
+- Do not scan one-minute data.
+- Do not rebuild the market-data index.
+
+Testing:
+
+- Three independent resistance rejections form a zone.
+- Three independent support bounces form a zone.
+- Adjacent candles count as one interaction.
+- Fewer than three dates do not form a zone.
+- No future access.
+- Six-month and one-year windows expire old evidence correctly.
+- Role-flip evidence is preserved.
+- Cache identity changes when detector settings change.
+
+Run focused zone-detector tests, chart tests, typechecks, and git diff --check only.
+
+Do not activate these zones in trade qualification until their chart output is visually reviewed and approved.
