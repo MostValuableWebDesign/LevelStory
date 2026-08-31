@@ -1,0 +1,78 @@
+Complete the authoritative eight-tick patience-stop correction by repairing only the failing Phase 9 integration fixtures.
+
+Do not change the trading formula, eight-tick entry confirmation, eight-tick stop policy, NTZ rules, entry window, risk behavior, chart UI, or historical index.
+
+Problem
+
+The unit and route tests pass, but three existing Phase 9 integration fixtures expire before producing a trade under the governed eight-tick entry-confirmation rule. Therefore, the historical end-to-end stop assertion is never exercised.
+
+Required correction
+
+1. Reconstruct or replace the three failing fixtures with deterministic P→E sequences that satisfy the current authoritative rules:
+
+- Valid finalized NTZ/ORB context.
+- Entry outside the NTZ.
+- Entry before 1:00 p.m. ET.
+- Qualifying pullback to an accepted key level.
+- Valid patience candle P.
+- Immediate next candle E reaches the full eight-tick confirmation threshold.
+- Exactly one candidate-owned Shadow Mode fill is created on E.
+- The frozen strategy stop is exactly eight ticks beyond P’s opposite extreme.
+
+2. Add at least one deterministic long lifecycle:
+
+- P low = 6975.75.
+- Authoritative stop = 6973.75.
+- E reaches the long confirmation threshold.
+- First post-E candle revisits or crosses 6975.75 but remains above 6973.75.
+- Confirm the trade remains open.
+- A later candle reaches 6973.75.
+- Confirm the trade exits at the strategy stop.
+- Confirm exit line, realized P/L, ledger, and metrics use 6973.75.
+
+3. Add the equivalent short lifecycle:
+
+- Stop equals P high plus eight ticks.
+- A revisit of P high does not exit.
+- The trade exits only when the buffered stop is reached.
+
+4. Prove timing:
+
+- P cannot stop its own trade.
+- E owns the entry fill and is not processed as an exit candle.
+- Stop/target replay begins with the first completed candle after E.
+
+5. Assert end-to-end consistency:
+
+trade.audit.strategyStopPrice
+=== trade.audit.stopPrice
+=== frozenManagement.strategyStop
+=== execution stop
+=== Visual Review strategy-stop line
+=== stop-exit price
+
+6. Keep fixtures realistic but minimal. Prefer deterministic in-memory fixture candles over a cold historical replay.
+
+7. Remove the committed temporary prompt attachment:
+
+attached_assets/Pasted-Correct-the-authoritative-patience-candle-stop-loss-cal_1788197733099.txt
+
+Verification
+
+- Run the repaired Phase 9 integration tests.
+- Run focused Phase 5, Phase 9, OHLCV execution, route, and Visual Review tests.
+- Run API and frontend typechecks.
+- Run git diff --check.
+- Do not rebuild the historical index.
+- Do not run a broad cold backtest.
+- Preserve Shadow Mode only.
+
+Completion requires all three previously failing Phase 9 fixtures to pass and the stop lifecycle assertion to execute against a real generated trade—not be skipped, bypassed, or protected by optional chaining.
+
+Report:
+
+- Which fixtures were repaired or replaced.
+- Why each fixture previously expired.
+- Generated P, E, entry, stop, and exit prices.
+- Proof that touching the raw P extreme no longer exits the trade.
+- Final test totals.
