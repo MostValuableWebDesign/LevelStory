@@ -3071,6 +3071,11 @@ export type EdgeValidationPilotReportEdgeResultsItem = { [key: string]: unknown 
 
 export type EdgeValidationPilotReportOverall = { [key: string]: unknown };
 
+/**
+ * Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation.
+ */
+export type EdgeValidationPilotReportReconciliation = { [key: string]: unknown };
+
 export type EdgeValidationPilotReportDiagnostics = { [key: string]: unknown };
 
 export type EdgeValidationPilotReportTiming = { [key: string]: unknown };
@@ -3090,6 +3095,8 @@ export interface EdgeValidationPilotReport {
   totalPartitions: number;
   edgeResults: EdgeValidationPilotReportEdgeResultsItem[];
   overall: EdgeValidationPilotReportOverall;
+  /** Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation. */
+  reconciliation: EdgeValidationPilotReportReconciliation;
   diagnostics: EdgeValidationPilotReportDiagnostics;
   timing: EdgeValidationPilotReportTiming;
   compute: EdgeValidationPilotReportCompute;

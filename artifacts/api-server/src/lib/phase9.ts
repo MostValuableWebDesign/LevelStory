@@ -1891,8 +1891,9 @@ export function buildHistoricalOccurrenceLedger(
   audits: readonly BacktestAuditRecord[],
   trades: readonly BacktestTrade[],
   reportFormulaHash?: string,
+  sourceFingerprintOverride?: string,
 ): HistoricalOccurrence[] {
-  const fingerprint = sourceFingerprint(dataset);
+  const fingerprint = sourceFingerprintOverride ?? sourceFingerprint(dataset);
   const formulaHash = reportFormulaHash ?? createHash("sha256").update(FIXED_FORMULA_VERSION).digest("hex");
   const byIdentity = new Map<string, HistoricalOccurrence>();
   const auditsAtCursor = new Map<string, BacktestAuditRecord[]>();
@@ -1906,14 +1907,39 @@ export function buildHistoricalOccurrenceLedger(
       byIdentity.set(identity, { ...value, occurrenceId: governedOccurrenceId(value) });
       return;
     }
-    const precedence = (setupType: string): number => [
+    const edgePrecedence = (setupType: string): number => [
       "ORB_PULLBACK_CONTINUATION",
       "CONSOLIDATION_BREAKOUT_CONTINUATION",
       "EQUIVALENT_CANDLE_REVERSAL",
       "PATIENCE_CANDLE_CONTINUATION",
       "PEAK_RETRACEMENT_REVERSAL",
     ].indexOf(canonicalStrategyId(setupType) ?? setupType);
-    const primary = precedence(value.strategyCandidate) < precedence(existing.strategyCandidate) ? value : existing;
+    const primaryByEdge = edgePrecedence(value.strategyCandidate) < edgePrecedence(existing.strategyCandidate)
+      ? value
+      : existing;
+    const evidenceRank = (occurrence: HistoricalOccurrence): number[] => [
+      occurrence.kind === "patience" ? patienceStatusRank(occurrence.status) : 0,
+      occurrence.entryObservationTimestamp ? 1 : 0,
+      occurrence.entryCandle ? 1 : 0,
+      occurrence.nextObservedCandle ? 1 : 0,
+      occurrence.confirmationExcursion !== null ? 1 : 0,
+      occurrence.canonicalTrade ? 1 : 0,
+      Date.parse(occurrence.evaluationCursor),
+    ];
+    const compareEvidence = (left: HistoricalOccurrence, right: HistoricalOccurrence): HistoricalOccurrence => {
+      const leftRank = evidenceRank(left);
+      const rightRank = evidenceRank(right);
+      for (let index = 0; index < leftRank.length; index += 1) {
+        if (leftRank[index] !== rightRank[index]) return leftRank[index]! > rightRank[index]! ? left : right;
+      }
+      return left.auditId.localeCompare(right.auditId) <= 0 ? left : right;
+    };
+    // The earliest replay cursor can contain only an unclosed E candle. Do not
+    // let that partial snapshot win over a later, complete confirmation merely
+    // because its strategy label has the same edge precedence.
+    const primaryByEvidence = existing.kind === "patience" && value.kind === "patience"
+      ? compareEvidence(existing, value)
+      : primaryByEdge;
     const matches = [...new Set([
       existing.strategyCandidate,
       value.strategyCandidate,
@@ -1921,9 +1947,18 @@ export function buildHistoricalOccurrenceLedger(
       ...value.secondaryStrategyMatches,
     ])];
     const merged = {
-      ...primary,
-      secondaryStrategyMatches: matches.filter((match) => match !== primary.strategyCandidate),
+      ...primaryByEvidence,
+      // Edge attribution is independent from confirmation-evidence selection.
+      // A secondary audit may provide the better complete snapshot, but it
+      // must not become the canonical edge solely because it was observed later.
+      strategyCandidate: primaryByEdge.strategyCandidate,
+      primaryEdge: primaryByEdge.primaryEdge ?? primaryByEdge.strategyCandidate,
+      secondaryStrategyMatches: matches.filter((match) => match !== primaryByEdge.strategyCandidate),
       canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
+      identityInvariantViolations: [...new Set([
+        ...existing.identityInvariantViolations,
+        ...value.identityInvariantViolations,
+      ])].sort(),
       levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...value.levelIdentifiers])].sort(),
       levelValues: { ...value.levelValues, ...existing.levelValues },
       levelDistancesTicks: { ...value.levelDistancesTicks, ...existing.levelDistancesTicks },
@@ -1956,7 +1991,7 @@ export function buildHistoricalOccurrenceLedger(
         ...(value.matchedEdges ?? [value.primaryEdge ?? value.strategyCandidate]),
       ])].sort(),
       ...(existing.kind === "patience" && value.kind === "patience" ? {
-        status: patienceStatusRank(value.status) > patienceStatusRank(existing.status) ? value.status : existing.status,
+         status: patienceStatusRank(value.status) > patienceStatusRank(existing.status) ? value.status : existing.status,
         canonicalOccurrence: true,
         directionSources: [...new Set([
           ...(existing.directionSources ?? (existing.directionSource ? [existing.directionSource] : [])),

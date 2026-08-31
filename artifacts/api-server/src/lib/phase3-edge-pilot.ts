@@ -5,7 +5,10 @@ import { createHash } from "node:crypto";
 import type { BacktestWorkerInput } from "./backtest-worker-client.js";
 import { runBacktestInWorker } from "./backtest-worker-client.js";
 import {
+  buildHistoricalOccurrenceLedger,
   calculateBacktestMetrics,
+  historicalReplayDiagnostics,
+  projectHistoricalTradeCandidates,
   type BacktestMetrics,
   type BacktestReport,
   type BacktestRequest,
@@ -13,6 +16,8 @@ import {
   type CausalReplayDataset,
   type HistoricalOccurrence,
   type HistoricalTradeCandidate,
+  type OrphanModeledTrade,
+  type RejectedCandidateSignal,
 } from "./phase9.js";
 import { isValidCandidateManagementContext } from "./phase9.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
@@ -27,7 +32,10 @@ import {
   type FuturesSessionCalendar,
 } from "./futures/session-calendar.js";
 import { activeShadowStrategySnapshot, type ActiveShadowStrategy } from "./active-shadow-strategy.js";
-import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
+import {
+  parseMesContractSymbol,
+  validateMultiContractContentFingerprint,
+} from "./futures/multi-contract-replay.js";
 
 export const PHASE3_PILOT_VERSION = "phase3-edge-validation-v1" as const;
 export const PHASE3_IN_SAMPLE_DAYS = 20;
@@ -158,6 +166,7 @@ export type Phase3PilotReport = {
     inSample: Phase3PilotMetrics;
     outOfSample: Phase3PilotMetrics;
   };
+  reconciliation: Phase3SignalReconciliationReport;
   diagnostics: {
     candidateCount: number;
     tradeCount: number;
@@ -181,6 +190,120 @@ export type Phase3PilotReport = {
     candleCount: number;
     auditCount: number;
     boundedPartitionSize: 1;
+  };
+};
+
+export type Phase3SignalDisposition =
+  | "candidate_entered_finalized"
+  | "candidate_entered_open"
+  | "candidate_entry_ambiguous"
+  | "candidate_unscored"
+  | "candidate_not_entered"
+  | "candidate_missing_management"
+  | "candidate_invalid_management"
+  | "rejected_missing_edge_requirement"
+  | "rejected_outside_primary_entry_window"
+  | "rejected_invalid_causal_identity"
+  | "rejected_multiple_predicates";
+
+export type Phase3SignalLevelEvidence = {
+  levelIdentifier: string;
+  timestamp: string | null;
+  value: number | null;
+  distanceTicks: number | null;
+  toleranceTicks: number | null;
+  interactionTypes: string[];
+  ruleResult: "QUALIFIED";
+  auditIds: string[];
+};
+
+export type Phase3SignalReconciliation = {
+  signalOccurrenceId: string;
+  period: "in_sample" | "out_of_sample";
+  tradingDate: string;
+  contractSymbol: string;
+  contractMonth: string;
+  direction: "long" | "short";
+  causalIdentity: {
+    lTimestamp: string | null;
+    pOpenTimestamp: string | null;
+    eOpenTimestamp: string | null;
+    entryObservationTimestamp: string | null;
+  };
+  threshold: {
+    confirmationThreshold: number | null;
+    confirmationExcursion: number | null;
+    confirmationBufferTicks: number | null;
+    reached: boolean | null;
+  };
+  directionSource: string | null;
+  directionSources: string[];
+  primaryEdge: string | null;
+  matchedEdges: string[];
+  levelEvidence: Phase3SignalLevelEvidence[];
+  timing: {
+    entryTimeBucket: keyof Phase3PilotMetrics["entryTimeBuckets"] | null;
+    beforeExclusiveCutoff: boolean;
+  };
+  rejection: {
+    reasonCodes: string[];
+    details: string[];
+  } | null;
+  candidate: {
+    candidateId: string;
+    executionStatus: HistoricalTradeCandidate["executionStatus"];
+    managementEvidenceStatus: string | null;
+  } | null;
+  trade: {
+    tradeId: string;
+    outcome: BacktestTrade["outcome"];
+    netPnl: number;
+    ambiguityLabel: string | null;
+  } | null;
+  disposition: Phase3SignalDisposition;
+};
+
+export type Phase3OrphanReconciliation = OrphanModeledTrade & {
+  period: "in_sample" | "out_of_sample";
+  tradingDate: string;
+  contractSymbol: string;
+  exactSignalMatch: boolean;
+  resolution: "resolved_exact_candidate" | "excluded_no_exact_candidate" | "excluded_candidate_conflict";
+};
+
+export type Phase3SignalReconciliationReport = {
+  version: "phase3-signal-reconciliation-v1";
+  confirmedSignalCount: number;
+  dispositionCounts: Record<Phase3SignalDisposition, number>;
+  dispositionReconciles: boolean;
+  signals: Phase3SignalReconciliation[];
+  candidateConfluences: Array<{
+    candidateId: string;
+    signalOccurrenceId: string;
+    evidence: Phase3SignalLevelEvidence[];
+    genericLabelsWithoutStructuredEvidence: string[];
+  }>;
+  edgeAudit: Array<{
+    edge: Phase3Edge;
+    primaryCount: number;
+    matchedCount: number;
+    candidateCount: number;
+    independentPrimaryPopulation: "reported" | "empty";
+    explanation: string;
+  }>;
+  orphanTrades: Phase3OrphanReconciliation[];
+  timeBuckets: Record<string, {
+    confirmed: number;
+    candidates: number;
+    rejected: number;
+    entered: number;
+  }>;
+  sourceFingerprint: {
+    fingerprints: string[];
+    components: Array<{ filename: string; contractSymbol: string; fingerprint: string }>;
+    allSame: boolean;
+    validShape: boolean;
+    malformedSignals: string[];
   };
 };
 
@@ -389,6 +512,414 @@ function timeBucket(timestamp: string): keyof Phase3PilotMetrics["entryTimeBucke
   if (minutes < 660) return "10:00-11:00";
   if (minutes < 720) return "11:00-12:00";
   return "12:00-13:00";
+}
+
+type Phase3PilotReportItem = Phase3Checkpoint["reports"][number];
+type Phase3ReportWithOrphanHistory = BacktestReport & {
+  phase3OrphanHistory?: readonly OrphanModeledTrade[];
+};
+
+const RECONCILIATION_BUCKETS = [
+  "09:30-10:00",
+  "10:00-11:00",
+  "11:00-12:00",
+  "12:00-13:00",
+  "OUTSIDE_ENTRY_WINDOW",
+] as const;
+
+function emptyDispositionCounts(): Record<Phase3SignalDisposition, number> {
+  return {
+    candidate_entered_finalized: 0,
+    candidate_entered_open: 0,
+    candidate_entry_ambiguous: 0,
+    candidate_unscored: 0,
+    candidate_not_entered: 0,
+    candidate_missing_management: 0,
+    candidate_invalid_management: 0,
+    rejected_missing_edge_requirement: 0,
+    rejected_outside_primary_entry_window: 0,
+    rejected_invalid_causal_identity: 0,
+    rejected_multiple_predicates: 0,
+  };
+}
+
+function levelEvidenceForOccurrence(occurrence: HistoricalOccurrence): Phase3SignalLevelEvidence[] {
+  const auditIds = [...new Set(occurrence.auditIds ?? [occurrence.auditId])].sort();
+  return occurrence.levelIdentifiers.map((levelIdentifier) => ({
+    levelIdentifier,
+    timestamp: occurrence.lTimestamp,
+    value: occurrence.levelValues[levelIdentifier] ?? null,
+    distanceTicks: occurrence.levelDistancesTicks[levelIdentifier] ?? null,
+    toleranceTicks: occurrence.levelToleranceTicks[levelIdentifier] ?? null,
+    interactionTypes: [...(occurrence.levelInteractionTypes[levelIdentifier] ?? [])].sort(),
+    ruleResult: "QUALIFIED",
+    auditIds,
+  }));
+}
+
+function dispositionForSignal(
+  candidate: HistoricalTradeCandidate | null,
+  rejection: RejectedCandidateSignal | null,
+  trade: BacktestTrade | null,
+): Phase3SignalDisposition {
+  if (rejection) {
+    const reasons = new Set(rejection.reasonCodes);
+    if (reasons.size > 1) return "rejected_multiple_predicates";
+    if (reasons.has("MISSING_EDGE_REQUIREMENT")) return "rejected_missing_edge_requirement";
+    if (reasons.has("OUTSIDE_PRIMARY_ENTRY_WINDOW")) return "rejected_outside_primary_entry_window";
+    if (reasons.has("INVALID_CAUSAL_IDENTITY")) return "rejected_invalid_causal_identity";
+    return "rejected_multiple_predicates";
+  }
+  if (!candidate) return "rejected_multiple_predicates";
+  if (candidate.executionStatus === "ENTRY_AMBIGUOUS") return "candidate_entry_ambiguous";
+  if (candidate.executionStatus === "INSUFFICIENT_CANDLE_DATA") return "candidate_unscored";
+  if (candidate.executionStatus === "ENTRY_NOT_REACHED") return "candidate_not_entered";
+  if (candidate.executionStatus === "MODELED_TRADE_CREATED" && !isValidCandidateManagementContext(candidate)) {
+    return candidate.managementContext?.managementEvidenceStatus === "invalid"
+      ? "candidate_invalid_management"
+      : "candidate_missing_management";
+  }
+  if (!trade) return "candidate_unscored";
+  if (trade.outcome === "open") return "candidate_entered_open";
+  if (isAmbiguousTrade(trade)) return "candidate_entry_ambiguous";
+  return "candidate_entered_finalized";
+}
+
+function sourceFingerprintAudit(
+  contentFingerprint: string,
+  files: readonly {
+    filename: string;
+    contractSymbol: string;
+    contentFingerprint: string;
+  }[] | undefined,
+): Phase3SignalReconciliationReport["sourceFingerprint"] {
+  if (files?.length) {
+    const validation = validateMultiContractContentFingerprint({ contentFingerprint, files });
+    return {
+      fingerprints: files.map((file) => file.contentFingerprint),
+      components: validation.components,
+      allSame: new Set(files.map((file) => file.contentFingerprint)).size === 1,
+      validShape: validation.valid,
+      malformedSignals: validation.errors,
+    };
+  }
+  const components = contentFingerprint.split("|").filter(Boolean).map((component) => {
+    const pieces = component.split(":");
+    return {
+      filename: pieces.slice(0, -2).join(":"),
+      contractSymbol: pieces.at(-2) ?? "",
+      fingerprint: pieces.at(-1) ?? "",
+    };
+  });
+  const validShape = /^[0-9a-f]{64}$/i.test(contentFingerprint)
+    || (components.length > 0
+      && components.every((component) =>
+        Boolean(parseMesContractSymbol(component.contractSymbol))
+        && /^[0-9a-f]{64}$/i.test(component.fingerprint)
+        && component.filename.length > 0)
+      && new Set(components.map((component) => component.contractSymbol)).size === components.length);
+  return {
+    fingerprints: components.map((component) => component.fingerprint),
+    components,
+    allSame: new Set(components.map((component) => component.fingerprint)).size === 1,
+    validShape,
+    malformedSignals: validShape ? [] : ["CONTENT_FINGERPRINT_COMPONENTS_MALFORMED"],
+  };
+}
+
+function reconcileReportItem(
+  item: Phase3PilotReportItem,
+  partition: Phase3PilotPartition | undefined,
+): {
+  item: Phase3PilotReportItem;
+  occurrences: HistoricalOccurrence[];
+  candidates: HistoricalTradeCandidate[];
+  rejected: RejectedCandidateSignal[];
+  trades: BacktestTrade[];
+  orphans: OrphanModeledTrade[];
+} {
+  // Synthetic unit fixtures intentionally contain candidates but no raw audit
+  // stream. Preserve those fixtures; historical checkpoints have the raw audit
+  // stream needed for a lossless rebuild.
+  if (!partition || item.report.audit.length === 0) {
+    return {
+      item,
+      occurrences: item.report.occurrences,
+      candidates: item.report.tradeCandidates,
+      rejected: item.report.rejectedCandidateSignals ?? [],
+      trades: item.report.trades,
+      orphans: item.report.orphanModeledTrades ?? [],
+    };
+  }
+  const priorOccurrence = item.report.occurrences.find((occurrence) =>
+    occurrence.sourceFingerprint && occurrence.kind === "patience");
+  const occurrences = buildHistoricalOccurrenceLedger(
+    partition.dataset,
+    item.report.audit,
+    item.report.trades,
+    item.report.formulaHash,
+    priorOccurrence?.sourceFingerprint,
+  );
+  const projection = projectHistoricalTradeCandidates(occurrences, item.report.trades, {
+    dataset: partition.dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const trades = projection.authoritativeTrades;
+  const rejected = projection.rejected;
+  const metrics = calculateBacktestMetrics(trades, rejected.length, item.report.audit);
+  const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
+  const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
+  const orphanHistory = [
+    ...((item.report as Phase3ReportWithOrphanHistory).phase3OrphanHistory ?? []),
+    ...(item.report.orphanModeledTrades ?? []),
+  ].filter((orphan, index, all) =>
+    all.findIndex((candidate) => candidate.tradeId === orphan.tradeId) === index);
+  const correctedReport: Phase3ReportWithOrphanHistory = {
+    ...item.report,
+    phase3OrphanHistory: orphanHistory,
+    metrics,
+    inSample: calculateBacktestMetrics(inSampleTrades, rejected.length, item.report.audit),
+    outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejected.length, item.report.audit),
+    executionSummary: {
+      ...item.report.executionSummary,
+      eligibleCandidateCount: projection.candidates.length,
+      enteredTradeCount: trades.length,
+      finalizedTradeCount: trades.filter((trade) => trade.outcome !== "open").length,
+      openTradeCount: trades.filter((trade) => trade.outcome === "open").length,
+      ambiguousEntryCount: projection.candidates.filter((candidate) => candidate.executionStatus === "ENTRY_AMBIGUOUS").length,
+      unresolvedAmbiguousTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null).length,
+      conservativelyResolvedTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null && trade.outcome !== "open").length,
+      unscoredTradeCount: trades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
+    },
+    trades,
+    tradeCandidates: projection.candidates,
+    rejectedCandidateSignals: rejected,
+    orphanModeledTrades: projection.orphans,
+    occurrences,
+    diagnostics: historicalReplayDiagnostics(
+      item.report.audit,
+      occurrences,
+      projection.candidates,
+      trades,
+      rejected,
+      projection.orphans,
+    ),
+  };
+  return {
+    item: { ...item, report: correctedReport },
+    occurrences,
+    candidates: projection.candidates,
+    rejected,
+    trades,
+    orphans: projection.orphans,
+  };
+}
+
+export function reconcilePhase3SignalFunnel(input: {
+  manifest: Phase3PilotManifest;
+  reports: readonly Phase3PilotReportItem[];
+  partitions: readonly Phase3PilotPartition[];
+  sourceFingerprintFiles?: readonly {
+    filename: string;
+    contractSymbol: string;
+    contentFingerprint: string;
+  }[];
+}): {
+  reports: Phase3PilotReportItem[];
+  reconciliation: Phase3SignalReconciliationReport;
+} {
+  const partitionByKey = new Map(input.partitions.map((partition) =>
+    [`${partition.tradingDate}|${partition.contractSymbol}`, partition]));
+  const normalized = input.reports.map((item) =>
+    reconcileReportItem(item, partitionByKey.get(`${item.tradingDate}|${item.contractSymbol}`)));
+  const allOccurrences = normalized.flatMap((item) => item.occurrences);
+  const allCandidates = normalized.flatMap((item) => item.candidates);
+  const allRejected = normalized.flatMap((item) => item.rejected);
+  const allTrades = normalized.flatMap((item) => item.trades);
+  const candidateBySignal = new Map(allCandidates.map((candidate) => [candidate.signalOccurrenceId, candidate]));
+  const rejectionBySignal = new Map(allRejected.map((rejection) => [rejection.signalOccurrenceId, rejection]));
+  const tradeByCandidate = new Map(
+    allTrades.flatMap((trade) => trade.candidateId ? [[trade.candidateId, trade] as const] : []),
+  );
+  const confirmed = allOccurrences.filter((occurrence) =>
+    occurrence.kind === "patience"
+    && occurrence.canonicalOccurrence === true
+    && occurrence.status === "SIGNAL_CONFIRMED");
+  const periodByKey = new Map(input.reports.map((item) => [
+    `${item.tradingDate}|${item.contractSymbol}`,
+    item.period,
+  ]));
+  const signals: Phase3SignalReconciliation[] = confirmed
+    .map((occurrence) => {
+      const candidate = candidateBySignal.get(occurrence.occurrenceId) ?? null;
+      const rejection = rejectionBySignal.get(occurrence.occurrenceId) ?? null;
+      const trade = candidate ? tradeByCandidate.get(candidate.candidateId) ?? null : null;
+      const period = periodByKey.get(`${occurrence.tradingDate}|${occurrence.contractSymbol}`) ?? "in_sample";
+      const bucket = occurrence.entryObservationTimestamp ? timeBucket(occurrence.entryObservationTimestamp) : null;
+      const minutes = occurrence.entryObservationTimestamp
+        ? wallClockMinutesForTimestamp(Date.parse(occurrence.entryObservationTimestamp))
+        : Number.NaN;
+      return {
+        signalOccurrenceId: occurrence.occurrenceId,
+        period,
+        tradingDate: occurrence.tradingDate,
+        contractSymbol: occurrence.contractSymbol,
+        contractMonth: occurrence.contractMonth,
+        direction: occurrence.direction!,
+        causalIdentity: {
+          lTimestamp: occurrence.lTimestamp,
+          pOpenTimestamp: occurrence.pOpenTimestamp,
+          eOpenTimestamp: occurrence.eOpenTimestamp,
+          entryObservationTimestamp: occurrence.entryObservationTimestamp,
+        },
+        threshold: {
+          confirmationThreshold: occurrence.confirmationThreshold,
+          confirmationExcursion: occurrence.confirmationExcursion,
+          confirmationBufferTicks: occurrence.confirmationBufferTicks,
+          reached: occurrence.confirmationThreshold !== null && occurrence.confirmationExcursion !== null
+            ? occurrence.direction === "long"
+              ? (typeof occurrence.entryCandle?.high === "number" ? occurrence.entryCandle.high : Number.NEGATIVE_INFINITY) >= occurrence.confirmationThreshold
+              : (typeof occurrence.entryCandle?.low === "number" ? occurrence.entryCandle.low : Number.POSITIVE_INFINITY) <= occurrence.confirmationThreshold
+            : null,
+        },
+        directionSource: occurrence.directionSource ?? null,
+        directionSources: [...new Set(occurrence.directionSources ?? [])].sort(),
+        primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate ?? null,
+        matchedEdges: [...new Set(occurrence.matchedEdges ?? [])].sort(),
+        levelEvidence: levelEvidenceForOccurrence(occurrence),
+        timing: {
+          entryTimeBucket: bucket,
+          beforeExclusiveCutoff: Number.isFinite(minutes) && minutes < PHASE3_ENTRY_CUTOFF_MINUTES,
+        },
+        rejection: rejection
+          ? { reasonCodes: [...rejection.reasonCodes], details: [...rejection.details] }
+          : null,
+        candidate: candidate
+          ? {
+            candidateId: candidate.candidateId,
+            executionStatus: candidate.executionStatus,
+            managementEvidenceStatus: candidate.managementContext?.managementEvidenceStatus ?? null,
+          }
+          : null,
+        trade: trade
+          ? {
+            tradeId: trade.id,
+            outcome: trade.outcome,
+            netPnl: trade.netPnl,
+            ambiguityLabel: trade.ambiguityLabel,
+          }
+          : null,
+        disposition: dispositionForSignal(candidate, rejection, trade),
+      };
+    })
+    .sort((left, right) =>
+      left.tradingDate.localeCompare(right.tradingDate)
+      || left.contractSymbol.localeCompare(right.contractSymbol)
+      || left.causalIdentity.pOpenTimestamp?.localeCompare(right.causalIdentity.pOpenTimestamp ?? "") || 0);
+  const dispositionCounts = emptyDispositionCounts();
+  for (const signal of signals) dispositionCounts[signal.disposition] += 1;
+  const timeBuckets = Object.fromEntries(RECONCILIATION_BUCKETS.map((bucket) => [
+    bucket,
+    { confirmed: 0, candidates: 0, rejected: 0, entered: 0 },
+  ]));
+  for (const signal of signals) {
+    const bucket = signal.timing.entryTimeBucket ?? "OUTSIDE_ENTRY_WINDOW";
+    timeBuckets[bucket]!.confirmed += 1;
+    if (signal.candidate) timeBuckets[bucket]!.candidates += 1;
+    if (signal.rejection) timeBuckets[bucket]!.rejected += 1;
+    if (signal.trade) timeBuckets[bucket]!.entered += 1;
+  }
+  const candidateConfluences = allCandidates.map((candidate) => {
+    const occurrence = allOccurrences.find((item) => item.occurrenceId === candidate.signalOccurrenceId);
+    const evidence = occurrence ? levelEvidenceForOccurrence(occurrence) : [];
+    return {
+      candidateId: candidate.candidateId,
+      signalOccurrenceId: candidate.signalOccurrenceId,
+      evidence,
+      genericLabelsWithoutStructuredEvidence: candidate.supportingConfluences.filter((label) =>
+        !evidence.some((item) => item.levelIdentifier === label)),
+    };
+  });
+  const edgeAudit = PHASE3_EDGES.map((edge) => {
+    const primary = signals.filter((signal) => signal.primaryEdge === edge).length;
+    const matched = signals.filter((signal) => signal.matchedEdges.includes(edge)).length;
+    const candidateCount = allCandidates.filter((candidate) => candidate.primaryEdge === edge).length;
+    return {
+      edge,
+      primaryCount: primary,
+      matchedCount: matched,
+      candidateCount,
+      independentPrimaryPopulation: primary > 0 ? "reported" as const : "empty" as const,
+      explanation: primary > 0
+        ? "Signals are counted once under the canonical primary edge; secondary matches remain confluence evidence."
+        : matched > 0
+          ? "The edge matched the same physical sequences as a secondary strategy and therefore did not create duplicate candidates."
+          : "No canonical confirmed signal matched this edge in the audited partitions.",
+    };
+  });
+  const oldOrphans = input.reports.flatMap((item) => (
+    ((item.report as Phase3ReportWithOrphanHistory).phase3OrphanHistory
+      ?? item.report.orphanModeledTrades
+      ?? []).map((orphan) => ({
+    ...orphan,
+    period: item.period,
+    tradingDate: item.tradingDate,
+    contractSymbol: item.contractSymbol,
+  }))));
+  const currentOrphans = normalized.flatMap((item) => item.orphans.map((orphan) => ({
+    ...orphan,
+    period: item.item.period,
+    tradingDate: item.item.tradingDate,
+    contractSymbol: item.item.contractSymbol,
+  })));
+  const orphanByTrade = new Map<string, Phase3OrphanReconciliation>();
+  for (const orphan of [...oldOrphans, ...currentOrphans]) {
+    const rawTrade = input.reports
+      .find((item) => item.tradingDate === orphan.tradingDate && item.contractSymbol === orphan.contractSymbol)
+      ?.report.trades.find((trade) => trade.id === orphan.tradeId);
+    const exactCandidate = allCandidates.find((candidate) =>
+      candidate.signalOccurrenceId === orphan.matchingSignalOccurrenceId
+      || Boolean(rawTrade
+        && candidate.contractSymbol === rawTrade.contractSymbol
+        && candidate.tradingDate === rawTrade.tradingDate
+        && candidate.direction === rawTrade.direction
+        && rawTrade.audit?.patienceCandleOpenTime === candidate.patienceTimestamp
+        && rawTrade.audit?.triggerCandleOpenTime === candidate.eOpenTimestamp));
+    orphanByTrade.set(orphan.tradeId, {
+      ...orphan,
+      exactSignalMatch: Boolean(exactCandidate),
+      resolution: exactCandidate
+        ? "resolved_exact_candidate"
+        : orphan.matchingSignalOccurrenceId
+          ? "excluded_candidate_conflict"
+          : "excluded_no_exact_candidate",
+    });
+  }
+  const sourceFingerprint = sourceFingerprintAudit(
+    input.manifest.source.contentFingerprint,
+    input.sourceFingerprintFiles,
+  );
+  return {
+    reports: normalized.map((item) => item.item),
+    reconciliation: {
+      version: "phase3-signal-reconciliation-v1",
+      confirmedSignalCount: signals.length,
+      dispositionCounts,
+      dispositionReconciles: signals.length === confirmed.length
+        && signals.length === Object.values(dispositionCounts).reduce((sum, count) => sum + count, 0)
+        && new Set(signals.map((signal) => signal.signalOccurrenceId)).size === signals.length,
+      signals,
+      candidateConfluences,
+      edgeAudit,
+      orphanTrades: [...orphanByTrade.values()].sort((left, right) => left.tradeId.localeCompare(right.tradeId)),
+      timeBuckets,
+      sourceFingerprint: {
+        ...sourceFingerprint,
+        allSame: sourceFingerprint.allSame,
+      },
+    },
+  };
 }
 
 function emptyMetrics(): Phase3PilotMetrics {
@@ -637,6 +1168,11 @@ export async function runPhase3EdgePilot(
     request: BacktestRequest;
     partitions: readonly Phase3PilotPartition[];
     risk?: BacktestWorkerInput["risk"];
+    sourceFingerprintFiles?: readonly {
+      filename: string;
+      contractSymbol: string;
+      contentFingerprint: string;
+    }[];
   },
   options: Phase3PilotRunOptions,
 ): Promise<Phase3PilotReport> {
@@ -709,7 +1245,13 @@ export async function runPhase3EdgePilot(
       message: `Completed Phase 3 edge pilot date ${partition.tradingDate}.`,
     });
   }
-  const reportList = reports.map((item) => item.report);
+  const reconciled = reconcilePhase3SignalFunnel({
+    manifest: input.manifest,
+    reports,
+    partitions: input.partitions,
+    sourceFingerprintFiles: input.sourceFingerprintFiles,
+  });
+  const reportList = reconciled.reports.map((item) => item.report);
   const deduped = deduplicateCandidates(reportList);
   const occurrences = reportList.flatMap((report) => report.occurrences);
   const gate = gateReports(reportList, deduped.candidates);
@@ -743,6 +1285,7 @@ export async function runPhase3EdgePilot(
     totalPartitions: input.partitions.length,
     edgeResults,
     overall,
+    reconciliation: reconciled.reconciliation,
     diagnostics: {
       candidateCount: deduped.candidates.length,
       tradeCount: uniqueTradeKeys.size,
@@ -769,7 +1312,12 @@ export async function runPhase3EdgePilot(
     },
   };
   if (options.saveCheckpoint) {
-    await options.saveCheckpoint({ pilotId, manifest: input.manifest, reports, updatedAt: new Date(completedAtMs).toISOString() });
+    await options.saveCheckpoint({
+      pilotId,
+      manifest: input.manifest,
+      reports: reconciled.reports,
+      updatedAt: new Date(completedAtMs).toISOString(),
+    });
   }
   options.onProgress?.({
     status: "completed",

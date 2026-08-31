@@ -3480,10 +3480,14 @@ components:
         totalPartitions: { type: number }
         edgeResults: { type: array, items: { type: object, additionalProperties: true } }
         overall: { type: object, additionalProperties: true }
+        reconciliation:
+          type: object
+          additionalProperties: true
+          description: Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation.
         diagnostics: { type: object, additionalProperties: true }
         timing: { type: object, additionalProperties: true }
         compute: { type: object, additionalProperties: true }
-      required: [pilotId, status, manifest, gate, selectedDates, completedPartitions, totalPartitions, edgeResults, overall, diagnostics, timing, compute]
+      required: [pilotId, status, manifest, gate, selectedDates, completedPartitions, totalPartitions, edgeResults, overall, reconciliation, diagnostics, timing, compute]
     BatchBacktestRequest:
       allOf:
         - $ref: "#/components/schemas/BacktestRequest"

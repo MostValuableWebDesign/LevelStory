@@ -11,6 +11,7 @@ import type { EdgeValidationPilotReportEdgeResultsItem } from './edgeValidationP
 import type { EdgeValidationPilotReportGate } from './edgeValidationPilotReportGate';
 import type { EdgeValidationPilotReportManifest } from './edgeValidationPilotReportManifest';
 import type { EdgeValidationPilotReportOverall } from './edgeValidationPilotReportOverall';
+import type { EdgeValidationPilotReportReconciliation } from './edgeValidationPilotReportReconciliation';
 import type { EdgeValidationPilotReportStatus } from './edgeValidationPilotReportStatus';
 import type { EdgeValidationPilotReportTiming } from './edgeValidationPilotReportTiming';
 
@@ -27,6 +28,8 @@ export interface EdgeValidationPilotReport {
   totalPartitions: number;
   edgeResults: EdgeValidationPilotReportEdgeResultsItem[];
   overall: EdgeValidationPilotReportOverall;
+  /** Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation. */
+  reconciliation: EdgeValidationPilotReportReconciliation;
   diagnostics: EdgeValidationPilotReportDiagnostics;
   timing: EdgeValidationPilotReportTiming;
   compute: EdgeValidationPilotReportCompute;

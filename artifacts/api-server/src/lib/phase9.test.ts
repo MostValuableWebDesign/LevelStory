@@ -652,6 +652,43 @@ test("ledger merges the same causal occurrence and preserves canonical plus seco
   assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
 });
 
+test("ledger promotes the complete immediate-E snapshot over an earlier partial replay cursor", () => {
+  const source = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const base = source.patienceOccurrences![0]!;
+  const partial = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "partial-e-audit",
+    patienceOccurrences: [{
+      ...base,
+      triggerCandle: null,
+      nextObservedCandle: null,
+      outcomeStatus: "CANDIDATE",
+      qualificationStatus: "IMMEDIATE_CONFIRMATION_FAILED",
+      status: "PATIENCE_CANDLE_EXPIRED",
+      evaluationCursor: base.patienceCandle.closeTime,
+    }],
+  });
+  const complete = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "complete-e-audit",
+    patienceOccurrences: [{
+      ...base,
+      outcomeStatus: "CONFIRMED",
+      qualificationStatus: "SIGNAL_CONFIRMED",
+      status: "ENTRY_TRIGGERED",
+      evaluationCursor: base.triggerCandle!.closeTime,
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [partial, complete], []);
+  const patience = occurrences.find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.equal(patience.status, "SIGNAL_CONFIRMED");
+  assert.equal(patience.entryObservationTimestamp, new Date(base.triggerCandle!.closeTime).toISOString());
+  assert.equal(patience.entryCandle?.openTime, base.triggerCandle!.openTime);
+  assert.deepEqual(
+    buildHistoricalOccurrenceLedger(occurrenceDataset(), [complete, partial], []).find((occurrence) => occurrence.kind === "patience"),
+    patience,
+  );
+});
+
 test("ledger merges multiple qualifying levels into one physical P to E signal", () => {
   const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
   const second = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {

@@ -95,6 +95,7 @@ export * from './edgeValidationPilotReportEdgeResultsItem';
 export * from './edgeValidationPilotReportGate';
 export * from './edgeValidationPilotReportManifest';
 export * from './edgeValidationPilotReportOverall';
+export * from './edgeValidationPilotReportReconciliation';
 export * from './edgeValidationPilotReportStatus';
 export * from './edgeValidationPilotReportTiming';
 export * from './edgeValidationPilotRequest';

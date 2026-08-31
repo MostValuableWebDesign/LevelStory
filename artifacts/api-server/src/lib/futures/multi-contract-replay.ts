@@ -100,6 +100,56 @@ export type MultiContractFileSummary = {
   };
 };
 
+export type MultiContractFingerprintValidation = {
+  valid: boolean;
+  errors: string[];
+  components: Array<{
+    filename: string;
+    contractSymbol: string;
+    fingerprint: string;
+  }>;
+};
+
+/**
+ * Validate the composite identity used by the multi-contract index. Keeping
+ * this check separate makes persisted-index validation deterministic and
+ * prevents a display string with a duplicated or malformed contract component
+ * from being treated as an immutable source identity.
+ */
+export function validateMultiContractContentFingerprint(input: {
+  contentFingerprint: string;
+  files: readonly Pick<MultiContractFileSummary, "filename" | "contractSymbol" | "contentFingerprint">[];
+}): MultiContractFingerprintValidation {
+  const errors: string[] = [];
+  const components: MultiContractFingerprintValidation["components"] = [];
+  const seenFiles = new Set<string>();
+  const seenContracts = new Set<string>();
+  const expected = input.files.map((file) =>
+    `${file.filename}:${file.contractSymbol}:${file.contentFingerprint}`);
+  const actual = input.contentFingerprint.split("|").filter(Boolean);
+  if (!input.contentFingerprint.trim()) errors.push("CONTENT_FINGERPRINT_EMPTY");
+  if (actual.length !== expected.length) errors.push("CONTENT_FINGERPRINT_COMPONENT_COUNT_MISMATCH");
+  for (const [index, component] of actual.entries()) {
+    const pieces = component.split(":");
+    const fingerprint = pieces.at(-1) ?? "";
+    const contractSymbol = pieces.at(-2) ?? "";
+    const filename = pieces.slice(0, -2).join(":");
+    if (pieces.length < 3 || !filename || !parseMesContractSymbol(contractSymbol)
+      || !/^[0-9a-f]{64}$/i.test(fingerprint)) {
+      errors.push(`MALFORMED_COMPONENT:${component}`);
+      continue;
+    }
+    if (seenFiles.has(filename)) errors.push(`DUPLICATE_FILENAME:${filename}`);
+    if (seenContracts.has(contractSymbol)) errors.push(`DUPLICATE_CONTRACT:${contractSymbol}`);
+    seenFiles.add(filename);
+    seenContracts.add(contractSymbol);
+    components.push({ filename, contractSymbol, fingerprint });
+    if (expected[index] !== component) errors.push(`COMPONENT_MISMATCH:${contractSymbol}`);
+  }
+  if (actual.some((component) => !expected.includes(component))) errors.push("UNEXPECTED_COMPONENT");
+  return { valid: errors.length === 0, errors: [...new Set(errors)], components };
+}
+
 export type MultiContractEligibility = {
   tradingDate: string;
   scheduledContractSymbol: string | null;
@@ -615,6 +665,17 @@ async function resolveMultiContractIdentity(): Promise<MultiContractIdentity> {
   const contentFingerprint = resolved.accepted
     .map((file, index) => `${file.filename}:${file.contractSymbol}:${fingerprints[index]}`)
     .join("|");
+  const fingerprintValidation = validateMultiContractContentFingerprint({
+    contentFingerprint,
+    files: resolved.accepted.map((file, index) => ({
+      filename: file.filename,
+      contractSymbol: file.contractSymbol,
+      contentFingerprint: fingerprints[index]!,
+    })),
+  });
+  if (!fingerprintValidation.valid) {
+    throw new Error(`Historical source fingerprint validation failed: ${fingerprintValidation.errors.join(", ")}.`);
+  }
   const indexKey = createHash("sha256").update(JSON.stringify({
     source: MULTI_CONTRACT_SOURCE,
     rootSymbol: "MES",
@@ -845,6 +906,11 @@ async function readPersistedIndex(identity: MultiContractIdentity): Promise<Hist
     const persisted = JSON.parse(raw) as PersistedMultiContractIndex;
     if (persisted.indexKey !== identity.indexKey || !Array.isArray(persisted.contracts)) return null;
     assertMultiContractCoverageReconciles(persisted.summary);
+    const fingerprintValidation = validateMultiContractContentFingerprint({
+      contentFingerprint: persisted.contentFingerprint,
+      files: persisted.summary.files,
+    });
+    if (!fingerprintValidation.valid || persisted.contentFingerprint !== identity.contentFingerprint) return null;
     const base = getFuturesContractSpecification("MES");
     const contracts = new Map<string, HistoricalCsvImport>();
     for (const item of persisted.contracts) {

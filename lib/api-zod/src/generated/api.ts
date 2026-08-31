@@ -4348,6 +4348,7 @@ export const StartEdgeValidationPilotResponse = zod.object({
   "totalPartitions": zod.number(),
   "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
   "overall": zod.record(zod.string(), zod.unknown()),
+  "reconciliation": zod.record(zod.string(), zod.unknown()).describe('Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation.'),
   "diagnostics": zod.record(zod.string(), zod.unknown()),
   "timing": zod.record(zod.string(), zod.unknown()),
   "compute": zod.record(zod.string(), zod.unknown())
@@ -4393,6 +4394,7 @@ export const GetEdgeValidationPilotStatusResponse = zod.object({
   "totalPartitions": zod.number(),
   "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
   "overall": zod.record(zod.string(), zod.unknown()),
+  "reconciliation": zod.record(zod.string(), zod.unknown()).describe('Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation.'),
   "diagnostics": zod.record(zod.string(), zod.unknown()),
   "timing": zod.record(zod.string(), zod.unknown()),
   "compute": zod.record(zod.string(), zod.unknown())
@@ -4438,6 +4440,7 @@ export const CancelEdgeValidationPilotResponse = zod.object({
   "totalPartitions": zod.number(),
   "edgeResults": zod.array(zod.record(zod.string(), zod.unknown())),
   "overall": zod.record(zod.string(), zod.unknown()),
+  "reconciliation": zod.record(zod.string(), zod.unknown()).describe('Per-confirmed-signal disposition, causal evidence, edge independence, orphan-trade, time-bucket, and source-fingerprint reconciliation.'),
   "diagnostics": zod.record(zod.string(), zod.unknown()),
   "timing": zod.record(zod.string(), zod.unknown()),
   "compute": zod.record(zod.string(), zod.unknown())

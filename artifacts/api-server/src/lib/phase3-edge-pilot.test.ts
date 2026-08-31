@@ -8,6 +8,7 @@ import {
   PHASE3_IN_SAMPLE_DAYS,
   PHASE3_OUT_OF_SAMPLE_DAYS,
   PHASE3_TOTAL_DAYS,
+  reconcilePhase3SignalFunnel,
   type Phase3Checkpoint,
 } from "./phase3-edge-pilot.js";
 import type {
@@ -177,6 +178,64 @@ test("Phase 3 partitions isolate one contract/date and preserve the 20/10 split"
   assert.deepEqual(partitions.slice(0, 20).map((item) => item.period), Array(20).fill("in_sample"));
   assert.deepEqual(partitions.slice(20).map((item) => item.period), Array(10).fill("out_of_sample"));
   assert.ok(partitions.every((item) => item.dataset.selectedDates?.length === 1));
+});
+
+test("Phase 3 reconciliation gives each confirmed signal one disposition and keeps zero buckets", () => {
+  const replayDataset = dataset();
+  const manifest = buildPhase3PilotManifest({ dataset: replayDataset, request, createdAt: "2026-08-30T12:00:00.000Z" });
+  const confirmedOccurrence = {
+    occurrenceId: "signal-1",
+    auditId: "audit-1",
+    auditIds: ["audit-1"],
+    kind: "patience",
+    canonicalOccurrence: true,
+    status: "SIGNAL_CONFIRMED",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    primaryEdge: "ORB_PULLBACK_CONTINUATION",
+    matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
+    secondaryStrategyMatches: [],
+    tradingDate: dates[0],
+    contractSymbol: "MESU6",
+    contractMonth: "2026-09",
+    direction: "long",
+    directionSource: "ORB_BREAKOUT",
+    directionSources: ["ORB_BREAKOUT"],
+    lTimestamp: "2026-07-01T14:50:00.000Z",
+    pOpenTimestamp: "2026-07-01T14:55:00.000Z",
+    eOpenTimestamp: "2026-07-01T15:00:00.000Z",
+    entryObservationTimestamp: "2026-07-01T15:05:00.000Z",
+    patienceTimestamp: "2026-07-01T14:55:00.000Z",
+    levelIdentifiers: ["ORB"],
+    levelValues: { ORB: 100 },
+    levelDistancesTicks: { ORB: 0 },
+    levelToleranceTicks: { ORB: 12 },
+    levelInteractionTypes: { ORB: ["touch"] },
+    confirmationThreshold: 101,
+    confirmationExcursion: 1,
+    confirmationBufferTicks: 4,
+    entryCandle: { high: 102 },
+  } as never;
+  const item = {
+    tradingDate: dates[0]!,
+    contractSymbol: "MESU6",
+    period: "in_sample" as const,
+    report: {
+      ...report(replayDataset, [candidate()]),
+      occurrences: [confirmedOccurrence],
+      rejectedCandidateSignals: [],
+      orphanModeledTrades: [],
+    },
+  };
+  const result = reconcilePhase3SignalFunnel({
+    manifest,
+    reports: [item],
+    partitions: [],
+  });
+  assert.equal(result.reconciliation.confirmedSignalCount, 1);
+  assert.equal(result.reconciliation.dispositionReconciles, true);
+  assert.equal(Object.values(result.reconciliation.dispositionCounts).reduce((sum, count) => sum + count, 0), 1);
+  assert.equal(result.reconciliation.timeBuckets["09:30-10:00"].confirmed, 0);
+  assert.equal(result.reconciliation.signals[0]!.signalOccurrenceId, "signal-1");
 });
 
 test("Phase 3 reports four independent edges, preserves confluence, and excludes invalid management", async () => {

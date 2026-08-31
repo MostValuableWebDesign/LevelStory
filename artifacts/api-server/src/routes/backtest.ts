@@ -645,6 +645,11 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             request: pilotRequest,
             partitions: buildPhase3PilotPartitions(dataset),
             risk,
+            sourceFingerprintFiles: readyIndex.summary.files.map((file) => ({
+              filename: file.filename,
+              contractSymbol: file.contractSymbol,
+              contentFingerprint: file.contentFingerprint,
+            })),
           },
           {
             pilotId,

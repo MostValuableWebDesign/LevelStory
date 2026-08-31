@@ -11,6 +11,7 @@ import {
   parseMesContractSymbol,
   scheduledMesContractForDate,
   assertMultiContractCoverageReconciles,
+  validateMultiContractContentFingerprint,
   type HistoricalMultiContractImport,
 } from "./multi-contract-replay.js";
 import { newYorkTimeToUtc, sessionCalendarForContract } from "./session-calendar.js";
@@ -242,4 +243,31 @@ test("fails closed when coverage totals do not reconcile", () => {
     ineligibleObservedDateCount: 1,
     coverageReconciles: false,
   }), /do not reconcile/i);
+});
+
+test("validates every composite source fingerprint component, including MESH7", () => {
+  const files = [
+    { filename: "fixture.MESH7.csv", contractSymbol: "MESH7", contentFingerprint: "a".repeat(64) },
+    { filename: "fixture.MESU6.csv", contractSymbol: "MESU6", contentFingerprint: "b".repeat(64) },
+  ];
+  const valid = validateMultiContractContentFingerprint({
+    files,
+    contentFingerprint: files.map((file) =>
+      `${file.filename}:${file.contractSymbol}:${file.contentFingerprint}`).join("|"),
+  });
+  assert.equal(valid.valid, true);
+  assert.deepEqual(valid.components[0], {
+    filename: files[0]!.filename,
+    contractSymbol: files[0]!.contractSymbol,
+    fingerprint: files[0]!.contentFingerprint,
+  });
+  const malformed = validateMultiContractContentFingerprint({
+    files,
+    contentFingerprint: [
+      `${files[0]!.filename}:MESH7:${"a".repeat(64)}`,
+      `${files[0]!.filename}:MESH7:${"a".repeat(64)}`,
+    ].join("|"),
+  });
+  assert.equal(malformed.valid, false);
+  assert.ok(malformed.errors.some((error) => error.startsWith("DUPLICATE_FILENAME:")));
 });
