@@ -1,0 +1,194 @@
+Implement a deterministic key-level profit-target strategy in LevelStory.
+
+Core rule
+
+Take profit at the next eligible key level in the trade’s direction, normally 12 MES ticks before price reaches that level.
+
+MES configuration:
+
+tickSize = 0.25
+profitTargetBufferTicks = 12
+profitTargetBufferPoints = 3.00
+
+Directional calculation
+
+Long trade:
+- Consider only key levels above the entry.
+- Target = keyLevelPrice - 3.00 points.
+
+Short trade:
+- Consider only key levels below the entry.
+- Target = keyLevelPrice + 3.00 points.
+
+This places the target on the near side of the level.
+
+Bypass rule
+
+If the entry price is already within 12 ticks of a key level, bypass that level and search for the next key level farther in the trade direction.
+
+Long:
+
+distance = levelPrice - entryPrice
+
+The level is eligible only when:
+
+distance > 3.00 points
+
+Short:
+
+distance = entryPrice - levelPrice
+
+The level is eligible only when:
+
+distance > 3.00 points
+
+Do not create a target at the entry price, behind the entry, or with less than 12 ticks of initial profit potential.
+
+Level selection
+
+At entry time:
+
+1. Freeze all causally available key levels.
+2. Remove duplicates and merge levels belonging to the same zone.
+3. Keep only levels ahead of the trade.
+4. Sort them by directional distance from entry.
+5. Bypass every level within 12 ticks of entry.
+6. Select the nearest remaining eligible level.
+7. Freeze that level and its derived target for the life of the trade.
+
+Qualifying key levels
+
+Use only established, causally visible levels:
+
+- ORB/NTZ high and low
+- Premarket high and low
+- Previous-day high and low
+- Two-days-ago high and low
+- Major support and resistance zones
+- Dynamite zones
+- VWAP value frozen at entry, when applicable
+- 200 EMA value frozen at entry, when applicable
+
+Do not restore Fibonacci levels.
+
+Zone handling
+
+For a price zone rather than one exact price:
+
+Long:
+- Use the lower boundary encountered first.
+- Target 12 ticks below that boundary.
+
+Short:
+- Use the upper boundary encountered first.
+- Target 12 ticks above that boundary.
+
+For a dynamite zone, treat the complete light-blue range as one level. Do not create separate targets for every confluence inside it.
+
+Target placement mode
+
+Add a governed configuration:
+
+profitTargetPlacement:
+- NEAR_SIDE_12_TICKS — default
+- EXACT_LEVEL — optional comparison/backtest mode
+
+NEAR_SIDE_12_TICKS must be the default.
+
+Target progression
+
+Store the ordered eligible levels with the trade:
+
+- skippedLevels
+- selectedTargetLevel
+- subsequentTargetLevels
+
+Each skipped level must record:
+
+- Level ID and type
+- Price or zone boundaries
+- Distance from entry
+- Reason: ENTRY_WITHIN_12_TICKS
+
+Do not silently discard it.
+
+Multiple contracts
+
+When more than one contract is traded:
+
+- The first profit-taking contract may exit at the selected target.
+- Remaining runner contracts may continue toward the next eligible key level.
+- Each subsequent target must follow the same 12-tick bypass and near-side placement rules.
+- Preserve the existing runner invalidation rules unless separately changed.
+
+Single-contract trades exit fully at the selected target.
+
+Causal integrity
+
+The target plan must be frozen separately for each candidate-owned trade.
+
+Never reuse:
+
+- Another trade’s target
+- Another trade’s entry price
+- A later chart level that was unavailable at entry
+- A session-level mutable target
+- A future VWAP or EMA value
+
+Every trade must retain:
+
+- candidateId
+- signalOccurrenceId
+- entryPrice
+- direction
+- frozen available levels
+- skipped levels
+- selected level ID/type
+- selected level price or zone
+- buffer ticks
+- calculated target price
+
+Historical execution
+
+Management begins with the first completed candle after E.
+
+Long:
+- Target is reached when a management candle’s high reaches the frozen target.
+
+Short:
+- Target is reached when a management candle’s low reaches the frozen target.
+
+Continue using the existing conservative same-candle ambiguity policy when both stop and target are reached in the same candle.
+
+Visual Review
+
+For every filled trade, display:
+
+- Entry line
+- Selected key level or zone
+- Buffered profit-target line
+- “12 ticks before [level name]”
+- Any bypassed nearby level with “Skipped: entry within 12 ticks”
+- Exit marker
+- Realized gross and net P/L
+
+Do not show a target or P/L for an unfilled candidate.
+
+Required tests
+
+Add deterministic long and short tests proving:
+
+1. A level more than 12 ticks away becomes the selected target.
+2. A level exactly 12 ticks from entry is bypassed.
+3. A level less than 12 ticks away is bypassed.
+4. The following eligible level becomes the target.
+5. Long targets are 12 ticks below the selected level.
+6. Short targets are 12 ticks above the selected level.
+7. Levels behind the entry are ignored.
+8. Multiple prices within one dynamite zone produce one target.
+9. Separate same-session trades freeze independent target plans.
+10. VWAP and EMA use their entry-time values and do not move the target later.
+11. The E candle is not used to trigger an exit.
+12. Entry, target, exit, and P/L propagate consistently through the trade record, outcome replay, report, and Visual Review.
+
+Keep this Shadow Mode only. Do not add live, paper, or broker execution. Do not fabricate levels, fills, exits, or P/L. Do not rebuild the historical index for this focused change.
