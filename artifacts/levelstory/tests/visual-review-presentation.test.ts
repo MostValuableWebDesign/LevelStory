@@ -53,6 +53,11 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.doesNotMatch(page, /OPENING RANGE/);
   assert.match(page, /data-testid="compact-coverage-details"/);
   assert.match(page, /data-testid="review-period"/);
+  assert.match(page, /data-testid="chart-level-legend"/);
+  assert.match(page, /formatPriceAxisValue\(annotation\.price!\)/);
+  assert.doesNotMatch(page, /labelYById/);
+  assert.doesNotMatch(page, /axisLabelX/);
+  assert.doesNotMatch(page, /data-testid="additional-levels".*fib-/s);
   assert.match(page, /SnapshotHeaderContent/);
   assert.match(page, /data-testid="formula-development-sample"/);
   assert.match(page, /Example \{String\(index \+ 1\)\.padStart\(2, "0"\)/);

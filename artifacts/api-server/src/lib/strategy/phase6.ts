@@ -108,6 +108,41 @@ export type Phase6Context = {
   dynamiteLevels?: readonly DynamiteLevel[];
 };
 
+function dynamiteInteractionMatchesSignal(
+  interaction: DynamiteLevel["pullbackInteractions"][number],
+  level: DynamiteLevel,
+  patience: PatienceAnalysis,
+  pullback: PullbackAnalysis,
+  direction: Direction | null,
+): boolean {
+  const patienceCandle = patience.patienceCandle;
+  if (!patienceCandle || !patience.eligible || !level.pullbackInteracted) return false;
+  if (direction && interaction.direction && interaction.direction !== direction) return false;
+  if (interaction.pCandleOpenTime != null && interaction.pCandleOpenTime !== patienceCandle.openTime) return false;
+  if (interaction.eCandleOpenTime != null) {
+    if (!patience.triggerCandle || interaction.eCandleOpenTime !== patience.triggerCandle.openTime) return false;
+  }
+  if (interaction.eligibilityArmId
+    && patience.eligibilityArmId
+    && interaction.eligibilityArmId !== patience.eligibilityArmId) return false;
+
+  const provenanceEventId = patience.eligibilityProvenance?.eventId;
+  if (provenanceEventId && interaction.eventId) {
+    return interaction.eventId === provenanceEventId;
+  }
+
+  const levelEvent = pullback.events.find((event) =>
+    (interaction.eventId && event.eventId === interaction.eventId)
+    || (event.candle?.openTime ?? event.time) === interaction.lCandleOpenTime
+    || (event.candle?.openTime ?? event.time) === interaction.candleOpenTime,
+  );
+  const lCandleOpenTime = patience.eligibilityProvenance?.lCandleOpenTime
+    ?? (levelEvent ? levelEvent.candle?.openTime ?? levelEvent.time : null);
+  if (lCandleOpenTime == null) return false;
+  if (interaction.lCandleOpenTime != null && interaction.lCandleOpenTime !== lCandleOpenTime) return false;
+  return interaction.candleOpenTime === lCandleOpenTime;
+}
+
 export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   const evaluations = [
     evaluateOrbBreakPullbackContinuation(context),
@@ -125,8 +160,7 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
         && signalPatience?.patienceCandle
         && (evaluation.direction === signalPatience.direction || !evaluation.direction)
         && level.pullbackInteractions.some((interaction) =>
-          interaction.candleOpenTime <= signalPatience.patienceCandle!.openTime
-          || interaction.eventId === signalPatience.eligibilityProvenance?.eventId,
+          dynamiteInteractionMatchesSignal(interaction, level, signalPatience, context.pullback, evaluation.direction),
         ),
       ) ?? []
       : [];
@@ -482,25 +516,27 @@ function rule(key: string, label: string, passed: boolean, detail: string): Setu
 }
 
 function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
-  return pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
+  return pullback.events.some((event) =>
+    event.qualifies === true
+    && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type),
+  );
 }
 
 function hasGenuinePullback(pullback: PullbackAnalysis): boolean {
-  return pullback.structure?.detected ?? pullback.events.some((event) =>
-    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
-    && !event.level.toLowerCase().startsWith("fib"),
-  );
+  return hasQualifyingPullback(pullback) && pullback.structure?.detected !== false;
 }
 
 function hasFibonacciPullbackInteraction(context: Phase6Context): boolean {
   if (!context.fibonacci.frozen || !context.fibonacci.levels.length) return false;
   const structure = context.pullback.structure;
   const genuineEvents = context.pullback.events.filter((event) =>
-    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+    event.qualifies === true
+    && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && !event.level.toLowerCase().startsWith("fib"),
   );
   return context.pullback.events.some((event) =>
-    ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+    event.qualifies === true
+    && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && event.level.toLowerCase().startsWith("fib")
     && (structure?.detected ?? genuineEvents.some((genuine) => (event.candle?.openTime ?? event.time) === (genuine.candle?.openTime ?? genuine.time)))
     && (!structure

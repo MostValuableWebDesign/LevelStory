@@ -206,6 +206,50 @@ test("Dynamite boosts only a matching qualified signal and preserves its conflue
   assert.ok(orb?.supportingConfluences?.some((item) => item.includes("Dynamite dynamite|10.00|10.25")));
 });
 
+test("a rejected pullback event cannot satisfy a Phase 6 pullback rule", () => {
+  const context = baseContext({
+    pullback: {
+      ...baseContext().pullback,
+      events: [{ ...baseContext().pullback.events[0]!, qualifies: false }],
+    },
+  });
+  const result = phase6Analysis(context);
+  assert.notEqual(result.evaluations.find((evaluation) => evaluation.setupType === "ORB_PULLBACK_CONTINUATION")?.decision, "SETUP QUALIFIED");
+});
+
+test("Dynamite ignores an earlier unrelated interaction instead of using broad time matching", () => {
+  const result = phase6Analysis(baseContext({
+    patience: {
+      ...patience(),
+      direction: "long",
+      eligibilityProvenance: { eventId: "pullback-current", reason: "pullback", time: 2, detail: "current" },
+    },
+    dynamiteLevels: [{
+      id: "dynamite|10.00|10.25",
+      lower: 10,
+      upper: 10.25,
+      representative: 10.125,
+      includedLevelIds: ["vwap", "ema-200"],
+      includedTypes: ["VWAP", "EMA 200"],
+      includedLevelValues: [10, 10.25],
+      sourceFamilies: ["vwap", "ema-200"],
+      confluenceCount: 2,
+      observedAt: 3,
+      pullbackInteracted: true,
+      pullbackInteractions: [{
+        eventId: "pullback-earlier",
+        eventTime: 1,
+        candleOpenTime: 1,
+        price: 10,
+        level: "VWAP",
+      }],
+    } satisfies DynamiteLevel],
+  }));
+  const orb = result.evaluations.find((evaluation) => evaluation.setupType === "ORB_PULLBACK_CONTINUATION");
+  assert.equal(orb?.dynamiteConfluenceCount, 0);
+  assert.equal(orb?.grade, 0);
+});
+
 test("ORB qualification does not require strong-breakout volume or body classification", () => {
   const context = baseContext({
     breakout: {

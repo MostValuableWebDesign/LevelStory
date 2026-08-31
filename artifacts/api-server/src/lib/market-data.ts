@@ -57,6 +57,8 @@ import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
 import { dynamiteLevels, type MajorLevel, type DynamiteLevel } from "./strategy/major-levels.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { detectLongTermZones, type LongTermZone } from "./strategy/long-term-zones.js";
+import { formulaConfigurationHash } from "./formula-hash.js";
+import { createHash } from "node:crypto";
 
 const CONFIRMED_ORB_STATES = new Set<OrbBreakoutState>([
   "QUALIFIED_BREAKOUT",
@@ -400,7 +402,20 @@ export type ReplaySnapshotOptions = {
   ohlcvStopBufferTicks?: number;
   allCandlesCompleted?: boolean;
   validateDashboardInvariants?: boolean;
+  sourceFingerprint?: string;
 };
+
+function feedSourceFingerprint(feed: readonly SimulatedFuturesCandle[]): string {
+  const first = feed[0];
+  const last = feed.at(-1);
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify({
+    count: feed.length,
+    first: first ? [first.contractSymbol, first.openTime, first.closeTime, first.open, first.high, first.low, first.close] : null,
+    last: last ? [last.contractSymbol, last.openTime, last.closeTime, last.open, last.high, last.low, last.close] : null,
+  }));
+  return hash.digest("hex");
+}
 
 function latestTradingDate(calendar: ReturnType<typeof sessionCalendarForContract>): string {
   let date = tradingDateForTimestamp(Date.now(), calendar);
@@ -453,6 +468,8 @@ export function createMarketSnapshot(
   const currentCursor = replayOptions?.cursor ?? (session === "premarket"
     ? timestampForTradingDate(tradingDate, "09:20", calendar)
     : timestampForTradingDate(tradingDate, "13:00", calendar));
+  const sourceFingerprint = replayOptions?.sourceFingerprint ?? feedSourceFingerprint(historicalFeed);
+  const formulaHash = formulaConfigurationHash({ symbol: normalized }, config);
   const currentSession = classifyFuturesSession(currentCursor, calendar);
   const marketStatus = currentSession === "premarket"
     ? "premarket"
@@ -533,6 +550,12 @@ export function createMarketSnapshot(
       candleOpenTime: event.candle?.openTime ?? event.time,
       price: event.price,
       level: event.level,
+      direction: null,
+      lCandleOpenTime: event.candle?.openTime ?? null,
+      sourceFingerprint,
+      formulaHash,
+      contractSymbol: specification.fullContractSymbol,
+      tradingDate,
     }));
   const dynamite = dynamiteLevels([
     { name: "ORB high", price: levels.orb?.high ?? NaN, family: "orb-ntz-high", id: "orb-high" },
@@ -549,7 +572,12 @@ export function createMarketSnapshot(
       id: level.name,
     })),
     ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, family: "fibonacci", id: level.name })),
-  ], config.dynamiteLevelToleranceTicks, specification.tickSize, currentCursor, dynamiteInteractions);
+  ], config.dynamiteLevelToleranceTicks, specification.tickSize, currentCursor, dynamiteInteractions, {
+    sourceFingerprint,
+    formulaHash,
+    contractSymbol: specification.fullContractSymbol,
+    tradingDate,
+  });
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;

@@ -85,7 +85,6 @@ import {
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
   isOpeningRangeCompleteAtEvaluation,
-  isDisplacedLabel,
   isPrimaryLevel,
   INTRADAY_REFERENCE_PRESENTATION,
   mergeOrbNtzAnnotations,
@@ -94,7 +93,6 @@ import {
   selectSessionCandles,
   type SessionCandle,
   type SessionView,
-  stackLabelPositions,
   type CandleInspection,
 } from "@/lib/visual-review-chart";
 
@@ -1088,7 +1086,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const width = CHART_WIDTH;
   const height = CHART_HEIGHT;
   const left = CHART_LEFT;
-  const right = CHART_RIGHT;
+  // The former right-side label rail consumed plot width. Price values remain
+  // on the axis; names and exact values now live in the wrapping legend.
+  const right = 34;
   const top = CHART_TOP;
   const plotBottom = CHART_PLOT_BOTTOM;
   const volumeTop = CHART_VOLUME_TOP;
@@ -1146,10 +1146,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
      .concat(relevantCritical)
      .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
   const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
-  const inRangeLevels = primaryLevels.filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max);
-  const labelPositions = stackLabelPositions(inRangeLevels.map((annotation) => ({ id: annotation.id, y: y(annotation.price as number) })), top + 9, plotBottom - 5, 16);
-  const labelYById = new Map(labelPositions.map((position) => [position.id, position.y]));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
+   const levelLegend = [...allLevels]
+     .filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max)
+     .sort((first, second) => (first.price ?? 0) - (second.price ?? 0) || first.label.localeCompare(second.label));
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
   const activeSlot = hoveredSlot ?? selectedSlot;
   const activeCandle = activeSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === activeSlot) ?? null;
@@ -1291,7 +1291,17 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           </div>}
         </section>
          <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} crosshairPrice={pointerPosition?.price ?? null} />
-       <div className="chart-plot-shell mt-3">
+        <div className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
+          {levelLegend.map((annotation) => {
+            const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
+            return <span key={`legend-${annotation.id}`} className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px]" style={{ color: levelStroke(annotation), fontWeight: structural ? 700 : 500 }}>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+            <span>{annotation.label}</span>
+            <span className="mono font-bold">{formatPriceAxisValue(annotation.price!)}</span>
+            </span>;
+          })}
+        </div>
+        <div className="chart-plot-shell mt-3">
           <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the price plot or volume column to inspect the nearest candle and free-roaming crosshair price, or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => { setPointerPosition(null); setHoveredSlot(null); }} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
        <title>Causal annotated chart. The boundary notch identifies the last machine-visible candle; shaded candles after it are human-only context.</title>
           <rect x={left} y={top} width={plotWidth} height={plotBottom - top} fill="transparent" pointerEvents="all" data-testid="chart-interaction-layer" />
@@ -1345,16 +1355,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         const stop = annotation.id === "strategy-stop" || annotation.id === "catastrophe-stop";
         const target = annotation.id === "target";
          const stroke = levelStroke(annotation);
-          const labelY = labelYById.get(annotation.id) ?? y(annotation.price);
-          const axisLabelX = plotRight + 7;
-          const labelWidth = width - axisLabelX - 7;
-          const displaced = isDisplacedLabel(labelY, y(annotation.price));
-          const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
           return <g key={annotation.id} pointerEvents="none" data-testid={`chart-level-${annotation.id}`}>
             <line pointerEvents="none" x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
-            <rect x={axisLabelX} y={labelY - 10} width={labelWidth} height="18" rx="2" fill="hsl(var(--card) / .94)" stroke={stroke} strokeOpacity=".32" />
-            <text x={axisLabelX + 4} y={labelY + 3} fill={stroke} fontSize="8.5" fontWeight={orb || critical || structural ? "700" : "500"} fontFamily="DM Mono">{structural ? `${annotation.label} ${formatPriceAxisValue(annotation.price)}` : annotation.label}</text>
-            <text x={width - 11} y={labelY + 3} textAnchor="end" fill={stroke} fontSize="8.5" fontWeight="700" fontFamily="DM Mono">{formatPriceAxisValue(annotation.price)}</text>
           </g>;
       })}
       {edgeIndicators.map(({ annotation, edge }) => {

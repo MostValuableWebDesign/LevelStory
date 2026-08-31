@@ -1,6 +1,7 @@
 import type { FuturesContractSpecification } from "../futures/contracts.js";
 import type { SimulatedHourlyCandle } from "../futures/simulated-feed.js";
 import type { StrategyConfig } from "./config.js";
+import type { Direction } from "./types.js";
 
 export type MajorLevelKind = "support" | "resistance";
 export type ConfluenceClass = "normal" | "strong" | "dynamite";
@@ -25,6 +26,15 @@ export type DynamitePullbackInteraction = {
   candleOpenTime: number;
   price: number;
   level: string;
+  direction?: Direction | null;
+  eligibilityArmId?: string | null;
+  lCandleOpenTime?: number | null;
+  pCandleOpenTime?: number | null;
+  eCandleOpenTime?: number | null;
+  sourceFingerprint?: string | null;
+  formulaHash?: string | null;
+  contractSymbol?: string | null;
+  tradingDate?: string | null;
 };
 
 export type LevelComponent = {
@@ -49,12 +59,20 @@ export type DynamiteLevel = {
   pullbackInteractions: DynamitePullbackInteraction[];
 };
 
+export type DynamiteIdentity = {
+  sourceFingerprint?: string | null;
+  formulaHash?: string | null;
+  contractSymbol?: string | null;
+  tradingDate?: string | null;
+};
+
 export function dynamiteLevels(
   levels: readonly LevelComponent[],
   toleranceTicks: number,
   tickSize: number,
   observedAt: number,
   interactions: readonly DynamitePullbackInteraction[] = [],
+  identity: DynamiteIdentity = {},
 ): DynamiteLevel[] {
   const unique = levels
     .filter((level) => Number.isFinite(level.price))
@@ -64,6 +82,7 @@ export function dynamiteLevels(
       family: canonicalDynamiteFamily(level),
       id: level.id ?? `${level.name}|${level.price}|${index}`,
     }))
+    .filter((level): level is typeof level & { family: CanonicalDynamiteFamily } => level.family !== null)
     .filter((level, index, all) => all.findIndex((candidate) => candidate.family === level.family && candidate.price === level.price) === index);
   const maxWidth = toleranceTicks * tickSize;
   const clusters: DynamiteLevel[] = [];
@@ -71,7 +90,7 @@ export function dynamiteLevels(
     const cluster = clusters.at(-1);
     if (!cluster || level.price - cluster.lower > maxWidth) {
       clusters.push({
-        id: `dynamite|${level.price.toFixed(2)}|${level.price.toFixed(2)}`,
+        id: dynamiteIdentityId(level.price, level.price, [level.family], observedAt, identity),
         lower: level.price,
         upper: level.price,
         representative: level.price,
@@ -87,12 +106,14 @@ export function dynamiteLevels(
     } else {
       cluster.upper = level.price;
       cluster.representative = Number(((cluster.lower + cluster.upper) / 2).toFixed(10));
-      cluster.id = `dynamite|${cluster.lower.toFixed(2)}|${cluster.upper.toFixed(2)}`;
+      cluster.id = dynamiteIdentityId(cluster.lower, cluster.upper, cluster.sourceFamilies, observedAt, identity);
       cluster.includedLevelIds.push(level.id!);
       cluster.includedTypes.push(level.name);
       cluster.includedLevelValues.push(level.price);
       if (!cluster.sourceFamilies.includes(level.family!)) cluster.sourceFamilies.push(level.family!);
+      cluster.sourceFamilies.sort();
       cluster.confluenceCount = cluster.sourceFamilies.length;
+      cluster.id = dynamiteIdentityId(cluster.lower, cluster.upper, cluster.sourceFamilies, observedAt, identity);
     }
   }
   for (const cluster of clusters) {
@@ -104,14 +125,32 @@ export function dynamiteLevels(
   return clusters.filter((cluster) => cluster.confluenceCount >= 2);
 }
 
-export function canonicalDynamiteFamily(level: Pick<LevelComponent, "name" | "family">): CanonicalDynamiteFamily {
+function dynamiteIdentityId(
+  lower: number,
+  upper: number,
+  families: readonly CanonicalDynamiteFamily[],
+  observedAt: number,
+  identity: DynamiteIdentity,
+): string {
+  return [
+    `dynamite|${lower.toFixed(2)}|${upper.toFixed(2)}`,
+    identity.sourceFingerprint ?? "source:unknown",
+    identity.formulaHash ?? "formula:unknown",
+    identity.contractSymbol ?? "contract:unknown",
+    identity.tradingDate ?? "date:unknown",
+    observedAt,
+    [...families].sort().join(","),
+  ].join("|");
+}
+
+export function canonicalDynamiteFamily(level: Pick<LevelComponent, "name" | "family">): CanonicalDynamiteFamily | null {
   const explicit = level.family?.toLowerCase();
   const name = level.name.toLowerCase();
   const value = explicit || name;
   if (value.includes("orb") && value.includes("high") || value.includes("ntz") && value.includes("high")) return "orb-ntz-high";
   if (value.includes("orb") && value.includes("low") || value.includes("ntz") && value.includes("low")) return "orb-ntz-low";
-  if (value.includes("premarket") && value.includes("high")) return "premarket-high";
-  if (value.includes("premarket") && value.includes("low")) return "premarket-low";
+  if ((value.includes("premarket") || value.includes("critical")) && value.includes("high")) return "premarket-high";
+  if ((value.includes("premarket") || value.includes("critical")) && value.includes("low")) return "premarket-low";
   if ((value.includes("two") || value.includes("2")) && value.includes("day") && value.includes("high")) return "two-days-ago-high";
   if ((value.includes("two") || value.includes("2")) && value.includes("day") && value.includes("low")) return "two-days-ago-low";
   if ((value.includes("previous") || value.includes("prior")) && value.includes("day") && value.includes("high")) return "previous-day-high";
@@ -120,7 +159,8 @@ export function canonicalDynamiteFamily(level: Pick<LevelComponent, "name" | "fa
   if (value.includes("ema")) return "ema-200";
   if (value.includes("fib")) return "fibonacci";
   if (value.includes("resistance") || value.includes("supply")) return "resistance-zone";
-  return "support-zone";
+  if (value.includes("support") || value.includes("demand")) return "support-zone";
+  return null;
 }
 
 export type MajorLevel = {

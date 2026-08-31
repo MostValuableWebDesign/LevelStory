@@ -8,6 +8,24 @@ test("Dynamite normalizes aliases into the canonical family taxonomy", () => {
   assert.equal(canonicalDynamiteFamily({ name: "Two days ago high" }), "two-days-ago-high");
   assert.equal(canonicalDynamiteFamily({ name: "Major resistance 5000.00" }), "resistance-zone");
   assert.equal(canonicalDynamiteFamily({ name: "Fib 0.618" }), "fibonacci");
+  assert.equal(canonicalDynamiteFamily({ name: "Unclassified reference" }), null);
+});
+
+test("Dynamite IDs include deterministic source and formula identity", () => {
+  const identity = {
+    sourceFingerprint: "source-a",
+    formulaHash: "formula-a",
+    contractSymbol: "MES 2026-09",
+    tradingDate: "2026-08-31",
+  };
+  const levels = [
+    { name: "VWAP", price: 100, family: "vwap", id: "vwap" },
+    { name: "EMA 200", price: 100.25, family: "ema-200", id: "ema" },
+  ];
+  const first = dynamiteLevels(levels, 8, 0.25, 123, [], identity);
+  const second = dynamiteLevels([...levels].reverse(), 8, 0.25, 123, [], identity);
+  assert.equal(first[0]?.id, second[0]?.id);
+  assert.match(first[0]?.id ?? "", /source-a\|formula-a\|MES 2026-09\|2026-08-31\|123\|ema-200,vwap$/);
 });
 
 test("Dynamite clusters validate the complete lower-to-upper span and retain causal interaction provenance", () => {

@@ -53,10 +53,27 @@ test("effective confirmation uses the stricter NTZ threshold and accepts wick-on
     "long",
     { eligibilityEvents: eligibility(), tickSize: 0.25, finalizedNtz: ntz, requireFinalizedNtz: true },
   );
+  assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.occurrences?.[0]?.reasonCode, "PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ");
+  assert.equal(result.occurrences?.[0]?.triggerCandle, null);
+});
+
+test("an outside-NTZ patience candle still uses the effective wick threshold", () => {
+  const ntz = { high: 12, low: 9, complete: true };
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11.5, 10.8, 12.5),
+    candle(2, 12.5, 12.75, 12.3, 12.6),
+  ];
+  const result = patienceCandleEngine(candles, "long", {
+    eligibilityEvents: eligibility(),
+    tickSize: 0.25,
+    finalizedNtz: ntz,
+    requireFinalizedNtz: true,
+  });
   assert.equal(result.state, "ENTRY_TRIGGERED");
-  assert.equal(result.entryBufferPrice, threshold);
-  assert.equal(result.triggerPrice, threshold);
-  assert.match(result.detail, /effective .*12\.25/);
+  assert.equal(result.entryBufferPrice, 12.5);
+  assert.equal(result.triggerPrice, 12.5);
 });
 
 test("an incomplete patience candle cannot be validated", () => {
@@ -442,6 +459,40 @@ test("no qualifying location remains waiting", () => {
   assert.equal(result.state, "WAITING_FOR_VALID_CONTEXT");
   assert.equal(result.eligible, false);
   assert.deepEqual(result.occurrences ?? [], []);
+});
+
+test("non-qualifying pullback events cannot open patience eligibility", () => {
+  const result = phase5PatienceAnalysis(
+    setup("long", candle(2, 10.8, 12.1, 10.2, 12)),
+    "long",
+    {
+      status: "observed",
+      events: [{
+        type: "touch",
+        time: FIVE_MINUTES,
+        level: "VWAP",
+        price: 10,
+        distancePoints: 0,
+        distanceTicks: 0,
+        tolerancePoints: 1,
+        toleranceTicks: 4,
+        qualifies: false,
+        detail: "Touch was outside the governed qualification rule.",
+      }],
+      evaluatedCandles: 1,
+      maxCandles: 6,
+      maxDurationMinutes: 30,
+      elapsedMinutes: 5,
+      proximityTolerance: 0.25,
+      atr14: 1,
+      qualifyingLevelCount: 0,
+      detail: "Only a rejected pullback event was observed.",
+    },
+    null,
+    [],
+  );
+  assert.equal(result.state, "WAITING_FOR_LEVEL");
+  assert.equal(result.eligible, false);
 });
 
 test("wrong-side invalidation remains a diagnostic patience occurrence", () => {
