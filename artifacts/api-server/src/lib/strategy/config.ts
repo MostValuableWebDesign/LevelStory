@@ -47,6 +47,7 @@ export type StrategyConfig = {
   majorLevelProximityPercent: number;
   majorLevelProximityAtrFactor: number;
   majorLevelConfluenceToleranceTicks: number;
+  dynamiteLevelToleranceTicks: number;
   majorLevelRecencyHalfLifeDays: number;
   phase4AtrPeriod: number;
   phase4PullbackMaxCandles: number;
@@ -139,6 +140,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   majorLevelProximityPercent: 0.0015,
   majorLevelProximityAtrFactor: 0.25,
   majorLevelConfluenceToleranceTicks: 2,
+  dynamiteLevelToleranceTicks: 8,
   majorLevelRecencyHalfLifeDays: 60,
   phase4AtrPeriod: 14,
   phase4PullbackMaxCandles: 6,
@@ -218,6 +220,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["majorLevelMinReactions", config.majorLevelMinReactions],
     ["majorLevelProximityTicks", config.majorLevelProximityTicks],
     ["majorLevelConfluenceToleranceTicks", config.majorLevelConfluenceToleranceTicks],
+    ["dynamiteLevelToleranceTicks", config.dynamiteLevelToleranceTicks],
     ["majorLevelRecencyHalfLifeDays", config.majorLevelRecencyHalfLifeDays],
     ["phase4AtrPeriod", config.phase4AtrPeriod],
     ["phase4PullbackMaxCandles", config.phase4PullbackMaxCandles],

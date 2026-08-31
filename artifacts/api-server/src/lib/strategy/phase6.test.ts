@@ -409,7 +409,7 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     trend: { direction: "bullish", structure: "higher highs / higher lows" },
     breakout: { ...baseContext().breakout, direction: "long" },
-     reversalPatience: patience("ENTRY_TRIGGERED", "bearish", "short"),
+     reversalPatience: { ...patience("ENTRY_TRIGGERED", "bearish", "short"), triggerCandle: candle(3, 9.9, 10, 8.8, 8.9) },
   });
   const result = evaluateBonusReversal(context);
   assert.equal(result.decision, "SETUP QUALIFIED");
@@ -451,7 +451,7 @@ test("equivalent reversal owns a shared qualified sequence before generic patien
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
     volume: { ...baseContext().volume, reversalWarning: "HIGH-VOLUME PULLBACK — POSSIBLE REVERSAL" },
     breakout: { ...baseContext().breakout, detected: false, failed: true },
-    reversalPatience: patience("ENTRY_TRIGGERED", "bearish"),
+    reversalPatience: { ...patience("ENTRY_TRIGGERED", "bearish"), triggerCandle: candle(3, 9.9, 10, 8.8, 8.9) },
   });
   const result = phase6Analysis(context);
   assert.equal(result.decision, "SETUP QUALIFIED");

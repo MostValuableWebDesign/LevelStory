@@ -219,6 +219,7 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
 }
 
 function levelStroke(annotation: VisualValidationAnnotation): string {
+  if (annotation.id.startsWith("dynamite|")) return "#4169E1";
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
   if (annotation.id === "premarket-high" || annotation.id === "premarket-low") return "hsl(var(--positive))";
   if (annotation.id in INTRADAY_REFERENCE_PRESENTATION) {

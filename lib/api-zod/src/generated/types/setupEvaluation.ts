@@ -23,4 +23,6 @@ export interface SetupEvaluation {
   reversalEvidence: ReversalEvidence | null;
   consolidation: ExtendedConsolidation | null;
   explanation: string;
+  grade: number;
+  dynamiteConfluenceCount: number;
 }

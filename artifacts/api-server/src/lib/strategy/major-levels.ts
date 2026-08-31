@@ -8,7 +8,71 @@ export type ConfluenceClass = "normal" | "strong" | "dynamite";
 export type LevelComponent = {
   name: string;
   price: number;
+  family?: string;
+  id?: string;
 };
+
+export type DynamiteLevel = {
+  id: string;
+  lower: number;
+  upper: number;
+  representative: number;
+  includedLevelIds: string[];
+  includedTypes: string[];
+  includedLevelValues: number[];
+  sourceFamilies: string[];
+  confluenceCount: number;
+  observedAt: number;
+  pullbackInteracted: boolean;
+};
+
+export function dynamiteLevels(
+  levels: readonly LevelComponent[],
+  toleranceTicks: number,
+  tickSize: number,
+  observedAt: number,
+  interactedPrices: readonly number[] = [],
+): DynamiteLevel[] {
+  const unique = levels
+    .filter((level) => Number.isFinite(level.price))
+    .map((level, index) => ({
+      ...level,
+      price: Number((Math.round(level.price / tickSize) * tickSize).toFixed(10)),
+      family: level.family ?? level.name.replace(/^(ORB|NTZ) /i, "").replace(/^Critical /i, "").toLowerCase(),
+      id: level.id ?? `${level.name}|${level.price}|${index}`,
+    }))
+    .filter((level, index, all) => all.findIndex((candidate) => candidate.family === level.family && candidate.price === level.price) === index);
+  const maxWidth = toleranceTicks * tickSize;
+  const clusters: DynamiteLevel[] = [];
+  for (const level of [...unique].sort((a, b) => a.price - b.price || a.family!.localeCompare(b.family!))) {
+    const cluster = clusters.at(-1);
+    if (!cluster || level.price - cluster.lower > maxWidth) {
+      clusters.push({
+        id: `dynamite|${level.price.toFixed(2)}`,
+        lower: level.price,
+        upper: level.price,
+        representative: level.price,
+        includedLevelIds: [level.id!],
+        includedTypes: [level.name],
+        includedLevelValues: [level.price],
+        sourceFamilies: [level.family!],
+        confluenceCount: 1,
+        observedAt,
+        pullbackInteracted: interactedPrices.some((price) => Math.abs(price - level.price) <= maxWidth),
+      });
+    } else {
+      cluster.upper = level.price;
+      cluster.representative = Number(((cluster.lower + cluster.upper) / 2).toFixed(10));
+      cluster.includedLevelIds.push(level.id!);
+      cluster.includedTypes.push(level.name);
+      cluster.includedLevelValues.push(level.price);
+      if (!cluster.sourceFamilies.includes(level.family!)) cluster.sourceFamilies.push(level.family!);
+      cluster.confluenceCount = cluster.sourceFamilies.length;
+      cluster.pullbackInteracted ||= interactedPrices.some((price) => Math.abs(price - level.price) <= maxWidth);
+    }
+  }
+  return clusters.filter((cluster) => cluster.confluenceCount >= 2);
+}
 
 export type MajorLevel = {
   name: string;

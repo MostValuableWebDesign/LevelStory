@@ -266,6 +266,20 @@ export interface LongTermZone {
   configurationHash: string;
 }
 
+export interface DynamiteLevel {
+  id: string;
+  lower: number;
+  upper: number;
+  representative: number;
+  includedLevelIds: string[];
+  includedTypes: string[];
+  includedLevelValues: number[];
+  sourceFamilies: string[];
+  confluenceCount: number;
+  observedAt: number;
+  pullbackInteracted: boolean;
+}
+
 export type NtzStateStatus = typeof NtzStateStatus[keyof typeof NtzStateStatus];
 
 
@@ -904,6 +918,8 @@ export interface SetupEvaluation {
   reversalEvidence: ReversalEvidence | null;
   consolidation: ExtendedConsolidation | null;
   explanation: string;
+  grade: number;
+  dynamiteConfluenceCount: number;
 }
 
 export type SetupAnalysisDecision = typeof SetupAnalysisDecision[keyof typeof SetupAnalysisDecision];
@@ -1150,6 +1166,7 @@ export interface MarketSnapshot {
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
   longTermZones: LongTermZone[];
+  dynamiteLevels: DynamiteLevel[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;

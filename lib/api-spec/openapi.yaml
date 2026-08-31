@@ -1525,6 +1525,21 @@ components:
         detectorVersion: { type: string }
         configurationHash: { type: string }
       required: [id, lower, upper, midpoint, role, lookback, touchCount, independentTradingDates, firstTimestamp, latestTimestamp, sourcePivotTimestamps, strength, detectorVersion, configurationHash]
+    DynamiteLevel:
+      type: object
+      properties:
+        id: { type: string }
+        lower: { type: number }
+        upper: { type: number }
+        representative: { type: number }
+        includedLevelIds: { type: array, items: { type: string } }
+        includedTypes: { type: array, items: { type: string } }
+        includedLevelValues: { type: array, items: { type: number } }
+        sourceFamilies: { type: array, items: { type: string } }
+        confluenceCount: { type: number }
+        observedAt: { type: number }
+        pullbackInteracted: { type: boolean }
+      required: [id, lower, upper, representative, includedLevelIds, includedTypes, includedLevelValues, sourceFamilies, confluenceCount, observedAt, pullbackInteracted]
     NtzState:
       type: object
       properties:
@@ -2069,7 +2084,11 @@ components:
             - type: "null"
         explanation:
           type: string
-      required: [setupType, direction, decision, mandatoryPassed, alertOnly, rules, reversalEvidence, consolidation, explanation]
+        grade:
+          type: number
+        dynamiteConfluenceCount:
+          type: number
+      required: [setupType, direction, decision, mandatoryPassed, alertOnly, rules, reversalEvidence, consolidation, explanation, grade, dynamiteConfluenceCount]
     SetupAnalysis:
       type: object
       properties:
@@ -2180,6 +2199,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LongTermZone"
+        dynamiteLevels:
+          type: array
+          items:
+            $ref: "#/components/schemas/DynamiteLevel"
         trend:
           $ref: "#/components/schemas/TrendEvidence"
         signals:
@@ -2204,7 +2227,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, longTermZones, trend, signals, decision, riskPlan, levelStory, shadowExecution, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, longTermZones, dynamiteLevels, trend, signals, decision, riskPlan, levelStory, shadowExecution, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

@@ -54,7 +54,7 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
-import type { MajorLevel } from "./strategy/major-levels.js";
+import { dynamiteLevels, type MajorLevel, type DynamiteLevel } from "./strategy/major-levels.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { detectLongTermZones, type LongTermZone } from "./strategy/long-term-zones.js";
 
@@ -248,6 +248,7 @@ export type MarketSnapshot = {
   };
   majorLevels: MajorLevel[];
   longTermZones: LongTermZone[];
+  dynamiteLevels: DynamiteLevel[];
   trend: {
     direction: "bullish" | "bearish" | "neutral";
     score: number;
@@ -518,6 +519,17 @@ export function createMarketSnapshot(
     });
     fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   }
+  const dynamite = dynamiteLevels([
+    { name: "ORB high", price: levels.orb?.high ?? NaN, family: "orb-high", id: "orb-high" },
+    { name: "NTZ high", price: levels.ntz?.high ?? NaN, family: "orb-high", id: "ntz-high" },
+    { name: "ORB low", price: levels.orb?.low ?? NaN, family: "orb-low", id: "orb-low" },
+    { name: "NTZ low", price: levels.ntz?.low ?? NaN, family: "orb-low", id: "orb-low" },
+    ...levels.levels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
+    { name: "VWAP", price: levels.vwap, family: "vwap", id: "vwap" },
+    { name: "EMA 200", price: levels.ema, family: "ema-200", id: "ema-200" },
+    ...levels.majorLevels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
+    ...fibonacci.levels.map((level) => ({ name: level.name, price: level.price, family: level.name.toLowerCase(), id: level.name })),
+  ], config.dynamiteLevelToleranceTicks, specification.tickSize, currentCursor, pullback.events.map((event) => event.price));
   const volumeAnalysis = phase4Volume(regular, breakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
@@ -601,6 +613,7 @@ export function createMarketSnapshot(
     trend,
     riskApproved: plan.allowed,
     config,
+    dynamiteLevels: dynamite,
   });
   const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
     ?? setupAnalysis.evaluations[0];
@@ -775,6 +788,7 @@ export function createMarketSnapshot(
     indicators,
      majorLevels: levels.majorLevels,
      longTermZones,
+      dynamiteLevels: dynamite,
     trend,
      signals,
     decision: {
@@ -1010,6 +1024,8 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
           }
         : null,
       explanation: evaluation.explanation,
+      grade: evaluation.grade ?? 0,
+      dynamiteConfluenceCount: evaluation.dynamiteConfluenceCount ?? 0,
     })),
   };
 }

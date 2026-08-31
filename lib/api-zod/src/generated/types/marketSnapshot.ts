@@ -7,6 +7,7 @@
  */
 import type { BreakoutEvent } from './breakoutEvent';
 import type { Candle } from './candle';
+import type { DynamiteLevel } from './dynamiteLevel';
 import type { FibonacciAnalysis } from './fibonacciAnalysis';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
 import type { FuturesSessionCalendar } from './futuresSessionCalendar';
@@ -55,6 +56,7 @@ export interface MarketSnapshot {
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
   longTermZones: LongTermZone[];
+  dynamiteLevels: DynamiteLevel[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;

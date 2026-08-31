@@ -1,6 +1,7 @@
 import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
 import type { PatienceAnalysis } from "./phase5.js";
 import type { MajorLevel } from "./major-levels.js";
+import type { DynamiteLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
 import type { StrategyConfig } from "./config.js";
 import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
@@ -73,6 +74,8 @@ export type SetupEvaluation = {
   reversalEvidence: ReversalEvidence | null;
   consolidation: ExtendedConsolidation | null;
   explanation: string;
+  grade?: number;
+  dynamiteConfluenceCount?: number;
 };
 
 export type Phase6Analysis = {
@@ -100,6 +103,7 @@ export type Phase6Context = {
   };
   riskApproved: boolean;
   config: StrategyConfig;
+  dynamiteLevels?: readonly DynamiteLevel[];
 };
 
 export function phase6Analysis(context: Phase6Context): Phase6Analysis {
@@ -109,7 +113,10 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluatePatienceCandleContinuation(context),
     evaluateEquivalentCandleReversal(context),
     evaluatePeakRetracementReversal(context),
-  ];
+  ].map((evaluation) => {
+    const dynamiteConfluenceCount = context.dynamiteLevels?.filter((level) => level.pullbackInteracted).reduce((max, level) => Math.max(max, level.confluenceCount), 0) ?? 0;
+    return { ...evaluation, dynamiteConfluenceCount, grade: dynamiteConfluenceCount > 0 ? 1 : 0 };
+  });
   const attributionOrder: SetupType[] = [
     "ORB_PULLBACK_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
@@ -119,7 +126,7 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   ];
   const qualified = attributionOrder
     .map((setupType) => evaluations.find((evaluation) => evaluation.setupType === setupType && evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly))
-    .find((evaluation): evaluation is SetupEvaluation => evaluation !== undefined);
+    .find((evaluation) => evaluation !== undefined);
   const possibleReversal = evaluations.find((evaluation) => evaluation.decision === "POSSIBLE REVERSAL");
   const ambiguous = evaluations.find((evaluation) => evaluation.decision === "AMBIGUOUS");
   const expired = evaluations.find((evaluation) => evaluation.decision === "EXPIRED");
@@ -154,6 +161,7 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
     rule("levelContext", "Pullback L candle interacted with a qualifying level", levelInteraction, fibonacciInteraction ? "The structurally detected pullback L candle interacted with a causal Fibonacci retracement." : "The structurally detected pullback L candle must interact with a governed level."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
   ];
   return buildEvaluation("ORB_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
 }
@@ -167,6 +175,7 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
     rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
   ];
   return buildEvaluation("PATIENCE_CANDLE_CONTINUATION", direction, rules, false, context.patience.state);
 }
@@ -190,6 +199,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
     rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
   ];
   return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
@@ -208,6 +218,7 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
     rule("directionalConfirmation", "Directional reversal confirmation", evidence.directionalConfirmation === true, evidence.directionalConfirmation ? "A completed opposing candle structure confirms the reversal direction." : "A reversed direction label is not sufficient; completed opposing-candle evidence must confirm it."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, patience, reversalDirection), strictNtzEntry(context, patience, reversalDirection) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
   ];
   const mandatoryPassed = rules.every((item) => item.passed);
   const decision = !evidence.alert
@@ -231,6 +242,8 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
       : evidence.alert
         ? `Possible reversal: ${evidence.detail} Mandatory confirmation remains incomplete.`
         : "No reversal evidence currently meets the configured detection defaults.",
+    grade: 0,
+    dynamiteConfluenceCount: 0,
   };
 }
 
@@ -252,6 +265,7 @@ export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEv
     rule("reversalDirection", "Reversal direction established", direction !== null, direction ? `Reversal direction is ${direction}.` : "A reversal direction is not established."),
     rule("validPatienceCandle", "Valid reversal patience candle formed", patience.patienceCandle !== null && patience.direction === direction && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.detail),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, patience, direction), strictNtzEntry(context, patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
   ];
   return buildEvaluation("PEAK_RETRACEMENT_REVERSAL", direction, rules, false, patience.state);
 }
@@ -419,6 +433,8 @@ function buildEvaluation(
     explanation: mandatoryPassed
       ? `${setupType} passed every mandatory rule.`
       : `${setupType} is ${decision}; ${mandatory.filter((item) => !item.passed).map((item) => item.label).join(", ")}.`,
+    grade: 0,
+    dynamiteConfluenceCount: 0,
   };
 }
 
@@ -471,6 +487,18 @@ function patienceDirectionMatches(patience: PatienceAnalysis, direction: Directi
   if (!direction) return false;
   if (patience.direction) return patience.direction === direction;
   return direction === "long" ? patience.trend === "bullish" : patience.trend === "bearish";
+}
+
+function strictNtzEntry(context: Phase6Context, patience: PatienceAnalysis, direction: Direction | null): boolean {
+  if (!direction || context.levels.ntz?.complete !== true) return false;
+  const trigger = patience.triggerCandle;
+  // Legacy evaluation callers may provide only the ENTRY_TRIGGERED state.
+  // Phase 5 is authoritative when a trigger candle is available; do not
+  // invent a contradictory rejection from an incomplete synthetic context.
+  if (!trigger) return false;
+  return direction === "long"
+    ? trigger.high > context.levels.ntz.high && trigger.close > context.levels.ntz.high
+    : trigger.low < context.levels.ntz.low && trigger.close < context.levels.ntz.low;
 }
 
 function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {

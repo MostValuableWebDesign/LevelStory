@@ -1,6 +1,7 @@
 import type { PullbackAnalysis } from "./phase4.js";
 import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
+import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 
 export type PatienceState =
   | "WAITING_FOR_VALID_CONTEXT"
@@ -137,6 +138,9 @@ export type PatienceEngineOptions = {
   validContext?: boolean;
   allowOpposingTrend?: boolean;
   directionSource?: PatienceDirectionSource;
+  finalizedNtz?: NtzRange | null;
+  requireFinalizedNtz?: boolean;
+  entryCutoffMinutes?: number;
 };
 
 const PATIENCE_STATES: readonly PatienceState[] = [
@@ -186,7 +190,7 @@ export function patienceCandleEngine(
       event !== undefined
       && index > 0
       && patienceShape(candle, completed[index - 1], direction));
-  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, directionSource, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend, trendRequired);
+  const occurrences = buildPatienceOccurrences(candidateIndexes, completed, sorted, direction, directionSource, trend, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], allowOpposingTrend, trendRequired, options.finalizedNtz);
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => {
     const latestOccurrence = occurrences.at(-1);
     return {
@@ -214,7 +218,8 @@ export function patienceCandleEngine(
     const confirmationPrice = direction === "long"
       ? roundPrice(candle.high + entryBufferTicks * tickSize, tickSize)
       : roundPrice(candle.low - entryBufferTicks * tickSize, tickSize);
-    return direction === "long" ? next.high >= confirmationPrice : next.low <= confirmationPrice;
+    return (direction === "long" ? next.high >= confirmationPrice : next.low <= confirmationPrice)
+      && isStrictlyOutsideNtz(next, direction, options.finalizedNtz);
   }) ?? candidateIndexes.at(-1);
   if (candidate) {
     const previous = completed[candidate.index - 1];
@@ -264,7 +269,7 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? []));
+    return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
   }
 
   const forming = sorted.at(-1);
@@ -348,6 +353,9 @@ export function phase5PatienceAnalysis(
     validContext: pullback.status === "observed" || (ntz?.complete === true),
     allowOpposingTrend,
     directionSource,
+    finalizedNtz: ntz,
+    requireFinalizedNtz: true,
+    entryCutoffMinutes: 780,
   });
 }
 
@@ -367,21 +375,34 @@ function evaluateTrigger(
   entryBufferTicks: number,
   stopBufferTicks: number,
   evidence: readonly IntrabarEvidence[],
+  finalizedNtz?: NtzRange | null,
+  requireFinalizedNtz = false,
+  entryCutoffMinutes?: number,
 ): PatienceAnalysis {
   const intendedPrice = direction === "long" ? patience.high : patience.low;
   const oppositePrice = direction === "long" ? patience.low : patience.high;
   const entryBufferPrice = direction === "long"
     ? roundPrice(intendedPrice + entryBufferTicks * tickSize, tickSize)
     : roundPrice(intendedPrice - entryBufferTicks * tickSize, tickSize);
+  const strictNtzPrice = finalizedNtz?.complete
+    ? direction === "long"
+      ? roundPrice(finalizedNtz.high + tickSize, tickSize)
+      : roundPrice(finalizedNtz.low - tickSize, tickSize)
+    : null;
+  const modeledEntryPrice = strictNtzPrice === null
+    ? entryBufferPrice
+    : direction === "long"
+      ? Math.max(entryBufferPrice, strictNtzPrice)
+      : Math.min(entryBufferPrice, strictNtzPrice);
   const strategyStopPrice = direction === "long"
     ? roundPrice(oppositePrice - stopBufferTicks * tickSize, tickSize)
     : roundPrice(oppositePrice + stopBufferTicks * tickSize, tickSize);
   const intendedTouched = direction === "long" ? trigger.high >= intendedPrice : trigger.low <= intendedPrice;
-  const bufferReached = direction === "long" ? trigger.high >= entryBufferPrice : trigger.low <= entryBufferPrice;
+  const bufferReached = direction === "long" ? trigger.high >= modeledEntryPrice : trigger.low <= modeledEntryPrice;
   // Touching the opposite wick is not a breach. Invalidation requires the
   // immediate E candle to print beyond the patience extreme.
   const oppositeTouched = direction === "long" ? trigger.low < oppositePrice : trigger.high > oppositePrice;
-  const gapBuffer = direction === "long" ? trigger.open >= entryBufferPrice : trigger.open <= entryBufferPrice;
+  const gapBuffer = direction === "long" ? trigger.open >= modeledEntryPrice : trigger.open <= modeledEntryPrice;
   const gapOpposite = direction === "long" ? trigger.open < oppositePrice : trigger.open > oppositePrice;
   const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
@@ -400,6 +421,9 @@ function evaluateTrigger(
     strategyStopPrice,
     stateTime: trigger.openTime,
   };
+  if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.closeTime) >= entryCutoffMinutes) {
+    return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: completed E is at or after 1:00 p.m. ET." };
+  }
   if ((bufferReached && oppositeTouched) || (gapBuffer && gapOpposite) || (intendedTouched && oppositeTouched)) {
     if (sequence === "opposite-first") {
       return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) broke the opposite patience extreme first; the confirmation buffer cannot restore this setup." };
@@ -412,10 +436,18 @@ function evaluateTrigger(
     return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
   }
   if (bufferReached || gapBuffer) {
+    if (!isStrictlyOutsideNtz(trigger, direction, finalizedNtz, requireFinalizedNtz)) {
+      return {
+        ...base,
+        state: "PATIENCE_CANDLE_EXPIRED",
+        triggerPrice: null,
+        detail: "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ: immediate E reached the patience threshold but did not confirm strictly outside the finalized NTZ/ORB.",
+      };
+    }
     return {
       ...base,
       state: trigger.isComplete ? "ENTRY_TRIGGERED" : "ENTRY_BUFFER_REACHED",
-      triggerPrice: entryBufferPrice,
+      triggerPrice: modeledEntryPrice,
       detail: trigger.isComplete
         ? `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is triggered at ${entryBufferPrice}.`
         : `The immediate-next entry candle (E) reached the full ${entryBufferTicks}-tick confirmation buffer; shadow entry is pending the completed-candle record.`,
@@ -439,6 +471,13 @@ function evaluateTrigger(
 
 function patienceShape(candle: Candle, previous: Candle, direction: Direction): boolean {
   return direction === "long" ? candle.high <= previous.high : candle.low >= previous.low;
+}
+
+function isStrictlyOutsideNtz(candle: Pick<Candle, "high" | "low" | "close">, direction: Direction, ntz?: NtzRange | null, required = false): boolean {
+  if (!ntz?.complete) return !required;
+  return direction === "long"
+    ? candle.high > ntz.high && candle.close > ntz.high
+    : candle.low < ntz.low && candle.close < ntz.low;
 }
 
 function directionTrendMatches(direction: Direction, trend: TrendDirection): boolean {
@@ -494,6 +533,7 @@ function buildPatienceOccurrences(
   intrabarEvidence: readonly IntrabarEvidence[],
   allowOpposingTrend: boolean,
   trendRequired: boolean,
+  finalizedNtz: NtzRange | null | undefined,
 ): PatienceOccurrence[] {
   const armStates = new Map<string, { state: PatienceEligibilityArmState; reason: string }>();
   const occurrences: PatienceOccurrence[] = candidates.map((candidate): PatienceOccurrence => {
@@ -613,7 +653,7 @@ function buildPatienceOccurrences(
         detail: "The immediately following candle is missing; this P→E attempt expired.",
       };
     } else {
-      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence);
+      analysis = evaluateTrigger(candidate.candle, previous, nextObserved, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, intrabarEvidence, finalizedNtz);
     }
     const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
       ? "CANDIDATE"

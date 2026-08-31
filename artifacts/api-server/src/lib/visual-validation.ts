@@ -1373,6 +1373,15 @@ function buildAnnotations(
   for (const level of snapshot.majorLevels) {
     addLevel(`major-${level.name}`, level.name, level.price, `${level.kind} · ${level.confluence} confluence`, "muted");
   }
+  for (const level of snapshot.dynamiteLevels) {
+    addLevel(
+      level.id,
+      `Dynamite · ${level.confluenceCount} confluences`,
+      level.representative,
+      `${level.lower.toFixed(2)}–${level.upper.toFixed(2)} · ${level.includedTypes.join(", ")} · observed ${new Date(level.observedAt).toISOString()}${level.pullbackInteracted ? " · pullback interacted" : ""}`,
+      "blue",
+    );
+  }
   const fibonacciAvailable = snapshot.pullback.events.length > 0
     && snapshot.fibonacci.classification !== "unavailable"
     && snapshot.fibonacci.levels.length > 0;
