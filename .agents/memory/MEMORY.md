@@ -34,3 +34,4 @@
 - [Entry observation timing](entry-observation-timing.md) — historical eligibility, cutoff, fill observation, and time buckets use completed E close; E open remains identity evidence.
 - [Management evidence status](management-evidence-status.md) — absent management evidence is missing; present but geometrically or temporally contradictory evidence is invalid and must not be simulated.
 - [Orphan provenance](orphan-provenance.md) — checkpoint corrections must preserve prior orphan modeled-trade evidence so later resumes can explain each disposition.
+- [Reconciliation fixture boundary](reconciliation-fixture-boundary.md) — keep metric-only fixtures compatible while enforcing strict populated-signal projection invariants.

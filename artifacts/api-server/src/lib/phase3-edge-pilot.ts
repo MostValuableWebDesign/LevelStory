@@ -204,7 +204,9 @@ export type Phase3SignalDisposition =
   | "rejected_missing_edge_requirement"
   | "rejected_outside_primary_entry_window"
   | "rejected_invalid_causal_identity"
-  | "rejected_multiple_predicates";
+  | "rejected_multiple_predicates"
+  | "unexplained_confirmed_signal"
+  | "contradictory_projection";
 
 export type Phase3SignalLevelEvidence = {
   levelIdentifier: string;
@@ -217,13 +219,28 @@ export type Phase3SignalLevelEvidence = {
   auditIds: string[];
 };
 
+export type Phase3SignalEdgePredicate = {
+  result: "PASS" | "FAIL" | "NOT_APPLICABLE";
+  reason: string;
+};
+
+export type Phase3ConfluenceEvidence = {
+  confluenceType: string;
+  evidenceTimestamp: string | null;
+  evidenceValue: number | null;
+  ruleState: string;
+  sourceAuditId: string | null;
+  predicateResult: "PASS" | "FAIL" | "UNVERIFIED_CONFLUENCE_LABEL";
+  gradeEligible: boolean;
+};
+
 export type Phase3SignalReconciliation = {
   signalOccurrenceId: string;
   period: "in_sample" | "out_of_sample";
   tradingDate: string;
   contractSymbol: string;
   contractMonth: string;
-  direction: "long" | "short";
+  direction: "long" | "short" | null;
   causalIdentity: {
     lTimestamp: string | null;
     pOpenTimestamp: string | null;
@@ -241,6 +258,8 @@ export type Phase3SignalReconciliation = {
   primaryEdge: string | null;
   matchedEdges: string[];
   levelEvidence: Phase3SignalLevelEvidence[];
+  edgePredicates: Record<Phase3Edge, Phase3SignalEdgePredicate>;
+  confluenceEvidence: Phase3ConfluenceEvidence[];
   timing: {
     entryTimeBucket: keyof Phase3PilotMetrics["entryTimeBuckets"] | null;
     beforeExclusiveCutoff: boolean;
@@ -276,11 +295,13 @@ export type Phase3SignalReconciliationReport = {
   confirmedSignalCount: number;
   dispositionCounts: Record<Phase3SignalDisposition, number>;
   dispositionReconciles: boolean;
+  invariantViolations: string[];
   signals: Phase3SignalReconciliation[];
   candidateConfluences: Array<{
     candidateId: string;
     signalOccurrenceId: string;
     evidence: Phase3SignalLevelEvidence[];
+    structuredEvidence: Phase3ConfluenceEvidence[];
     genericLabelsWithoutStructuredEvidence: string[];
   }>;
   edgeAudit: Array<{
@@ -540,6 +561,8 @@ function emptyDispositionCounts(): Record<Phase3SignalDisposition, number> {
     rejected_outside_primary_entry_window: 0,
     rejected_invalid_causal_identity: 0,
     rejected_multiple_predicates: 0,
+    unexplained_confirmed_signal: 0,
+    contradictory_projection: 0,
   };
 }
 
@@ -562,6 +585,7 @@ function dispositionForSignal(
   rejection: RejectedCandidateSignal | null,
   trade: BacktestTrade | null,
 ): Phase3SignalDisposition {
+  if (candidate && rejection) return "contradictory_projection";
   if (rejection) {
     const reasons = new Set(rejection.reasonCodes);
     if (reasons.size > 1) return "rejected_multiple_predicates";
@@ -570,7 +594,7 @@ function dispositionForSignal(
     if (reasons.has("INVALID_CAUSAL_IDENTITY")) return "rejected_invalid_causal_identity";
     return "rejected_multiple_predicates";
   }
-  if (!candidate) return "rejected_multiple_predicates";
+  if (!candidate) return "unexplained_confirmed_signal";
   if (candidate.executionStatus === "ENTRY_AMBIGUOUS") return "candidate_entry_ambiguous";
   if (candidate.executionStatus === "INSUFFICIENT_CANDLE_DATA") return "candidate_unscored";
   if (candidate.executionStatus === "ENTRY_NOT_REACHED") return "candidate_not_entered";
@@ -583,6 +607,206 @@ function dispositionForSignal(
   if (trade.outcome === "open") return "candidate_entered_open";
   if (isAmbiguousTrade(trade)) return "candidate_entry_ambiguous";
   return "candidate_entered_finalized";
+}
+
+function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<Phase3Edge, Phase3SignalEdgePredicate> {
+  const matched = new Set([
+    occurrence.primaryEdge,
+    ...(occurrence.matchedEdges ?? []),
+  ].filter((edge): edge is string => Boolean(edge)));
+  return Object.fromEntries(PHASE3_EDGES.map((edge) => {
+    if (matched.has(edge)) {
+      return [edge, {
+        result: "PASS" as const,
+        reason: `Canonical occurrence recorded ${edge} as a primary or matched edge.`,
+      }];
+    }
+    if (occurrence.primaryEdge) {
+      return [edge, {
+        result: "FAIL" as const,
+        reason: `Canonical occurrence primary edge is ${occurrence.primaryEdge}; ${edge} did not qualify for this physical signal.`,
+      }];
+    }
+    return [edge, {
+      result: "NOT_APPLICABLE" as const,
+      reason: `No canonical edge predicate evidence was recorded for ${edge}.`,
+    }];
+  })) as Record<Phase3Edge, Phase3SignalEdgePredicate>;
+}
+
+function confluenceEvidenceForOccurrence(occurrence: HistoricalOccurrence): Phase3ConfluenceEvidence[] {
+  const structured = levelEvidenceForOccurrence(occurrence).map((evidence) => ({
+    confluenceType: evidence.levelIdentifier,
+    evidenceTimestamp: evidence.timestamp,
+    evidenceValue: evidence.value,
+    ruleState: evidence.ruleResult,
+    sourceAuditId: evidence.auditIds[0] ?? null,
+    predicateResult: "PASS" as const,
+    gradeEligible: true,
+  }));
+  const structuredTypes = new Set(structured.map((evidence) => evidence.confluenceType));
+  const unverified = (occurrence.supportingConfluences ?? [])
+    .filter((label) => !structuredTypes.has(label))
+    .map((label) => ({
+      confluenceType: label,
+      evidenceTimestamp: null,
+      evidenceValue: null,
+      ruleState: "UNAVAILABLE",
+      sourceAuditId: null,
+      predicateResult: "UNVERIFIED_CONFLUENCE_LABEL" as const,
+      gradeEligible: false,
+    }));
+  return [...structured, ...unverified];
+}
+
+function confluenceEvidenceForCandidate(
+  candidate: HistoricalTradeCandidate,
+  occurrence: HistoricalOccurrence | undefined,
+): Phase3ConfluenceEvidence[] {
+  const structured = occurrence ? confluenceEvidenceForOccurrence(occurrence) : [];
+  const structuredTypes = new Set(structured.map((evidence) => evidence.confluenceType));
+  const unverified = candidate.supportingConfluences
+    .filter((label) => !structuredTypes.has(label))
+    .map((label) => ({
+      confluenceType: label,
+      evidenceTimestamp: null,
+      evidenceValue: null,
+      ruleState: "UNAVAILABLE",
+      sourceAuditId: null,
+      predicateResult: "UNVERIFIED_CONFLUENCE_LABEL" as const,
+      gradeEligible: false,
+    }));
+  return [...structured, ...unverified.filter((item, index, all) =>
+    all.findIndex((candidate) => candidate.confluenceType === item.confluenceType) === index)];
+}
+
+function physicalIdentityForOccurrence(occurrence: HistoricalOccurrence): string {
+  return [
+    occurrence.sourceFingerprint || "<missing-source>",
+    occurrence.formulaHash || "<missing-formula>",
+    occurrence.contractSymbol || "<missing-contract>",
+    occurrence.tradingDate || "<missing-date>",
+    occurrence.direction || "<missing-direction>",
+    occurrence.pOpenTimestamp || "<missing-p>",
+    occurrence.eOpenTimestamp || "<missing-e>",
+  ].join("|");
+}
+
+function physicalIdentityForCandidate(candidate: HistoricalTradeCandidate): string {
+  return [
+    candidate.sourceFingerprint,
+    candidate.formulaHash,
+    candidate.contractSymbol,
+    candidate.tradingDate,
+    candidate.direction,
+    candidate.pOpenTimestamp,
+    candidate.eOpenTimestamp,
+  ].join("|");
+}
+
+function reconciliationInvariantViolations(input: {
+  confirmed: readonly HistoricalOccurrence[];
+  candidates: readonly HistoricalTradeCandidate[];
+  rejected: readonly RejectedCandidateSignal[];
+  trades: readonly BacktestTrade[];
+  signals: readonly Phase3SignalReconciliation[];
+}): string[] {
+  const violations: string[] = [];
+  const confirmedIds = new Set(input.confirmed.map((occurrence) => occurrence.occurrenceId));
+  const confirmedById = new Map(input.confirmed.map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  const candidateSignalCounts = new Map<string, number>();
+  for (const candidate of input.candidates) {
+    candidateSignalCounts.set(candidate.signalOccurrenceId, (candidateSignalCounts.get(candidate.signalOccurrenceId) ?? 0) + 1);
+    if (input.confirmed.length > 0 && (!candidate.signalOccurrenceId || !confirmedIds.has(candidate.signalOccurrenceId))) {
+      violations.push(`CANDIDATE_WITHOUT_CONFIRMED_SIGNAL:${candidate.candidateId}`);
+    }
+  }
+  const rejectionSignalCounts = new Map<string, number>();
+  for (const rejection of input.rejected) {
+    rejectionSignalCounts.set(rejection.signalOccurrenceId, (rejectionSignalCounts.get(rejection.signalOccurrenceId) ?? 0) + 1);
+    if (input.confirmed.length > 0 && (!rejection.signalOccurrenceId || !confirmedIds.has(rejection.signalOccurrenceId))) {
+      violations.push(`REJECTION_WITHOUT_CONFIRMED_SIGNAL:${rejection.signalOccurrenceId || "<missing>"}`);
+    }
+  }
+  for (const signalId of confirmedIds) {
+    const candidateCount = candidateSignalCounts.get(signalId) ?? 0;
+    const rejectionCount = rejectionSignalCounts.get(signalId) ?? 0;
+    if (candidateCount > 0 && rejectionCount > 0) {
+      violations.push(`CONTRADICTORY_PROJECTION:${signalId}`);
+    } else if (candidateCount === 0 && rejectionCount === 0) {
+      violations.push(`UNEXPLAINED_CONFIRMED_SIGNAL:${signalId}`);
+    } else if (candidateCount > 1 || rejectionCount > 1) {
+      violations.push(`DUPLICATE_PROJECTION_RESULT:${signalId}`);
+    }
+  }
+  const uniqueCandidateSignals = new Set(input.candidates.map((candidate) => candidate.signalOccurrenceId));
+  const uniqueRejectedSignals = new Set(input.rejected.map((rejection) => rejection.signalOccurrenceId));
+  for (const signalId of uniqueCandidateSignals) {
+    if (uniqueRejectedSignals.has(signalId)) {
+      violations.push(`CANDIDATE_REJECTION_SIGNAL_OVERLAP:${signalId}`);
+    }
+  }
+  if (input.confirmed.length > 0 && (
+    input.confirmed.length !== uniqueCandidateSignals.size + uniqueRejectedSignals.size
+    || uniqueCandidateSignals.size + uniqueRejectedSignals.size !== input.signals.length
+  )) {
+    violations.push(
+      `CONFIRMED_SIGNAL_PROJECTION_TOTAL_MISMATCH:${input.confirmed.length}:${uniqueCandidateSignals.size}:${uniqueRejectedSignals.size}`,
+    );
+  }
+  const candidatePhysicalBySignal = new Map<string, string>();
+  for (const candidate of input.candidates) {
+    const physical = physicalIdentityForCandidate(candidate);
+    const previous = candidatePhysicalBySignal.get(candidate.signalOccurrenceId);
+    if (previous && previous !== physical) {
+      violations.push(`DUPLICATE_CANDIDATE_PHYSICAL_IDENTITY:${candidate.signalOccurrenceId}`);
+    }
+    candidatePhysicalBySignal.set(candidate.signalOccurrenceId, physical);
+  }
+  const confirmedPhysical = new Map<string, string>();
+  for (const occurrence of input.confirmed) {
+    const physical = physicalIdentityForOccurrence(occurrence);
+    if (confirmedPhysical.has(physical)) {
+      violations.push(`DUPLICATE_CONFIRMED_PHYSICAL_IDENTITY:${physical}`);
+    }
+    confirmedPhysical.set(physical, occurrence.occurrenceId);
+  }
+  const candidateById = new Map(input.candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const tradeIds = new Set<string>();
+  const tradeCountByCandidate = new Map<string, number>();
+  for (const trade of input.trades) {
+    if (tradeIds.has(trade.id)) continue;
+    tradeIds.add(trade.id);
+    if (!trade.candidateId || !candidateById.has(trade.candidateId)) {
+      violations.push(`TRADE_WITHOUT_EXACT_CANDIDATE:${trade.id}`);
+      continue;
+    }
+    tradeCountByCandidate.set(trade.candidateId, (tradeCountByCandidate.get(trade.candidateId) ?? 0) + 1);
+  }
+  for (const [candidateId, count] of tradeCountByCandidate) {
+    if (count > 1) violations.push(`MULTIPLE_AUTHORITATIVE_TRADES_FOR_CANDIDATE:${candidateId}`);
+  }
+  for (const signal of input.signals) {
+    if (signal.candidate && signal.rejection) {
+      violations.push(`SIGNAL_HAS_CANDIDATE_AND_REJECTION:${signal.signalOccurrenceId}`);
+    }
+    if (!signal.candidate && !signal.rejection) {
+      violations.push(`SIGNAL_HAS_NO_PROJECTION:${signal.signalOccurrenceId}`);
+    }
+    if (signal.trade && (!signal.candidate || signal.trade.tradeId.length === 0)) {
+      violations.push(`TRADE_LINKAGE_WITHOUT_CANDIDATE:${signal.signalOccurrenceId}`);
+    }
+  }
+  for (const candidate of input.candidates) {
+    const occurrence = confirmedById.get(candidate.signalOccurrenceId);
+    if (!occurrence) continue;
+    if (candidate.contractSymbol !== occurrence.contractSymbol
+      || candidate.tradingDate !== occurrence.tradingDate
+      || candidate.direction !== occurrence.direction) {
+      violations.push(`CANDIDATE_IDENTITY_MISMATCH:${candidate.candidateId}`);
+    }
+  }
+  return [...new Set(violations)];
 }
 
 function sourceFingerprintAudit(
@@ -766,7 +990,7 @@ export function reconcilePhase3SignalFunnel(input: {
         tradingDate: occurrence.tradingDate,
         contractSymbol: occurrence.contractSymbol,
         contractMonth: occurrence.contractMonth,
-        direction: occurrence.direction!,
+        direction: occurrence.direction,
         causalIdentity: {
           lTimestamp: occurrence.lTimestamp,
           pOpenTimestamp: occurrence.pOpenTimestamp,
@@ -788,6 +1012,8 @@ export function reconcilePhase3SignalFunnel(input: {
         primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate ?? null,
         matchedEdges: [...new Set(occurrence.matchedEdges ?? [])].sort(),
         levelEvidence: levelEvidenceForOccurrence(occurrence),
+        edgePredicates: edgePredicatesForOccurrence(occurrence),
+        confluenceEvidence: confluenceEvidenceForOccurrence(occurrence),
         timing: {
           entryTimeBucket: bucket,
           beforeExclusiveCutoff: Number.isFinite(minutes) && minutes < PHASE3_ENTRY_CUTOFF_MINUTES,
@@ -837,6 +1063,7 @@ export function reconcilePhase3SignalFunnel(input: {
       candidateId: candidate.candidateId,
       signalOccurrenceId: candidate.signalOccurrenceId,
       evidence,
+      structuredEvidence: confluenceEvidenceForCandidate(candidate, occurrence),
       genericLabelsWithoutStructuredEvidence: candidate.supportingConfluences.filter((label) =>
         !evidence.some((item) => item.levelIdentifier === label)),
     };
@@ -896,6 +1123,13 @@ export function reconcilePhase3SignalFunnel(input: {
           : "excluded_no_exact_candidate",
     });
   }
+  const invariantViolations = reconciliationInvariantViolations({
+    confirmed,
+    candidates: allCandidates,
+    rejected: allRejected,
+    trades: allTrades,
+    signals,
+  });
   const sourceFingerprint = sourceFingerprintAudit(
     input.manifest.source.contentFingerprint,
     input.sourceFingerprintFiles,
@@ -906,7 +1140,9 @@ export function reconcilePhase3SignalFunnel(input: {
       version: "phase3-signal-reconciliation-v1",
       confirmedSignalCount: signals.length,
       dispositionCounts,
-      dispositionReconciles: signals.length === confirmed.length
+      invariantViolations,
+      dispositionReconciles: invariantViolations.length === 0
+        && signals.length === confirmed.length
         && signals.length === Object.values(dispositionCounts).reduce((sum, count) => sum + count, 0)
         && new Set(signals.map((signal) => signal.signalOccurrenceId)).size === signals.length,
       signals,
@@ -1109,8 +1345,13 @@ function deduplicateCandidates(reports: readonly BacktestReport[]): {
 function gateReports(
   reports: readonly BacktestReport[],
   candidates: readonly HistoricalTradeCandidate[],
+  reconciliation: Phase3SignalReconciliationReport,
 ): Phase3PilotGate {
   const violations: string[] = [];
+  if (!reconciliation.dispositionReconciles) {
+    violations.push("SIGNAL_RECONCILIATION_GATE_FAILED");
+    violations.push(...reconciliation.invariantViolations);
+  }
   for (const report of reports) {
     if (!report.replay.causal || report.replay.futureCandleAccess) violations.push("REPLAY_CAUSALITY_GATE_FAILED");
     if (report.dataset.untouchedOutOfSample !== true || report.dataset.optimizationApplied !== false) {
@@ -1254,7 +1495,7 @@ export async function runPhase3EdgePilot(
   const reportList = reconciled.reports.map((item) => item.report);
   const deduped = deduplicateCandidates(reportList);
   const occurrences = reportList.flatMap((report) => report.occurrences);
-  const gate = gateReports(reportList, deduped.candidates);
+  const gate = gateReports(reportList, deduped.candidates, reconciled.reconciliation);
   if (!gate.passed) throw new Error(`Phase 3 prerequisite gate failed: ${gate.violations.join(", ")}`);
   const overall = buildMetrics(deduped.candidates, reports, occurrences, null);
   const edgeResults = PHASE3_EDGES.map((edge) => {
@@ -1295,7 +1536,7 @@ export async function runPhase3EdgePilot(
       duplicateTradeCount: duplicateTradeIds.size,
       lateEntryCount,
       futureAccessViolationCount: reportList.filter((report) => report.replay.futureCandleAccess).length,
-      invariantViolations: [],
+      invariantViolations: reconciled.reconciliation.invariantViolations,
     },
     timing: {
       startedAt: new Date(startedAtMs).toISOString(),

@@ -183,7 +183,7 @@ function confirmedCandidateOccurrence(input: {
     evaluationCursor: input.eClose,
     formulaVersion: "phase9-fixed-formula-v2",
     formulaHash: "f".repeat(64),
-    sourceFingerprint: "s".repeat(64),
+    sourceFingerprint: "a".repeat(64),
     canonicalTrade: false,
     canonicalOccurrence: true,
     primaryEdge: "ORB_PULLBACK_CONTINUATION",
@@ -847,8 +847,8 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     reasonCode: "Immediate next candle reached the confirmation buffer.",
     evaluationCursor: entryTimestamp,
     formulaVersion: "phase9-fixed-formula-v2",
-    formulaHash: "formula-candidate-driven",
-    sourceFingerprint: "source-candidate-driven",
+    formulaHash: "d".repeat(64),
+    sourceFingerprint: "e".repeat(64),
     canonicalTrade: false,
     canonicalOccurrence: true,
     primaryEdge: "ORB_PULLBACK_CONTINUATION",
@@ -943,6 +943,61 @@ test("invalid confirmed P to E identity is rejected diagnostically without a can
     diagnostics.candidateRejectionReasons[occurrence.occurrenceId],
     occurrence.identityInvariantViolations.join(" "),
   );
+});
+
+test("confirmed signal missing P open is rejected with field-level causal identity evidence", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  occurrence.pOpenTimestamp = null;
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.deepEqual(result.rejected, [{
+    signalOccurrenceId: occurrence.occurrenceId,
+    reasonCodes: ["INVALID_CAUSAL_IDENTITY"],
+    details: ["MISSING_OR_INVALID_pOpenTimestamp"],
+  }]);
+});
+
+test("confirmed signal missing immediate E open is rejected with field-level causal identity evidence", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  occurrence.eOpenTimestamp = null;
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.deepEqual(result.rejected[0]?.reasonCodes, ["INVALID_CAUSAL_IDENTITY"]);
+  assert.ok(result.rejected[0]?.details.includes("MISSING_OR_INVALID_eOpenTimestamp"));
+});
+
+test("confirmed signal missing E-close observation is rejected with field-level causal identity evidence", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  occurrence.entryObservationTimestamp = null;
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.deepEqual(result.rejected[0]?.reasonCodes, ["INVALID_CAUSAL_IDENTITY"]);
+  assert.ok(result.rejected[0]?.details.includes("MISSING_OR_INVALID_entryObservationTimestamp"));
 });
 
 test("candidate window uses completed E observation time across EST and EDT cutoffs", () => {

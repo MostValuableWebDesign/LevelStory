@@ -551,6 +551,60 @@ export function isValidCandidateManagementContext(candidate: HistoricalTradeCand
     && context.managementEvidenceStatus === "complete"
     && candidateManagementValidationReasons(context, candidate.entryObservationTimestamp).length === 0;
 }
+
+function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[] {
+  const violations = [...(occurrence.identityInvariantViolations ?? [])];
+  const requiredText = [
+    ["sourceFingerprint", occurrence.sourceFingerprint],
+    ["formulaHash", occurrence.formulaHash],
+    ["contractSymbol", occurrence.contractSymbol],
+    ["tradingDate", occurrence.tradingDate],
+    ["pOpenTimestamp", occurrence.pOpenTimestamp],
+    ["eOpenTimestamp", occurrence.eOpenTimestamp],
+    ["entryObservationTimestamp", occurrence.entryObservationTimestamp],
+  ] as const;
+  for (const [field, value] of requiredText) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      violations.push(`MISSING_OR_INVALID_${field}`);
+    }
+  }
+  if (typeof occurrence.sourceFingerprint === "string"
+    && !/^[0-9a-f]{64}$/i.test(occurrence.sourceFingerprint)) {
+    violations.push("INVALID_sourceFingerprint");
+  }
+  if (typeof occurrence.formulaHash === "string"
+    && !/^[0-9a-f]{64}$/i.test(occurrence.formulaHash)) {
+    violations.push("INVALID_formulaHash");
+  }
+  if (typeof occurrence.contractSymbol === "string"
+    && occurrence.contractSymbol.trim().length > 0
+    && !parseMesContractSymbol(occurrence.contractSymbol)) {
+    violations.push("INVALID_contractSymbol");
+  }
+  if (typeof occurrence.tradingDate === "string"
+    && !/^\d{4}-\d{2}-\d{2}$/.test(occurrence.tradingDate)) {
+    violations.push("INVALID_tradingDate");
+  } else if (typeof occurrence.tradingDate === "string"
+    && (
+      !Number.isFinite(Date.parse(`${occurrence.tradingDate}T00:00:00.000Z`))
+      || new Date(`${occurrence.tradingDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== occurrence.tradingDate
+    )) {
+    violations.push("INVALID_tradingDate");
+  }
+  if (occurrence.direction !== "long" && occurrence.direction !== "short") {
+    violations.push("MISSING_OR_INVALID_direction");
+  }
+  for (const [field, value] of [
+    ["pOpenTimestamp", occurrence.pOpenTimestamp],
+    ["eOpenTimestamp", occurrence.eOpenTimestamp],
+    ["entryObservationTimestamp", occurrence.entryObservationTimestamp],
+  ] as const) {
+    if (typeof value === "string" && value.trim().length > 0 && !Number.isFinite(Date.parse(value))) {
+      violations.push(`INVALID_${field}`);
+    }
+  }
+  return [...new Set(violations)];
+}
 type CandidateEntryDisposition = {
   status: HistoricalTradeCandidate["executionStatus"];
   reached: boolean | null;
@@ -2437,18 +2491,21 @@ export function projectHistoricalTradeCandidates(
   const confirmed = occurrences.filter((occurrence) =>
     occurrence.kind === "patience"
     && occurrence.canonicalOccurrence === true
-    && occurrence.status === "SIGNAL_CONFIRMED"
-    && occurrence.direction !== null
-    && occurrence.patienceTimestamp !== null
-    && occurrence.expectedEntryTimestamp !== null
-    && occurrence.pOpenTimestamp !== null
-    && occurrence.eOpenTimestamp !== null
-    && occurrence.entryObservationTimestamp !== null,
+    && occurrence.status === "SIGNAL_CONFIRMED",
   );
   const candidates: HistoricalTradeCandidate[] = [];
   const rejected: RejectedCandidateSignal[] = [];
   const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
   for (const occurrence of confirmed) {
+    const identityViolations = candidateIdentityViolations(occurrence);
+    if (identityViolations.length > 0) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: ["INVALID_CAUSAL_IDENTITY"],
+        details: identityViolations,
+      });
+      continue;
+    }
     const edge = candidateEdgeEligibility(occurrence);
     const inWindow = candidateWindowEligible(occurrence);
     const identityValid = !(occurrence.identityInvariantViolations?.length);

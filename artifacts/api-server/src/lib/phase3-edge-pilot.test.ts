@@ -155,6 +155,68 @@ function report(
   } as unknown as BacktestReport;
 }
 
+function confirmedSignal(overrides: Record<string, unknown> = {}): any {
+  return {
+    occurrenceId: "signal-1",
+    auditId: "audit-1",
+    auditIds: ["audit-1"],
+    kind: "patience",
+    canonicalOccurrence: true,
+    status: "SIGNAL_CONFIRMED",
+    strategyCandidate: "ORB_PULLBACK_CONTINUATION",
+    primaryEdge: "ORB_PULLBACK_CONTINUATION",
+    matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
+    secondaryStrategyMatches: [],
+    tradingDate: dates[0],
+    contractSymbol: "MESU6",
+    contractMonth: "2026-09",
+    direction: "long",
+    directionSource: "ORB_BREAKOUT",
+    directionSources: ["ORB_BREAKOUT"],
+    lTimestamp: "2026-07-01T14:50:00.000Z",
+    pOpenTimestamp: "2026-07-01T14:55:00.000Z",
+    eOpenTimestamp: "2026-07-01T15:00:00.000Z",
+    entryObservationTimestamp: "2026-07-01T15:05:00.000Z",
+    patienceTimestamp: "2026-07-01T14:55:00.000Z",
+    levelIdentifiers: ["ORB"],
+    levelValues: { ORB: 100 },
+    levelDistancesTicks: { ORB: 0 },
+    levelToleranceTicks: { ORB: 12 },
+    levelInteractionTypes: { ORB: ["touch"] },
+    confirmationThreshold: 101,
+    confirmationExcursion: 1,
+    confirmationBufferTicks: 4,
+    entryCandle: { high: 102 },
+    ...overrides,
+  };
+}
+
+function reconcileFixture(input: {
+  occurrence?: any;
+  candidates?: HistoricalTradeCandidate[];
+  rejectedCandidateSignals?: Array<{ signalOccurrenceId: string; reasonCodes: string[]; details: string[] }>;
+  trades?: BacktestTrade[];
+}) {
+  const replayDataset = dataset();
+  const manifest = buildPhase3PilotManifest({ dataset: replayDataset, request, createdAt: "2026-08-30T12:00:00.000Z" });
+  const base = report(replayDataset, input.candidates ?? []);
+  return reconcilePhase3SignalFunnel({
+    manifest,
+    reports: [{
+      tradingDate: dates[0]!,
+      contractSymbol: "MESU6",
+      period: "in_sample",
+      report: {
+        ...base,
+        occurrences: [input.occurrence ?? confirmedSignal()],
+        rejectedCandidateSignals: input.rejectedCandidateSignals ?? [],
+        trades: input.trades ?? [],
+      },
+    }],
+    partitions: [],
+  });
+}
+
 test("Phase 3 manifest is immutable and stable across creation timestamps", () => {
   const first = buildPhase3PilotManifest({ dataset: dataset(), request, createdAt: "2026-08-30T12:00:00.000Z" });
   const second = buildPhase3PilotManifest({ dataset: dataset(), request, createdAt: "2026-08-30T12:01:00.000Z" });
@@ -236,6 +298,78 @@ test("Phase 3 reconciliation gives each confirmed signal one disposition and kee
   assert.equal(Object.values(result.reconciliation.dispositionCounts).reduce((sum, count) => sum + count, 0), 1);
   assert.equal(result.reconciliation.timeBuckets["09:30-10:00"].confirmed, 0);
   assert.equal(result.reconciliation.signals[0]!.signalOccurrenceId, "signal-1");
+});
+
+test("Phase 3 fails closed when a confirmed signal has neither candidate nor rejection", () => {
+  const result = reconcileFixture({});
+  assert.equal(result.reconciliation.dispositionReconciles, false);
+  assert.ok(result.reconciliation.invariantViolations.includes("UNEXPLAINED_CONFIRMED_SIGNAL:signal-1"));
+  assert.equal(result.reconciliation.signals[0]?.disposition, "unexplained_confirmed_signal");
+});
+
+test("Phase 3 fails closed when a signal has both candidate and rejection", () => {
+  const result = reconcileFixture({
+    candidates: [candidate()],
+    rejectedCandidateSignals: [{
+      signalOccurrenceId: "signal-1",
+      reasonCodes: ["MISSING_EDGE_REQUIREMENT"],
+      details: ["edge requirement failed"],
+    }],
+  });
+  assert.equal(result.reconciliation.dispositionReconciles, false);
+  assert.ok(result.reconciliation.invariantViolations.includes("CONTRADICTORY_PROJECTION:signal-1"));
+  assert.equal(result.reconciliation.signals[0]?.disposition, "contradictory_projection");
+});
+
+test("Phase 3 fails closed when a candidate references no confirmed signal", () => {
+  const result = reconcileFixture({
+    candidates: [candidate({ signalOccurrenceId: "nonexistent-signal" })],
+  });
+  assert.equal(result.reconciliation.dispositionReconciles, false);
+  assert.ok(result.reconciliation.invariantViolations.includes("CANDIDATE_WITHOUT_CONFIRMED_SIGNAL:candidate-1"));
+});
+
+test("Phase 3 fails closed when an authoritative trade has no exact candidate", () => {
+  const result = reconcileFixture({
+    trades: [{
+      id: "orphan-trade",
+      candidateId: "missing-candidate",
+      signalOccurrenceId: "signal-1",
+    } as unknown as BacktestTrade],
+  });
+  assert.equal(result.reconciliation.dispositionReconciles, false);
+  assert.ok(result.reconciliation.invariantViolations.includes("TRADE_WITHOUT_EXACT_CANDIDATE:orphan-trade"));
+});
+
+test("Phase 3 preserves unverified confluence labels and audits every edge predicate", () => {
+  const result = reconcileFixture({ candidates: [candidate()] });
+  const signal = result.reconciliation.signals[0]!;
+  const confluence = result.reconciliation.candidateConfluences[0]!;
+  assert.equal(result.reconciliation.dispositionReconciles, true);
+  assert.deepEqual(Object.keys(signal.edgePredicates).sort(), [...PHASE3_EDGES].sort());
+  assert.equal(signal.edgePredicates.ORB_PULLBACK_CONTINUATION.result, "PASS");
+  assert.ok(confluence.genericLabelsWithoutStructuredEvidence.includes("volume"));
+  assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "volume")?.predicateResult, "UNVERIFIED_CONFLUENCE_LABEL");
+  assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "volume")?.gradeEligible, false);
+  assert.equal(confluence.structuredEvidence.find((item) => item.confluenceType === "ORB")?.gradeEligible, true);
+});
+
+test("Phase 3 reconciles a complete confirmed signal collection exactly once", () => {
+  const result = reconcileFixture({
+    candidates: [candidate()],
+    trades: [{
+      id: "trade-1",
+      candidateId: "candidate-1",
+      signalOccurrenceId: "signal-1",
+      outcome: "open",
+      netPnl: 0,
+      ambiguityLabel: null,
+    } as unknown as BacktestTrade],
+  });
+  assert.equal(result.reconciliation.dispositionReconciles, true);
+  assert.equal(result.reconciliation.confirmedSignalCount, 1);
+  assert.equal(result.reconciliation.dispositionCounts.candidate_entered_open, 1);
+  assert.deepEqual(result.reconciliation.invariantViolations, []);
 });
 
 test("Phase 3 reports four independent edges, preserves confluence, and excludes invalid management", async () => {
