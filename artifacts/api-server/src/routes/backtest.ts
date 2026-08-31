@@ -437,7 +437,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           risk,
           contract: specification,
           executionPolicy: {
-            entryBufferTicks: request.ohlcvEntryBufferTicks ?? 4,
+            entryBufferTicks: request.ohlcvEntryBufferTicks ?? 8,
             stopBufferTicks: request.ohlcvStopBufferTicks ?? 1,
             slippageTicks: request.ohlcvSlippageTicks ?? 1,
             commissionPerContract: request.ohlcvCommissionPerContract ?? null,
@@ -907,7 +907,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         risk,
         contract: specification,
         executionPolicy: {
-          entryBufferTicks: parsed.data.ohlcvEntryBufferTicks ?? 4,
+          entryBufferTicks: parsed.data.ohlcvEntryBufferTicks ?? 8,
           stopBufferTicks: parsed.data.ohlcvStopBufferTicks ?? 1,
           slippageTicks: parsed.data.ohlcvSlippageTicks ?? 1,
           commissionPerContract: parsed.data.ohlcvCommissionPerContract ?? null,

@@ -576,14 +576,25 @@ test("semantic presentation filtering removes Fibonacci, catastrophe, and redund
   const fibonacci = { ...base, id: "fib-0.618", label: "Fib 61.8%", kind: "level" as const };
   const catastrophe = { ...base, id: "catastrophe-stop", label: "Catastrophe stop", kind: "level" as const };
   const priorCritical = { ...base, id: "critical-Prior day high", label: "Critical · Prior day high", kind: "level" as const };
-  const major = { ...base, id: "major-resistance", label: "Major resistance", kind: "level" as const };
+   const criticalPremarketHigh = { ...base, id: "critical-premarket-high", label: "Critical · Premarket high", kind: "level" as const };
+   const criticalPremarketLow = { ...base, id: "critical-premarket-low", label: "Critical · Premarket low", kind: "level" as const };
+   const vwap = { ...base, id: "vwap", label: "VWAP", kind: "indicator" as const };
+   const ema = { ...base, id: "ema-200", label: "EMA 200", kind: "indicator" as const };
+   const major = { ...base, id: "major-resistance", label: "Major resistance", kind: "level" as const };
   assert.equal(isFibonacciAnnotation(fibonacci), true);
   assert.equal(isCatastropheStopAnnotation(catastrophe), true);
   assert.equal(isRedundantPriorSessionAnnotation(priorCritical), true);
   assert.equal(isVisualPresentationAnnotation(fibonacci), false);
   assert.equal(isVisualPresentationAnnotation(catastrophe), false);
   assert.equal(isVisualPresentationAnnotation(priorCritical), false);
+   assert.equal(isVisualPresentationAnnotation(criticalPremarketHigh), false);
+   assert.equal(isVisualPresentationAnnotation(criticalPremarketLow), false);
+   assert.equal(isVisualPresentationAnnotation(vwap), true);
+   assert.equal(isVisualPresentationAnnotation(ema), true);
   assert.equal(isVisualPresentationAnnotation(major), true);
+   assert.equal(isPrimaryLevel(vwap), false);
+   assert.equal(isPrimaryLevel(ema), false);
+   assert.deepEqual(getEdgeIndicators([vwap, ema], { min: 99, max: 101 }), []);
   assert.equal(isPrimaryLevel(major), true);
 });
 

@@ -35,7 +35,7 @@ export type StrategyConfig = {
   stopBuffer: number;
   runnerTriggerR: number;
   levelTolerance: number;
-  patienceEntryBufferTicks: 3 | 4;
+  patienceEntryBufferTicks: 8;
   patienceStopBufferTicks: number;
   dojiBodyRatio: number;
   equivalentBodyTolerance: number;
@@ -128,7 +128,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
-  patienceEntryBufferTicks: 4,
+  patienceEntryBufferTicks: 8,
   patienceStopBufferTicks: 12,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
@@ -289,8 +289,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (config.phase7RunnerRetracementRatio !== 0.4) {
     throw new Error("Invalid strategy configuration: Phase 7 runner retracement must be 40%.");
   }
-  if (!Number.isInteger(config.patienceEntryBufferTicks) || ![3, 4].includes(config.patienceEntryBufferTicks)) {
-    throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be three or four ticks.");
+  if (config.patienceEntryBufferTicks !== 8) {
+    throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly eight MES ticks (2.00 index points).");
   }
   if (!Number.isInteger(config.patienceStopBufferTicks) || config.patienceStopBufferTicks < 1) {
     throw new Error("Invalid strategy configuration: patienceStopBufferTicks must be at least one tick.");

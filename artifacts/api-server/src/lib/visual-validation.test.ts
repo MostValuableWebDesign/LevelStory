@@ -363,11 +363,11 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     eOpenTimestamp: new Date(patienceCandle.closeTime).toISOString(),
     entryObservationTimestamp: confirmed ? new Date(immediate.closeTime).toISOString() : null,
     identityInvariantViolations: [],
-    confirmationBufferTicks: 3,
+     confirmationBufferTicks: 8,
     nextObservedCandle: confirmed ? null : evidenceCandle(immediate),
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     status: confirmed ? "SIGNAL_CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
-    reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the three-tick buffer; P1 expired.",
+     reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the eight-tick buffer; P1 expired.",
     evaluationCursor: new Date(immediate.closeTime).toISOString(),
     formulaVersion: "test",
     formulaHash: "a".repeat(64),
@@ -694,13 +694,13 @@ function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["sn
     ? {
         previous: { openTime: "2026-08-26T13:25:00.000Z", closeTime: "2026-08-26T13:30:00.000Z", open: 100, high: 101.5, low: 99.5, close: 100.5 },
         patience: { openTime: "2026-08-26T13:30:00.000Z", closeTime: "2026-08-26T13:35:00.000Z", open: 100.5, high: 101.5, low: 100, close: 101 },
-        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 101, high: 102.75, low: 100.75, close: 102 },
+        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 101, high: 103.5, low: 100.75, close: 103 },
         level: 101,
       }
     : {
         previous: { openTime: "2026-08-26T13:25:00.000Z", closeTime: "2026-08-26T13:30:00.000Z", open: 103, high: 104, low: 101.5, close: 103 },
         patience: { openTime: "2026-08-26T13:30:00.000Z", closeTime: "2026-08-26T13:35:00.000Z", open: 103, high: 103.5, low: 101.5, close: 102 },
-        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 102, high: 102.5, low: 100, close: 100.5 },
+        entry: { openTime: "2026-08-26T13:35:00.000Z", closeTime: "2026-08-26T13:40:00.000Z", open: 102, high: 102.5, low: 99.5, close: 100 },
         level: 102,
       };
   snapshot.reviewCandles = [base.previous, base.patience, base.entry].map((candle) => ({
@@ -730,7 +730,7 @@ function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["sn
     entryCandleCloseTime: base.entry.closeTime,
     patienceCandleOpenTime: base.patience.openTime,
     patienceCandleCloseTime: base.patience.closeTime,
-    entryBufferTicks: 4,
+     entryBufferTicks: 8,
     pullbackLevels: [base.level],
     setupType: "ORB_PULLBACK_CONTINUATION",
     confidence: "medium",
@@ -744,7 +744,7 @@ test("teaching validation accepts deterministic long and short buffered examples
     const input = teachingInput(snapshot, direction);
     const result = validateVisualValidationTeaching(snapshot, input);
     assert.equal(result.valid, true, `${direction}: ${result.messages.join("; ")}`);
-    assert.equal(result.calculatedEntryPrice, direction === "long" ? 102.5 : 100.5);
+   assert.equal(result.calculatedEntryPrice, direction === "long" ? 103.5 : 99.5);
   }
 });
 
@@ -758,7 +758,7 @@ function dynamicLevelFixture() {
   const entry = snapshot.reviewCandles[2]!;
   Object.assign(previous, { open: 6851, high: 6852, low: 6850.5, close: 6851.2 });
   Object.assign(patience, { open: 6851.2, high: 6851.75, low: 6851.3, close: 6851.5 });
-  Object.assign(entry, { open: 6851.5, high: 6853, low: 6851.25, close: 6852.75 });
+   Object.assign(entry, { open: 6851.5, high: 6854, low: 6851.25, close: 6853.5 });
   const point = indicatorPoint;
   point.openTime = patience.openTime;
   point.closeTime = patience.closeTime;
@@ -1003,7 +1003,7 @@ test("teaching validation rejects future, non-adjacent, and non-MES-buffer corre
   const input = teachingInput(snapshot, "long");
   const invalid = {
     ...input,
-    entryBufferTicks: 3 as 3,
+     entryBufferTicks: 7 as unknown as 8,
     patienceCandleCloseTime: "2026-08-26T13:34:00.000Z",
     entryCandleCloseTime: "2026-08-26T14:40:00.000Z",
     explanation: "invalid teaching case",

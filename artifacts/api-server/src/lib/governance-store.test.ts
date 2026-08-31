@@ -40,7 +40,7 @@ test("governance proposals are idempotent, validation-gated, audited, and Shadow
     selectedCandleTimestamp: "2026-08-26T14:00:00.000Z",
     patienceCandleTimestamp: "2026-08-26T13:55:00.000Z",
     direction: "long",
-    entryBufferTicks: 4,
+    entryBufferTicks: 8,
     calculatedEntryPrice: "6500.5",
     setupClassification: "ORB_BREAK_PULLBACK_CONTINUATION",
     qualifyingLevelType: "VWAP",

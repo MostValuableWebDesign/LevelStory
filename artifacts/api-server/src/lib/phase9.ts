@@ -149,7 +149,7 @@ export type BacktestRequest = ReplayDatasetOptions & {
   targetDollars?: number;
   slippageMode?: "normal" | "fast" | "abnormal_spread";
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
-  ohlcvEntryBufferTicks?: 3 | 4;
+  ohlcvEntryBufferTicks?: 8;
   ohlcvStopBufferTicks?: number;
   ohlcvSlippageTicks?: number;
   ohlcvCommissionPerContract?: number;
@@ -2328,7 +2328,7 @@ export function buildHistoricalOccurrenceLedger(
          eOpenTimestamp,
          entryObservationTimestamp,
          identityInvariantViolations,
-        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
          causalEvidence: causalEvidenceForAudit(record),
@@ -2427,7 +2427,7 @@ export function buildHistoricalOccurrenceLedger(
          eOpenTimestamp: record.triggerCandleOpenTime ?? record.patienceCandleCloseTime,
          entryObservationTimestamp: record.triggerCandleCloseTime,
          identityInvariantViolations: [],
-        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
          causalEvidence: causalEvidenceForAudit(record),
@@ -3193,7 +3193,7 @@ export function runCausalBacktest(
     && dataset.quotesAvailable !== false) {
     throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
   }
-  const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 4;
+  const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 8;
   const stopBufferTicks = request.ohlcvStopBufferTicks ?? 1;
   const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
   const commissionPerContract = request.ohlcvCommissionPerContract

@@ -395,7 +395,7 @@ export type VisualValidationTeachingInput = {
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
-  entryBufferTicks: 3 | 4;
+  entryBufferTicks: 8;
   levelToleranceTicks?: number;
   qualifyingLevelId?: string;
   qualifyingLevelRangeLow?: number | null;
@@ -748,7 +748,7 @@ export function validateVisualValidationTeaching(
     const buffered = input.direction === "long" ? entry.high >= calculatedEntryPrice : entry.low <= calculatedEntryPrice;
     if (!buffered) messages.push(`The immediate-next candle did not reach the calculated ${input.entryBufferTicks}-tick MES entry buffer.`);
   }
-  if (!Number.isInteger(input.entryBufferTicks) || ![3, 4].includes(input.entryBufferTicks)) messages.push("The entry buffer must be three or four ticks.");
+  if (input.entryBufferTicks !== 8) messages.push("The entry buffer must be exactly eight MES ticks (2.00 index points).");
   if (!input.explanation.trim() || input.explanation.trim().length < 10) messages.push("Explain the teaching example in at least 10 characters.");
 
   return {
@@ -828,8 +828,7 @@ export function buildProposedRuleAnalysis(
   const likelyCauses = new Set<string>();
   for (const review of teachingReviews) {
     if (review.teaching && !review.teaching.validation.valid) likelyCauses.add("The proposed sequence does not satisfy the immediate-next or causal visibility boundary.");
-    if (review.teaching?.entryBufferTicks === 3) likelyCauses.add("Reviewers are testing a three-tick confirmation buffer against the active four-tick formula.");
-    if (review.teaching?.entryBufferTicks === 4) likelyCauses.add("Reviewers are testing the active four-tick confirmation buffer at a different qualifying level.");
+    if (review.teaching?.entryBufferTicks !== 8) likelyCauses.add("Reviewers are testing a non-governed confirmation buffer against the active eight-tick formula.");
     if (review.status === "false_positive_trade") likelyCauses.add("A machine-qualified trade may be over-inclusive around level interaction or candle containment.");
   }
   if (!likelyCauses.size) likelyCauses.add("There are not yet enough structured teaching examples to isolate a rule difference.");

@@ -85,6 +85,7 @@ import {
   hasRepetitiveFixtureData,
   invalidRawCandleIndices,
   isVisualPresentationAnnotation,
+  isDynamicIndicatorAnnotation,
   isOpeningRangeCompleteAtEvaluation,
   isPrimaryLevel,
   INTRADAY_REFERENCE_PRESENTATION,
@@ -603,7 +604,7 @@ export default function VisualReview() {
                           entryCandleCloseTime: candle.closeTime,
                           patienceCandleOpenTime: patience?.openTime ?? "",
                           patienceCandleCloseTime: patience?.closeTime ?? "",
-                          entryBufferTicks: current?.entryBufferTicks ?? 4,
+                          entryBufferTicks: current?.entryBufferTicks ?? 8,
                             levelToleranceTicks: current?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
                           qualifyingLevelId: current?.qualifyingLevelId ?? selectedLevel?.id,
                           qualifyingLevelRangeLow: current?.qualifyingLevelRangeLow ?? selectedLevel?.rangeLow,
@@ -1133,33 +1134,46 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView) : -1;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
-    const allLevels = annotations.filter((annotation) =>
+    const fixedLevels = annotations.filter((annotation) =>
       isVisualPresentationAnnotation(annotation)
+      && !isDynamicIndicatorAnnotation(annotation)
       && annotation.kind !== "candle"
       && annotation.price !== null,
     );
-  const criticalLevels = allLevels.filter((annotation) =>
+  const indicatorLegend = (["vwap", "ema-200"] as const)
+    .map((id) => annotations.find((annotation) => annotation.id === id && isDynamicIndicatorAnnotation(annotation)))
+    .filter((annotation): annotation is VisualValidationAnnotation => annotation !== undefined);
+  const allLevels = [...fixedLevels, ...indicatorLegend];
+  const criticalLevels = fixedLevels.filter((annotation) =>
     annotation.id.startsWith("critical-")
-    && annotation.label !== "Critical · Premarket high",
   );
-  const entryReference = allLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
+  const entryReference = fixedLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
   const relevantCritical = [...criticalLevels]
     .sort((first, second) => entryReference == null
       ? 0
       : Math.abs((first.price ?? entryReference) - entryReference) - Math.abs((second.price ?? entryReference) - entryReference))
     .slice(0, 1);
     const riskLevelIds = new Set(["entry-buffer", "strategy-stop"]);
-   const primaryLevels = allLevels
+   const primaryLevels = fixedLevels
      .filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-"))
      .concat(relevantCritical)
       .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
-  const additionalLevels = allLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
+   const additionalLevels = fixedLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
    const levelLegend = [...allLevels]
-     .filter((annotation) => annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max)
+      .filter((annotation) => isDynamicIndicatorAnnotation(annotation) || (annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max))
      .sort((first, second) => (first.price ?? 0) - (second.price ?? 0) || first.label.localeCompare(second.label));
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
-  const activeSlot = hoveredSlot ?? selectedSlot;
+   const activeSlot = hoveredSlot ?? selectedSlot;
+   const activeIndicatorId = activeLevelId === "vwap" || activeLevelId === "ema-200"
+     ? activeLevelId
+     : selectedLevelId === "vwap" || selectedLevelId === "ema-200"
+       ? selectedLevelId
+       : null;
+   const indicatorStyle = (id: "vwap" | "ema-200") => ({
+     strokeWidth: activeIndicatorId === id ? 3 : 2,
+     opacity: activeIndicatorId === null || activeIndicatorId === id ? 1 : .22,
+   });
   const activeCandle = activeSlot == null ? null : candles.find((candle) => getCandleSlotIndex(candle, sessionView) === activeSlot) ?? null;
   const activeDetails = activeCandle ? getCandleInspection(activeCandle) : null;
   const activeEvents = activeCandle
@@ -1386,10 +1400,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
         <path d={`M ${Math.max(boundaryX - 6, left)} ${top} L ${boundaryX} ${top - 8} L ${Math.min(boundaryX + 6, plotRight)} ${top} Z`} fill="hsl(var(--foreground))" data-testid="causal-boundary-notch" />
-        {indicatorPath("vwap", "machine") && <path pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" data-testid="indicator-curve-vwap" />}
-        {indicatorPath("vwap", "human_only") && <path pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-vwap-human-only" />}
-        {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" data-testid="indicator-curve-ema200" />}
-        {indicatorPath("ema200", "human_only") && <path pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeWidth="2" strokeDasharray="7 4" opacity=".55" data-testid="indicator-curve-ema200-human-only" />}
+         {indicatorPath("vwap", "machine") && <path pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" {...indicatorStyle("vwap")} data-testid="indicator-curve-vwap" />}
+         {indicatorPath("vwap", "human_only") && <path pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
+         {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
+         {indicatorPath("ema200", "human_only") && <path pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeDasharray="7 4" {...indicatorStyle("ema-200")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "ema-200" ? .8 : .15} data-testid="indicator-curve-ema200-human-only" />}
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
@@ -1639,7 +1653,7 @@ function ReviewPanel({
          </div> : <div className="border border-dashed border-accent/40 px-3 py-3 text-[10px] text-muted-foreground">No completed entry candle is locked. Use the chart inspector's <strong>Lock as entry (E)</strong> control.</div>}
          {teaching && <div className="grid gap-3 sm:grid-cols-2">
            <Field label="Direction"><select className="field" value={teaching.direction} onChange={(event) => updateTeaching({ direction: event.target.value as "long" | "short" })}><option value="long">Long</option><option value="short">Short</option></select></Field>
-           <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: Number(event.target.value) as 3 | 4 })}><option value={3}>3 ticks · $1.50</option><option value={4}>4 ticks · $2.00</option></select></Field>
+           <Field label="Confirmation buffer"><select className="field mono" value={teaching.entryBufferTicks} onChange={(event) => updateTeaching({ entryBufferTicks: 8 })}><option value={8}>8 MES ticks · 2.00 points</option></select></Field>
            <Field label="Qualifying level candle · L"><select className="field" value={levelCandle ? `${levelCandle.openTime}|${levelCandle.closeTime}` : ""} onChange={(event) => { const selected = selectableLevelCandles.find((candle) => `${candle.openTime}|${candle.closeTime}` === event.target.value); if (selected) updateTeaching({ levelCandleOpenTime: selected.openTime, levelCandleCloseTime: selected.closeTime }); }} data-testid="select-level-candle"><option value="" disabled>Select a causal L candle</option>{selectableLevelCandles.map((candle) => <option key={`${candle.openTime}|${candle.closeTime}`} value={`${candle.openTime}|${candle.closeTime}`}>{formatInterval(candle.openTime, candle.closeTime)}{patience && candle.openTime === patience.openTime ? " · direct L=P" : ""}</option>)}</select><span className="mt-1 block text-[9px] text-muted-foreground">L is the completed, machine-visible candle that qualifies the level. P and E remain locked.</span></Field>
            <div className="border border-border bg-card px-3 py-2" data-testid="level-indicator-evidence"><div className="eyebrow text-muted-foreground">Indicators at L</div><div className="mono mt-1 text-[10px]">VWAP {selectedIndicator?.vwap?.toFixed(3) ?? "—"} · EMA 200 {selectedIndicator?.ema200?.toFixed(3) ?? "—"}</div><div className="mt-1 text-[9px] text-muted-foreground">{selectedIndicator ? `Source ${formatInterval(selectedIndicator.openTime, selectedIndicator.closeTime)}` : "No causal indicator point at L"}</div></div>
            <fieldset className="sm:col-span-2"><legend className="eyebrow mb-1.5 block text-muted-foreground">Qualifying pullback levels</legend><div className="grid gap-2 sm:grid-cols-2">{availableLevels.map((level) => { const price = level.price; const dynamicId = level.id === "vwap" || level.id === "ema-200" ? level.id : null; const dynamic = dynamicId !== null; const evidence = dynamicId ? dynamicEvidence(dynamicId) : null; const selected = (teaching.qualifyingLevels ?? []).some((item) => item.levelId === level.id); const contained = containedLevels.includes(level); const levelType = dynamic ? "dynamic_indicator" as const : level.rangeLow !== null || level.rangeHigh !== null ? "level_range" as const : "fixed_level" as const; return <label key={`${level.id}-${level.price}`} className={`flex items-start gap-2 border px-3 py-2 text-[11px] transition ${selected ? "border-accent bg-accent/10" : contained ? "cursor-pointer border-border bg-card hover:bg-muted/40" : "cursor-not-allowed border-border bg-muted/30 opacity-50"}`}><input type="checkbox" checked={selected} disabled={!contained} onChange={(event) => { const nextStructured = event.target.checked ? [...(teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id), { levelId: level.id, levelType, valueAtInteraction: price, sourceTimestamp: selectedIndicator?.openTime ?? levelCandle?.openTime ?? "", rangeLow: levelType === "dynamic_indicator" ? null : level.rangeLow ?? null, rangeHigh: levelType === "dynamic_indicator" ? null : level.rangeHigh ?? null }] : (teaching.qualifyingLevels ?? []).filter((item) => item.levelId !== level.id); updateTeaching({ qualifyingLevels: nextStructured, ...deriveTeachingCompatibilityFields(nextStructured) }); }} /><span><span className="block font-bold">{level.label}</span><span className="mono text-muted-foreground">{formatPriceAxisValue(price)} · {level.id}</span>{dynamic && <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">Value at L: {evidence?.value === null ? "—" : evidence?.value.toFixed(3)} · L range: {levelCandle ? `${levelCandle.low.toFixed(2)}–${levelCandle.high.toFixed(2)}` : "—"} · Tolerance: {levelToleranceTicks} ticks / {levelTolerancePointsValue.toFixed(2)} pt · Distance: {Number.isFinite(evidence?.distanceTicks) ? `${evidence?.distanceTicks} ticks` : "—"}<br /><span className={evidence?.qualifies ? "text-positive" : "text-negative"}>{evidence?.reason}</span></span>}{!dynamic && !contained && <span className="block text-[9px] text-negative">Outside {levelToleranceTicks}-tick zone at L</span>}</span></label>; })}</div><p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">Levels intersect L within the configured {levelToleranceTicks}-tick MES proximity zone. Dynamic VWAP and EMA values are captured from the indicator point at L; fixed levels retain their causal ranges.</p></fieldset>

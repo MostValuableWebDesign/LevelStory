@@ -91,7 +91,7 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     patienceTimestamp: "2026-07-01T14:55:00.000Z",
     expectedEntryTimestamp: "2026-07-01T15:00:00.000Z",
     confirmationPrice: 101,
-    confirmationBufferTicks: 4,
+    confirmationBufferTicks: 8,
     grade: "A+",
     eligible: true,
     executionStatus: "MODELED_TRADE_CREATED",
@@ -185,7 +185,7 @@ function confirmedSignal(overrides: Record<string, unknown> = {}): any {
     levelInteractionTypes: { ORB: ["touch"] },
     confirmationThreshold: 101,
     confirmationExcursion: 1,
-    confirmationBufferTicks: 4,
+    confirmationBufferTicks: 8,
     entryCandle: { high: 102 },
     ...overrides,
   };
@@ -302,7 +302,7 @@ test("Phase 3 reconciliation gives each confirmed signal one disposition and kee
     levelInteractionTypes: { ORB: ["touch"] },
     confirmationThreshold: 101,
     confirmationExcursion: 1,
-    confirmationBufferTicks: 4,
+    confirmationBufferTicks: 8,
     entryCandle: { high: 102 },
   } as never;
   const item = {

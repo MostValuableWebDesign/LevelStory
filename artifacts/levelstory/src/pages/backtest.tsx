@@ -699,7 +699,7 @@ export default function Backtest() {
     targetDollars: Number(targetDollars),
     slippageMode,
     executionMode,
-    ohlcvEntryBufferTicks: Number(entryBufferTicks) as 3 | 4,
+    ohlcvEntryBufferTicks: 8,
     ohlcvStopBufferTicks: Number(stopBufferTicks),
     ohlcvSlippageTicks: Number(ohlcvSlippageTicks),
     ...(commissionPerContract.trim() ? { ohlcvCommissionPerContract: Number(commissionPerContract) } : {}),
@@ -755,7 +755,7 @@ export default function Backtest() {
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Seed</span><input type="number" min="1" max="100000" value={seed} onChange={(event) => setSeed(event.target.value)} className="field mono w-full" data-testid="input-backtest-seed" /></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Target</span><select value={targetDollars} onChange={(event) => setTargetDollars(event.target.value)} className="field w-full" data-testid="select-backtest-target"><option value="50">$50</option><option value="75">$75</option><option value="100">$100</option></select></label>
             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Slippage regime</span><select value={slippageMode} onChange={(event) => setSlippageMode(event.target.value as typeof slippageMode)} className="field w-full" data-testid="select-backtest-slippage"><option value="normal">Normal</option><option value="fast">Fast tape</option><option value="abnormal_spread">Abnormal spread</option></select></label>
-             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">OHLCV entry buffer</span><select value={entryBufferTicks} onChange={(event) => setEntryBufferTicks(event.target.value)} className="field w-full" data-testid="select-ohlcv-entry-buffer"><option value="3">3 ticks</option><option value="4">4 ticks</option></select></label>
+             <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">OHLCV entry buffer</span><select value="8" onChange={() => setEntryBufferTicks("8")} className="field w-full" data-testid="select-ohlcv-entry-buffer"><option value="8">8 MES ticks · 2.00 points</option></select></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Patience stop buffer</span><input type="number" min="1" max="8" value={stopBufferTicks} onChange={(event) => setStopBufferTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-stop-buffer" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Modeled slippage</span><input type="number" min="0" max="8" value={ohlcvSlippageTicks} onChange={(event) => setOhlcvSlippageTicks(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-slippage" /></label>
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>

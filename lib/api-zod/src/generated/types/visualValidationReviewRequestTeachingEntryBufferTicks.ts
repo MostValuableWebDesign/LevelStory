@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Exactly 8 MES ticks / 2.00 index points.
+ */
 export type VisualValidationReviewRequestTeachingEntryBufferTicks = typeof VisualValidationReviewRequestTeachingEntryBufferTicks[keyof typeof VisualValidationReviewRequestTeachingEntryBufferTicks];
 
 
 export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;

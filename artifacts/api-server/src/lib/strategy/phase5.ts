@@ -171,7 +171,7 @@ export function patienceCandleEngine(
   const eligibility = [...(options.eligibilityEvents ?? [])].sort((first, second) => first.time - second.time);
   const trend = options.trend ?? (direction === "long" ? "bullish" : "bearish");
   const tickSize = options.tickSize ?? 0.25;
-  const entryBufferTicks = options.entryBufferTicks ?? 4;
+  const entryBufferTicks = options.entryBufferTicks ?? 8;
   const stopBufferTicks = options.stopBufferTicks ?? 12;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
   const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
@@ -343,7 +343,7 @@ export function phase5PatienceAnalysis(
   minimumEligibilityTime?: number | null,
   trend: TrendDirection = "neutral",
   tickSize = 0.25,
-  entryBufferTicks = 4,
+  entryBufferTicks = 8,
   stopBufferTicks = 1,
   allowOpposingTrend = false,
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
@@ -567,7 +567,7 @@ function directionTrendMatches(direction: Direction, trend: TrendDirection): boo
 
 function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
   if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
-  if (!Number.isInteger(entryBufferTicks) || ![3, 4].includes(entryBufferTicks)) throw new Error("Patience entry confirmation buffer must be three or four ticks.");
+  if (entryBufferTicks !== 8) throw new Error("Patience entry confirmation buffer must be exactly eight MES ticks (2.00 index points).");
   if (!Number.isInteger(stopBufferTicks) || stopBufferTicks < 1) throw new Error("Patience stop buffer must be at least one tick.");
 }
 

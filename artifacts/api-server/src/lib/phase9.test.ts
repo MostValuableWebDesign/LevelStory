@@ -20,6 +20,7 @@ import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/session-calendar.js";
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
+import { RunBacktestBody } from "@workspace/api-zod";
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;
@@ -81,6 +82,14 @@ function trade(netPnl: number, overrides: Partial<BacktestTrade> = {}): Backtest
     ...overrides,
   };
 }
+
+test("API contracts accept only the governed eight-tick entry buffer", () => {
+  const defaults = RunBacktestBody.safeParse({});
+  assert.equal(defaults.success, true);
+  if (defaults.success) assert.equal(defaults.data.ohlcvEntryBufferTicks, 8);
+  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 8 }).success, true);
+  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 7 }).success, false);
+});
 
 function replayCandle(openTime: number, contractSymbol: string, base: number): SimulatedFuturesCandle {
   return {
@@ -500,7 +509,7 @@ function occurrenceAudit(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
-    confirmationBufferTicks: 3,
+    confirmationBufferTicks: 8,
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     pullbackOccurrences: [{
       type: "touch",
@@ -518,14 +527,14 @@ function occurrenceAudit(
     patienceOccurrences: [{
       occurrenceId: "p1",
       direction: "long",
-      entryBufferTicks: 3,
+      entryBufferTicks: 8,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: lOpen,
       previousComparisonTimestamp: lCandle.openTime,
       candidateShapeResult: true,
       expectedEntryCandleOpenTime: eCandle.openTime,
-      confirmationThreshold: 102.75,
+      confirmationThreshold: 104,
       actualConfirmationExcursion: 3,
       previousCandle: lCandle,
       patienceCandle: pCandle,
@@ -558,7 +567,7 @@ test("historical occurrence ledger is repeatable and retains causal L/P/E eviden
   assert.deepEqual(report, repeat);
   const patience = report.find((occurrence) => occurrence.kind === "patience");
   assert.ok(patience);
-  assert.equal(patience.confirmationBufferTicks, 3);
+   assert.equal(patience.confirmationBufferTicks, 8);
   assert.equal(patience.lCandle?.openTime, 300_000);
   assert.equal(patience.patienceCandle?.openTime, 600_000);
   assert.equal(patience.entryCandle?.openTime, 900_000);
@@ -607,7 +616,7 @@ test("historical occurrences preserve exact L identity, all same-candle levels, 
     patienceOccurrences: [{
       occurrenceId: "p1",
       direction: "long",
-      entryBufferTicks: 3,
+      entryBufferTicks: 8,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -1216,7 +1225,7 @@ test("ledger retains an expired patience attempt without inventing an E candle",
     patienceOccurrences: [{
       occurrenceId: "expired-p1",
       direction: "long",
-      entryBufferTicks: 3,
+      entryBufferTicks: 8,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -1273,7 +1282,7 @@ test("failed immediate confirmation remains a no-trade patience occurrence", () 
     patienceOccurrences: [{
       occurrenceId: "failed-p1",
       direction: "long",
-      entryBufferTicks: 4,
+      entryBufferTicks: 8,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -1326,7 +1335,7 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
   const expired: NonNullable<BacktestAuditRecord["patienceOccurrences"]>[number] = {
     occurrenceId: "expired-p1",
     direction: "long",
-    entryBufferTicks: 3,
+    entryBufferTicks: 8,
     stopBufferTicks: 1,
     eligibilityReason: "pullback",
     eligibilityTime: 300_000,
@@ -1341,7 +1350,7 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
     nextObservedCandle: failedImmediate,
     outcomeStatus: "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
     status: "PATIENCE_CANDLE_EXPIRED",
-    reasonCode: "10:10 failed to reach the three-tick confirmation buffer.",
+    reasonCode: "10:10 failed to reach the eight-tick confirmation buffer.",
     evaluationCursor: failedImmediate.closeTime,
   };
   const audit = { ...base, patienceOccurrences: [expired, confirmed] };

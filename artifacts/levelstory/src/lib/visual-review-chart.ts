@@ -1036,7 +1036,8 @@ export function formatDataSource(source: string, contractSymbol?: string): strin
 
 export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean {
   return isVisualPresentationAnnotation(annotation)
-    && /^(premarket-high|premarket-low|orb-high|orb-low|ntz-high|ntz-low|vwap|ema-200|critical-|major-|dynamite\||entry-buffer|strategy-stop|target$|runner-threshold)/i.test(annotation.id);
+    && !isDynamicIndicatorAnnotation(annotation)
+    && /^(premarket-high|premarket-low|orb-high|orb-low|ntz-high|ntz-low|critical-|major-|dynamite\||entry-buffer|strategy-stop|target$|runner-threshold)/i.test(annotation.id);
 }
 
 function normalizedAnnotationSemantic(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): string {
@@ -1057,10 +1058,20 @@ export function isRedundantPriorSessionAnnotation(annotation: Pick<VisualValidat
     && /(?:prior|previous|two days? ago|day before yesterday)/.test(semantic);
 }
 
+export function isDynamicIndicatorAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
+  return /(?:^| )(?:vwap|ema ?200)(?:$| )/i.test(normalizedAnnotationSemantic(annotation));
+}
+
+export function isCriticalPremarketAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label">): boolean {
+  const semantic = `${annotation.id} ${annotation.label}`.toLowerCase().replace(/[-_·/]+/g, " ");
+  return semantic.includes("critical") && /\bpremarket (?:high|low)\b/.test(semantic);
+}
+
 export function isVisualPresentationAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
   return !isFibonacciAnnotation(annotation)
     && !isCatastropheStopAnnotation(annotation)
-    && !isRedundantPriorSessionAnnotation(annotation);
+    && !isRedundantPriorSessionAnnotation(annotation)
+    && !isCriticalPremarketAnnotation(annotation);
 }
 
 function isCatastropheStopTradeEvent(event: Pick<VisualValidationTradeEvent, "event" | "label" | "detail">): boolean {

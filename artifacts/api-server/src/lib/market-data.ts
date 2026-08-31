@@ -398,7 +398,7 @@ export type ReplaySnapshotOptions = {
   historicalHourly?: readonly SimulatedHourlyCandle[];
   premarketAvailable?: boolean;
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
-  ohlcvEntryBufferTicks?: 3 | 4;
+  ohlcvEntryBufferTicks?: 8;
   ohlcvStopBufferTicks?: number;
   allCandlesCompleted?: boolean;
   validateDashboardInvariants?: boolean;

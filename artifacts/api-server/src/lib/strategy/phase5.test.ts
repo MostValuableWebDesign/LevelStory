@@ -23,7 +23,7 @@ function eligibility(time = FIVE_MINUTES): PatienceEligibilityEvent[] {
 
 function setup(direction: "long" | "short", trigger: Candle): Candle[] {
   const previous = direction === "long" ? candle(0, 10, 12, 8, 10.5) : candle(0, 10, 12, 8, 9.5);
-  const patience = direction === "long" ? candle(1, 10.5, 11, 7, 10.8) : candle(1, 9.5, 13, 9, 9.2);
+  const patience = direction === "long" ? candle(1, 10.5, 10, 7, 10.8) : candle(1, 9.5, 13, 10, 9.2);
   return [previous, patience, trigger];
 }
 
@@ -62,7 +62,7 @@ test("the exclusive primary cutoff uses E open time and propagates into occurren
     const pOpen = Date.parse(item.p);
     const previous = datedCandle(new Date(pOpen - FIVE_MINUTES).toISOString(), 10, 12, 8, 10.5);
     const patience = datedCandle(item.p, 10.5, 11, 7, 10.8);
-    const entry = datedCandle(item.e, 10.8, item.confirmed ? 12 : 12, 10.2, 12);
+    const entry = datedCandle(item.e, 10.8, item.confirmed ? 13 : 12, 10.2, item.confirmed ? 13 : 12);
     const result = patienceCandleEngine([previous, patience, entry], "long", {
       eligibilityEvents: [{ time: pOpen, reason: "pullback", detail: "Cutoff regression" }],
       entryCutoffMinutes: 780,
@@ -74,9 +74,9 @@ test("the exclusive primary cutoff uses E open time and propagates into occurren
 test("effective confirmation uses the stricter NTZ threshold and accepts wick-only reach", () => {
   const patience = candle(1, 10.5, 11, 7, 10.8);
   const ntz = { high: 12, low: 9, complete: true };
-  const threshold = effectiveConfirmationThreshold(patience, "long", 4, 0.25, ntz);
-  assert.equal(threshold, 12.25);
-  assert.equal(isStrictlyOutsideNtz({ high: 12.25, low: 10, }, "long", ntz, true, threshold), true);
+  const threshold = effectiveConfirmationThreshold(patience, "long", 8, 0.25, ntz);
+  assert.equal(threshold, 13);
+  assert.equal(isStrictlyOutsideNtz({ high: 13, low: 10, }, "long", ntz, true, threshold), true);
   assert.equal(isStrictlyOutsideNtz({ high: 12, low: 10 }, "long", ntz, true, threshold), false);
 
   const result = patienceCandleEngine(
@@ -91,10 +91,10 @@ test("effective confirmation uses the stricter NTZ threshold and accepts wick-on
 
 test("an outside-NTZ patience candle still uses the effective wick threshold", () => {
   const ntz = { high: 12, low: 9, complete: true };
-  const candles = [
+   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11.5, 10.8, 12.5),
-    candle(2, 12.5, 12.75, 12.3, 12.6),
+     candle(2, 12.5, 13.5, 12.3, 13.25),
   ];
   const result = patienceCandleEngine(candles, "long", {
     eligibilityEvents: eligibility(),
@@ -103,8 +103,8 @@ test("an outside-NTZ patience candle still uses the effective wick threshold", (
     requireFinalizedNtz: true,
   });
   assert.equal(result.state, "ENTRY_TRIGGERED");
-  assert.equal(result.entryBufferPrice, 12.5);
-  assert.equal(result.triggerPrice, 12.5);
+   assert.equal(result.entryBufferPrice, 13.5);
+   assert.equal(result.triggerPrice, 13.5);
 });
 
 test("an incomplete patience candle cannot be validated", () => {
@@ -146,15 +146,19 @@ test("a missing immediate E uses the expected boundary even after a later candle
 });
 
 test("a failed immediate trigger expires and a later candle cannot trigger it", () => {
-  const candles = setup("long", candle(2, 10.8, 11.2, 10.1, 10.4));
-  candles.push(candle(4, 10.4, 12.2, 10.1, 12.1));
+  const candles = [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 11.2, 10.1, 10.4),
+    candle(4, 10.4, 12.2, 10.1, 12.1),
+  ];
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
   assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
   assert.equal(result.occurrences?.[0]?.triggerCandle?.openTime, candles[2].openTime);
   assert.equal(result.occurrences?.[0]?.nextObservedCandle?.openTime, candles[2].openTime);
   assert.equal(result.occurrences?.[0]?.expectedEntryCandleOpenTime, candles[2].openTime);
-  assert.equal(result.occurrences?.[0]?.confirmationThreshold, 12);
+   assert.equal(result.occurrences?.[0]?.confirmationThreshold, 13);
   assert.ok((result.occurrences?.[0]?.actualConfirmationExcursion ?? 0) < 1);
   assert.match(result.detail, /confirmation buffer|new patience pattern/i);
 });
@@ -176,7 +180,7 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
     candle(1, 10.5, 11, 7, 10.8),
     candle(2, 10.8, 11.2, 10.1, 10.4),
     candle(3, 10.4, 11.1, 9.2, 10.8),
-    candle(4, 10.8, 12.1, 10.2, 12),
+     candle(4, 10.8, 13.25, 10.2, 13),
   ];
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
@@ -196,7 +200,7 @@ test("a later confirmed P→E sequence remains executable after an earlier ambig
     candle(1, 10.5, 11, 7, 10.8),
     candle(2, 10.8, 12.2, 6.8, 10.5),
     candle(3, 10.5, 11.1, 9.2, 10.8),
-    candle(4, 10.8, 12.1, 9.3, 12),
+     candle(4, 10.8, 13.25, 9.3, 13),
   ];
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
@@ -209,7 +213,7 @@ test("a consumed eligibility arm cannot produce a second successful P→E sequen
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11, 7, 10.8),
-    candle(2, 10.8, 12.1, 10.2, 12),
+     candle(2, 10.8, 13, 10.2, 12.8),
     candle(3, 12, 12.2, 10, 11.5),
     candle(4, 11.5, 11.5, 9, 11),
     candle(5, 11, 12.5, 10, 12.4),
@@ -266,10 +270,10 @@ test("an incomplete immediate candle cannot be replaced by a later interval", ()
 test("configured confirmation and stop buffers are retained on every patience occurrence", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
     eligibilityEvents: eligibility(),
-    entryBufferTicks: 3,
+    entryBufferTicks: 8,
     stopBufferTicks: 1,
   });
-  assert.equal(result.occurrences?.[0]?.entryBufferTicks, 3);
+  assert.equal(result.occurrences?.[0]?.entryBufferTicks, 8);
   assert.equal(result.occurrences?.[0]?.stopBufferTicks, 1);
   assert.equal(result.occurrences?.[0]?.patienceCandleExtreme, result.occurrences?.[0]?.patienceCandle.low);
   assert.equal(result.occurrences?.[0]?.stopBufferPoints, 0.25);
@@ -292,18 +296,22 @@ test("governed default patience stops use twelve ticks on the P extreme", () => 
 });
 
 test("an active trigger candle does not need to close", () => {
-  const result = patienceCandleEngine(setup("long", candle(2, 10.8, 10.95, 9.2, 10.9, false)), "long", { eligibilityEvents: eligibility() });
+  const result = patienceCandleEngine([
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 11, 7, 10.8),
+    candle(2, 10.8, 10.95, 9.2, 10.9, false),
+  ], "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "TRIGGER_CANDLE_ACTIVE");
 });
 
 test("bullish opposite-side-first gap invalidates the setup", () => {
-  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 10.5, 6.5, 8, false)), "long", { eligibilityEvents: eligibility() });
+  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 9.5, 6.5, 8, false)), "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "OPPOSITE_SIDE_INVALIDATION");
   assert.equal(result.triggerPrice, 7);
 });
 
 test("bearish opposite-side-first gap invalidates the setup", () => {
-  const result = patienceCandleEngine(setup("short", candle(2, 11.2, 13.5, 9.2, 10, false)), "short", { eligibilityEvents: eligibility() });
+  const result = patienceCandleEngine(setup("short", candle(2, 11.2, 13.5, 10.2, 10.5, false)), "short", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "OPPOSITE_SIDE_INVALIDATION");
   assert.equal(result.triggerPrice, 13);
 });
@@ -351,16 +359,25 @@ test("raw patience breaks wait for the full confirmation buffer", () => {
   assert.equal(bearish.entryBufferPrice, 8);
 });
 
-test("three-tick confirmation is configurable and the thesis stop sits one tick beyond the opposite wick", () => {
-  const result = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
+test("eight-tick confirmation is governed and the thesis stop sits one tick beyond the opposite wick", () => {
+  const result = patienceCandleEngine(setup("long", candle(2, 10.8, 13.75, 10.1, 13.7)), "long", {
     eligibilityEvents: eligibility(),
-    entryBufferTicks: 3,
+    entryBufferTicks: 8,
     stopBufferTicks: 1,
   });
   assert.equal(result.state, "ENTRY_TRIGGERED");
-  assert.equal(result.entryBufferTicks, 3);
-  assert.equal(result.entryBufferPrice, 11.75);
+  assert.equal(result.entryBufferTicks, 8);
+  assert.equal(result.entryBufferPrice, 12);
   assert.equal(result.strategyStopPrice, 6.75);
+});
+
+test("a one-tick-short long and short excursion cannot confirm the governed buffer", () => {
+  const long = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", { eligibilityEvents: eligibility() });
+  const short = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 8.25, 9)), "short", { eligibilityEvents: eligibility() });
+  assert.equal(long.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(short.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(long.entryBufferPrice, 12);
+  assert.equal(short.entryBufferPrice, 8);
 });
 
 test("generic continuation still requires a confirmed trend, but records the examined shape", () => {
@@ -418,7 +435,7 @@ test("a qualifying patience shape remains eligible beyond thirty minutes", () =>
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(10, 10.5, 11, 7, 10.8),
-    candle(11, 10.8, 12.1, 10.2, 12),
+     candle(11, 10.8, 13, 10.2, 12.8),
   ];
   const result = patienceCandleEngine(candles, "long", {
     eligibilityEvents: [{ time: candles[1].openTime, reason: "pullback" }],
@@ -430,7 +447,7 @@ test("a qualifying patience shape remains eligible beyond thirty minutes", () =>
 });
 
 test("buffer configuration rejects unsupported confirmation widths", () => {
-  assert.throws(() => patienceCandleEngine([], "long", { entryBufferTicks: 2 }), /three or four ticks/i);
+  assert.throws(() => patienceCandleEngine([], "long", { entryBufferTicks: 7 }), /exactly eight MES ticks/i);
   assert.throws(() => patienceCandleEngine([], "long", { stopBufferTicks: 0 }), /at least one tick/i);
 });
 
@@ -527,7 +544,7 @@ test("non-qualifying pullback events cannot open patience eligibility", () => {
 });
 
 test("wrong-side invalidation remains a diagnostic patience occurrence", () => {
-  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 10.5, 6.5, 8)), "long", { eligibilityEvents: eligibility() });
+   const result = patienceCandleEngine(setup("long", candle(2, 8.8, 9.5, 6.5, 8)), "long", { eligibilityEvents: eligibility() });
   assert.equal(result.occurrences?.[0]?.status, "OPPOSITE_SIDE_INVALIDATION");
   assert.equal(result.occurrences?.[0]?.triggerCandle?.openTime, candle(2, 8.8, 10.5, 6.5, 8).openTime);
 });

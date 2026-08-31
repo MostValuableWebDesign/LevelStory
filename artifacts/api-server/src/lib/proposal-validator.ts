@@ -195,11 +195,11 @@ export function compareCandidate(teachings: TeachingExample[], diff: unknown, pa
   });
   const causalEvidenceValid = teachings.every((item) => (item.causalValidation as { valid?: boolean }).valid === true);
   const immediateNextEntryCompliant = teachings.every((item) => Boolean(item.selectedCandleTimestamp && item.patienceCandleTimestamp));
-  const entryBufferCompliant = teachings.every((item) => item.entryBufferTicks === 3 || item.entryBufferTicks === 4);
+  const entryBufferCompliant = teachings.every((item) => item.entryBufferTicks === 8);
   if (!causalEvidenceValid) conflicts.push("Causal validation did not pass for every selected teaching example.");
   if (!noFutureData) conflicts.push("Future candle access was detected in teaching evidence.");
   if (!immediateNextEntryCompliant) conflicts.push("Immediate-next patience-entry timing is incomplete.");
-  if (!entryBufferCompliant) conflicts.push("Every entry buffer must be three or four ticks.");
+  if (!entryBufferCompliant) conflicts.push("Every entry buffer must be exactly eight MES ticks (2.00 index points).");
   const datasetFingerprint = hash(teachings.map((item) => item.sourceFingerprint));
   const calendarFingerprint = hash(teachings.map((item) => item.calendarFingerprint));
   return {

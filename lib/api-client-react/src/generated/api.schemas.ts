@@ -792,8 +792,7 @@ export type PatienceAnalysisEntryBufferTicks = typeof PatienceAnalysisEntryBuffe
 
 
 export const PatienceAnalysisEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;
 
 /**
@@ -1609,12 +1608,14 @@ export const BacktestRequestExecutionMode = {
   ohlcv_modeled: 'ohlcv_modeled',
 } as const;
 
+/**
+ * Exactly 8 MES ticks / 2.00 index points.
+ */
 export type BacktestRequestOhlcvEntryBufferTicks = typeof BacktestRequestOhlcvEntryBufferTicks[keyof typeof BacktestRequestOhlcvEntryBufferTicks];
 
 
 export const BacktestRequestOhlcvEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;
 
 export interface BacktestRequest {
@@ -1653,6 +1654,7 @@ export interface BacktestRequest {
   source?: BacktestRequestSource;
   /** Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source. */
   executionMode?: BacktestRequestExecutionMode;
+  /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
   /**
      * @minimum 1
@@ -3079,12 +3081,14 @@ export const EdgeValidationPilotRequestSymbol = {
   MES: 'MES',
 } as const;
 
+/**
+ * Exactly 8 MES ticks / 2.00 index points.
+ */
 export type EdgeValidationPilotRequestOhlcvEntryBufferTicks = typeof EdgeValidationPilotRequestOhlcvEntryBufferTicks[keyof typeof EdgeValidationPilotRequestOhlcvEntryBufferTicks];
 
 
 export const EdgeValidationPilotRequestOhlcvEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;
 
 /**
@@ -3098,6 +3102,7 @@ export interface EdgeValidationPilotRequest {
      * @items.pattern ^\d{4}-\d{2}-\d{2}$
      */
   selectedDates: string[];
+  /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
   /**
      * @minimum 0
@@ -3552,12 +3557,14 @@ export const VisualValidationTeachingExampleDirection = {
   short: 'short',
 } as const;
 
+/**
+ * Exactly 8 MES ticks / 2.00 index points.
+ */
 export type VisualValidationTeachingExampleEntryBufferTicks = typeof VisualValidationTeachingExampleEntryBufferTicks[keyof typeof VisualValidationTeachingExampleEntryBufferTicks];
 
 
 export const VisualValidationTeachingExampleEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;
 
 /**
@@ -3589,6 +3596,7 @@ export interface VisualValidationTeachingExample {
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
+  /** Exactly 8 MES ticks / 2.00 index points. */
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
   /** MES ticks; approved MES tolerances only. */
   levelToleranceTicks: VisualValidationTeachingExampleLevelToleranceTicks;
@@ -4148,12 +4156,14 @@ export const VisualValidationReviewRequestTeachingDirection = {
   short: 'short',
 } as const;
 
+/**
+ * Exactly 8 MES ticks / 2.00 index points.
+ */
 export type VisualValidationReviewRequestTeachingEntryBufferTicks = typeof VisualValidationReviewRequestTeachingEntryBufferTicks[keyof typeof VisualValidationReviewRequestTeachingEntryBufferTicks];
 
 
 export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
-  NUMBER_3: 3,
-  NUMBER_4: 4,
+  NUMBER_8: 8,
 } as const;
 
 /**
@@ -4179,6 +4189,7 @@ export type VisualValidationReviewRequestTeaching = {
   entryCandleCloseTime: string;
   patienceCandleOpenTime: string;
   patienceCandleCloseTime: string;
+  /** Exactly 8 MES ticks / 2.00 index points. */
   entryBufferTicks: VisualValidationReviewRequestTeachingEntryBufferTicks;
   /** MES ticks; approved MES tolerances only. */
   levelToleranceTicks: VisualValidationReviewRequestTeachingLevelToleranceTicks;

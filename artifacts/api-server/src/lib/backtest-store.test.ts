@@ -47,7 +47,7 @@ test("source content, risk, and execution changes invalidate cache identity", ()
   const base = {
     request: { symbol: "MES", endDate: "2026-08-28", inSampleDays: 5, outOfSampleDays: 2 },
     risk: { accountSize: 10_000, riskPercent: 1 },
-    executionPolicy: { entryBufferTicks: 4, slippageTicks: 1 },
+    executionPolicy: { entryBufferTicks: 8, slippageTicks: 1 },
   };
   const sourceA = buildBacktestCacheKey({ ...base, historicalSource: { fingerprint: "a" } });
   const sourceB = buildBacktestCacheKey({ ...base, historicalSource: { fingerprint: "b" } });

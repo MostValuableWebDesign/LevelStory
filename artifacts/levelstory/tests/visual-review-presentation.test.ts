@@ -72,6 +72,12 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /previous-session-high/);
   assert.match(page, /two-sessions-high/);
   assert.match(page, /pointerEvents="none"/);
+   assert.match(page, /indicator-curve-vwap/);
+   assert.match(page, /indicator-curve-ema200/);
+   assert.match(page, /activeIndicatorId/);
+   assert.match(page, /8 MES ticks · 2\.00 points/);
+   assert.doesNotMatch(page, /Critical · Premarket high/);
+   assert.doesNotMatch(page, /Critical · Premarket low/);
 });
 
 test("visual review exposes only confirmed trade candidates", () => {
@@ -138,7 +144,7 @@ test("teaching compatibility fields exclude dynamic indicators and clear stale s
   assert.match(page, /qualifyingLevels: normalizeTeachingQualifyingLevels/);
 });
 
-test("frontend dynamic-level interaction matches the four-tick L-range rule", () => {
+test("frontend dynamic-level interaction matches the configured L-range rule", () => {
   const cases = [
     { name: "wick touches fractional VWAP", high: 6851.508, low: 6850, value: 6851.508, qualifies: true, distanceTicks: 0 },
     { name: "body crosses fractional VWAP", high: 6852, low: 6851, value: 6851.508, qualifies: true, distanceTicks: 0 },
