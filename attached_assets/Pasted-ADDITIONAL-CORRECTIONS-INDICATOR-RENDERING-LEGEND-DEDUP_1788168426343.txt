@@ -1,0 +1,164 @@
+ADDITIONAL CORRECTIONS — INDICATOR RENDERING, LEGEND DEDUPLICATION, AND ENTRY BUFFER
+
+Keep all requirements from the previous consolidated prompt. Add the following corrections.
+
+PART 10 — VWAP AND EMA 200 MUST RENDER ONLY AS CURVES
+
+VWAP and EMA 200 currently appear twice:
+
+1. As the correct curved time-series indicator.
+2. As an incorrect static dotted horizontal annotation.
+
+Remove the duplicate horizontal representations.
+
+Requirements:
+
+- VWAP must render only through its causal curved `indicatorSeries` path.
+- EMA 200 must render only through its causal curved `indicatorSeries` path.
+- Exclude VWAP and EMA 200 annotations from:
+  - `primaryLevels`
+  - Static horizontal level rendering
+  - Edge indicators
+  - Additional-level lists
+  - Dynamite clustering as fixed-price levels
+- Keep one interactive VWAP legend item and one interactive EMA 200 legend item.
+- Hovering, focusing, or selecting VWAP in the legend must highlight the complete VWAP curve.
+- Hovering, focusing, or selecting EMA 200 must highlight the complete EMA curve.
+- Highlight by increasing the selected curve’s width and opacity while slightly dimming the other indicator.
+- Do not draw a horizontal line using the indicator’s selected, evaluation, or final value.
+- The candle inspector may continue showing the exact VWAP and EMA value for its currently inspected candle.
+
+Preserve:
+
+- Red VWAP curve.
+- Light-green EMA 200 curve.
+- Solid machine-visible portion.
+- Dashed human-only continuation when applicable.
+- Causal, candle-by-candle indicator values.
+
+PART 11 — REMOVE CRITICAL PREMARKET DUPLICATES
+
+Remove these redundant presentation annotations:
+
+- `Critical · Premarket high`
+- `Critical · Premarket low`
+
+Preserve only the canonical:
+
+- `Premarket high`
+- `Premarket low`
+
+Apply this removal consistently to:
+
+- Upper level legend
+- Chart lines
+- Edge indicators
+- Additional-level lists
+- Hover/select targets
+
+Do not remove the underlying canonical premarket levels or their engine provenance.
+
+Use a shared semantic presentation predicate. Do not filter only one exact display string—the current implementation excludes one Critical premarket variant but still permits the other or permits it through the general legend collection.
+
+PART 12 — GOVERNED EIGHT-TICK ENTRY CONFIRMATION
+
+Change the authoritative patience-candle entry-confirmation buffer to:
+
+`8 MES ticks = 2.00 MES index points`
+
+This is a price-distance rule, not $2 of monetary P&L.
+
+Entry thresholds:
+
+- Long:
+  `entryThreshold = patienceCandle.high + (8 × 0.25)`
+  `entryThreshold = patienceCandle.high + 2.00`
+
+- Short:
+  `entryThreshold = patienceCandle.low - (8 × 0.25)`
+  `entryThreshold = patienceCandle.low - 2.00`
+
+The immediate next completed candle E must reach the threshold:
+
+- Long: `E.high >= entryThreshold`
+- Short: `E.low <= entryThreshold`
+
+Preserve immediate-only behavior:
+
+- Only the candle immediately following P may confirm P.
+- If E does not reach the eight-tick threshold, P expires.
+- A later candle cannot confirm the expired P.
+- Continue scanning for a later valid P2 followed immediately by E2.
+- Entry must remain strictly outside the finalized NTZ.
+- E must open strictly before 1:00 p.m. America/New_York.
+
+Keep these separate governed values:
+
+- Pullback-to-level proximity: 12 ticks.
+- Entry confirmation beyond P: 8 ticks.
+- Strategy-stop range beyond the opposite P extreme: 12 ticks.
+
+Do not accidentally change the pullback tolerance or stop range when changing the entry buffer.
+
+Update every authoritative path:
+
+- Strategy configuration
+- Formula/configuration hash
+- Phase 5 patience engine default
+- Phase 6 strategy qualification
+- Canonical occurrence ledger
+- Candidate projection
+- Candidate-driven Shadow Mode execution
+- Historical replay request validation
+- OpenAPI/API schemas
+- Frontend descriptions and inspector values
+- Teaching-evidence validation
+- Strategy-proposal comparison
+- Cache/version identity where configuration affects deterministic results
+
+Remove old schema restrictions such as:
+
+`ohlcvEntryBufferTicks?: 3 | 4`
+
+Replace them with the governed eight-tick configuration or a properly validated positive integer whose active formula value is eight.
+
+Do not silently reuse cached results produced with the four-tick buffer.
+
+FOCUSED TESTS
+
+Add deterministic tests proving:
+
+1. VWAP has one curved path and no static horizontal line.
+2. EMA 200 has one curved path and no static horizontal line.
+3. Selecting the VWAP legend item highlights the VWAP curve.
+4. Selecting the EMA legend item highlights the EMA curve.
+5. Critical Premarket high does not render.
+6. Critical Premarket low does not render.
+7. Canonical Premarket high and low still render.
+8. Long E reaching P high plus exactly eight ticks confirms.
+9. Long E stopping one tick short fails.
+10. Short E reaching P low minus exactly eight ticks confirms.
+11. Short E stopping one tick short fails.
+12. A failed E cannot be replaced by a later confirmation candle.
+13. P2→E2 can qualify after P1→E1 fails.
+14. The eight-tick rule propagates into candidate execution and audit evidence.
+15. Pullback tolerance remains 12 ticks.
+16. Strategy-stop range remains 12 ticks.
+17. No entry occurs at or after 1:00 p.m. ET.
+
+COMPUTE-CONSCIOUS VERIFICATION
+
+- Run focused Phase 5, Phase 6, Phase 9, visual-chart, presentation, and API-schema tests only.
+- Run API and frontend typechecks.
+- Run `git diff --check`.
+- Do not rebuild the historical index.
+- Do not run a cold broad replay.
+- Remove the committed temporary prompt attachment before finishing.
+
+Report:
+
+- Exact old and new entry-buffer configuration.
+- Confirmation-price examples for long and short.
+- Proof that pullback and stop tolerances remain unchanged.
+- Proof that VWAP and EMA no longer have duplicate horizontal lines.
+- Focused test totals and typecheck results.
