@@ -230,7 +230,6 @@ export function startVisualValidationGenerationJob(request: VisualValidationRequ
     completedSessions: 0,
     totalSessions: 0,
     elapsedMs: 0,
-    estimatedRemainingMs: null,
     message: "Queued for historical replay",
     error: null,
     reviewSetId: null,
