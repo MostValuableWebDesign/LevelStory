@@ -1,0 +1,77 @@
+Paste this into Replit:
+
+```text
+Implement one narrow correctness pass for LevelStory’s completed-entry target snapshot and trade-management validation.
+
+Do not change strategy definitions, patience-candle detection, entry confirmation, pullback tolerance, entry window, historical indexing, frontend charts, broker behavior, or live/paper trading.
+
+1. Correct completed-E target snapshot causality
+
+Current problem:
+`targetLevelSnapshotForAudit` assigns `frozenAt = E close` even when `record.evaluatedCandleOpenTime` occurred before E completed. `preferredTargetLevelSnapshot` can then select that earlier audit and treat its stale level values as completed-E evidence.
+
+Required behavior:
+- A target-level snapshot is eligible only when its source audit observation time is at or after the canonical completed E candle’s close time.
+- Do not retimestamp pre-E-close target data as if it were observed at E close.
+- Require exact agreement on:
+  - source fingerprint
+  - formula/configuration hash
+  - contract and trading date where applicable
+  - canonical E open timestamp
+  - canonical E close timestamp
+  - completed E candle
+- Select the earliest valid audit observed at or after E close.
+- Later audits must not replace that first valid completed-E snapshot.
+- If no valid completed-E snapshot exists, preserve an explicit unavailable target disposition. Do not infer levels or fabricate a target.
+- Dynamic values such as VWAP and EMA must come from the valid completed-E observation, not a pre-close or final-session value.
+
+Replace the existing test that expects a pre-E-close audit to win.
+
+Add deterministic tests proving:
+- A pre-E-close audit is rejected even if it contains eligible levels.
+- The first audit at E close is selected.
+- If the first valid audit is after E close, it may be selected and its true source timestamp remains intact.
+- Later audits cannot replace the frozen snapshot.
+- An incomplete E candle cannot produce a target snapshot.
+- Repeated merged strategy audits produce the same immutable target selection.
+- VWAP/EMA values are taken from the selected completed-E observation.
+
+2. Remove catastrophe stop as a mandatory management dependency
+
+My authoritative loss exit is the strategy stop associated with the specific trade’s patience candle. Catastrophe stop is redundant and must not prevent execution or outcome replay.
+
+Required behavior:
+- `strategyStopPrice` remains required and directionally validated.
+- `sessionCloseTime` remains independently usable.
+- `targetPrice` remains optional when the target disposition is `NO_ELIGIBLE_KEY_LEVEL`.
+- `catastropheStopPrice` must be optional.
+- Missing catastrophe-stop evidence must not set management status to missing or invalid.
+- Do not require catastrophe-stop ordering when it is absent.
+- If legacy records include a catastrophe stop, retain it as diagnostic provenance only unless removing it is necessary for consistency.
+- Do not let it create a second operative loss exit or override the strategy stop.
+- A valid strategy stop or session-close exit must still be simulated when no target and no catastrophe stop exist.
+- If no target exists, disable target-dependent runner management but preserve strategy-stop and session-close processing.
+
+Add deterministic tests for:
+- Strategy stop hit with no target and no catastrophe stop.
+- Session-close exit with no target and no catastrophe stop.
+- Open/unscored trade when neither stop nor session close is reached.
+- Invalid or missing strategy stop still blocks management.
+- A legacy catastrophe stop does not override the strategy stop.
+- One candidate cannot inherit another candidate’s stop context.
+
+Verification:
+- Run only focused Phase 9, target-selection, candidate-management, and OHLCV execution tests.
+- Run API typecheck and `git diff --check`.
+- Do not rebuild the historical index.
+- Do not run a broad historical qualification job.
+- Remove any temporary prompt attachment before committing.
+
+Report:
+1. Files changed.
+2. Root causes fixed.
+3. Exact completed-E snapshot-selection rule.
+4. Exact management requirements after removing catastrophe-stop dependency.
+5. Focused test totals and typecheck result.
+6. Any remaining honest limitation.
+```
