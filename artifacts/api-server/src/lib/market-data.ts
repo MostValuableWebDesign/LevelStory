@@ -119,6 +119,14 @@ export type MarketSnapshot = {
     ntzLow: number | null;
     ntzWidth: number | null;
     vwap: number | null;
+     references: Array<{
+       id: "previous-session-high" | "previous-session-low" | "two-sessions-high" | "two-sessions-low";
+       name: string;
+       price: number;
+       sourceTradingDate: string;
+       sourceContractSymbol: string | null;
+       toleranceTicks: 12;
+     }>;
     critical: Array<{ name: string; price: number; kind: string }>;
   };
   ntz: {
@@ -681,7 +689,19 @@ export function createMarketSnapshot(
       ntzHigh: finiteOrNull(levels.ntz?.high),
       ntzLow: finiteOrNull(levels.ntz?.low),
       ntzWidth: levels.ntz ? Number((levels.ntz.high - levels.ntz.low).toFixed(2)) : null,
-      vwap: indicators.vwap,
+       vwap: indicators.vwap,
+       references: levels.levels
+         .filter((level) => level.kind === "intraday_reference" && level.sourceTradingDate)
+         .map((level) => ({
+           id: level.name === "Prior day high" ? "previous-session-high"
+             : level.name === "Prior day low" ? "previous-session-low"
+               : level.name === "Two days ago high" ? "two-sessions-high" : "two-sessions-low",
+           name: level.name,
+           price: level.price,
+           sourceTradingDate: level.sourceTradingDate!,
+           sourceContractSymbol: level.sourceContractSymbol ?? null,
+           toleranceTicks: 12 as const,
+         })),
       critical,
     },
      ntz: {

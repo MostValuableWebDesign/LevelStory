@@ -1,7 +1,7 @@
 import type { Candle, Level } from "./types.js";
 import { causalEmaSeries, fibonacci, regularSessionVwap, rsi, volumeRatio } from "./indicators.js";
 import type { StrategyConfig } from "./config.js";
-import { FUTURES_CONTRACT_SPECS, type FuturesContractSpecification } from "../futures/contracts.js";
+import { FUTURES_CONTRACT_SPECS, roundToTick, type FuturesContractSpecification } from "../futures/contracts.js";
 import type { SimulatedHourlyCandle } from "../futures/simulated-feed.js";
 import { majorLevels as detectMajorLevels, type MajorLevel } from "./major-levels.js";
 import {
@@ -73,8 +73,18 @@ export function sessionLevels(
   const currentTradingDate = windows.tradingDate
     ?? (regular[0] ? tradingDateForTimestamp(regular[0].openTime, calendar) : undefined)
     ?? (candles[0] ? tradingDateForTimestamp(candles[0].openTime, calendar) : undefined);
-  const regularCandles = candles
-    .filter((candle) => classifyFuturesSession(candle.openTime, calendar) === "regular")
+  const sourceCandles = [...(windows.historicalFeed ?? []), ...candles];
+  const uniqueSourceCandles = [...new Map(sourceCandles.map((candle) => [
+    `${candle.openTime}:${contractSymbolOf(candle) ?? ""}`,
+    candle,
+  ])).values()];
+  const regularCandles = uniqueSourceCandles
+    .filter((candle) =>
+      candle.isComplete
+      && (windows.replayCursor === undefined || candle.closeTime <= windows.replayCursor)
+      && classifyFuturesSession(candle.openTime, calendar) === "regular"
+      && isInsideRegularWindow(candle, calendar),
+    )
     .sort((first, second) => first.openTime - second.openTime);
   const dayMap = new Map<string, Candle[]>();
   for (const candle of regularCandles) {
@@ -83,12 +93,14 @@ export function sessionLevels(
     day.push(candle);
     dayMap.set(tradingDate, day);
   }
-  const tradingDays = [...dayMap.keys()].sort((first, second) => second.localeCompare(first));
+  const sessionMap = buildCompletedRegularSessionMap(regularCandles, calendar);
+  const tradingDays = [...sessionMap.keys()].sort((first, second) => second.localeCompare(first));
   const currentDate = currentTradingDate ?? tradingDays[0];
-  const priorDays = tradingDays.filter((date) => date < (currentDate ?? ""));
-  const completedPriorDays = priorDays.filter((date) => isCompleteRegularSession(dayMap.get(date) ?? [], date, calendar));
-  const previousDay = completedPriorDays[0] ? dayMap.get(completedPriorDays[0]) ?? [] : [];
-  const dayBeforeYesterday = completedPriorDays[1] ? dayMap.get(completedPriorDays[1]) ?? [] : [];
+  const completedPriorDays = tradingDays.filter((date) => date < (currentDate ?? ""));
+  const previousSession = completedPriorDays[0] ? sessionMap.get(completedPriorDays[0]) : undefined;
+  const twoSessionsBack = completedPriorDays[1] ? sessionMap.get(completedPriorDays[1]) : undefined;
+  const previousDay = previousSession?.candles ?? [];
+  const dayBeforeYesterday = twoSessionsBack?.candles ?? [];
 
   const currentSessionWindow = currentDate ? sessionWindow(currentDate, "regular", calendar) : null;
   const openingRangeStart = currentSessionWindow?.openTime;
@@ -114,20 +126,25 @@ export function sessionLevels(
       { name: "Premarket low", price: Math.min(...windows.premarket.map((candle) => candle.low)) },
     );
   }
-  const priorLevels: Array<[string, number]> = [
-    ["Prior day high", high(previousDay)],
-    ["Prior day low", low(previousDay)],
-    ["Two days ago high", high(dayBeforeYesterday)],
-    ["Two days ago low", low(dayBeforeYesterday)],
+  const priorLevels: Array<[string, number, string | undefined, string | null]> = [
+    ["Prior day high", previousSession?.high ?? NaN, previousSession?.tradingDate, previousSession?.contractSymbol ?? null],
+    ["Prior day low", previousSession?.low ?? NaN, previousSession?.tradingDate, previousSession?.contractSymbol ?? null],
+    ["Two days ago high", twoSessionsBack?.high ?? NaN, twoSessionsBack?.tradingDate, twoSessionsBack?.contractSymbol ?? null],
+    ["Two days ago low", twoSessionsBack?.low ?? NaN, twoSessionsBack?.tradingDate, twoSessionsBack?.contractSymbol ?? null],
   ];
-  for (const [name, price] of priorLevels) {
-    if (Number.isFinite(price)) levels.push({ name, price });
+  for (const [name, price, sourceTradingDate, sourceContractSymbol] of priorLevels) {
+    if (Number.isFinite(price)) levels.push({
+      name,
+      price: roundToTick(price, specification),
+      kind: "intraday_reference",
+      sourceTradingDate,
+      sourceContractSymbol,
+    });
   }
   if (orb) levels.push({ name: "ORB high", price: orb.high }, { name: "ORB low", price: orb.low });
   if (ntz) levels.push({ name: "NTZ high", price: ntz.high }, { name: "NTZ low", price: ntz.low });
 
   const indicatorCandles = [...previousDay, ...regular];
-  const sourceCandles = [...(windows.historicalFeed ?? []), ...candles];
   const contractSymbols = new Set(
     candles
       .map((candle) => (candle as Candle & { contractSymbol?: string }).contractSymbol)
@@ -192,6 +209,63 @@ export function sessionLevels(
 
 function high(candles: readonly Candle[]): number {
   return candles.length ? Math.max(...candles.map((candle) => candle.high)) : NaN;
+}
+
+type CompletedRegularSession = {
+  tradingDate: string;
+  candles: Candle[];
+  high: number;
+  low: number;
+  contractSymbol: string | null;
+};
+
+function contractSymbolOf(candle: Candle): string | null {
+  const symbol = (candle as Candle & { contractSymbol?: string }).contractSymbol;
+  return symbol ?? null;
+}
+
+function isInsideRegularWindow(candle: Candle, calendar: FuturesSessionCalendar): boolean {
+  const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+  const window = sessionWindow(tradingDate, "regular", calendar);
+  return window !== null
+    && candle.openTime >= window.openTime
+    && candle.closeTime <= window.closeTime
+    && candle.closeTime === candle.openTime + FIVE_MINUTES;
+}
+
+function buildCompletedRegularSessionMap(
+  candles: readonly Candle[],
+  calendar: FuturesSessionCalendar,
+): Map<string, CompletedRegularSession> {
+  const byDateAndContract = new Map<string, Candle[]>();
+  for (const candle of candles) {
+    const date = tradingDateForTimestamp(candle.openTime, calendar);
+    const key = `${date}:${contractSymbolOf(candle) ?? ""}`;
+    const group = byDateAndContract.get(key) ?? [];
+    group.push(candle);
+    byDateAndContract.set(key, group);
+  }
+  const completed = new Map<string, CompletedRegularSession>();
+  for (const [key, grouped] of byDateAndContract) {
+    const tradingDate = key.slice(0, key.indexOf(":"));
+    if (!isCompleteRegularSession(grouped, tradingDate, calendar)) continue;
+    const ordered = [...grouped].sort((first, second) => first.openTime - second.openTime);
+    const existing = completed.get(tradingDate);
+    // Never blend overlapping contracts. An ambiguous date is unavailable
+    // rather than silently combining prices from different futures contracts.
+    if (existing) {
+      completed.delete(tradingDate);
+      continue;
+    }
+    completed.set(tradingDate, {
+      tradingDate,
+      candles: ordered,
+      high: high(ordered),
+      low: low(ordered),
+      contractSymbol: contractSymbolOf(ordered[0]!),
+    });
+  }
+  return completed;
 }
 
 function low(candles: readonly Candle[]): number {

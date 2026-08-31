@@ -87,6 +87,7 @@ import {
   isOpeningRangeCompleteAtEvaluation,
   isDisplacedLabel,
   isPrimaryLevel,
+  INTRADAY_REFERENCE_PRESENTATION,
   mergeOrbNtzAnnotations,
   priceToY,
   resolveChartPointerFromClientPoint,
@@ -220,8 +221,9 @@ function anchorTone(role: VisualValidationCategoryAnchor["relatedCandles"][numbe
 function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "orb-high" || annotation.id === "orb-low") return "hsl(33 93% 52%)";
   if (annotation.id === "premarket-high" || annotation.id === "premarket-low") return "hsl(var(--positive))";
-  if (annotation.id === "previous-session-high" || annotation.id === "previous-session-low") return "hsl(259 55% 48%)";
-  if (annotation.id === "two-sessions-high" || annotation.id === "two-sessions-low") return "hsl(190 58% 38%)";
+  if (annotation.id in INTRADAY_REFERENCE_PRESENTATION) {
+    return INTRADAY_REFERENCE_PRESENTATION[annotation.id as keyof typeof INTRADAY_REFERENCE_PRESENTATION].color;
+  }
   if (annotation.id === "vwap") return "hsl(5 58% 46%)";
   if (annotation.id === "ema-200") return "hsl(145 45% 42%)";
   if (annotation.id.startsWith("critical-") || annotation.id.includes("support") || annotation.id.includes("resistance")) return "hsl(214 37% 15%)";

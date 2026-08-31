@@ -31,6 +31,8 @@ export type Level = {
   /** Optional bounds for a qualifying zone; point levels omit both bounds. */
   rangeLow?: number;
   rangeHigh?: number;
+  sourceTradingDate?: string;
+  sourceContractSymbol?: string | null;
 };
 
 export type TrendDirection = "bullish" | "bearish" | "neutral";

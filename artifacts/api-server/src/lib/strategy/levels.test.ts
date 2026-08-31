@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
-import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
+import { sessionCalendarForContract, sessionWindow, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
 import { sessionLevels, type SessionWindows } from "./levels.js";
 import type { Candle } from "./types.js";
@@ -47,6 +47,30 @@ function regularSession(date: string, high: number, low: number, lastClose: numb
   });
 }
 
+function regularSessionFor(
+  date: string,
+  high: number,
+  low: number,
+  lastClose: number,
+  sessionCalendar = calendar,
+  contractSymbol?: string,
+): Candle[] {
+  const window = sessionWindow(date, "regular", sessionCalendar);
+  assert.ok(window);
+  const count = Math.round((window.closeTime - window.openTime) / (5 * 60_000));
+  return Array.from({ length: count }, (_, index) => ({
+    openTime: window.openTime + index * 5 * 60_000,
+    closeTime: window.openTime + (index + 1) * 5 * 60_000,
+    open: index === count - 1 ? lastClose : 104,
+    high: index === 0 ? high : 105,
+    low: index === 0 ? low : 103,
+    close: index === count - 1 ? lastClose : 104,
+    volume: 100,
+    isComplete: true,
+    ...(contractSymbol ? { contractSymbol } : {}),
+  })) as Array<Candle & { contractSymbol?: string }>;
+}
+
 function fixture(options: { includeThird?: boolean; includePremarket?: boolean; outsideLast?: boolean } = {}) {
   const previous = regularSession("2026-08-24", 110, 100, 104);
   const dayBefore = regularSession("2026-08-21", 120, 90, 96);
@@ -87,6 +111,78 @@ test("premarket and previous regular-session levels use the correct trading days
   assert.equal(levels.levels.find((level) => level.name === "Two days ago high")?.price, 120);
   assert.equal(levels.levels.find((level) => level.name === "Two days ago low")?.price, 90);
   assert.equal(levels.previousDayClose, 104);
+});
+
+test("reference levels use trading sessions across a weekend", () => {
+  const levels = fixture();
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.sourceTradingDate, "2026-08-24");
+  assert.equal(levels.levels.find((level) => level.name === "Two days ago low")?.sourceTradingDate, "2026-08-21");
+});
+
+test("reference levels skip a full holiday", () => {
+  const holidayCalendar = {
+    ...calendar,
+    holidays: [...calendar.holidays, "2026-08-25"],
+    earlyCloses: { ...calendar.earlyCloses },
+  };
+  const prior = regularSessionFor("2026-08-24", 111, 99, 104, holidayCalendar);
+  const twoBack = regularSessionFor("2026-08-21", 121, 89, 96, holidayCalendar);
+  const levels = sessionLevels([...twoBack, ...prior], {
+    premarket: [],
+    regular: [],
+    tradingDate: "2026-08-26",
+  }, config, holidayCalendar);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.price, 111);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.sourceTradingDate, "2026-08-24");
+});
+
+test("reference levels accept verified early-close sessions", () => {
+  const earlyCloseCalendar = {
+    ...calendar,
+    holidays: [...calendar.holidays],
+    earlyCloses: { ...calendar.earlyCloses, "2026-08-28": "13:00" },
+  };
+  const early = regularSessionFor("2026-08-28", 113.12, 97.88, 105, earlyCloseCalendar);
+  const prior = regularSessionFor("2026-08-27", 123, 87, 100, earlyCloseCalendar);
+  const levels = sessionLevels([...prior, ...early], {
+    premarket: [],
+    regular: [],
+    tradingDate: "2026-08-31",
+  }, config, earlyCloseCalendar);
+  assert.equal(early.length, 42);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.price, 113);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day low")?.price, 98);
+});
+
+test("reference levels preserve contract identity at rollover", () => {
+  const oldContract = regularSessionFor("2026-09-09", 5100, 4900, 5000, calendar, "MESU6");
+  const newContract = regularSessionFor("2026-09-10", 6100, 5900, 6000, calendar, "MESZ6");
+  const levels = sessionLevels([...oldContract, ...newContract], {
+    premarket: [],
+    regular: [],
+    tradingDate: "2026-09-11",
+  }, config, calendar);
+  const previous = levels.levels.find((level) => level.name === "Prior day high");
+  const twoBack = levels.levels.find((level) => level.name === "Two days ago high");
+  assert.equal(previous?.price, 6100);
+  assert.equal(previous?.sourceContractSymbol, "MESZ6");
+  assert.equal(twoBack?.price, 5100);
+  assert.equal(twoBack?.sourceContractSymbol, "MESU6");
+});
+
+test("reference levels never read future current-session candles", () => {
+  const prior = regularSessionFor("2026-08-24", 111, 99, 104);
+  const current = regularSessionFor("2026-08-25", 9999, 1, 104);
+  const cursor = timestampForTradingDate("2026-08-25", "09:35", calendar);
+  const levels = sessionLevels([...prior, ...current], {
+    premarket: [],
+    regular: current.slice(0, 1),
+    tradingDate: "2026-08-25",
+    replayCursor: cursor,
+    historicalFeed: [...prior, ...current],
+  }, config, calendar);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.price, 111);
+  assert.equal(levels.levels.find((level) => level.name === "Prior day high")?.sourceTradingDate, "2026-08-24");
 });
 
 test("missing premarket data does not infer or backfill premarket levels", () => {

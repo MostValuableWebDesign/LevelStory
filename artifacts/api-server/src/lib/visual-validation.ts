@@ -1353,10 +1353,16 @@ function buildAnnotations(
   };
   addLevel("premarket-high", "Premarket high", snapshot.levels.premarketHigh, "Premarket high available at the evaluation cursor.");
   addLevel("premarket-low", "Premarket low", snapshot.levels.premarketLow, "Premarket low available at the evaluation cursor.");
-  addLevel("previous-session-high", "PDH", snapshot.levels.previousDayHigh, "Previous completed regular-session high.");
-  addLevel("previous-session-low", "PDL", snapshot.levels.previousDayLow, "Previous completed regular-session low.");
-  addLevel("two-sessions-high", "2DH", snapshot.levels.dayBeforeYesterdayHigh, "High from two completed regular sessions back.");
-  addLevel("two-sessions-low", "2DL", snapshot.levels.dayBeforeYesterdayLow, "Low from two completed regular sessions back.");
+  const sourceDetail = (name: string, fallback: string): string => {
+    const source = snapshot.levels.references.find((level) => level.name === name);
+    return source?.sourceTradingDate
+      ? `${fallback} Frozen from completed regular session ${source.sourceTradingDate}${source.sourceContractSymbol ? ` (${source.sourceContractSymbol})` : ""}; available before the current session.`
+      : fallback;
+  };
+  addLevel("previous-session-high", "Previous-day high", snapshot.levels.previousDayHigh, sourceDetail("Prior day high", "Previous completed regular-session high."), "positive");
+  addLevel("previous-session-low", "Previous-day low", snapshot.levels.previousDayLow, sourceDetail("Prior day low", "Previous completed regular-session low."), "positive");
+  addLevel("two-sessions-high", "Two-days-ago high", snapshot.levels.dayBeforeYesterdayHigh, sourceDetail("Two days ago high", "High from two completed regular sessions back."), "blue");
+  addLevel("two-sessions-low", "Two-days-ago low", snapshot.levels.dayBeforeYesterdayLow, sourceDetail("Two days ago low", "Low from two completed regular sessions back."), "blue");
   addLevel("ntz-high", "NTZ high", snapshot.levels.ntzHigh, "No-trade zone upper boundary.");
   addLevel("ntz-low", "NTZ low", snapshot.levels.ntzLow, "No-trade zone lower boundary.");
   addIndicator("ema-200", "200 MA", patienceIndicator?.ema200 ?? snapshot.indicators.ema200, "Causal 200-period exponential moving average at the patience-candle timestamp.", "positive");

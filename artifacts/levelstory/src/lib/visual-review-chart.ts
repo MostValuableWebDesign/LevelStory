@@ -142,6 +142,13 @@ export type ChartPointerPosition = {
   price: number;
 };
 
+export const INTRADAY_REFERENCE_PRESENTATION = {
+  "previous-session-high": { label: "Previous-day high", color: "hsl(145 55% 36%)" },
+  "previous-session-low": { label: "Previous-day low", color: "hsl(145 55% 36%)" },
+  "two-sessions-high": { label: "Two-days-ago high", color: "hsl(270 55% 48%)" },
+  "two-sessions-low": { label: "Two-days-ago low", color: "hsl(270 55% 48%)" },
+} as const;
+
 /**
  * Resolve a pointer against the fixed timestamp grid, not against observed
  * candles. The caller passes the SVG viewBox currently in use so zoom and pan

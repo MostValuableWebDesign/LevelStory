@@ -32,6 +32,7 @@ import {
   priceToY,
   resolveFixedSlotFromClientPoint,
   resolveChartPointerFromClientPoint,
+  INTRADAY_REFERENCE_PRESENTATION,
   selectSessionCandles,
   selectChartEvents,
   selectFocusedCandles,
@@ -42,6 +43,15 @@ import {
 } from "../src/lib/visual-review-chart.ts";
 
 const baseTime = Date.parse("2026-08-26T13:30:00.000Z");
+
+test("intraday reference chart labels and colors are exact", () => {
+  assert.deepEqual(INTRADAY_REFERENCE_PRESENTATION, {
+    "previous-session-high": { label: "Previous-day high", color: "hsl(145 55% 36%)" },
+    "previous-session-low": { label: "Previous-day low", color: "hsl(145 55% 36%)" },
+    "two-sessions-high": { label: "Two-days-ago high", color: "hsl(270 55% 48%)" },
+    "two-sessions-low": { label: "Two-days-ago low", color: "hsl(270 55% 48%)" },
+  });
+});
 
 function makeCandle(index: number, overrides: Partial<VisualValidationCandle> = {}): VisualValidationCandle {
   const openTime = new Date(baseTime + index * 5 * 60_000).toISOString();
