@@ -1475,7 +1475,40 @@ function buildAnnotations(
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
   addLevel("strategy-stop", "Strategy stop", audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice, "Formula-defined thesis stop.", "negative");
-  addLevel("target", "Target", audit.targetPrice ?? trade?.audit?.targetPrice ?? null, "Modeled target.", "positive");
+  const targetPlan = trade?.targetPlan ?? audit.targetPlan;
+  if (targetPlan?.selectedTargetLevel) {
+    const selected = targetPlan.selectedTargetLevel;
+    addLevel(
+      "selected-target-level",
+      `Selected target level · ${selected.id}`,
+      selected.price,
+      `${selected.type} · ${targetPlan.direction === "long" ? "lower boundary first" : "upper boundary first"}.`,
+      "blue",
+    );
+    const selectedAnnotation = lines.at(-1);
+    if (selectedAnnotation) {
+      selectedAnnotation.rangeLow = selected.rangeLow;
+      selectedAnnotation.rangeHigh = selected.rangeHigh;
+    }
+    for (const skipped of targetPlan.skippedLevels) {
+      addLevel(
+        `skipped-target-${skipped.id}`,
+        `Skipped: ${skipped.id}`,
+        skipped.price,
+        `Skipped: entry within ${targetPlan.bufferTicks} ticks.`,
+        "muted",
+      );
+    }
+  }
+  addLevel(
+    "target",
+    "Target",
+    trade ? audit.targetPrice ?? trade.audit?.targetPrice ?? targetPlan?.targetPrice ?? null : null,
+    targetPlan?.selectedTargetLevel
+      ? `${targetPlan.bufferTicks} ticks before ${targetPlan.selectedTargetLevel.id}.`
+      : "Modeled target.",
+    "positive",
+  );
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
   const exitOpen = audit.exitCandleOpenTime ? Date.parse(audit.exitCandleOpenTime) : trade?.audit?.exitCandleOpenTime ? Date.parse(trade.audit.exitCandleOpenTime) : null;
   const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade?.exitTime ? Date.parse(trade.exitTime) : null;

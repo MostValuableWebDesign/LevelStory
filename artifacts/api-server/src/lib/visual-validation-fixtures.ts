@@ -17,6 +17,7 @@ import type {
 import type { VisualValidationCategory, VisualValidationRequest } from "./visual-validation.js";
 import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
+import { buildKeyLevelTargetPlan } from "./strategy/key-level-targets.js";
 
 const INTERVAL = 5 * 60_000;
 const CANDLE_COUNT = 78;
@@ -309,6 +310,15 @@ function makeTrade(
       ? audit.targetPrice!
       : exit.close;
   const outcome: BacktestTrade["outcome"] = category === "stop_exit" ? "strategy stop" : "target";
+  const targetPlan = buildKeyLevelTargetPlan({
+    direction,
+    entryPrice,
+    levels: [{
+      id: "fixture-key-level",
+      type: "fixture",
+      price: direction === "long" ? audit.targetPrice! + 3 : audit.targetPrice! - 3,
+    }],
+  });
   const eventLabels = category === "stop_exit"
     ? ["STRATEGY_STOP_REACHED"]
     : category === "runner_exit"
@@ -387,6 +397,7 @@ function makeTrade(
     id: `visual-trade-${category}-${audit.tradingDate}`,
     signalOccurrenceId: `visual-signal-${category}-${audit.tradingDate}`,
     candidateId: `visual-candidate-${category}-${audit.tradingDate}`,
+    targetPlan,
     tradingDate: audit.tradingDate,
     contractSymbol: contract.fullContractSymbol,
     contractMonth: contract.contractMonth,

@@ -130,6 +130,9 @@ function confirmedCandidateOccurrence(input: {
   direction?: "long" | "short";
   entryHigh?: number;
   entryLow?: number;
+  patienceLow?: number;
+  patienceHigh?: number;
+  levelValues?: Record<string, number>;
   management?: Record<string, unknown>;
 }): any {
   const direction = input.direction ?? "long";
@@ -153,8 +156,8 @@ function confirmedCandidateOccurrence(input: {
       openTime: Date.parse(input.pOpen),
       closeTime: Date.parse(input.eOpen),
       open: 100,
-      high: 101,
-      low: 99,
+      high: input.patienceHigh ?? 101,
+      low: input.patienceLow ?? 99,
       close: 100.5,
       volume: 1_000,
       isComplete: true,
@@ -175,7 +178,7 @@ function confirmedCandidateOccurrence(input: {
       isComplete: true,
     },
     levelIdentifiers: ["ORB"],
-    levelValues: { ORB: 100 },
+    levelValues: input.levelValues ?? { ORB: 100 },
     levelDistancesTicks: {},
     levelTolerancePoints: {},
     levelToleranceTicks: {},

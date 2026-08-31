@@ -33,6 +33,11 @@ import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.
 import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
+import {
+  buildKeyLevelTargetPlan,
+  type KeyLevelTargetInput,
+  type KeyLevelTargetPlan,
+} from "./strategy/key-level-targets.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -189,6 +194,7 @@ export type BacktestTrade = {
   setupGrade?: "A" | "A+" | "A++";
   signalOccurrenceId?: string;
   candidateId?: string;
+  targetPlan?: KeyLevelTargetPlan;
   patienceCandle?: Record<string, number | boolean> | null;
   entryCandle?: Record<string, number | boolean> | null;
   audit?: {
@@ -196,6 +202,7 @@ export type BacktestTrade = {
     modeledFillPrice: number | null;
     stopPrice: number | null;
     targetPrice: number | null;
+     targetPlan?: KeyLevelTargetPlan;
     strategyStopPrice?: number | null;
     catastropheStopPrice?: number | null;
     stopLevel?: "strategy" | "catastrophe" | null;
@@ -262,6 +269,8 @@ export type BacktestAuditRecord = {
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
+  targetPlan?: KeyLevelTargetPlan;
+  targetLevelInputs?: KeyLevelTargetInput[];
   contracts?: number | null;
   eventLabels: string[];
   ambiguityLabels: string[];
@@ -471,6 +480,7 @@ export type HistoricalTradeCandidate = {
   entryLow: number | null;
   entryReachedThreshold: boolean | null;
   strategyStopPrice?: number | null;
+  targetPlan?: KeyLevelTargetPlan;
   managementContext?: CandidateManagementContext;
 };
 
@@ -483,6 +493,7 @@ export type CandidateManagementContext = {
   stopBufferTicks: 8;
   tickSize: 0.25;
   derivedStrategyStop: number | null;
+  targetPlan?: KeyLevelTargetPlan;
   frozenAt: string;
   direction: Direction;
   contracts: number;
@@ -716,6 +727,7 @@ export type HistoricalOccurrence = {
   entryCandle: Record<string, number | boolean> | null;
   levelIdentifiers: string[];
   levelValues: Record<string, number>;
+  targetLevelInputs?: KeyLevelTargetInput[];
   levelDistancesTicks: Record<string, number>;
   levelTolerancePoints: Record<string, number>;
   levelToleranceTicks: Record<string, number>;
@@ -768,6 +780,7 @@ export type HistoricalOccurrence = {
     strategyStopPrice: number | null;
     catastropheStopPrice: number | null;
     targetPrice: number | null;
+    targetPlan?: KeyLevelTargetPlan;
     contracts: number | null;
     runnerActivationPrice: number | null;
     runnerExitRule: string | null;
@@ -1620,6 +1633,46 @@ function setAuditRejection(record: BacktestAuditRecord, reason: string | null, s
   record.rejectionSummary = summary;
 }
 
+function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[] {
+  const levels: KeyLevelTargetInput[] = [];
+  const add = (id: string, type: string, price: number | null | undefined) => {
+    if (typeof price === "number" && Number.isFinite(price)) levels.push({ id, type, price });
+  };
+  add("premarket-high", "PREMARKET", snapshot.levels.premarketHigh);
+  add("premarket-low", "PREMARKET", snapshot.levels.premarketLow);
+  add("previous-day-high", "PREVIOUS_DAY", snapshot.levels.previousDayHigh);
+  add("previous-day-low", "PREVIOUS_DAY", snapshot.levels.previousDayLow);
+  add("previous-day-close", "PREVIOUS_DAY", snapshot.levels.previousDayClose);
+  add("two-days-ago-high", "TWO_DAYS_AGO", snapshot.levels.dayBeforeYesterdayHigh);
+  add("two-days-ago-low", "TWO_DAYS_AGO", snapshot.levels.dayBeforeYesterdayLow);
+  add("orb-high", "ORB", snapshot.levels.openingRangeHigh);
+  add("orb-low", "ORB", snapshot.levels.openingRangeLow);
+  add("ntz-high", "NTZ", snapshot.levels.ntzHigh);
+  add("ntz-low", "NTZ", snapshot.levels.ntzLow);
+  add("vwap", "VWAP", snapshot.indicators.vwap);
+  add("ema-200", "EMA200", snapshot.indicators.ema200);
+  for (const level of snapshot.levels.critical) add(`critical-${level.name}`, level.kind, level.price);
+  for (const level of snapshot.majorLevels) {
+    levels.push({
+      id: `major-${level.name}`,
+      type: level.kind,
+      price: level.price,
+      rangeLow: level.zoneLow,
+      rangeHigh: level.zoneHigh,
+    });
+  }
+  for (const level of snapshot.dynamiteLevels) {
+    levels.push({
+      id: level.id,
+      type: "DYNAMITE",
+      price: level.representative,
+      rangeLow: level.lower,
+      rangeHigh: level.upper,
+    });
+  }
+  return levels;
+}
+
 function auditForEvaluation(
   evaluation: MarketSnapshot["setupAnalysis"]["evaluations"][number],
   snapshot: MarketSnapshot,
@@ -1684,6 +1737,7 @@ function auditForEvaluation(
     strategyStopPrice: snapshot.riskPlan.strategyStop,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
+    targetLevelInputs: targetLevelsForSnapshot(snapshot),
     contracts: snapshot.riskPlan.contracts,
     eventLabels: [],
     ambiguityLabels: [],
@@ -2177,6 +2231,13 @@ export function buildHistoricalOccurrenceLedger(
       ])].sort(),
       levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...value.levelIdentifiers])].sort(),
       levelValues: { ...value.levelValues, ...existing.levelValues },
+      targetLevelInputs: [...new Map([
+        ...(existing.targetLevelInputs ?? []),
+        ...(value.targetLevelInputs ?? []),
+      ].map((level) => [
+        `${level.id}|${level.type}|${level.price ?? ""}|${level.rangeLow ?? ""}|${level.rangeHigh ?? ""}`,
+        level,
+      ])).values()],
       levelDistancesTicks: { ...value.levelDistancesTicks, ...existing.levelDistancesTicks },
       levelTolerancePoints: { ...value.levelTolerancePoints, ...existing.levelTolerancePoints },
       levelToleranceTicks: { ...value.levelToleranceTicks, ...existing.levelToleranceTicks },
@@ -2278,6 +2339,7 @@ export function buildHistoricalOccurrenceLedger(
         entryCandle: null,
         levelIdentifiers: evidence.identifiers,
         levelValues: evidence.values,
+        targetLevelInputs: record.targetLevelInputs,
         levelDistancesTicks: evidence.distancesTicks,
         levelTolerancePoints: evidence.tolerancePoints,
         levelToleranceTicks: evidence.toleranceTicks,
@@ -2416,6 +2478,7 @@ export function buildHistoricalOccurrenceLedger(
         entryCandle: occurrenceCandle(confirmedEntry ?? (outcomeStatus === "SIGNAL_CONFIRMED" ? observedImmediate : null)),
         levelIdentifiers: linkedEvidence.identifiers,
         levelValues: linkedEvidence.values,
+        targetLevelInputs: record.targetLevelInputs,
         levelDistancesTicks: linkedEvidence.distancesTicks,
         levelTolerancePoints: linkedEvidence.tolerancePoints,
         levelToleranceTicks: linkedEvidence.toleranceTicks,
@@ -2518,6 +2581,7 @@ export function buildHistoricalOccurrenceLedger(
         entryCandle: record.triggerCandle,
         levelIdentifiers: [],
         levelValues: {},
+        targetLevelInputs: record.targetLevelInputs,
         levelDistancesTicks: {},
         levelTolerancePoints: {},
         levelToleranceTicks: {},
@@ -2645,6 +2709,33 @@ function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): numbe
   return null;
 }
 
+function targetPlanForOccurrence(
+  occurrence: HistoricalOccurrence,
+  entryPrice: number | null,
+): KeyLevelTargetPlan | null {
+  if (entryPrice === null || !occurrence.direction) return null;
+  const levels: KeyLevelTargetInput[] = [
+    ...(occurrence.targetLevelInputs ?? []),
+    ...Object.entries(occurrence.levelValues)
+      .filter(([id]) => !/fib/i.test(id))
+      .map(([id, price]) => ({ id, type: id, price })),
+  ]
+  if (typeof occurrence.finalizedNtzHigh === "number") {
+    levels.push({
+      id: "ntz",
+      type: "NTZ",
+      rangeLow: occurrence.finalizedNtzLow ?? occurrence.finalizedNtzHigh,
+      rangeHigh: occurrence.finalizedNtzHigh,
+    });
+  }
+  return buildKeyLevelTargetPlan({
+    direction: occurrence.direction,
+    entryPrice,
+    levels,
+    placementMode: activeShadowStrategySnapshot().config.profitTargetPlacement,
+  });
+}
+
 function freezeCandidateManagementContext(
   occurrence: HistoricalOccurrence,
   candidateId: string,
@@ -2652,12 +2743,16 @@ function freezeCandidateManagementContext(
 ): CandidateManagementContext {
   const management = occurrence.management;
   const entryPrice = occurrence.confirmationThreshold;
+  const targetPlan = targetPlanForOccurrence(occurrence, entryPrice);
   const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
-  const targetPrice = management?.targetPrice ?? linkedTrade?.audit?.targetPrice ?? null;
+  const targetPrice = targetPlan?.targetPrice
+    ?? management?.targetPrice
+    ?? linkedTrade?.audit?.targetPrice
+    ?? null;
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(contracts === null ? ["contracts"] : []),
@@ -2675,6 +2770,11 @@ function freezeCandidateManagementContext(
     stopBufferTicks: 8,
     tickSize: 0.25,
     derivedStrategyStop: strategyStopPrice,
+    targetPlan: targetPlan ?? buildKeyLevelTargetPlan({
+      direction: occurrence.direction!,
+      entryPrice: entryPrice ?? 0,
+      levels: [],
+    }),
     frozenAt: occurrence.evaluationCursor,
     direction: occurrence.direction!,
     contracts: contracts ?? 0,
@@ -2846,7 +2946,8 @@ export function projectHistoricalTradeCandidates(
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
       entryReachedThreshold: entryDisposition.reached,
       executionStatus: entryDisposition.status,
-       strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
+      strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
+      targetPlan: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade).targetPlan,
       managementContext: freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade),
     });
   }
@@ -2951,6 +3052,12 @@ function candidateDrivenEntryTrade(
   if (!entryObservationTimestamp) return undefined;
   const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
+  const targetPlan = management.targetPlan ?? targetPlanForOccurrence(occurrence, entryPrice) ?? buildKeyLevelTargetPlan({
+    direction: occurrence.direction,
+    entryPrice,
+    levels: [],
+  });
+  const targetPrice = targetPlan.targetPrice ?? management.targetPrice;
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
@@ -2986,7 +3093,7 @@ function candidateDrivenEntryTrade(
       subsequentCompletedCandles: postEntry,
       contracts: management.contracts,
       targetQuantity: Math.min(1, management.contracts),
-      target: management.targetPrice,
+      target: targetPrice,
       strategyStop: management.strategyStopPrice,
       catastropheStop: management.catastropheStopPrice,
       sessionCloseCandle: sessionCloseCandle as any,
@@ -3022,6 +3129,7 @@ function candidateDrivenEntryTrade(
     id: `${candidateId}-ohlcv-confirmation`,
     signalOccurrenceId: occurrence.occurrenceId,
     candidateId,
+    targetPlan,
     tradingDate,
     contractSymbol: occurrence.contractSymbol,
     contractMonth,
@@ -3067,7 +3175,8 @@ function candidateDrivenEntryTrade(
       entryTriggerPrice: entryPrice,
       modeledFillPrice: entryPrice,
       stopPrice: management.catastropheStopPrice ?? management.strategyStopPrice,
-      targetPrice: management.targetPrice,
+      targetPrice,
+      targetPlan,
       strategyStopPrice: management.strategyStopPrice,
       catastropheStopPrice: management.catastropheStopPrice,
       stopLevel: modeled?.audit.stopLevel ?? null,
@@ -3082,6 +3191,7 @@ function candidateDrivenEntryTrade(
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
+        `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`,
         ...(missingContext
           ? [`Management context unavailable or invalid: ${[...new Set([
             ...management.missingEvidenceReasons,

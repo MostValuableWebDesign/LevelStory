@@ -4,6 +4,7 @@ import {
   LEVEL_TOLERANCE_TICKS,
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
+import type { ProfitTargetPlacement } from "./key-level-targets.js";
 
 export type StrategyConfig = {
   defaultContractSymbol: string;
@@ -74,6 +75,7 @@ export type StrategyConfig = {
   phase7NormalSlippageTicks: number;
   phase7FastSlippageTicks: number;
   phase7DefaultTargetDollars: number;
+  profitTargetPlacement: ProfitTargetPlacement;
   phase7RunnerRetracementRatio: number;
 };
 
@@ -167,6 +169,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7NormalSlippageTicks: 1,
   phase7FastSlippageTicks: 2,
   phase7DefaultTargetDollars: 75,
+  profitTargetPlacement: "NEAR_SIDE_12_TICKS",
   phase7RunnerRetracementRatio: 0.4,
 };
 
@@ -297,6 +300,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");
+  }
+  if (config.profitTargetPlacement !== "NEAR_SIDE_12_TICKS" && config.profitTargetPlacement !== "EXACT_LEVEL") {
+    throw new Error("Invalid strategy configuration: profitTargetPlacement must be NEAR_SIDE_12_TICKS or EXACT_LEVEL.");
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");
