@@ -1,0 +1,229 @@
+The explanation is correct: `occ-913...` is a legitimate filled trade. `occ-353...` should not be displayed as a qualified trade at all.
+
+The bug is now clearly in Visual Review projection—not execution:
+
+- It mixes a long audit with a short P→E occurrence.
+- It says “Confirmed edge / trade found” despite no candidate-owned fill.
+- It displays an Entry candle when the selected occurrence was rejected.
+- It appears under `qualified_trade` based on embedded audit history instead of authoritative candidate/trade linkage.
+
+Use this focused correction prompt:
+
+```text
+Fix the Visual Review qualified-trade projection so it displays only authoritative candidate-owned Shadow Mode trades.
+
+The current review demonstrates an identity and direction-contamination bug:
+
+- `occ-91377c979c13164ac403` is valid:
+  - Long P→E confirmation
+  - Exact candidate
+  - Threshold reached
+  - `MODELED_TRADE_CREATED`
+  - Exact candidate-owned fill
+  - It should remain in Qualified trades.
+
+- `occ-353fe4fc714e747e8280` is invalid as a Qualified trade:
+  - Selected audit direction is long.
+  - Selected audit decision is `SETUP FORMING`.
+  - ORB rules were not qualified.
+  - It has no exact authoritative candidate-owned trade.
+  - Its embedded patience history contains a separate short P→E pair.
+  - That short pair must never be projected as evidence for the selected long occurrence.
+  - It must be removed from the Qualified trades review set.
+
+## Authoritative Qualified-trade definition
+
+A Visual Review snapshot may use category `qualified_trade` only when all of these are true:
+
+1. An authoritative canonical signal occurrence exists.
+2. An authoritative candidate exists for that exact signal occurrence.
+3. `candidate.executionStatus === "MODELED_TRADE_CREATED"`.
+4. `candidate.entryReachedThreshold === true`.
+5. Exactly one modeled trade links to both:
+   - `candidateId`
+   - `signalOccurrenceId`
+6. Signal, candidate, and trade directions match exactly.
+7. Signal, candidate, and trade contracts and trading dates match.
+8. P and E timestamps match the candidate’s authoritative P→E pair.
+9. The trade’s entry candle is E.
+10. The fill price equals the authoritative confirmation threshold.
+
+Do not infer qualification from:
+
+- Raw audit labels
+- `SETUP FORMING`
+- Embedded patience-history records
+- Approximate timestamps
+- A confirmed pair belonging to the opposite direction
+- Entry-shaped chart annotations
+- Legacy trade IDs
+- `confirmedEntry` existing somewhere else in the audit
+- Display category names
+
+## Direction isolation
+
+Partition patience evidence by:
+
+- Contract
+- New York trading date
+- Direction
+- P candle open time
+- Immediate E candle open time
+
+A short P→E occurrence may only support a short candidate.
+
+A long P→E occurrence may only support a long candidate.
+
+Never merge or project:
+
+- A short confirmed pair into a long ORB audit
+- A long confirmed pair into a short ORB audit
+- Opposing-direction patience history into the selected occurrence
+- Separate physical P→E pairs because they share an audit cursor
+
+If an audit contains patience history for multiple directions, resolve only the exact canonical signal referenced by the candidate.
+
+## Correct labels
+
+For a candidate-owned fill, display:
+
+`Trade filled`
+
+Show:
+
+- Direction
+- Edge
+- P time
+- E time
+- Confirmation threshold
+- Fill price
+- Candidate ID
+- Signal occurrence ID
+- Trade ID
+
+The event rail should contain:
+
+- Patience candle
+- Entry + fill
+- Exit, when finalized
+
+Do not use the combined label:
+
+`Confirmed edge / trade found`
+
+because it incorrectly combines signal detection and executed Shadow Mode trades.
+
+For a confirmed signal without an authoritative fill:
+
+- Do not include it in the trade-only review set.
+- Do not label it Qualified trade.
+- Do not display an Entry candle.
+- If exposed in a future diagnostic view, label it:
+  `Confirmed signal — no trade`
+  and show its exact rejection reason.
+
+For rejected or forming audits:
+
+- Do not create a trade snapshot.
+- Preserve them only in internal diagnostics.
+- Do not include them in Qualified-trade coverage counts.
+
+## Price consistency
+
+All filled-trade presentation must use authoritative candidate fields:
+
+- Confirmation threshold
+- Modeled fill price
+- P high/low
+- E high/low
+- Entry candle timestamp
+
+Do not use E close as the fill price unless E close exactly equals the threshold.
+
+For the valid May 28 example:
+
+- P: 10:35–10:40 ET
+- E: 10:40–10:45 ET
+- Threshold: 7558.75
+- E high: 7559.00
+- Fill: 7558.75
+- Direction: long
+
+Every displayed price and direction must agree with those authoritative values.
+
+## Entry and exit chart overlays
+
+For every retained Qualified trade:
+
+- Draw the entry marker on E.
+- Draw the entry line at the modeled fill price.
+- Extend the entry line across the trade’s actual lifetime.
+- Draw an exit marker and exit line only when an authoritative exit exists.
+- Display per-leg and total realized P/L for finalized trades.
+- For an open trade, show the entry line and `Open / unscored`.
+- Do not fabricate an exit or P/L.
+
+## Coverage reconciliation
+
+After generating a trade-only review set, enforce:
+
+qualifiedTradeSnapshots
+=== unique authoritative candidates with MODELED_TRADE_CREATED
+=== unique candidate-owned modeled trades
+
+Report violations for:
+
+- Snapshot without candidate
+- Snapshot without trade
+- Candidate/trade direction mismatch
+- P/E identity mismatch
+- Duplicate snapshot per candidate
+- Trade omitted from snapshots
+- Fill price inconsistent with candidate threshold
+
+Do not silently render invalid snapshots.
+
+## Required regression tests
+
+Add deterministic tests proving:
+
+1. `occ-91377c979c13164ac403` remains a Qualified trade.
+2. Its exact candidate and trade are linked.
+3. Its long threshold and fill remain 7558.75.
+4. `occ-353fe4fc714e747e8280` is excluded from Qualified trades.
+5. A long audit cannot consume a short P→E occurrence.
+6. A `SETUP FORMING` audit cannot become a Qualified trade.
+7. A confirmed signal without a candidate-owned fill cannot appear in trade-only review.
+8. No Entry candle event is rendered without a fill.
+9. Every Entry candle event has exactly one candidate-owned trade.
+10. Qualified-trade coverage counts equal unique filled candidates.
+11. Entry lines appear for every filled trade.
+12. Exit lines and P/L appear only for finalized trades.
+13. Open trades remain `Open / unscored`.
+14. Opposing-direction audit history remains available diagnostically but cannot affect projection.
+
+## Verification
+
+Keep this compute-conscious:
+
+- Run focused candidate-projection and Visual Review tests.
+- Run affected API/frontend typechecks.
+- Run `git diff --check`.
+- Use one small cached/fixed replay only if needed.
+- Do not rebuild the historical index.
+- Do not run a broad Phase 3 qualification batch.
+
+Report:
+
+- Root cause
+- Files changed
+- Before/after treatment of both occurrence IDs
+- Qualified snapshot count
+- Filled candidate count
+- Direction-mismatch count
+- Snapshot-without-trade count
+- Focused test totals
+- Confirmation that Shadow Mode remains simulation-only
+```
+
+The central rule is now simple: **no candidate-owned fill means no Qualified-trade snapshot and no Entry candle label.**
