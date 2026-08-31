@@ -78,6 +78,10 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.match(page, /8 MES ticks · 2\.00 points/);
    assert.doesNotMatch(page, /Critical · Premarket high/);
    assert.doesNotMatch(page, /Critical · Premarket low/);
+   assert.match(page, /data-testid="trade-lifetime-overlay"/);
+   assert.match(page, /data-testid="trade-inspector"/);
+   assert.match(page, /Open \/ unscored/);
+   assert.match(page, /data-testid="trade-leg-inspector"/);
 });
 
 test("visual review exposes only confirmed trade candidates", () => {

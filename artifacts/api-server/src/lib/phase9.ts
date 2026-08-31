@@ -1868,6 +1868,50 @@ const QUALIFYING_PULLBACK_EVENT_TYPES = new Set([
   "hold",
 ]);
 
+const QUALIFYING_KEY_LEVEL_PATTERNS = [
+  /\borb\b/,
+  /\bopening range\b/,
+  /\bntz\b/,
+  /\bpremarket\b/,
+  /\bprior\b/,
+  /\bprevious\b/,
+  /\btwo sessions?\b/,
+  /\btwo days?\b/,
+  /\bday before yesterday\b/,
+  /\bmajor\b/,
+  /\bdynamite\b/,
+  /\bvwap\b/,
+  /\bema ?200\b/,
+  /\bsupport\b/,
+  /\bresistance\b/,
+  /\bcritical\b/,
+];
+
+function normalizedLevelEvidence(value: string): string {
+  return value.toLowerCase().replace(/[-_·/]+/g, " ");
+}
+
+function isFibonacciLevelIdentifier(value: string): boolean {
+  return /\b(?:fib|fibonacci)\b/.test(normalizedLevelEvidence(value));
+}
+
+function isQualifyingKeyLevelIdentifier(value: string): boolean {
+  const normalized = normalizedLevelEvidence(value);
+  return !isFibonacciLevelIdentifier(value)
+    && QUALIFYING_KEY_LEVEL_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function hasQualifyingCausalKeyLevelInteraction(occurrence: HistoricalOccurrence): boolean {
+  if (!occurrence.lTimestamp || !Number.isFinite(Date.parse(occurrence.lTimestamp))) return false;
+  return occurrence.levelIdentifiers.some((identifier) => {
+    if (!isQualifyingKeyLevelIdentifier(identifier)) return false;
+    const value = occurrence.levelValues[identifier];
+    const interactionTypes = occurrence.levelInteractionTypes[identifier] ?? [];
+    return Number.isFinite(value)
+      && interactionTypes.some((type) => QUALIFYING_PULLBACK_EVENT_TYPES.has(type.toLowerCase()));
+  });
+}
+
 function pullbackEventId(event: HistoricalPullbackEvent): string {
   return event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`;
 }
@@ -2472,11 +2516,10 @@ function candidateWindowEligible(occurrence: HistoricalOccurrence): boolean {
 }
 
 function candidateEdgeEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
-  const edge = occurrence.primaryEdge ?? occurrence.strategyCandidate;
-  if (edge === "ORB_PULLBACK_CONTINUATION" && occurrence.levelIdentifiers.length === 0) {
+  if (!hasQualifyingCausalKeyLevelInteraction(occurrence)) {
     return {
       eligible: false,
-      reason: "ORB_PULLBACK_CONTINUATION requires a persisted qualifying level interaction.",
+      reason: "REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK: confirmed signal lacks a persisted, causal, machine-visible qualifying key-level interaction.",
     };
   }
   return { eligible: true };
@@ -2606,7 +2649,7 @@ export function projectHistoricalTradeCandidates(
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: [
-          ...(!edge.eligible ? ["MISSING_EDGE_REQUIREMENT"] : []),
+          ...(!edge.eligible ? ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"] : []),
           ...(!inWindow ? ["OUTSIDE_PRIMARY_ENTRY_WINDOW"] : []),
           ...(!identityValid ? ["INVALID_CAUSAL_IDENTITY"] : []),
         ],

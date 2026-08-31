@@ -44,6 +44,8 @@ export type ModeledExecutionLeg = {
   fees: number;
   netPnl: number;
   exitReason: "target" | "runner" | "stop" | "manual" | "session_close";
+  exitCandleOpenTime?: string;
+  exitCandleCloseTime?: string;
 };
 
 export type ModeledExecutionAccounting = {
@@ -232,14 +234,28 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
   const feePerSide = Object.values(input.fees ?? input.feeComponents ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
-  const makeLeg = (kind: ModeledExecutionLeg["kind"], qty: number, reference: number, fill: number, reason: ModeledExecutionLeg["exitReason"]): ModeledExecutionLeg => {
+  const makeLeg = (kind: ModeledExecutionLeg["kind"], qty: number, reference: number, fill: number, reason: ModeledExecutionLeg["exitReason"], candle: OhlcvCandle): ModeledExecutionLeg => {
     const sign = input.direction === "long" ? 1 : -1;
     const gross = (reference - entryReference) * qty * multiplier * sign;
     const entrySlip = Math.abs(modeledFill - entryReference) * qty * multiplier;
     const exitSlip = Math.abs(fill - reference) * qty * multiplier;
     const slip = entrySlip + exitSlip;
     const fees = feePerSide * qty * 2;
-    return { kind, quantity: qty, referencePrice: tick(reference, size), fillPrice: tick(fill, size), grossPnl: money(gross), slippage: money(slip), fees: money(fees), netPnl: money(gross - slip - fees), exitReason: reason };
+    const exitCandleOpenTime = typeof candle.openTime === "number" ? new Date(candle.openTime).toISOString() : undefined;
+    const exitCandleCloseTime = typeof candle.closeTime === "number" ? new Date(candle.closeTime).toISOString() : undefined;
+    return {
+      kind,
+      quantity: qty,
+      referencePrice: tick(reference, size),
+      fillPrice: tick(fill, size),
+      grossPnl: money(gross),
+      slippage: money(slip),
+      fees: money(fees),
+      netPnl: money(gross - slip - fees),
+      exitReason: reason,
+      ...(exitCandleOpenTime ? { exitCandleOpenTime } : {}),
+      ...(exitCandleCloseTime ? { exitCandleCloseTime } : {}),
+    };
   };
   for (const candle of candles) {
     const strategyHit = strategyStop !== null && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
@@ -258,7 +274,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       const reference = gapThrough ? candle.open : stopPrice!;
       if (gapThrough) eventLabels.push("GAP_THROUGH_STOP");
       const fill = tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
-      legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop"));
+       legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop", candle));
       if (targetHit && runnerQuantity > 0) runnerExited = true;
       remaining = 0; exitPrice = fill; exitCandle = candle; exitReason = "stop"; break;
     }
@@ -267,7 +283,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       eventLabels.push("TARGET_REACHED");
       if (targetQuantity > 0) {
         const fill = tick(input.direction === "long" ? target! - (input.exitSlippageTicks ?? 0) * size : target! + (input.exitSlippageTicks ?? 0) * size, size);
-        legs.push(makeLeg("target", targetQuantity, target!, fill, "target"));
+         legs.push(makeLeg("target", targetQuantity, target!, fill, "target", candle));
         remaining -= targetQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
       }
       runnerBest = target!;
@@ -296,7 +312,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         const fill = tick(input.direction === "long"
           ? reference - (input.exitSlippageTicks ?? 0) * size
           : reference + (input.exitSlippageTicks ?? 0) * size, size);
-        legs.push(makeLeg("runner", runnerQuantity, reference, fill, "runner"));
+         legs.push(makeLeg("runner", runnerQuantity, reference, fill, "runner", candle));
         remaining = 0; runnerExited = true; eventLabels.push("RUNNER_EXITED"); exitPrice = fill; exitCandle = candle; exitReason = "runner"; break;
       }
       runnerBest = candidateBest;
@@ -312,7 +328,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         : reference + (input.exitSlippageTicks ?? 0) * size,
       size,
     );
-    legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close"));
+     legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close", closeCandle));
     remaining = 0;
     runnerExited = targetHit && runnerQuantity > 0;
     eventLabels.push("SESSION_CLOSE");

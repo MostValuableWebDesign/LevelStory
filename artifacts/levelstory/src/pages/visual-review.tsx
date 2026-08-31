@@ -115,6 +115,38 @@ type CandidateTradeView = {
   setupGrade?: "A" | "A+" | "A++";
 };
 type CandidateAuditView = { entryTriggerPrice?: number };
+type TradeLegView = {
+  kind?: string;
+  quantity?: number;
+  referencePrice?: number;
+  fillPrice?: number;
+  grossPnl?: number;
+  slippage?: number;
+  fees?: number;
+  netPnl?: number;
+  exitReason?: string;
+  exitCandleOpenTime?: string;
+  exitCandleCloseTime?: string;
+};
+type TradeEvidenceView = {
+  direction?: "long" | "short";
+  contracts?: number;
+  entryTime?: string;
+  exitTime?: string | null;
+  entryPrice?: number;
+  exitPrice?: number | null;
+  grossPnl?: number;
+  fees?: number;
+  slippage?: number;
+  netPnl?: number;
+  outcome?: string;
+  audit?: {
+    exitCandleOpenTime?: string | null;
+    exitCandleCloseTime?: string | null;
+    exitReason?: string;
+    legs?: TradeLegView[];
+  };
+};
 const CANONICAL_EDGE_BY_STRATEGY: Record<string, string> = {
   ORB_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
   ORB_BREAK_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
@@ -1144,19 +1176,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     .map((id) => annotations.find((annotation) => annotation.id === id && isDynamicIndicatorAnnotation(annotation)))
     .filter((annotation): annotation is VisualValidationAnnotation => annotation !== undefined);
   const allLevels = [...fixedLevels, ...indicatorLegend];
-  const criticalLevels = fixedLevels.filter((annotation) =>
-    annotation.id.startsWith("critical-")
-  );
   const entryReference = fixedLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
-  const relevantCritical = [...criticalLevels]
-    .sort((first, second) => entryReference == null
-      ? 0
-      : Math.abs((first.price ?? entryReference) - entryReference) - Math.abs((second.price ?? entryReference) - entryReference))
-    .slice(0, 1);
     const riskLevelIds = new Set(["entry-buffer", "strategy-stop"]);
    const primaryLevels = fixedLevels
-     .filter((annotation) => isPrimaryLevel(annotation) && !annotation.id.startsWith("critical-"))
-     .concat(relevantCritical)
+      .filter((annotation) => isPrimaryLevel(annotation))
       .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
    const additionalLevels = fixedLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
@@ -1186,6 +1209,27 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     : null;
   const finalCandle = candles.at(-1);
   const finalIndicators = finalCandle ? indicatorByOpenTime.get(finalCandle.openTime) ?? null : null;
+   const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
+   const entryEvent = snapshot.tradeEvents.find((event) => event.event === "entry");
+   const entryOpenTime = entryEvent?.openTime ?? trade?.entryTime ?? null;
+   const exitTime = trade?.exitTime ?? trade?.audit?.exitCandleCloseTime ?? null;
+   const entryIndex = entryOpenTime ? findCandleIndexAtTimestamp(candles, entryOpenTime) : -1;
+   const exitIndex = exitTime ? findCandleIndexAtTimestamp(candles, exitTime) : -1;
+   const entryX = entryIndex >= 0 ? left + getCandleSlotIndex(candles[entryIndex]!, sessionView) * step + step / 2 : null;
+   const exitX = exitIndex >= 0 ? left + getCandleSlotIndex(candles[exitIndex]!, sessionView) * step + step / 2 : null;
+   const lifetimeEndX = exitX ?? plotRight;
+   const entryPrice = trade?.entryPrice ?? snapshot.tradeEvents.find((event) => event.event === "fill")?.modeledPrice ?? null;
+   const exitPrice = trade?.exitPrice ?? null;
+   const tradeLegs = trade?.audit?.legs ?? [];
+   const legOverlays = tradeLegs.map((leg, index) => {
+     const legExitTime = leg.exitCandleCloseTime ?? leg.exitCandleOpenTime ?? exitTime;
+     const legExitIndex = legExitTime ? findCandleIndexAtTimestamp(candles, legExitTime) : -1;
+     return {
+       leg,
+       index,
+       x: legExitIndex >= 0 ? left + getCandleSlotIndex(candles[legExitIndex]!, sessionView) * step + step / 2 : exitX,
+     };
+   });
   const resolvePointer = (clientX: number, clientY: number) => resolveChartPointerFromClientPoint(
     clientX,
     clientY,
@@ -1400,6 +1444,21 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
         <path d={`M ${Math.max(boundaryX - 6, left)} ${top} L ${boundaryX} ${top - 8} L ${Math.min(boundaryX + 6, plotRight)} ${top} Z`} fill="hsl(var(--foreground))" data-testid="causal-boundary-notch" />
+          {trade && entryX !== null && entryPrice !== null && <g pointerEvents="none" data-testid="trade-lifetime-overlay">
+            <line x1={entryX} x2={lifetimeEndX} y1={y(entryPrice)} y2={y(entryPrice)} stroke="hsl(var(--accent))" strokeWidth="2" strokeDasharray="5 3" />
+            <circle cx={entryX} cy={y(entryPrice)} r="6" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-entry-marker" />
+            <text x={entryX} y={y(entryPrice) - 10} textAnchor="middle" fill="hsl(var(--accent))" fontSize="9" fontWeight="800" fontFamily="DM Mono">E · {formatPriceAxisValue(entryPrice)}</text>
+            {exitX !== null && exitPrice !== null && <g data-testid="trade-exit-overlay">
+              <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke="hsl(var(--negative))" strokeWidth="2" strokeDasharray="2 3" />
+              <circle cx={exitX} cy={y(exitPrice)} r="6" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-exit-marker" />
+              <text x={exitX} y={y(exitPrice) + 16} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">EXIT · {formatPriceAxisValue(exitPrice)}</text>
+            </g>}
+            {legOverlays.map(({ leg, index, x }) => x !== null && <g key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
+              <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke="hsl(270 55% 48%)" strokeWidth="1.5" strokeDasharray="1 4" />
+              <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r="4" fill="hsl(270 55% 48%)" stroke="hsl(var(--card))" strokeWidth="1.5" />
+              <title>{`${leg.kind ?? "leg"} leg · ${leg.quantity ?? "—"} contracts · ${leg.exitReason ?? "exit"} · ${leg.fillPrice == null ? "price unavailable" : formatPriceAxisValue(leg.fillPrice)}`}</title>
+            </g>)}
+          </g>}
          {indicatorPath("vwap", "machine") && <path pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" {...indicatorStyle("vwap")} data-testid="indicator-curve-vwap" />}
          {indicatorPath("vwap", "human_only") && <path pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
          {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
@@ -1408,7 +1467,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
-        const critical = annotation.id.startsWith("critical-");
          const stop = annotation.id === "strategy-stop";
         const target = annotation.id === "target";
           const stroke = levelStroke(annotation);
@@ -1436,7 +1494,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           >
             {hasRange && rangeLow != null && rangeHigh != null
               ? <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
-              : <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : critical ? 2 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />}
+               : <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : stop ? 1.8 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />}
           </g>;
       })}
       {edgeIndicators.map(({ annotation, edge }) => {
@@ -1514,6 +1572,7 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
     ? audit.consolidationThresholds as Record<string, unknown>
     : null;
   const qualified = audit.rejectionCategory === "QUALIFIED" && evidence.trade;
+  const trade = evidence.trade as TradeEvidenceView | null;
   const behavior = [
     audit.trendEvidence,
     breakout,
@@ -1539,12 +1598,58 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
       {thresholds && <div className="border-t border-border bg-card px-4 py-3 text-[10px]" data-testid="threshold-provenance"><div className="eyebrow text-muted-foreground">Governed threshold provenance</div><div className="mono mt-2 break-words">{safeValue(thresholds.version)} · min {safeValue(thresholds.minimumCandles)} candles · max {safeValue(thresholds.maximumRangeTicks)} ticks · expansion {safeValue(thresholds.maximumExpansionRatio)}×</div></div>}
+      <TradeInspector trade={trade} />
      <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
         <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>
       <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
     </details>
       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
   </Panel>;
+}
+
+function formatTradePrice(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function formatTradeMoney(value: number | null | undefined, open: boolean): string {
+  return open || typeof value !== "number" || !Number.isFinite(value) ? "—" : `$${value.toFixed(2)}`;
+}
+
+function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
+  if (!trade) return null;
+  const open = trade.outcome === "open" || trade.exitTime === null || trade.exitPrice == null;
+  const legs = trade.audit?.legs ?? [];
+  return <section className="border-t border-border bg-card px-5 py-4 sm:px-6" data-testid="trade-inspector">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div><div className="eyebrow text-muted-foreground">Authoritative trade inspector</div><div className="mt-1 text-sm font-bold">{open ? "Open / unscored" : "Completed trade"}</div></div>
+      <span className={`border px-2 py-1 text-[9px] font-bold uppercase ${open ? "border-accent/35 bg-accent/10 text-accent" : "border-border text-muted-foreground"}`}>{open ? "No exit yet" : safeValue(trade.outcome)}</span>
+    </div>
+    <div className="mt-3 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+      {[
+        ["Direction", trade.direction ? trade.direction.toUpperCase() : "—"],
+        ["Quantity", trade.contracts == null ? "—" : `${trade.contracts} contract${trade.contracts === 1 ? "" : "s"}`],
+        ["Entry price", formatTradePrice(trade.entryPrice)],
+        ["Exit price", open ? "—" : formatTradePrice(trade.exitPrice)],
+        ["Gross P/L", formatTradeMoney(trade.grossPnl, open)],
+        ["Fees", formatTradeMoney(trade.fees, open)],
+        ["Slippage", formatTradeMoney(trade.slippage, open)],
+        ["Net P/L", formatTradeMoney(trade.netPnl, open)],
+      ].map(([label, value]) => <div key={label} className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
+    </div>
+    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-muted-foreground">
+      <span>Entry observed at E-close: <strong className="mono text-foreground">{trade.entryTime ? formatReviewTime(trade.entryTime) : "—"}</strong></span>
+      <span>Exit reason: <strong className="text-foreground">{open ? "Open / unscored" : safeValue(trade.audit?.exitReason ?? trade.outcome)}</strong></span>
+    </div>
+    {legs.length > 0 && <div className="mt-3 border-t border-border pt-3" data-testid="trade-leg-inspector">
+      <div className="eyebrow text-muted-foreground">Exit legs</div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {legs.map((leg, index) => <div key={`${leg.kind}-${index}`} className="border border-border bg-muted/20 px-3 py-2 text-[10px]" data-testid={`trade-leg-detail-${index}`}>
+          <div className="flex justify-between gap-3 font-bold"><span>{safeValue(leg.kind)} · {leg.quantity ?? "—"} contracts</span><span>{safeValue(leg.exitReason)}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground"><span>Ref <strong className="mono text-foreground">{formatTradePrice(leg.referencePrice)}</strong></span><span>Fill <strong className="mono text-foreground">{formatTradePrice(leg.fillPrice)}</strong></span><span>Gross <strong className="mono text-foreground">{formatTradeMoney(leg.grossPnl, open)}</strong></span><span>Net <strong className="mono text-foreground">{formatTradeMoney(leg.netPnl, open)}</strong></span></div>
+        </div>)}
+      </div>
+    </div>}
+  </section>;
 }
 
 function ReviewPanel({

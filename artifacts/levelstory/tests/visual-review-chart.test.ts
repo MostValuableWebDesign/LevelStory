@@ -598,6 +598,10 @@ test("semantic presentation filtering removes Fibonacci, catastrophe, and redund
   assert.equal(isPrimaryLevel(major), true);
 });
 
+test("semantic presentation filtering removes every critical label, not only prior-session values", () => {
+  assert.equal(isVisualPresentationAnnotation(makeAnnotation("critical-orb", 100, { label: "Critical · ORB retest" })), false);
+});
+
 test("planned levels without an exact candle anchor cannot become occurrence markers", () => {
   assert.equal(hasExactCandleAnchor({ openTime: null, closeTime: null }), false);
   assert.equal(hasExactCandleAnchor({ openTime: null, closeTime: makeCandle(1).closeTime }), true);

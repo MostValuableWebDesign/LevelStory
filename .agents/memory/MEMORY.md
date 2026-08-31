@@ -39,3 +39,4 @@
 - [Visual chart pointer separation](visual-chart-pointer-separation.md) — keep free pointer geometry independent from fixed candle-slot inspection, with an explicit hit surface for empty plot space and edges.
 - [Phase 5 threshold authority](phase5-phase6-threshold-authority.md) — Phase 5 owns executable thresholds; Phase 6 reuses shared NTZ geometry without reinterpreting legacy patience prices.
 - [Dynamite identity](dynamite-identity.md) — cluster IDs must include source, formula, contract, date, observation time, bounds, and sorted canonical families; unknown families are excluded.
+- [Execution-leg timestamp optionality](execution-leg-timestamp-optionality.md) — modeled leg exit timestamps are emitted only when the source candle provides valid times, preserving legacy fixture compatibility.

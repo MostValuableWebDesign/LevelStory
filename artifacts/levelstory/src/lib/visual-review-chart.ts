@@ -1058,6 +1058,10 @@ export function isRedundantPriorSessionAnnotation(annotation: Pick<VisualValidat
     && /(?:prior|previous|two days? ago|day before yesterday)/.test(semantic);
 }
 
+export function isCriticalAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label">): boolean {
+  return /\bcritical\b/i.test(`${annotation.id} ${annotation.label}`);
+}
+
 export function isDynamicIndicatorAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
   return /(?:^| )(?:vwap|ema ?200)(?:$| )/i.test(normalizedAnnotationSemantic(annotation));
 }
@@ -1068,7 +1072,8 @@ export function isCriticalPremarketAnnotation(annotation: Pick<VisualValidationA
 }
 
 export function isVisualPresentationAnnotation(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): boolean {
-  return !isFibonacciAnnotation(annotation)
+  return !isCriticalAnnotation(annotation)
+    && !isFibonacciAnnotation(annotation)
     && !isCatastropheStopAnnotation(annotation)
     && !isRedundantPriorSessionAnnotation(annotation)
     && !isCriticalPremarketAnnotation(annotation);

@@ -179,7 +179,7 @@ function confirmedCandidateOccurrence(input: {
     levelDistancesTicks: {},
     levelTolerancePoints: {},
     levelToleranceTicks: {},
-    levelInteractionTypes: {},
+    levelInteractionTypes: { ORB: ["touch"] },
     pOpenTimestamp: input.pOpen,
     eOpenTimestamp: input.eOpen,
     entryObservationTimestamp: input.eClose,
@@ -845,7 +845,7 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     levelDistancesTicks: {},
     levelTolerancePoints: {},
     levelToleranceTicks: {},
-    levelInteractionTypes: {},
+     levelInteractionTypes: { "Prior day high": ["touch"] },
     pOpenTimestamp: patienceTimestamp,
     eOpenTimestamp: entryTimestamp,
     entryObservationTimestamp: new Date(Date.parse(entryTimestamp) + 300_000).toISOString(),
@@ -952,6 +952,46 @@ test("invalid confirmed P to E identity is rejected diagnostically without a can
     diagnostics.candidateRejectionReasons[occurrence.occurrenceId],
     occurrence.identityInvariantViolations.join(" "),
   );
+});
+
+test("confirmed signals require causal qualifying key-level interaction evidence", () => {
+  const base = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  const dataset = candidateProjectionDataset(base);
+  const noInteraction = projectHistoricalTradeCandidates([{ ...base, levelInteractionTypes: {} }], [], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.deepEqual(noInteraction.rejected[0]?.reasonCodes, ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"]);
+  assert.match(noInteraction.rejected[0]?.details[0] ?? "", /REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK/);
+
+  const fibonacciOnly = projectHistoricalTradeCandidates([{
+    ...base,
+    levelIdentifiers: ["Fibonacci 61.8"],
+    levelValues: { "Fibonacci 61.8": 100 },
+    levelInteractionTypes: { "Fibonacci 61.8": ["touch"] },
+  }], [], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.deepEqual(fibonacciOnly.rejected[0]?.reasonCodes, ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"]);
+
+  const causalLevel = projectHistoricalTradeCandidates([{
+    ...base,
+    levelIdentifiers: ["VWAP"],
+    levelValues: { VWAP: 100 },
+    levelInteractionTypes: { VWAP: ["proximity"] },
+  }], [], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(causalLevel.candidates.length, 1);
 });
 
 test("confirmed signal missing P open is rejected with field-level causal identity evidence", () => {
