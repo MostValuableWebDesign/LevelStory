@@ -56,6 +56,7 @@ import {
 import { SHADOW_MODE_LABEL } from "./modules/shadow-execution.js";
 import type { MajorLevel } from "./strategy/major-levels.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
+import { detectLongTermZones, type LongTermZone } from "./strategy/long-term-zones.js";
 
 const CONFIRMED_ORB_STATES = new Set<OrbBreakoutState>([
   "QUALIFIED_BREAKOUT",
@@ -246,6 +247,7 @@ export type MarketSnapshot = {
     vwapSessionDate: string;
   };
   majorLevels: MajorLevel[];
+  longTermZones: LongTermZone[];
   trend: {
     direction: "bullish" | "bearish" | "neutral";
     score: number;
@@ -485,6 +487,10 @@ export function createMarketSnapshot(
     calendar,
     specification,
   );
+  const longTermZones = [
+    ...detectLongTermZones(historicalHourly, { cursor: currentCursor, lookback: "six-month", tickSize: specification.tickSize, widthTicks: 12, seriesIdentity: `${symbol}|${historicalHourly.length}` }),
+    ...detectLongTermZones(historicalHourly, { cursor: currentCursor, lookback: "one-year", tickSize: specification.tickSize, widthTicks: 12, seriesIdentity: `${symbol}|${historicalHourly.length}` }),
+  ];
   const breakout = detectInitialBreakout(regular, levels.ntz, config, specification);
   const qualifyingLevels = [
     ...levels.levels,
@@ -768,6 +774,7 @@ export function createMarketSnapshot(
      volumeAnalysis,
     indicators,
      majorLevels: levels.majorLevels,
+     longTermZones,
     trend,
      signals,
     decision: {

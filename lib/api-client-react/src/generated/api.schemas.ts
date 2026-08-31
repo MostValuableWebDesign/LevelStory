@@ -224,6 +224,48 @@ export interface MajorLevel {
   confluence: MajorLevelConfluence;
 }
 
+export type LongTermZoneRole = typeof LongTermZoneRole[keyof typeof LongTermZoneRole];
+
+
+export const LongTermZoneRole = {
+  support: 'support',
+  resistance: 'resistance',
+  'role-flip': 'role-flip',
+} as const;
+
+export type LongTermZoneLookback = typeof LongTermZoneLookback[keyof typeof LongTermZoneLookback];
+
+
+export const LongTermZoneLookback = {
+  'six-month': 'six-month',
+  'one-year': 'one-year',
+} as const;
+
+export type LongTermZoneStrength = typeof LongTermZoneStrength[keyof typeof LongTermZoneStrength];
+
+
+export const LongTermZoneStrength = {
+  verified: 'verified',
+  strong: 'strong',
+} as const;
+
+export interface LongTermZone {
+  id: string;
+  lower: number;
+  upper: number;
+  midpoint: number;
+  role: LongTermZoneRole;
+  lookback: LongTermZoneLookback;
+  touchCount: number;
+  independentTradingDates: string[];
+  firstTimestamp: number;
+  latestTimestamp: number;
+  sourcePivotTimestamps: number[];
+  strength: LongTermZoneStrength;
+  detectorVersion: string;
+  configurationHash: string;
+}
+
 export type NtzStateStatus = typeof NtzStateStatus[keyof typeof NtzStateStatus];
 
 
@@ -1107,6 +1149,7 @@ export interface MarketSnapshot {
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
+  longTermZones: LongTermZone[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;

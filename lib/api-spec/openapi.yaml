@@ -1507,6 +1507,24 @@ components:
           type: string
           enum: [normal, strong, dynamite]
       required: [name, kind, price, zoneLow, zoneHigh, reactionCount, strength, recencyScore, reactionMagnitude, volumeScore, components, componentCount, confluence]
+    LongTermZone:
+      type: object
+      properties:
+        id: { type: string }
+        lower: { type: number }
+        upper: { type: number }
+        midpoint: { type: number }
+        role: { type: string, enum: [support, resistance, role-flip] }
+        lookback: { type: string, enum: [six-month, one-year] }
+        touchCount: { type: number }
+        independentTradingDates: { type: array, items: { type: string } }
+        firstTimestamp: { type: number }
+        latestTimestamp: { type: number }
+        sourcePivotTimestamps: { type: array, items: { type: number } }
+        strength: { type: string, enum: [verified, strong] }
+        detectorVersion: { type: string }
+        configurationHash: { type: string }
+      required: [id, lower, upper, midpoint, role, lookback, touchCount, independentTradingDates, firstTimestamp, latestTimestamp, sourcePivotTimestamps, strength, detectorVersion, configurationHash]
     NtzState:
       type: object
       properties:
@@ -2158,6 +2176,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MajorLevel"
+        longTermZones:
+          type: array
+          items:
+            $ref: "#/components/schemas/LongTermZone"
         trend:
           $ref: "#/components/schemas/TrendEvidence"
         signals:
@@ -2182,7 +2204,7 @@ components:
           type: array
           items:
             type: string
-      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, trend, signals, decision, riskPlan, levelStory, shadowExecution, reversal, assumptions]
+      required: [mode, symbol, company, contract, sessionCalendar, price, change, changePercent, marketStatus, session, updatedAt, replay, candles, levels, ntz, breakout, pullback, patience, setupAnalysis, fibonacci, volumeAnalysis, indicators, majorLevels, longTermZones, trend, signals, decision, riskPlan, levelStory, shadowExecution, reversal, assumptions]
     DashboardOverview:
       type: object
       properties:

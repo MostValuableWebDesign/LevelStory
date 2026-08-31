@@ -6,6 +6,7 @@ import { sessionCalendarForContract, timestampForTradingDate } from "../futures/
 import { strategyConfig } from "./config.js";
 import { causalEmaSeries, completedEma, emaSlope, regularSessionVwap } from "./indicators.js";
 import { majorLevels } from "./major-levels.js";
+import "./long-term-zones.test.js";
 import { trendEvidence } from "./rules.js";
 import type { Candle } from "./types.js";
 import type { SessionLevels } from "./levels.js";

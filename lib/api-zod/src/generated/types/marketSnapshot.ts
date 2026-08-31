@@ -11,6 +11,7 @@ import type { FibonacciAnalysis } from './fibonacciAnalysis';
 import type { FuturesContractSpecification } from './futuresContractSpecification';
 import type { FuturesSessionCalendar } from './futuresSessionCalendar';
 import type { LevelStoryEvent } from './levelStoryEvent';
+import type { LongTermZone } from './longTermZone';
 import type { MajorLevel } from './majorLevel';
 import type { MarketSnapshotIndicators } from './marketSnapshotIndicators';
 import type { MarketSnapshotLevels } from './marketSnapshotLevels';
@@ -53,6 +54,7 @@ export interface MarketSnapshot {
   volumeAnalysis: VolumeAnalysis;
   indicators: MarketSnapshotIndicators;
   majorLevels: MajorLevel[];
+  longTermZones: LongTermZone[];
   trend: TrendEvidence;
   signals: Signal[];
   decision: StrategyDecision;

@@ -354,6 +354,22 @@ export const GetMarketSnapshotResponse = zod.object({
   "componentCount": zod.number(),
   "confluence": zod.enum(['normal', 'strong', 'dynamite'])
 })),
+  "longTermZones": zod.array(zod.object({
+  "id": zod.string(),
+  "lower": zod.number(),
+  "upper": zod.number(),
+  "midpoint": zod.number(),
+  "role": zod.enum(['support', 'resistance', 'role-flip']),
+  "lookback": zod.enum(['six-month', 'one-year']),
+  "touchCount": zod.number(),
+  "independentTradingDates": zod.array(zod.string()),
+  "firstTimestamp": zod.number(),
+  "latestTimestamp": zod.number(),
+  "sourcePivotTimestamps": zod.array(zod.number()),
+  "strength": zod.enum(['verified', 'strong']),
+  "detectorVersion": zod.string(),
+  "configurationHash": zod.string()
+})),
   "trend": zod.object({
   "direction": zod.enum(['bullish', 'bearish', 'neutral']),
   "score": zod.number(),
