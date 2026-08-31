@@ -23,7 +23,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import {
-  useCreateVisualValidationSet,
+  useGetVisualValidationGenerationJob,
+  useStartVisualValidationGenerationJob,
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useRecordVisualValidationReview,
@@ -34,6 +35,7 @@ import type {
   VisualValidationCategoryAnchor,
   VisualValidationCategory,
   VisualValidationDiscrepancyReport,
+  VisualValidationGenerationJob,
   VisualValidationRequest,
   VisualValidationReviewStatus,
   VisualValidationReviewRequest,
@@ -188,6 +190,24 @@ function storedReviewSetId(): string {
   return window.localStorage.getItem("levelstory.visualReviewSetId") ?? "";
 }
 
+function storedGenerationJobId(): string {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem("levelstory.visualReviewGenerationJobId") ?? "";
+}
+
+function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder.toString().padStart(2, "0")}s`;
+}
+
+function formatEstimate(milliseconds: number | null): string | null {
+  if (milliseconds === null || milliseconds < 1000) return null;
+  return `About ${formatDuration(milliseconds)} remaining`;
+}
+
 function requestedReviewCategory(): VisualValidationCategory | null {
   if (typeof window === "undefined") return null;
   const candidate = new URLSearchParams(window.location.search).get("category");
@@ -290,12 +310,27 @@ export default function VisualReview() {
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
 
   const setQuery = useGetVisualValidationSet(
     reviewSetId ? { reviewSetId } : undefined,
-    { query: { enabled: true, staleTime: 30_000, queryKey: ["visual-validation-set", reviewSetId || "latest"] } },
+    { query: { enabled: Boolean(reviewSetId) && !Boolean(generationJobId), staleTime: 30_000, queryKey: ["visual-validation-set", reviewSetId || "latest"] } },
   );
-  const createSet = useCreateVisualValidationSet();
+  const startGeneration = useStartVisualValidationGenerationJob();
+  const generationQuery = useGetVisualValidationGenerationJob(
+    generationJobId,
+    {
+      query: {
+        enabled: Boolean(generationJobId),
+        queryKey: ["visual-validation-generation-job", generationJobId],
+        staleTime: 0,
+        refetchInterval: (query) => {
+          const status = query.state.data?.status;
+          return status === "queued" || status === "running" ? 1500 : false;
+        },
+      },
+    },
+  );
   const recordReview = useRecordVisualValidationReview();
   const analyzeRule = useAnalyzeVisualValidationTeaching();
   const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
@@ -303,6 +338,10 @@ export default function VisualReview() {
     { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
     { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
   );
+  const generationJob: VisualValidationGenerationJob | null = generationQuery.data ?? startGeneration.data ?? null;
+  const generationActive = generationJob?.status === "queued"
+    || generationJob?.status === "running"
+    || (Boolean(generationJobId) && generationQuery.isLoading);
 
   useEffect(() => {
     let active = true;
@@ -315,7 +354,34 @@ export default function VisualReview() {
     return () => { active = false; };
   }, []);
 
-  const data = localSet ?? setQuery.data;
+  useEffect(() => {
+    if (generationQuery.isError && generationJobId) {
+      if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
+      setGenerationJobId("");
+      setMessage(apiErrorMessage(generationQuery.error) ?? "The saved generation job is no longer available. Start a new generation.");
+    }
+  }, [generationJobId, generationQuery.error, generationQuery.isError]);
+
+  useEffect(() => {
+    if (!generationJob) return;
+    if (generationJob.status === "completed" && generationJob.result) {
+      setLocalSet(generationJob.result);
+      setReviewSetId(generationJob.result.reviewSetId);
+      setReviewStatus(null);
+      setReviewNote("");
+      setAnalysis(null);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
+        window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
+      }
+      const qualifiedCount = generationJob.result.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length;
+      setMessage(qualifiedCount > 0
+        ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
+        : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
+    }
+  }, [generationJob]);
+
+  const data = generationActive ? null : localSet ?? setQuery.data;
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
   const strategySnapshots = useMemo(
@@ -466,22 +532,25 @@ export default function VisualReview() {
     if (!confirmDiscardReview()) return;
     setMessage("");
     setReport(null);
-    createSet.mutate({ data: request }, {
-      onSuccess: (nextSet) => {
-        setLocalSet(nextSet);
-        setReviewSetId(nextSet.reviewSetId);
-         setReviewStatus(null);
-         setReviewNote("");
-         setAnalysis(null);
-        if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewSetId", nextSet.reviewSetId);
-        const qualifiedCount = nextSet.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length;
-        setMessage(qualifiedCount > 0
-          ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
-          : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
+    setLocalSet(null);
+    startGeneration.mutate({ data: request }, {
+      onSuccess: (job) => {
+        setGenerationJobId(job.jobId);
+        if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
+        if (job.status === "failed") setMessage(job.error ?? "The deterministic set could not be generated.");
       },
-        onError: (error) => setMessage(apiErrorMessage(error) ?? "The deterministic set could not be generated."),
+      onError: (error) => setMessage(apiErrorMessage(error) ?? "The generation job could not be started."),
     });
   };
+
+  const retryGeneration = () => {
+    if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
+    setGenerationJobId("");
+    startGeneration.reset();
+    generateReviewSet();
+  };
+
+  const generationBusy = startGeneration.isPending || generationActive;
 
   const submitGeneration = (event: FormEvent) => {
     event.preventDefault();
@@ -574,10 +643,10 @@ export default function VisualReview() {
           />
 
           <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-            <GenerationPanel request={request} setRequest={(next) => {
+             <GenerationPanel request={request} setRequest={(next) => {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
-            }} onSubmit={submitGeneration} pending={createSet.isPending} message={message} />
+             }} onSubmit={submitGeneration} pending={Boolean(generationBusy)} message={message} />
              <CoverageRail
                data={data}
                loading={setQuery.isLoading}
@@ -594,11 +663,13 @@ export default function VisualReview() {
                }}
                  onSelectSnapshot={selectSnapshot}
                onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
-               onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
+                onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
+                generationJob={generationJob}
+                onRetryGeneration={retryGeneration}
              />
           </div>
 
-           {setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
+            {generationActive ? null : setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
              <Panel accent>
                <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
                  <div><div className="eyebrow text-destructive">Review set unavailable</div><p className="mt-1 text-sm font-semibold">This review set expired or was generated by an older server process.</p><p className="mt-1 text-xs text-muted-foreground">Regenerate from the ready historical index; no source index rebuild is required.</p></div>
@@ -750,9 +821,12 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext }: { data?: VisualValidationSet; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void }) {
+function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, onRetryGeneration }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; onRetryGeneration: () => void }) {
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
-  if (!data) return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
+  if (!data) {
+    if (generationJob) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
+    return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
+  }
   const candidates = selectedStrategyKey
     ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
     : data.tradeCandidates;
@@ -781,6 +855,59 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
        })}
     </div>
      {selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
+  </Panel>;
+}
+
+const GENERATION_PHASE_ANNOUNCEMENTS: Record<VisualValidationGenerationJob["phase"], string> = {
+  preparing: "Preparing historical replay",
+  loading_sessions: "Loading trading sessions",
+  replaying_sessions: "Replaying historical sessions",
+  building_ledger: "Finding confirmed P to E signals",
+  projecting_candidates: "Checking key-level pullbacks",
+  building_snapshots: "Building chart review snapshots",
+  completed: "Trade candidates ready",
+};
+
+function GenerationProgressPanel({ job, onRetry }: { job: VisualValidationGenerationJob; onRetry: () => void }) {
+  const active = job.status === "queued" || job.status === "running";
+  const percent = Math.max(0, Math.min(100, Math.round(job.percent)));
+  const radius = 62;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - percent / 100);
+  const estimate = formatEstimate(job.estimatedRemainingMs);
+  return <Panel accent>
+    <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-10 text-center sm:px-8" data-testid="visual-generation-progress-panel">
+      <div
+        className="relative h-44 w-44"
+        role="progressbar"
+        aria-label="Historical trade-candidate generation progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
+          <circle cx="80" cy="80" r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth="9" />
+          <circle cx="80" cy="80" r={radius} fill="none" stroke="#4169E1" strokeWidth="9" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} className="transition-[stroke-dashoffset] duration-500 ease-out" />
+          {active && <circle cx="80" cy="80" r={radius} fill="none" stroke="#4169E1" strokeWidth="3" strokeLinecap="round" strokeDasharray="30 360" className="origin-center animate-spin motion-reduce:animate-none" />}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          {job.status === "completed" ? <Check size={30} className="text-[#4169E1]" aria-label="Complete" /> : <span className="display text-3xl font-bold tracking-tight">{percent}%</span>}
+        </div>
+      </div>
+      <div className="mt-6 min-h-[72px]">
+        <div className="text-sm font-bold">{job.status === "completed" ? "Trade candidates ready" : job.message}</div>
+        <div className="mt-2 text-xs text-muted-foreground">{job.completedSessions} of {job.totalSessions} sessions completed</div>
+        <div className="mt-1 mono text-[10px] text-muted-foreground">Elapsed: {formatDuration(job.elapsedMs)}</div>
+        {estimate && active && <div className="mt-1 mono text-[10px] text-muted-foreground">{estimate}</div>}
+      </div>
+      <div className="sr-only" aria-live="polite">{GENERATION_PHASE_ANNOUNCEMENTS[job.phase]}</div>
+      {job.status === "failed" && <div className="mt-5 w-full max-w-md border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive" role="alert">
+        <div className="font-bold">Generation failed</div>
+        <div className="mt-1 break-words">{job.error ?? "The historical replay could not be completed."}</div>
+        <button type="button" onClick={onRetry} className="mt-3 rounded-md bg-primary px-3 py-2 text-[10px] font-bold text-primary-foreground hover:opacity-90" data-testid="button-retry-visual-generation">Retry generation</button>
+      </div>}
+      {active && <p className="mt-5 max-w-sm text-[10px] leading-4 text-muted-foreground">You may leave this page open. Refreshing will resume this generation job.</p>}
+    </div>
   </Panel>;
 }
 

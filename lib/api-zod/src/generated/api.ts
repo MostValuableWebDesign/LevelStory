@@ -5416,6 +5416,1283 @@ export const CreateVisualValidationSetResponse = zod.object({
 
 
 /**
+ * @summary Start or reuse a deterministic visual-validation generation job
+ */
+export const startVisualValidationGenerationJobBodySymbolDefault = `MES`;
+export const startVisualValidationGenerationJobBodyEndDateDefault = `2026-08-26`;
+export const startVisualValidationGenerationJobBodyEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startVisualValidationGenerationJobBodyInSampleDaysDefault = 5;
+export const startVisualValidationGenerationJobBodyInSampleDaysMax = 10;
+
+export const startVisualValidationGenerationJobBodyOutOfSampleDaysDefault = 2;
+export const startVisualValidationGenerationJobBodyOutOfSampleDaysMax = 10;
+
+export const startVisualValidationGenerationJobBodySeedDefault = 11;
+export const startVisualValidationGenerationJobBodySeedMin = 0;
+export const startVisualValidationGenerationJobBodySeedMax = 1000000;
+
+export const startVisualValidationGenerationJobBodyPremarketAvailableDefault = true;
+export const startVisualValidationGenerationJobBodySourceDefault = `historical_databento`;
+export const startVisualValidationGenerationJobBodyReviewModeDefault = `trades_only`;
+
+export const StartVisualValidationGenerationJobBody = zod.object({
+  "symbol": zod.enum(['MES']).default(startVisualValidationGenerationJobBodySymbolDefault),
+  "endDate": zod.string().regex(startVisualValidationGenerationJobBodyEndDateRegExp).default(startVisualValidationGenerationJobBodyEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobBodyInSampleDaysMax).default(startVisualValidationGenerationJobBodyInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobBodyOutOfSampleDaysMax).default(startVisualValidationGenerationJobBodyOutOfSampleDaysDefault),
+  "seed": zod.number().min(startVisualValidationGenerationJobBodySeedMin).max(startVisualValidationGenerationJobBodySeedMax).default(startVisualValidationGenerationJobBodySeedDefault),
+  "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobBodyPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+})
+
+export const startVisualValidationGenerationJobResponseJobIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseCompletedUnitsMin = 0;
+
+
+export const startVisualValidationGenerationJobResponsePercentMin = 0;
+export const startVisualValidationGenerationJobResponsePercentMax = 100;
+
+export const startVisualValidationGenerationJobResponseCompletedSessionsMin = 0;
+
+export const startVisualValidationGenerationJobResponseTotalSessionsMin = 0;
+
+export const startVisualValidationGenerationJobResponseElapsedMsMin = 0;
+
+export const startVisualValidationGenerationJobResponseEstimatedRemainingMsMin = 0;
+
+export const startVisualValidationGenerationJobResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseResultReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseResultBuildIdMax = 128;
+
+export const startVisualValidationGenerationJobResponseResultCurrentBuildIdMax = 128;
+
+export const startVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
+export const startVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
+export const startVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
+export const startVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
+
+export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
+
+export const startVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
+export const startVisualValidationGenerationJobResponseResultRequestSeedMin = 0;
+export const startVisualValidationGenerationJobResponseResultRequestSeedMax = 1000000;
+
+export const startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
+export const startVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax = 120;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax = 120;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax = 20;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax = 4000;
+
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin = 0;
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax = 100;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin = 0;
+
+export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
+
+
+
+export const StartVisualValidationGenerationJobResponse = zod.object({
+  "jobId": zod.string().regex(startVisualValidationGenerationJobResponseJobIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
+  "completedUnits": zod.number().min(startVisualValidationGenerationJobResponseCompletedUnitsMin),
+  "totalUnits": zod.number().min(1),
+  "percent": zod.number().min(startVisualValidationGenerationJobResponsePercentMin).max(startVisualValidationGenerationJobResponsePercentMax),
+  "completedSessions": zod.number().min(startVisualValidationGenerationJobResponseCompletedSessionsMin),
+  "totalSessions": zod.number().min(startVisualValidationGenerationJobResponseTotalSessionsMin),
+  "elapsedMs": zod.number().min(startVisualValidationGenerationJobResponseElapsedMsMin),
+  "estimatedRemainingMs": zod.number().min(startVisualValidationGenerationJobResponseEstimatedRemainingMsMin).nullable(),
+  "message": zod.string(),
+  "error": zod.string().nullable(),
+  "reviewSetId": zod.string().regex(startVisualValidationGenerationJobResponseReviewSetIdRegExp).nullable(),
+  "result": zod.object({
+  "reviewSetId": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewSetIdRegExp),
+  "createdAt": zod.coerce.date(),
+  "buildId": zod.string().min(1).max(startVisualValidationGenerationJobResponseResultBuildIdMax),
+  "currentBuildId": zod.string().min(1).max(startVisualValidationGenerationJobResponseResultCurrentBuildIdMax),
+  "stale": zod.boolean(),
+  "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "source": zod.enum(['simulated', 'historical_databento']),
+  "symbol": zod.string(),
+  "request": zod.object({
+  "symbol": zod.enum(['MES']).default(startVisualValidationGenerationJobResponseResultRequestSymbolDefault),
+  "endDate": zod.string().regex(startVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(startVisualValidationGenerationJobResponseResultRequestEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(startVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "seed": zod.number().min(startVisualValidationGenerationJobResponseResultRequestSeedMin).max(startVisualValidationGenerationJobResponseResultRequestSeedMax).default(startVisualValidationGenerationJobResponseResultRequestSeedDefault),
+  "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+}),
+  "reviewPeriod": zod.object({
+  "startDate": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
+  "endDate": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
+}),
+  "snapshots": zod.array(zod.object({
+  "snapshotId": zod.string(),
+  "occurrenceId": zod.string().optional(),
+  "sourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp).optional(),
+  "sampleIndex": zod.number().min(1),
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "categoryLabel": zod.string(),
+  "machineLabel": zod.string(),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "symbol": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "tradingDate": zod.string(),
+  "entryWindow": zod.enum(['primary', 'outside_primary']).describe('Primary MES entry window membership in America\/New_York wall-clock time.'),
+  "selectionReason": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluationCursor": zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string(),
+  "visibleCandleCount": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "reviewCursor": zod.object({
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string()
+}),
+  "machineCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "reviewCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "premarketCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "indicatorSeries": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "vwap": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "contractSymbol": zod.string(),
+  "sessionTemplate": zod.string(),
+  "noResetPolicy": zod.enum(['continuous_contract_local']),
+  "warmupCount": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin),
+  "initializationMethod": zod.enum(['sma_of_period_closes', 'unavailable']),
+  "sourceStartTime": zod.coerce.date().nullable(),
+  "sourceEndTime": zod.coerce.date().nullable(),
+  "availability": zod.enum(['available', 'insufficient_warmup']),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "tradeEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "event": zod.string(),
+  "label": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "triggerPrice": zod.number().nullable(),
+  "modeledPrice": zod.number().nullable(),
+  "contracts": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin),
+  "visibility": zod.enum(['machine', 'human_only']),
+  "detail": zod.string()
+})),
+  "coverage": zod.array(zod.object({
+  "session": zod.enum(['primary', 'full_regular']),
+  "expectedCandleCount": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin),
+  "observedCandleCount": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin),
+  "complete": zod.boolean(),
+  "missingIntervals": zod.array(zod.string())
+})),
+  "outcomeContextEnd": zod.coerce.date(),
+  "futureCandleAccess": zod.literal(false),
+  "categoryAnchor": zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "auditId": zod.string(),
+  "tradeId": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "relatedCandles": zod.array(zod.object({
+  "role": zod.enum(['evaluation', 'patience', 'entry', 'fill', 'exit']),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "visibility": zod.enum(['machine', 'human_only'])
+}),
+  "annotations": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
+  "price": zod.number().nullable(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "available": zod.boolean(),
+  "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
+  "detail": zod.string(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "machineEvidence": zod.record(zod.string(), zod.unknown()),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
+  "machineTradeId": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "levelCandleOpenTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "levelCandleCloseTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
+  "qualifyingLevelId": zod.string().max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
+  "qualifyingLevelRangeLow": zod.number().nullish(),
+  "qualifyingLevelRangeHigh": zod.number().nullish(),
+  "qualifyingLevels": zod.array(zod.object({
+  "levelId": zod.string().max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax),
+  "levelType": zod.enum(['dynamic_indicator', 'fixed_level', 'level_range']),
+  "valueAtInteraction": zod.number(),
+  "sourceTimestamp": zod.coerce.date(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable()
+})).min(1).max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
+  "pullbackLevels": zod.array(zod.number()).max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional()
+})
+})),
+  "tradeCandidates": zod.array(zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+})),
+  "categoryCoverage": zod.array(zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "label": zod.string(),
+  "count": zod.number().min(startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin),
+  "available": zod.boolean()
+})),
+  "defaultSelectionReason": zod.string(),
+  "funnelDiagnostics": zod.object({
+  "sessionCount": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin),
+  "candidateCount": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
+  "occurrenceCount": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
+  "stages": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number(),
+  "percentOfPreceding": zod.number(),
+  "percentOfSessions": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
+})),
+  "rejectionCounts": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
+})),
+  "window": zod.object({
+  "breakoutOccurrences": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin),
+  "qualifyingPullbacks": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin),
+  "patienceCandidates": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin),
+  "expiredPatienceCandidates": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin),
+  "confirmedPairs": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin),
+  "riskApprovedEntries": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin),
+  "primaryWindowOccurrences": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin),
+  "outsidePrimaryWindowOccurrences": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
+})
+}).optional()
+}).optional()
+})
+
+
+/**
+ * @summary Retrieve the latest visual-validation generation job
+ */
+export const getLatestVisualValidationGenerationJobResponseJobIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseCompletedUnitsMin = 0;
+
+
+export const getLatestVisualValidationGenerationJobResponsePercentMin = 0;
+export const getLatestVisualValidationGenerationJobResponsePercentMax = 100;
+
+export const getLatestVisualValidationGenerationJobResponseCompletedSessionsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseTotalSessionsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseElapsedMsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseEstimatedRemainingMsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseResultReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseResultBuildIdMax = 128;
+
+export const getLatestVisualValidationGenerationJobResponseResultCurrentBuildIdMax = 128;
+
+export const getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
+export const getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
+
+export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
+
+export const getLatestVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
+export const getLatestVisualValidationGenerationJobResponseResultRequestSeedMin = 0;
+export const getLatestVisualValidationGenerationJobResponseResultRequestSeedMax = 1000000;
+
+export const getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
+export const getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax = 120;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax = 120;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax = 20;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax = 4000;
+
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin = 0;
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax = 100;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin = 0;
+
+export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
+
+
+
+export const GetLatestVisualValidationGenerationJobResponse = zod.object({
+  "jobId": zod.string().regex(getLatestVisualValidationGenerationJobResponseJobIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
+  "completedUnits": zod.number().min(getLatestVisualValidationGenerationJobResponseCompletedUnitsMin),
+  "totalUnits": zod.number().min(1),
+  "percent": zod.number().min(getLatestVisualValidationGenerationJobResponsePercentMin).max(getLatestVisualValidationGenerationJobResponsePercentMax),
+  "completedSessions": zod.number().min(getLatestVisualValidationGenerationJobResponseCompletedSessionsMin),
+  "totalSessions": zod.number().min(getLatestVisualValidationGenerationJobResponseTotalSessionsMin),
+  "elapsedMs": zod.number().min(getLatestVisualValidationGenerationJobResponseElapsedMsMin),
+  "estimatedRemainingMs": zod.number().min(getLatestVisualValidationGenerationJobResponseEstimatedRemainingMsMin).nullable(),
+  "message": zod.string(),
+  "error": zod.string().nullable(),
+  "reviewSetId": zod.string().regex(getLatestVisualValidationGenerationJobResponseReviewSetIdRegExp).nullable(),
+  "result": zod.object({
+  "reviewSetId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewSetIdRegExp),
+  "createdAt": zod.coerce.date(),
+  "buildId": zod.string().min(1).max(getLatestVisualValidationGenerationJobResponseResultBuildIdMax),
+  "currentBuildId": zod.string().min(1).max(getLatestVisualValidationGenerationJobResponseResultCurrentBuildIdMax),
+  "stale": zod.boolean(),
+  "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "source": zod.enum(['simulated', 'historical_databento']),
+  "symbol": zod.string(),
+  "request": zod.object({
+  "symbol": zod.enum(['MES']).default(getLatestVisualValidationGenerationJobResponseResultRequestSymbolDefault),
+  "endDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(getLatestVisualValidationGenerationJobResponseResultRequestEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "seed": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestSeedMin).max(getLatestVisualValidationGenerationJobResponseResultRequestSeedMax).default(getLatestVisualValidationGenerationJobResponseResultRequestSeedDefault),
+  "premarketAvailable": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+}),
+  "reviewPeriod": zod.object({
+  "startDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
+  "endDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
+}),
+  "snapshots": zod.array(zod.object({
+  "snapshotId": zod.string(),
+  "occurrenceId": zod.string().optional(),
+  "sourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp).optional(),
+  "sampleIndex": zod.number().min(1),
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "categoryLabel": zod.string(),
+  "machineLabel": zod.string(),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "symbol": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "tradingDate": zod.string(),
+  "entryWindow": zod.enum(['primary', 'outside_primary']).describe('Primary MES entry window membership in America\/New_York wall-clock time.'),
+  "selectionReason": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluationCursor": zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string(),
+  "visibleCandleCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "reviewCursor": zod.object({
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string()
+}),
+  "machineCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "reviewCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "premarketCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "indicatorSeries": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "vwap": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "contractSymbol": zod.string(),
+  "sessionTemplate": zod.string(),
+  "noResetPolicy": zod.enum(['continuous_contract_local']),
+  "warmupCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin),
+  "initializationMethod": zod.enum(['sma_of_period_closes', 'unavailable']),
+  "sourceStartTime": zod.coerce.date().nullable(),
+  "sourceEndTime": zod.coerce.date().nullable(),
+  "availability": zod.enum(['available', 'insufficient_warmup']),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "tradeEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "event": zod.string(),
+  "label": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "triggerPrice": zod.number().nullable(),
+  "modeledPrice": zod.number().nullable(),
+  "contracts": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin),
+  "visibility": zod.enum(['machine', 'human_only']),
+  "detail": zod.string()
+})),
+  "coverage": zod.array(zod.object({
+  "session": zod.enum(['primary', 'full_regular']),
+  "expectedCandleCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin),
+  "observedCandleCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin),
+  "complete": zod.boolean(),
+  "missingIntervals": zod.array(zod.string())
+})),
+  "outcomeContextEnd": zod.coerce.date(),
+  "futureCandleAccess": zod.literal(false),
+  "categoryAnchor": zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "auditId": zod.string(),
+  "tradeId": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "relatedCandles": zod.array(zod.object({
+  "role": zod.enum(['evaluation', 'patience', 'entry', 'fill', 'exit']),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "visibility": zod.enum(['machine', 'human_only'])
+}),
+  "annotations": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
+  "price": zod.number().nullable(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "available": zod.boolean(),
+  "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
+  "detail": zod.string(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "machineEvidence": zod.record(zod.string(), zod.unknown()),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
+  "machineTradeId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "levelCandleOpenTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "levelCandleCloseTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
+  "qualifyingLevelId": zod.string().max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
+  "qualifyingLevelRangeLow": zod.number().nullish(),
+  "qualifyingLevelRangeHigh": zod.number().nullish(),
+  "qualifyingLevels": zod.array(zod.object({
+  "levelId": zod.string().max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax),
+  "levelType": zod.enum(['dynamic_indicator', 'fixed_level', 'level_range']),
+  "valueAtInteraction": zod.number(),
+  "sourceTimestamp": zod.coerce.date(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable()
+})).min(1).max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
+  "pullbackLevels": zod.array(zod.number()).max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional()
+})
+})),
+  "tradeCandidates": zod.array(zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+})),
+  "categoryCoverage": zod.array(zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "label": zod.string(),
+  "count": zod.number().min(getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin),
+  "available": zod.boolean()
+})),
+  "defaultSelectionReason": zod.string(),
+  "funnelDiagnostics": zod.object({
+  "sessionCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin),
+  "candidateCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
+  "occurrenceCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
+  "stages": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number(),
+  "percentOfPreceding": zod.number(),
+  "percentOfSessions": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
+})),
+  "rejectionCounts": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
+})),
+  "window": zod.object({
+  "breakoutOccurrences": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin),
+  "qualifyingPullbacks": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin),
+  "patienceCandidates": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin),
+  "expiredPatienceCandidates": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin),
+  "confirmedPairs": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin),
+  "riskApprovedEntries": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin),
+  "primaryWindowOccurrences": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin),
+  "outsidePrimaryWindowOccurrences": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
+})
+}).optional()
+}).optional()
+})
+
+
+/**
+ * @summary Retrieve visual-validation generation progress
+ */
+export const getVisualValidationGenerationJobPathJobIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const GetVisualValidationGenerationJobParams = zod.object({
+  "jobId": zod.coerce.string().regex(getVisualValidationGenerationJobPathJobIdRegExp)
+})
+
+export const getVisualValidationGenerationJobResponseJobIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseCompletedUnitsMin = 0;
+
+
+export const getVisualValidationGenerationJobResponsePercentMin = 0;
+export const getVisualValidationGenerationJobResponsePercentMax = 100;
+
+export const getVisualValidationGenerationJobResponseCompletedSessionsMin = 0;
+
+export const getVisualValidationGenerationJobResponseTotalSessionsMin = 0;
+
+export const getVisualValidationGenerationJobResponseElapsedMsMin = 0;
+
+export const getVisualValidationGenerationJobResponseEstimatedRemainingMsMin = 0;
+
+export const getVisualValidationGenerationJobResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseResultReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseResultBuildIdMax = 128;
+
+export const getVisualValidationGenerationJobResponseResultCurrentBuildIdMax = 128;
+
+export const getVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
+export const getVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
+export const getVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
+export const getVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
+
+export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
+
+export const getVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
+export const getVisualValidationGenerationJobResponseResultRequestSeedMin = 0;
+export const getVisualValidationGenerationJobResponseResultRequestSeedMax = 1000000;
+
+export const getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
+export const getVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax = 120;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax = 120;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax = 20;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax = 20;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax = 4000;
+
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin = 0;
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax = 100;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin = 0;
+
+export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
+
+
+
+export const GetVisualValidationGenerationJobResponse = zod.object({
+  "jobId": zod.string().regex(getVisualValidationGenerationJobResponseJobIdRegExp),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
+  "completedUnits": zod.number().min(getVisualValidationGenerationJobResponseCompletedUnitsMin),
+  "totalUnits": zod.number().min(1),
+  "percent": zod.number().min(getVisualValidationGenerationJobResponsePercentMin).max(getVisualValidationGenerationJobResponsePercentMax),
+  "completedSessions": zod.number().min(getVisualValidationGenerationJobResponseCompletedSessionsMin),
+  "totalSessions": zod.number().min(getVisualValidationGenerationJobResponseTotalSessionsMin),
+  "elapsedMs": zod.number().min(getVisualValidationGenerationJobResponseElapsedMsMin),
+  "estimatedRemainingMs": zod.number().min(getVisualValidationGenerationJobResponseEstimatedRemainingMsMin).nullable(),
+  "message": zod.string(),
+  "error": zod.string().nullable(),
+  "reviewSetId": zod.string().regex(getVisualValidationGenerationJobResponseReviewSetIdRegExp).nullable(),
+  "result": zod.object({
+  "reviewSetId": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewSetIdRegExp),
+  "createdAt": zod.coerce.date(),
+  "buildId": zod.string().min(1).max(getVisualValidationGenerationJobResponseResultBuildIdMax),
+  "currentBuildId": zod.string().min(1).max(getVisualValidationGenerationJobResponseResultCurrentBuildIdMax),
+  "stale": zod.boolean(),
+  "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "source": zod.enum(['simulated', 'historical_databento']),
+  "symbol": zod.string(),
+  "request": zod.object({
+  "symbol": zod.enum(['MES']).default(getVisualValidationGenerationJobResponseResultRequestSymbolDefault),
+  "endDate": zod.string().regex(getVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(getVisualValidationGenerationJobResponseResultRequestEndDateDefault),
+  "inSampleDays": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(getVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "seed": zod.number().min(getVisualValidationGenerationJobResponseResultRequestSeedMin).max(getVisualValidationGenerationJobResponseResultRequestSeedMax).default(getVisualValidationGenerationJobResponseResultRequestSeedDefault),
+  "premarketAvailable": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
+  "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+}),
+  "reviewPeriod": zod.object({
+  "startDate": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
+  "endDate": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
+}),
+  "snapshots": zod.array(zod.object({
+  "snapshotId": zod.string(),
+  "occurrenceId": zod.string().optional(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp).optional(),
+  "sampleIndex": zod.number().min(1),
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "categoryLabel": zod.string(),
+  "machineLabel": zod.string(),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "symbol": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "tradingDate": zod.string(),
+  "entryWindow": zod.enum(['primary', 'outside_primary']).describe('Primary MES entry window membership in America\/New_York wall-clock time.'),
+  "selectionReason": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "evaluationCursor": zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string(),
+  "visibleCandleCount": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemEvaluationCursorVisibleCandleCountMin),
+  "futureCandleAccess": zod.literal(false)
+}),
+  "reviewCursor": zod.object({
+  "closeTime": zod.coerce.date(),
+  "newYork": zod.string(),
+  "utc": zod.string()
+}),
+  "machineCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "reviewCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "premarketCandles": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "timestamp": zod.coerce.date(),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number(),
+  "volume": zod.number(),
+  "bid": zod.number(),
+  "ask": zod.number(),
+  "bidSize": zod.number(),
+  "askSize": zod.number(),
+  "contractSymbol": zod.string(),
+  "isComplete": zod.literal(true)
+})),
+  "indicatorSeries": zod.array(zod.object({
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "vwap": zod.number().nullable(),
+  "ema200": zod.number().nullable(),
+  "contractSymbol": zod.string(),
+  "sessionTemplate": zod.string(),
+  "noResetPolicy": zod.enum(['continuous_contract_local']),
+  "warmupCount": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemIndicatorSeriesItemWarmupCountMin),
+  "initializationMethod": zod.enum(['sma_of_period_closes', 'unavailable']),
+  "sourceStartTime": zod.coerce.date().nullable(),
+  "sourceEndTime": zod.coerce.date().nullable(),
+  "availability": zod.enum(['available', 'insufficient_warmup']),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "tradeEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "event": zod.string(),
+  "label": zod.string(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "triggerPrice": zod.number().nullable(),
+  "modeledPrice": zod.number().nullable(),
+  "contracts": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemTradeEventsItemContractsMin),
+  "visibility": zod.enum(['machine', 'human_only']),
+  "detail": zod.string()
+})),
+  "coverage": zod.array(zod.object({
+  "session": zod.enum(['primary', 'full_regular']),
+  "expectedCandleCount": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemExpectedCandleCountMin),
+  "observedCandleCount": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin),
+  "complete": zod.boolean(),
+  "missingIntervals": zod.array(zod.string())
+})),
+  "outcomeContextEnd": zod.coerce.date(),
+  "futureCandleAccess": zod.literal(false),
+  "categoryAnchor": zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "auditId": zod.string(),
+  "tradeId": zod.string().nullable(),
+  "contractSymbol": zod.string(),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "relatedCandles": zod.array(zod.object({
+  "role": zod.enum(['evaluation', 'patience', 'entry', 'fill', 'exit']),
+  "openTime": zod.coerce.date(),
+  "closeTime": zod.coerce.date(),
+  "price": zod.number().nullable(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "visibility": zod.enum(['machine', 'human_only'])
+}),
+  "annotations": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['level', 'indicator', 'fibonacci', 'candle', 'price']),
+  "price": zod.number().nullable(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "openTime": zod.coerce.date().nullable(),
+  "closeTime": zod.coerce.date().nullable(),
+  "available": zod.boolean(),
+  "color": zod.enum(['accent', 'positive', 'negative', 'muted', 'blue']),
+  "detail": zod.string(),
+  "visibility": zod.enum(['machine', 'human_only'])
+})),
+  "machineEvidence": zod.record(zod.string(), zod.unknown()),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "teaching": zod.object({
+  "teachingId": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
+  "machineTradeId": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
+  "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
+  "direction": zod.enum(['long', 'short']),
+  "levelCandleOpenTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "levelCandleCloseTime": zod.coerce.date().describe('Qualifying level-interaction candle L.'),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "patienceCandleOpenTime": zod.coerce.date(),
+  "patienceCandleCloseTime": zod.coerce.date(),
+  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
+  "qualifyingLevelId": zod.string().max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
+  "qualifyingLevelRangeLow": zod.number().nullish(),
+  "qualifyingLevelRangeHigh": zod.number().nullish(),
+  "qualifyingLevels": zod.array(zod.object({
+  "levelId": zod.string().max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsItemLevelIdMax),
+  "levelType": zod.enum(['dynamic_indicator', 'fixed_level', 'level_range']),
+  "valueAtInteraction": zod.number(),
+  "sourceTimestamp": zod.coerce.date(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable()
+})).min(1).max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
+  "pullbackLevels": zod.array(zod.number()).max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
+  "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "explanation": zod.string().max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
+  "calculatedEntryPrice": zod.number(),
+  "validation": zod.object({
+  "valid": zod.boolean(),
+  "messages": zod.array(zod.string()),
+  "checkedAt": zod.coerce.date(),
+  "levelInteractions": zod.array(zod.object({
+  "levelName": zod.string(),
+  "levelPrice": zod.number(),
+  "candleHigh": zod.number(),
+  "candleLow": zod.number(),
+  "distanceTicks": zod.number(),
+  "distancePoints": zod.number(),
+  "allowedToleranceTicks": zod.number(),
+  "allowedTolerancePoints": zod.number(),
+  "machineVisible": zod.boolean(),
+  "passed": zod.boolean(),
+  "reason": zod.string()
+}))
+}),
+  "machineEvidenceSnapshot": zod.record(zod.string(), zod.unknown()),
+  "machineEvidenceHash": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineEvidenceHashRegExp),
+  "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp),
+  "formulaVersion": zod.string(),
+  "sourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp),
+  "supersedesReviewId": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp).nullable(),
+  "createdAt": zod.coerce.date()
+}).optional()
+})
+})),
+  "tradeCandidates": zod.array(zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+})),
+  "categoryCoverage": zod.array(zod.object({
+  "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
+  "label": zod.string(),
+  "count": zod.number().min(getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin),
+  "available": zod.boolean()
+})),
+  "defaultSelectionReason": zod.string(),
+  "funnelDiagnostics": zod.object({
+  "sessionCount": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin),
+  "candidateCount": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
+  "occurrenceCount": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
+  "stages": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number(),
+  "percentOfPreceding": zod.number(),
+  "percentOfSessions": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
+})),
+  "rejectionCounts": zod.array(zod.object({
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "count": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
+})),
+  "window": zod.object({
+  "breakoutOccurrences": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowBreakoutOccurrencesMin),
+  "qualifyingPullbacks": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowQualifyingPullbacksMin),
+  "patienceCandidates": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPatienceCandidatesMin),
+  "expiredPatienceCandidates": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowExpiredPatienceCandidatesMin),
+  "confirmedPairs": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowConfirmedPairsMin),
+  "riskApprovedEntries": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowRiskApprovedEntriesMin),
+  "primaryWindowOccurrences": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowPrimaryWindowOccurrencesMin),
+  "outsidePrimaryWindowOccurrences": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
+})
+}).optional()
+}).optional()
+})
+
+
+/**
  * @summary Record a human visual-validation label
  */
 export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');

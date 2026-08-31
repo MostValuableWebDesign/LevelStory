@@ -4148,6 +4148,65 @@ export interface VisualValidationSet {
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
 }
 
+export type VisualValidationGenerationPhase = typeof VisualValidationGenerationPhase[keyof typeof VisualValidationGenerationPhase];
+
+
+export const VisualValidationGenerationPhase = {
+  preparing: 'preparing',
+  loading_sessions: 'loading_sessions',
+  replaying_sessions: 'replaying_sessions',
+  building_ledger: 'building_ledger',
+  projecting_candidates: 'projecting_candidates',
+  building_snapshots: 'building_snapshots',
+  completed: 'completed',
+} as const;
+
+export type VisualValidationGenerationStatus = typeof VisualValidationGenerationStatus[keyof typeof VisualValidationGenerationStatus];
+
+
+export const VisualValidationGenerationStatus = {
+  queued: 'queued',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface VisualValidationGenerationJob {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  jobId: string;
+  status: VisualValidationGenerationStatus;
+  phase: VisualValidationGenerationPhase;
+  /** @minimum 0 */
+  completedUnits: number;
+  /** @minimum 1 */
+  totalUnits: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  percent: number;
+  /** @minimum 0 */
+  completedSessions: number;
+  /** @minimum 0 */
+  totalSessions: number;
+  /** @minimum 0 */
+  elapsedMs: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  estimatedRemainingMs: number | null;
+  message: string;
+  /** @nullable */
+  error: string | null;
+  /**
+     * @nullable
+     * @pattern ^[0-9a-fA-F-]{36}$
+     */
+  reviewSetId: string | null;
+  result?: VisualValidationSet;
+}
+
 export type VisualValidationReviewRequestTeachingDirection = typeof VisualValidationReviewRequestTeachingDirection[keyof typeof VisualValidationReviewRequestTeachingDirection];
 
 

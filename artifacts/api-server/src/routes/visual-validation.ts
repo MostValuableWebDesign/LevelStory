@@ -9,6 +9,11 @@ import {
   ExportVisualValidationDiscrepanciesResponse,
   AnalyzeVisualValidationTeachingBody,
   AnalyzeVisualValidationTeachingResponse,
+  StartVisualValidationGenerationJobBody,
+  StartVisualValidationGenerationJobResponse,
+  GetLatestVisualValidationGenerationJobResponse,
+  GetVisualValidationGenerationJobParams,
+  GetVisualValidationGenerationJobResponse,
 } from "@workspace/api-zod";
 import { requestRateLimit } from "../lib/security.js";
 import { requireRole } from "../middlewares/authMiddleware.js";
@@ -27,6 +32,11 @@ import {
   storeVisualValidationSet,
 } from "../lib/visual-validation-store.js";
 import { DEFAULT_LEVEL_TOLERANCE_TICKS } from "@workspace/api-spec/constants";
+import {
+  getLatestVisualValidationGenerationJob,
+  getVisualValidationGenerationJob,
+  startVisualValidationGenerationJob,
+} from "../lib/visual-validation-generation-jobs.js";
 
 const defaultRequest = {
   symbol: "MES" as const,
@@ -168,6 +178,39 @@ export function createVisualValidationRouter(): IRouter {
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
       res.status(unavailable ? 503 : 500).json({ error: detail });
     }
+  });
+
+  router.post("/backtest/visual-validation/generation-jobs", async (req, res): Promise<void> => {
+    const parsed = StartVisualValidationGenerationJobBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const job = startVisualValidationGenerationJob(parsed.data);
+    res.json(StartVisualValidationGenerationJobResponse.parse(job));
+  });
+
+  router.get("/backtest/visual-validation/generation-jobs", (req, res): void => {
+    const job = getLatestVisualValidationGenerationJob();
+    if (!job) {
+      res.status(404).json({ error: "No visual-validation generation job is available." });
+      return;
+    }
+    res.json(GetLatestVisualValidationGenerationJobResponse.parse(job));
+  });
+
+  router.get("/backtest/visual-validation/generation-jobs/:jobId", (req, res): void => {
+    const parsed = GetVisualValidationGenerationJobParams.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const job = getVisualValidationGenerationJob(parsed.data.jobId);
+    if (!job) {
+      res.status(404).json({ error: "Visual-validation generation job not found or expired." });
+      return;
+    }
+    res.json(GetVisualValidationGenerationJobResponse.parse(job));
   });
 
   router.post("/backtest/visual-validation/reviews", reviewRateLimit, requireRole("reviewer"), async (req, res): Promise<void> => {

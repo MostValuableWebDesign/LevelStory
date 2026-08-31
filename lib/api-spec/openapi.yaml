@@ -539,6 +539,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/generation-jobs:
+    post:
+      operationId: startVisualValidationGenerationJob
+      tags: [backtest]
+      summary: Start or reuse a deterministic visual-validation generation job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisualValidationRequest"
+      responses:
+        "200":
+          description: Queued, active, or cached visual-validation generation job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationGenerationJob"
+        "400":
+          description: Invalid visual-validation request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getLatestVisualValidationGenerationJob
+      tags: [backtest]
+      summary: Retrieve the latest visual-validation generation job
+      responses:
+        "200":
+          description: Latest active or completed visual-validation generation job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationGenerationJob"
+        "404":
+          description: No generation job is available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/generation-jobs/{jobId}:
+    get:
+      operationId: getVisualValidationGenerationJob
+      tags: [backtest]
+      summary: Retrieve visual-validation generation progress
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+      responses:
+        "200":
+          description: Current generation progress or completed result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationGenerationJob"
+        "404":
+          description: Generation job not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/visual-validation/reviews:
     post:
       operationId: recordVisualValidationReview
@@ -4076,6 +4140,30 @@ components:
               required: [breakoutOccurrences, qualifyingPullbacks, patienceCandidates, expiredPatienceCandidates, confirmedPairs, riskApprovedEntries, primaryWindowOccurrences, outsidePrimaryWindowOccurrences]
           required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, window]
       required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, source, symbol, request, reviewPeriod, snapshots, tradeCandidates, categoryCoverage, defaultSelectionReason]
+    VisualValidationGenerationPhase:
+      type: string
+      enum: [preparing, loading_sessions, replaying_sessions, building_ledger, projecting_candidates, building_snapshots, completed]
+    VisualValidationGenerationStatus:
+      type: string
+      enum: [queued, running, completed, failed]
+    VisualValidationGenerationJob:
+      type: object
+      properties:
+        jobId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        status: { $ref: "#/components/schemas/VisualValidationGenerationStatus" }
+        phase: { $ref: "#/components/schemas/VisualValidationGenerationPhase" }
+        completedUnits: { type: number, minimum: 0 }
+        totalUnits: { type: number, minimum: 1 }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        completedSessions: { type: number, minimum: 0 }
+        totalSessions: { type: number, minimum: 0 }
+        elapsedMs: { type: number, minimum: 0 }
+        estimatedRemainingMs: { type: ["number", "null"], minimum: 0 }
+        message: { type: string }
+        error: { type: ["string", "null"] }
+        reviewSetId: { type: ["string", "null"], pattern: '^[0-9a-fA-F-]{36}$' }
+        result: { $ref: "#/components/schemas/VisualValidationSet" }
+      required: [jobId, status, phase, completedUnits, totalUnits, percent, completedSessions, totalSessions, elapsedMs, estimatedRemainingMs, message, error, reviewSetId]
     VisualValidationReviewRequest:
       type: object
       properties:

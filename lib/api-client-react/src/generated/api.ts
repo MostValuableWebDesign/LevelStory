@@ -69,6 +69,7 @@ import type {
   TeachingExample,
   ValidationRun,
   VisualValidationDiscrepancyReport,
+  VisualValidationGenerationJob,
   VisualValidationProposedRuleAnalysis,
   VisualValidationProposedRuleAnalysisRequest,
   VisualValidationRequest,
@@ -1378,6 +1379,231 @@ export const useCreateVisualValidationSet = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateVisualValidationSetMutationOptions(options));
     }
+
+export const getStartVisualValidationGenerationJobUrl = () => {
+
+
+
+
+  return `/api/backtest/visual-validation/generation-jobs`
+}
+
+/**
+ * @summary Start or reuse a deterministic visual-validation generation job
+ */
+export const startVisualValidationGenerationJob = async (visualValidationRequest: VisualValidationRequest, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationGenerationJob> => {
+
+  return customFetch<VisualValidationGenerationJob>(getStartVisualValidationGenerationJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(visualValidationRequest)
+  }
+);}
+
+
+
+
+
+export const getStartVisualValidationGenerationJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startVisualValidationGenerationJob>>, TError,{data: BodyType<VisualValidationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startVisualValidationGenerationJob>>, TError,{data: BodyType<VisualValidationRequest>}, TContext> => {
+
+const mutationKey = ['startVisualValidationGenerationJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startVisualValidationGenerationJob>>, {data: BodyType<VisualValidationRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  startVisualValidationGenerationJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartVisualValidationGenerationJobMutationResult = NonNullable<Awaited<ReturnType<typeof startVisualValidationGenerationJob>>>
+    export type StartVisualValidationGenerationJobMutationBody = BodyType<VisualValidationRequest>
+    export type StartVisualValidationGenerationJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start or reuse a deterministic visual-validation generation job
+ */
+export const useStartVisualValidationGenerationJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startVisualValidationGenerationJob>>, TError,{data: BodyType<VisualValidationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startVisualValidationGenerationJob>>,
+        TError,
+        {data: BodyType<VisualValidationRequest>},
+        TContext
+      > => {
+      return useMutation(getStartVisualValidationGenerationJobMutationOptions(options));
+    }
+
+export const getGetLatestVisualValidationGenerationJobUrl = () => {
+
+
+
+
+  return `/api/backtest/visual-validation/generation-jobs`
+}
+
+/**
+ * @summary Retrieve the latest visual-validation generation job
+ */
+export const getLatestVisualValidationGenerationJob = async ( options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationGenerationJob> => {
+
+  return customFetch<VisualValidationGenerationJob>(getGetLatestVisualValidationGenerationJobUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestVisualValidationGenerationJobQueryKey = () => {
+    return [
+    `/api/backtest/visual-validation/generation-jobs`
+    ] as const;
+    }
+
+
+export const getGetLatestVisualValidationGenerationJobQueryOptions = <TData = Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestVisualValidationGenerationJobQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>> = ({ signal }) => getLatestVisualValidationGenerationJob({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestVisualValidationGenerationJobQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>>
+export type GetLatestVisualValidationGenerationJobQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Retrieve the latest visual-validation generation job
+ */
+
+export function useGetLatestVisualValidationGenerationJob<TData = Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestVisualValidationGenerationJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestVisualValidationGenerationJobQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetVisualValidationGenerationJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/backtest/visual-validation/generation-jobs/${jobId}`
+}
+
+/**
+ * @summary Retrieve visual-validation generation progress
+ */
+export const getVisualValidationGenerationJob = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationGenerationJob> => {
+
+  return customFetch<VisualValidationGenerationJob>(getGetVisualValidationGenerationJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVisualValidationGenerationJobQueryKey = (jobId: string,) => {
+    return [
+    `/api/backtest/visual-validation/generation-jobs/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetVisualValidationGenerationJobQueryOptions = <TData = Awaited<ReturnType<typeof getVisualValidationGenerationJob>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationGenerationJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVisualValidationGenerationJobQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVisualValidationGenerationJob>>> = ({ signal }) => getVisualValidationGenerationJob(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationGenerationJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVisualValidationGenerationJobQueryResult = NonNullable<Awaited<ReturnType<typeof getVisualValidationGenerationJob>>>
+export type GetVisualValidationGenerationJobQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Retrieve visual-validation generation progress
+ */
+
+export function useGetVisualValidationGenerationJob<TData = Awaited<ReturnType<typeof getVisualValidationGenerationJob>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationGenerationJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVisualValidationGenerationJobQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getRecordVisualValidationReviewUrl = () => {
 

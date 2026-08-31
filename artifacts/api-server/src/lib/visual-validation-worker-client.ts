@@ -1,9 +1,26 @@
 import { Worker } from "node:worker_threads";
 import type { VisualValidationRequest, VisualValidationSet } from "./visual-validation.js";
+import type { CausalReplayProgress } from "./phase9.js";
 
 type WorkerMessage =
   | { type: "result"; set: Omit<VisualValidationSet, "reviewSetId" | "createdAt"> }
+  | { type: "progress"; progress: VisualValidationWorkerProgress }
   | { type: "error"; message: string };
+
+export type VisualValidationWorkerPhase =
+  | "preparing"
+  | "loading_sessions"
+  | "replaying_sessions"
+  | "building_ledger"
+  | "projecting_candidates"
+  | "building_snapshots";
+
+export type VisualValidationWorkerProgress = CausalReplayProgress & {
+  phase: VisualValidationWorkerPhase;
+  completedUnits: number;
+  totalUnits: 100;
+  message: string;
+};
 
 type WorkerLike = {
   once(event: "message", listener: (message: WorkerMessage) => void): WorkerLike;
@@ -24,6 +41,7 @@ export class VisualValidationWorkerError extends Error {
 export function buildHistoricalVisualValidationSetInWorker(
   request: VisualValidationRequest,
   timeoutMs: number,
+  onProgress?: (progress: VisualValidationWorkerProgress) => void,
 ): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -59,7 +77,8 @@ export function buildHistoricalVisualValidationSetInWorker(
       worker = new Worker(workerUrl, { workerData: request }) as unknown as WorkerLike;
       worker.once("message", (message) => {
         if (message.type === "result") finish(() => resolve(message.set));
-        else finish(() => reject(new VisualValidationWorkerError(message.message)));
+        else if (message.type === "progress" && !settled) onProgress?.(message.progress);
+        else if (message.type === "error") finish(() => reject(new VisualValidationWorkerError(message.message)));
       });
       worker.once("error", (error) => {
         finish(() => reject(new VisualValidationWorkerError(error.message)));

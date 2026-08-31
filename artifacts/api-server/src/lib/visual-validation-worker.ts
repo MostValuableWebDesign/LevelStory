@@ -14,8 +14,28 @@ if (!parentPort) {
   throw new Error("Visual-validation worker must be started by a parent thread.");
 }
 
+const emitProgress = (progress: {
+  phase: "preparing" | "loading_sessions" | "replaying_sessions" | "building_ledger" | "projecting_candidates" | "building_snapshots";
+  completedUnits: number;
+  completedSessions: number;
+  totalSessions: number;
+  message: string;
+}): void => {
+  parentPort!.postMessage({
+    type: "progress",
+    progress: { ...progress, totalUnits: 100 },
+  });
+};
+
 try {
   const request = workerData as VisualValidationRequest;
+  emitProgress({
+    phase: "preparing",
+    completedUnits: 0,
+    completedSessions: 0,
+    totalSessions: 0,
+    message: "Preparing historical replay",
+  });
   if (request.symbol !== "MES") {
     throw new Error("Historical Databento visual review supports MES only.");
   }
@@ -34,6 +54,14 @@ try {
     request.inSampleDays,
     request.outOfSampleDays,
   );
+  const totalSessions = dataset.selectedDates?.length ?? 0;
+  emitProgress({
+    phase: "loading_sessions",
+    completedUnits: 15,
+    completedSessions: 0,
+    totalSessions,
+    message: `Loading ${totalSessions} trading session${totalSessions === 1 ? "" : "s"}`,
+  });
   const report = runCausalBacktest({
     symbol: request.symbol,
     endDate: request.endDate,
@@ -42,8 +70,37 @@ try {
     premarketAvailable: request.premarketAvailable,
     source: MULTI_CONTRACT_SOURCE,
     executionMode: "ohlcv_modeled",
-  }, undefined, dataset);
+  }, undefined, dataset, ({ completedSessions: completed, totalSessions: total }) => {
+    emitProgress({
+      phase: "replaying_sessions",
+      completedUnits: total > 0 ? 15 + Math.round((completed / total) * 60) : 15,
+      completedSessions: completed,
+      totalSessions: total,
+      message: `Replaying session ${Math.min(completed + 1, total)} of ${total}`,
+    });
+  });
+  emitProgress({
+    phase: "building_ledger",
+    completedUnits: 80,
+    completedSessions: totalSessions,
+    totalSessions,
+    message: "Finding confirmed P → E signals",
+  });
+  emitProgress({
+    phase: "projecting_candidates",
+    completedUnits: 90,
+    completedSessions: totalSessions,
+    totalSessions,
+    message: "Creating authoritative trade candidates",
+  });
   const set = buildHistoricalVisualValidationSetFromReport(request, dataset, report);
+  emitProgress({
+    phase: "building_snapshots",
+    completedUnits: 99,
+    completedSessions: totalSessions,
+    totalSessions,
+    message: "Building chart review snapshots",
+  });
   parentPort.postMessage({ type: "result", set });
 } catch (error) {
   parentPort.postMessage({

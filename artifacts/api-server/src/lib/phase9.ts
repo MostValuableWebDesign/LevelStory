@@ -106,6 +106,11 @@ export type CausalReplayDataset = {
   };
 };
 
+export type CausalReplayProgress = {
+  completedSessions: number;
+  totalSessions: number;
+};
+
 export type BacktestGapReport = {
   missingMinuteGaps: number;
   missingGapSegments: number;
@@ -3233,6 +3238,7 @@ export function runCausalBacktest(
   request: BacktestRequest,
   riskInput?: { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean },
   providedDataset?: CausalReplayDataset,
+  onProgress?: (progress: CausalReplayProgress) => void,
 ): BacktestReport {
   const specification = getFuturesContractSpecification(request.symbol);
   const activeStrategy = activeShadowStrategySnapshot();
@@ -3267,6 +3273,25 @@ export function runCausalBacktest(
       finalRegularIndexByContractDate.set(`${item.contractSymbol}:${date}`, index);
     }
   }
+  const totalReplaySessions = dataset.selectedDates?.length
+    ?? new Set(candles
+      .filter((item) => item.isComplete)
+      .map((item) => `${item.contractSymbol}:${tradingDateForTimestamp(item.openTime, calendar)}`))
+      .size;
+  const completedReplaySessions = new Set<string>();
+  const markCompletedSessionBeforeIndex = (index: number): void => {
+    if (!onProgress || index <= 0) return;
+    const previous = candles[index - 1];
+    if (!previous?.isComplete) return;
+    const previousDate = tradingDateForTimestamp(previous.openTime, calendar);
+    const previousKey = `${previous.contractSymbol}:${previousDate}`;
+    if (finalRegularIndexByContractDate.get(previousKey) !== index - 1 || completedReplaySessions.has(previousKey)) return;
+    completedReplaySessions.add(previousKey);
+    onProgress({
+      completedSessions: completedReplaySessions.size,
+      totalSessions: totalReplaySessions,
+    });
+  };
   const rejectedByPeriod = { in_sample: 0, out_of_sample: 0 };
   const trades: BacktestTrade[] = [];
   const audit: BacktestAuditRecord[] = [];
@@ -3282,6 +3307,7 @@ export function runCausalBacktest(
   let previousContractSymbol: string | null = null;
 
   for (let index = 0; index < candles.length; index += 1) {
+    markCompletedSessionBeforeIndex(index);
     const candle = candles[index];
     const currentContractSymbol = dataset.contractSchedule
       ? candle.contractSymbol
@@ -3714,6 +3740,7 @@ export function runCausalBacktest(
     });
     lastExitIndex = Math.min(exitIndex, candles.length - 1);
   }
+  markCompletedSessionBeforeIndex(candles.length);
 
   if (candles.length) {
     finalReplay = createCausalReplay(dataset, candles.at(-1)!.closeTime);
