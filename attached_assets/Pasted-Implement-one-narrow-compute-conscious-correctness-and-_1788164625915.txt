@@ -1,0 +1,224 @@
+Implement one narrow, compute-conscious correctness and Visual Review cleanup pass.
+
+Do not rebuild the historical index, run broad qualification, change strategy definitions unrelated to this request, connect a broker, or add live/paper orders. Use focused deterministic tests, typecheck, and build only.
+
+OBJECTIVE
+
+Finish the remaining pullback/Dynamite correctness issues and improve the chart layout:
+
+1. Only genuinely qualifying pullbacks may arm patience or qualify an edge.
+2. Dynamite confluence must belong to the exact physical signal it grades.
+3. Patience candles closing inside NTZ must never be selected.
+4. Move the right-side price-level label rail above the chart.
+5. Remove Fibonacci lines and labels from Visual Review only.
+6. Preserve the corrected wick-based NTZ entry rule and responsive chart sizing.
+
+PART 1 — AUTHORITATIVE QUALIFYING PULLBACKS
+
+A pullback event may arm patience or satisfy a Phase 6 pullback rule only when:
+
+```ts
+event.qualifies === true
+and its type is one of:
+touch
+proximity
+consolidation
+break and reclaim
+hold
+Update every authoritative path, including:
+phase5PatienceAnalysis
+hasQualifyingPullback
+hasGenuinePullback
+Fibonacci pullback interaction checks
+Patience eligibility-event construction
+ORB pullback qualification
+Generic patience continuation qualification
+Dynamite pullback interaction construction
+A matching event type with qualifies: false is diagnostic evidence only. It must not:
+Arm patience
+Create an L→P sequence
+Confirm a pullback
+Qualify an edge
+Produce a trade candidate
+Increase a grade
+Do not infer qualification later from chart geometry.
+PART 2 — PATIENCE MUST BE OUTSIDE NTZ
+Do not select or store a patience candle P that closes inside the finalized NTZ/ORB.
+Use the following causal rule:
+Long:
+P.close > NTZ.high
+Short:
+P.close < NTZ.low
+The P wick may retest or overlap the NTZ/ORB boundary because that can be the pullback to the level. The completed close determines whether P remains outside the non-trading zone.
+Reject P when:
+NTZ.low <= P.close && P.close <= NTZ.high
+Record the explicit reason:
+PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ
+Requirements:
+Do not expose an inside-NTZ P as a confirmed patience occurrence.
+Do not allow its immediate next candle to become E.
+Continue scanning causally for a later P2.
+Only E2 may confirm P2.
+Preserve the existing immediate P→E rule.
+Preserve the 9:30 a.m.–1:00 p.m. ET entry window.
+Preserve the 12-tick pullback tolerance.
+Preserve the 12-tick patience stop range.
+Preserve the effective entry threshold:
+Long:
+max(P.high + entryBuffer, NTZ.high + one tick)
+Short:
+min(P.low - entryBuffer, NTZ.low - one tick)
+E only needs to reach that threshold with its wick. E does not need to close outside NTZ.
+PART 3 — EXACT DYNAMITE-TO-SIGNAL ATTRIBUTION
+A Dynamite Level is supporting confluence, not an independent edge.
+Remove the broad condition that lets any earlier same-session Dynamite interaction grade a later P→E signal merely because:
+interaction.candleOpenTime <= P.openTime
+Attach Dynamite evidence only when it belongs to the same physical causal sequence:
+Same source fingerprint and formula/configuration hash
+Same contract
+Same New York trading date
+Same direction
+Same qualifying eligibility arm
+Same qualifying pullback event or L candle
+Same P candle
+Same immediate E candle
+Interaction occurred no later than P and remained inside the same active arm
+Prefer an exact eligibility event ID match. If an exact event ID is unavailable, require the same canonical L candle and active arm; do not fall back to any earlier session interaction.
+A Dynamite Level must:
+Increase the existing grade by exactly one grade step
+Be added to supporting confluences
+Never create another signal, candidate, trade, or fill
+Never grade an unrelated later setup
+PART 4 — CANONICAL DYNAMITE IDENTITIES
+Continue treating these as canonical families:
+orb-ntz-high
+orb-ntz-low
+premarket-high
+premarket-low
+previous-day-high
+previous-day-low
+two-days-ago-high
+two-days-ago-low
+vwap
+ema-200
+support-zone
+resistance-zone
+fibonacci
+Rules:
+ORB high and NTZ high are one family.
+ORB low and NTZ low are one family.
+Critical/Premarket aliases must not count twice.
+Multiple Fibonacci ratios count as one Fibonacci family.
+Repeated audit references count once.
+Unknown names must not silently default to support-zone; classify them explicitly or exclude them from Dynamite construction.
+A Dynamite Level requires at least two distinct canonical families within eight MES ticks.
+Make the deterministic Dynamite ID include:
+Source fingerprint
+Formula/configuration hash
+Contract
+New York trading date
+Causal observation timestamp
+Lower and upper price
+Sorted canonical source families
+PART 5 — MOVE PRICE-LEVEL LABELS ABOVE THE CHART
+The colored price-level labels currently stacked along the chart’s right edge are compressing and obscuring the price plot.
+Replace the right-side label rail with a compact, wrapping level-value legend above the SVG plot.
+The new level legend should:
+Sit directly above the chart.
+Use compact colored chips.
+Show the level name and exact price.
+Wrap onto additional rows when necessary.
+Never overlap candles, the price axis, or the Candle Inspector.
+Use the same color as the corresponding plotted line.
+Preserve deterministic ordering.
+Allow the chart plot to use the space previously reserved for the right label rail.
+Suggested order:
+ORB / NTZ High
+ORB / NTZ Low
+Premarket High
+Premarket Low
+Prior Day High
+Prior Day Low
+Two Days Ago High
+Two Days Ago Low
+VWAP
+EMA 200
+Support/Resistance zones
+Dynamite Level
+Target
+Stop
+Do not add chart text labels for P, E, stops, or other events. Keep their existing compact point markers/event index behavior.
+PART 6 — REMOVE FIBONACCI FROM VISUAL REVIEW
+Remove Fibonacci from the Visual Review chart presentation:
+Do not draw Fibonacci horizontal lines.
+Do not show Fibonacci price chips above the chart.
+Remove Fibonacci from the chart legend.
+Remove Fibonacci from “Additional levels” display if that display is part of the chart presentation.
+Do not reserve layout space for hidden Fibonacci annotations.
+This is a display-only change.
+Do not remove or change:
+Historical Fibonacci calculations
+Frozen Fibonacci evidence
+Pullback qualification logic
+Stored audit evidence
+Candidate confluence evidence
+Backtest behavior
+API evidence needed for auditing
+The engine may continue using Fibonacci causally; Visual Review should simply not display its lines or labels.
+PART 7 — CHART WIDTH AND RESPONSIVENESS
+Preserve the 1200×820 viewBox ratio and responsive aspect-ratio work.
+After removing the right label rail:
+Expand the candle plot and price axis into the recovered width.
+Keep the price axis readable on the right.
+Do not stretch or distort the SVG.
+Do not introduce letterboxing caused by conflicting fixed height and width rules.
+Preserve zoom, pan, free-roam pointer, candle hover inspection, fullscreen, and empty-slot behavior.
+PART 8 — REGRESSION TESTS
+Add focused deterministic tests proving:
+qualifies: false pullback events cannot arm patience.
+qualifies: false events cannot satisfy Phase 6 pullback rules.
+A long P closing inside NTZ is rejected.
+A short P closing inside NTZ is rejected.
+A wick retest of the NTZ boundary is allowed when P closes outside in the trade direction.
+After an inside-NTZ P is rejected, scanning continues to P2→E2.
+Long and short E candles qualify by wick reach of the effective outside-NTZ threshold without requiring an outside close.
+An earlier unrelated Dynamite interaction cannot grade a later signal.
+The exact L/arm/P/E Dynamite interaction raises only the linked signal’s grade.
+ORB/NTZ aliases count as one family.
+Multiple Fibonacci ratios count as one family.
+Unknown level names do not default to support.
+One physical P→E signal still creates at most one candidate and one trade.
+Fibonacci annotations are filtered from Visual Review.
+The level-value legend is outside the SVG plot and the plot retains the expected aspect ratio.
+The right-side plot label rail is no longer rendered.
+PART 9 — CLEANUP AND VERIFICATION
+Remove the committed temporary prompt attachment:
+attached_assets/Pasted-Paste-this-into-Replit-text-Implement-one-narrow-correc_1788147892223.txt
+Run only:
+Focused Phase 5 tests
+Focused Phase 6 tests
+Focused major-level/Dynamite tests
+Focused Phase 9 candidate tests
+Focused Visual Review chart tests
+API typecheck
+Frontend typecheck
+API build
+Frontend build
+git diff --check
+Do not run:
+Historical index rebuild
+Broad multi-month replay
+Qualification batch
+Live or paper execution
+Broker integration
+REPORT
+Return:
+Files changed.
+Root causes fixed.
+Exact patience-outside-NTZ rule.
+Exact pullback qualification rule.
+Exact Dynamite signal-linking identity.
+Visual Review changes.
+Tests and build results.
+Remaining limitations.
+Confirmation that no historical index rebuild or broad replay was performed.
