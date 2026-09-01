@@ -1396,7 +1396,7 @@ test("invalid confirmed P to E identity is rejected diagnostically without a can
   );
 });
 
-test("confirmed signals require causal qualifying key-level interaction evidence", () => {
+test("confirmed signals do not require key-level interaction evidence for candidate projection", () => {
   const base = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
@@ -1408,8 +1408,7 @@ test("confirmed signals require causal qualifying key-level interaction evidence
     specification: {} as any,
     executionMode: "ohlcv_modeled",
   });
-  assert.deepEqual(noInteraction.rejected[0]?.reasonCodes, ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"]);
-  assert.match(noInteraction.rejected[0]?.details[0] ?? "", /REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK/);
+  assert.equal(noInteraction.candidates.length, 1);
 
   const fibonacciOnly = projectHistoricalTradeCandidates([{
     ...base,
@@ -1421,7 +1420,7 @@ test("confirmed signals require causal qualifying key-level interaction evidence
     specification: {} as any,
     executionMode: "ohlcv_modeled",
   });
-  assert.deepEqual(fibonacciOnly.rejected[0]?.reasonCodes, ["REJECTED_NO_QUALIFYING_KEY_LEVEL_PULLBACK"]);
+  assert.equal(fibonacciOnly.candidates.length, 1);
 
   const causalLevel = projectHistoricalTradeCandidates([{
     ...base,
