@@ -66,6 +66,34 @@ test("valid bearish patience candle triggers below the patience low", () => {
   assert.equal(result.triggerPrice, 8);
 });
 
+test("the Aug 5 10:45 short candidate is rejected when E is ambiguous", () => {
+  const result = patienceCandleEngine(
+    [
+      datedCandle("2026-08-05T14:40:00.000Z", 7791.25, 7796.25, 7788, 7792),
+      datedCandle("2026-08-05T14:45:00.000Z", 7792, 7799.75, 7790.25, 7798),
+      datedCandle("2026-08-05T14:50:00.000Z", 7797.75, 7800.5, 7778.25, 7783.25),
+    ],
+    "short",
+    {
+      eligibilityEvents: [{
+        time: Date.parse("2026-08-05T14:45:00.000Z"),
+        reason: "pullback",
+        detail: "Proximity to Prior day high.",
+        eventId: "pullback|proximity|1785940800000|Prior day high|7786",
+      }],
+      finalizedNtz: { high: 7820.25, low: 7804, complete: true },
+      requireFinalizedNtz: true,
+    },
+  );
+  const occurrence = result.occurrences?.[0];
+  assert.equal(occurrence?.patienceCandle.openTime, Date.parse("2026-08-05T14:45:00.000Z"));
+  assert.equal(occurrence?.eligibilityEventId, "pullback|proximity|1785940800000|Prior day high|7786");
+  assert.equal(occurrence?.status, "AMBIGUOUS_EVENT_ORDER");
+  assert.equal(occurrence?.outcomeStatus, "INVALIDATED");
+  assert.equal(occurrence?.confirmationThreshold, 7788.25);
+  assert.equal(occurrence?.triggerCandle?.low, 7778.25);
+});
+
 test("patience strategy stops use exactly eight MES ticks beyond the frozen P extreme", () => {
   const long = patienceCandleEngine(
     setup("long", candle(2, 10.8, 12, 10.2, 11.75)),
