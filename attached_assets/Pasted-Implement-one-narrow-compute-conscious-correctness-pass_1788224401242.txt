@@ -1,0 +1,230 @@
+Implement one narrow, compute-conscious correctness pass for the authoritative pullback-arm lifecycle in LevelStory.
+
+Do not rebuild the historical index, run a broad backtest, modify the strategy definitions, change the 12-tick pullback tolerance, change the eight-tick P→E confirmation buffer, alter stops or profit targets, or add broker/live/paper execution.
+
+Objective
+
+Finish the Phase 4 → Phase 5 → Phase 9 pullback lifecycle so every breakout creates one deterministic, monotonic arm whose identity and state cannot regress across repeated audit evaluations.
+
+Required corrections
+
+1. Authoritative monotonic lifecycle
+
+Create or use one canonical lifecycle record per pullback arm ID.
+
+The state may only advance through valid transitions. Repeated audit cursors may observe an existing state, but must not recreate, duplicate, regress, or replace it.
+
+Terminal states are immutable:
+
+- CONSUMED
+- STRUCTURALLY_INVALIDATED
+- SUPERSEDED_BY_NEW_BREAKOUT
+- OPPOSITE_BREAKOUT_INVALIDATED
+- ENTRY_CUTOFF_EXPIRED
+- SESSION_BOUNDARY_EXPIRED
+- CONTRACT_BOUNDARY_EXPIRED
+
+Once an arm reaches a terminal state:
+
+- Never overwrite it with another state.
+- Never emit another terminal transition.
+- Never rearm or consume it again.
+- Record conflicting later observations as diagnostics only.
+
+Do not use last-write-wins state handling.
+
+2. Make lifecycle ownership explicit
+
+Phase 4 owns:
+
+- ARMED_AFTER_BREAKOUT
+- PULLBACK_OBSERVED
+- LEVEL_INTERACTION_FOUND
+- SUPERSEDED_BY_NEW_BREAKOUT
+- OPPOSITE_BREAKOUT_INVALIDATED
+- ENTRY_CUTOFF_EXPIRED
+- SESSION_BOUNDARY_EXPIRED
+- CONTRACT_BOUNDARY_EXPIRED
+- Any governed Phase 4 structural invalidation
+
+Phase 5 owns and must project back into the shared authoritative lifecycle:
+
+- PATIENCE_ARMED
+- SIGNAL_CONFIRMED
+- CONSUMED
+- Any governed patience/confirmation structural invalidation
+
+Do not merely declare lifecycle states in a type union. Every exposed state must have an implemented transition and deterministic test. If `STRUCTURALLY_INVALIDATED` has no governed predicate, remove it from active lifecycle claims or report it explicitly as unsupported rather than fabricating a transition.
+
+3. Preserve causal pullback behavior
+
+Keep these rules unchanged:
+
+- No six-candle or 30-minute eligibility expiration.
+- Same-direction continuation remains part of the original breakout until a countertrend pullback begins.
+- A newer completed same-direction breakout after the pullback begins supersedes the old arm and may create a new independent arm.
+- A completed opposite-direction breakout invalidates the old arm.
+- Date and contract boundaries expire the arm.
+- E must open before the exclusive 1:00 p.m. ET cutoff.
+- Pullback interaction still uses the governed 12-MES-tick range.
+- P must be followed immediately by E.
+- If E1 fails, P1 expires and scanning continues for P2.
+- E2 may confirm only P2, never P1.
+- A confirmed/consumed arm cannot produce another candidate.
+
+4. Separate data-quality gaps from session boundaries
+
+Do not classify a missing or non-contiguous intraday candle interval as `SESSION_BOUNDARY_EXPIRED`.
+
+Add a truthful data-quality state or diagnostic, such as:
+
+- DATA_GAP_INVALIDATED
+
+Use it only when continuity required for causal evaluation is unavailable. Do not fabricate missing candles.
+
+5. Correct status reporting
+
+If a terminal boundary is found after earlier post-breakout candles, the arm must still report its terminal/expired status.
+
+Do not let the existence of earlier observed candles cause a terminal arm to remain reported as merely `observed`.
+
+6. Strengthen the late-pullback regression
+
+Replace the current late-pullback fixture with one where:
+
+- The first six candles and first 30 minutes do not touch or enter the qualifying level’s 12-tick zone.
+- The first genuine qualifying interaction occurs only after those old diagnostic thresholds.
+- The arm remains active.
+- The later interaction is detected once.
+- A later valid P→E sequence creates exactly one candidate.
+
+The fixture must prove a genuinely late first interaction, not merely another interaction after earlier qualifying candles.
+
+7. Add focused deterministic integration tests
+
+Add tests covering:
+
+A. Late interaction
+
+- First qualifying pullback interaction occurs after six candles/30 minutes.
+- It remains eligible and can create one candidate.
+
+B. P1 failure and P2 success
+
+- P1 forms.
+- E1 fails immediate confirmation.
+- P1 expires.
+- P2 forms on the same active arm.
+- E2 confirms P2.
+- Exactly one candidate is created from P2→E2.
+
+C. Consumption
+
+- A confirmed arm becomes CONSUMED.
+- Later audit evaluations cannot create a second candidate or change its terminal state.
+
+D. Supersession
+
+- A pullback starts.
+- A newer same-direction completed breakout supersedes the first arm.
+- The new breakout receives a distinct arm ID.
+- Events, candidates, stops, and targets never cross between the arms.
+
+E. Opposite breakout
+
+- A completed opposite-direction breakout invalidates the arm.
+- No later candle can confirm or consume that arm.
+
+F. Boundaries
+
+- Date boundary expires the arm.
+- Contract boundary expires the arm.
+- E opening at or after 1:00 p.m. ET creates no candidate.
+- No entries occur outside 9:30 a.m.–1:00 p.m. ET.
+
+G. Repeated audits
+
+- Repeated observations do not duplicate transitions.
+- Terminal states never regress.
+- Conflicting observations are diagnostic-only.
+- Canonical lifecycle counts remain stable.
+
+H. Independent trades
+
+Create two independent confirmed arms in one deterministic fixture and prove:
+
+- Different arm IDs.
+- Different signal/candidate IDs.
+- Each trade freezes its own P candle.
+- Each stop is based on that trade’s own P range plus the governed eight-tick stop buffer.
+- Each target is independently frozen.
+- Trade 2 cannot reuse Trade 1’s stop, target, or management context.
+
+8. Diagnostics and invariants
+
+Report:
+
+- Unique arms created
+- Active arms
+- Arms with pullback observed
+- Arms with level interaction
+- Patience-armed arms
+- Confirmed arms
+- Consumed arms
+- Superseded arms
+- Opposite-breakout invalidations
+- Cutoff expirations
+- Session/date expirations
+- Contract expirations
+- Data-gap invalidations
+- Duplicate transitions removed
+- Conflicting terminal observations
+- Lifecycle invariant violations
+
+Required invariants:
+
+- One canonical record per arm ID.
+- At most one authoritative terminal outcome per arm.
+- At most one candidate per physical P→E signal.
+- At most one candidate consumption per arm unless a separately governed multi-entry rule explicitly exists.
+- No candidate from a terminal arm.
+- No candidate when E opens at or after 1:00 p.m. ET.
+- No cross-arm stop or target reuse.
+
+Verification
+
+Run only focused, compute-conscious checks:
+
+- Phase 4 tests
+- Phase 5 tests
+- Relevant Phase 9 lifecycle/candidate tests
+- Direct OHLCV execution tests needed for independent stop ownership
+- API typecheck
+- git diff --check
+
+Do not run:
+
+- Historical-index rebuild
+- Broad qualification batch
+- Cold 20+2 replay
+- Full-year replay
+- Broker, live-order, or paper-order workflow
+
+If a small cached replay is already immediately available, it may be used once. Do not trigger expensive preparation solely for this task.
+
+Final report
+
+Provide:
+
+1. Files changed.
+2. Root causes corrected.
+3. The canonical arm identity fields.
+4. The authoritative transition table and owning phase.
+5. Focused test totals.
+6. Lifecycle invariant results.
+7. Confirmation that the late fixture’s first interaction truly occurs after six candles/30 minutes.
+8. Confirmation that P1/E1 failure followed by P2/E2 success creates exactly one candidate.
+9. Confirmation that two independent trades use independently frozen stops and targets.
+10. Any remaining honest limitation.
+
+Preserve Shadow Mode only. Do not fabricate candles, quotes, fills, transitions, stops, targets, or historical evidence.
