@@ -545,30 +545,9 @@ export function createMarketSnapshot(
       configurationHash: activeShadowStrategySnapshot().formulaHash,
     },
   });
-  let fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
-  if (fibonacci.levels.length) {
-    const fibonacciLevels = fibonacci.levels.map((level) => ({
-      name: level.name,
-      price: level.price,
-      kind: "reference" as const,
-    }));
-    pullback = analyzePullback(regular, breakout, [...qualifyingLevels, ...fibonacciLevels], specification, config, {
-      causalCandles: historicalFeed,
-      calendar,
-      finalizedNtz: levels.ntz,
-      armIdentity: {
-        sourceFingerprint,
-        formulaHash,
-        contractSymbol: specification.fullContractSymbol,
-        tradingDate,
-        finalizedNtzIdentity: levels.ntz
-          ? `${levels.ntz.high}|${levels.ntz.low}|${levels.ntz.completedAt ?? "unknown"}`
-          : "ntz-incomplete",
-        configurationHash: activeShadowStrategySnapshot().formulaHash,
-      },
-    });
-    fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
-  }
+  // Fibonacci remains diagnostic context only. It must never be appended to
+  // the executable pullback-level set or authorize a trade.
+  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   const dynamiteInteractions = pullback.events
     .filter((event) =>
       event.qualifies

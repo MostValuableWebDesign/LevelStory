@@ -162,6 +162,17 @@ test("pullback uses the shared 12-tick full-range tolerance and records interact
   assert.equal(pullback.maxDurationMinutes, 30);
 });
 
+test("Fibonacci references remain diagnostic and cannot authorize a pullback", () => {
+  const candles = breakoutFixture();
+  const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
+  const pullback = analyzePullback(candles, breakout, [
+    { name: "Fib 0", price: 102 },
+  ], specification, config);
+  assert.equal(pullback.qualifyingLevelCount, 0);
+  assert.equal(pullback.events.some((event) => event.qualifies), false);
+  assert.equal(pullback.status, "observed");
+});
+
 test("pullback remains causally active beyond the diagnostic six-candle and thirty-minute values", () => {
   const breakoutCandle = candle(0, 100, 101, 99, 101, 100);
   const laterCandles = Array.from({ length: 9 }, (_, offset) => {

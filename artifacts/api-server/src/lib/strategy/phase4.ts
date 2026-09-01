@@ -101,6 +101,17 @@ export function pullbackReferenceKind(
   return primaryPullbackIndicatorId(level) ? "primary_indicator" : "primary_level";
 }
 
+function isDiagnosticOnlyPullbackLevel(
+  level: Pick<Level, "name">,
+): boolean {
+  return /^(?:fib|fibonacci)\b/i.test(level.name.trim());
+}
+
+function isExecutablePullbackLevel(level: Level): boolean {
+  return !isDiagnosticOnlyPullbackLevel(level)
+    && (Number.isFinite(level.price) || primaryPullbackIndicatorId(level) !== null);
+}
+
 export type PullbackArmState =
   | "ARMED_AFTER_BREAKOUT"
   | "PULLBACK_OBSERVED"
@@ -816,9 +827,7 @@ export function analyzePullback(
       elapsedMinutes: 0,
       proximityTolerance: null,
       atr14: null,
-      qualifyingLevelCount: levels.filter((level) =>
-        Number.isFinite(level.price) || primaryPullbackIndicatorId(level) !== null,
-      ).length,
+      qualifyingLevelCount: levels.filter(isExecutablePullbackLevel).length,
       detail: "Pullback analysis starts only after a valid completed-candle breakout.",
     };
   }
@@ -865,9 +874,7 @@ export function analyzePullback(
   const proximityTolerance = Number((config.levelTolerance || DEFAULT_LEVEL_TOLERANCE_POINTS).toFixed(2));
   const events: PullbackEvent[] = [];
   const nearStreak = new Map<string, number>();
-  const validLevels = levels.filter((level) =>
-    Number.isFinite(level.price) || primaryPullbackIndicatorId(level) !== null,
-  );
+  const validLevels = levels.filter(isExecutablePullbackLevel);
   for (const candle of postBreakout) {
     for (const level of validLevels) {
       const resolved = resolvePullbackLevel(level, candle, candles, options.causalCandles, config, calendar);
