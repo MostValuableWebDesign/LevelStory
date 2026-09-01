@@ -131,7 +131,7 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
 function report(
   replayDataset: CausalReplayDataset,
   candidates: HistoricalTradeCandidate[] = [],
-  options: { syntheticFixture?: boolean; audit?: any[] } = { syntheticFixture: true },
+  options: { syntheticFixture?: boolean; audit?: any[] } = {},
 ): BacktestReport {
   return {
     dataset: {
@@ -232,15 +232,12 @@ function reconcileFixture(input: {
   candidates?: HistoricalTradeCandidate[];
   rejectedCandidateSignals?: Array<{ signalOccurrenceId: string; reasonCodes: string[]; details: string[] }>;
   trades?: BacktestTrade[];
-  syntheticFixture?: boolean;
   partitions?: any[];
   audit?: any[];
-}) {
+}, options: { allowSyntheticFixtures?: boolean } = {}) {
   const replayDataset = dataset();
   const manifest = buildPhase3PilotManifest({ dataset: replayDataset, request, createdAt: "2026-08-30T12:00:00.000Z" });
-  const syntheticFixture = input.syntheticFixture ?? true;
   const base = report(replayDataset, input.candidates ?? [], {
-    syntheticFixture,
     audit: input.audit,
   });
   return reconcilePhase3SignalFunnel({
@@ -257,7 +254,11 @@ function reconcileFixture(input: {
       },
     }],
     partitions: input.partitions ?? [],
-  });
+  }, options);
+}
+
+function reconcileSyntheticFixture(input: Parameters<typeof reconcileFixture>[0]) {
+  return reconcileFixture(input, { allowSyntheticFixtures: true });
 }
 
 test("Phase 3 manifest is immutable and stable across creation timestamps", () => {
@@ -335,7 +336,7 @@ test("Phase 3 reconciliation gives each confirmed signal one disposition and kee
     manifest,
     reports: [item],
     partitions: [],
-  });
+  }, { allowSyntheticFixtures: true });
   assert.equal(result.reconciliation.confirmedSignalCount, 1);
   assert.equal(result.reconciliation.dispositionReconciles, true);
   assert.equal(Object.values(result.reconciliation.dispositionCounts).reduce((sum, count) => sum + count, 0), 1);
@@ -352,7 +353,6 @@ test("Phase 3 real reports fail closed when the matching partition is missing", 
     netPnl: 125,
   } as unknown as BacktestTrade;
   const result = reconcileFixture({
-    syntheticFixture: false,
     audit: [{ id: "raw-audit" }],
     candidates: [candidate()],
     trades: [staleTrade],
@@ -375,7 +375,6 @@ test("Phase 3 real reports fail closed when the matching partition is missing", 
 test("Phase 3 real reports fail closed when the raw audit stream is empty", () => {
   const replayDataset = dataset();
   const result = reconcileFixture({
-    syntheticFixture: false,
     candidates: [candidate()],
     trades: [{
       id: "stale-trade",
@@ -395,7 +394,7 @@ test("Phase 3 real reports fail closed when the raw audit stream is empty", () =
   assert.ok(result.reconciliation.invariantViolations.includes("PHASE3_AUDIT_STREAM_MISSING:2026-07-01|MESU6"));
 });
 
-test("Phase 3 explicitly marked synthetic fixtures retain compatibility without raw evidence", () => {
+test("Phase 3 internal test-mode authorization retains compatibility without raw evidence", () => {
   const staleTrade = {
     id: "fixture-trade",
     candidateId: "candidate-1",
@@ -404,13 +403,111 @@ test("Phase 3 explicitly marked synthetic fixtures retain compatibility without 
     netPnl: 0,
   } as unknown as BacktestTrade;
   const result = reconcileFixture({
-    syntheticFixture: true,
     candidates: [candidate()],
     trades: [staleTrade],
-  });
+  }, { allowSyntheticFixtures: true });
   assert.equal(result.reports[0]!.report.tradeCandidates.length, 1);
   assert.equal(result.reports[0]!.report.trades.length, 1);
   assert.deepEqual(result.reconciliation.reconciliationErrors, []);
+});
+
+test("Phase 3 ignores a persisted synthetic marker during production reconciliation", () => {
+  const staleTrade = {
+    id: "persisted-stale-trade",
+    candidateId: "candidate-1",
+    signalOccurrenceId: "signal-1",
+    outcome: "target",
+    netPnl: 125,
+  } as unknown as BacktestTrade;
+  const replayDataset = dataset();
+  const base = report(replayDataset, [candidate()], { syntheticFixture: true });
+  const result = reconcilePhase3SignalFunnel({
+    manifest: buildPhase3PilotManifest({ dataset: replayDataset, request }),
+    reports: [{
+      tradingDate: dates[0]!,
+      contractSymbol: "MESU6",
+      period: "in_sample",
+      report: {
+        ...base,
+        syntheticFixture: true,
+        occurrences: [confirmedSignal()],
+        trades: [staleTrade],
+      } as unknown as BacktestReport,
+    }],
+    partitions: [],
+  });
+  const corrected = result.reports[0]!.report;
+  assert.equal(corrected.tradeCandidates.length, 0);
+  assert.equal(corrected.trades.length, 0);
+  assert.equal(corrected.segments.length, 0);
+  assert.equal(corrected.metrics.netPnl, 0);
+  assert.ok(result.reconciliation.reconciliationErrors.some((error) =>
+    error.code === "PHASE3_PARTITION_MISSING"));
+});
+
+test("Phase 3 clears stale segments and profitable metrics on reconciliation failure", () => {
+  const replayDataset = dataset();
+  const staleTrade = {
+    id: "stale-segment-trade",
+    candidateId: "candidate-1",
+    signalOccurrenceId: "signal-1",
+    outcome: "target",
+    netPnl: 125,
+  } as unknown as BacktestTrade;
+  const base = report(replayDataset, [candidate()], { audit: [{ id: "raw-audit" }] });
+  const result = reconcilePhase3SignalFunnel({
+    manifest: buildPhase3PilotManifest({ dataset: replayDataset, request }),
+    reports: [{
+      tradingDate: dates[0]!,
+      contractSymbol: "MESU6",
+      period: "in_sample",
+      report: {
+        ...base,
+        metrics: {
+          tradeCount: 1,
+          winRate: 100,
+          averageWin: 125,
+          averageLoss: null,
+          expectancy: 125,
+          profitFactor: null,
+          maximumDrawdown: 0,
+          grossPnl: 125,
+          fees: 5,
+          slippage: 2,
+          netPnl: 118,
+        },
+        inSample: { netPnl: 118, tradeCount: 1 },
+        outOfSample: { netPnl: 118, tradeCount: 1 },
+        executionSummary: {
+          eligibleCandidateCount: 1,
+          enteredTradeCount: 1,
+          finalizedTradeCount: 1,
+          openTradeCount: 0,
+          ambiguousEntryCount: 0,
+          unresolvedAmbiguousTradeCount: 0,
+          conservativelyResolvedTradeCount: 0,
+          unscoredTradeCount: 0,
+        },
+        segments: [{ dimension: "direction", value: "long", tradeCount: 1, netPnl: 118 }],
+        trades: [staleTrade],
+      } as unknown as BacktestReport,
+    }],
+    partitions: [],
+  });
+  const corrected = result.reports[0]!.report;
+  assert.deepEqual(corrected.trades, []);
+  assert.deepEqual(corrected.tradeCandidates, []);
+  assert.deepEqual(corrected.segments, []);
+  assert.equal(corrected.metrics.tradeCount, 0);
+  assert.equal(corrected.metrics.netPnl, 0);
+  assert.equal(corrected.metrics.maximumDrawdown, 0);
+  assert.equal(corrected.metrics.fees, 0);
+  assert.equal(corrected.metrics.slippage, 0);
+  assert.equal(corrected.inSample.tradeCount, 0);
+  assert.equal(corrected.outOfSample.tradeCount, 0);
+  assert.equal(corrected.executionSummary.eligibleCandidateCount, 0);
+  assert.ok(result.reconciliation.reconciliationErrors.some((error) =>
+    error.code === "PHASE3_LIFECYCLE_RECONCILIATION_UNAVAILABLE"));
 });
 
 function historicalAuditRecord(tradingDate: string): any {
@@ -588,14 +685,14 @@ test("Phase 3 valid historical reports rebuild lifecycle and candidate evidence"
 });
 
 test("Phase 3 fails closed when a confirmed signal has neither candidate nor rejection", () => {
-  const result = reconcileFixture({});
+  const result = reconcileSyntheticFixture({});
   assert.equal(result.reconciliation.dispositionReconciles, false);
   assert.ok(result.reconciliation.invariantViolations.includes("UNEXPLAINED_CONFIRMED_SIGNAL:signal-1"));
   assert.equal(result.reconciliation.signals[0]?.disposition, "unexplained_confirmed_signal");
 });
 
 test("Phase 3 fails closed when a signal has both candidate and rejection", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     candidates: [candidate()],
     rejectedCandidateSignals: [{
       signalOccurrenceId: "signal-1",
@@ -609,7 +706,7 @@ test("Phase 3 fails closed when a signal has both candidate and rejection", () =
 });
 
 test("Phase 3 fails closed when a candidate references no confirmed signal", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     candidates: [candidate({ signalOccurrenceId: "nonexistent-signal" })],
   });
   assert.equal(result.reconciliation.dispositionReconciles, false);
@@ -617,7 +714,7 @@ test("Phase 3 fails closed when a candidate references no confirmed signal", () 
 });
 
 test("Phase 3 fails closed when an authoritative trade has no exact candidate", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     trades: [{
       id: "orphan-trade",
       candidateId: "missing-candidate",
@@ -629,7 +726,7 @@ test("Phase 3 fails closed when an authoritative trade has no exact candidate", 
 });
 
 test("Phase 3 preserves unverified confluence labels and audits every edge predicate", () => {
-  const result = reconcileFixture({ candidates: [candidate()] });
+  const result = reconcileSyntheticFixture({ candidates: [candidate()] });
   const signal = result.reconciliation.signals[0]!;
   const confluence = result.reconciliation.candidateConfluences[0]!;
   assert.equal(result.reconciliation.dispositionReconciles, true);
@@ -643,7 +740,7 @@ test("Phase 3 preserves unverified confluence labels and audits every edge predi
 });
 
 test("Phase 3 does not infer an edge pass from labels alone", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       primaryEdge: "ORB_PULLBACK_CONTINUATION",
       matchedEdges: ["ORB_PULLBACK_CONTINUATION"],
@@ -656,7 +753,7 @@ test("Phase 3 does not infer an edge pass from labels alone", () => {
 });
 
 test("Phase 3 records one failed stored requirement without converting it to unavailable", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "ORB_PULLBACK_CONTINUATION",
@@ -678,7 +775,7 @@ test("Phase 3 records one failed stored requirement without converting it to una
 });
 
 test("Phase 3 fails the ORB directional-break predicate when continuation evidence fails", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "ORB_PULLBACK_CONTINUATION",
@@ -701,7 +798,7 @@ test("Phase 3 fails the ORB directional-break predicate when continuation eviden
 });
 
 test("Phase 3 uses the patience eligibility rule for continuation P evidence", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "PATIENCE_CANDLE_CONTINUATION",
@@ -721,7 +818,7 @@ test("Phase 3 uses the patience eligibility rule for continuation P evidence", (
 });
 
 test("Phase 3 uses consolidation-specific P evidence for the combined confirmation", () => {
-  const complete = reconcileFixture({
+  const complete = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
@@ -741,7 +838,7 @@ test("Phase 3 uses consolidation-specific P evidence for the combined confirmati
     .find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
   assert.equal(completePredicate?.result, "PASS");
 
-  const unrelated = reconcileFixture({
+  const unrelated = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
@@ -779,7 +876,7 @@ test("Phase 3 selects merged edge evidence by exact source edge in either audit 
     [orbEvidence(), patienceEvidence],
     [patienceEvidence, orbEvidence()],
   ]) {
-    const result = reconcileFixture({
+    const result = reconcileSyntheticFixture({
       occurrence: confirmedSignal({
         causalEvidence: causalEvidenceByAudit[0],
         causalEvidenceByAudit,
@@ -799,7 +896,7 @@ test("Phase 3 selects merged edge evidence by exact source edge in either audit 
 });
 
 test("Phase 3 does not reuse an ORB audit for unrelated edge confirmation", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
     candidates: [candidate()],
   });
@@ -810,7 +907,7 @@ test("Phase 3 does not reuse an ORB audit for unrelated edge confirmation", () =
 });
 
 test("Phase 3 marks missing stored evidence as EVIDENCE_UNAVAILABLE", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
         sourceEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
@@ -826,7 +923,7 @@ test("Phase 3 marks missing stored evidence as EVIDENCE_UNAVAILABLE", () => {
 });
 
 test("Phase 3 marks a fully evidenced ORB sequence PASS only when every predicate passes", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
     candidates: [candidate()],
   });
@@ -845,7 +942,7 @@ test("Phase 3 marks a fully evidenced ORB sequence PASS only when every predicat
 });
 
 test("Phase 3 exposes the complete required predicate set for all four edges", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({ causalEvidence: orbEvidence() }),
     candidates: [candidate()],
   });
@@ -860,7 +957,7 @@ test("Phase 3 exposes the complete required predicate set for all four edges", (
 });
 
 test("Phase 3 reconciles a complete confirmed signal collection exactly once", () => {
-  const result = reconcileFixture({
+  const result = reconcileSyntheticFixture({
     candidates: [candidate()],
     trades: [{
       id: "trade-1",
@@ -903,6 +1000,7 @@ test("Phase 3 reports four independent edges, preserves confluence, and excludes
     { manifest, request, partitions },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       now: () => 1_000,
       runPartition: async ({ replayDataset }) => {
         assert.ok(replayDataset);
@@ -935,6 +1033,7 @@ test("Phase 3 resumes from the manifest checkpoint without replaying completed p
     { manifest, request, partitions },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       runPartition: async ({ replayDataset }) => {
         calls += 1;
         assert.ok(replayDataset);
@@ -949,6 +1048,7 @@ test("Phase 3 resumes from the manifest checkpoint without replaying completed p
     { manifest, request, partitions },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       loadCheckpoint: async () => checkpoint,
       runPartition: async () => {
         throw new Error("resumed pilot replayed a completed partition");
@@ -979,6 +1079,7 @@ test("Phase 3 rejects an invalid exact 20/10 manifest and future-access reports"
       { manifest, request, partitions },
       {
         timeoutMs: 1_000,
+        allowSyntheticFixtures: true,
         runPartition: async ({ replayDataset }) => {
           assert.ok(replayDataset);
           return {
@@ -1008,6 +1109,7 @@ test("Phase 3 refuses a late entry before persisting that partition", async () =
       { manifest, request, partitions: buildPhase3PilotPartitions(baseDataset) },
       {
         timeoutMs: 1_000,
+        allowSyntheticFixtures: true,
         runPartition: async ({ replayDataset }) => {
           assert.ok(replayDataset);
           return report(replayDataset, [lateCandidate]);
@@ -1034,6 +1136,7 @@ test("Phase 3 time buckets use E close rather than E open", async () => {
     { manifest, request, partitions: buildPhase3PilotPartitions(baseDataset) },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       runPartition: async ({ replayDataset }) => report(
         replayDataset!,
         replayDataset!.selectedDates?.[0] === dates[0] ? [bucketBoundaryCandidate] : [],
@@ -1059,6 +1162,7 @@ test("Phase 3 deduplicates a physical candidate and trade across partition repor
     { manifest, request, partitions: buildPhase3PilotPartitions(baseDataset) },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       runPartition: async ({ replayDataset }) => {
         assert.ok(replayDataset);
         const duplicate = replayDataset.selectedDates?.[0] === dates[0]
@@ -1094,6 +1198,7 @@ test("Phase 3 counts ambiguous exit evidence separately from unscored results", 
     { manifest, request, partitions: buildPhase3PilotPartitions(baseDataset) },
     {
       timeoutMs: 1_000,
+      allowSyntheticFixtures: true,
       runPartition: async ({ replayDataset }) => {
         assert.ok(replayDataset);
         const firstDate = replayDataset.selectedDates?.[0] === dates[0];

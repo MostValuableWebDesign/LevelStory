@@ -362,6 +362,8 @@ export type Phase3PilotRunOptions = {
   pilotId?: string;
   signal?: AbortSignal;
   timeoutMs: number;
+  /** Test-only compatibility for reports intentionally missing raw evidence. */
+  allowSyntheticFixtures?: boolean;
   now?: () => number;
   runPartition?: (
     input: BacktestWorkerInput,
@@ -380,7 +382,6 @@ export type Phase3Checkpoint = {
     contractSymbol: string;
     period: "in_sample" | "out_of_sample";
     report: BacktestReport;
-    syntheticFixture?: true;
   }>;
   updatedAt: string;
 };
@@ -554,7 +555,6 @@ function timeBucket(timestamp: string): keyof Phase3PilotMetrics["entryTimeBucke
 type Phase3PilotReportItem = Phase3Checkpoint["reports"][number];
 type Phase3ReportWithOrphanHistory = BacktestReport & {
   phase3OrphanHistory?: readonly OrphanModeledTrade[];
-  syntheticFixture?: true;
 };
 
 const RECONCILIATION_BUCKETS = [
@@ -1018,6 +1018,7 @@ function sourceFingerprintAudit(
 function reconcileReportItem(
   item: Phase3PilotReportItem,
   partition: Phase3PilotPartition | undefined,
+  allowSyntheticFixtures: boolean,
 ): {
   item: Phase3PilotReportItem;
   occurrences: HistoricalOccurrence[];
@@ -1027,9 +1028,7 @@ function reconcileReportItem(
   orphans: OrphanModeledTrade[];
   reconciliationErrors: Phase3SignalReconciliationReport["reconciliationErrors"];
 } {
-  const isSyntheticFixture = item.syntheticFixture === true
-    || (item.report as Phase3ReportWithOrphanHistory).syntheticFixture === true;
-  if (isSyntheticFixture) {
+  if (allowSyntheticFixtures) {
     return {
       item,
       occurrences: item.report.occurrences,
@@ -1094,6 +1093,7 @@ function reconcileReportItem(
       },
       trades: [],
       tradeCandidates: [],
+      segments: [],
       rejectedCandidateSignals: rejected,
       orphanModeledTrades: [],
       occurrences: item.report.occurrences,
@@ -1193,23 +1193,30 @@ function reconcileReportItem(
   };
 }
 
-export function reconcilePhase3SignalFunnel(input: {
-  manifest: Phase3PilotManifest;
-  reports: readonly Phase3PilotReportItem[];
-  partitions: readonly Phase3PilotPartition[];
-  sourceFingerprintFiles?: readonly {
-    filename: string;
-    contractSymbol: string;
-    contentFingerprint: string;
-  }[];
-}): {
+export function reconcilePhase3SignalFunnel(
+  input: {
+    manifest: Phase3PilotManifest;
+    reports: readonly Phase3PilotReportItem[];
+    partitions: readonly Phase3PilotPartition[];
+    sourceFingerprintFiles?: readonly {
+      filename: string;
+      contractSymbol: string;
+      contentFingerprint: string;
+    }[];
+  },
+  options: { allowSyntheticFixtures?: boolean } = {},
+): {
   reports: Phase3PilotReportItem[];
   reconciliation: Phase3SignalReconciliationReport;
 } {
   const partitionByKey = new Map(input.partitions.map((partition) =>
     [`${partition.tradingDate}|${partition.contractSymbol}`, partition]));
   const normalized = input.reports.map((item) =>
-    reconcileReportItem(item, partitionByKey.get(`${item.tradingDate}|${item.contractSymbol}`)));
+    reconcileReportItem(
+      item,
+      partitionByKey.get(`${item.tradingDate}|${item.contractSymbol}`),
+      options.allowSyntheticFixtures === true,
+    ));
   const allOccurrences = normalized.flatMap((item) => item.occurrences);
   const allCandidates = normalized.flatMap((item) => item.candidates);
   const allRejected = normalized.flatMap((item) => item.rejected);
@@ -1754,6 +1761,8 @@ export async function runPhase3EdgePilot(
     reports,
     partitions: input.partitions,
     sourceFingerprintFiles: input.sourceFingerprintFiles,
+  }, {
+    allowSyntheticFixtures: options.allowSyntheticFixtures === true,
   });
   const reportList = reconciled.reports.map((item) => item.report);
   const deduped = deduplicateCandidates(reportList);
