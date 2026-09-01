@@ -23,8 +23,14 @@ import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
 import { targetPriceForDollars } from "./strategy/phase7.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
-import type { OrbBreakoutState, PullbackArmState } from "./strategy/phase4.js";
-import type { PatienceOccurrence } from "./strategy/phase5.js";
+import {
+  isTerminalPullbackArmState,
+  reducePullbackArmLifecycles,
+  type OrbBreakoutState,
+  type PullbackArmLifecycleObservation,
+  type PullbackArmState,
+} from "./strategy/phase4.js";
+import { patienceArmLifecycleTransitions, type PatienceOccurrence } from "./strategy/phase5.js";
 import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
 import type { Direction } from "./strategy/types.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
@@ -690,6 +696,10 @@ export type HistoricalReplayDiagnostics = {
   armSupersessions: number;
   armConsumptions: number;
   armTerminalConflicts: number;
+  pullbackLifecycleStateCounts: Record<string, number>;
+  pullbackLifecycleDuplicateTransitions: number;
+  pullbackLifecycleConflicts: number;
+  pullbackDataGapInvalidations: number;
   pullbackArmsCreated: number;
   pullbackActiveArms: number;
   pullbackSupersededArms: number;
@@ -1496,30 +1506,45 @@ export function historicalReplayDiagnostics(
     }
     return violations;
   });
-  const armTransitionReferences = patience
-    .filter((item) => item.eligibilityArmId && item.eligibilityArmState && item.eligibilityArmState !== "active")
-    .map((item) => [
-      item.eligibilityArmId,
-      item.eligibilityArmState,
-      item.eligibilityArmTransitionTime ?? item.patienceCandle?.closeTime ?? item.evaluationCursor,
-      item.eligibilityArmStateReason ?? "",
-    ] as const);
-  const terminalByArm = new Map<string, { state: string; time: string; reason: string }>();
-  let armTerminalConflicts = 0;
-  for (const [rawArmId, rawState, rawTime, rawReason] of armTransitionReferences) {
-    if (!rawArmId || !rawState) continue;
-    const armId = rawArmId;
-    const state = rawState;
-    const time = String(rawTime);
-    const reason = rawReason ?? "";
-    const existing = terminalByArm.get(armId);
-    if (!existing) {
-      terminalByArm.set(armId, { state, time, reason });
-    } else if (existing.state !== state) {
-      armTerminalConflicts += 1;
-    }
+  const lifecycleObservations: PullbackArmLifecycleObservation[] = [];
+  for (const record of audits) {
+    if (!record.pullbackArmId) continue;
+    const transitions = (record.pullbackArmTransitions ?? [])
+      .map((transition) => ({
+        ...transition,
+        time: Date.parse(transition.time),
+      }))
+      .filter((transition) => Number.isFinite(transition.time));
+    lifecycleObservations.push({
+      armId: record.pullbackArmId,
+      state: record.pullbackArmState,
+      transitions,
+      observedAt: Date.parse(record.evaluatedCandleOpenTime),
+      source: `audit:${record.id}`,
+    });
   }
-  const uniqueArms = new Set(patience.flatMap((item) => item.eligibilityArmId ? [item.eligibilityArmId] : [])).size;
+  for (const occurrence of patience) {
+    const armId = occurrence.eligibilityArmId;
+    if (!armId) continue;
+    lifecycleObservations.push({
+      armId,
+      transitions: patienceArmLifecycleTransitions(occurrence),
+      source: `patience:${occurrence.occurrenceId}`,
+    });
+  }
+  const lifecycle = reducePullbackArmLifecycles(lifecycleObservations);
+  const lifecycleByArm = new Map(lifecycle.records.map((record) => [record.armId, record]));
+  const terminalByArm = new Map(
+    lifecycle.records
+      .filter((record) => record.terminal)
+      .map((record) => [record.armId, {
+        state: record.state,
+        time: record.transitions.at(-1)?.time ?? 0,
+        reason: record.terminalReason ?? "",
+      }]),
+  );
+  const pullbackArmStateById = new Map(lifecycle.records.map((record) => [record.armId, record.state]));
+  const uniqueArms = lifecycle.records.length;
   const modeledTrades = authoritativeModeledTrades.length;
   const rawPullbackEvents = audits.reduce(
     (count, record) => count + (record.pullbackOccurrences?.filter((event) => event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type)).length ?? 0),
@@ -1534,30 +1559,13 @@ export function historicalReplayDiagnostics(
     interactions.add(identity);
     interactionSessions.set(session, interactions);
   }
-  const pullbackArmStateById = new Map<string, PullbackArmState>();
   const lateInteractionsByArm = new Map<string, number>();
-  const pullbackInvariantViolations: string[] = [];
+  const pullbackInvariantViolations: string[] = lifecycle.conflicts.map((conflict) =>
+    `${conflict.armId}: ${conflict.reason} observed ${conflict.observedState} after ${conflict.canonicalState}.`,
+  );
   for (const record of audits) {
     const armId = record.pullbackArmId;
     if (!armId) continue;
-    if (record.pullbackArmState) {
-      const previous = pullbackArmStateById.get(armId);
-      if (previous && previous !== record.pullbackArmState) {
-        const terminal = new Set<PullbackArmState>([
-          "CONSUMED",
-          "STRUCTURALLY_INVALIDATED",
-          "SUPERSEDED_BY_NEW_BREAKOUT",
-          "OPPOSITE_BREAKOUT_INVALIDATED",
-          "ENTRY_CUTOFF_EXPIRED",
-          "SESSION_BOUNDARY_EXPIRED",
-          "CONTRACT_BOUNDARY_EXPIRED",
-        ]);
-        if (terminal.has(previous) && previous !== record.pullbackArmState) {
-          pullbackInvariantViolations.push(`${armId}: terminal pullback arm state changed from ${previous} to ${record.pullbackArmState}.`);
-        }
-      }
-      pullbackArmStateById.set(armId, record.pullbackArmState);
-    }
     lateInteractionsByArm.set(
       armId,
       Math.max(lateInteractionsByArm.get(armId) ?? 0, record.latePullbackInteractions ?? 0),
@@ -1571,6 +1579,7 @@ export function historicalReplayDiagnostics(
     "ENTRY_CUTOFF_EXPIRED",
     "SESSION_BOUNDARY_EXPIRED",
     "CONTRACT_BOUNDARY_EXPIRED",
+    "DATA_GAP_INVALIDATED",
   ]);
   const confirmedArmIds = new Set(
     confirmedPatience
@@ -1582,6 +1591,21 @@ export function historicalReplayDiagnostics(
       pullbackInvariantViolations.push(`${armId}: a confirmed candidate is linked to a non-consumed terminal pullback arm.`);
     }
   }
+  for (const candidate of tradeCandidates) {
+    const occurrence = canonicalPatience.find((item) => item.occurrenceId === candidate.signalOccurrenceId);
+    const state = occurrence?.eligibilityArmId
+      ? lifecycleByArm.get(occurrence.eligibilityArmId)?.state
+      : undefined;
+    if (state && isTerminalPullbackArmState(state) && state !== "CONSUMED") {
+      pullbackInvariantViolations.push(
+        `${candidate.signalOccurrenceId}: candidate ${candidate.candidateId} is linked to terminal arm state ${state}.`,
+      );
+    }
+  }
+  const lifecycleStateCounts = countBy(lifecycle.records.map((record) => record.state));
+  const armTerminalConflicts = lifecycle.conflicts.filter((conflict) =>
+    isTerminalPullbackArmState(conflict.canonicalState),
+  ).length;
   return {
     rawAuditPatienceReferences: patience.length,
     uniquePhysicalPatienceCandles: new Set(canonicalPatience.map((item) => `${item.sourceFingerprint}|${item.contractSymbol}|${item.tradingDate}|${item.direction}|${item.patienceTimestamp}`)).size,
@@ -1591,7 +1615,7 @@ export function historicalReplayDiagnostics(
     canonicalStructuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
     duplicatePatienceReferencesRemoved: Math.max(0, patience.length - canonicalPatience.length),
     uniqueArms,
-    duplicateArmTransitionReferencesRemoved: Math.max(0, armTransitionReferences.length - terminalByArm.size),
+    duplicateArmTransitionReferencesRemoved: lifecycle.duplicateTransitions,
     confirmedOccurrencesByEdge: confirmedByEdge,
     confirmedOccurrencesBySession: confirmedBySession,
     confirmedOccurrencesByDirectionSource: confirmedBySource,
@@ -1604,11 +1628,24 @@ export function historicalReplayDiagnostics(
     immediateConfirmationFailures: canonicalPatience.filter((item) => item.status === "IMMEDIATE_CONFIRMATION_FAILED").length,
     signalConfirmed: confirmedPatience.length,
     structuralInvalidations: canonicalPatience.filter((item) => item.status === "STRUCTURALLY_INVALIDATED").length,
-    armExpirations: 0,
-    armInvalidations: [...terminalByArm.values()].filter((item) => item.state === "invalidated").length,
-    armSupersessions: [...terminalByArm.values()].filter((item) => item.state === "superseded").length,
-    armConsumptions: [...terminalByArm.values()].filter((item) => item.state === "consumed").length,
+    armExpirations: [...terminalByArm.values()].filter((item) =>
+      item.state === "ENTRY_CUTOFF_EXPIRED"
+      || item.state === "SESSION_BOUNDARY_EXPIRED"
+      || item.state === "CONTRACT_BOUNDARY_EXPIRED"
+      || item.state === "DATA_GAP_INVALIDATED",
+    ).length,
+    armInvalidations: [...terminalByArm.values()].filter((item) =>
+      item.state === "STRUCTURALLY_INVALIDATED"
+      || item.state === "OPPOSITE_BREAKOUT_INVALIDATED"
+      || item.state === "DATA_GAP_INVALIDATED",
+    ).length,
+    armSupersessions: [...terminalByArm.values()].filter((item) => item.state === "SUPERSEDED_BY_NEW_BREAKOUT").length,
+    armConsumptions: [...terminalByArm.values()].filter((item) => item.state === "CONSUMED").length,
     armTerminalConflicts,
+    pullbackLifecycleStateCounts: lifecycleStateCounts,
+    pullbackLifecycleDuplicateTransitions: lifecycle.duplicateTransitions,
+    pullbackLifecycleConflicts: lifecycle.conflicts.length,
+    pullbackDataGapInvalidations: [...terminalByArm.values()].filter((item) => item.state === "DATA_GAP_INVALIDATED").length,
     pullbackArmsCreated: pullbackArmStateById.size,
     pullbackActiveArms: [...pullbackArmStateById.values()].filter((state) => !terminalPullbackStates.has(state)).length,
     pullbackSupersededArms: [...pullbackArmStateById.values()].filter((state) => state === "SUPERSEDED_BY_NEW_BREAKOUT").length,

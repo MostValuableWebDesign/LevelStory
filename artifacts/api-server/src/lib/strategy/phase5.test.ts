@@ -517,6 +517,57 @@ test("pullback and consolidation locations can open patience eligibility", () =>
   assert.equal(phase5PatienceAnalysis(candles, "long", consolidation, null).eligibilityReason, "consolidation");
 });
 
+test("a terminal causal pullback arm cannot create another Phase 5 occurrence", () => {
+  const pullback: PullbackAnalysis = {
+    status: "expired",
+    armId: "terminal-arm",
+    armState: "SESSION_BOUNDARY_EXPIRED",
+    armTransitions: [],
+    terminalReason: "session boundary",
+    structure: {
+      detected: true,
+      direction: "long",
+      impulseExtreme: 12,
+      impulseExtremeTime: 0,
+      pullbackStart: FIVE_MINUTES,
+      pullbackEnd: 2 * FIVE_MINUTES,
+      depthPoints: 1,
+      retracementPercent: 20,
+      greaterThan50PercentWarning: false,
+    },
+    events: [{
+      armId: "terminal-arm",
+      type: "touch",
+      time: FIVE_MINUTES,
+      level: "VWAP",
+      price: 10,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      detail: "terminal interaction",
+    }],
+    evaluatedCandles: 2,
+    maxCandles: 6,
+    maxDurationMinutes: 30,
+    elapsedMinutes: 10,
+    proximityTolerance: 3,
+    atr14: 1,
+    qualifyingLevelCount: 1,
+    detail: "expired",
+  };
+  const result = phase5PatienceAnalysis(
+    setup("long", candle(2, 10.8, 12.1, 10.2, 12)),
+    "long",
+    pullback,
+    null,
+  );
+  assert.equal(result.occurrences?.length ?? 0, 0);
+  assert.equal(result.state, "WAITING_FOR_LEVEL");
+  assert.match(result.detail, /terminal/i);
+});
+
 test("extended consolidation inside NTZ can open patience eligibility", () => {
   const candles = [
     candle(0, 10, 11, 9, 10),

@@ -89,13 +89,201 @@ export type PullbackArmState =
   | "OPPOSITE_BREAKOUT_INVALIDATED"
   | "ENTRY_CUTOFF_EXPIRED"
   | "SESSION_BOUNDARY_EXPIRED"
-  | "CONTRACT_BOUNDARY_EXPIRED";
+  | "CONTRACT_BOUNDARY_EXPIRED"
+  | "DATA_GAP_INVALIDATED";
 export type PullbackArmTransition = {
   from: PullbackArmState | null;
   to: PullbackArmState;
   time: number;
   reason: string;
 };
+
+export type PullbackArmLifecycleObservation = {
+  armId: string;
+  state?: PullbackArmState;
+  transitions?: readonly PullbackArmTransition[];
+  observedAt?: number;
+  source?: string;
+};
+
+export type PullbackArmLifecycleConflict = {
+  armId: string;
+  canonicalState: PullbackArmState;
+  observedState: PullbackArmState;
+  transition: PullbackArmTransition;
+  source?: string;
+  reason: string;
+};
+
+export type PullbackArmLifecycleRecord = {
+  armId: string;
+  state: PullbackArmState;
+  transitions: PullbackArmTransition[];
+  terminal: boolean;
+  terminalReason: string | null;
+};
+
+export type PullbackArmLifecycleReduction = {
+  records: PullbackArmLifecycleRecord[];
+  duplicateTransitions: number;
+  conflicts: PullbackArmLifecycleConflict[];
+};
+
+export const TERMINAL_PULLBACK_ARM_STATES: ReadonlySet<PullbackArmState> = new Set([
+  "CONSUMED",
+  "STRUCTURALLY_INVALIDATED",
+  "SUPERSEDED_BY_NEW_BREAKOUT",
+  "OPPOSITE_BREAKOUT_INVALIDATED",
+  "ENTRY_CUTOFF_EXPIRED",
+  "SESSION_BOUNDARY_EXPIRED",
+  "CONTRACT_BOUNDARY_EXPIRED",
+  "DATA_GAP_INVALIDATED",
+]);
+
+const PULLBACK_ARM_STATE_RANK: Readonly<Record<PullbackArmState, number>> = {
+  ARMED_AFTER_BREAKOUT: 0,
+  PULLBACK_OBSERVED: 1,
+  LEVEL_INTERACTION_FOUND: 2,
+  PATIENCE_ARMED: 3,
+  SIGNAL_CONFIRMED: 4,
+  CONSUMED: 5,
+  STRUCTURALLY_INVALIDATED: 5,
+  SUPERSEDED_BY_NEW_BREAKOUT: 5,
+  OPPOSITE_BREAKOUT_INVALIDATED: 5,
+  ENTRY_CUTOFF_EXPIRED: 5,
+  SESSION_BOUNDARY_EXPIRED: 5,
+  CONTRACT_BOUNDARY_EXPIRED: 5,
+  DATA_GAP_INVALIDATED: 5,
+};
+
+export function isTerminalPullbackArmState(state: PullbackArmState | null | undefined): boolean {
+  return state !== null && state !== undefined && TERMINAL_PULLBACK_ARM_STATES.has(state);
+}
+
+/**
+ * Reduce observations from repeated replay cursors into one causal arm record.
+ * The reduction is chronological: a terminal observation always wins over an
+ * earlier non-terminal snapshot, while later regressions are retained only as
+ * conflict diagnostics.
+ */
+export function reducePullbackArmLifecycles(
+  observations: readonly PullbackArmLifecycleObservation[],
+): PullbackArmLifecycleReduction {
+  const byArm = new Map<string, Array<{
+    transition: PullbackArmTransition;
+    source?: string;
+    order: number;
+  }>>();
+  let order = 0;
+  for (const observation of observations) {
+    const transitions = observation.transitions?.length
+      ? observation.transitions
+      : observation.state
+        ? [{
+          from: null,
+          to: observation.state,
+          time: observation.observedAt ?? 0,
+          reason: "Arm state observed without an explicit transition path.",
+        }]
+        : [];
+    for (const transition of transitions) {
+      const items = byArm.get(observation.armId) ?? [];
+      items.push({ transition, source: observation.source, order: order++ });
+      byArm.set(observation.armId, items);
+    }
+  }
+
+  const records: PullbackArmLifecycleRecord[] = [];
+  const conflicts: PullbackArmLifecycleConflict[] = [];
+  let duplicateTransitions = 0;
+  for (const [armId, rawItems] of byArm) {
+    const items = [...rawItems].sort((left, right) =>
+      left.transition.time - right.transition.time
+      || Number(isTerminalPullbackArmState(right.transition.to)) - Number(isTerminalPullbackArmState(left.transition.to))
+      || left.order - right.order,
+    );
+    const seen = new Set<string>();
+    let state: PullbackArmState | null = null;
+    let terminalReason: string | null = null;
+    const accepted: PullbackArmTransition[] = [];
+
+    for (const item of items) {
+      const transition = item.transition;
+      const signature = [
+        transition.from ?? "null",
+        transition.to,
+        transition.time,
+        transition.reason,
+      ].join("|");
+      if (seen.has(signature)) {
+        duplicateTransitions += 1;
+        continue;
+      }
+      seen.add(signature);
+
+      if (state !== null && isTerminalPullbackArmState(state)) {
+        if (transition.to !== state) {
+          conflicts.push({
+            armId,
+            canonicalState: state,
+            observedState: transition.to,
+            transition,
+            source: item.source,
+            reason: "A terminal arm state is immutable; the later observation was not applied.",
+          });
+        } else if (transition.reason !== terminalReason) {
+          conflicts.push({
+            armId,
+            canonicalState: state,
+            observedState: transition.to,
+            transition,
+            source: item.source,
+            reason: "The terminal state was repeated with conflicting evidence.",
+          });
+        }
+        continue;
+      }
+
+      if (state !== null && transition.to === state) {
+        conflicts.push({
+          armId,
+          canonicalState: state,
+          observedState: transition.to,
+          transition,
+          source: item.source,
+          reason: "A non-terminal arm state was observed again instead of advancing the lifecycle.",
+        });
+        continue;
+      }
+
+      const observedRank = PULLBACK_ARM_STATE_RANK[transition.to];
+      const canonicalRank = state === null ? -1 : PULLBACK_ARM_STATE_RANK[state];
+      if (state !== null && !isTerminalPullbackArmState(transition.to) && observedRank <= canonicalRank) {
+        conflicts.push({
+          armId,
+          canonicalState: state,
+          observedState: transition.to,
+          transition,
+          source: item.source,
+          reason: "The observed arm state would regress or repeat the canonical lifecycle.",
+        });
+        continue;
+      }
+
+      accepted.push(transition);
+      state = transition.to;
+      if (isTerminalPullbackArmState(state)) terminalReason = transition.reason;
+    }
+    records.push({
+      armId,
+      state: state ?? "ARMED_AFTER_BREAKOUT",
+      transitions: accepted,
+      terminal: isTerminalPullbackArmState(state),
+      terminalReason,
+    });
+  }
+  return { records, duplicateTransitions, conflicts };
+}
 export type PullbackEvent = {
   eventId?: string;
   armId?: string;
@@ -657,7 +845,7 @@ export function analyzePullback(
       reason: terminal.reason,
     });
   }
-  const status = postBreakout.length ? "observed" : terminal ? "expired" : "pending";
+  const status = terminal ? "expired" : postBreakout.length ? "observed" : "pending";
   return {
     status,
     armId,
@@ -851,7 +1039,7 @@ function sameContract(first: Candle, second: Candle): boolean {
 
 type PullbackTerminal = {
   index: number;
-  state: Extract<PullbackArmState, "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED">;
+  state: Extract<PullbackArmState, "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "DATA_GAP_INVALIDATED">;
   time: number;
   reason: string;
 };
@@ -893,9 +1081,9 @@ function findPullbackTerminal(
     if (index > 0 && candle.openTime !== afterBreakout[index - 1]!.closeTime) {
       return {
         index,
-        state: "SESSION_BOUNDARY_EXPIRED",
+        state: "DATA_GAP_INVALIDATED",
         time: candle.openTime,
-        reason: "The pullback arm stopped at a non-contiguous candle gap; missing candles cannot be bridged causally.",
+        reason: "The pullback arm was invalidated by a non-contiguous candle gap; missing candles cannot be bridged causally.",
       };
     }
     if (wallClockMinutesForTimestamp(candle.openTime, config.sessionTimeZone) >= config.primaryEntryEndMinutes) {

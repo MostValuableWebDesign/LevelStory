@@ -1068,6 +1068,61 @@ test("candidate diagnostics report missing, duplicate, and identity-mismatched f
   assert.match(contradictory.candidateInvariantViolations.join(" "), /does not match executionStatus/);
 });
 
+test("historical diagnostics reduce repeated arm cursors and preserve terminal boundary conflicts", () => {
+  const armId = "orb-arm|full-identity";
+  const path = [
+    { from: null, to: "ARMED_AFTER_BREAKOUT" as const, time: 1, reason: "breakout" },
+    { from: "ARMED_AFTER_BREAKOUT" as const, to: "PULLBACK_OBSERVED" as const, time: 2, reason: "pullback" },
+    { from: "PULLBACK_OBSERVED" as const, to: "LEVEL_INTERACTION_FOUND" as const, time: 3, reason: "level" },
+  ];
+  const first = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "arm-cursor-1",
+    patienceOccurrences: [],
+    pullbackArmId: armId,
+    pullbackArmState: "LEVEL_INTERACTION_FOUND",
+    pullbackArmTransitions: path.map((transition) => ({
+      ...transition,
+      time: new Date(transition.time).toISOString(),
+    })),
+  });
+  const terminal = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "arm-cursor-2",
+    patienceOccurrences: [],
+    pullbackArmId: armId,
+    pullbackArmState: "SESSION_BOUNDARY_EXPIRED",
+    pullbackArmTransitions: [
+      ...path,
+      {
+        from: "LEVEL_INTERACTION_FOUND" as const,
+        to: "SESSION_BOUNDARY_EXPIRED" as const,
+        time: 4,
+        reason: "boundary",
+      },
+    ].map((transition) => ({ ...transition, time: new Date(transition.time).toISOString() })),
+  });
+  const stale = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    id: "arm-cursor-3",
+    patienceOccurrences: [],
+    pullbackArmId: armId,
+    pullbackArmState: "PULLBACK_OBSERVED",
+    pullbackArmTransitions: [{
+      from: "SESSION_BOUNDARY_EXPIRED",
+      to: "PULLBACK_OBSERVED",
+      time: new Date(5).toISOString(),
+      reason: "stale later cursor",
+    }],
+  });
+  const diagnostics = historicalReplayDiagnostics([first, terminal, stale], [], [], [], [], []);
+  assert.equal(diagnostics.pullbackArmsCreated, 1);
+  assert.equal(diagnostics.pullbackSessionExpirations, 1);
+  assert.equal(diagnostics.pullbackActiveArms, 0);
+  assert.equal(diagnostics.pullbackLifecycleStateCounts.SESSION_BOUNDARY_EXPIRED, 1);
+  assert.ok(diagnostics.pullbackLifecycleDuplicateTransitions > 0);
+  assert.equal(diagnostics.pullbackLifecycleConflicts, 1);
+  assert.equal(diagnostics.armTerminalConflicts, 1);
+  assert.equal(diagnostics.pullbackInvariantViolations.length, 1);
+});
+
 test("invalid confirmed P to E identity is rejected diagnostically without a candidate or trade", () => {
   const occurrence = {
     ...confirmedCandidateOccurrence({

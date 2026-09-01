@@ -8,7 +8,9 @@ import {
   fibonacciAnalysis,
   phase4Volume,
   phase5PatienceAnalysis,
+  patienceArmLifecycleTransitions,
   phase6Analysis,
+  reducePullbackArmLifecycles,
   type Phase6Analysis,
   type Phase6Decision,
   type SetupType,
@@ -710,6 +712,7 @@ export function createMarketSnapshot(
     slippageMode: plan.slippageMode,
     now: currentCursor,
   });
+  pullback = projectCanonicalPullbackLifecycle(pullback, [patience, reversalPatience]);
   const story = phase8Record.timeline.map((item: Phase8TimelineEvent) => ({
     time: new Date(item.time).toISOString(),
     level: item.label,
@@ -924,6 +927,38 @@ export function createMarketSnapshot(
 }
 
 type BreakoutForProjection = ReturnType<typeof advanceOrbBreakoutState>;
+
+function projectCanonicalPullbackLifecycle(
+  pullback: ReturnType<typeof analyzePullback>,
+  analyses: readonly PatienceAnalysis[],
+): ReturnType<typeof analyzePullback> {
+  if (!pullback.armId) return pullback;
+  const observations = [
+    {
+      armId: pullback.armId,
+      transitions: pullback.armTransitions ?? [],
+      source: "phase4",
+    },
+    ...analyses.flatMap((analysis) =>
+      (analysis.occurrences ?? [])
+        .filter((occurrence) => occurrence.eligibilityArmId === pullback.armId)
+        .map((occurrence) => ({
+          armId: pullback.armId!,
+          transitions: patienceArmLifecycleTransitions(occurrence),
+          source: `phase5:${occurrence.occurrenceId}`,
+        })),
+    ),
+  ];
+  const record = reducePullbackArmLifecycles(observations).records.find((item) => item.armId === pullback.armId);
+  if (!record) return pullback;
+  return {
+    ...pullback,
+    status: record.terminal ? "expired" : pullback.status,
+    armState: record.state,
+    armTransitions: record.transitions,
+    terminalReason: record.terminalReason ?? pullback.terminalReason,
+  };
+}
 
 function phasedSignals(
   breakout: BreakoutForProjection,

@@ -3,7 +3,7 @@ import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { analyzePullback, classifyRetracement, detectInitialBreakout, detectPullbackStructure, evaluateOrbBreakoutQuality, fibonacciAnalysis, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, type BreakoutEvent } from "./phase4.js";
+import { analyzePullback, classifyRetracement, detectInitialBreakout, detectPullbackStructure, evaluateOrbBreakoutQuality, fibonacciAnalysis, isTerminalPullbackArmState, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, reducePullbackArmLifecycles, type BreakoutEvent } from "./phase4.js";
 import { phase5PatienceAnalysis } from "./phase5.js";
 import type { Candle } from "./types.js";
 
@@ -238,6 +238,54 @@ test("trading-date and contract changes terminate the pullback arm without bridg
   );
   assert.equal(contractBoundary.armState, "CONTRACT_BOUNDARY_EXPIRED");
   assert.equal(contractBoundary.evaluatedCandles, 1);
+});
+
+test("a non-contiguous candle span is a data-gap invalidation, not a session boundary", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const first = candle(1, 100, 100.5, 99.5, 99.8, 100);
+  const gap = { ...candle(3, 99.8, 100.2, 99.2, 99.7, 100), contractSymbol: undefined };
+  const result = analyzePullback(
+    [breakoutCandle, first, gap],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 100, low: 99, complete: true } },
+  );
+  assert.equal(result.armState, "DATA_GAP_INVALIDATED");
+  assert.equal(result.status, "expired");
+  assert.equal(result.armTransitions?.at(-1)?.to, "DATA_GAP_INVALIDATED");
+  assert.equal(result.armTransitions?.at(-1)?.reason.includes("non-contiguous"), true);
+  assert.equal(isTerminalPullbackArmState(result.armState), true);
+});
+
+test("arm lifecycle reduction is monotonic, terminal, and idempotent across replay cursors", () => {
+  const armId = "arm|full-causal-identity";
+  const path = [
+    { from: null, to: "ARMED_AFTER_BREAKOUT" as const, time: 1, reason: "breakout" },
+    { from: "ARMED_AFTER_BREAKOUT" as const, to: "PULLBACK_OBSERVED" as const, time: 2, reason: "pullback" },
+    { from: "PULLBACK_OBSERVED" as const, to: "LEVEL_INTERACTION_FOUND" as const, time: 3, reason: "level" },
+    { from: "LEVEL_INTERACTION_FOUND" as const, to: "SESSION_BOUNDARY_EXPIRED" as const, time: 4, reason: "boundary" },
+  ];
+  const reduced = reducePullbackArmLifecycles([
+    { armId, transitions: path, source: "cursor-1" },
+    { armId, transitions: path, source: "cursor-2" },
+    {
+      armId,
+      transitions: [{
+        from: "SESSION_BOUNDARY_EXPIRED",
+        to: "PULLBACK_OBSERVED",
+        time: 5,
+        reason: "stale later cursor",
+      }],
+      source: "cursor-3",
+    },
+  ]);
+  assert.equal(reduced.records[0]?.state, "SESSION_BOUNDARY_EXPIRED");
+  assert.equal(reduced.records[0]?.transitions.length, path.length);
+  assert.ok(reduced.duplicateTransitions >= path.length);
+  assert.equal(reduced.conflicts.length, 1);
+  assert.equal(reduced.records[0]?.terminal, true);
 });
 
 test("complete pullback detector qualifies full-range distances at 0/4/8/12 ticks and rejects beyond twelve", () => {

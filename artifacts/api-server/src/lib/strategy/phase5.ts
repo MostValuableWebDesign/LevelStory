@@ -1,4 +1,8 @@
-import type { PullbackAnalysis } from "./phase4.js";
+import {
+  isTerminalPullbackArmState,
+  type PullbackAnalysis,
+  type PullbackArmTransition,
+} from "./phase4.js";
 import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
@@ -105,6 +109,52 @@ export type PatienceOccurrence = {
     lCandleOpenTime?: number | null;
   };
 };
+
+export function patienceArmLifecycleTransitions(
+  occurrence: PatienceOccurrence,
+): PullbackArmTransition[] {
+  const transitions: PullbackArmTransition[] = [{
+    from: "LEVEL_INTERACTION_FOUND",
+    to: "PATIENCE_ARMED",
+    time: occurrence.patienceCandle.closeTime,
+    reason: "Phase 5 found a trend-aligned patience shape for the causal level interaction.",
+  }];
+  const transitionTime = occurrence.eligibilityArmTransitionTime ?? occurrence.evaluationCursor;
+  if (occurrence.qualificationStatus === "SIGNAL_CONFIRMED" || occurrence.outcomeStatus === "CONFIRMED") {
+    transitions.push({
+      from: "PATIENCE_ARMED",
+      to: "SIGNAL_CONFIRMED",
+      time: occurrence.triggerCandle?.closeTime ?? transitionTime,
+      reason: "Phase 5 confirmed the immediate-next P→E sequence.",
+    });
+  }
+  if (occurrence.eligibilityArmState === "consumed") {
+    transitions.push({
+      from: "SIGNAL_CONFIRMED",
+      to: "CONSUMED",
+      time: transitionTime,
+      reason: occurrence.eligibilityArmStateReason ?? "Phase 5 consumed the eligibility arm after signal confirmation.",
+    });
+  } else if (
+    occurrence.qualificationStatus === "STRUCTURALLY_INVALIDATED"
+    || occurrence.eligibilityArmState === "invalidated"
+  ) {
+    transitions.push({
+      from: "PATIENCE_ARMED",
+      to: "STRUCTURALLY_INVALIDATED",
+      time: transitionTime,
+      reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
+    });
+  } else if (occurrence.eligibilityArmState === "superseded") {
+    transitions.push({
+      from: "PATIENCE_ARMED",
+      to: "SUPERSEDED_BY_NEW_BREAKOUT",
+      time: transitionTime,
+      reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
+    });
+  }
+  return transitions;
+}
 
 export type PatienceAnalysis = {
   state: PatienceState;
@@ -368,6 +418,23 @@ export function phase5PatienceAnalysis(
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
+  if (
+    direction !== null
+    && isTerminalPullbackArmState(pullback.armState)
+    && pullback.structure?.direction === direction
+  ) {
+    return {
+      ...waiting(
+        "WAITING_FOR_LEVEL",
+        `The causal pullback arm is terminal (${pullback.armState}); Phase 5 cannot create another patience occurrence from it.`,
+        trend,
+        entryBufferTicks,
+        stopBufferTicks,
+      ),
+      direction,
+      directionSource,
+    };
+  }
   const eligibilityEvents: PatienceEligibilityEvent[] = [
     ...pullback.events
       .filter((event) => eligibleAfter === null || event.time >= eligibleAfter)
