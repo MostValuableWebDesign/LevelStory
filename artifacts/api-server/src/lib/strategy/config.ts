@@ -169,7 +169,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7NormalSlippageTicks: 1,
   phase7FastSlippageTicks: 2,
   phase7DefaultTargetDollars: 75,
-  profitTargetPlacement: "NEAR_SIDE_12_TICKS",
+  profitTargetPlacement: "EXACT_LEVEL",
   phase7RunnerRetracementRatio: 0.4,
 };
 

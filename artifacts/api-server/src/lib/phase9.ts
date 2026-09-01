@@ -1883,7 +1883,10 @@ function targetPlanForSnapshot(
     direction,
     entryPrice,
     levels: targetLevelsForSnapshot(snapshot),
-    placementMode: activeShadowStrategySnapshot().config.profitTargetPlacement,
+    // The first level beyond the entry buffer is the take-profit price.
+    // Do not let an older persisted strategy snapshot re-enable the
+    // deprecated near-side placement behavior.
+    placementMode: "EXACT_LEVEL",
   });
 }
 
@@ -3071,7 +3074,7 @@ function targetPlanForOccurrence(
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: activeShadowStrategySnapshot().config.profitTargetPlacement,
+    placementMode: "EXACT_LEVEL",
   });
   return {
     ...plan,

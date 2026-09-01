@@ -215,7 +215,7 @@ export function buildKeyLevelTargetPlan(input: {
   const bufferTicks = input.bufferTicks ?? 12;
   if (bufferTicks !== 12) throw new Error("Key-level target buffer must be exactly 12 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
-  const placementMode = input.placementMode ?? "NEAR_SIDE_12_TICKS";
+  const placementMode = input.placementMode ?? "EXACT_LEVEL";
   const bufferPoints = bufferTicks * tickSize;
   const availableLevels = mergeLevels(input.levels, tickSize)
     .map((level) => {
@@ -243,7 +243,7 @@ export function buildKeyLevelTargetPlan(input: {
   const targetPrice = selectedTargetLevel === null
     ? null
     : placementMode === "EXACT_LEVEL"
-      ? selectedTargetLevel.price
+      ? rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction)
       : nearSideTargetPrice(
         input.direction,
         rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction),

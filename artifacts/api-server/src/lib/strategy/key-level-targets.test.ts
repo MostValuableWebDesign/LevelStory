@@ -17,7 +17,7 @@ test("long key-level targets bypass nearby and behind levels", () => {
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "next");
-  assert.equal(plan.targetPrice, 105);
+  assert.equal(plan.targetPrice, 108);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer|near"]);
   assert.ok(plan.availableLevels.every((level) => level.id !== "behind"));
   assert.equal(plan.skippedLevels[0]?.reason, "ENTRY_WITHIN_12_TICKS");
@@ -35,11 +35,11 @@ test("short key-level targets use the upper zone boundary and bypass nearby leve
   });
   assert.equal(plan.selectedTargetLevel?.id, "next");
   assert.equal(plan.selectedTargetLevel?.price, 93);
-  assert.equal(plan.targetPrice, 96);
+  assert.equal(plan.targetPrice, 93);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer"]);
 });
 
-test("near-side targets stay within 12 ticks of an unrounded indicator level", () => {
+test("only levels outside the entry buffer are selected and raw levels become targets", () => {
   const entryPrice = 7527.75;
   const vwap = 7522.565477738259;
   const plan = buildKeyLevelTargetPlan({
@@ -52,8 +52,7 @@ test("near-side targets stay within 12 ticks of an unrounded indicator level", (
   });
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["ema-200"]);
   assert.equal(plan.selectedTargetLevel?.id, "vwap");
-  assert.equal(plan.targetPrice, 7525.5);
-  assert.ok((plan.targetPrice - vwap) / 0.25 <= 12);
+  assert.equal(plan.targetPrice, vwap);
 });
 
 test("dynamite or duplicate prices become one frozen target level", () => {
@@ -69,7 +68,7 @@ test("dynamite or duplicate prices become one frozen target level", () => {
   assert.equal(plan.availableLevels.length, 2);
   assert.equal(plan.selectedTargetLevel?.id, "dynamite-ema|dynamite-vwap");
   assert.equal(plan.selectedTargetLevel?.price, 109);
-  assert.equal(plan.targetPrice, 106);
+  assert.equal(plan.targetPrice, 109);
   assert.equal(plan.subsequentTargetLevels[0]?.id, "farther");
 });
 
@@ -89,7 +88,7 @@ test("overlapping and within-Dynamite-tolerance aliases become one physical targ
   assert.equal(plan.selectedTargetLevel?.rangeLow, 108);
   assert.equal(plan.selectedTargetLevel?.rangeHigh, 110);
   assert.equal(plan.selectedTargetLevel?.price, 108);
-  assert.equal(plan.targetPrice, 105);
+  assert.equal(plan.targetPrice, 108);
   assert.equal(plan.subsequentTargetLevels[0]?.id, "separate-prior-high");
 });
 
