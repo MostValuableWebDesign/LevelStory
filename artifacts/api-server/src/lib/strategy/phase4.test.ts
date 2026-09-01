@@ -259,6 +259,24 @@ test("a non-contiguous candle span is a data-gap invalidation, not a session bou
   assert.equal(isTerminalPullbackArmState(result.armState), true);
 });
 
+test("a missing first post-breakout candle invalidates the arm and later candles cannot bridge it", () => {
+  const full = breakoutFixture();
+  const breakout = full[6]!;
+  const laterOnly = [full[0]!, ...full.slice(1, 7), full[8]!, full[9]!];
+  const result = analyzePullback(
+    laterOnly,
+    breakoutAt(breakout),
+    [{ name: "Focused level", price: 102 }],
+    specification,
+    config,
+  );
+  assert.equal(result.armState, "DATA_GAP_INVALIDATED");
+  assert.equal(result.status, "expired");
+  assert.equal(result.evaluatedCandles, 0);
+  assert.equal(result.events.length, 0);
+  assert.match(result.terminalReason ?? "", /expected .* observed .*missing candles/i);
+});
+
 test("arm lifecycle reduction is monotonic, terminal, and idempotent across replay cursors", () => {
   const armId = "arm|full-causal-identity";
   const path = [
@@ -286,6 +304,23 @@ test("arm lifecycle reduction is monotonic, terminal, and idempotent across repl
   assert.ok(reduced.duplicateTransitions >= path.length);
   assert.equal(reduced.conflicts.length, 1);
   assert.equal(reduced.records[0]?.terminal, true);
+});
+
+test("an immediate-confirmation failure can rearm the same active pullback arm", () => {
+  const reduced = reducePullbackArmLifecycles([{
+    armId: "rearmable-arm",
+    transitions: [
+      { from: null, to: "ARMED_AFTER_BREAKOUT", time: 0, reason: "breakout" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
+      { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "P1" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 4, reason: "P2 rearm" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 5, reason: "E2" },
+      { from: "SIGNAL_CONFIRMED", to: "CONSUMED", time: 5, reason: "consumed" },
+    ],
+  }]);
+  assert.equal(reduced.records[0]?.state, "CONSUMED");
+  assert.equal(reduced.conflicts.length, 0);
 });
 
 test("complete pullback detector qualifies full-range distances at 0/4/8/12 ticks and rejects beyond twelve", () => {

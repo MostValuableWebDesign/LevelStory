@@ -3223,6 +3223,7 @@ export function projectHistoricalTradeCandidates(
     });
   }
   const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const rejectionBySignalId = new Map(rejected.map((rejection) => [rejection.signalOccurrenceId, rejection]));
   const authoritativeTrades: BacktestTrade[] = [];
   const orphans: OrphanModeledTrade[] = [];
   for (const occurrence of signalByPhysicalIdentity.values()) {
@@ -3261,8 +3262,10 @@ export function projectHistoricalTradeCandidates(
       orphans.push({
         tradeId: trade.id,
         matchingSignalOccurrenceId: matchingSignal?.occurrenceId,
-        reason: matchingSignal
-          ? "The modeled trade matched a confirmed signal, but that signal failed complete edge or primary-window eligibility."
+        reason: matchingSignal && rejectionBySignalId.get(matchingSignal.occurrenceId)
+          ? rejectionBySignalId.get(matchingSignal.occurrenceId)!.details.join(" ")
+          : matchingSignal
+            ? "The modeled trade matched a confirmed signal, but that signal failed lifecycle, edge, identity, or primary-window eligibility."
           : "No canonical confirmed signal matched the trade's exact contract/date/direction/P/E identity.",
       });
       continue;

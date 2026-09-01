@@ -10,6 +10,7 @@ import {
   resolveIntrabarOutcome,
   buildHistoricalOccurrenceLedger,
   projectHistoricalTradeCandidates,
+  reduceHistoricalPullbackLifecycles,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -21,6 +22,7 @@ import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/se
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { RunBacktestBody } from "@workspace/api-zod";
+import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;
@@ -134,6 +136,8 @@ function confirmedCandidateOccurrence(input: {
   patienceHigh?: number;
   levelValues?: Record<string, number>;
   management?: Record<string, unknown>;
+  eligibilityArmId?: string;
+  eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded";
 }): any {
   const direction = input.direction ?? "long";
   return {
@@ -203,6 +207,8 @@ function confirmedCandidateOccurrence(input: {
     supportingConfluences: [],
     setupGrade: "A",
     ...(input.management ? { management: input.management } : {}),
+    ...(input.eligibilityArmId ? { eligibilityArmId: input.eligibilityArmId } : {}),
+    ...(input.eligibilityArmState ? { eligibilityArmState: input.eligibilityArmState } : {}),
   };
 }
 
@@ -240,6 +246,23 @@ function candidateProjectionDataset(
     outOfSampleDates: [],
     contractMonth: "U26",
   } as CausalReplayDataset;
+}
+
+function lifecycleForArm(
+  armId: string,
+  terminalState: "STRUCTURALLY_INVALIDATED" | "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "DATA_GAP_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "CONSUMED",
+): ReturnType<typeof reducePullbackArmLifecycles> {
+  return reducePullbackArmLifecycles([{
+    armId,
+    transitions: [
+      { from: null, to: "ARMED_AFTER_BREAKOUT", time: 0, reason: "breakout" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
+      { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "patience" },
+      { from: "PATIENCE_ARMED", to: terminalState, time: 4, reason: terminalState },
+    ],
+    source: "test-lifecycle",
+  }]);
 }
 
 test("causal replay only exposes the visible prefix and cannot leak a future candle", () => {
@@ -815,6 +838,67 @@ test("changing only the qualifying L leaves the physical P to E identity unchang
   assert.notEqual(changedPatience.lTimestamp, originalPatience.lTimestamp);
   assert.equal(changedPatience.pOpenTimestamp, originalPatience.pOpenTimestamp);
   assert.equal(changedPatience.eOpenTimestamp, originalPatience.eOpenTimestamp);
+});
+
+test("a terminal non-consumed arm cannot create a candidate or affect metrics", () => {
+  const terminalStates = [
+    "STRUCTURALLY_INVALIDATED",
+    "SUPERSEDED_BY_NEW_BREAKOUT",
+    "OPPOSITE_BREAKOUT_INVALIDATED",
+    "DATA_GAP_INVALIDATED",
+    "ENTRY_CUTOFF_EXPIRED",
+    "SESSION_BOUNDARY_EXPIRED",
+    "CONTRACT_BOUNDARY_EXPIRED",
+  ] as const;
+  for (const state of terminalStates) {
+    const occurrence = confirmedCandidateOccurrence({
+      pOpen: "2026-08-25T14:00:00.000Z",
+      eOpen: "2026-08-25T14:05:00.000Z",
+      eClose: "2026-08-25T14:10:00.000Z",
+      eligibilityArmId: `terminal-${state}`,
+      eligibilityArmState: "active",
+    });
+    const result = projectHistoricalTradeCandidates([occurrence], [], {
+      dataset: candidateProjectionDataset(occurrence),
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+      lifecycle: lifecycleForArm(`terminal-${state}`, state),
+    });
+    assert.equal(result.candidates.length, 0, state);
+    assert.equal(result.authoritativeTrades.length, 0, state);
+    assert.equal(result.rejected[0]?.reasonCodes[0], `REJECTED_PULLBACK_ARM_${state}`, state);
+    const metrics = calculateBacktestMetrics(result.authoritativeTrades);
+    assert.equal(metrics.tradeCount, 0, state);
+    assert.equal(metrics.netPnl, 0, state);
+  }
+});
+
+test("CONSUMED authorizes only the exact confirmed signal that consumed the arm", () => {
+  const first = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "consumed-arm",
+    eligibilityArmState: "consumed",
+  });
+  const later = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:15:00.000Z",
+    eOpen: "2026-08-25T14:20:00.000Z",
+    eClose: "2026-08-25T14:25:00.000Z",
+    eligibilityArmId: "consumed-arm",
+    eligibilityArmState: "active",
+  });
+  const result = projectHistoricalTradeCandidates([first, later], [], {
+    dataset: candidateProjectionDataset(first),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle: lifecycleForArm("consumed-arm", "CONSUMED"),
+  });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.signalOccurrenceId, first.occurrenceId);
+  assert.equal(result.rejected.length, 1);
+  assert.equal(result.rejected[0]?.signalOccurrenceId, later.occurrenceId);
+  assert.equal(result.rejected[0]?.reasonCodes[0], "REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL");
 });
 
 test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {

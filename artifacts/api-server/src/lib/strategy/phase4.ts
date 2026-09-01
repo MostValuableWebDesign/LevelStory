@@ -199,7 +199,6 @@ export function reducePullbackArmLifecycles(
   for (const [armId, rawItems] of byArm) {
     const items = [...rawItems].sort((left, right) =>
       left.transition.time - right.transition.time
-      || Number(isTerminalPullbackArmState(right.transition.to)) - Number(isTerminalPullbackArmState(left.transition.to))
       || left.order - right.order,
     );
     const seen = new Set<string>();
@@ -244,7 +243,10 @@ export function reducePullbackArmLifecycles(
         continue;
       }
 
-      if (state !== null && transition.to === state) {
+      const validPatienceRearm = state === "PATIENCE_ARMED"
+        && transition.from === "LEVEL_INTERACTION_FOUND"
+        && transition.to === "PATIENCE_ARMED";
+      if (state !== null && transition.to === state && !validPatienceRearm) {
         conflicts.push({
           armId,
           canonicalState: state,
@@ -253,6 +255,10 @@ export function reducePullbackArmLifecycles(
           source: item.source,
           reason: "A non-terminal arm state was observed again instead of advancing the lifecycle.",
         });
+        continue;
+      }
+      if (validPatienceRearm) {
+        accepted.push(transition);
         continue;
       }
 
