@@ -706,6 +706,7 @@ export type HistoricalReplayDiagnostics = {
   pullbackActiveArms: number;
   pullbackSupersededArms: number;
   pullbackOppositeBreakoutInvalidations: number;
+  pullbackOrbReentryInvalidations: number;
   pullbackStructuralInvalidations: number;
   pullbackConsumedArms: number;
   pullbackCutoffExpirations: number;
@@ -1549,6 +1550,7 @@ export function historicalReplayDiagnostics(
   }
   const terminalPullbackStates = new Set<PullbackArmState>([
     "STRUCTURALLY_INVALIDATED",
+    "ORB_REENTRY_INVALIDATED",
     "SUPERSEDED_BY_NEW_BREAKOUT",
     "OPPOSITE_BREAKOUT_INVALIDATED",
     "ENTRY_CUTOFF_EXPIRED",
@@ -1611,6 +1613,7 @@ export function historicalReplayDiagnostics(
     ).length,
     armInvalidations: [...terminalByArm.values()].filter((item) =>
       item.state === "STRUCTURALLY_INVALIDATED"
+      || item.state === "ORB_REENTRY_INVALIDATED"
       || item.state === "OPPOSITE_BREAKOUT_INVALIDATED"
       || item.state === "DATA_GAP_INVALIDATED",
     ).length,
@@ -1625,6 +1628,7 @@ export function historicalReplayDiagnostics(
     pullbackActiveArms: [...pullbackArmStateById.values()].filter((state) => !terminalPullbackStates.has(state)).length,
     pullbackSupersededArms: [...pullbackArmStateById.values()].filter((state) => state === "SUPERSEDED_BY_NEW_BREAKOUT").length,
     pullbackOppositeBreakoutInvalidations: [...pullbackArmStateById.values()].filter((state) => state === "OPPOSITE_BREAKOUT_INVALIDATED").length,
+    pullbackOrbReentryInvalidations: [...pullbackArmStateById.values()].filter((state) => state === "ORB_REENTRY_INVALIDATED").length,
     pullbackStructuralInvalidations: [...pullbackArmStateById.values()].filter((state) => state === "STRUCTURALLY_INVALIDATED").length,
     pullbackConsumedArms: [...pullbackArmStateById.values()].filter((state) => state === "CONSUMED").length,
     pullbackCutoffExpirations: [...pullbackArmStateById.values()].filter((state) => state === "ENTRY_CUTOFF_EXPIRED").length,

@@ -250,7 +250,7 @@ function candidateProjectionDataset(
 
 function lifecycleForArm(
   armId: string,
-  terminalState: "STRUCTURALLY_INVALIDATED" | "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "DATA_GAP_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "CONSUMED",
+  terminalState: "STRUCTURALLY_INVALIDATED" | "ORB_REENTRY_INVALIDATED" | "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "DATA_GAP_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "CONSUMED",
   consumingOccurrence?: any,
 ): ReturnType<typeof reducePullbackArmLifecycles> {
   const consumingSignalIdentity = consumingOccurrence?.direction
@@ -890,6 +890,7 @@ test("changing only the qualifying L leaves the physical P to E identity unchang
 test("a terminal non-consumed arm cannot create a candidate or affect metrics", () => {
   const terminalStates = [
     "STRUCTURALLY_INVALIDATED",
+    "ORB_REENTRY_INVALIDATED",
     "SUPERSEDED_BY_NEW_BREAKOUT",
     "OPPOSITE_BREAKOUT_INVALIDATED",
     "DATA_GAP_INVALIDATED",

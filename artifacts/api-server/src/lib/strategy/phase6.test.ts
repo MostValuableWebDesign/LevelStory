@@ -533,7 +533,7 @@ test("equivalent reversal owns a shared qualified sequence before generic patien
   assert.equal(result.primarySetup, "EQUIVALENT_CANDLE_REVERSAL");
 });
 
-test("ORB Fibonacci interaction is required when no structural level interaction exists", () => {
+test("ORB Fibonacci interaction is diagnostic-only and cannot satisfy level context", () => {
   const withoutInteraction = evaluateOrbBreakPullbackContinuation(baseContext({
     pullback: { ...baseContext().pullback, events: [] },
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 100 }] },
@@ -543,17 +543,14 @@ test("ORB Fibonacci interaction is required when no structural level interaction
   const withInteraction = evaluateOrbBreakPullbackContinuation(baseContext({
     pullback: {
       ...baseContext().pullback,
-      events: [
-        ...baseContext().pullback.events,
-        { ...baseContext().pullback.events[0]!, level: "Fib 0.5", price: 10.1 },
-      ],
+      events: [{ ...baseContext().pullback.events[0]!, level: "Fib 0.5", price: 10.1 }],
     },
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
   }));
-  assert.equal(withInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, true);
+  assert.equal(withInteraction.rules.find((rule) => rule.key === "levelContext")?.passed, false);
 });
 
-test("ORB accepts a genuine pullback whose only qualifying level is Fibonacci", () => {
+test("ORB rejects a genuine pullback whose only qualifying level is Fibonacci", () => {
   const context = baseContext({
     pullback: {
       ...baseContext().pullback,
@@ -573,8 +570,8 @@ test("ORB accepts a genuine pullback whose only qualifying level is Fibonacci", 
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
   });
   const result = evaluateOrbBreakPullbackContinuation(context);
-  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, true);
-  assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, true);
+  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, false);
+  assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, false);
 });
 
 test("Fibonacci proximity without causal pullback structure does not qualify ORB continuation", () => {

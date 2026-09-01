@@ -36,9 +36,9 @@ function breakoutFixture(): Candle[] {
     candle(7, 104.5, 104.8, 101.4, 103.2, 80),
     candle(8, 102.1, 102.6, 101.8, 102.2, 70),
     candle(9, 102.2, 102.6, 101.9, 102.3, 70),
-    candle(10, 102.3, 102.5, 101, 101.2, 140),
-    candle(11, 101.2, 101.5, 100.8, 101, 90),
-    candle(12, 101, 101.5, 100.5, 100.8, 90),
+    candle(10, 102.3, 102.5, 101, 102.2, 140),
+    candle(11, 102.2, 102.4, 100.8, 102.1, 90),
+    candle(12, 102.1, 102.3, 100.5, 102.05, 90),
   ];
 }
 
@@ -150,7 +150,7 @@ test("pullback uses the shared 12-tick full-range tolerance and records interact
   const pullback = analyzePullback(candles, breakout, [
     { name: "ORB high", price: 102 },
     { name: "VWAP", price: 101.2 },
-    { name: "Far level", price: 104 },
+    { name: "Far level", price: 105.5 },
   ], specification, config);
   const eventTypes = new Set(pullback.events.map((event) => event.type));
   assert.equal(pullback.proximityTolerance, 3);
@@ -197,7 +197,7 @@ test("pullback remains causally active beyond the diagnostic six-candle and thir
 
 test("a newer completed same-direction breakout does not terminate the older pullback arm", () => {
   const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
-  const firstPullback = candle(1, 100, 100.5, 98.5, 99, 100);
+  const firstPullback = candle(1, 100, 100.5, 100.2, 100.5, 100);
   const newerBreakout = candle(2, 99, 104, 99, 103, 200);
   const continuation = candle(3, 103, 105, 102, 104, 100);
   const pullback = analyzePullback(
@@ -235,7 +235,7 @@ test("a completed opposite-direction breakout invalidates the prior pullback arm
 
 test("trading-date and contract changes terminate the pullback arm without bridging candles", () => {
   const breakoutCandle = { ...candle(0, 100, 101, 99, 100, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
-  const sameSession = { ...candle(1, 100, 100.5, 99.5, 99.8, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
+  const sameSession = { ...candle(1, 100, 100.5, 99.5, 100.2, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
   const nextDateOpen = timestampForTradingDate("2026-08-26", "09:30", calendar);
   const nextDate = {
     ...sameSession,
@@ -267,7 +267,7 @@ test("trading-date and contract changes terminate the pullback arm without bridg
 
 test("a non-contiguous candle span is a data-gap invalidation, not a session boundary", () => {
   const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
-  const first = candle(1, 100, 100.5, 99.5, 99.8, 100);
+  const first = candle(1, 100, 100.5, 99.5, 100.2, 100);
   const gap = { ...candle(3, 99.8, 100.2, 99.2, 99.7, 100), contractSymbol: undefined };
   const result = analyzePullback(
     [breakoutCandle, first, gap],
@@ -695,6 +695,44 @@ test("qualified candidates require continuation and visibly fail when they recla
   assert.equal(failed.state, "BREAKOUT_FAILED");
   assert.equal(failed.failed, true);
   assert.equal(failed.continuationConfirmed, false);
+});
+
+test("a completed re-entry after accepted continuation resets the ORB trend bias", () => {
+  const ntz = { high: 102, low: 99, complete: true, completedAt: candleCloseTime(2) };
+  const candidate = candle(3, 101, 105, 101, 104.5, 130);
+  const continuation = candle(4, 104.5, 106, 104, 105.5, 90);
+  const reentry = candle(5, 105.5, 105.75, 101.5, 101.75, 90);
+  const failed = evaluateOrbBreakoutQuality([
+    ...breakoutFixture().slice(0, 3),
+    candidate,
+    continuation,
+    reentry,
+  ], ntz, config, specification);
+  assert.equal(failed.state, "BREAKOUT_FAILED");
+  assert.equal(failed.detected, false);
+  assert.equal(failed.failed, true);
+  assert.equal(failed.direction, "long");
+  assert.match(failed.detail, /closed back inside the ORB\/NTZ/);
+  assert.match(failed.detail, /trend bias has been reset/);
+});
+
+test("a completed ORB/NTZ re-entry terminates the pullback arm before level analysis", () => {
+  const breakoutCandle = candle(0, 100, 103, 99.5, 102.5, 160);
+  const reentry = candle(1, 102.5, 102.75, 100, 101, 90);
+  const pullback = analyzePullback(
+    [breakoutCandle, reentry],
+    breakoutAt(breakoutCandle),
+    [{ name: "ORB high", price: 102 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 102, low: 99, complete: true } },
+  );
+  assert.equal(pullback.armState, "ORB_REENTRY_INVALIDATED");
+  assert.equal(pullback.status, "expired");
+  assert.equal(pullback.evaluatedCandles, 0);
+  assert.equal(pullback.events.length, 0);
+  assert.equal(pullback.armTransitions?.at(-1)?.to, "ORB_REENTRY_INVALIDATED");
+  assert.match(pullback.terminalReason ?? "", /trend bias was reset/i);
 });
 
 test("ORB quality remains causal when a future continuation candle is incomplete", () => {

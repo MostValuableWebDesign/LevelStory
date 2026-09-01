@@ -120,6 +120,7 @@ export type PullbackArmState =
   | "SIGNAL_CONFIRMED"
   | "CONSUMED"
   | "STRUCTURALLY_INVALIDATED"
+  | "ORB_REENTRY_INVALIDATED"
   | "SUPERSEDED_BY_NEW_BREAKOUT"
   | "OPPOSITE_BREAKOUT_INVALIDATED"
   | "ENTRY_CUTOFF_EXPIRED"
@@ -203,6 +204,7 @@ export type PullbackArmLifecycleReduction = {
 
 export const TERMINAL_PULLBACK_ARM_STATES: ReadonlySet<PullbackArmState> = new Set([
   "STRUCTURALLY_INVALIDATED",
+  "ORB_REENTRY_INVALIDATED",
   "SUPERSEDED_BY_NEW_BREAKOUT",
   "OPPOSITE_BREAKOUT_INVALIDATED",
   "ENTRY_CUTOFF_EXPIRED",
@@ -221,6 +223,7 @@ const PULLBACK_ARM_STATE_RANK: Readonly<Record<PullbackArmState, number>> = {
   // patience sequence does not end the one-pullback arm.
   CONSUMED: 4,
   STRUCTURALLY_INVALIDATED: 5,
+  ORB_REENTRY_INVALIDATED: 5,
   SUPERSEDED_BY_NEW_BREAKOUT: 5,
   OPPOSITE_BREAKOUT_INVALIDATED: 5,
   ENTRY_CUTOFF_EXPIRED: 5,
@@ -582,6 +585,17 @@ function evaluateCandidateContinuation(
   });
   if (continuation) {
     const index = following.indexOf(continuation);
+    const reentryAfterContinuation = following
+      .slice(index + 1)
+      .find((candle) => closesBackInside(candle, ntz, direction));
+    if (config.phase4FailureReclaimRequired && reentryAfterContinuation) {
+      return failedBreakout(
+        candidate,
+        direction,
+        quality,
+        `BREAKOUT_FAILED: after continuation, a completed candle closed back inside the ORB/NTZ at ${new Date(reentryAfterContinuation.closeTime).toISOString()}; the breakout trend bias has been reset.`,
+      );
+    }
     const prior = completed[candidateIndex + index];
     const threshold = continuationDistance(candidate, completed.slice(0, candidateIndex), config, tickSize);
     const condition: BreakoutContinuationCondition =
@@ -1135,7 +1149,7 @@ function sameContract(first: Candle, second: Candle): boolean {
 
 type PullbackTerminal = {
   index: number;
-  state: Extract<PullbackArmState, "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "DATA_GAP_INVALIDATED">;
+  state: Extract<PullbackArmState, "ORB_REENTRY_INVALIDATED" | "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "DATA_GAP_INVALIDATED">;
   time: number;
   reason: string;
 };
@@ -1150,6 +1164,8 @@ function findPullbackTerminal(
   specification: FuturesContractSpecification,
   calendar: FuturesSessionCalendar,
 ): PullbackTerminal | null {
+  const breakoutDirection = breakout.direction;
+  if (breakoutDirection === null) return null;
   const breakoutDate = tradingDateForTimestamp(breakoutCandle.openTime, calendar);
   const tickSize = specification.tickSize;
   let pullbackStarted = false;
@@ -1206,34 +1222,45 @@ function findPullbackTerminal(
     }
     if (!finalizedNtz?.complete) continue;
     const direction = directionForAttempt(candle, finalizedNtz);
-    if (!direction || !closesOutside(candle, finalizedNtz, direction)) continue;
-    const quality = breakoutQuality(candle, direction, completed, finalizedNtz, config, tickSize);
-    if (!qualityPassed(quality)) continue;
-    const established = evaluateCandidateContinuation(
-      candle,
-      direction,
-      completed,
-      finalizedNtz,
-      config,
-      tickSize,
-      quality,
-    );
-    if (!established.detected || established.candleOpenTime !== candle.openTime) continue;
-    const sameDirection = direction === breakout.direction;
-    if (sameDirection) {
-      // A later breakout in the same direction is another opportunity, not a
-      // lifecycle boundary for the earlier arm. Keeping this arm active lets
-      // Phase 5 catch a patience candle from the earlier pullback instead of
-      // retroactively erasing an early move. A later arm may be evaluated
-      // independently by the replay cursor.
-      continue;
+    if (direction && closesOutside(candle, finalizedNtz, direction)) {
+      const quality = breakoutQuality(candle, direction, completed, finalizedNtz, config, tickSize);
+      if (qualityPassed(quality)) {
+        const established = evaluateCandidateContinuation(
+          candle,
+          direction,
+          completed,
+          finalizedNtz,
+          config,
+          tickSize,
+          quality,
+        );
+        if (established.detected && established.candleOpenTime === candle.openTime) {
+          const sameDirection = direction === breakout.direction;
+          if (sameDirection) {
+            // A later breakout in the same direction is another opportunity,
+            // not a lifecycle boundary for the earlier arm. Keeping this arm
+            // active lets Phase 5 catch a patience candle from the earlier
+            // pullback instead of retroactively erasing an early move. A later
+            // arm may be evaluated independently by the replay cursor.
+            continue;
+          }
+          return {
+            index,
+            state: "OPPOSITE_BREAKOUT_INVALIDATED",
+            time: candle.closeTime,
+            reason: `A completed opposite-direction ${direction} breakout invalidated the prior ${breakout.direction} arm.`,
+          };
+        }
+      }
     }
-    return {
-      index,
-      state: "OPPOSITE_BREAKOUT_INVALIDATED",
-      time: candle.closeTime,
-      reason: `A completed opposite-direction ${direction} breakout invalidated the prior ${breakout.direction} arm.`,
-    };
+    if (closesBackInside(candle, finalizedNtz, breakoutDirection)) {
+      return {
+        index,
+        state: "ORB_REENTRY_INVALIDATED",
+        time: candle.closeTime,
+        reason: `A completed candle closed back inside the finalized ORB/NTZ after the ${breakout.direction} breakout; the ORB trend bias was reset and the pullback arm cannot qualify a trade.`,
+      };
+    }
   }
   return null;
 }

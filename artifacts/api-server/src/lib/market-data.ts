@@ -597,7 +597,11 @@ export function createMarketSnapshot(
     : trend.direction === "bearish"
       ? "short"
       : null;
-  const patienceDirection = breakout.direction ?? trendDirection;
+  // A failed ORB reclaim must not continue to project the stale breakout
+  // direction into Phase 5. The independent 15-minute trend may still be
+  // displayed and evaluated through its own continuation path.
+  const breakoutDirection = breakout.detected && !breakout.failed ? breakout.direction : null;
+  const patienceDirection = breakoutDirection ?? trendDirection;
   const patience = phase5PatienceAnalysis(
     regular,
     patienceDirection,
@@ -610,7 +614,7 @@ export function createMarketSnapshot(
     config.patienceEntryBufferTicks,
     config.patienceStopBufferTicks,
     false,
-    breakout.direction ? "ORB_BREAKOUT" : "CONFIRMED_15M_TREND",
+    breakoutDirection ? "ORB_BREAKOUT" : "CONFIRMED_15M_TREND",
   );
   const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
   const baseSetupContext = {
