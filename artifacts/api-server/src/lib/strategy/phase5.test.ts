@@ -574,6 +574,75 @@ test("a terminal causal pullback arm cannot create another Phase 5 occurrence", 
   assert.match(result.detail, /terminal/i);
 });
 
+test("a terminal boundary after confirmation preserves the earlier patience occurrence", () => {
+  const pOpen = Date.parse("2026-08-25T16:00:00.000Z");
+  const candles = [
+    datedCandle("2026-08-25T15:55:00.000Z", 10, 12, 8, 10.5),
+    datedCandle("2026-08-25T16:00:00.000Z", 10.5, 11, 7, 10.8),
+    datedCandle("2026-08-25T16:05:00.000Z", 10.8, 13, 10.2, 13),
+  ];
+  const pullback: PullbackAnalysis = {
+    status: "expired",
+    armId: "cutoff-after-confirmation",
+    armState: "ENTRY_CUTOFF_EXPIRED",
+    armTransitions: [{
+      from: "LEVEL_INTERACTION_FOUND",
+      to: "ENTRY_CUTOFF_EXPIRED",
+      time: pOpen + 10 * FIVE_MINUTES,
+      reason: "entry cutoff",
+    }],
+    terminalReason: "entry cutoff",
+    structure: {
+      detected: true,
+      direction: "long",
+      impulseExtreme: 12,
+      impulseExtremeTime: pOpen - FIVE_MINUTES,
+      pullbackStart: pOpen,
+      pullbackEnd: pOpen + FIVE_MINUTES,
+      depthPoints: 1,
+      retracementPercent: 20,
+      greaterThan50PercentWarning: false,
+    },
+    events: [{
+      armId: "cutoff-after-confirmation",
+      type: "touch",
+      time: pOpen,
+      level: "VWAP",
+      price: 10,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      detail: "confirmed before cutoff",
+    }],
+    evaluatedCandles: 2,
+    maxCandles: 6,
+    maxDurationMinutes: 30,
+    elapsedMinutes: 10,
+    proximityTolerance: 3,
+    atr14: 1,
+    qualifyingLevelCount: 1,
+    detail: "expired after confirmation",
+  };
+  const result = phase5PatienceAnalysis(
+    candles,
+    "long",
+    pullback,
+    { high: 10, low: 0, complete: true },
+    [],
+    null,
+    "bullish",
+    0.25,
+    8,
+    8,
+    false,
+    "ORB_BREAKOUT",
+  );
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "CONFIRMED");
+  assert.equal(result.occurrences?.[0]?.patienceCandle.openTime, pOpen);
+});
+
 test("extended consolidation inside NTZ can open patience eligibility", () => {
   const candles = [
     candle(0, 10, 11, 9, 10),

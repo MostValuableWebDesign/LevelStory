@@ -200,6 +200,7 @@ export type PatienceEngineOptions = {
   finalizedNtz?: NtzRange | null;
   requireFinalizedNtz?: boolean;
   entryCutoffMinutes?: number;
+  maxCandidateCloseTime?: number;
 };
 
 /** The single causal stop formula for a completed patience candle. */
@@ -262,6 +263,7 @@ export function patienceCandleEngine(
     .filter(({ event, candle, index }) =>
       event !== undefined
       && index > 0
+      && (options.maxCandidateCloseTime === undefined || candle.closeTime < options.maxCandidateCloseTime)
       && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(
     candidateIndexes,
@@ -423,15 +425,19 @@ export function phase5PatienceAnalysis(
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
+  const terminalTransition = pullback.armTransitions
+    ?.find((transition) => isTerminalPullbackArmState(transition.to));
+  const terminalTime = terminalTransition?.time;
   if (
     direction !== null
     && isTerminalPullbackArmState(pullback.armState)
     && pullback.structure?.direction === direction
+    && !Number.isFinite(terminalTime)
   ) {
     return {
       ...waiting(
         "WAITING_FOR_LEVEL",
-        `The causal pullback arm is terminal (${pullback.armState}); Phase 5 cannot create another patience occurrence from it.`,
+        `The causal pullback arm is terminal (${pullback.armState}) without a timestamped boundary; Phase 5 cannot safely create another patience occurrence from it.`,
         trend,
         entryBufferTicks,
         stopBufferTicks,
@@ -489,6 +495,7 @@ export function phase5PatienceAnalysis(
     finalizedNtz: ntz,
     requireFinalizedNtz: true,
     entryCutoffMinutes: 780,
+    maxCandidateCloseTime: terminalTime,
   });
 }
 

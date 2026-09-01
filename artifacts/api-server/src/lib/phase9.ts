@@ -3397,10 +3397,26 @@ function candidateLifecycleRejection(
     };
   }
   if (!isTerminalPullbackArmState(record.state)) return null;
+  const terminalTransition = record.transitions
+    .find((transition) => isTerminalPullbackArmState(transition.to));
+  const terminalTime = terminalTransition?.time ?? Number.NaN;
+  const occurrenceConfirmationTime = Date.parse(
+    occurrence.entryObservationTimestamp
+      ?? occurrence.entryTimestamp
+      ?? occurrence.eOpenTimestamp
+      ?? "",
+  );
+  if (
+    Number.isFinite(terminalTime)
+    && Number.isFinite(occurrenceConfirmationTime)
+    && terminalTime > occurrenceConfirmationTime
+  ) {
+    return null;
+  }
   return {
     reasonCodes: [`REJECTED_PULLBACK_ARM_${record.state}`],
     details: [
-      `Confirmed signal ${occurrence.occurrenceId} was excluded because causal arm ${armId} is terminal at ${record.state}.`,
+      `Confirmed signal ${occurrence.occurrenceId} was excluded because causal arm ${armId} was terminal at ${record.state} before or at confirmation.`,
       ...(record.terminalReason ? [record.terminalReason] : []),
     ],
   };

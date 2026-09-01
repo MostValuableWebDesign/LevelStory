@@ -896,6 +896,34 @@ test("a terminal non-consumed arm cannot create a candidate or affect metrics", 
   }
 });
 
+test("a confirmed candidate remains eligible when its arm terminates after confirmation", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "confirmed-before-cutoff",
+    eligibilityArmState: "active",
+  });
+  const terminalTime = Date.parse("2026-08-25T14:15:00.000Z");
+  const lifecycle = reducePullbackArmLifecycles([{
+    armId: "confirmed-before-cutoff",
+    transitions: [
+      { from: null, to: "ARMED_AFTER_BREAKOUT", time: Date.parse("2026-08-25T13:55:00.000Z"), reason: "breakout" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "LEVEL_INTERACTION_FOUND", time: Date.parse("2026-08-25T14:00:00.000Z"), reason: "pullback" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "ENTRY_CUTOFF_EXPIRED", time: terminalTime, reason: "entry cutoff" },
+    ],
+    source: "test-lifecycle",
+  }]);
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle,
+  });
+  assert.equal(result.rejected.length, 0);
+  assert.equal(result.candidates.length, 1);
+});
+
 test("one pullback arm authorizes later confirmed signals after a legacy CONSUMED marker", () => {
   const first = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T14:00:00.000Z",
