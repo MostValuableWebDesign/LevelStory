@@ -58,7 +58,6 @@ export type BreakoutContinuationCondition =
   | "IMMEDIATE_DIRECTIONAL_EXTENSION"
   | "ADDITIONAL_MEANINGFUL_MOVEMENT"
   | "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
-  | "OUTSIDE_ORB_CONSOLIDATION"
   | "STRONG_SINGLE_CANDLE_EXCEPTION";
 
 export type BreakoutQualityMetrics = {
@@ -568,8 +567,7 @@ function evaluateCandidateContinuation(
       ? candle.close >= candidate.close + continuationThreshold
       : candle.close <= candidate.close - continuationThreshold;
     const twoCloses = index === 0 && closesOutside(candle, ntz, direction);
-    const consolidated = index === 0 && twoCloses && Math.abs(candle.close - candidate.close) <= continuationThreshold;
-    return extended || additional || twoCloses || consolidated || prior?.close !== undefined && twoCloses;
+    return extended || additional || twoCloses || prior?.close !== undefined && twoCloses;
   });
   if (continuation) {
     const index = following.indexOf(continuation);
@@ -583,12 +581,12 @@ function evaluateCandidateContinuation(
             ? "ADDITIONAL_MEANINGFUL_MOVEMENT"
             : prior && closesOutside(prior, ntz, direction) && closesOutside(continuation, ntz, direction)
               ? "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
-              : "OUTSIDE_ORB_CONSOLIDATION"
+              : "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
           : continuation.close <= candidate.close - threshold
             ? "ADDITIONAL_MEANINGFUL_MOVEMENT"
             : prior && closesOutside(prior, ntz, direction) && closesOutside(continuation, ntz, direction)
               ? "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB"
-              : "OUTSIDE_ORB_CONSOLIDATION";
+              : "TWO_CONSECUTIVE_CLOSES_OUTSIDE_ORB";
     return qualifiedBreakout(candidate, direction, quality, condition, `Continuation confirmed by ${condition}.`);
   }
   if (config.phase4FailureReclaimRequired && firstBackInsideIndex >= 0) {
@@ -666,7 +664,8 @@ function breakoutQuality(
 }
 
 function qualityPassed(quality: BreakoutQualityMetrics): boolean {
-  return quality.distancePassed && quality.volumePassed && quality.bodyPassed && quality.closeLocationPassed;
+  // Volume remains observable evidence, but is not an executable ORB gate.
+  return quality.distancePassed && quality.bodyPassed && quality.closeLocationPassed;
 }
 
 function directionForAttempt(candle: Candle, ntz: NonNullable<SessionLevels["ntz"]>): Direction | null {

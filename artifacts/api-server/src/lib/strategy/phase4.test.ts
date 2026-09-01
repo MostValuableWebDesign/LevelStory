@@ -132,6 +132,18 @@ test("breakout requires a finalized NTZ and a completed close outside it", () =>
   assert.equal(detectInitialBreakout(candles.slice(0, 3), ntz, config).detected, false);
 });
 
+test("ORB breakout qualification does not require breakout volume support", () => {
+  const ntz = { high: 102, low: 99, complete: true, completedAt: candleCloseTime(2) };
+  const breakout = evaluateOrbBreakoutQuality([
+    ...breakoutFixture().slice(0, 3),
+    candle(3, 101.5, 105, 100, 104.5, 1),
+    candle(4, 104.5, 105, 103.5, 104.7, 1),
+  ], ntz, config, specification);
+  assert.equal(breakout.detected, true);
+  assert.equal(breakout.volumeSupported, false);
+  assert.equal(breakout.continuationCondition, "IMMEDIATE_DIRECTIONAL_EXTENSION");
+});
+
 test("pullback uses the shared 12-tick full-range tolerance and records interaction types", () => {
   const candles = breakoutFixture();
   const breakout = detectInitialBreakout(candles, { high: 102, low: 99, complete: true, completedAt: candles[2].closeTime }, config);
@@ -641,13 +653,14 @@ test("a weak probe can be followed by a later strong push in either direction", 
   assert.equal(bearish.candidateCandleOpenTime, candleOpenTime(4));
 });
 
-test("the strong single-candle exception records its continuation condition", () => {
+test("the strong single-candle exception remains separately volume-gated", () => {
   const ntz = { high: 102, low: 99, complete: true, completedAt: candleCloseTime(2) };
   const breakout = evaluateOrbBreakoutQuality([
     ...breakoutFixture().slice(0, 3),
     candle(3, 101, 105, 101, 104.6, 160),
   ], ntz, config, specification);
   assert.equal(breakout.detected, true);
+  assert.equal(breakout.volumeSupported, true);
   assert.equal(breakout.continuationConfirmed, true);
   assert.equal(breakout.continuationCondition, "STRONG_SINGLE_CANDLE_EXCEPTION");
 });
