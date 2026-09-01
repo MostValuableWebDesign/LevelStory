@@ -1402,6 +1402,39 @@ test("candidate target snapshot rejects legacy target fallback and stays open", 
   assert.equal(trade.audit?.targetHit, false);
 });
 
+test("candidate target planning never reuses L-time qualifying values as E-time targets", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    entryHigh: 102,
+    management: {
+      strategyStopPrice: 97,
+      catastropheStopPrice: null,
+      targetPrice: 110,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "l-value-is-not-e-target",
+      missingEvidenceReasons: [],
+    },
+  });
+  occurrence.levelIdentifiers = ["VWAP"];
+  occurrence.levelValues = { VWAP: 110 };
+  occurrence.levelInteractionTypes = { VWAP: ["touch"] };
+  occurrence.targetLevelInputs = [];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence, { high: 120, low: 101 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates[0]?.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
+  assert.equal(result.candidates[0]?.targetPlan?.targetPrice, null);
+  assert.notEqual(result.authoritativeTrades[0]?.outcome, "target");
+  assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, null);
+});
+
 test("a valid strategy stop is sufficient without catastrophe-stop evidence", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",

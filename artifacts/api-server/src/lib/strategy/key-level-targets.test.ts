@@ -18,7 +18,7 @@ test("long key-level targets bypass nearby and behind levels", () => {
   });
   assert.equal(plan.selectedTargetLevel?.id, "next");
   assert.equal(plan.targetPrice, 105);
-  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["near", "exact-buffer"]);
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer|near"]);
   assert.ok(plan.availableLevels.every((level) => level.id !== "behind"));
   assert.equal(plan.skippedLevels[0]?.reason, "ENTRY_WITHIN_12_TICKS");
 });
@@ -54,6 +54,26 @@ test("dynamite or duplicate prices become one frozen target level", () => {
   assert.equal(plan.selectedTargetLevel?.price, 109);
   assert.equal(plan.targetPrice, 106);
   assert.equal(plan.subsequentTargetLevels[0]?.id, "farther");
+});
+
+test("overlapping and within-Dynamite-tolerance aliases become one physical target area", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [
+      { id: "major-resistance", type: "major resistance", rangeLow: 108, rangeHigh: 109 },
+      { id: "vwap", type: "VWAP", price: 109.5 },
+      { id: "ema-200", type: "EMA200", price: 110 },
+      { id: "separate-prior-high", type: "previous-day-high", price: 111 },
+    ],
+  });
+  assert.equal(plan.availableLevels.length, 2);
+  assert.equal(plan.selectedTargetLevel?.id, "ema-200|major-resistance|vwap");
+  assert.equal(plan.selectedTargetLevel?.rangeLow, 108);
+  assert.equal(plan.selectedTargetLevel?.rangeHigh, 110);
+  assert.equal(plan.selectedTargetLevel?.price, 108);
+  assert.equal(plan.targetPrice, 105);
+  assert.equal(plan.subsequentTargetLevels[0]?.id, "separate-prior-high");
 });
 
 test("exact-level placement is an explicit comparison mode", () => {

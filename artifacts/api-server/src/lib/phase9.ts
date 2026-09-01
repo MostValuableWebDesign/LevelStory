@@ -2841,8 +2841,6 @@ function targetPlanForOccurrence(
   if (entryPrice === null || !occurrence.direction) return null;
   const snapshot = occurrence.targetLevelSnapshot ?? targetLevelSnapshotForOccurrence(occurrence, [
     ...(occurrence.targetLevelInputs ?? []),
-    ...Object.entries(occurrence.levelValues)
-      .map(([id, price]) => ({ id, type: id, price })),
     ...(typeof occurrence.finalizedNtzHigh === "number"
       ? [{
         id: "ntz",

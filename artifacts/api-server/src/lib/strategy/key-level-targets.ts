@@ -53,6 +53,8 @@ export type KeyLevelTargetPlan = {
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
+const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
+
 function normalizedLevelText(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
 }
@@ -110,30 +112,55 @@ function normalizePrice(price: number, tickSize: number): number {
 }
 
 function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): FrozenTargetLevel[] {
-  const merged = new Map<string, FrozenTargetLevel>();
-  for (const level of filterEligibleKeyLevelInputs(levels)) {
+  const tolerancePoints = DYNAMITE_MERGE_TOLERANCE_TICKS * tickSize;
+  const normalized = filterEligibleKeyLevelInputs(levels).flatMap((level) => {
     const low = typeof level.rangeLow === "number" ? Math.min(level.rangeLow, level.rangeHigh ?? level.rangeLow) : null;
     const high = typeof level.rangeHigh === "number" ? Math.max(level.rangeHigh, level.rangeLow ?? level.rangeHigh) : null;
     const price = priceForLevel(level);
-    if (!level.id || price === null || !Number.isFinite(price)) continue;
-    const key = `${low ?? price}|${high ?? price}`;
-    const existing = merged.get(key);
-    if (existing) {
-      existing.id = [...new Set(`${existing.id}|${level.id}`.split("|"))].sort().join("|");
-      existing.type = [...new Set(`${existing.type}|${level.type}`.split("|"))].sort().join("|");
-      continue;
-    }
-    merged.set(key, {
+    if (!level.id || price === null || !Number.isFinite(price)) return [];
+    const normalizedLow = normalizePrice(low ?? price, tickSize);
+    const normalizedHigh = normalizePrice(high ?? price, tickSize);
+    return [{
       id: level.id,
       type: level.type,
       price: normalizePrice(price, tickSize),
-      rangeLow: low === null ? null : normalizePrice(low, tickSize),
-      rangeHigh: high === null ? null : normalizePrice(high, tickSize),
+      rangeLow: normalizedLow,
+      rangeHigh: normalizedHigh,
       distancePoints: 0,
       distanceTicks: 0,
-    });
+    } satisfies FrozenTargetLevel];
+  }).sort((first, second) =>
+    first.rangeLow! - second.rangeLow!
+    || first.rangeHigh! - second.rangeHigh!
+    || first.id.localeCompare(second.id));
+  const merged: FrozenTargetLevel[] = [];
+  for (const level of normalized) {
+    const existing = merged.at(-1);
+    if (existing) {
+      const overlaps = level.rangeLow! <= existing.rangeHigh!;
+      const combinedSpan = Math.max(existing.rangeHigh!, level.rangeHigh!)
+        - Math.min(existing.rangeLow!, level.rangeLow!);
+      if (overlaps || combinedSpan <= tolerancePoints) {
+        existing.id = [...new Set(`${existing.id}|${level.id}`.split("|"))].sort().join("|");
+        existing.type = [...new Set(`${existing.type}|${level.type}`.split("|"))].sort().join("|");
+        existing.rangeLow = normalizePrice(Math.min(existing.rangeLow!, level.rangeLow!), tickSize);
+        existing.rangeHigh = normalizePrice(Math.max(existing.rangeHigh!, level.rangeHigh!), tickSize);
+        existing.price = existing.rangeLow;
+        continue;
+      }
+    }
+    merged.push({ ...level });
   }
-  return [...merged.values()];
+  return merged.map((level) => {
+    if (level.rangeLow === level.rangeHigh) {
+      return {
+        ...level,
+        rangeLow: null,
+        rangeHigh: null,
+      };
+    }
+    return level;
+  });
 }
 
 export function buildKeyLevelTargetPlan(input: {
