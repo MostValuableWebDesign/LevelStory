@@ -2997,6 +2997,22 @@ function candidateNtzEligibility(occurrence: HistoricalOccurrence): { eligible: 
     : { eligible: true };
 }
 
+function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { reasonCodes: string[]; details: string[] } | null {
+  if (canonicalStrategyId(occurrence.strategyCandidate) !== "ORB_PULLBACK_CONTINUATION") return null;
+  const hasExecutablePrimaryLevel = occurrence.levelIdentifiers.some((level) =>
+    !level.trim().toLowerCase().startsWith("fib")
+    && (occurrence.levelInteractionTypes[level]?.length ?? 0) > 0,
+  );
+  if (hasExecutablePrimaryLevel) return null;
+  return {
+    reasonCodes: ["REJECTED_MISSING_PRIMARY_LEVEL_INTERACTION"],
+    details: [
+      `Confirmed ORB signal ${occurrence.occurrenceId} has no causal interaction with an executable primary level.`,
+      "Fibonacci references are diagnostic-only and cannot authorize an ORB pullback continuation.",
+    ],
+  };
+}
+
 function historicalCandidateId(occurrence: HistoricalOccurrence): string {
   return occurrenceId([
     "historical-trade-candidate-v1",
@@ -3166,6 +3182,15 @@ export function projectHistoricalTradeCandidates(
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: lifecycleRejection.reasonCodes,
         details: lifecycleRejection.details,
+      });
+      continue;
+    }
+    const primaryLevelRejection = candidatePrimaryLevelRejection(occurrence);
+    if (primaryLevelRejection) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: primaryLevelRejection.reasonCodes,
+        details: primaryLevelRejection.details,
       });
       continue;
     }

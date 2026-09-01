@@ -1447,7 +1447,7 @@ test("invalid confirmed P to E identity is rejected diagnostically without a can
   );
 });
 
-test("confirmed signals do not require key-level interaction evidence for candidate projection", () => {
+test("ORB confirmed signals require executable primary-level interaction for candidate projection", () => {
   const base = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
@@ -1459,7 +1459,8 @@ test("confirmed signals do not require key-level interaction evidence for candid
     specification: {} as any,
     executionMode: "ohlcv_modeled",
   });
-  assert.equal(noInteraction.candidates.length, 1);
+  assert.equal(noInteraction.candidates.length, 0);
+  assert.deepEqual(noInteraction.rejected[0]?.reasonCodes, ["REJECTED_MISSING_PRIMARY_LEVEL_INTERACTION"]);
 
   const fibonacciOnly = projectHistoricalTradeCandidates([{
     ...base,
@@ -1471,7 +1472,8 @@ test("confirmed signals do not require key-level interaction evidence for candid
     specification: {} as any,
     executionMode: "ohlcv_modeled",
   });
-  assert.equal(fibonacciOnly.candidates.length, 1);
+  assert.equal(fibonacciOnly.candidates.length, 0);
+  assert.deepEqual(fibonacciOnly.rejected[0]?.reasonCodes, ["REJECTED_MISSING_PRIMARY_LEVEL_INTERACTION"]);
 
   const causalLevel = projectHistoricalTradeCandidates([{
     ...base,
@@ -1484,6 +1486,18 @@ test("confirmed signals do not require key-level interaction evidence for candid
     executionMode: "ohlcv_modeled",
   });
   assert.equal(causalLevel.candidates.length, 1);
+
+  const genericSignal = projectHistoricalTradeCandidates([{
+    ...base,
+    strategyCandidate: "PATIENCE_CANDLE_CONTINUATION",
+    levelIdentifiers: [],
+    levelInteractionTypes: {},
+  }], [], {
+    dataset,
+    specification: {} as any,
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(genericSignal.candidates.length, 1);
 });
 
 test("confirmed signal missing P open is rejected with field-level causal identity evidence", () => {
