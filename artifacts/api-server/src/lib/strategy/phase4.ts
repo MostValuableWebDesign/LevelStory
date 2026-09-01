@@ -77,6 +77,31 @@ export type BreakoutQualityMetrics = {
 };
 
 export type PullbackEventType = "touch" | "proximity" | "break and reclaim" | "hold" | "consolidation" | "break through";
+export type PrimaryPullbackIndicatorId = "vwap" | "ema-200";
+export type PullbackReferenceKind = "primary_level" | "primary_indicator";
+
+/**
+ * VWAP and the 200-period moving average are dynamic prices, but they are
+ * primary pullback references. Their value must be resolved at the causal
+ * completed L candle rather than read from the latest chart state.
+ */
+export function primaryPullbackIndicatorId(
+  level: Pick<Level, "name">,
+): PrimaryPullbackIndicatorId | null {
+  const semantic = level.name.trim().toLowerCase().replace(/[-_]+/g, " ");
+  if (semantic === "vwap") return "vwap";
+  if (/^(?:ema|ma|moving average) ?200$/.test(semantic) || /^200 (?:ema|ma|moving average)$/.test(semantic)) {
+    return "ema-200";
+  }
+  return null;
+}
+
+export function pullbackReferenceKind(
+  level: Pick<Level, "name">,
+): PullbackReferenceKind {
+  return primaryPullbackIndicatorId(level) ? "primary_indicator" : "primary_level";
+}
+
 export type PullbackArmState =
   | "ARMED_AFTER_BREAKOUT"
   | "PULLBACK_OBSERVED"
@@ -355,6 +380,9 @@ export type PullbackEvent = {
   type: PullbackEventType;
   time: number;
   level: string;
+  levelKind?: PullbackReferenceKind;
+  /** The causal L-candle timestamp used to resolve a dynamic indicator. */
+  levelSourceTimestamp?: number | null;
   price: number;
   distancePoints: number;
   distanceTicks: number;
@@ -789,7 +817,9 @@ export function analyzePullback(
       elapsedMinutes: 0,
       proximityTolerance: null,
       atr14: null,
-      qualifyingLevelCount: levels.filter((level) => Number.isFinite(level.price)).length,
+      qualifyingLevelCount: levels.filter((level) =>
+        Number.isFinite(level.price) || primaryPullbackIndicatorId(level) !== null,
+      ).length,
       detail: "Pullback analysis starts only after a valid completed-candle breakout.",
     };
   }
@@ -837,7 +867,7 @@ export function analyzePullback(
   const events: PullbackEvent[] = [];
   const nearStreak = new Map<string, number>();
   const validLevels = levels.filter((level) =>
-    Number.isFinite(level.price) || isDynamicPullbackLevel(level),
+    Number.isFinite(level.price) || primaryPullbackIndicatorId(level) !== null,
   );
   for (const candle of postBreakout) {
     for (const level of validLevels) {
@@ -867,12 +897,12 @@ export function analyzePullback(
       const distanceDetail = `${interaction.distanceTicks} ticks / ${distance.toFixed(2)} points from ${level.name}; tolerance is ${proximityTolerance.toFixed(2)} points.`;
 
       const resolvedLevel: Level = { ...level, price: resolved.price };
-       if (touched) events.push(event("touch", candle, resolvedLevel, interaction, `Completed range interacted with ${level.name}; ${distanceDetail}`, armId));
-       else if (near) events.push(event("proximity", candle, resolvedLevel, interaction, `Completed range came within the qualifying zone; ${distanceDetail}`, armId));
-       if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, interaction, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`, armId));
-       if (touched && favorable) events.push(event("hold", candle, resolvedLevel, interaction, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`, armId));
-       if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, interaction, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`, armId));
-       if (through) events.push(event("break through", candle, resolvedLevel, interaction, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`, armId));
+       if (touched) events.push(event("touch", candle, resolvedLevel, interaction, `Completed range interacted with ${level.name}; ${distanceDetail}`, armId, resolved.sourceTimestamp));
+       else if (near) events.push(event("proximity", candle, resolvedLevel, interaction, `Completed range came within the qualifying zone; ${distanceDetail}`, armId, resolved.sourceTimestamp));
+       if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, interaction, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`, armId, resolved.sourceTimestamp));
+       if (touched && favorable) events.push(event("hold", candle, resolvedLevel, interaction, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`, armId, resolved.sourceTimestamp));
+       if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, interaction, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`, armId, resolved.sourceTimestamp));
+       if (through) events.push(event("break through", candle, resolvedLevel, interaction, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`, armId, resolved.sourceTimestamp));
     }
   }
 
@@ -1066,11 +1096,11 @@ function resolvePullbackLevel(
   causalCandles: readonly Candle[] | undefined,
   config: StrategyConfig,
   calendar: FuturesSessionCalendar,
-): { price: number; rangeLow: number | null; rangeHigh: number | null } | null {
-  const dynamic = level.name.trim().toLowerCase();
+): { price: number; rangeLow: number | null; rangeHigh: number | null; sourceTimestamp: number | null } | null {
+  const dynamic = primaryPullbackIndicatorId(level);
   if (!causalCandles) {
     return Number.isFinite(level.price)
-      ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null }
+      ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null, sourceTimestamp: null }
       : null;
   }
   const source = [...causalCandles, ...visibleCandles]
@@ -1080,20 +1110,15 @@ function resolvePullbackLevel(
   const deduped = [...new Map(source.map((item) => [item.openTime, item])).values()];
   if (dynamic === "vwap") {
     const price = regularSessionVwap(deduped, calendar, tradingDateForTimestamp(candle.openTime, calendar));
-    return Number.isFinite(price) ? { price, rangeLow: null, rangeHigh: null } : null;
+    return Number.isFinite(price) ? { price, rangeLow: null, rangeHigh: null, sourceTimestamp: candle.openTime } : null;
   }
-  if (dynamic === "ema 200" || dynamic === "ema200") {
+  if (dynamic === "ema-200") {
     const price = causalEmaValueAt(deduped, config.emaPeriod, candle.openTime);
-    return price === null || !Number.isFinite(price) ? null : { price, rangeLow: null, rangeHigh: null };
+    return price === null || !Number.isFinite(price) ? null : { price, rangeLow: null, rangeHigh: null, sourceTimestamp: candle.openTime };
   }
   return Number.isFinite(level.price)
-    ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null }
+    ? { price: level.price, rangeLow: level.rangeLow ?? null, rangeHigh: level.rangeHigh ?? null, sourceTimestamp: null }
     : null;
-}
-
-function isDynamicPullbackLevel(level: Level): boolean {
-  const name = level.name.trim().toLowerCase();
-  return name === "vwap" || name === "ema 200" || name === "ema200";
 }
 
 function sameContract(first: Candle, second: Candle): boolean {
@@ -1408,6 +1433,7 @@ function event(
   interaction: QualifyingLevelInteraction,
   detail: string,
   armId?: string,
+  levelSourceTimestamp: number | null = null,
 ): PullbackEvent {
   return {
     eventId: `pullback|${type}|${candle.openTime}|${level.name}|${level.price}`,
@@ -1415,6 +1441,8 @@ function event(
     type,
     time: candle.closeTime,
     level: level.name,
+    levelKind: pullbackReferenceKind(level),
+    levelSourceTimestamp,
     price: level.price,
     ...interaction,
     candle: {

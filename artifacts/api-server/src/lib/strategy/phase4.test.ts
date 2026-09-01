@@ -443,10 +443,14 @@ test("dynamic pullback levels resolve from the causal L candle, not the latest c
   const event = result.events.find((item) => item.level === "EMA 200" && item.type === "proximity");
   assert.ok(event);
   assert.equal(event.price, 100.5);
+  assert.equal(event.levelKind, "primary_indicator");
+  assert.equal(event.levelSourceTimestamp, levelCandle.openTime);
   assert.notEqual(event.price, 101);
   const vwapEvent = result.events.find((item) => item.level === "VWAP" && item.type === "proximity");
   assert.ok(vwapEvent);
   assert.equal(vwapEvent.price, 100.5);
+  assert.equal(vwapEvent.levelKind, "primary_indicator");
+  assert.equal(vwapEvent.levelSourceTimestamp, levelCandle.openTime);
 });
 
 test("final-session dynamic values cannot qualify an earlier L candle", () => {
@@ -467,6 +471,10 @@ test("final-session dynamic values cannot qualify an earlier L candle", () => {
   assert.ok(emaEvent);
   assert.equal(vwapEvent.price, 100.5);
   assert.equal(emaEvent.price, 100.5);
+  assert.equal(vwapEvent.levelKind, "primary_indicator");
+  assert.equal(emaEvent.levelKind, "primary_indicator");
+  assert.equal(vwapEvent.levelSourceTimestamp, levelCandle.openTime);
+  assert.equal(emaEvent.levelSourceTimestamp, levelCandle.openTime);
   assert.notEqual(vwapEvent.price, 150);
   assert.notEqual(emaEvent.price, 150);
 });
@@ -488,6 +496,8 @@ test("complete detector qualifies fractional VWAP at exactly the twelve-tick bou
   assert.ok(Math.abs(event.distancePoints - 3) < 1e-9);
   assert.equal(event.distanceTicks, 12);
   assert.equal(event.qualifies, true);
+  assert.equal(event.levelKind, "primary_indicator");
+  assert.equal(event.levelSourceTimestamp, levelCandle.openTime);
 });
 
 test("complete detector resolves EMA 200 at the causal L candle", () => {
@@ -496,17 +506,19 @@ test("complete detector resolves EMA 200 at the causal L candle", () => {
   const result = analyzePullback(
     [first, levelCandle],
     breakoutAt(first),
-    [{ name: "EMA 200", price: Number.NaN }],
+    [{ name: "200 MA", price: Number.NaN }],
     specification,
     strategyConfig({ emaPeriod: 2 }),
     { causalCandles: [first, levelCandle], calendar },
   );
-  const event = result.events.find((item) => item.level === "EMA 200" && item.type === "proximity");
+  const event = result.events.find((item) => item.level === "200 MA" && item.type === "proximity");
   assert.ok(event);
   assert.equal(event.price, 101.625);
   assert.equal(event.distancePoints, 1.375);
   assert.equal(event.distanceTicks, 6);
   assert.equal(event.qualifies, true);
+  assert.equal(event.levelKind, "primary_indicator");
+  assert.equal(event.levelSourceTimestamp, levelCandle.openTime);
 });
 
 test("changing ATR cannot widen, narrow, or replace the configured three-point qualifying area", () => {

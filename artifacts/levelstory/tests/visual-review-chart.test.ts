@@ -596,9 +596,14 @@ test("semantic presentation filtering removes Fibonacci, catastrophe, and redund
    assert.equal(isVisualPresentationAnnotation(vwap), true);
    assert.equal(isVisualPresentationAnnotation(ema), true);
   assert.equal(isVisualPresentationAnnotation(major), true);
-   assert.equal(isPrimaryLevel(vwap), false);
-   assert.equal(isPrimaryLevel(ema), false);
-   assert.deepEqual(getEdgeIndicators([vwap, ema], { min: 99, max: 101 }), []);
+   assert.equal(isPrimaryLevel(vwap), true);
+   assert.equal(isPrimaryLevel(ema), true);
+   const outOfRangeVwap = { ...vwap, price: 102 };
+   const outOfRangeEma = { ...ema, price: 98 };
+   assert.deepEqual(getEdgeIndicators([outOfRangeVwap, outOfRangeEma], { min: 99, max: 101 }), [
+     { annotation: outOfRangeVwap, edge: "top" },
+     { annotation: outOfRangeEma, edge: "bottom" },
+   ]);
   assert.equal(isPrimaryLevel(major), true);
 });
 

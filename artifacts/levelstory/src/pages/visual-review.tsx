@@ -1331,8 +1331,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const allLevels = [...fixedLevels, ...indicatorLegend];
   const entryReference = fixedLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
     const riskLevelIds = new Set(["entry-buffer", "strategy-stop"]);
-   const primaryLevels = fixedLevels
-      .filter((annotation) => isPrimaryLevel(annotation))
+   const primaryLevels = [
+      ...fixedLevels.filter((annotation) => isPrimaryLevel(annotation)),
+      ...indicatorLegend.filter((annotation) => isPrimaryLevel(annotation)),
+    ]
       .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
    const additionalLevels = fixedLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
@@ -1618,6 +1620,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
+        if (isDynamicIndicatorAnnotation(annotation)) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
          const stop = annotation.id === "strategy-stop";
         const target = annotation.id === "target";

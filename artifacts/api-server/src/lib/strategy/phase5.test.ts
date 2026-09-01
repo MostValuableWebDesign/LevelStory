@@ -501,6 +501,8 @@ test("pullback and consolidation locations can open patience eligibility", () =>
       tolerancePoints: 3,
       toleranceTicks: 12,
       qualifies: true,
+      levelKind: "primary_indicator",
+      levelSourceTimestamp: FIVE_MINUTES,
       detail: "touch",
     }],
     evaluatedCandles: 1,
@@ -514,7 +516,10 @@ test("pullback and consolidation locations can open patience eligibility", () =>
   };
   const consolidation = { ...pullback, events: [{ ...pullback.events[0], type: "consolidation" as const }] };
   const candles = setup("long", candle(2, 10.8, 10.95, 9.2, 10.9));
-  assert.equal(phase5PatienceAnalysis(candles, "long", pullback, null).eligibilityReason, "pullback");
+  const analysis = phase5PatienceAnalysis(candles, "long", pullback, null);
+  assert.equal(analysis.eligibilityReason, "pullback");
+  assert.equal(analysis.eligibilityProvenance?.levelKind, "primary_indicator");
+  assert.equal(analysis.eligibilityProvenance?.levelSourceTimestamp, FIVE_MINUTES);
   assert.equal(phase5PatienceAnalysis(candles, "long", consolidation, null).eligibilityReason, "consolidation");
 });
 

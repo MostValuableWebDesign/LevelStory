@@ -2,6 +2,7 @@ import {
   isTerminalPullbackArmState,
   type PullbackAnalysis,
   type PullbackArmTransition,
+  type PullbackReferenceKind,
 } from "./phase4.js";
 import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
@@ -34,6 +35,8 @@ export type PatienceEligibilityEvent = {
   armId?: string;
   levelValue?: number | null;
   toleranceTicks?: number | null;
+  levelKind?: PullbackReferenceKind;
+  levelSourceTimestamp?: number | null;
   lCandleOpenTime?: number | null;
 };
 export type IntrabarFirstBreak = "intended-first" | "opposite-first" | "ambiguous";
@@ -106,6 +109,8 @@ export type PatienceOccurrence = {
     reason: PatienceEligibilityReason;
     time: number;
     detail: string | null;
+    levelKind?: PullbackReferenceKind;
+    levelSourceTimestamp?: number | null;
     lCandleOpenTime?: number | null;
   };
 };
@@ -448,6 +453,8 @@ export function phase5PatienceAnalysis(
         armId: event.armId,
         levelValue: event.price,
         toleranceTicks: event.toleranceTicks ?? null,
+        levelKind: event.levelKind,
+        levelSourceTimestamp: event.levelSourceTimestamp,
         lCandleOpenTime: event.candle?.openTime ?? null,
       })),
     ...ntzEvents
@@ -747,6 +754,8 @@ function buildPatienceOccurrences(
       reason: event.reason,
       time: event.time,
       detail: event.detail ?? null,
+      levelKind: event.levelKind,
+      levelSourceTimestamp: event.levelSourceTimestamp,
       lCandleOpenTime: event.lCandleOpenTime ?? null,
     };
     if (arm.state !== "active") {
@@ -993,6 +1002,15 @@ function baseAnalysis(
     triggerPrice: null,
     stateTime: null,
     detail: "",
+    eligibilityProvenance: {
+      eventId: event.eventId ?? null,
+      reason: event.reason,
+      time: event.time,
+      detail: event.detail ?? null,
+      levelKind: event.levelKind,
+      levelSourceTimestamp: event.levelSourceTimestamp,
+      lCandleOpenTime: event.lCandleOpenTime ?? null,
+    },
   };
 }
 
