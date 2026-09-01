@@ -420,6 +420,10 @@ test("premarket remains separate and hidden by default while its levels stay pri
   assert.equal(shown.candles.length, 108);
   assert.equal(isPrimaryLevel({ ...makeAnnotation("premarket-high", 101), label: "Premarket high" }), true);
   assert.equal(isPrimaryLevel({ ...makeAnnotation("premarket-low", 99), label: "Premarket low" }), true);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("previous-session-high", 102), label: "Previous-day high" }), true);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("previous-session-low", 98), label: "Previous-day low" }), true);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("two-sessions-high", 103), label: "Two-days-ago high" }), true);
+  assert.equal(isPrimaryLevel({ ...makeAnnotation("two-sessions-low", 97), label: "Two-days-ago low" }), true);
 });
 
 test("ORB availability begins only after the 9:40–9:45 candle closes", () => {
