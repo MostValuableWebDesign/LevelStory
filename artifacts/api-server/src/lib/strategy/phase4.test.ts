@@ -184,7 +184,7 @@ test("pullback remains causally active beyond the diagnostic six-candle and thir
   assert.ok(pullback.elapsedMinutes > 30);
 });
 
-test("a newer completed same-direction breakout supersedes the older pullback arm", () => {
+test("a newer completed same-direction breakout does not terminate the older pullback arm", () => {
   const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
   const firstPullback = candle(1, 100, 100.5, 98.5, 99, 100);
   const newerBreakout = candle(2, 99, 104, 99, 103, 200);
@@ -198,9 +198,11 @@ test("a newer completed same-direction breakout supersedes the older pullback ar
     { finalizedNtz: { high: 100, low: 99, complete: true } },
   );
   assert.match(pullback.armId ?? "", /^orb-arm\|/);
-  assert.equal(pullback.armState, "SUPERSEDED_BY_NEW_BREAKOUT");
-  assert.equal(pullback.armTransitions?.at(-1)?.to, "SUPERSEDED_BY_NEW_BREAKOUT");
-  assert.equal(pullback.evaluatedCandles, 1);
+  assert.notEqual(pullback.armState, "SUPERSEDED_BY_NEW_BREAKOUT");
+  assert.notEqual(pullback.armTransitions?.at(-1)?.to, "SUPERSEDED_BY_NEW_BREAKOUT");
+  assert.equal(pullback.status, "observed");
+  assert.equal(pullback.evaluatedCandles, 3);
+  assert.ok(pullback.events.some((event) => event.candle?.openTime === continuation.openTime));
 });
 
 test("a completed opposite-direction breakout invalidates the prior pullback arm", () => {

@@ -1213,13 +1213,19 @@ function findPullbackTerminal(
     );
     if (!established.detected || established.candleOpenTime !== candle.openTime) continue;
     const sameDirection = direction === breakout.direction;
+    if (sameDirection) {
+      // A later breakout in the same direction is another opportunity, not a
+      // lifecycle boundary for the earlier arm. Keeping this arm active lets
+      // Phase 5 catch a patience candle from the earlier pullback instead of
+      // retroactively erasing an early move. A later arm may be evaluated
+      // independently by the replay cursor.
+      continue;
+    }
     return {
       index,
-      state: sameDirection ? "SUPERSEDED_BY_NEW_BREAKOUT" : "OPPOSITE_BREAKOUT_INVALIDATED",
+      state: "OPPOSITE_BREAKOUT_INVALIDATED",
       time: candle.closeTime,
-      reason: sameDirection
-        ? `A newer completed ${direction} breakout superseded arm ${pullbackArmId(breakoutCandle, breakout, config)}.`
-        : `A completed opposite-direction ${direction} breakout invalidated the prior ${breakout.direction} arm.`,
+      reason: `A completed opposite-direction ${direction} breakout invalidated the prior ${breakout.direction} arm.`,
     };
   }
   return null;
