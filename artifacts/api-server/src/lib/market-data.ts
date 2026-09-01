@@ -23,6 +23,7 @@ import {
   detectReversalEvidence,
   consolidationThresholds,
   type OrbBreakoutState,
+  type PullbackArmState,
   type BreakoutContinuationCondition,
   buildPhase7RiskPlan,
   type Phase7RiskConfig,
@@ -165,6 +166,11 @@ export type MarketSnapshot = {
   };
   pullback: {
     status: "pending" | "observed" | "expired";
+    armId?: string | null;
+    armState?: PullbackArmState;
+    armTransitions?: Array<{ from: PullbackArmState | null; to: PullbackArmState; time: string; reason: string }>;
+    terminalReason?: string | null;
+    lateInteractionCount?: number;
     events: Array<{
       type: string;
       time: string;
@@ -525,6 +531,17 @@ export function createMarketSnapshot(
   let pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config, {
     causalCandles: historicalFeed,
     calendar,
+    finalizedNtz: levels.ntz,
+    armIdentity: {
+      sourceFingerprint,
+      formulaHash,
+      contractSymbol: specification.fullContractSymbol,
+      tradingDate,
+      finalizedNtzIdentity: levels.ntz
+        ? `${levels.ntz.high}|${levels.ntz.low}|${levels.ntz.completedAt ?? "unknown"}`
+        : "ntz-incomplete",
+      configurationHash: activeShadowStrategySnapshot().formulaHash,
+    },
   });
   let fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   if (fibonacci.levels.length) {
@@ -536,6 +553,17 @@ export function createMarketSnapshot(
     pullback = analyzePullback(regular, breakout, [...qualifyingLevels, ...fibonacciLevels], specification, config, {
       causalCandles: historicalFeed,
       calendar,
+      finalizedNtz: levels.ntz,
+      armIdentity: {
+        sourceFingerprint,
+        formulaHash,
+        contractSymbol: specification.fullContractSymbol,
+        tradingDate,
+        finalizedNtzIdentity: levels.ntz
+          ? `${levels.ntz.high}|${levels.ntz.low}|${levels.ntz.completedAt ?? "unknown"}`
+          : "ntz-incomplete",
+        configurationHash: activeShadowStrategySnapshot().formulaHash,
+      },
     });
     fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
   }
@@ -808,6 +836,14 @@ export function createMarketSnapshot(
      },
      pullback: {
        status: pullback.status,
+        armId: pullback.armId,
+        armState: pullback.armState,
+        armTransitions: (pullback.armTransitions ?? []).map((transition) => ({
+          ...transition,
+          time: new Date(transition.time).toISOString(),
+        })),
+        terminalReason: pullback.terminalReason,
+        lateInteractionCount: pullback.lateInteractionCount,
        events: pullback.events.map((event) => ({ ...event, time: new Date(event.time).toISOString() })),
        evaluatedCandles: pullback.evaluatedCandles,
        maxCandles: pullback.maxCandles,

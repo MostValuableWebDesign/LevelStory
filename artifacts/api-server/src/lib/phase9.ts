@@ -23,7 +23,7 @@ import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
 import { targetPriceForDollars } from "./strategy/phase7.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
-import type { OrbBreakoutState } from "./strategy/phase4.js";
+import type { OrbBreakoutState, PullbackArmState } from "./strategy/phase4.js";
 import type { PatienceOccurrence } from "./strategy/phase5.js";
 import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
 import type { Direction } from "./strategy/types.js";
@@ -283,6 +283,10 @@ export type BacktestAuditRecord = {
   netPnl: number | null;
   exitReason: string | null;
   confirmationBufferTicks?: number;
+  pullbackArmId?: string | null;
+  pullbackArmState?: PullbackArmState;
+  pullbackArmTransitions?: Array<{ from: PullbackArmState | null; to: PullbackArmState; time: string; reason: string }>;
+  latePullbackInteractions?: number;
   finalizedNtzHigh?: number | null;
   finalizedNtzLow?: number | null;
   finalizedNtzComplete?: boolean;
@@ -291,6 +295,7 @@ export type BacktestAuditRecord = {
   consolidationThresholds: ConsolidationThresholds;
   pullbackOccurrences?: Array<{
     eventId?: string;
+    armId?: string;
     type: string;
     time: string;
     level: string;
@@ -685,6 +690,17 @@ export type HistoricalReplayDiagnostics = {
   armSupersessions: number;
   armConsumptions: number;
   armTerminalConflicts: number;
+  pullbackArmsCreated: number;
+  pullbackActiveArms: number;
+  pullbackSupersededArms: number;
+  pullbackOppositeBreakoutInvalidations: number;
+  pullbackStructuralInvalidations: number;
+  pullbackConsumedArms: number;
+  pullbackCutoffExpirations: number;
+  pullbackSessionExpirations: number;
+  pullbackContractExpirations: number;
+  latePullbackInteractions: number;
+  pullbackInvariantViolations: string[];
   rawPullbackEvents: number;
   canonicalPullbackOccurrences: number;
   duplicatePullbackReferencesRemoved: number;
@@ -1518,6 +1534,54 @@ export function historicalReplayDiagnostics(
     interactions.add(identity);
     interactionSessions.set(session, interactions);
   }
+  const pullbackArmStateById = new Map<string, PullbackArmState>();
+  const lateInteractionsByArm = new Map<string, number>();
+  const pullbackInvariantViolations: string[] = [];
+  for (const record of audits) {
+    const armId = record.pullbackArmId;
+    if (!armId) continue;
+    if (record.pullbackArmState) {
+      const previous = pullbackArmStateById.get(armId);
+      if (previous && previous !== record.pullbackArmState) {
+        const terminal = new Set<PullbackArmState>([
+          "CONSUMED",
+          "STRUCTURALLY_INVALIDATED",
+          "SUPERSEDED_BY_NEW_BREAKOUT",
+          "OPPOSITE_BREAKOUT_INVALIDATED",
+          "ENTRY_CUTOFF_EXPIRED",
+          "SESSION_BOUNDARY_EXPIRED",
+          "CONTRACT_BOUNDARY_EXPIRED",
+        ]);
+        if (terminal.has(previous) && previous !== record.pullbackArmState) {
+          pullbackInvariantViolations.push(`${armId}: terminal pullback arm state changed from ${previous} to ${record.pullbackArmState}.`);
+        }
+      }
+      pullbackArmStateById.set(armId, record.pullbackArmState);
+    }
+    lateInteractionsByArm.set(
+      armId,
+      Math.max(lateInteractionsByArm.get(armId) ?? 0, record.latePullbackInteractions ?? 0),
+    );
+  }
+  const terminalPullbackStates = new Set<PullbackArmState>([
+    "CONSUMED",
+    "STRUCTURALLY_INVALIDATED",
+    "SUPERSEDED_BY_NEW_BREAKOUT",
+    "OPPOSITE_BREAKOUT_INVALIDATED",
+    "ENTRY_CUTOFF_EXPIRED",
+    "SESSION_BOUNDARY_EXPIRED",
+    "CONTRACT_BOUNDARY_EXPIRED",
+  ]);
+  const confirmedArmIds = new Set(
+    confirmedPatience
+      .filter((occurrence) => occurrence.eligibilityArmId)
+      .map((occurrence) => occurrence.eligibilityArmId!),
+  );
+  for (const [armId, state] of pullbackArmStateById) {
+    if (terminalPullbackStates.has(state) && state !== "CONSUMED" && confirmedArmIds.has(armId)) {
+      pullbackInvariantViolations.push(`${armId}: a confirmed candidate is linked to a non-consumed terminal pullback arm.`);
+    }
+  }
   return {
     rawAuditPatienceReferences: patience.length,
     uniquePhysicalPatienceCandles: new Set(canonicalPatience.map((item) => `${item.sourceFingerprint}|${item.contractSymbol}|${item.tradingDate}|${item.direction}|${item.patienceTimestamp}`)).size,
@@ -1545,6 +1609,17 @@ export function historicalReplayDiagnostics(
     armSupersessions: [...terminalByArm.values()].filter((item) => item.state === "superseded").length,
     armConsumptions: [...terminalByArm.values()].filter((item) => item.state === "consumed").length,
     armTerminalConflicts,
+    pullbackArmsCreated: pullbackArmStateById.size,
+    pullbackActiveArms: [...pullbackArmStateById.values()].filter((state) => !terminalPullbackStates.has(state)).length,
+    pullbackSupersededArms: [...pullbackArmStateById.values()].filter((state) => state === "SUPERSEDED_BY_NEW_BREAKOUT").length,
+    pullbackOppositeBreakoutInvalidations: [...pullbackArmStateById.values()].filter((state) => state === "OPPOSITE_BREAKOUT_INVALIDATED").length,
+    pullbackStructuralInvalidations: [...pullbackArmStateById.values()].filter((state) => state === "STRUCTURALLY_INVALIDATED").length,
+    pullbackConsumedArms: [...pullbackArmStateById.values()].filter((state) => state === "CONSUMED").length,
+    pullbackCutoffExpirations: [...pullbackArmStateById.values()].filter((state) => state === "ENTRY_CUTOFF_EXPIRED").length,
+    pullbackSessionExpirations: [...pullbackArmStateById.values()].filter((state) => state === "SESSION_BOUNDARY_EXPIRED").length,
+    pullbackContractExpirations: [...pullbackArmStateById.values()].filter((state) => state === "CONTRACT_BOUNDARY_EXPIRED").length,
+    latePullbackInteractions: [...lateInteractionsByArm.values()].reduce((total, count) => total + count, 0),
+    pullbackInvariantViolations: [...new Set(pullbackInvariantViolations)],
     rawPullbackEvents,
     canonicalPullbackOccurrences: canonicalPullbackOccurrences.length,
     duplicatePullbackReferencesRemoved: Math.max(0, rawPullbackEvents - canonicalPullbackOccurrences.length),
@@ -1861,6 +1936,13 @@ function auditForEvaluation(
     netPnl: null,
     exitReason: null,
     confirmationBufferTicks: snapshot.patience.entryBufferTicks,
+    pullbackArmId: snapshot.pullback.armId ?? null,
+    pullbackArmState: snapshot.pullback.armState,
+    pullbackArmTransitions: (snapshot.pullback.armTransitions ?? []).map((transition) => ({
+      ...transition,
+      time: new Date(transition.time).toISOString(),
+    })),
+    latePullbackInteractions: snapshot.pullback.lateInteractionCount ?? 0,
     finalizedNtzHigh: snapshot.ntz.high ?? null,
     finalizedNtzLow: snapshot.ntz.low ?? null,
     finalizedNtzComplete: snapshot.ntz.complete,

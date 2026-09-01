@@ -27,6 +27,7 @@ export type PatienceEligibilityEvent = {
   reason: PatienceEligibilityReason;
   detail?: string;
   eventId?: string;
+  armId?: string;
   levelValue?: number | null;
   toleranceTicks?: number | null;
   lCandleOpenTime?: number | null;
@@ -377,6 +378,7 @@ export function phase5PatienceAnalysis(
         reason: event.type === "consolidation" ? "consolidation" as const : "pullback" as const,
         detail: `${event.type} at ${event.level}`,
         eventId: event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`,
+        armId: event.armId,
         levelValue: event.price,
         toleranceTicks: event.toleranceTicks ?? null,
         lCandleOpenTime: event.candle?.openTime ?? null,
@@ -605,7 +607,8 @@ function latestEligibilityBefore(events: readonly PatienceEligibilityEvent[], ti
 }
 
 function eligibilityArmId(event: PatienceEligibilityEvent): string {
-  return event.eventId
+  return event.armId
+    ?? event.eventId
     ?? `eligibility|${event.reason}|${event.time}|${event.levelValue ?? "none"}|${event.detail ?? ""}`;
 }
 

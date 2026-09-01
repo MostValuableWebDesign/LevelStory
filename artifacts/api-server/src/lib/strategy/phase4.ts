@@ -77,8 +77,28 @@ export type BreakoutQualityMetrics = {
 };
 
 export type PullbackEventType = "touch" | "proximity" | "break and reclaim" | "hold" | "consolidation" | "break through";
+export type PullbackArmState =
+  | "ARMED_AFTER_BREAKOUT"
+  | "PULLBACK_OBSERVED"
+  | "LEVEL_INTERACTION_FOUND"
+  | "PATIENCE_ARMED"
+  | "SIGNAL_CONFIRMED"
+  | "CONSUMED"
+  | "STRUCTURALLY_INVALIDATED"
+  | "SUPERSEDED_BY_NEW_BREAKOUT"
+  | "OPPOSITE_BREAKOUT_INVALIDATED"
+  | "ENTRY_CUTOFF_EXPIRED"
+  | "SESSION_BOUNDARY_EXPIRED"
+  | "CONTRACT_BOUNDARY_EXPIRED";
+export type PullbackArmTransition = {
+  from: PullbackArmState | null;
+  to: PullbackArmState;
+  time: number;
+  reason: string;
+};
 export type PullbackEvent = {
   eventId?: string;
+  armId?: string;
   type: PullbackEventType;
   time: number;
   level: string;
@@ -118,6 +138,15 @@ export type PullbackAnalysisOptions = {
    */
   causalCandles?: readonly Candle[];
   calendar?: FuturesSessionCalendar;
+  finalizedNtz?: { high: number; low: number; complete: boolean } | null;
+  armIdentity?: {
+    sourceFingerprint?: string;
+    formulaHash?: string;
+    contractSymbol?: string | null;
+    tradingDate?: string;
+    finalizedNtzIdentity?: string;
+    configurationHash?: string;
+  };
 };
 
 export type PullbackStructure = {
@@ -134,6 +163,11 @@ export type PullbackStructure = {
 
 export type PullbackAnalysis = {
   status: "pending" | "observed" | "expired";
+  armId?: string | null;
+  armState?: PullbackArmState;
+  armTransitions?: PullbackArmTransition[];
+  terminalReason?: string | null;
+  lateInteractionCount?: number;
   events: PullbackEvent[];
   structure?: PullbackStructure;
   evaluatedCandles: number;
@@ -489,6 +523,11 @@ export function analyzePullback(
   if (!breakout.detected || breakout.candleOpenTime === null || breakout.direction === null) {
     return {
       status: "pending",
+      armId: null,
+      armState: "ARMED_AFTER_BREAKOUT",
+      armTransitions: [],
+      terminalReason: null,
+      lateInteractionCount: 0,
       events: [],
       structure: emptyPullbackStructure(),
       evaluatedCandles: 0,
@@ -502,18 +541,41 @@ export function analyzePullback(
     };
   }
   const breakoutIndex = completed.findIndex((candle) => candle.openTime === breakout.candleOpenTime);
-  if (breakoutIndex < 0) return { status: "pending", events: [], structure: emptyPullbackStructure(), evaluatedCandles: 0, maxCandles: config.phase4PullbackMaxCandles, maxDurationMinutes: config.phase4PullbackMaxMinutes, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: levels.length, detail: "Breakout candle is not visible in the completed replay." };
+  if (breakoutIndex < 0) return {
+    status: "pending",
+    armId: null,
+    armState: "ARMED_AFTER_BREAKOUT",
+    armTransitions: [],
+    terminalReason: null,
+    lateInteractionCount: 0,
+    events: [],
+    structure: emptyPullbackStructure(),
+    evaluatedCandles: 0,
+    maxCandles: config.phase4PullbackMaxCandles,
+    maxDurationMinutes: config.phase4PullbackMaxMinutes,
+    elapsedMinutes: 0,
+    proximityTolerance: null,
+    atr14: null,
+    qualifyingLevelCount: levels.length,
+    detail: "Breakout candle is not visible in the completed replay.",
+  };
   const breakoutCandle = completed[breakoutIndex];
   const calendar = options.calendar ?? DEFAULT_FUTURES_SESSION_CALENDAR;
   const breakoutTradingDate = tradingDateForTimestamp(breakoutCandle.openTime, calendar);
+  const finalizedNtz = options.finalizedNtz ?? inferredFinalizedNtz(levels);
+  const armId = pullbackArmId(breakoutCandle, breakout, config, options.armIdentity);
+  const transitions: PullbackArmTransition[] = [{
+    from: null,
+    to: "ARMED_AFTER_BREAKOUT",
+    time: breakoutCandle.closeTime,
+    reason: "A completed directional ORB breakout opened a new causal pullback arm.",
+  }];
   // Duration limits remain visible diagnostics, but cannot expire a valid
   // pullback. Causal lifecycle boundaries are the session/date/contract
   // boundary and the exclusive primary entry cutoff.
-  const postBreakout = completed.slice(breakoutIndex + 1).filter((candle) =>
-    tradingDateForTimestamp(candle.openTime, calendar) === breakoutTradingDate
-    && sameContract(candle, breakoutCandle)
-    && wallClockMinutesForTimestamp(candle.openTime, config.sessionTimeZone) < config.primaryEntryEndMinutes,
-  );
+  const afterBreakout = completed.slice(breakoutIndex + 1);
+  const terminal = findPullbackTerminal(afterBreakout, breakoutCandle, breakout, finalizedNtz, completed, config, specification, calendar);
+  const postBreakout = afterBreakout.slice(0, terminal?.index ?? afterBreakout.length);
   const structure = detectPullbackStructure(postBreakout, breakoutCandle, breakout.direction);
   const atr14 = averageTrueRange(completed.slice(0, breakoutIndex + 1), config.phase4AtrPeriod);
   // This is the executable qualifying-level tolerance. ATR remains exposed
@@ -552,21 +614,57 @@ export function analyzePullback(
       const distanceDetail = `${interaction.distanceTicks} ticks / ${distance.toFixed(2)} points from ${level.name}; tolerance is ${proximityTolerance.toFixed(2)} points.`;
 
       const resolvedLevel: Level = { ...level, price: resolved.price };
-      if (touched) events.push(event("touch", candle, resolvedLevel, interaction, `Completed range interacted with ${level.name}; ${distanceDetail}`));
-      else if (near) events.push(event("proximity", candle, resolvedLevel, interaction, `Completed range came within the qualifying zone; ${distanceDetail}`));
-      if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, interaction, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`));
-      if (touched && favorable) events.push(event("hold", candle, resolvedLevel, interaction, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`));
-      if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, interaction, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`));
-      if (through) events.push(event("break through", candle, resolvedLevel, interaction, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`));
+       if (touched) events.push(event("touch", candle, resolvedLevel, interaction, `Completed range interacted with ${level.name}; ${distanceDetail}`, armId));
+       else if (near) events.push(event("proximity", candle, resolvedLevel, interaction, `Completed range came within the qualifying zone; ${distanceDetail}`, armId));
+       if (reclaim) events.push(event("break and reclaim", candle, resolvedLevel, interaction, `${level.name} was breached intrabar and reclaimed on the completed close; ${distanceDetail}`, armId));
+       if (touched && favorable) events.push(event("hold", candle, resolvedLevel, interaction, `Completed close held ${breakout.direction === "long" ? "above" : "below"} ${level.name}; ${distanceDetail}`, armId));
+       if (streak >= 2) events.push(event("consolidation", candle, resolvedLevel, interaction, `${streak} consecutive completed candles consolidated near ${level.name}; ${distanceDetail}`, armId));
+       if (through) events.push(event("break through", candle, resolvedLevel, interaction, `Completed close broke through ${level.name} against the ${breakout.direction} breakout; ${distanceDetail}`, armId));
     }
   }
 
   const elapsedMinutes = postBreakout.length
     ? Math.round((postBreakout.at(-1)!.closeTime - breakoutCandle.closeTime) / 60_000)
     : 0;
-  const status = postBreakout.length ? "observed" : "pending";
+  const qualifyingEvents = events.filter((item) => item.qualifies && ["touch", "proximity", "break and reclaim", "hold", "consolidation"].includes(item.type));
+  const lateInteractionCount = qualifyingEvents.filter((item) => {
+    const candleIndex = postBreakout.findIndex((candidate) => candidate.openTime === item.candle?.openTime);
+    return candleIndex >= config.phase4PullbackMaxCandles
+      && item.time - breakoutCandle.closeTime > config.phase4PullbackMaxMinutes * 60_000;
+  }).length;
+  const armState: PullbackArmState = terminal?.state
+    ?? (qualifyingEvents.length ? "LEVEL_INTERACTION_FOUND" : postBreakout.length ? "PULLBACK_OBSERVED" : "ARMED_AFTER_BREAKOUT");
+  const observedState: PullbackArmState = qualifyingEvents.length
+    ? "LEVEL_INTERACTION_FOUND"
+    : postBreakout.length
+      ? "PULLBACK_OBSERVED"
+      : "ARMED_AFTER_BREAKOUT";
+  if (observedState !== transitions.at(-1)!.to) {
+    transitions.push({
+      from: transitions.at(-1)!.to,
+      to: observedState,
+      time: qualifyingEvents.at(-1)?.time ?? postBreakout.at(-1)?.closeTime ?? breakoutCandle.closeTime,
+      reason: qualifyingEvents.length
+        ? "A completed pullback candle recorded a qualifying level interaction."
+        : "The arm remains active while monitoring completed candles.",
+    });
+  }
+  if (terminal) {
+    transitions.push({
+      from: transitions.at(-1)!.to,
+      to: terminal.state,
+      time: terminal.time,
+      reason: terminal.reason,
+    });
+  }
+  const status = postBreakout.length ? "observed" : terminal ? "expired" : "pending";
   return {
     status,
+    armId,
+    armState,
+    armTransitions: transitions,
+    terminalReason: terminal?.reason ?? null,
+    lateInteractionCount,
     events,
     structure,
     evaluatedCandles: postBreakout.length,
@@ -751,6 +849,141 @@ function sameContract(first: Candle, second: Candle): boolean {
   return firstContract === undefined || secondContract === undefined || firstContract === secondContract;
 }
 
+type PullbackTerminal = {
+  index: number;
+  state: Extract<PullbackArmState, "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED">;
+  time: number;
+  reason: string;
+};
+
+function findPullbackTerminal(
+  afterBreakout: readonly Candle[],
+  breakoutCandle: Candle,
+  breakout: BreakoutEvent,
+  finalizedNtz: { high: number; low: number; complete: boolean } | null,
+  completed: readonly Candle[],
+  config: StrategyConfig,
+  specification: FuturesContractSpecification,
+  calendar: FuturesSessionCalendar,
+): PullbackTerminal | null {
+  const breakoutDate = tradingDateForTimestamp(breakoutCandle.openTime, calendar);
+  const tickSize = specification.tickSize;
+  let pullbackStarted = false;
+  let previous = breakoutCandle;
+  for (let index = 0; index < afterBreakout.length; index += 1) {
+    const candle = afterBreakout[index]!;
+    const candleDate = tradingDateForTimestamp(candle.openTime, calendar);
+    if (candleDate !== breakoutDate) {
+      return {
+        index,
+        state: "SESSION_BOUNDARY_EXPIRED",
+        time: candle.openTime,
+        reason: `The pullback arm ended at the New York trading-date boundary (${breakoutDate} → ${candleDate}).`,
+      };
+    }
+    if (!sameContract(candle, breakoutCandle)) {
+      const contract = (candle as Candle & { contractSymbol?: string }).contractSymbol ?? "unknown";
+      return {
+        index,
+        state: "CONTRACT_BOUNDARY_EXPIRED",
+        time: candle.openTime,
+        reason: `The pullback arm ended when the candle contract changed to ${contract}.`,
+      };
+    }
+    if (index > 0 && candle.openTime !== afterBreakout[index - 1]!.closeTime) {
+      return {
+        index,
+        state: "SESSION_BOUNDARY_EXPIRED",
+        time: candle.openTime,
+        reason: "The pullback arm stopped at a non-contiguous candle gap; missing candles cannot be bridged causally.",
+      };
+    }
+    if (wallClockMinutesForTimestamp(candle.openTime, config.sessionTimeZone) >= config.primaryEntryEndMinutes) {
+      return {
+        index,
+        state: "ENTRY_CUTOFF_EXPIRED",
+        time: candle.openTime,
+        reason: "The pullback arm reached the exclusive 1:00 p.m. ET entry cutoff.",
+      };
+    }
+    if (!pullbackStarted) {
+      pullbackStarted = breakout.direction === "long"
+        ? candle.low < previous.low || (candle.close < previous.close && candle.high <= breakoutCandle.high)
+        : candle.high > previous.high || (candle.close > previous.close && candle.low >= breakoutCandle.low);
+      previous = candle;
+      // A same-direction continuation before the first countertrend candle is
+      // part of the original breakout, not a newer breakout arm.
+      if (!pullbackStarted && directionForAttempt(candle, finalizedNtz ?? { high: Infinity, low: -Infinity, complete: false }) === breakout.direction) {
+        continue;
+      }
+    }
+    if (!finalizedNtz?.complete) continue;
+    const direction = directionForAttempt(candle, finalizedNtz);
+    if (!direction || !closesOutside(candle, finalizedNtz, direction)) continue;
+    const quality = breakoutQuality(candle, direction, completed, finalizedNtz, config, tickSize);
+    if (!qualityPassed(quality)) continue;
+    const established = evaluateCandidateContinuation(
+      candle,
+      direction,
+      completed,
+      finalizedNtz,
+      config,
+      tickSize,
+      quality,
+    );
+    if (!established.detected || established.candleOpenTime !== candle.openTime) continue;
+    const sameDirection = direction === breakout.direction;
+    return {
+      index,
+      state: sameDirection ? "SUPERSEDED_BY_NEW_BREAKOUT" : "OPPOSITE_BREAKOUT_INVALIDATED",
+      time: candle.closeTime,
+      reason: sameDirection
+        ? `A newer completed ${direction} breakout superseded arm ${pullbackArmId(breakoutCandle, breakout, config)}.`
+        : `A completed opposite-direction ${direction} breakout invalidated the prior ${breakout.direction} arm.`,
+    };
+  }
+  return null;
+}
+
+function inferredFinalizedNtz(levels: readonly Level[]): { high: number; low: number; complete: true } | null {
+  const high = levels.find((level) => ["orb high", "ntz high"].includes(level.name.trim().toLowerCase()))?.price;
+  const low = levels.find((level) => ["orb low", "ntz low"].includes(level.name.trim().toLowerCase()))?.price;
+  return Number.isFinite(high) && Number.isFinite(low)
+    ? { high: high!, low: low!, complete: true }
+    : null;
+}
+
+function pullbackArmId(
+  breakoutCandle: Candle,
+  breakout: BreakoutEvent,
+  config: StrategyConfig,
+  identity?: PullbackAnalysisOptions["armIdentity"],
+): string {
+  const contract = identity?.contractSymbol
+    ?? (breakoutCandle as Candle & { contractSymbol?: string }).contractSymbol
+    ?? "contract-unknown";
+  const tradingDate = identity?.tradingDate ?? new Date(breakoutCandle.openTime).toISOString().slice(0, 10);
+  const ntz = identity?.finalizedNtzIdentity ?? "ntz-unknown";
+  const configuration = identity?.configurationHash
+    ?? [
+      config.primaryEntryEndMinutes,
+      config.levelTolerance,
+      config.phase4BreakoutMeaningfulDistanceTicks,
+      config.phase4BreakoutVolumeRatio,
+    ].join(",");
+  return [
+    "orb-arm",
+    identity?.sourceFingerprint ?? "source-unknown",
+    identity?.formulaHash ?? "formula-unknown",
+    configuration,
+    contract,
+    tradingDate,
+    breakout.direction,
+    breakoutCandle.openTime,
+    ntz,
+  ].join("|");
+}
+
 export function advanceOrbBreakoutState(
   breakout: BreakoutEvent,
   pullback: PullbackAnalysis,
@@ -918,9 +1151,11 @@ function event(
   level: Level,
   interaction: QualifyingLevelInteraction,
   detail: string,
+  armId?: string,
 ): PullbackEvent {
   return {
     eventId: `pullback|${type}|${candle.openTime}|${level.name}|${level.price}`,
+    armId,
     type,
     time: candle.closeTime,
     level: level.name,

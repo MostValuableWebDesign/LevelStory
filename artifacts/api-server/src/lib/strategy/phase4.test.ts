@@ -42,10 +42,10 @@ function breakoutFixture(): Candle[] {
   ];
 }
 
-function breakoutAt(candle: Candle): BreakoutEvent {
+function breakoutAt(candle: Candle, direction: "long" | "short" = "long"): BreakoutEvent {
   return {
     detected: true,
-    direction: "long",
+    direction,
     time: candle.closeTime,
     candleOpenTime: candle.openTime,
     state: "QUALIFIED_BREAKOUT",
@@ -170,6 +170,74 @@ test("pullback remains causally active beyond the diagnostic six-candle and thir
   assert.equal(pullback.maxCandles, 6);
   assert.equal(pullback.maxDurationMinutes, 30);
   assert.ok(pullback.elapsedMinutes > 30);
+});
+
+test("a newer completed same-direction breakout supersedes the older pullback arm", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const firstPullback = candle(1, 100, 100.5, 98.5, 99, 100);
+  const newerBreakout = candle(2, 99, 104, 99, 103, 200);
+  const continuation = candle(3, 103, 105, 102, 104, 100);
+  const pullback = analyzePullback(
+    [breakoutCandle, firstPullback, newerBreakout, continuation],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 100, low: 99, complete: true } },
+  );
+  assert.match(pullback.armId ?? "", /^orb-arm\|/);
+  assert.equal(pullback.armState, "SUPERSEDED_BY_NEW_BREAKOUT");
+  assert.equal(pullback.armTransitions?.at(-1)?.to, "SUPERSEDED_BY_NEW_BREAKOUT");
+  assert.equal(pullback.evaluatedCandles, 1);
+});
+
+test("a completed opposite-direction breakout invalidates the prior pullback arm", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const oppositeBreakout = candle(1, 100, 100, 95, 96, 200);
+  const continuation = candle(2, 96, 97, 94, 95, 100);
+  const pullback = analyzePullback(
+    [breakoutCandle, oppositeBreakout, continuation],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 100, low: 99, complete: true } },
+  );
+  assert.equal(pullback.armState, "OPPOSITE_BREAKOUT_INVALIDATED");
+  assert.equal(pullback.armTransitions?.at(-1)?.to, "OPPOSITE_BREAKOUT_INVALIDATED");
+  assert.equal(pullback.evaluatedCandles, 0);
+});
+
+test("trading-date and contract changes terminate the pullback arm without bridging candles", () => {
+  const breakoutCandle = { ...candle(0, 100, 101, 99, 100, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
+  const sameSession = { ...candle(1, 100, 100.5, 99.5, 99.8, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
+  const nextDateOpen = timestampForTradingDate("2026-08-26", "09:30", calendar);
+  const nextDate = {
+    ...sameSession,
+    openTime: nextDateOpen,
+    closeTime: nextDateOpen + 5 * 60_000,
+  };
+  const dateBoundary = analyzePullback(
+    [breakoutCandle, sameSession, nextDate],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 100, low: 99, complete: true } },
+  );
+  assert.equal(dateBoundary.armState, "SESSION_BOUNDARY_EXPIRED");
+  assert.equal(dateBoundary.evaluatedCandles, 1);
+
+  const contractBoundary = analyzePullback(
+    [breakoutCandle, sameSession, { ...sameSession, openTime: candleOpenTime(2), closeTime: candleCloseTime(2), contractSymbol: "MESN6" }],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    { finalizedNtz: { high: 100, low: 99, complete: true } },
+  );
+  assert.equal(contractBoundary.armState, "CONTRACT_BOUNDARY_EXPIRED");
+  assert.equal(contractBoundary.evaluatedCandles, 1);
 });
 
 test("complete pullback detector qualifies full-range distances at 0/4/8/12 ticks and rejects beyond twelve", () => {
