@@ -26,6 +26,8 @@ import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import {
   isTerminalPullbackArmState,
   reducePullbackArmLifecycles,
+  samePullbackArmSignalIdentity,
+  type PullbackArmSignalIdentity,
   type OrbBreakoutState,
   type PullbackArmLifecycleObservation,
   type PullbackArmState,
@@ -1506,7 +1508,7 @@ export function historicalReplayDiagnostics(
     }
     return violations;
   });
-  const lifecycle = reduceHistoricalPullbackLifecycles(audits, patience);
+  const lifecycle = reduceHistoricalPullbackLifecycles(audits, patience, occurrences);
   const lifecycleByArm = new Map(lifecycle.records.map((record) => [record.armId, record]));
   const terminalByArm = new Map(
     lifecycle.records
@@ -1660,8 +1662,19 @@ export type HistoricalPullbackLifecycle = ReturnType<typeof reducePullbackArmLif
 export function reduceHistoricalPullbackLifecycles(
   audits: readonly BacktestAuditRecord[],
   patience: readonly PatienceOccurrence[] = audits.flatMap((record) => record.patienceOccurrences ?? []),
+  historicalOccurrences: readonly HistoricalOccurrence[] = [],
 ): HistoricalPullbackLifecycle {
   const observations: PullbackArmLifecycleObservation[] = [];
+  const historicalByArmAndPhysicalIdentity = new Map<string, HistoricalOccurrence>();
+  for (const occurrence of historicalOccurrences) {
+    if (occurrence.kind !== "patience" || !occurrence.eligibilityArmId) continue;
+    const key = [
+      occurrence.eligibilityArmId,
+      occurrence.pOpenTimestamp ?? "missing-p",
+      occurrence.eOpenTimestamp ?? "missing-e",
+    ].join("|");
+    historicalByArmAndPhysicalIdentity.set(key, occurrence);
+  }
   for (const record of audits) {
     if (!record.pullbackArmId) continue;
     const transitions = (record.pullbackArmTransitions ?? [])
@@ -1681,13 +1694,77 @@ export function reduceHistoricalPullbackLifecycles(
   for (const occurrence of patience) {
     const armId = occurrence.eligibilityArmId;
     if (!armId) continue;
+    const historicalOccurrence = historicalByArmAndPhysicalIdentity.get([
+      armId,
+      Number.isFinite(occurrence.patienceCandle.openTime)
+        ? new Date(occurrence.patienceCandle.openTime).toISOString()
+        : "missing-p",
+      Number.isFinite(occurrence.expectedEntryCandleOpenTime ?? Number.NaN)
+        ? new Date(occurrence.expectedEntryCandleOpenTime!).toISOString()
+        : "missing-e",
+    ].join("|"));
+    const consumingSignalIdentity = historicalOccurrence
+      && historicalOccurrence.status === "SIGNAL_CONFIRMED"
+      ? pullbackSignalIdentityForOccurrence(historicalOccurrence)
+      : undefined;
     observations.push({
       armId,
-      transitions: patienceArmLifecycleTransitions(occurrence),
+      transitions: patienceArmLifecycleTransitions(occurrence).map((transition) =>
+        transition.to === "CONSUMED" && consumingSignalIdentity
+          ? {
+            ...transition,
+            consumingSignalIdentity,
+            consumingSignalOccurrenceId: historicalOccurrence!.occurrenceId,
+          }
+          : transition,
+      ),
       source: `patience:${occurrence.occurrenceId}`,
     });
   }
   return reducePullbackArmLifecycles(observations);
+}
+
+function pullbackSignalIdentityForOccurrence(
+  occurrence: Pick<
+    HistoricalOccurrence,
+    | "sourceFingerprint"
+    | "formulaHash"
+    | "contractSymbol"
+    | "tradingDate"
+    | "direction"
+    | "pOpenTimestamp"
+    | "eOpenTimestamp"
+  >,
+): PullbackArmSignalIdentity | undefined {
+  if (
+    typeof occurrence.sourceFingerprint !== "string"
+    || occurrence.sourceFingerprint.trim().length === 0
+    || typeof occurrence.formulaHash !== "string"
+    || occurrence.formulaHash.trim().length === 0
+    || typeof occurrence.contractSymbol !== "string"
+    || occurrence.contractSymbol.trim().length === 0
+    || typeof occurrence.tradingDate !== "string"
+    || occurrence.tradingDate.trim().length === 0
+    || (occurrence.direction !== "long" && occurrence.direction !== "short")
+    || typeof occurrence.pOpenTimestamp !== "string"
+    || occurrence.pOpenTimestamp.trim().length === 0
+    || typeof occurrence.eOpenTimestamp !== "string"
+    || occurrence.eOpenTimestamp.trim().length === 0
+  ) return undefined;
+  return {
+    sourceFingerprint: occurrence.sourceFingerprint,
+    formulaHash: occurrence.formulaHash,
+    contractSymbol: occurrence.contractSymbol,
+    tradingDate: occurrence.tradingDate,
+    direction: occurrence.direction,
+    pOpenTimestamp: occurrence.pOpenTimestamp,
+    eOpenTimestamp: occurrence.eOpenTimestamp,
+  };
+}
+
+function describePullbackSignalIdentity(identity: PullbackArmSignalIdentity | null | undefined): string {
+  if (!identity) return "<missing>";
+  return JSON.stringify(identity);
 }
 
 function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Record<string, number | boolean> | null {
@@ -3303,12 +3380,31 @@ function candidateLifecycleRejection(
   lifecycle: HistoricalPullbackLifecycle | undefined,
 ): { reasonCodes: string[]; details: string[] } | null {
   const armId = occurrence.eligibilityArmId;
-  if (!armId || !lifecycle) return null;
+  if (!armId) return null;
+  if (!lifecycle) {
+    return {
+      reasonCodes: ["REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING"],
+      details: [`Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, but canonical lifecycle data was not supplied.`],
+    };
+  }
   const record = lifecycle.records.find((item) => item.armId === armId);
   if (!record) {
     return {
       reasonCodes: ["REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING"],
       details: [`Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, but no canonical lifecycle record exists for that exact arm.`],
+    };
+  }
+  if (record.state === "CONSUMED") {
+    const attemptedIdentity = pullbackSignalIdentityForOccurrence(occurrence);
+    if (samePullbackArmSignalIdentity(record.consumingSignalIdentity, attemptedIdentity)) return null;
+    return {
+      reasonCodes: ["REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL"],
+      details: [
+        `Causal arm ${armId} is already CONSUMED, but confirmed signal ${occurrence.occurrenceId} is not the exact physical P→E signal that consumed the arm.`,
+        `Stored consuming signal identity: ${describePullbackSignalIdentity(record.consumingSignalIdentity)}.`,
+        `Attempted signal identity: ${describePullbackSignalIdentity(attemptedIdentity)}.`,
+        ...(record.consumingSignalOccurrenceId ? [`Stored consuming occurrence: ${record.consumingSignalOccurrenceId}.`] : []),
+      ],
     };
   }
   const conflicts = lifecycle.conflicts.filter((conflict) => conflict.armId === armId);
@@ -3318,15 +3414,6 @@ function candidateLifecycleRejection(
       details: [
         `Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, which has ${conflicts.length} lifecycle conflict(s).`,
         ...conflicts.map((conflict) => `${conflict.reason} Observed ${conflict.observedState} after canonical ${conflict.canonicalState}.`),
-      ],
-    };
-  }
-  if (record.state === "CONSUMED") {
-    if (occurrence.eligibilityArmState === "consumed") return null;
-    return {
-      reasonCodes: ["REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL"],
-      details: [
-        `Causal arm ${armId} is already CONSUMED, but confirmed signal ${occurrence.occurrenceId} is not the exact signal that consumed the arm.`,
       ],
     };
   }
@@ -4212,7 +4299,7 @@ export function runCausalBacktest(
   }
   const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
   const signalOccurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
-  const lifecycle = reduceHistoricalPullbackLifecycles(audit);
+  const lifecycle = reduceHistoricalPullbackLifecycles(audit, undefined, signalOccurrences);
   const reconciliation = projectHistoricalTradeCandidates(signalOccurrences, trades, {
     dataset,
     specification,

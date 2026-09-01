@@ -1039,7 +1039,7 @@ function reconcileReportItem(
     dataset: partition.dataset,
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
-    lifecycle: reduceHistoricalPullbackLifecycles(item.report.audit),
+    lifecycle: reduceHistoricalPullbackLifecycles(item.report.audit, undefined, occurrences),
   });
   const trades = projection.authoritativeTrades;
   const rejected = projection.rejected;

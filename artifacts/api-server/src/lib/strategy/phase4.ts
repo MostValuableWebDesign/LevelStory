@@ -96,6 +96,18 @@ export type PullbackArmTransition = {
   to: PullbackArmState;
   time: number;
   reason: string;
+  consumingSignalIdentity?: PullbackArmSignalIdentity;
+  consumingSignalOccurrenceId?: string;
+};
+
+export type PullbackArmSignalIdentity = {
+  sourceFingerprint: string;
+  formulaHash: string;
+  contractSymbol: string;
+  tradingDate: string;
+  direction: Direction;
+  pOpenTimestamp: string;
+  eOpenTimestamp: string;
 };
 
 export type PullbackArmLifecycleObservation = {
@@ -106,11 +118,34 @@ export type PullbackArmLifecycleObservation = {
   source?: string;
 };
 
+export function pullbackArmSignalIdentityKey(identity: PullbackArmSignalIdentity | null | undefined): string | null {
+  if (!identity) return null;
+  return [
+    identity.sourceFingerprint,
+    identity.formulaHash,
+    identity.contractSymbol,
+    identity.tradingDate,
+    identity.direction,
+    identity.pOpenTimestamp,
+    identity.eOpenTimestamp,
+  ].join("|");
+}
+
+export function samePullbackArmSignalIdentity(
+  left: PullbackArmSignalIdentity | null | undefined,
+  right: PullbackArmSignalIdentity | null | undefined,
+): boolean {
+  const leftKey = pullbackArmSignalIdentityKey(left);
+  return leftKey !== null && leftKey === pullbackArmSignalIdentityKey(right);
+}
+
 export type PullbackArmLifecycleConflict = {
   armId: string;
   canonicalState: PullbackArmState;
   observedState: PullbackArmState;
   transition: PullbackArmTransition;
+  canonicalConsumingSignalIdentity?: PullbackArmSignalIdentity;
+  observedConsumingSignalIdentity?: PullbackArmSignalIdentity;
   source?: string;
   reason: string;
 };
@@ -121,6 +156,8 @@ export type PullbackArmLifecycleRecord = {
   transitions: PullbackArmTransition[];
   terminal: boolean;
   terminalReason: string | null;
+  consumingSignalIdentity?: PullbackArmSignalIdentity;
+  consumingSignalOccurrenceId?: string;
 };
 
 export type PullbackArmLifecycleReduction = {
@@ -204,6 +241,8 @@ export function reducePullbackArmLifecycles(
     const seen = new Set<string>();
     let state: PullbackArmState | null = null;
     let terminalReason: string | null = null;
+    let consumingSignalIdentity: PullbackArmSignalIdentity | undefined;
+    let consumingSignalOccurrenceId: string | undefined;
     const accepted: PullbackArmTransition[] = [];
 
     for (const item of items) {
@@ -213,6 +252,7 @@ export function reducePullbackArmLifecycles(
         transition.to,
         transition.time,
         transition.reason,
+        pullbackArmSignalIdentityKey(transition.consumingSignalIdentity) ?? "no-consumer",
       ].join("|");
       if (seen.has(signature)) {
         duplicateTransitions += 1;
@@ -229,6 +269,22 @@ export function reducePullbackArmLifecycles(
             transition,
             source: item.source,
             reason: "A terminal arm state is immutable; the later observation was not applied.",
+          });
+        } else if (
+          state === "CONSUMED"
+          && transition.consumingSignalIdentity
+          && consumingSignalIdentity
+          && !samePullbackArmSignalIdentity(transition.consumingSignalIdentity, consumingSignalIdentity)
+        ) {
+          conflicts.push({
+            armId,
+            canonicalState: state,
+            observedState: transition.to,
+            transition,
+            canonicalConsumingSignalIdentity: consumingSignalIdentity,
+            observedConsumingSignalIdentity: transition.consumingSignalIdentity,
+            source: item.source,
+            reason: "A consumed arm cannot be reassigned to a different physical P→E signal.",
           });
         } else if (transition.reason !== terminalReason) {
           conflicts.push({
@@ -279,6 +335,10 @@ export function reducePullbackArmLifecycles(
       accepted.push(transition);
       state = transition.to;
       if (isTerminalPullbackArmState(state)) terminalReason = transition.reason;
+      if (transition.to === "CONSUMED" && !consumingSignalIdentity) {
+        consumingSignalIdentity = transition.consumingSignalIdentity;
+        consumingSignalOccurrenceId = transition.consumingSignalOccurrenceId;
+      }
     }
     records.push({
       armId,
@@ -286,6 +346,8 @@ export function reducePullbackArmLifecycles(
       transitions: accepted,
       terminal: isTerminalPullbackArmState(state),
       terminalReason,
+      ...(consumingSignalIdentity ? { consumingSignalIdentity } : {}),
+      ...(consumingSignalOccurrenceId ? { consumingSignalOccurrenceId } : {}),
     });
   }
   return { records, duplicateTransitions, conflicts };

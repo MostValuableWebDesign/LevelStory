@@ -251,7 +251,21 @@ function candidateProjectionDataset(
 function lifecycleForArm(
   armId: string,
   terminalState: "STRUCTURALLY_INVALIDATED" | "SUPERSEDED_BY_NEW_BREAKOUT" | "OPPOSITE_BREAKOUT_INVALIDATED" | "DATA_GAP_INVALIDATED" | "ENTRY_CUTOFF_EXPIRED" | "SESSION_BOUNDARY_EXPIRED" | "CONTRACT_BOUNDARY_EXPIRED" | "CONSUMED",
+  consumingOccurrence?: any,
 ): ReturnType<typeof reducePullbackArmLifecycles> {
+  const consumingSignalIdentity = consumingOccurrence?.direction
+    && consumingOccurrence.pOpenTimestamp
+    && consumingOccurrence.eOpenTimestamp
+    ? {
+      sourceFingerprint: consumingOccurrence.sourceFingerprint,
+      formulaHash: consumingOccurrence.formulaHash,
+      contractSymbol: consumingOccurrence.contractSymbol,
+      tradingDate: consumingOccurrence.tradingDate,
+      direction: consumingOccurrence.direction,
+      pOpenTimestamp: consumingOccurrence.pOpenTimestamp,
+      eOpenTimestamp: consumingOccurrence.eOpenTimestamp,
+    }
+    : undefined;
   return reducePullbackArmLifecycles([{
     armId,
     transitions: [
@@ -259,7 +273,16 @@ function lifecycleForArm(
       { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
       { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level" },
       { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "patience" },
-      { from: "PATIENCE_ARMED", to: terminalState, time: 4, reason: terminalState },
+      {
+        from: "PATIENCE_ARMED",
+        to: terminalState,
+        time: 4,
+        reason: terminalState,
+        ...(consumingSignalIdentity ? {
+          consumingSignalIdentity,
+          consumingSignalOccurrenceId: consumingOccurrence.occurrenceId,
+        } : {}),
+      },
     ],
     source: "test-lifecycle",
   }]);
@@ -892,13 +915,146 @@ test("CONSUMED authorizes only the exact confirmed signal that consumed the arm"
     dataset: candidateProjectionDataset(first),
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
-    lifecycle: lifecycleForArm("consumed-arm", "CONSUMED"),
+    lifecycle: lifecycleForArm("consumed-arm", "CONSUMED", first),
   });
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.signalOccurrenceId, first.occurrenceId);
   assert.equal(result.rejected.length, 1);
   assert.equal(result.rejected[0]?.signalOccurrenceId, later.occurrenceId);
   assert.equal(result.rejected[0]?.reasonCodes[0], "REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL");
+  assert.match(result.rejected[0]?.details.join(" ") ?? "", /Stored consuming signal identity/);
+  assert.equal(calculateBacktestMetrics(result.authoritativeTrades).tradeCount <= 1, true);
+});
+
+test("duplicate observations of the same consuming signal merge without conflicts", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "duplicate-consumer-arm",
+    eligibilityArmState: "consumed",
+  });
+  const identity = {
+    sourceFingerprint: occurrence.sourceFingerprint,
+    formulaHash: occurrence.formulaHash,
+    contractSymbol: occurrence.contractSymbol,
+    tradingDate: occurrence.tradingDate,
+    direction: occurrence.direction,
+    pOpenTimestamp: occurrence.pOpenTimestamp,
+    eOpenTimestamp: occurrence.eOpenTimestamp,
+  };
+  const transitions = [
+    { from: null, to: "ARMED_AFTER_BREAKOUT" as const, time: 0, reason: "breakout" },
+    { from: "ARMED_AFTER_BREAKOUT" as const, to: "PULLBACK_OBSERVED" as const, time: 1, reason: "pullback" },
+    { from: "PULLBACK_OBSERVED" as const, to: "LEVEL_INTERACTION_FOUND" as const, time: 2, reason: "level" },
+    { from: "LEVEL_INTERACTION_FOUND" as const, to: "PATIENCE_ARMED" as const, time: 3, reason: "patience" },
+    { from: "PATIENCE_ARMED" as const, to: "SIGNAL_CONFIRMED" as const, time: 4, reason: "confirmed" },
+    {
+      from: "SIGNAL_CONFIRMED" as const,
+      to: "CONSUMED" as const,
+      time: 4,
+      reason: "consumed",
+      consumingSignalIdentity: identity,
+      consumingSignalOccurrenceId: occurrence.occurrenceId,
+    },
+  ];
+  const reduced = reducePullbackArmLifecycles([
+    { armId: "duplicate-consumer-arm", transitions, source: "cursor-1" },
+    { armId: "duplicate-consumer-arm", transitions, source: "cursor-2" },
+  ]);
+  assert.equal(reduced.duplicateTransitions, transitions.length);
+  assert.equal(reduced.conflicts.length, 0);
+  assert.deepEqual(reduced.records[0]?.consumingSignalIdentity, identity);
+  assert.equal(reduced.records[0]?.consumingSignalOccurrenceId, occurrence.occurrenceId);
+
+  const conflictingIdentity = { ...identity, pOpenTimestamp: "2026-08-25T14:15:00.000Z" };
+  const conflicting = reducePullbackArmLifecycles([{
+    armId: "duplicate-consumer-arm",
+    transitions,
+    source: "canonical-cursor",
+  }, {
+    armId: "duplicate-consumer-arm",
+    transitions: [{
+      from: "SIGNAL_CONFIRMED" as const,
+      to: "CONSUMED" as const,
+      time: 4,
+      reason: "consumed",
+      consumingSignalIdentity: conflictingIdentity,
+      consumingSignalOccurrenceId: "different-consumer",
+    }],
+    source: "conflicting-cursor",
+  }]);
+  assert.equal(conflicting.records[0]?.consumingSignalIdentity?.pOpenTimestamp, identity.pOpenTimestamp);
+  assert.equal(conflicting.conflicts.length, 1);
+  assert.match(conflicting.conflicts[0]?.reason ?? "", /different physical P→E signal/);
+});
+
+test("historical lifecycle reduction records the canonical consumer identity", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "historical-consumer-arm",
+    eligibilityArmState: "consumed",
+  });
+  const reduced = reduceHistoricalPullbackLifecycles([], [{
+    occurrenceId: "raw-consuming-observation",
+    direction: occurrence.direction,
+    patienceCandle: {
+      openTime: Date.parse(occurrence.pOpenTimestamp),
+      closeTime: Date.parse(occurrence.eOpenTimestamp),
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100.5,
+      isComplete: true,
+    },
+    eligibilityArmId: "historical-consumer-arm",
+    eligibilityArmState: "consumed",
+    expectedEntryCandleOpenTime: Date.parse(occurrence.eOpenTimestamp),
+    qualificationStatus: "SIGNAL_CONFIRMED",
+    outcomeStatus: "CONFIRMED",
+    status: "ENTRY_TRIGGERED",
+    evaluationCursor: Date.parse(occurrence.eClose),
+    eligibilityArmTransitionTime: Date.parse(occurrence.eClose),
+  } as any], [occurrence]);
+  assert.deepEqual(reduced.records[0]?.consumingSignalIdentity, {
+    sourceFingerprint: occurrence.sourceFingerprint,
+    formulaHash: occurrence.formulaHash,
+    contractSymbol: occurrence.contractSymbol,
+    tradingDate: occurrence.tradingDate,
+    direction: occurrence.direction,
+    pOpenTimestamp: occurrence.pOpenTimestamp,
+    eOpenTimestamp: occurrence.eOpenTimestamp,
+  });
+  assert.equal(reduced.records[0]?.consumingSignalOccurrenceId, occurrence.occurrenceId);
+});
+
+test("arm-backed confirmed signals fail closed when lifecycle data is missing", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "missing-lifecycle-arm",
+    eligibilityArmState: "active",
+  });
+  const context = {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled" as const,
+  };
+  const missingArgument = projectHistoricalTradeCandidates([occurrence], [], context);
+  assert.equal(missingArgument.candidates.length, 0);
+  assert.equal(missingArgument.authoritativeTrades.length, 0);
+  assert.equal(missingArgument.rejected[0]?.reasonCodes[0], "REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING");
+
+  const missingRecord = projectHistoricalTradeCandidates([occurrence], [], {
+    ...context,
+    lifecycle: reducePullbackArmLifecycles([]),
+  });
+  assert.equal(missingRecord.candidates.length, 0);
+  assert.equal(missingRecord.authoritativeTrades.length, 0);
+  assert.equal(missingRecord.rejected[0]?.reasonCodes[0], "REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING");
 });
 
 test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {
