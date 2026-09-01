@@ -699,6 +699,30 @@ test("historical occurrences preserve exact L identity, all same-candle levels, 
   assert.notEqual(changed.sourceFingerprint, occurrence.sourceFingerprint);
 });
 
+test("historical ledger falls back from a stale Fibonacci eligibility event to executable same-candle levels", () => {
+  const source = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
+  const originalEvent = source.pullbackOccurrences![0]!;
+  const fibEvent = {
+    ...originalEvent,
+    eventId: "l-fib",
+    level: "Fib 1",
+  };
+  const audit = occurrenceAudit("ORB_PULLBACK_CONTINUATION", {
+    pullbackOccurrences: [...source.pullbackOccurrences!, fibEvent],
+    patienceOccurrences: [{
+      ...source.patienceOccurrences![0]!,
+      eligibilityEventId: "l-fib",
+      eligibilityTime: Date.parse(originalEvent.time),
+    }],
+  });
+  const occurrences = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], []);
+  const patience = occurrences.find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.deepEqual(patience.levelIdentifiers, ["ORB"]);
+  assert.match(patience.lEventId ?? "", /ORB/);
+  assert.equal(patience.lInteractionType, "touch");
+});
+
 test("ledger merges the same causal occurrence and preserves canonical plus secondary strategies", () => {
   const primary = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
   const secondary = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", { id: "patience-audit" });

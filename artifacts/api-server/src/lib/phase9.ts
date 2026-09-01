@@ -2341,6 +2341,10 @@ const QUALIFYING_PULLBACK_EVENT_TYPES = new Set([
   "hold",
 ]);
 
+function isDiagnosticOnlyPullbackLevel(level: string): boolean {
+  return /^(?:fib|fibonacci)\b/i.test(level.trim());
+}
+
 function pullbackEventId(event: HistoricalPullbackEvent): string {
   return event.eventId ?? `pullback|${event.type}|${event.time}|${event.level}|${event.price}`;
 }
@@ -2354,7 +2358,9 @@ function linkedPullbackEvents(
   patience: PatienceOccurrence,
 ): HistoricalPullbackEvent[] {
   const events = (record.pullbackOccurrences ?? []).filter((event) =>
-    event.qualifies !== false && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type),
+    event.qualifies !== false
+      && QUALIFYING_PULLBACK_EVENT_TYPES.has(event.type)
+      && !isDiagnosticOnlyPullbackLevel(event.level),
   );
   const exact = patience.eligibilityEventId
     ? events.find((event) => pullbackEventId(event) === patience.eligibilityEventId)

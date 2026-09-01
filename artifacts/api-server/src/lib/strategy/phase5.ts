@@ -141,8 +141,7 @@ export function patienceArmLifecycleTransitions(
       reason: occurrence.eligibilityArmStateReason ?? "Phase 5 consumed the eligibility arm after signal confirmation.",
     });
   } else if (
-    occurrence.qualificationStatus === "STRUCTURALLY_INVALIDATED"
-    || occurrence.eligibilityArmState === "invalidated"
+    occurrence.eligibilityArmState === "invalidated"
   ) {
     transitions.push({
       from: "PATIENCE_ARMED",

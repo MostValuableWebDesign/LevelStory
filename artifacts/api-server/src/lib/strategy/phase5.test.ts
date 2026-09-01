@@ -5,8 +5,10 @@ import {
   effectiveConfirmationThreshold,
   isStrictlyOutsideNtz,
   patienceCandleEngine,
+  patienceArmLifecycleTransitions,
   phase5PatienceAnalysis,
   type PatienceEligibilityEvent,
+  type PatienceOccurrence,
 } from "./phase5.js";
 import type { PullbackAnalysis } from "./phase4.js";
 import type { Candle } from "./types.js";
@@ -21,6 +23,18 @@ function candle(index: number, open: number, high: number, low: number, close: n
 function eligibility(time = FIVE_MINUTES): PatienceEligibilityEvent[] {
   return [{ time, reason: "pullback", detail: "Retest reached a qualifying level." }];
 }
+
+test("attempt-level structural invalidation does not terminalize an active pullback arm", () => {
+  const transitions = patienceArmLifecycleTransitions({
+    patienceCandle: { closeTime: FIVE_MINUTES },
+    qualificationStatus: "STRUCTURALLY_INVALIDATED",
+    outcomeStatus: "INVALIDATED",
+    eligibilityArmState: "active",
+    evaluationCursor: FIVE_MINUTES,
+    reasonCode: "PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ",
+  } as unknown as PatienceOccurrence);
+  assert.deepEqual(transitions.map((transition) => transition.to), ["PATIENCE_ARMED"]);
+});
 
 function setup(direction: "long" | "short", trigger: Candle): Candle[] {
   const previous = direction === "long" ? candle(0, 10, 12, 8, 10.5) : candle(0, 10, 12, 8, 9.5);
