@@ -66,7 +66,7 @@ test("valid bearish patience candle triggers below the patience low", () => {
   assert.equal(result.triggerPrice, 8);
 });
 
-test("the Aug 5 10:45 short candidate confirms despite an opposite E wick", () => {
+test("the Aug 5 10:45 short candidate confirms at the intended buffer", () => {
   const result = patienceCandleEngine(
     [
       datedCandle("2026-08-05T14:40:00.000Z", 7791.25, 7796.25, 7788, 7792),
@@ -272,7 +272,7 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
   assert.equal(result.occurrences?.[1]?.nextObservedCandle, null);
 });
 
-test("a later confirmed P→E sequence remains executable after an earlier opposite-side invalidation", () => {
+test("a later confirmed P→E sequence remains executable after an earlier failed buffer", () => {
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11, 7, 10.8),
@@ -284,7 +284,7 @@ test("a later confirmed P→E sequence remains executable after an earlier oppos
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.patienceCandle?.openTime, candles[3].openTime);
   assert.equal(result.triggerCandle?.openTime, candles[4].openTime);
-  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["EXPIRED_WRONG_DIRECTION", "CONFIRMED"]);
+  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["EXPIRED_NO_IMMEDIATE_CONFIRMATION", "CONFIRMED"]);
 });
 
 test("one pullback arm allows later successful P→E sequences", () => {
@@ -383,41 +383,10 @@ test("an active trigger candle does not need to close", () => {
   assert.equal(result.state, "TRIGGER_CANDLE_ACTIVE");
 });
 
-test("bullish opposite-side-first gap invalidates the setup", () => {
-  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 9.5, 6.5, 8, false)), "long", { eligibilityEvents: eligibility() });
-  assert.equal(result.state, "OPPOSITE_SIDE_INVALIDATION");
-  assert.equal(result.triggerPrice, 7);
-});
-
-test("bearish opposite-side-first gap invalidates the setup", () => {
-  const result = patienceCandleEngine(setup("short", candle(2, 11.2, 13.5, 10.2, 10.5, false)), "short", { eligibilityEvents: eligibility() });
-  assert.equal(result.state, "OPPOSITE_SIDE_INVALIDATION");
-  assert.equal(result.triggerPrice, 13);
-});
-
-test("an opposite wick does not override a reached confirmation buffer", () => {
+test("confirmation uses only the intended P-side buffer", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10, 12.2, 6.8, 10.5)), "long", { eligibilityEvents: eligibility() });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.triggerPrice, 12);
-});
-
-test("touching the opposite patience wick without breaking it does not invalidate E", () => {
-  const bullish = patienceCandleEngine(setup("long", candle(2, 10, 12.2, 7, 10.5)), "long", { eligibilityEvents: eligibility() });
-  const bearish = patienceCandleEngine(setup("short", candle(2, 10, 13, 7.8, 10.5)), "short", { eligibilityEvents: eligibility() });
-  assert.equal(bullish.state, "ENTRY_TRIGGERED");
-  assert.equal(bearish.state, "ENTRY_TRIGGERED");
-});
-
-test("intrabar order does not change a confirmed intended-side buffer", () => {
-  const candles = setup("long", candle(2, 10, 12.2, 6.8, 10.5));
-  const intended = patienceCandleEngine(candles, "long", {
-    eligibilityEvents: eligibility(),
-  });
-  const opposite = patienceCandleEngine(candles, "long", {
-    eligibilityEvents: eligibility(),
-  });
-  assert.equal(intended.state, "ENTRY_TRIGGERED");
-  assert.equal(opposite.state, "ENTRY_TRIGGERED");
 });
 
 test("gaps through the intended side trigger at the opening print", () => {
@@ -745,8 +714,8 @@ test("non-qualifying pullback events cannot open patience eligibility", () => {
   assert.equal(result.eligible, false);
 });
 
-test("wrong-side invalidation remains a diagnostic patience occurrence", () => {
-   const result = patienceCandleEngine(setup("long", candle(2, 8.8, 9.5, 6.5, 8)), "long", { eligibilityEvents: eligibility() });
-  assert.equal(result.occurrences?.[0]?.status, "OPPOSITE_SIDE_INVALIDATION");
-  assert.equal(result.occurrences?.[0]?.triggerCandle?.openTime, candle(2, 8.8, 10.5, 6.5, 8).openTime);
+test("an E candle without the intended buffer simply expires", () => {
+  const result = patienceCandleEngine(setup("long", candle(2, 8.8, 9.5, 6.5, 8)), "long", { eligibilityEvents: eligibility() });
+  assert.equal(result.occurrences?.[0]?.status, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
 });

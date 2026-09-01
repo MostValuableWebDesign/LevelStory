@@ -514,7 +514,7 @@ function evaluateTrigger(
   entryCutoffMinutes?: number,
 ): PatienceAnalysis {
   const intendedPrice = direction === "long" ? patience.high : patience.low;
-  const oppositePrice = direction === "long" ? patience.low : patience.high;
+  const stopExtreme = direction === "long" ? patience.low : patience.high;
   const entryBufferPrice = effectiveConfirmationThreshold(
     patience,
     direction,
@@ -525,17 +525,13 @@ function evaluateTrigger(
   const modeledEntryPrice = entryBufferPrice;
   const strategyStopPrice = authoritativePatienceStopPrice(
     direction,
-    oppositePrice,
+    stopExtreme,
     stopBufferTicks,
     tickSize,
   );
   const intendedTouched = direction === "long" ? trigger.high >= intendedPrice : trigger.low <= intendedPrice;
   const bufferReached = direction === "long" ? trigger.high >= modeledEntryPrice : trigger.low <= modeledEntryPrice;
-  // Touching the opposite wick is not a breach. Invalidation requires the
-  // immediate E candle to print beyond the patience extreme.
-  const oppositeTouched = direction === "long" ? trigger.low < oppositePrice : trigger.high > oppositePrice;
   const gapBuffer = direction === "long" ? trigger.open >= modeledEntryPrice : trigger.open <= modeledEntryPrice;
-  const gapOpposite = direction === "long" ? trigger.open < oppositePrice : trigger.open > oppositePrice;
   const base = {
     direction,
     directionSource,
@@ -555,9 +551,8 @@ function evaluateTrigger(
   if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.openTime) >= entryCutoffMinutes) {
     return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: E opens at or after 1:00 p.m. ET." };
   }
-  // The intended-side confirmation has priority. OHLC data does not preserve
-  // intrabar order, and an opposite wick in the same E candle must not turn a
-  // reached confirmation buffer into an ambiguous or rejected entry.
+  // E qualifies solely by reaching the intended confirmation threshold. The
+  // opposite P wick is not an entry or invalidation rule.
   if (bufferReached || gapBuffer) {
     if (!isStrictlyOutsideNtz(trigger, direction, finalizedNtz, requireFinalizedNtz, modeledEntryPrice)) {
       return {
@@ -576,9 +571,6 @@ function evaluateTrigger(
         : `The immediate-next entry candle (E) reached the effective ${entryBufferTicks}-tick confirmation threshold of ${entryBufferPrice}; shadow entry is pending the completed-candle record.`,
     };
   }
-  if (gapOpposite || oppositeTouched) {
-    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
-  }
   if (intendedTouched) {
     return {
       ...base,
@@ -590,7 +582,7 @@ function evaluateTrigger(
     };
   }
   if (!trigger.isComplete) {
-    return { ...base, state: "TRIGGER_CANDLE_ACTIVE", triggerPrice: null, detail: "The immediate-next entry candle (E) is active and has not crossed the patience extreme or opposite invalidation." };
+    return { ...base, state: "TRIGGER_CANDLE_ACTIVE", triggerPrice: null, detail: "The immediate-next entry candle (E) is active and has not reached the confirmation buffer." };
   }
   return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "The immediate-next entry candle (E) closed without reaching the patience confirmation buffer; later candles cannot reuse this pattern." };
 }
