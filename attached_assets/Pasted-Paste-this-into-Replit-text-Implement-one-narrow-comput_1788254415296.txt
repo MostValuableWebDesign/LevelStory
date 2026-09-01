@@ -1,0 +1,95 @@
+Paste this into Replit:
+
+```text
+Implement one narrow, compute-conscious correctness pass for the pullback-arm lifecycle. Do not redesign the strategy.
+
+Fix these two correctness issues:
+
+1. Enforce lifecycle eligibility before authoritative candidate and trade creation
+
+Current problem:
+Phase 9 reduces pullback-arm lifecycle state after candidates and trades have already been projected. A candidate connected to an invalidated, superseded, expired, or conflicting arm can remain authoritative while only producing an invariant warning.
+
+Required behavior:
+- Reduce and reconcile the pullback-arm lifecycle before authoritative candidate projection.
+- A confirmed signal may produce a candidate only when its exact arm is causally eligible.
+- Reject candidate creation when the arm was already:
+  - STRUCTURALLY_INVALIDATED
+  - SUPERSEDED_BY_NEW_BREAKOUT
+  - OPPOSITE_BREAKOUT_INVALIDATED
+  - DATA_GAP_INVALIDATED
+  - ENTRY_CUTOFF_EXPIRED
+  - SESSION_BOUNDARY_EXPIRED
+  - CONTRACT_BOUNDARY_EXPIRED
+- CONSUMED is valid only when it belongs to the same exact confirmed signal/candidate relationship. It must not authorize a different or later signal.
+- Preserve the diagnostic occurrence and exact rejection reason when a terminal arm is excluded.
+- Excluded candidates must not create trades or affect P&L, drawdown, fees, slippage, trade counts, or exit statistics.
+- Keep lifecycle invariant violations as diagnostics, but do not rely on diagnostics as the enforcement mechanism.
+- Preserve immediate P→E confirmation, P1→P2 rearming, the exclusive 1:00 p.m. ET entry cutoff, and one candidate/trade per physical signal.
+
+Preferred pipeline:
+
+raw audits
+→ canonical arm lifecycle reduction
+→ canonical confirmed signals
+→ lifecycle eligibility enforcement
+→ authoritative candidate projection
+→ candidate-driven Shadow Mode execution
+→ trade metrics
+
+2. Detect a data gap immediately after the breakout
+
+Current problem:
+The Phase 4 gap check only evaluates gaps when the post-breakout candle index is greater than zero. It can miss a gap between the breakout candle and the first available post-breakout candle.
+
+Required behavior:
+- For every post-breakout candle, calculate the expected open time:
+  - First candle: breakout candle close time
+  - Later candles: preceding post-breakout candle close time
+- If the actual open time differs from the expected open time, transition the arm to DATA_GAP_INVALIDATED.
+- Do not permit a later pullback, level interaction, patience candle, candidate, or trade to bridge that missing interval.
+- Preserve the evidence and exact missing interval in diagnostics.
+
+Required tests:
+- A terminal non-consumed arm cannot produce a candidate or trade.
+- An excluded terminal-arm signal does not affect metrics.
+- CONSUMED cannot authorize a different signal.
+- A contiguous late pullback remains eligible.
+- A missing first five-minute candle immediately after breakout invalidates the arm.
+- A later candle cannot bridge that initial gap.
+- Existing internal-gap coverage remains passing.
+- Existing same-direction supersession, opposite-breakout invalidation, session/contract boundary, cutoff, and P1→P2 tests remain passing.
+
+Repository cleanup:
+- Remove the accidentally committed temporary pasted prompt attachment.
+- Do not commit generated prompt attachments.
+
+Verification—keep it compute-conscious:
+- Run focused Phase 4, Phase 5, Phase 6, and Phase 9 lifecycle/candidate tests only.
+- Run API typecheck.
+- Run git diff --check.
+- Do not rebuild the historical index.
+- Do not run a broad qualification batch or long cold historical replay.
+- A short cached replay is optional only if already available.
+
+Do not change:
+- Strategy definitions
+- Pullback tolerance
+- Patience-candle shape
+- Eight-tick entry confirmation
+- Patience-based stop formula
+- Target rules
+- 9:30 a.m.–1:00 p.m. ET entry window
+- Frontend or chart behavior
+- Broker, live-order, or paper-order behavior
+
+Report:
+1. Files changed
+2. Root causes fixed
+3. Where lifecycle enforcement now occurs
+4. Candidate rejection reasons added
+5. Tests and checks run
+6. Any remaining limitation
+
+Do not claim completion unless lifecycle state genuinely governs candidate creation rather than merely generating a diagnostic warning.
+```

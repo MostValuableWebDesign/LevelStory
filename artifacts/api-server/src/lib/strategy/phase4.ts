@@ -1078,12 +1078,15 @@ function findPullbackTerminal(
         reason: `The pullback arm ended when the candle contract changed to ${contract}.`,
       };
     }
-    if (index > 0 && candle.openTime !== afterBreakout[index - 1]!.closeTime) {
+    const expectedOpenTime = index === 0
+      ? breakoutCandle.closeTime
+      : afterBreakout[index - 1]!.closeTime;
+    if (candle.openTime !== expectedOpenTime) {
       return {
         index,
         state: "DATA_GAP_INVALIDATED",
         time: candle.openTime,
-        reason: "The pullback arm was invalidated by a non-contiguous candle gap; missing candles cannot be bridged causally.",
+        reason: `The pullback arm was invalidated by a non-contiguous candle gap; expected ${new Date(expectedOpenTime).toISOString()} but observed ${new Date(candle.openTime).toISOString()}. Missing candles cannot be bridged causally.`,
       };
     }
     if (wallClockMinutesForTimestamp(candle.openTime, config.sessionTimeZone) >= config.primaryEntryEndMinutes) {

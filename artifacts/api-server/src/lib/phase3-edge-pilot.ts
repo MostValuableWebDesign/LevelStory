@@ -9,6 +9,7 @@ import {
   calculateBacktestMetrics,
   historicalReplayDiagnostics,
   projectHistoricalTradeCandidates,
+  reduceHistoricalPullbackLifecycles,
   type BacktestMetrics,
   type BacktestReport,
   type BacktestRequest,
@@ -1038,6 +1039,7 @@ function reconcileReportItem(
     dataset: partition.dataset,
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
+    lifecycle: reduceHistoricalPullbackLifecycles(item.report.audit),
   });
   const trades = projection.authoritativeTrades;
   const rejected = projection.rejected;

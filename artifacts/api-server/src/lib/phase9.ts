@@ -1506,33 +1506,7 @@ export function historicalReplayDiagnostics(
     }
     return violations;
   });
-  const lifecycleObservations: PullbackArmLifecycleObservation[] = [];
-  for (const record of audits) {
-    if (!record.pullbackArmId) continue;
-    const transitions = (record.pullbackArmTransitions ?? [])
-      .map((transition) => ({
-        ...transition,
-        time: Date.parse(transition.time),
-      }))
-      .filter((transition) => Number.isFinite(transition.time));
-    lifecycleObservations.push({
-      armId: record.pullbackArmId,
-      state: record.pullbackArmState,
-      transitions,
-      observedAt: Date.parse(record.evaluatedCandleOpenTime),
-      source: `audit:${record.id}`,
-    });
-  }
-  for (const occurrence of patience) {
-    const armId = occurrence.eligibilityArmId;
-    if (!armId) continue;
-    lifecycleObservations.push({
-      armId,
-      transitions: patienceArmLifecycleTransitions(occurrence),
-      source: `patience:${occurrence.occurrenceId}`,
-    });
-  }
-  const lifecycle = reducePullbackArmLifecycles(lifecycleObservations);
+  const lifecycle = reduceHistoricalPullbackLifecycles(audits, patience);
   const lifecycleByArm = new Map(lifecycle.records.map((record) => [record.armId, record]));
   const terminalByArm = new Map(
     lifecycle.records
@@ -1679,6 +1653,41 @@ export function historicalReplayDiagnostics(
     orphanModeledTradesExcluded: orphanModeledTrades.length,
     candidateInvariantViolations,
   };
+}
+
+export type HistoricalPullbackLifecycle = ReturnType<typeof reducePullbackArmLifecycles>;
+
+export function reduceHistoricalPullbackLifecycles(
+  audits: readonly BacktestAuditRecord[],
+  patience: readonly PatienceOccurrence[] = audits.flatMap((record) => record.patienceOccurrences ?? []),
+): HistoricalPullbackLifecycle {
+  const observations: PullbackArmLifecycleObservation[] = [];
+  for (const record of audits) {
+    if (!record.pullbackArmId) continue;
+    const transitions = (record.pullbackArmTransitions ?? [])
+      .map((transition) => ({
+        ...transition,
+        time: Date.parse(transition.time),
+      }))
+      .filter((transition) => Number.isFinite(transition.time));
+    observations.push({
+      armId: record.pullbackArmId,
+      state: record.pullbackArmState,
+      transitions,
+      observedAt: Date.parse(record.evaluatedCandleOpenTime),
+      source: `audit:${record.id}`,
+    });
+  }
+  for (const occurrence of patience) {
+    const armId = occurrence.eligibilityArmId;
+    if (!armId) continue;
+    observations.push({
+      armId,
+      transitions: patienceArmLifecycleTransitions(occurrence),
+      source: `patience:${occurrence.occurrenceId}`,
+    });
+  }
+  return reducePullbackArmLifecycles(observations);
 }
 
 function evidenceCandle(candle: SimulatedFuturesCandle | null | undefined): Record<string, number | boolean> | null {
@@ -3048,7 +3057,12 @@ function freezeCandidateManagementContext(
 export function projectHistoricalTradeCandidates(
   occurrences: readonly HistoricalOccurrence[],
   rawTrades: readonly BacktestTrade[],
-  executionContext?: { dataset: CausalReplayDataset; specification: ReturnType<typeof getFuturesContractSpecification>; executionMode: BacktestRequest["executionMode"] },
+  executionContext?: {
+    dataset: CausalReplayDataset;
+    specification: ReturnType<typeof getFuturesContractSpecification>;
+    executionMode: BacktestRequest["executionMode"];
+    lifecycle?: HistoricalPullbackLifecycle;
+  },
 ): {
   candidates: HistoricalTradeCandidate[];
   rejected: RejectedCandidateSignal[];
@@ -3064,6 +3078,15 @@ export function projectHistoricalTradeCandidates(
   const rejected: RejectedCandidateSignal[] = [];
   const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
   for (const occurrence of confirmed) {
+    const lifecycleRejection = candidateLifecycleRejection(occurrence, executionContext?.lifecycle);
+    if (lifecycleRejection) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: lifecycleRejection.reasonCodes,
+        details: lifecycleRejection.details,
+      });
+      continue;
+    }
     const identityViolations = candidateIdentityViolations(occurrence);
     if (identityViolations.length > 0) {
       rejected.push({
@@ -3270,6 +3293,48 @@ export function projectHistoricalTradeCandidates(
     }
   }
   return { candidates, rejected, authoritativeTrades, orphans };
+}
+
+function candidateLifecycleRejection(
+  occurrence: HistoricalOccurrence,
+  lifecycle: HistoricalPullbackLifecycle | undefined,
+): { reasonCodes: string[]; details: string[] } | null {
+  const armId = occurrence.eligibilityArmId;
+  if (!armId || !lifecycle) return null;
+  const record = lifecycle.records.find((item) => item.armId === armId);
+  if (!record) {
+    return {
+      reasonCodes: ["REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING"],
+      details: [`Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, but no canonical lifecycle record exists for that exact arm.`],
+    };
+  }
+  const conflicts = lifecycle.conflicts.filter((conflict) => conflict.armId === armId);
+  if (conflicts.length > 0) {
+    return {
+      reasonCodes: ["REJECTED_CONFLICTING_PULLBACK_ARM"],
+      details: [
+        `Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, which has ${conflicts.length} lifecycle conflict(s).`,
+        ...conflicts.map((conflict) => `${conflict.reason} Observed ${conflict.observedState} after canonical ${conflict.canonicalState}.`),
+      ],
+    };
+  }
+  if (record.state === "CONSUMED") {
+    if (occurrence.eligibilityArmState === "consumed") return null;
+    return {
+      reasonCodes: ["REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL"],
+      details: [
+        `Causal arm ${armId} is already CONSUMED, but confirmed signal ${occurrence.occurrenceId} is not the exact signal that consumed the arm.`,
+      ],
+    };
+  }
+  if (!isTerminalPullbackArmState(record.state)) return null;
+  return {
+    reasonCodes: [`REJECTED_PULLBACK_ARM_${record.state}`],
+    details: [
+      `Confirmed signal ${occurrence.occurrenceId} was excluded because causal arm ${armId} is terminal at ${record.state}.`,
+      ...(record.terminalReason ? [record.terminalReason] : []),
+    ],
+  };
 }
 
 function candidateDrivenEntryTrade(
@@ -4144,10 +4209,12 @@ export function runCausalBacktest(
   }
   const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
   const signalOccurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
+  const lifecycle = reduceHistoricalPullbackLifecycles(audit);
   const reconciliation = projectHistoricalTradeCandidates(signalOccurrences, trades, {
     dataset,
     specification,
     executionMode,
+    lifecycle,
   });
   const authoritativeTrades = reconciliation.authoritativeTrades;
   const inSampleTrades = authoritativeTrades.filter((trade) => trade.period === "in_sample");
