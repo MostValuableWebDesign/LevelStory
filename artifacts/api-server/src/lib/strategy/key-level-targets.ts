@@ -163,6 +163,46 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
   });
 }
 
+function rawNearBoundaryForLevel(
+  selected: FrozenTargetLevel,
+  levels: readonly KeyLevelTargetInput[],
+  direction: Direction,
+): number {
+  const matchingInputs = filterEligibleKeyLevelInputs(levels).filter((level) =>
+    selected.id === level.id || selected.id.includes(level.id),
+  );
+  const boundaries = matchingInputs.flatMap((level) => {
+    const low = typeof level.rangeLow === "number" ? Math.min(level.rangeLow, level.rangeHigh ?? level.rangeLow) : null;
+    const high = typeof level.rangeHigh === "number" ? Math.max(level.rangeHigh, level.rangeLow ?? level.rangeHigh) : null;
+    if (direction === "long") return [low ?? level.price].filter((price): price is number => typeof price === "number");
+    return [high ?? level.price].filter((price): price is number => typeof price === "number");
+  });
+  if (!boundaries.length) {
+    return direction === "long"
+      ? selected.rangeLow ?? selected.price
+      : selected.rangeHigh ?? selected.price;
+  }
+  return direction === "long" ? Math.min(...boundaries) : Math.max(...boundaries);
+}
+
+function nearSideTargetPrice(
+  direction: Direction,
+  levelBoundary: number,
+  bufferPoints: number,
+  tickSize: number,
+): number {
+  const unrounded = direction === "long"
+    ? levelBoundary - bufferPoints
+    : levelBoundary + bufferPoints;
+  // Round toward the key level so the executable MES price never lands
+  // farther than the governed 12-tick distance from the raw level.
+  const tickIndex = unrounded / tickSize;
+  const roundedIndex = direction === "long"
+    ? Math.ceil(tickIndex - 1e-9)
+    : Math.floor(tickIndex + 1e-9);
+  return Number((roundedIndex * tickSize).toFixed(10));
+}
+
 export function buildKeyLevelTargetPlan(input: {
   direction: Direction;
   entryPrice: number;
@@ -204,10 +244,10 @@ export function buildKeyLevelTargetPlan(input: {
     ? null
     : placementMode === "EXACT_LEVEL"
       ? selectedTargetLevel.price
-      : normalizePrice(
-        input.direction === "long"
-          ? (selectedTargetLevel.rangeLow ?? selectedTargetLevel.price) - bufferPoints
-          : (selectedTargetLevel.rangeHigh ?? selectedTargetLevel.price) + bufferPoints,
+      : nearSideTargetPrice(
+        input.direction,
+        rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction),
+        bufferPoints,
         tickSize,
       );
   return {

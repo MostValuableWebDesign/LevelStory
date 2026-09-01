@@ -39,6 +39,23 @@ test("short key-level targets use the upper zone boundary and bypass nearby leve
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer"]);
 });
 
+test("near-side targets stay within 12 ticks of an unrounded indicator level", () => {
+  const entryPrice = 7527.75;
+  const vwap = 7522.565477738259;
+  const plan = buildKeyLevelTargetPlan({
+    direction: "short",
+    entryPrice,
+    levels: [
+      { id: "ema-200", type: "EMA200", price: 7526.092528248642 },
+      { id: "vwap", type: "VWAP", price: vwap },
+    ],
+  });
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["ema-200"]);
+  assert.equal(plan.selectedTargetLevel?.id, "vwap");
+  assert.equal(plan.targetPrice, 7525.5);
+  assert.ok((plan.targetPrice - vwap) / 0.25 <= 12);
+});
+
 test("dynamite or duplicate prices become one frozen target level", () => {
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
