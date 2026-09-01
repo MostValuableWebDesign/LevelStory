@@ -131,6 +131,7 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
 function report(
   replayDataset: CausalReplayDataset,
   candidates: HistoricalTradeCandidate[] = [],
+  options: { syntheticFixture?: boolean; audit?: any[] } = { syntheticFixture: true },
 ): BacktestReport {
   return {
     dataset: {
@@ -157,7 +158,8 @@ function report(
     tradeCandidates: candidates,
     trades: [],
     occurrences: [],
-    audit: [],
+    audit: options.audit ?? [],
+    ...(options.syntheticFixture === true ? { syntheticFixture: true } : {}),
   } as unknown as BacktestReport;
 }
 
@@ -230,10 +232,17 @@ function reconcileFixture(input: {
   candidates?: HistoricalTradeCandidate[];
   rejectedCandidateSignals?: Array<{ signalOccurrenceId: string; reasonCodes: string[]; details: string[] }>;
   trades?: BacktestTrade[];
+  syntheticFixture?: boolean;
+  partitions?: any[];
+  audit?: any[];
 }) {
   const replayDataset = dataset();
   const manifest = buildPhase3PilotManifest({ dataset: replayDataset, request, createdAt: "2026-08-30T12:00:00.000Z" });
-  const base = report(replayDataset, input.candidates ?? []);
+  const syntheticFixture = input.syntheticFixture ?? true;
+  const base = report(replayDataset, input.candidates ?? [], {
+    syntheticFixture,
+    audit: input.audit,
+  });
   return reconcilePhase3SignalFunnel({
     manifest,
     reports: [{
@@ -247,7 +256,7 @@ function reconcileFixture(input: {
         trades: input.trades ?? [],
       },
     }],
-    partitions: [],
+    partitions: input.partitions ?? [],
   });
 }
 
@@ -332,6 +341,250 @@ test("Phase 3 reconciliation gives each confirmed signal one disposition and kee
   assert.equal(Object.values(result.reconciliation.dispositionCounts).reduce((sum, count) => sum + count, 0), 1);
   assert.equal(result.reconciliation.timeBuckets["09:30-10:00"].confirmed, 0);
   assert.equal(result.reconciliation.signals[0]!.signalOccurrenceId, "signal-1");
+});
+
+test("Phase 3 real reports fail closed when the matching partition is missing", () => {
+  const staleTrade = {
+    id: "stale-trade",
+    candidateId: "candidate-1",
+    signalOccurrenceId: "signal-1",
+    outcome: "target",
+    netPnl: 125,
+  } as unknown as BacktestTrade;
+  const result = reconcileFixture({
+    syntheticFixture: false,
+    audit: [{ id: "raw-audit" }],
+    candidates: [candidate()],
+    trades: [staleTrade],
+  });
+  const corrected = result.reports[0]!.report;
+  assert.equal(corrected.tradeCandidates.length, 0);
+  assert.equal(corrected.trades.length, 0);
+  assert.equal(corrected.metrics.tradeCount, 0);
+  assert.equal(corrected.metrics.netPnl, 0);
+  assert.equal(corrected.inSample.netPnl, 0);
+  assert.equal(corrected.outOfSample.netPnl, 0);
+  assert.deepEqual(
+    result.reconciliation.reconciliationErrors.map((error) => error.code),
+    ["PHASE3_LIFECYCLE_RECONCILIATION_UNAVAILABLE", "PHASE3_PARTITION_MISSING"],
+  );
+  assert.ok(result.reconciliation.invariantViolations.includes("PHASE3_PARTITION_MISSING:2026-07-01|MESU6"));
+  assert.equal(result.reconciliation.signals[0]?.disposition, "rejected_multiple_predicates");
+});
+
+test("Phase 3 real reports fail closed when the raw audit stream is empty", () => {
+  const replayDataset = dataset();
+  const result = reconcileFixture({
+    syntheticFixture: false,
+    candidates: [candidate()],
+    trades: [{
+      id: "stale-trade",
+      candidateId: "candidate-1",
+      signalOccurrenceId: "signal-1",
+      outcome: "target",
+      netPnl: 125,
+    } as unknown as BacktestTrade],
+    partitions: buildPhase3PilotPartitions(replayDataset).slice(0, 1),
+  });
+  const corrected = result.reports[0]!.report;
+  assert.equal(corrected.tradeCandidates.length, 0);
+  assert.equal(corrected.trades.length, 0);
+  assert.equal(corrected.metrics.netPnl, 0);
+  assert.ok(result.reconciliation.reconciliationErrors.some((error) =>
+    error.code === "PHASE3_AUDIT_STREAM_MISSING"));
+  assert.ok(result.reconciliation.invariantViolations.includes("PHASE3_AUDIT_STREAM_MISSING:2026-07-01|MESU6"));
+});
+
+test("Phase 3 explicitly marked synthetic fixtures retain compatibility without raw evidence", () => {
+  const staleTrade = {
+    id: "fixture-trade",
+    candidateId: "candidate-1",
+    signalOccurrenceId: "signal-1",
+    outcome: "open",
+    netPnl: 0,
+  } as unknown as BacktestTrade;
+  const result = reconcileFixture({
+    syntheticFixture: true,
+    candidates: [candidate()],
+    trades: [staleTrade],
+  });
+  assert.equal(result.reports[0]!.report.tradeCandidates.length, 1);
+  assert.equal(result.reports[0]!.report.trades.length, 1);
+  assert.deepEqual(result.reconciliation.reconciliationErrors, []);
+});
+
+function historicalAuditRecord(tradingDate: string): any {
+  const lOpen = Date.parse(`${tradingDate}T14:50:00.000Z`);
+  const pOpen = Date.parse(`${tradingDate}T14:55:00.000Z`);
+  const eOpen = Date.parse(`${tradingDate}T15:00:00.000Z`);
+  const lCandle = { openTime: lOpen, closeTime: lOpen + 300_000, open: 100, high: 100.5, low: 99.5, close: 100, volume: 10, isComplete: true };
+  const pCandle = { openTime: pOpen, closeTime: pOpen + 300_000, open: 100, high: 101, low: 99, close: 100.5, volume: 11, isComplete: true };
+  const eCandle = { openTime: eOpen, closeTime: eOpen + 300_000, open: 100.5, high: 101.25, low: 100, close: 101, volume: 12, isComplete: true };
+  return {
+    id: "historical-audit",
+    tradingDate,
+    contractSymbol: "MESU6",
+    contractMonth: "2026-09",
+    period: "in_sample",
+    evaluatedCandleOpenTime: new Date(eOpen).toISOString(),
+    setupType: "ORB_PULLBACK_CONTINUATION",
+    direction: "long",
+    decision: "SETUP QUALIFIED",
+    alertOnly: true,
+    rejectionReason: null,
+    rejectionCategory: "QUALIFIED",
+    rejectionSummary: null,
+    ruleEvidence: [],
+    orbState: "ENTRY_TRIGGERED",
+    breakoutEvidence: "Directional breakout completed.",
+    volumeEvidence: "",
+    pullbackEvidence: "Qualifying pullback recorded.",
+    criticalLevelEvidence: "ORB retest touched the causal level.",
+    trendEvidence: "bullish: confirmed",
+    patienceState: "ENTRY_TRIGGERED",
+    patienceCandle: pCandle,
+    triggerCandle: eCandle,
+    patienceCandleOpenTime: new Date(pOpen).toISOString(),
+    patienceCandleCloseTime: new Date(pOpen + 300_000).toISOString(),
+    triggerCandleOpenTime: new Date(eOpen).toISOString(),
+    triggerCandleCloseTime: new Date(eOpen + 300_000).toISOString(),
+    modeledFillObservationTime: new Date(eOpen + 300_000).toISOString(),
+    exitCandleOpenTime: null,
+    exitCandleCloseTime: null,
+    entryTriggerPrice: 101,
+    strategyStopPrice: 97,
+    catastropheStopPrice: 95,
+    targetPrice: 105,
+    eventLabels: [],
+    ambiguityLabels: [],
+    executionMode: "ohlcv_modeled",
+    fees: 0,
+    slippage: 0,
+    grossPnl: null,
+    netPnl: null,
+    exitReason: null,
+    confirmationBufferTicks: 8,
+    consolidationThresholds: {},
+    pullbackOccurrences: [{
+      type: "touch",
+      time: new Date(lOpen).toISOString(),
+      level: "ORB",
+      price: 100,
+      distancePoints: 0,
+      distanceTicks: 0,
+      tolerancePoints: 3,
+      toleranceTicks: 12,
+      qualifies: true,
+      candle: lCandle,
+      detail: "ORB retest touched the causal level.",
+    }],
+    patienceOccurrences: [{
+      occurrenceId: "historical-p1",
+      direction: "long",
+      entryBufferTicks: 8,
+      stopBufferTicks: 8,
+      eligibilityReason: "pullback",
+      eligibilityTime: lOpen,
+      previousComparisonTimestamp: lOpen,
+      candidateShapeResult: true,
+      expectedEntryCandleOpenTime: eOpen,
+      confirmationThreshold: 101,
+      actualConfirmationExcursion: 1.25,
+      previousCandle: lCandle,
+      patienceCandle: pCandle,
+      triggerCandle: eCandle,
+      nextObservedCandle: null,
+      outcomeStatus: "CONFIRMED",
+      qualificationStatus: "SIGNAL_CONFIRMED",
+      status: "ENTRY_TRIGGERED",
+      reasonCode: "Immediate next candle reached the confirmation buffer.",
+      evaluationCursor: eOpen + 300_000,
+    }],
+  };
+}
+
+test("Phase 3 valid historical reports rebuild lifecycle and candidate evidence", () => {
+  const replayDataset = dataset({
+    selectedDates: [dates[0]!],
+    inSampleDates: [dates[0]!],
+    outOfSampleDates: [],
+    candles: [
+      {
+        timestamp: Date.parse(`${dates[0]}T14:50:00.000Z`),
+        openTime: Date.parse(`${dates[0]}T14:50:00.000Z`),
+        closeTime: Date.parse(`${dates[0]}T14:55:00.000Z`),
+        open: 100,
+        high: 100.5,
+        low: 99.5,
+        close: 100,
+        volume: 10,
+        bid: 99.75,
+        ask: 100.25,
+        bidSize: 1,
+        askSize: 1,
+        contractSymbol: "MESU6",
+        isComplete: true,
+      },
+      {
+        timestamp: Date.parse(`${dates[0]}T14:55:00.000Z`),
+        openTime: Date.parse(`${dates[0]}T14:55:00.000Z`),
+        closeTime: Date.parse(`${dates[0]}T15:00:00.000Z`),
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100.5,
+        volume: 11,
+        bid: 99.75,
+        ask: 100.25,
+        bidSize: 1,
+        askSize: 1,
+        contractSymbol: "MESU6",
+        isComplete: true,
+      },
+      {
+        timestamp: Date.parse(`${dates[0]}T15:00:00.000Z`),
+        openTime: Date.parse(`${dates[0]}T15:00:00.000Z`),
+        closeTime: Date.parse(`${dates[0]}T15:05:00.000Z`),
+        open: 100.5,
+        high: 101.25,
+        low: 100,
+        close: 101,
+        volume: 12,
+        bid: 100.25,
+        ask: 100.75,
+        bidSize: 1,
+        askSize: 1,
+        contractSymbol: "MESU6",
+        isComplete: true,
+      },
+    ],
+  });
+  const manifest = buildPhase3PilotManifest({ dataset: dataset(), request, createdAt: "2026-08-30T12:00:00.000Z" });
+  const result = reconcilePhase3SignalFunnel({
+    manifest,
+    reports: [{
+      tradingDate: dates[0]!,
+      contractSymbol: "MESU6",
+      period: "in_sample",
+      report: {
+        ...report(replayDataset, [], { syntheticFixture: false, audit: [historicalAuditRecord(dates[0]!)] }),
+        occurrences: [],
+      },
+    }],
+    partitions: [{
+      tradingDate: dates[0]!,
+      contractSymbol: "MESU6",
+      period: "in_sample",
+      dataset: replayDataset,
+    }],
+  });
+  const corrected = result.reports[0]!.report;
+  assert.equal(result.reconciliation.reconciliationErrors.length, 0);
+  assert.equal(corrected.tradeCandidates.length, 1);
+  assert.equal(corrected.tradeCandidates[0]?.pOpenTimestamp, `${dates[0]}T14:55:00.000Z`);
+  assert.equal(corrected.tradeCandidates[0]?.eOpenTimestamp, `${dates[0]}T15:00:00.000Z`);
+  assert.equal(corrected.trades.length, 1);
+  assert.equal(corrected.trades[0]?.candidateId, corrected.tradeCandidates[0]?.candidateId);
 });
 
 test("Phase 3 fails closed when a confirmed signal has neither candidate nor rejection", () => {

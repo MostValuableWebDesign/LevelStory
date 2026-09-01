@@ -296,6 +296,12 @@ export type Phase3OrphanReconciliation = OrphanModeledTrade & {
 
 export type Phase3SignalReconciliationReport = {
   version: "phase3-signal-reconciliation-v1";
+  reconciliationErrors: Array<{
+    code: "PHASE3_PARTITION_MISSING" | "PHASE3_AUDIT_STREAM_MISSING" | "PHASE3_LIFECYCLE_RECONCILIATION_UNAVAILABLE";
+    tradingDate: string;
+    contractSymbol: string;
+    detail: string;
+  }>;
   confirmedSignalCount: number;
   dispositionCounts: Record<Phase3SignalDisposition, number>;
   dispositionReconciles: boolean;
@@ -369,7 +375,13 @@ export type Phase3PilotRunOptions = {
 export type Phase3Checkpoint = {
   pilotId: string;
   manifest: Phase3PilotManifest;
-  reports: Array<{ tradingDate: string; contractSymbol: string; period: "in_sample" | "out_of_sample"; report: BacktestReport }>;
+  reports: Array<{
+    tradingDate: string;
+    contractSymbol: string;
+    period: "in_sample" | "out_of_sample";
+    report: BacktestReport;
+    syntheticFixture?: true;
+  }>;
   updatedAt: string;
 };
 
@@ -542,6 +554,7 @@ function timeBucket(timestamp: string): keyof Phase3PilotMetrics["entryTimeBucke
 type Phase3PilotReportItem = Phase3Checkpoint["reports"][number];
 type Phase3ReportWithOrphanHistory = BacktestReport & {
   phase3OrphanHistory?: readonly OrphanModeledTrade[];
+  syntheticFixture?: true;
 };
 
 const RECONCILIATION_BUCKETS = [
@@ -1012,11 +1025,11 @@ function reconcileReportItem(
   rejected: RejectedCandidateSignal[];
   trades: BacktestTrade[];
   orphans: OrphanModeledTrade[];
+  reconciliationErrors: Phase3SignalReconciliationReport["reconciliationErrors"];
 } {
-  // Synthetic unit fixtures intentionally contain candidates but no raw audit
-  // stream. Preserve those fixtures; historical checkpoints have the raw audit
-  // stream needed for a lossless rebuild.
-  if (!partition || item.report.audit.length === 0) {
+  const isSyntheticFixture = item.syntheticFixture === true
+    || (item.report as Phase3ReportWithOrphanHistory).syntheticFixture === true;
+  if (isSyntheticFixture) {
     return {
       item,
       occurrences: item.report.occurrences,
@@ -1024,6 +1037,93 @@ function reconcileReportItem(
       rejected: item.report.rejectedCandidateSignals ?? [],
       trades: item.report.trades,
       orphans: item.report.orphanModeledTrades ?? [],
+      reconciliationErrors: [],
+    };
+  }
+  const missingPartition = !partition;
+  const missingAudit = item.report.audit.length === 0;
+  if (missingPartition || missingAudit) {
+    const reconciliationErrors: Phase3SignalReconciliationReport["reconciliationErrors"] = [];
+    if (missingPartition) {
+      reconciliationErrors.push({
+        code: "PHASE3_PARTITION_MISSING",
+        tradingDate: item.tradingDate,
+        contractSymbol: item.contractSymbol,
+        detail: `No matching historical Phase 3 partition exists for ${item.tradingDate}|${item.contractSymbol}.`,
+      });
+    }
+    if (missingAudit) {
+      reconciliationErrors.push({
+        code: "PHASE3_AUDIT_STREAM_MISSING",
+        tradingDate: item.tradingDate,
+        contractSymbol: item.contractSymbol,
+        detail: `The historical Phase 3 report for ${item.tradingDate}|${item.contractSymbol} has no raw audit records.`,
+      });
+    }
+    reconciliationErrors.push({
+      code: "PHASE3_LIFECYCLE_RECONCILIATION_UNAVAILABLE",
+      tradingDate: item.tradingDate,
+      contractSymbol: item.contractSymbol,
+      detail: "Canonical lifecycle reduction is unavailable, so prior candidates and trades cannot remain authoritative.",
+    });
+    const rejected = item.report.occurrences
+      .filter((occurrence) =>
+        occurrence.kind === "patience"
+        && occurrence.canonicalOccurrence === true
+        && occurrence.status === "SIGNAL_CONFIRMED")
+      .map((occurrence) => ({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: reconciliationErrors.map((error) => error.code),
+        details: reconciliationErrors.map((error) => error.detail),
+      }));
+    const empty = calculateBacktestMetrics([]);
+    const correctedReport: Phase3ReportWithOrphanHistory = {
+      ...item.report,
+      metrics: empty,
+      inSample: empty,
+      outOfSample: empty,
+      executionSummary: {
+        eligibleCandidateCount: 0,
+        enteredTradeCount: 0,
+        finalizedTradeCount: 0,
+        openTradeCount: 0,
+        ambiguousEntryCount: 0,
+        unresolvedAmbiguousTradeCount: 0,
+        conservativelyResolvedTradeCount: 0,
+        unscoredTradeCount: 0,
+      },
+      trades: [],
+      tradeCandidates: [],
+      rejectedCandidateSignals: rejected,
+      orphanModeledTrades: [],
+      occurrences: item.report.occurrences,
+      diagnostics: item.report.diagnostics
+        ? {
+          ...item.report.diagnostics,
+          tradeCandidates: 0,
+          modeledTrades: 0,
+          confirmedSignalsWithoutCandidates: rejected.length,
+          candidatesWithoutModeledTrades: 0,
+          candidatesWithoutConfirmedSignals: 0,
+          modeledTradesWithoutCandidates: 0,
+          candidateRejectionReasons: Object.fromEntries(
+            rejected.map((rejection) => [rejection.signalOccurrenceId, rejection.reasonCodes.join(",")]),
+          ),
+          candidateInvariantViolations: [
+            ...item.report.diagnostics.candidateInvariantViolations,
+            ...reconciliationErrors.map((error) => error.code),
+          ],
+        }
+        : undefined,
+    };
+    return {
+      item: { ...item, report: correctedReport },
+      occurrences: correctedReport.occurrences,
+      candidates: [],
+      rejected,
+      trades: [],
+      orphans: [],
+      reconciliationErrors,
     };
   }
   const priorOccurrence = item.report.occurrences.find((occurrence) =>
@@ -1089,6 +1189,7 @@ function reconcileReportItem(
     rejected,
     trades,
     orphans: projection.orphans,
+    reconciliationErrors: [],
   };
 }
 
@@ -1282,6 +1383,14 @@ export function reconcilePhase3SignalFunnel(input: {
     trades: allTrades,
     signals,
   });
+  const reconciliationErrors = normalized
+    .flatMap((item) => item.reconciliationErrors)
+    .sort((left, right) =>
+      left.tradingDate.localeCompare(right.tradingDate)
+      || left.contractSymbol.localeCompare(right.contractSymbol)
+      || left.code.localeCompare(right.code));
+  const evidenceErrors = reconciliationErrors.map((error) =>
+    `${error.code}:${error.tradingDate}|${error.contractSymbol}`);
   const sourceFingerprint = sourceFingerprintAudit(
     input.manifest.source.contentFingerprint,
     input.sourceFingerprintFiles,
@@ -1290,10 +1399,12 @@ export function reconcilePhase3SignalFunnel(input: {
     reports: normalized.map((item) => item.item),
     reconciliation: {
       version: "phase3-signal-reconciliation-v1",
+      reconciliationErrors,
       confirmedSignalCount: signals.length,
       dispositionCounts,
-      invariantViolations,
-      dispositionReconciles: invariantViolations.length === 0
+      invariantViolations: [...new Set([...evidenceErrors, ...invariantViolations])],
+      dispositionReconciles: reconciliationErrors.length === 0
+        && invariantViolations.length === 0
         && signals.length === confirmed.length
         && signals.length === Object.values(dispositionCounts).reduce((sum, count) => sum + count, 0)
         && new Set(signals.map((signal) => signal.signalOccurrenceId)).size === signals.length,
