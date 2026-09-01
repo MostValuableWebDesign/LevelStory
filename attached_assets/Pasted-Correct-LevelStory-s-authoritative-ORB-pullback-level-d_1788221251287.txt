@@ -1,0 +1,215 @@
+Correct LevelStory’s authoritative ORB pullback-level detection and key-level profit exit behavior.
+
+This is a general strategy-engine correction. Do not hardcode the October 9, 2025 example, its prices, timestamps, contract, or outcome.
+
+Do not change:
+- Five-minute candles
+- Finalized ORB/NTZ construction
+- Immediate P→E confirmation
+- Eight-tick entry confirmation buffer
+- 9:30 a.m.–1:00 p.m. ET entry window
+- Outside-NTZ entry requirement
+- Patience-candle stop rule
+- Historical indexing
+- Shadow Mode safeguards
+- Broker, live-order, or paper-order behavior
+
+Problem demonstrated by the supplied example:
+
+1. Price broke below the finalized ORB/NTZ.
+2. Price pulled back toward multiple causal key levels.
+3. The pullback was within 12 MES ticks of levels including the 200 EMA, VWAP, premarket low, ORB/NTZ low, and major support/resistance.
+4. A bearish patience candle formed.
+5. Its immediate next candle confirmed the short entry.
+6. After entry, price moved favorably and came within 12 ticks of the next major support/resistance level around 6773.
+7. The system failed to preserve the pullback confluences and failed to take the key-level profit, eventually turning a winning trade into a loss.
+
+MES math:
+
+- Tick size: 0.25
+- 12 ticks: 3.00 points
+- Eight entry-confirmation ticks remain 2.00 points
+- Do not confuse the 12-tick pullback/target proximity with the eight-tick entry buffer
+
+PART 1 — AUTHORITATIVE 12-TICK PULLBACK DETECTION
+
+For every possible pullback candle L after a completed directional ORB/NTZ breakout:
+
+1. Evaluate its complete high-low wick range.
+2. Resolve every eligible level using only information available at L.
+3. Dynamic levels must use their value at L:
+   - VWAP at L
+   - 200 EMA at L
+4. Static levels must come from the causal session snapshot:
+   - ORB/NTZ high and low
+   - Premarket high and low
+   - Previous-day high and low
+   - Two-days-ago high and low
+   - Major support/resistance zones
+   - Dynamite zones
+5. Never use the final-session VWAP, final-session EMA, or a later audit value to validate an earlier pullback.
+6. A pullback qualifies when the distance between the level and the L candle’s full high-low range is at most 12 ticks.
+
+For a point level:
+
+```text
+distance =
+  0, when level is between L.low and L.high
+  L.low - level, when level is below L.low
+  level - L.high, when level is above L.high
+
+qualifies when distance <= 3.00 MES points
+For a level zone [zoneLow, zoneHigh]:
+distance =
+  0, when the L candle range overlaps the zone
+  L.low - zoneHigh, when the zone is below the candle
+  zoneLow - L.high, when the zone is above the candle
+
+qualifies when distance <= 3.00 MES points
+Important:
+The pullback may contain one candle or multiple candles.
+The patience candle may itself be the qualifying pullback candle.
+At least one eligible causal level is required.
+Do not require every nearby level to qualify.
+Preserve every qualifying level as supporting confluence.
+Deduplicate aliases such as ORB low and NTZ low when they represent the same physical price.
+Multiple levels near the same price should increase the setup grade and may form a dynamite zone, but they must produce only one physical trade.
+Do not discard a valid earlier pullback because a later audit cursor observes it again.
+Do not let a later pullback overwrite the L/P/E sequence that actually produced the confirmed entry.
+Persist for every accepted pullback:
+L candle timestamp and OHLC
+level ID and type
+point value or zone bounds
+dynamic level value at L
+distance in points
+distance in ticks
+interaction type:
+  RANGE_OVERLAP
+  WITHIN_12_TICKS_ABOVE
+  WITHIN_12_TICKS_BELOW
+direction
+source audit ID
+source fingerprint
+formula/configuration hash
+The resulting ORB sequence must remain:
+completed ORB breakout
+→ one-or-more-candle pullback within 12 ticks of at least one key level
+→ valid patience candle P
+→ immediate next candle E confirms by eight ticks
+→ one authoritative Shadow Mode entry
+The entry candle must open before 1:00 p.m. ET and the entry price must be outside the finalized NTZ.
+PART 2 — FREEZE THE PROFIT-TARGET LEVEL SET AT ENTRY
+At the completed E candle, freeze an immutable target-level snapshot using only levels visible at that time.
+The snapshot must include:
+Point levels
+Major support/resistance zones
+Dynamite zones
+Previous-day and two-days-ago levels
+Premarket levels
+ORB/NTZ levels
+Any other governed structural level eligible for profit-taking
+Do not introduce a target later using future-derived information.
+Do not require the target level to be one of the pullback confluences. The pullback level explains entry; the next directional key level explains profit-taking.
+PART 3 — SELECT THE NEXT DIRECTIONAL PROFIT LEVEL
+For a long trade:
+Consider eligible resistance levels or zones above entry.
+Ignore any whose nearest boundary is within 12 ticks of entry.
+Select the nearest remaining level in the profitable direction.
+For a short trade:
+Consider eligible support levels or zones below entry.
+Ignore any whose nearest boundary is within 12 ticks of entry.
+Select the nearest remaining level in the profitable direction.
+When levels overlap or are within the governed dynamite tolerance, treat the combined area as one target zone. Do not generate multiple targets for the same physical area.
+Persist:
+target level ID
+target type
+point value or zone bounds
+distance from entry
+skipped-near-entry levels and reasons
+selected directional target
+target execution threshold
+snapshot observation timestamp
+PART 4 — EXIT WITHIN 12 TICKS OF THE TARGET
+The trader does not require price to touch the exact level.
+For a short approaching support from above:
+point target threshold = support price + 3.00
+zone target threshold = support zone high + 3.00
+exit when a completed post-entry candle low <= threshold
+For a long approaching resistance from below:
+point target threshold = resistance price - 3.00
+zone target threshold = resistance zone low - 3.00
+exit when a completed post-entry candle high >= threshold
+Model the profit exit at the deterministic threshold price, not at an invented better price.
+If price reaches or crosses the actual level, the buffered threshold was necessarily reached first. Use the buffered threshold unless existing lower-resolution OHLC ambiguity requires the established conservative ambiguity policy.
+Exit replay must:
+Begin after entry has been established
+Never use a candle before the entry observation
+Preserve existing stop-versus-target ambiguity handling
+Produce one finalized exit
+Prevent a later stop from replacing an earlier target exit
+Calculate realized MES P/L, fees, and slippage from the authoritative entry and exit
+Draw entry, target, and final exit lines on Visual Review
+Show the selected target level, 12-tick buffer, exit reason, and realized P/L
+PART 5 — DIAGNOSTICS
+When a pullback or target is rejected, expose exact diagnostics instead of a generic failure:
+Pullback diagnostics:
+candidate L timestamp
+each evaluated level
+level value at L
+candle high-low range
+distance in ticks
+accepted/rejected
+rejection reason
+Target diagnostics:
+all directional levels considered
+distance from entry
+levels skipped because they were within 12 ticks of entry
+selected level or zone
+buffered execution threshold
+first post-entry candle reaching the threshold
+final exit disposition
+The October 9 example should become explainable from these diagnostics, but do not special-case it.
+PART 6 — DETERMINISTIC TESTS
+Add focused tests for:
+Pullback candle exactly touching a point level.
+Pullback one tick outside a level.
+Pullback exactly 12 ticks from a level.
+Pullback 13 ticks from a level is rejected.
+Pullback overlapping a major support/resistance zone.
+One-candle pullback where L is also P.
+Multi-candle pullback followed by P.
+Multiple qualifying levels merge into one trade with several confluences.
+Dynamic VWAP and EMA values are read at L, not from session end.
+A valid L/P/E sequence is not overwritten by later audits.
+Short target exits 12 ticks above a support point.
+Short target exits 12 ticks above the near boundary of a support zone.
+Long target exits 12 ticks below a resistance point.
+Long target exits 12 ticks below the near boundary of a resistance zone.
+A target within 12 ticks of entry is skipped and the next directional level is selected.
+A reached target exit cannot later become a stop loss.
+Target/stop same-candle ambiguity uses the existing conservative policy.
+Target evidence derived after E is rejected.
+Entry outside the 9:30 a.m.–1:00 p.m. ET window is rejected.
+Entry inside the finalized NTZ is rejected.
+Distinct trades retain their own frozen pullback, stop, and target context.
+VERIFICATION
+To conserve compute:
+Run only focused pullback, Phase 5, Phase 6, Phase 9, candidate-management, OHLCV-execution, and visual-review tests.
+Run API and frontend typechecks.
+Run git diff --check.
+Do not rebuild the historical index.
+Do not run a broad qualification batch.
+Use one cached or narrowly bounded replay only if already available.
+Remove temporary prompt attachments before committing.
+REPORT
+Report:
+Files changed.
+Exact root causes.
+Exact 12-tick pullback-distance calculation.
+How dynamic levels are frozen at L.
+Exact target-selection and buffered-exit rules.
+Focused test totals.
+Narrow replay evidence if available.
+Any remaining honest limitation.
+
+One important note: this should use **12 ticks = 3.00 MES points** for pullback proximity and profit-target proximity. The entry confirmation remains **eight ticks = 2.00 points**.
