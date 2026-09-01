@@ -20,7 +20,6 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
-import { targetPriceForDollars } from "./strategy/phase7.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import {
@@ -1873,6 +1872,19 @@ function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[
     });
   }
   return filterEligibleKeyLevelInputs(levels);
+}
+
+function targetPlanForSnapshot(
+  snapshot: MarketSnapshot,
+  direction: Direction,
+  entryPrice: number,
+): KeyLevelTargetPlan {
+  return buildKeyLevelTargetPlan({
+    direction,
+    entryPrice,
+    levels: targetLevelsForSnapshot(snapshot),
+    placementMode: activeShadowStrategySnapshot().config.profitTargetPlacement,
+  });
 }
 
 function targetLevelSnapshotForOccurrence(
@@ -4018,8 +4030,8 @@ export function runCausalBacktest(
         // Recalculate from the frozen P extreme rather than trusting a stale
         // legacy/risk-plan stop. A raw P extreme is never a valid strategy stop.
         const strategyStop = authoritativeStop;
-       const target = snapshot.riskPlan.target
-         ?? targetPriceForDollars(selected.direction, entry, request.targetDollars ?? 75, specification);
+        const targetPlan = targetPlanForSnapshot(snapshot, selected.direction, entry);
+        const target = targetPlan.targetPrice;
        const contracts = Math.max(1, snapshot.riskPlan.contracts);
        const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;
        if (executedEntryKeys.has(entryKey)) continue;
@@ -4156,6 +4168,8 @@ export function runCausalBacktest(
       executedEntryKeys.add(entryKey);
       if (selectedAudit) {
         setAuditRejection(selectedAudit, null);
+           selectedAudit.targetPrice = target;
+           selectedAudit.targetPlan = targetPlan;
          selectedAudit.eventLabels = modeled.eventLabels;
          selectedAudit.ambiguityLabels = modeled.ambiguityLabels;
         selectedAudit.modeledFillObservationTime = new Date(trigger.closeTime).toISOString();
