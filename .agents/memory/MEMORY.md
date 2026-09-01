@@ -44,3 +44,4 @@
 - [Patience stop authority](patience-stop-authority.md) — derive every patience strategy stop from the frozen P extreme using the governed MES tick buffer; never trust stale legacy stops.
 - [Key-level target plans](key-level-target-plans.md) — freeze causal directional levels and near-side placement independently for each candidate; retain bypassed levels as evidence.
 - [Completed-E target snapshots](completed-e-target-snapshots.md) — select only the earliest valid confirmed snapshot at the canonical completed E close; null targets still allow independent exits.
+- [Causal pullback lifecycle](causal-pullback-lifecycle.md) — duration limits are diagnostics; lifecycle boundaries, not elapsed time, end valid pullback eligibility.

@@ -146,8 +146,30 @@ test("pullback uses the shared 12-tick full-range tolerance and records interact
     assert.equal(eventTypes.has(type), true, `missing ${type}`);
   }
   assert.equal(pullback.evaluatedCandles, 6);
-  assert.equal(pullback.status, "expired");
+  assert.equal(pullback.status, "observed");
   assert.equal(pullback.maxDurationMinutes, 30);
+});
+
+test("pullback remains causally active beyond the diagnostic six-candle and thirty-minute values", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 101, 100);
+  const laterCandles = Array.from({ length: 9 }, (_, offset) => {
+    const index = offset + 1;
+    const close = index === 8 ? 100 : 101 - index * 0.05;
+    return candle(index, close, close + 0.1, 99.9, close, 100);
+  });
+  const pullback = analyzePullback(
+    [breakoutCandle, ...laterCandles],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late support", price: 100 }],
+    specification,
+    strategyConfig({ phase4PullbackMaxCandles: 6, phase4PullbackMaxMinutes: 30 }),
+  );
+  assert.equal(pullback.evaluatedCandles, 9);
+  assert.equal(pullback.status, "observed");
+  assert.ok(pullback.events.some((event) => event.candle?.openTime === laterCandles[7]?.openTime));
+  assert.equal(pullback.maxCandles, 6);
+  assert.equal(pullback.maxDurationMinutes, 30);
+  assert.ok(pullback.elapsedMinutes > 30);
 });
 
 test("complete pullback detector qualifies full-range distances at 0/4/8/12 ticks and rejects beyond twelve", () => {

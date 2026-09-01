@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_FUTURES_SESSION_CALENDAR,
   tradingDateForTimestamp,
+  wallClockMinutesForTimestamp,
   type FuturesSessionCalendar,
 } from "../futures/session-calendar.js";
 
@@ -503,9 +504,16 @@ export function analyzePullback(
   const breakoutIndex = completed.findIndex((candle) => candle.openTime === breakout.candleOpenTime);
   if (breakoutIndex < 0) return { status: "pending", events: [], structure: emptyPullbackStructure(), evaluatedCandles: 0, maxCandles: config.phase4PullbackMaxCandles, maxDurationMinutes: config.phase4PullbackMaxMinutes, elapsedMinutes: 0, proximityTolerance: null, atr14: null, qualifyingLevelCount: levels.length, detail: "Breakout candle is not visible in the completed replay." };
   const breakoutCandle = completed[breakoutIndex];
+  const calendar = options.calendar ?? DEFAULT_FUTURES_SESSION_CALENDAR;
+  const breakoutTradingDate = tradingDateForTimestamp(breakoutCandle.openTime, calendar);
+  // Duration limits remain visible diagnostics, but cannot expire a valid
+  // pullback. Causal lifecycle boundaries are the session/date/contract
+  // boundary and the exclusive primary entry cutoff.
   const postBreakout = completed.slice(breakoutIndex + 1).filter((candle) =>
-    (candle.openTime - breakoutCandle.closeTime) <= config.phase4PullbackMaxMinutes * 60_000,
-  ).slice(0, config.phase4PullbackMaxCandles);
+    tradingDateForTimestamp(candle.openTime, calendar) === breakoutTradingDate
+    && sameContract(candle, breakoutCandle)
+    && wallClockMinutesForTimestamp(candle.openTime, config.sessionTimeZone) < config.primaryEntryEndMinutes,
+  );
   const structure = detectPullbackStructure(postBreakout, breakoutCandle, breakout.direction);
   const atr14 = averageTrueRange(completed.slice(0, breakoutIndex + 1), config.phase4AtrPeriod);
   // This is the executable qualifying-level tolerance. ATR remains exposed
@@ -516,8 +524,6 @@ export function analyzePullback(
   const validLevels = levels.filter((level) =>
     Number.isFinite(level.price) || isDynamicPullbackLevel(level),
   );
-  const calendar = options.calendar ?? DEFAULT_FUTURES_SESSION_CALENDAR;
-
   for (const candle of postBreakout) {
     for (const level of validLevels) {
       const resolved = resolvePullbackLevel(level, candle, candles, options.causalCandles, config, calendar);
@@ -558,7 +564,7 @@ export function analyzePullback(
   const elapsedMinutes = postBreakout.length
     ? Math.round((postBreakout.at(-1)!.closeTime - breakoutCandle.closeTime) / 60_000)
     : 0;
-  const status = postBreakout.length >= config.phase4PullbackMaxCandles || elapsedMinutes >= config.phase4PullbackMaxMinutes ? "expired" : "observed";
+  const status = postBreakout.length ? "observed" : "pending";
   return {
     status,
     events,
