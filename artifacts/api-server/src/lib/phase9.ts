@@ -1548,7 +1548,6 @@ export function historicalReplayDiagnostics(
     );
   }
   const terminalPullbackStates = new Set<PullbackArmState>([
-    "CONSUMED",
     "STRUCTURALLY_INVALIDATED",
     "SUPERSEDED_BY_NEW_BREAKOUT",
     "OPPOSITE_BREAKOUT_INVALIDATED",
@@ -3385,19 +3384,6 @@ function candidateLifecycleRejection(
     return {
       reasonCodes: ["REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING"],
       details: [`Confirmed signal ${occurrence.occurrenceId} references causal arm ${armId}, but no canonical lifecycle record exists for that exact arm.`],
-    };
-  }
-  if (record.state === "CONSUMED") {
-    const attemptedIdentity = pullbackSignalIdentityForOccurrence(occurrence);
-    if (samePullbackArmSignalIdentity(record.consumingSignalIdentity, attemptedIdentity)) return null;
-    return {
-      reasonCodes: ["REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL"],
-      details: [
-        `Causal arm ${armId} is already CONSUMED, but confirmed signal ${occurrence.occurrenceId} is not the exact physical P→E signal that consumed the arm.`,
-        `Stored consuming signal identity: ${describePullbackSignalIdentity(record.consumingSignalIdentity)}.`,
-        `Attempted signal identity: ${describePullbackSignalIdentity(attemptedIdentity)}.`,
-        ...(record.consumingSignalOccurrenceId ? [`Stored consuming occurrence: ${record.consumingSignalOccurrenceId}.`] : []),
-      ],
     };
   }
   const conflicts = lifecycle.conflicts.filter((conflict) => conflict.armId === armId);

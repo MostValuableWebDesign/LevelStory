@@ -904,21 +904,17 @@ function buildPatienceOccurrences(
       : analysis.state === "OPPOSITE_SIDE_INVALIDATION" || analysis.state === "AMBIGUOUS_EVENT_ORDER"
         ? "STRUCTURALLY_INVALIDATED"
         : "IMMEDIATE_CONFIRMATION_FAILED";
-    const stateAfterCandidate: PatienceEligibilityArmState = outcomeStatus === "CONFIRMED"
-      ? "consumed"
-      : analysis.state === "OPPOSITE_SIDE_INVALIDATION"
-        ? "invalidated"
-        : "active";
+    // A pullback is opened once by Phase 4. Every later valid patience shape
+    // belongs to that same pullback arm; neither a confirmed nor an invalid
+    // P→E attempt consumes or invalidates the arm. True terminal boundaries
+    // remain owned by the causal pullback lifecycle.
+    const stateAfterCandidate: PatienceEligibilityArmState = "active";
     const stateReason = outcomeStatus === "CONFIRMED"
-      ? "Immediate-next E reached the full confirmation buffer; the arm was consumed by signal confirmation."
-      : stateAfterCandidate === "invalidated"
-        ? analysis.detail
-        : "Arm remains active for a later patience candidate until session or structural invalidation.";
-    const armTransitionTime = stateAfterCandidate === "consumed"
-      ? trigger?.closeTime ?? candidate.candle.closeTime
-      : stateAfterCandidate === "invalidated"
-        ? analysis.stateTime ?? candidate.candle.closeTime
-        : undefined;
+      ? "Immediate-next E reached the full confirmation buffer; the one-pullback arm remains active for later patience candidates."
+      : analysis.state === "OPPOSITE_SIDE_INVALIDATION"
+        ? "This P→E attempt broke the opposite patience extreme; the one-pullback arm remains active for a later patience candidate."
+        : "The one-pullback arm remains active for a later patience candidate until session or structural invalidation.";
+    const armTransitionTime = undefined;
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
       occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,

@@ -167,7 +167,6 @@ export type PullbackArmLifecycleReduction = {
 };
 
 export const TERMINAL_PULLBACK_ARM_STATES: ReadonlySet<PullbackArmState> = new Set([
-  "CONSUMED",
   "STRUCTURALLY_INVALIDATED",
   "SUPERSEDED_BY_NEW_BREAKOUT",
   "OPPOSITE_BREAKOUT_INVALIDATED",
@@ -183,7 +182,9 @@ const PULLBACK_ARM_STATE_RANK: Readonly<Record<PullbackArmState, number>> = {
   LEVEL_INTERACTION_FOUND: 2,
   PATIENCE_ARMED: 3,
   SIGNAL_CONFIRMED: 4,
-  CONSUMED: 5,
+  // CONSUMED is retained as a legacy observation value. A confirmed
+  // patience sequence does not end the one-pullback arm.
+  CONSUMED: 4,
   STRUCTURALLY_INVALIDATED: 5,
   SUPERSEDED_BY_NEW_BREAKOUT: 5,
   OPPOSITE_BREAKOUT_INVALIDATED: 5,
@@ -270,22 +271,6 @@ export function reducePullbackArmLifecycles(
             source: item.source,
             reason: "A terminal arm state is immutable; the later observation was not applied.",
           });
-        } else if (
-          state === "CONSUMED"
-          && transition.consumingSignalIdentity
-          && consumingSignalIdentity
-          && !samePullbackArmSignalIdentity(transition.consumingSignalIdentity, consumingSignalIdentity)
-        ) {
-          conflicts.push({
-            armId,
-            canonicalState: state,
-            observedState: transition.to,
-            transition,
-            canonicalConsumingSignalIdentity: consumingSignalIdentity,
-            observedConsumingSignalIdentity: transition.consumingSignalIdentity,
-            source: item.source,
-            reason: "A consumed arm cannot be reassigned to a different physical P→E signal.",
-          });
         } else if (transition.reason !== terminalReason) {
           conflicts.push({
             armId,
@@ -299,7 +284,7 @@ export function reducePullbackArmLifecycles(
         continue;
       }
 
-      const validPatienceRearm = state === "PATIENCE_ARMED"
+      const validPatienceRearm = (state === "PATIENCE_ARMED" || state === "SIGNAL_CONFIRMED")
         && transition.from === "LEVEL_INTERACTION_FOUND"
         && transition.to === "PATIENCE_ARMED";
       if (state !== null && transition.to === state && !validPatienceRearm) {
@@ -315,12 +300,21 @@ export function reducePullbackArmLifecycles(
       }
       if (validPatienceRearm) {
         accepted.push(transition);
+        // A single causal pullback may produce multiple patience candidates.
+        // Re-arm the confirmation portion without opening a second pullback.
+        if (state === "SIGNAL_CONFIRMED") state = "PATIENCE_ARMED";
         continue;
       }
 
+      const legacyConsumedConfirmation = transition.to === "CONSUMED" && state === "SIGNAL_CONFIRMED";
       const observedRank = PULLBACK_ARM_STATE_RANK[transition.to];
       const canonicalRank = state === null ? -1 : PULLBACK_ARM_STATE_RANK[state];
-      if (state !== null && !isTerminalPullbackArmState(transition.to) && observedRank <= canonicalRank) {
+      if (
+        state !== null
+        && !legacyConsumedConfirmation
+        && !isTerminalPullbackArmState(transition.to)
+        && observedRank <= canonicalRank
+      ) {
         conflicts.push({
           armId,
           canonicalState: state,
@@ -333,7 +327,10 @@ export function reducePullbackArmLifecycles(
       }
 
       accepted.push(transition);
-      state = transition.to;
+      // Older persisted replays emitted CONSUMED after confirmation. Keep
+      // that transition as provenance, but normalize its lifecycle state to
+      // SIGNAL_CONFIRMED so it cannot suppress later patience candidates.
+      state = transition.to === "CONSUMED" ? "SIGNAL_CONFIRMED" : transition.to;
       if (isTerminalPullbackArmState(state)) terminalReason = transition.reason;
       if (transition.to === "CONSUMED" && !consumingSignalIdentity) {
         consumingSignalIdentity = transition.consumingSignalIdentity;

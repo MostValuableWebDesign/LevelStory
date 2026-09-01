@@ -245,23 +245,24 @@ test("a later confirmed P→E sequence remains executable after an earlier ambig
   assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["INVALIDATED", "CONFIRMED"]);
 });
 
-test("a consumed eligibility arm cannot produce a second successful P→E sequence", () => {
+test("one pullback arm allows later successful P→E sequences", () => {
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11, 7, 10.8),
      candle(2, 10.8, 13, 10.2, 12.8),
-    candle(3, 12, 12.2, 10, 11.5),
-    candle(4, 11.5, 11.5, 9, 11),
-    candle(5, 11, 12.5, 10, 12.4),
+    candle(3, 12.8, 14, 11, 13.5),
+    candle(4, 13.5, 13, 10, 12),
+    candle(5, 12, 15, 10.1, 14.8),
   ];
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.deepEqual(
     result.occurrences?.filter((occurrence) => occurrence.status === "ENTRY_TRIGGERED").map((occurrence) => occurrence.patienceCandle.openTime),
-    [candles[1].openTime],
+    [candles[1].openTime, candles[4].openTime],
   );
   assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[1].openTime)?.triggerCandle?.openTime, candles[2].openTime);
-  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[4].openTime)?.eligibilityArmState, "consumed");
+  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[1].openTime)?.eligibilityArmState, "active");
+  assert.equal(result.occurrences?.find((occurrence) => occurrence.patienceCandle.openTime === candles[4].openTime)?.eligibilityArmState, "active");
 });
 
 test("a newer causal eligibility event explicitly supersedes an older active arm", () => {

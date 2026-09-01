@@ -306,7 +306,7 @@ test("arm lifecycle reduction is monotonic, terminal, and idempotent across repl
   assert.equal(reduced.records[0]?.terminal, true);
 });
 
-test("an immediate-confirmation failure can rearm the same active pullback arm", () => {
+test("one pullback arm can rearm after confirmation without opening a second pullback", () => {
   const reduced = reducePullbackArmLifecycles([{
     armId: "rearmable-arm",
     transitions: [
@@ -314,12 +314,31 @@ test("an immediate-confirmation failure can rearm the same active pullback arm",
       { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
       { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level" },
       { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "P1" },
-      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 4, reason: "P2 rearm" },
-      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 5, reason: "E2" },
-      { from: "SIGNAL_CONFIRMED", to: "CONSUMED", time: 5, reason: "consumed" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 4, reason: "E1" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 5, reason: "P2 rearm" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 6, reason: "E2" },
     ],
   }]);
-  assert.equal(reduced.records[0]?.state, "CONSUMED");
+  assert.equal(reduced.records[0]?.state, "SIGNAL_CONFIRMED");
+  assert.equal(reduced.conflicts.length, 0);
+});
+
+test("legacy CONSUMED confirmation does not make a pullback arm terminal", () => {
+  const reduced = reducePullbackArmLifecycles([{
+    armId: "legacy-consumed-arm",
+    transitions: [
+      { from: null, to: "ARMED_AFTER_BREAKOUT", time: 0, reason: "breakout" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
+      { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "P1" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 4, reason: "E1" },
+      { from: "SIGNAL_CONFIRMED", to: "CONSUMED", time: 4, reason: "legacy consumed" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 5, reason: "P2 rearm" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 6, reason: "E2" },
+    ],
+  }]);
+  assert.equal(reduced.records[0]?.state, "SIGNAL_CONFIRMED");
+  assert.equal(reduced.records[0]?.terminal, false);
   assert.equal(reduced.conflicts.length, 0);
 });
 

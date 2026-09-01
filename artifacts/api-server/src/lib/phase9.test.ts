@@ -896,7 +896,7 @@ test("a terminal non-consumed arm cannot create a candidate or affect metrics", 
   }
 });
 
-test("CONSUMED authorizes only the exact confirmed signal that consumed the arm", () => {
+test("one pullback arm authorizes later confirmed signals after a legacy CONSUMED marker", () => {
   const first = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T14:00:00.000Z",
     eOpen: "2026-08-25T14:05:00.000Z",
@@ -917,13 +917,12 @@ test("CONSUMED authorizes only the exact confirmed signal that consumed the arm"
     executionMode: "ohlcv_modeled",
     lifecycle: lifecycleForArm("consumed-arm", "CONSUMED", first),
   });
-  assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0]?.signalOccurrenceId, first.occurrenceId);
-  assert.equal(result.rejected.length, 1);
-  assert.equal(result.rejected[0]?.signalOccurrenceId, later.occurrenceId);
-  assert.equal(result.rejected[0]?.reasonCodes[0], "REJECTED_CONSUMED_ARM_DIFFERENT_SIGNAL");
-  assert.match(result.rejected[0]?.details.join(" ") ?? "", /Stored consuming signal identity/);
-  assert.equal(calculateBacktestMetrics(result.authoritativeTrades).tradeCount <= 1, true);
+  assert.equal(result.candidates.length, 2);
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.signalOccurrenceId),
+    [first.occurrenceId, later.occurrenceId],
+  );
+  assert.equal(result.rejected.length, 0);
 });
 
 test("duplicate observations of the same consuming signal merge without conflicts", () => {
@@ -985,8 +984,7 @@ test("duplicate observations of the same consuming signal merge without conflict
     source: "conflicting-cursor",
   }]);
   assert.equal(conflicting.records[0]?.consumingSignalIdentity?.pOpenTimestamp, identity.pOpenTimestamp);
-  assert.equal(conflicting.conflicts.length, 1);
-  assert.match(conflicting.conflicts[0]?.reason ?? "", /different physical P→E signal/);
+  assert.equal(conflicting.conflicts.length, 0);
 });
 
 test("historical lifecycle reduction records the canonical consumer identity", () => {
