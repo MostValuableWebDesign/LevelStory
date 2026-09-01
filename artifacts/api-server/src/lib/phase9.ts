@@ -22,6 +22,7 @@ import {
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
+import { causalEmaValueAt, regularSessionVwap } from "./strategy/indicators.js";
 import {
   isTerminalPullbackArmState,
   reducePullbackArmLifecycles,
@@ -1836,8 +1837,31 @@ function setAuditRejection(record: BacktestAuditRecord, reason: string | null, s
   record.rejectionSummary = summary;
 }
 
-function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[] {
+function targetLevelsForSnapshot(
+  snapshot: MarketSnapshot,
+  causalEntryOpenTime?: number,
+): KeyLevelTargetInput[] {
   const levels: KeyLevelTargetInput[] = [];
+  let vwap = snapshot.indicators.vwap;
+  let ema200 = snapshot.indicators.ema200;
+  if (causalEntryOpenTime !== undefined) {
+    const entryCandle = snapshot.candles.find((candle) => Date.parse(candle.openTime) === causalEntryOpenTime);
+    if (entryCandle) {
+      const causalCandles = snapshot.candles
+        .filter((candle) => candle.isComplete && Date.parse(candle.closeTime) <= Date.parse(entryCandle.closeTime))
+        .map((candle) => ({
+          ...candle,
+          timestamp: Date.parse(candle.timestamp),
+          openTime: Date.parse(candle.openTime),
+          closeTime: Date.parse(candle.closeTime),
+        }));
+      const calendar = sessionCalendarForContract(snapshot.contract);
+      const causalVwap = regularSessionVwap(causalCandles, calendar, snapshot.replay.tradingDate);
+      const causalEma = causalEmaValueAt(causalCandles, 200, causalEntryOpenTime);
+      vwap = Number.isFinite(causalVwap) ? causalVwap : null;
+      ema200 = causalEma;
+    }
+  }
   const add = (id: string, type: string, price: number | null | undefined) => {
     if (typeof price === "number" && Number.isFinite(price)) levels.push({ id, type, price });
   };
@@ -1851,8 +1875,8 @@ function targetLevelsForSnapshot(snapshot: MarketSnapshot): KeyLevelTargetInput[
   add("orb-low", "ORB", snapshot.levels.openingRangeLow);
   add("ntz-high", "NTZ", snapshot.levels.ntzHigh);
   add("ntz-low", "NTZ", snapshot.levels.ntzLow);
-  add("vwap", "VWAP", snapshot.indicators.vwap);
-  add("ema-200", "EMA200", snapshot.indicators.ema200);
+  add("vwap", "VWAP", vwap);
+  add("ema-200", "EMA200", ema200);
   for (const level of snapshot.majorLevels) {
     levels.push({
       id: `major-${level.name}`,
@@ -1879,10 +1903,15 @@ function targetPlanForSnapshot(
   direction: Direction,
   entryPrice: number,
 ): KeyLevelTargetPlan {
+  const patienceCandle = snapshot.reversalPatience?.patienceCandle
+    ?? snapshot.patience.patienceCandle;
   return buildKeyLevelTargetPlan({
     direction,
     entryPrice,
-    levels: targetLevelsForSnapshot(snapshot),
+    levels: targetLevelsForSnapshot(
+      snapshot,
+      patienceCandle ? Date.parse(patienceCandle.openTime) : undefined,
+    ),
     // The first level beyond the entry buffer is the take-profit price.
     // Do not let an older persisted strategy snapshot re-enable the
     // deprecated near-side placement behavior.
@@ -2011,6 +2040,9 @@ function auditForEvaluation(
   governedConsolidation: ConsolidationThresholds,
 ): BacktestAuditRecord {
   const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
+  const targetPatienceCandle = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
+    ? snapshot.reversalPatience?.patienceCandle
+    : snapshot.patience.patienceCandle;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2063,7 +2095,10 @@ function auditForEvaluation(
     strategyStopPrice: snapshot.riskPlan.strategyStop,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
-    targetLevelInputs: targetLevelsForSnapshot(snapshot),
+    targetLevelInputs: targetLevelsForSnapshot(
+      snapshot,
+      targetPatienceCandle ? Date.parse(targetPatienceCandle.openTime) : undefined,
+    ),
     contracts: snapshot.riskPlan.contracts,
     eventLabels: [],
     ambiguityLabels: [],

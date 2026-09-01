@@ -1514,7 +1514,9 @@ function buildAnnotations(
       : "Target",
     targetPrice,
     targetPlan?.selectedTargetLevel
-      ? `${targetPlan.bufferTicks} ticks before ${targetPlan.selectedTargetLevel.id}.`
+      ? targetPlan.placementMode === "EXACT_LEVEL"
+        ? `Exact ${targetPlan.selectedTargetLevel.id} level; all levels within ${targetPlan.bufferTicks} ticks of entry were excluded.`
+        : `${targetPlan.bufferTicks} ticks before ${targetPlan.selectedTargetLevel.id}.`
       : "No eligible key-level target; candidate remains open and unscored.",
     "positive",
   );
