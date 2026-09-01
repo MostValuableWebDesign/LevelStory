@@ -39,8 +39,6 @@ export type PatienceEligibilityEvent = {
   levelSourceTimestamp?: number | null;
   lCandleOpenTime?: number | null;
 };
-export type IntrabarFirstBreak = "intended-first" | "opposite-first" | "ambiguous";
-export type IntrabarEvidence = { candleOpenTime: number; firstBreak: IntrabarFirstBreak };
 
 export type PatienceCandleSnapshot = {
   openTime: number;
@@ -188,7 +186,6 @@ export type PatienceAnalysis = {
 
 export type PatienceEngineOptions = {
   eligibilityEvents?: readonly PatienceEligibilityEvent[];
-  intrabarEvidence?: readonly IntrabarEvidence[];
   trend?: TrendDirection;
   tickSize?: number;
   entryBufferTicks?: number;
@@ -274,7 +271,6 @@ export function patienceCandleEngine(
     tickSize,
     entryBufferTicks,
     stopBufferTicks,
-    options.intrabarEvidence ?? [],
     allowOpposingTrend,
     trendRequired,
     options.finalizedNtz,
@@ -381,7 +377,7 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.intrabarEvidence ?? [], options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
+      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
   }
 
   const forming = sorted.at(-1);
@@ -513,7 +509,6 @@ function evaluateTrigger(
   tickSize: number,
   entryBufferTicks: number,
   stopBufferTicks: number,
-  evidence: readonly IntrabarEvidence[],
   finalizedNtz?: NtzRange | null,
   requireFinalizedNtz = false,
   entryCutoffMinutes?: number,
@@ -541,7 +536,6 @@ function evaluateTrigger(
   const oppositeTouched = direction === "long" ? trigger.low < oppositePrice : trigger.high > oppositePrice;
   const gapBuffer = direction === "long" ? trigger.open >= modeledEntryPrice : trigger.open <= modeledEntryPrice;
   const gapOpposite = direction === "long" ? trigger.open < oppositePrice : trigger.open > oppositePrice;
-  const sequence = evidence.find((item) => item.candleOpenTime === trigger.openTime)?.firstBreak;
   const base = {
     direction,
     directionSource,
@@ -561,17 +555,9 @@ function evaluateTrigger(
   if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.openTime) >= entryCutoffMinutes) {
     return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: E opens at or after 1:00 p.m. ET." };
   }
-  if ((bufferReached && oppositeTouched) || (gapBuffer && gapOpposite) || (intendedTouched && oppositeTouched)) {
-    if (sequence === "opposite-first") {
-      return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) broke the opposite patience extreme first; the confirmation buffer cannot restore this setup." };
-    }
-    if (!(sequence === "intended-first" && bufferReached)) {
-      return { ...base, state: "AMBIGUOUS_EVENT_ORDER", triggerPrice: null, detail: "The immediate-next entry candle (E) reached both the confirmation buffer and the opposite patience extreme, but available candle data cannot prove which occurred first; the setup is rejected." };
-    }
-  }
-  if (gapOpposite || (oppositeTouched && !bufferReached) || sequence === "opposite-first") {
-    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
-  }
+  // The intended-side confirmation has priority. OHLC data does not preserve
+  // intrabar order, and an opposite wick in the same E candle must not turn a
+  // reached confirmation buffer into an ambiguous or rejected entry.
   if (bufferReached || gapBuffer) {
     if (!isStrictlyOutsideNtz(trigger, direction, finalizedNtz, requireFinalizedNtz, modeledEntryPrice)) {
       return {
@@ -589,6 +575,9 @@ function evaluateTrigger(
         ? `The immediate-next entry candle (E) reached the effective ${entryBufferTicks}-tick confirmation threshold of ${entryBufferPrice}; shadow entry is triggered at ${entryBufferPrice}.`
         : `The immediate-next entry candle (E) reached the effective ${entryBufferTicks}-tick confirmation threshold of ${entryBufferPrice}; shadow entry is pending the completed-candle record.`,
     };
+  }
+  if (gapOpposite || oppositeTouched) {
+    return { ...base, state: "OPPOSITE_SIDE_INVALIDATION", triggerPrice: oppositePrice, detail: "The immediate-next entry candle (E) crossed the opposite patience extreme; a later intended-side move cannot restore this setup." };
   }
   if (intendedTouched) {
     return {
@@ -715,7 +704,6 @@ function buildPatienceOccurrences(
   tickSize: number,
   entryBufferTicks: number,
   stopBufferTicks: number,
-  intrabarEvidence: readonly IntrabarEvidence[],
   allowOpposingTrend: boolean,
   trendRequired: boolean,
   finalizedNtz: NtzRange | null | undefined,
@@ -893,7 +881,6 @@ function buildPatienceOccurrences(
         tickSize,
         entryBufferTicks,
         stopBufferTicks,
-        intrabarEvidence,
         finalizedNtz,
         requireFinalizedNtz,
         entryCutoffMinutes,

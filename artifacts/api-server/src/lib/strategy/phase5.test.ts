@@ -66,7 +66,7 @@ test("valid bearish patience candle triggers below the patience low", () => {
   assert.equal(result.triggerPrice, 8);
 });
 
-test("the Aug 5 10:45 short candidate is rejected when E is ambiguous", () => {
+test("the Aug 5 10:45 short candidate confirms despite an opposite E wick", () => {
   const result = patienceCandleEngine(
     [
       datedCandle("2026-08-05T14:40:00.000Z", 7791.25, 7796.25, 7788, 7792),
@@ -88,8 +88,8 @@ test("the Aug 5 10:45 short candidate is rejected when E is ambiguous", () => {
   const occurrence = result.occurrences?.[0];
   assert.equal(occurrence?.patienceCandle.openTime, Date.parse("2026-08-05T14:45:00.000Z"));
   assert.equal(occurrence?.eligibilityEventId, "pullback|proximity|1785940800000|Prior day high|7786");
-  assert.equal(occurrence?.status, "AMBIGUOUS_EVENT_ORDER");
-  assert.equal(occurrence?.outcomeStatus, "INVALIDATED");
+  assert.equal(occurrence?.status, "ENTRY_TRIGGERED");
+  assert.equal(occurrence?.outcomeStatus, "CONFIRMED");
   assert.equal(occurrence?.confirmationThreshold, 7788.25);
   assert.equal(occurrence?.triggerCandle?.low, 7778.25);
 });
@@ -272,7 +272,7 @@ test("an earlier ORB pullback patience sequence is not overwritten by a later ca
   assert.equal(result.occurrences?.[1]?.nextObservedCandle, null);
 });
 
-test("a later confirmed P→E sequence remains executable after an earlier ambiguous candidate", () => {
+test("a later confirmed P→E sequence remains executable after an earlier opposite-side invalidation", () => {
   const candles = [
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 11, 7, 10.8),
@@ -284,7 +284,7 @@ test("a later confirmed P→E sequence remains executable after an earlier ambig
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.patienceCandle?.openTime, candles[3].openTime);
   assert.equal(result.triggerCandle?.openTime, candles[4].openTime);
-  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["INVALIDATED", "CONFIRMED"]);
+  assert.deepEqual(result.occurrences?.map((occurrence) => occurrence.outcomeStatus), ["EXPIRED_WRONG_DIRECTION", "CONFIRMED"]);
 });
 
 test("one pullback arm allows later successful P→E sequences", () => {
@@ -395,10 +395,10 @@ test("bearish opposite-side-first gap invalidates the setup", () => {
   assert.equal(result.triggerPrice, 13);
 });
 
-test("both sides touched without sequence proof are ambiguous", () => {
+test("an opposite wick does not override a reached confirmation buffer", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10, 12.2, 6.8, 10.5)), "long", { eligibilityEvents: eligibility() });
-  assert.equal(result.state, "AMBIGUOUS_EVENT_ORDER");
-  assert.equal(result.triggerPrice, null);
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.triggerPrice, 12);
 });
 
 test("touching the opposite patience wick without breaking it does not invalidate E", () => {
@@ -408,18 +408,16 @@ test("touching the opposite patience wick without breaking it does not invalidat
   assert.equal(bearish.state, "ENTRY_TRIGGERED");
 });
 
-test("a proven first-touch sequence resolves a two-sided trigger conservatively", () => {
+test("intrabar order does not change a confirmed intended-side buffer", () => {
   const candles = setup("long", candle(2, 10, 12.2, 6.8, 10.5));
   const intended = patienceCandleEngine(candles, "long", {
     eligibilityEvents: eligibility(),
-    intrabarEvidence: [{ candleOpenTime: candles[2].openTime, firstBreak: "intended-first" }],
   });
   const opposite = patienceCandleEngine(candles, "long", {
     eligibilityEvents: eligibility(),
-    intrabarEvidence: [{ candleOpenTime: candles[2].openTime, firstBreak: "opposite-first" }],
   });
   assert.equal(intended.state, "ENTRY_TRIGGERED");
-  assert.equal(opposite.state, "OPPOSITE_SIDE_INVALIDATION");
+  assert.equal(opposite.state, "ENTRY_TRIGGERED");
 });
 
 test("gaps through the intended side trigger at the opening print", () => {
