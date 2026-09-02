@@ -71,8 +71,15 @@ export type OhlcvExecutionAudit = {
   runnerExited: boolean;
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
-  stopLevel: "primary_level" | "strategy" | "catastrophe" | null;
+  stopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
+  initialRiskPoints: number | null;
+  oneRPrice: number | null;
+  oneRReached: boolean;
+  profitCheckpointPrice: number | null;
+  trailingStopPrice: number | null;
+  trailingStopActive: boolean;
+  trailingStopSource: string | null;
   runnerReferencePrice: number | null;
   runnerImpulse: number | null;
   runnerMostFavorablePrice: number | null;
@@ -130,6 +137,11 @@ export type OhlcvExecutionInput = {
   feeComponents?: OhlcvFeeComponents;
   sessionCloseCandle?: OhlcvCandle | null;
   primaryLossExitLevel?: PrimaryLossExitReference | null;
+  /** Candidate-owned no-target management: take one R before structure trailing. */
+  oneRProfitRule?: boolean;
+  /** Candidate-owned runner management: use confirmed five-minute swings. */
+  structureTrailing?: boolean;
+  trailingBufferTicks?: number;
 };
 
 function money(value: number): number {
@@ -144,6 +156,25 @@ function validCandle(candle: OhlcvCandle): void {
   if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
     throw new Error("OHLCV candles must contain finite OHLC prices.");
   }
+}
+
+function completedSwing(
+  candles: readonly OhlcvCandle[],
+  currentIndex: number,
+  direction: Direction,
+): { price: number; candle: OhlcvCandle } | null {
+  if (currentIndex < 2) return null;
+  const left = candles[currentIndex - 2];
+  const pivot = candles[currentIndex - 1];
+  const right = candles[currentIndex];
+  if (!left || !pivot || !right) return null;
+  if (direction === "long" && pivot.low < left.low && pivot.low < right.low) {
+    return { price: pivot.low, candle: pivot };
+  }
+  if (direction === "short" && pivot.high > left.high && pivot.high > right.high) {
+    return { price: pivot.high, candle: pivot };
+  }
+  return null;
 }
 
 function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
@@ -164,6 +195,8 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
       catastropheStopPrice: input.catastropheStop ?? null,
       stopLevel: null, primaryLossExitLevel: input.primaryLossExitLevel ?? null,
+      initialRiskPoints: null, oneRPrice: null, oneRReached: false, profitCheckpointPrice: null,
+      trailingStopPrice: null, trailingStopActive: false, trailingStopSource: null,
       runnerReferencePrice: null, runnerImpulse: null,
       runnerMostFavorablePrice: null, remainingQuantity: input.quantity ?? input.contractQuantity ?? input.contracts ?? 0,
     },
@@ -207,12 +240,23 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const fallbackStop = stopCandidates.filter((item) => item.level !== "primary_level").sort((first, second) =>
     input.direction === "long" ? second.price - first.price : first.price - second.price,
   )[0] ?? null;
+  const initialStop = primaryStop?.price ?? fallbackStop?.price ?? null;
+  const initialRiskPoints = initialStop === null ? null : Math.abs(entryReference - initialStop);
   const convertedTarget = input.targetDollars == null
     ? (input.targetPrice ?? input.target ?? null)
     : (input.direction === "long"
       ? entryReference + (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
+  const oneRProfitRule = input.oneRProfitRule === true && target === null;
+  const structureTrailing = input.structureTrailing === true;
+  const oneRPrice = initialRiskPoints === null
+    ? null
+    : tick(input.direction === "long" ? entryReference + initialRiskPoints : entryReference - initialRiskPoints, size);
+  const trailingBufferTicks = input.trailingBufferTicks ?? 8;
+  if (!Number.isInteger(trailingBufferTicks) || trailingBufferTicks <= 0) {
+    throw new Error("Structure trailing buffer must be a positive whole number of ticks.");
+  }
   const stopPrice = fallbackStop === null ? null : tick(fallbackStop.price, size);
   const eventLabels: string[] = [];
   const ambiguityLabels: string[] = [];
@@ -237,9 +281,14 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
     ...subsequentCandles,
   ];
-  const runnerQuantity = quantity - targetQuantity;
+  const checkpointQuantity = oneRProfitRule ? (quantity > 1 ? 1 : 0) : targetQuantity;
+  const runnerQuantity = quantity - checkpointQuantity;
   let remaining = quantity;
   let targetHit = false;
+  let oneRReached = false;
+  let trailingStopActive = false;
+  let trailingStopPrice: number | null = null;
+  let trailingStopSource: string | null = null;
   let runnerExited = false;
   let exitReason: ModeledOhlcvExecution["exitReason"] = "manual";
   let exitPrice: number | null = null;
@@ -247,8 +296,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let resolvedStopPrice = stopPrice;
   let runnerBest = modeledFill;
   let targetCandle: OhlcvCandle | null = null;
+  let profitCheckpointPrice: number | null = null;
   const legs: ModeledExecutionLeg[] = [];
-  let resolvedStopLevel: "primary_level" | "strategy" | "catastrophe" | null = null;
+  let resolvedStopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null = null;
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
   const feePerSide = Object.values(input.fees ?? input.feeComponents ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
@@ -275,22 +325,41 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       ...(exitCandleCloseTime ? { exitCandleCloseTime } : {}),
     };
   };
-  for (const candle of candles) {
-    const primaryStopArmed = primaryStop !== null;
-    const strategyHit = !primaryStopArmed && strategyStop !== null && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
-    const catastropheHit = !primaryStopArmed && catastropheStop !== null && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
-    const primaryHit = primaryStop !== null && (input.direction === "long" ? candle.low <= primaryStop.price : candle.high >= primaryStop.price);
-    const adverse = primaryHit || strategyHit || catastropheHit;
+  for (let candleIndex = 0; candleIndex < candles.length; candleIndex += 1) {
+    const candle = candles[candleIndex]!;
+    const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
+    const primaryStopArmed = primaryStop !== null && activeTrailingStop === null;
+    const strategyHit = activeTrailingStop === null
+      && !primaryStopArmed
+      && strategyStop !== null
+      && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
+    const catastropheHit = activeTrailingStop === null
+      && !primaryStopArmed
+      && catastropheStop !== null
+      && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
+    const primaryHit = primaryStopArmed
+      && (input.direction === "long" ? candle.low <= primaryStop!.price : candle.high >= primaryStop!.price);
+    const trailingHit = activeTrailingStop !== null
+      && (input.direction === "long" ? candle.low <= activeTrailingStop : candle.high >= activeTrailingStop);
+    const adverse = primaryHit || strategyHit || catastropheHit || trailingHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
+    const targetReachedInCandle = !targetHit && favorable;
+    const oneRReachedInCandle = oneRProfitRule
+      && !oneRReached
+      && oneRPrice !== null
+      && (input.direction === "long" ? candle.high >= oneRPrice : candle.low <= oneRPrice);
     if (adverse) {
       if (favorable) {
         eventLabels.push(AMBIGUOUS_STOP_FIRST_LABEL);
         ambiguityLabels.push(AMBIGUOUS_STOP_FIRST_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
       }
-      const level = primaryHit ? primaryStop! : fallbackStop!;
+      const level = trailingHit
+        ? { price: activeTrailingStop!, level: "structure_trailing" as const }
+        : primaryHit ? primaryStop! : fallbackStop!;
       resolvedStopPrice = tick(level.price, size);
       resolvedStopLevel = level.level;
       if (level.level === "primary_level") eventLabels.push(PRIMARY_LEVEL_EXIT_REACHED_LABEL);
+      else if (level.level === "structure_trailing") eventLabels.push("STRUCTURE_TRAILING_STOP_REACHED");
       else eventLabels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
       const primaryLevelExit = level.level === "primary_level";
       const gapThrough = !primaryLevelExit && (input.direction === "long" ? candle.open <= resolvedStopPrice! : candle.open >= resolvedStopPrice!);
@@ -299,24 +368,53 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       const fill = primaryLevelExit
         ? resolvedStopPrice!
         : tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
-       legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop", candle));
-      if (targetHit && runnerQuantity > 0) runnerExited = true;
+       legs.push(makeLeg(
+         targetHit || oneRReached ? "runner" : "full",
+         targetHit || oneRReached ? runnerQuantity : remaining,
+         reference,
+         fill,
+         "stop",
+         candle,
+       ));
+      if ((targetHit || oneRReached) && runnerQuantity > 0) runnerExited = true;
       remaining = 0; exitPrice = fill; exitCandle = candle; exitReason = "stop"; break;
     }
-    if (!targetHit && favorable) {
+    if (targetReachedInCandle) {
       targetHit = true; targetCandle = candle;
       eventLabels.push("TARGET_REACHED");
-      if (targetQuantity > 0) {
+      if (checkpointQuantity > 0) {
         const fill = tick(input.direction === "long" ? target! - (input.exitSlippageTicks ?? 0) * size : target! + (input.exitSlippageTicks ?? 0) * size, size);
-         legs.push(makeLeg("target", targetQuantity, target!, fill, "target", candle));
-        remaining -= targetQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
+         legs.push(makeLeg("target", checkpointQuantity, target!, fill, "target", candle));
+        remaining -= checkpointQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
       }
       runnerBest = target!;
+      trailingStopActive = structureTrailing;
+      if (trailingStopActive) {
+        trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
+      }
       if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
       if (runnerQuantity === 0) break;
-      continue;
     }
-    if (targetHit && runnerQuantity > 0) {
+    if (oneRReachedInCandle) {
+      oneRReached = true;
+      trailingStopActive = structureTrailing;
+      profitCheckpointPrice = oneRPrice;
+      if (trailingStopActive) {
+        trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
+      }
+      eventLabels.push("ONE_R_REACHED");
+      if (checkpointQuantity > 0) {
+        const fill = tick(input.direction === "long" ? oneRPrice! - (input.exitSlippageTicks ?? 0) * size : oneRPrice! + (input.exitSlippageTicks ?? 0) * size, size);
+        legs.push(makeLeg("target", checkpointQuantity, oneRPrice!, fill, "target", candle));
+        remaining -= checkpointQuantity;
+        exitPrice = fill;
+        exitCandle = candle;
+        exitReason = "target";
+      }
+      if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
+    }
+    const activatedThisCandle = oneRReachedInCandle || targetReachedInCandle;
+    if (!activatedThisCandle && (targetHit || oneRReached) && runnerQuantity > 0 && !structureTrailing) {
       const candidateBest = input.direction === "long" ? Math.max(runnerBest, candle.high) : Math.min(runnerBest, candle.low);
       const impulse = Math.abs(runnerBest - modeledFill);
       const retracementThreshold = input.direction === "long"
@@ -342,6 +440,24 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       }
       runnerBest = candidateBest;
     }
+    if (structureTrailing && trailingStopActive) {
+      const swing = completedSwing(candles, candleIndex, input.direction);
+      if (swing) {
+        const candidateStop = tick(
+          input.direction === "long"
+            ? swing.price - trailingBufferTicks * size
+            : swing.price + trailingBufferTicks * size,
+          size,
+        );
+        const advances = trailingStopPrice === null
+          || (input.direction === "long" ? candidateStop > trailingStopPrice : candidateStop < trailingStopPrice);
+        if (advances) {
+          trailingStopPrice = candidateStop;
+          trailingStopSource = `swing-${input.direction === "long" ? "low" : "high"}:${swing.price.toFixed(2)}`;
+          eventLabels.push("STRUCTURE_TRAILING_STOP_ADVANCED");
+        }
+      }
+    }
   }
   if (remaining > 0 && input.sessionCloseCandle) {
     const closeCandle = input.sessionCloseCandle;
@@ -355,14 +471,14 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     );
      legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close", closeCandle));
     remaining = 0;
-    runnerExited = targetHit && runnerQuantity > 0;
+     runnerExited = (targetHit || oneRReached) && runnerQuantity > 0;
     eventLabels.push("SESSION_CLOSE");
     if (runnerExited) eventLabels.push("RUNNER_EXITED");
     exitPrice = fill;
     exitCandle = closeCandle;
     exitReason = "session_close";
   }
-  if (remaining > 0 && targetHit && runnerQuantity > 0) exitReason = "target";
+  if (remaining > 0 && (targetHit || oneRReached) && runnerQuantity > 0) exitReason = "target";
   const accounting = legs.reduce<ModeledExecutionAccounting>((a, leg) => ({
     grossPnl: money(a.grossPnl + leg.grossPnl), slippage: money(a.slippage + leg.slippage),
     fees: money(a.fees + leg.fees), netPnl: money(a.netPnl + leg.netPnl),
@@ -371,14 +487,21 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     entryTrigger: entryReference, modeledFill, stopPrice: resolvedStopPrice, targetPrice: target, exitPrice, exitReason, legs, accounting,
     audit: {
       eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, targetHit,
-      runnerActivated: targetHit && runnerQuantity > 0, runnerExited,
+       runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
       strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
       catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),
       stopLevel: exitReason === "stop" ? resolvedStopLevel : null,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
-      runnerReferencePrice: targetHit && runnerQuantity > 0 ? modeledFill : null,
-      runnerImpulse: targetHit && runnerQuantity > 0 ? Math.abs(runnerBest - modeledFill) : null,
-      runnerMostFavorablePrice: targetHit && runnerQuantity > 0 ? runnerBest : null,
+       initialRiskPoints,
+       oneRPrice,
+       oneRReached,
+       profitCheckpointPrice: profitCheckpointPrice ?? (targetHit ? target : null),
+       trailingStopPrice,
+       trailingStopActive,
+       trailingStopSource,
+       runnerReferencePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? (targetHit ? target : oneRPrice) : null,
+       runnerImpulse: (targetHit || oneRReached) && runnerQuantity > 0 ? Math.abs(runnerBest - modeledFill) : null,
+       runnerMostFavorablePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? runnerBest : null,
       remainingQuantity: remaining,
     },
      ambiguityLabels, eventLabels, assumptions,

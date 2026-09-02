@@ -292,3 +292,82 @@ test("labels a short same-candle new extreme and retracement", () => {
   assert.ok(result.ambiguityLabels.includes("AMBIGUOUS_RUNNER_SEQUENCE"));
   assert.equal(result.audit.eventLabels.includes("RUNNER_EXITED"), true);
 });
+
+test("one contract waits for +1R, then trails a confirmed long swing low", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    structureTrailing: true,
+    subsequentCompletedCandles: [
+      candle(100, 101, 99, 100.5),
+      candle(100.5, 101.5, 98.5, 101),
+      candle(101, 103, 101, 102.5),
+      candle(102.5, 104, 100.5, 103),
+      candle(103, 103.5, 101.5, 102.5),
+      candle(102.5, 103, 98.5, 99),
+    ],
+  });
+  assert.equal(result.audit.initialRiskPoints, 2);
+  assert.equal(result.audit.oneRPrice, 102);
+  assert.equal(result.audit.oneRReached, true);
+  assert.equal(result.audit.trailingStopPrice, 98.5);
+  assert.equal(result.audit.stopLevel, "structure_trailing");
+  assert.equal(result.exitPrice, 98.5);
+  assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.exitReason]), [["runner", "stop"]]);
+});
+
+test("multiple no-target contracts take one at +1R and trail the runner", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    contracts: 2,
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    structureTrailing: true,
+    subsequentCompletedCandles: [
+      candle(100, 101, 99, 100.5),
+      candle(100.5, 102, 99.5, 101.5),
+      candle(101.5, 103, 101, 102.5),
+      candle(102.5, 104, 100.5, 103),
+      candle(103, 103.5, 101.5, 102.5),
+      candle(102.5, 103, 98, 99),
+    ],
+  });
+  assert.equal(result.audit.oneRReached, true);
+  assert.equal(result.audit.runnerActivated, true);
+  assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.quantity, leg.exitReason]), [
+    ["target", 1, "target"],
+    ["runner", 1, "stop"],
+  ]);
+  assert.equal(result.legs[0]?.referencePrice, 102);
+  assert.equal(result.legs[1]?.referencePrice, 98.5);
+});
+
+test("short structure trailing uses swing highs and never widens", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 102,
+    target: null,
+    oneRProfitRule: true,
+    structureTrailing: true,
+    subsequentCompletedCandles: [
+      candle(100, 101, 99, 99.5),
+      candle(99.5, 101.5, 98.5, 99),
+      candle(99, 100, 97, 98),
+      candle(98, 97, 96, 97),
+      candle(97, 97.5, 96.5, 97),
+      candle(97, 97, 96, 96.5),
+      candle(96.5, 100, 95.5, 99),
+    ],
+  });
+  assert.equal(result.audit.oneRPrice, 98);
+  assert.equal(result.audit.trailingStopPrice, 99.5);
+  assert.equal(result.audit.stopLevel, "structure_trailing");
+  assert.equal(result.exitPrice, 99.5);
+});

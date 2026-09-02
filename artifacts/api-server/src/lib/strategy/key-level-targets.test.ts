@@ -105,6 +105,23 @@ test("exact-level placement is an explicit comparison mode", () => {
   assert.equal(plan.bufferPoints, 3);
 });
 
+test("candidate near-side placement stays 12 ticks in front of a directional level", () => {
+  const longPlan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    placementMode: "NEAR_SIDE_12_TICKS",
+    levels: [{ id: "resistance", type: "major resistance", price: 108 }],
+  });
+  const shortPlan = buildKeyLevelTargetPlan({
+    direction: "short",
+    entryPrice: 100,
+    placementMode: "NEAR_SIDE_12_TICKS",
+    levels: [{ id: "support", type: "major support", price: 92 }],
+  });
+  assert.equal(longPlan.targetPrice, 105);
+  assert.equal(shortPlan.targetPrice, 95);
+});
+
 test("allowlist excludes Fibonacci, close, critical, and management artifacts", () => {
   const filtered = filterEligibleKeyLevelInputs([
     { id: "fib-618", type: "Fibonacci", price: 105 },

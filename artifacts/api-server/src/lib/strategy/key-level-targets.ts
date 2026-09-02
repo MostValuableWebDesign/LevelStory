@@ -64,6 +64,8 @@ export type KeyLevelTargetPlan = {
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
+export const PROFIT_TARGET_BUFFER_TICKS = 12;
+
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
 const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
 
@@ -297,7 +299,7 @@ export function buildKeyLevelTargetPlan(input: {
   placementMode?: ProfitTargetPlacement;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
-  const bufferTicks = input.bufferTicks ?? 12;
+  const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
   if (bufferTicks !== 12) throw new Error("Key-level target buffer must be exactly 12 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
   const placementMode = input.placementMode ?? "EXACT_LEVEL";

@@ -92,7 +92,7 @@ export type IntrabarResolution = {
   timestamp: number | null;
   price: number | null;
   ambiguityLabel: "AMBIGUOUS_STOP_FIRST" | null;
-  stopLevel?: "primary_level" | "strategy" | "catastrophe" | null;
+     stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
   detail: string;
 };
 
@@ -225,7 +225,7 @@ export type BacktestTrade = {
      targetPlan?: KeyLevelTargetPlan;
     strategyStopPrice?: number | null;
     catastropheStopPrice?: number | null;
-    stopLevel?: "primary_level" | "strategy" | "catastrophe" | null;
+     stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
     primaryLossExitLevel?: PrimaryLossExitReference | null;
     patienceCandleOpenTime: string | null;
     patienceCandleCloseTime: string | null;
@@ -243,6 +243,13 @@ export type BacktestTrade = {
     runnerReferencePrice?: number | null;
     runnerImpulse?: number | null;
     runnerMostFavorablePrice?: number | null;
+     initialRiskPoints?: number | null;
+     oneRPrice?: number | null;
+     oneRReached?: boolean;
+     profitCheckpointPrice?: number | null;
+     trailingStopPrice?: number | null;
+     trailingStopActive?: boolean;
+     trailingStopSource?: string | null;
     remainingQuantity?: number;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -3155,7 +3162,7 @@ function targetPlanForOccurrence(
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: "EXACT_LEVEL",
+    placementMode: "NEAR_SIDE_12_TICKS",
   });
   return {
     ...plan,
@@ -3630,8 +3637,11 @@ function candidateDrivenEntryTrade(
       evaluateEntryCandleForExit: false,
       subsequentCompletedCandles: postEntry,
       contracts: management.contracts,
-      targetQuantity: Math.min(1, management.contracts),
+      targetQuantity: targetPrice === null ? 0 : Math.min(1, management.contracts),
       target: targetPrice,
+      oneRProfitRule: targetPrice === null,
+      structureTrailing: true,
+      trailingBufferTicks: 8,
       strategyStop: management.strategyStopPrice,
       // Candidate-driven management deliberately ignores the legacy
       // catastrophe barrier. Preserve that value in provenance below, but do
@@ -3716,7 +3726,7 @@ function candidateDrivenEntryTrade(
     audit: {
       entryTriggerPrice: entryPrice,
       modeledFillPrice: entryPrice,
-      stopPrice: management.strategyStopPrice,
+       stopPrice: modeled?.stopPrice ?? management.strategyStopPrice,
       targetPrice,
       targetPlan,
       primaryLossExitLevel,
@@ -3736,7 +3746,7 @@ function candidateDrivenEntryTrade(
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
         targetPlan
           ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
-          : "No eligible key-level target plan was available; the candidate remains open and unscored.",
+           : "No eligible key-level target plan was available; the candidate uses its actual initial-stop distance as 1R before structure trailing.",
         ...(primaryLossExitLevel
           ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}, 8 MES ticks beyond the adverse level boundary; the patience opposite-wick stop remains secondary.`]
           : []),
@@ -3756,6 +3766,13 @@ function candidateDrivenEntryTrade(
       runnerReferencePrice: modeled?.audit.runnerReferencePrice ?? null,
       runnerImpulse: modeled?.audit.runnerImpulse ?? null,
       runnerMostFavorablePrice: modeled?.audit.runnerMostFavorablePrice ?? null,
+       initialRiskPoints: modeled?.audit.initialRiskPoints ?? null,
+       oneRPrice: modeled?.audit.oneRPrice ?? null,
+       oneRReached: modeled?.audit.oneRReached ?? false,
+       profitCheckpointPrice: modeled?.audit.profitCheckpointPrice ?? null,
+       trailingStopPrice: modeled?.audit.trailingStopPrice ?? null,
+       trailingStopActive: modeled?.audit.trailingStopActive ?? false,
+       trailingStopSource: modeled?.audit.trailingStopSource ?? null,
       remainingQuantity: modeled?.audit.remainingQuantity ?? management.contracts,
       exitReason: modeled?.exitReason ?? "not filled",
       legs: modeled?.legs ?? [],
