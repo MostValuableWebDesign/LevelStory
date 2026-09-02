@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ConsolidationEntryGuardEvidence } from './consolidationEntryGuardEvidence';
 import type { ConsolidationThresholds } from './consolidationThresholds';
 import type { HistoricalOccurrenceDirection } from './historicalOccurrenceDirection';
 import type { HistoricalOccurrenceEligibilityArmState } from './historicalOccurrenceEligibilityArmState';
@@ -78,6 +79,7 @@ export interface HistoricalOccurrence {
   /** @nullable */
   nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   status: HistoricalOccurrenceStatus;
   signalStatus?: HistoricalOccurrenceSignalStatus;
   eligibilityArmId?: string;

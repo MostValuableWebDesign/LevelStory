@@ -1618,6 +1618,16 @@ export const BacktestRequestOhlcvEntryBufferTicks = {
   NUMBER_8: 8,
 } as const;
 
+/**
+ * Exactly eight MES ticks beyond the frozen patience-candle extreme.
+ */
+export type BacktestRequestOhlcvStopBufferTicks = typeof BacktestRequestOhlcvStopBufferTicks[keyof typeof BacktestRequestOhlcvStopBufferTicks];
+
+
+export const BacktestRequestOhlcvStopBufferTicks = {
+  NUMBER_8: 8,
+} as const;
+
 export interface BacktestRequest {
   /**
      * @minLength 1
@@ -1656,11 +1666,8 @@ export interface BacktestRequest {
   executionMode?: BacktestRequestExecutionMode;
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
-  /**
-     * @minimum 1
-     * @maximum 8
-     */
-  ohlcvStopBufferTicks?: number;
+  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  ohlcvStopBufferTicks?: BacktestRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0
      * @maximum 8
@@ -2133,6 +2140,95 @@ export interface ConsolidationThresholds {
   maxExpansionRatio: number;
 }
 
+/**
+ * @nullable
+ */
+export type ConsolidationEntryGuardEvidenceLifecycleState = typeof ConsolidationEntryGuardEvidenceLifecycleState[keyof typeof ConsolidationEntryGuardEvidenceLifecycleState] | null;
+
+
+export const ConsolidationEntryGuardEvidenceLifecycleState = {
+  CONSOLIDATION_ZONE_FROZEN: 'CONSOLIDATION_ZONE_FROZEN',
+  PATIENCE_INSIDE_CONSOLIDATION: 'PATIENCE_INSIDE_CONSOLIDATION',
+  CONSOLIDATION_BREAKOUT_CONFIRMED: 'CONSOLIDATION_BREAKOUT_CONFIRMED',
+  CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED: 'CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED',
+  PATIENCE_EXPIRED_INSIDE_CONSOLIDATION: 'PATIENCE_EXPIRED_INSIDE_CONSOLIDATION',
+  BREAKOUT_PULLBACK_PATIENCE_CONFIRMED: 'BREAKOUT_PULLBACK_PATIENCE_CONFIRMED',
+} as const;
+
+export type ConsolidationEntryGuardEvidenceLifecycleStatesItem = typeof ConsolidationEntryGuardEvidenceLifecycleStatesItem[keyof typeof ConsolidationEntryGuardEvidenceLifecycleStatesItem];
+
+
+export const ConsolidationEntryGuardEvidenceLifecycleStatesItem = {
+  CONSOLIDATION_ZONE_FROZEN: 'CONSOLIDATION_ZONE_FROZEN',
+  PATIENCE_INSIDE_CONSOLIDATION: 'PATIENCE_INSIDE_CONSOLIDATION',
+  CONSOLIDATION_BREAKOUT_CONFIRMED: 'CONSOLIDATION_BREAKOUT_CONFIRMED',
+  CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED: 'CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED',
+  PATIENCE_EXPIRED_INSIDE_CONSOLIDATION: 'PATIENCE_EXPIRED_INSIDE_CONSOLIDATION',
+  BREAKOUT_PULLBACK_PATIENCE_CONFIRMED: 'BREAKOUT_PULLBACK_PATIENCE_CONFIRMED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ConsolidationEntryGuardEvidenceDirection = typeof ConsolidationEntryGuardEvidenceDirection[keyof typeof ConsolidationEntryGuardEvidenceDirection] | null;
+
+
+export const ConsolidationEntryGuardEvidenceDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export interface ConsolidationEntryGuardEvidence {
+  detectorVersion: string;
+  /** @nullable */
+  lifecycleState: ConsolidationEntryGuardEvidenceLifecycleState;
+  lifecycleStates: ConsolidationEntryGuardEvidenceLifecycleStatesItem[];
+  zoneDetected: boolean;
+  activeZone: boolean;
+  executionEligible: boolean;
+  /** @nullable */
+  consolidationZoneHigh: number | null;
+  /** @nullable */
+  consolidationZoneLow: number | null;
+  /** @nullable */
+  consolidationStartTime: string | null;
+  /** @nullable */
+  consolidationDetectionTime: string | null;
+  sourceCandleTimestamps: string[];
+  /** @nullable */
+  rangeWidth: number | null;
+  /** @nullable */
+  rangeWidthTicks: number | null;
+  /** @nullable */
+  direction: ConsolidationEntryGuardEvidenceDirection;
+  /** @nullable */
+  patienceOpenTime: string | null;
+  /** @nullable */
+  patienceCloseTime: string | null;
+  /** @nullable */
+  entryOpenTime: string | null;
+  /** @nullable */
+  entryCloseTime: string | null;
+  /** @nullable */
+  confirmationThreshold: number | null;
+  /** @nullable */
+  entryClose: number | null;
+  entryCompleted: boolean;
+  /** @nullable */
+  entryReachedConfirmation: boolean | null;
+  /** @nullable */
+  entryCloseOutsideZone: boolean | null;
+  /** @nullable */
+  entryOutsideFinalizedNtz: boolean | null;
+  /** @nullable */
+  entryBeforeCutoff: boolean | null;
+  consolidationEdgeQualified: boolean;
+  breakoutPullback: boolean;
+  /** @nullable */
+  rejectionReason: string | null;
+  detail: string;
+}
+
 export type BacktestAuditRecordPeriod = typeof BacktestAuditRecordPeriod[keyof typeof BacktestAuditRecordPeriod];
 
 
@@ -2252,6 +2348,7 @@ export interface BacktestAuditRecord {
   /** @nullable */
   confirmationBufferTicks?: number | null;
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
   patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
 }
@@ -2420,6 +2517,7 @@ export interface HistoricalOccurrence {
   /** @nullable */
   nextObservedCandle: HistoricalOccurrenceNextObservedCandle;
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   status: HistoricalOccurrenceStatus;
   signalStatus?: HistoricalOccurrenceSignalStatus;
   eligibilityArmId?: string;
@@ -3092,6 +3190,16 @@ export const EdgeValidationPilotRequestOhlcvEntryBufferTicks = {
 } as const;
 
 /**
+ * Exactly eight MES ticks beyond the frozen patience-candle extreme.
+ */
+export type EdgeValidationPilotRequestOhlcvStopBufferTicks = typeof EdgeValidationPilotRequestOhlcvStopBufferTicks[keyof typeof EdgeValidationPilotRequestOhlcvStopBufferTicks];
+
+
+export const EdgeValidationPilotRequestOhlcvStopBufferTicks = {
+  NUMBER_8: 8,
+} as const;
+
+/**
  * Immutable Phase 3 pilot request. Dates must be the exact 20-session in-sample and 10-session chronological holdout.
  */
 export interface EdgeValidationPilotRequest {
@@ -3104,11 +3212,8 @@ export interface EdgeValidationPilotRequest {
   selectedDates: string[];
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
-  /**
-     * @minimum 0
-     * @maximum 12
-     */
-  ohlcvStopBufferTicks?: number;
+  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  ohlcvStopBufferTicks?: EdgeValidationPilotRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0
      * @maximum 12

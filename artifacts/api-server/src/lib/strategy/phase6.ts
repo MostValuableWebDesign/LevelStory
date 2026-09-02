@@ -1,5 +1,4 @@
 import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
-import type { PatienceAnalysis } from "./phase5.js";
 import type { MajorLevel } from "./major-levels.js";
 import type { DynamiteLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
@@ -8,7 +7,13 @@ import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
 import { hasConfirmedDirectionalTrend } from "./rules.js";
-import { isStrictlyOutsideNtz } from "./phase5.js";
+import {
+  effectiveConfirmationThreshold,
+  isStrictlyOutsideNtz,
+  reachesEffectiveConfirmation,
+  type PatienceAnalysis,
+} from "./phase5.js";
+import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 
 export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
@@ -62,6 +67,52 @@ export type ExtendedConsolidation = {
   endTime: number | null;
   frozenHigh?: number | null;
   frozenLow?: number | null;
+  detail: string;
+};
+
+export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v1";
+
+export type ConsolidationLifecycleState =
+  | "CONSOLIDATION_ZONE_FROZEN"
+  | "PATIENCE_INSIDE_CONSOLIDATION"
+  | "CONSOLIDATION_BREAKOUT_CONFIRMED"
+  | "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+  | "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"
+  | "BREAKOUT_PULLBACK_PATIENCE_CONFIRMED";
+
+/**
+ * Causal evidence for the consolidation entry guard. Timestamps are epoch
+ * milliseconds here and are converted to API timestamps at the replay edge.
+ */
+export type ConsolidationEntryEvidence = {
+  detectorVersion: string;
+  lifecycleState: ConsolidationLifecycleState | null;
+  lifecycleStates: ConsolidationLifecycleState[];
+  zoneDetected: boolean;
+  activeZone: boolean;
+  executionEligible: boolean;
+  consolidationZoneHigh: number | null;
+  consolidationZoneLow: number | null;
+  consolidationStartTime: number | null;
+  consolidationDetectionTime: number | null;
+  sourceCandleOpenTimes: number[];
+  rangeWidth: number | null;
+  rangeWidthTicks: number | null;
+  direction: Direction | null;
+  patienceOpenTime: number | null;
+  patienceCloseTime: number | null;
+  entryOpenTime: number | null;
+  entryCloseTime: number | null;
+  confirmationThreshold: number | null;
+  entryClose: number | null;
+  entryCompleted: boolean;
+  entryReachedConfirmation: boolean | null;
+  entryCloseOutsideZone: boolean | null;
+  entryOutsideFinalizedNtz: boolean | null;
+  entryBeforeCutoff: boolean | null;
+  consolidationEdgeQualified: boolean;
+  breakoutPullback: boolean;
+  rejectionReason: string | null;
   detail: string;
 };
 
@@ -436,6 +487,182 @@ export function detectExtendedNtzConsolidation(
     frozenHigh: Math.max(...window.map((candle) => candle.high)),
     frozenLow: Math.min(...window.map((candle) => candle.low)),
      detail: `No tight/stable consolidation immediately before breakout: ${window.length} candles span ${range.toFixed(2)} points with expansion ratio ${formatRatio(expansionRatio)}; governed thresholds are minimum ${minimumCount} candles, maximum ${maxRangeTicks} ticks, and ${expansionLimit.toFixed(2)}× expansion.`,
+  };
+}
+
+export function evaluateConsolidationEntryGuard(input: {
+  candles: readonly Candle[];
+  levels: Pick<Phase6Context["levels"], "ntz">;
+  patience: Pick<PatienceAnalysis, "patienceCandle" | "triggerCandle" | "entryBufferTicks" | "entryBufferPrice"> | null;
+  direction: Direction | null;
+  breakout?: Pick<BreakoutEvent, "detected" | "direction" | "candleOpenTime" | "continuationConfirmed" | "failed"> | null;
+  config: StrategyConfig;
+  consolidationEvaluation?: Pick<SetupEvaluation, "setupType" | "decision"> | null;
+  qualifyingPullback?: boolean;
+}): ConsolidationEntryEvidence | null {
+  const completed = completedCandles(input.candles);
+  const patienceCandle = input.patience?.patienceCandle;
+  const breakoutCandle = input.breakout?.candleOpenTime === null || input.breakout?.candleOpenTime === undefined
+    ? undefined
+    : completed.find((candle) => candle.openTime === input.breakout!.candleOpenTime);
+  const breakoutIsBeforePatience = breakoutCandle !== undefined
+    && patienceCandle !== null
+    && patienceCandle !== undefined
+    && breakoutCandle.closeTime <= patienceCandle.openTime;
+  const detectionCandles = breakoutIsBeforePatience
+    ? completed.filter((candle) => candle.closeTime <= breakoutCandle!.openTime)
+    : completed.filter((candle) => patienceCandle
+      ? candle.closeTime <= patienceCandle.openTime
+      : candle.closeTime <= (completed.at(-1)?.closeTime ?? Number.NEGATIVE_INFINITY));
+  const frozen = detectExtendedNtzConsolidation(
+    detectionCandles,
+    input.levels.ntz,
+    input.config.phase6ConsolidationExpansionRatio,
+    null,
+    input.config.phase6ConsolidationMaxRangeTicks,
+    input.config.phase6ConsolidationMinCandles,
+  );
+  if (
+    !frozen.detected
+    || typeof frozen.frozenHigh !== "number"
+    || typeof frozen.frozenLow !== "number"
+  ) return null;
+
+  const sourceCandleOpenTimes = completed
+    .filter((candle) =>
+      frozen.startTime !== null
+      && frozen.endTime !== null
+      && candle.openTime >= frozen.startTime
+      && candle.closeTime <= frozen.endTime
+      && candle.closeTime <= (frozen.endTime ?? Number.POSITIVE_INFINITY),
+    )
+    .map((candle) => candle.openTime);
+  const zoneHigh = frozen.frozenHigh;
+  const zoneLow = frozen.frozenLow;
+  const direction = input.direction;
+  const pInside = patienceCandle !== null
+    && patienceCandle !== undefined
+    && patienceCandle.high <= zoneHigh
+    && patienceCandle.low >= zoneLow;
+  const consolidationEdgeQualified = input.consolidationEvaluation?.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    && input.consolidationEvaluation.decision === "SETUP QUALIFIED";
+  const entry = input.patience?.triggerCandle;
+  const entryIsImmediate = Boolean(
+    patienceCandle
+    && entry
+    && entry.openTime === patienceCandle.closeTime,
+  );
+  const confirmationThreshold = direction && patienceCandle
+    ? input.patience?.entryBufferPrice
+      ?? effectiveConfirmationThreshold(
+        patienceCandle,
+        direction,
+        input.patience?.entryBufferTicks ?? 8,
+        0.25,
+        input.levels.ntz,
+      )
+    : null;
+  const entryReachedConfirmation = direction && entry && confirmationThreshold !== null
+    ? reachesEffectiveConfirmation(entry, direction, confirmationThreshold)
+      || (direction === "long" ? entry.open >= confirmationThreshold : entry.open <= confirmationThreshold)
+    : null;
+  const entryCloseOutsideZone = direction && entry
+    ? entry.isComplete
+      ? direction === "long" ? entry.close > zoneHigh : entry.close < zoneLow
+      : null
+    : null;
+  const entryOutsideFinalizedNtz = direction && entry && entry.isComplete && confirmationThreshold !== null
+    ? isStrictlyOutsideNtz(entry, direction, input.levels.ntz, true, confirmationThreshold)
+    : entry ? false : null;
+  const entryBeforeCutoff = entry
+    ? wallClockMinutesForTimestamp(entry.openTime, input.config.sessionTimeZone) < input.config.primaryEntryEndMinutes
+    : null;
+  const breakoutPullback = Boolean(
+    breakoutIsBeforePatience
+    && input.breakout?.detected
+    && !input.breakout.failed
+    && input.breakout.continuationConfirmed
+    && input.qualifyingPullback
+    && !pInside,
+  );
+  const directBreakoutConfirmed = Boolean(
+    pInside
+    && entryIsImmediate
+    && entry?.isComplete
+    && entryReachedConfirmation
+    && entryCloseOutsideZone
+    && entryOutsideFinalizedNtz
+    && entryBeforeCutoff
+    && consolidationEdgeQualified,
+  );
+  const breakoutPullbackConfirmed = Boolean(
+    breakoutPullback
+    && entryIsImmediate
+    && entry?.isComplete
+    && entryReachedConfirmation
+    && entryOutsideFinalizedNtz
+    && entryBeforeCutoff
+    && consolidationEdgeQualified,
+  );
+  const lifecycleStates: ConsolidationLifecycleState[] = ["CONSOLIDATION_ZONE_FROZEN"];
+  if (pInside) lifecycleStates.push("PATIENCE_INSIDE_CONSOLIDATION");
+  if (directBreakoutConfirmed) {
+    lifecycleStates.push("CONSOLIDATION_BREAKOUT_CONFIRMED");
+  } else if (breakoutPullbackConfirmed) {
+    lifecycleStates.push("BREAKOUT_PULLBACK_PATIENCE_CONFIRMED");
+  } else if (pInside && entryIsImmediate && entry?.isComplete) {
+    lifecycleStates.push("CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED", "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
+  }
+  const executionEligible = !pInside
+    ? (!breakoutPullback || breakoutPullbackConfirmed)
+    : directBreakoutConfirmed;
+  const rejectionReason = executionEligible
+    ? null
+    : breakoutPullback
+      ? "CONSOLIDATION_BREAKOUT_PULLBACK_SEQUENCE_NOT_CONFIRMED"
+      : pInside
+        ? entryIsImmediate && entry?.isComplete
+          ? "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+          : "PATIENCE_INSIDE_CONSOLIDATION"
+        : null;
+  return {
+    detectorVersion: CONSOLIDATION_ENTRY_GUARD_VERSION,
+    lifecycleState: lifecycleStates.at(-1) ?? null,
+    lifecycleStates,
+    zoneDetected: true,
+    activeZone: pInside,
+    executionEligible,
+    consolidationZoneHigh: zoneHigh,
+    consolidationZoneLow: zoneLow,
+    consolidationStartTime: frozen.startTime,
+    consolidationDetectionTime: frozen.endTime,
+    sourceCandleOpenTimes,
+    rangeWidth: frozen.range,
+    rangeWidthTicks: frozen.range === null ? null : Number((frozen.range / 0.25).toFixed(2)),
+    direction,
+    patienceOpenTime: patienceCandle?.openTime ?? null,
+    patienceCloseTime: patienceCandle?.closeTime ?? null,
+    entryOpenTime: entry?.openTime ?? null,
+    entryCloseTime: entry?.closeTime ?? null,
+    confirmationThreshold,
+    entryClose: entry?.isComplete ? entry.close : null,
+    entryCompleted: entry?.isComplete === true,
+    entryReachedConfirmation,
+    entryCloseOutsideZone,
+    entryOutsideFinalizedNtz,
+    entryBeforeCutoff,
+    consolidationEdgeQualified,
+    breakoutPullback,
+    rejectionReason,
+    detail: directBreakoutConfirmed
+      ? "Immediate E reached the configured confirmation buffer, closed strictly outside the frozen consolidation zone and finalized NTZ, and satisfied the consolidation breakout edge."
+      : breakoutPullbackConfirmed
+        ? "Completed breakout-pullback patience sequence confirmed from the frozen consolidation boundary and a new immediate P→E."
+        : rejectionReason === "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+          ? "Immediate E did not close strictly outside the frozen consolidation zone; the P occurrence expired and later candles cannot confirm it."
+          : rejectionReason === "PATIENCE_INSIDE_CONSOLIDATION"
+            ? "The patience candle remains inside the frozen consolidation zone and is evidence only until its immediate E confirms a breakout close."
+            : frozen.detail,
   };
 }
 

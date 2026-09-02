@@ -3123,6 +3123,46 @@ components:
         maxRangeTicks: { type: number, minimum: 1 }
         maxExpansionRatio: { type: number, exclusiveMinimum: 0 }
       required: [version, minCandles, maxRangeTicks, maxExpansionRatio]
+    ConsolidationEntryGuardEvidence:
+      type: object
+      additionalProperties: false
+      properties:
+        detectorVersion: { type: string }
+        lifecycleState:
+          type: ["string", "null"]
+          enum: [CONSOLIDATION_ZONE_FROZEN, PATIENCE_INSIDE_CONSOLIDATION, CONSOLIDATION_BREAKOUT_CONFIRMED, CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED, PATIENCE_EXPIRED_INSIDE_CONSOLIDATION, BREAKOUT_PULLBACK_PATIENCE_CONFIRMED, null]
+        lifecycleStates:
+          type: array
+          items:
+            type: string
+            enum: [CONSOLIDATION_ZONE_FROZEN, PATIENCE_INSIDE_CONSOLIDATION, CONSOLIDATION_BREAKOUT_CONFIRMED, CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED, PATIENCE_EXPIRED_INSIDE_CONSOLIDATION, BREAKOUT_PULLBACK_PATIENCE_CONFIRMED]
+        zoneDetected: { type: boolean }
+        activeZone: { type: boolean }
+        executionEligible: { type: boolean }
+        consolidationZoneHigh: { type: ["number", "null"] }
+        consolidationZoneLow: { type: ["number", "null"] }
+        consolidationStartTime: { type: ["string", "null"], format: date-time }
+        consolidationDetectionTime: { type: ["string", "null"], format: date-time }
+        sourceCandleTimestamps: { type: array, items: { type: string, format: date-time } }
+        rangeWidth: { type: ["number", "null"] }
+        rangeWidthTicks: { type: ["number", "null"] }
+        direction: { type: ["string", "null"], enum: [long, short, null] }
+        patienceOpenTime: { type: ["string", "null"], format: date-time }
+        patienceCloseTime: { type: ["string", "null"], format: date-time }
+        entryOpenTime: { type: ["string", "null"], format: date-time }
+        entryCloseTime: { type: ["string", "null"], format: date-time }
+        confirmationThreshold: { type: ["number", "null"] }
+        entryClose: { type: ["number", "null"] }
+        entryCompleted: { type: boolean }
+        entryReachedConfirmation: { type: ["boolean", "null"] }
+        entryCloseOutsideZone: { type: ["boolean", "null"] }
+        entryOutsideFinalizedNtz: { type: ["boolean", "null"] }
+        entryBeforeCutoff: { type: ["boolean", "null"] }
+        consolidationEdgeQualified: { type: boolean }
+        breakoutPullback: { type: boolean }
+        rejectionReason: { type: ["string", "null"] }
+        detail: { type: string }
+      required: [detectorVersion, lifecycleState, lifecycleStates, zoneDetected, activeZone, executionEligible, consolidationZoneHigh, consolidationZoneLow, consolidationStartTime, consolidationDetectionTime, sourceCandleTimestamps, rangeWidth, rangeWidthTicks, direction, patienceOpenTime, patienceCloseTime, entryOpenTime, entryCloseTime, confirmationThreshold, entryClose, entryCompleted, entryReachedConfirmation, entryCloseOutsideZone, entryOutsideFinalizedNtz, entryBeforeCutoff, consolidationEdgeQualified, breakoutPullback, rejectionReason, detail]
     BacktestAuditRecord:
       type: object
       additionalProperties: false
@@ -3171,6 +3211,7 @@ components:
         exitReason: { type: ["string", "null"] }
         confirmationBufferTicks: { type: ["number", "null"] }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
+        consolidationGuard: { oneOf: [{ $ref: "#/components/schemas/ConsolidationEntryGuardEvidence" }, { type: "null" }] }
         pullbackOccurrences: { type: array, items: { type: object, additionalProperties: true } }
         patienceOccurrences: { type: array, items: { type: object, additionalProperties: true } }
       required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason, consolidationThresholds]
@@ -3213,6 +3254,7 @@ components:
         confirmationBufferTicks: { type: ["number", "null"] }
         nextObservedCandle: { type: ["object", "null"], additionalProperties: true }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
+        consolidationGuard: { oneOf: [{ $ref: "#/components/schemas/ConsolidationEntryGuardEvidence" }, { type: "null" }] }
         status:
           type: string
           enum: [EDGE_FOUND, PATIENCE_FOUND, SIGNAL_CONFIRMED, TRADE_TAKEN, TRADE_OUTCOME, CANDIDATE, CONFIRMED, ENTRY_CONFIRMATION_FAILED, ENTRY_CONFIRMED, QUALIFIED_TRADE, MODELED_TRADE, RISK_REJECTED, RISK_APPROVED_EXECUTION_UNAVAILABLE, STOP_EXIT, TARGET_EXIT, RUNNER_EXIT, PATIENCE_CANDLE_EXPIRED, EXPIRED_NO_IMMEDIATE_CONFIRMATION, EXPIRED_MISSING_E, EXPIRED_INCOMPLETE_E, STRUCTURALLY_INVALIDATED, IMMEDIATE_CONFIRMATION_FAILED]

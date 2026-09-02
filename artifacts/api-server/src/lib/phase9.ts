@@ -41,6 +41,10 @@ import {
 } from "./strategy/phase4.js";
 import { patienceArmLifecycleTransitions, type PatienceOccurrence } from "./strategy/phase5.js";
 import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
+import {
+  evaluateConsolidationEntryGuard,
+  type ConsolidationEntryEvidence,
+} from "./strategy/phase6.js";
 import type { Direction } from "./strategy/types.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
@@ -256,6 +260,79 @@ export type BacktestTrade = {
   };
 };
 
+export type BacktestConsolidationGuardEvidence = {
+  detectorVersion: string;
+  lifecycleState: ConsolidationEntryEvidence["lifecycleState"];
+  lifecycleStates: ConsolidationEntryEvidence["lifecycleStates"];
+  zoneDetected: boolean;
+  activeZone: boolean;
+  executionEligible: boolean;
+  consolidationZoneHigh: number | null;
+  consolidationZoneLow: number | null;
+  consolidationStartTime: string | null;
+  consolidationDetectionTime: string | null;
+  sourceCandleTimestamps: string[];
+  rangeWidth: number | null;
+  rangeWidthTicks: number | null;
+  direction: Direction | null;
+  patienceOpenTime: string | null;
+  patienceCloseTime: string | null;
+  entryOpenTime: string | null;
+  entryCloseTime: string | null;
+  confirmationThreshold: number | null;
+  entryClose: number | null;
+  entryCompleted: boolean;
+  entryReachedConfirmation: boolean | null;
+  entryCloseOutsideZone: boolean | null;
+  entryOutsideFinalizedNtz: boolean | null;
+  entryBeforeCutoff: boolean | null;
+  consolidationEdgeQualified: boolean;
+  breakoutPullback: boolean;
+  rejectionReason: string | null;
+  detail: string;
+};
+
+function serializeConsolidationGuard(
+  evidence: ConsolidationEntryEvidence | null,
+): BacktestConsolidationGuardEvidence | null {
+  if (!evidence) return null;
+  const iso = (timestamp: number | null): string | null =>
+    timestamp !== null && Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+  return {
+    detectorVersion: evidence.detectorVersion,
+    lifecycleState: evidence.lifecycleState,
+    lifecycleStates: evidence.lifecycleStates,
+    zoneDetected: evidence.zoneDetected,
+    activeZone: evidence.activeZone,
+    executionEligible: evidence.executionEligible,
+    consolidationZoneHigh: evidence.consolidationZoneHigh,
+    consolidationZoneLow: evidence.consolidationZoneLow,
+    consolidationStartTime: iso(evidence.consolidationStartTime),
+    consolidationDetectionTime: iso(evidence.consolidationDetectionTime),
+    sourceCandleTimestamps: evidence.sourceCandleOpenTimes
+      .filter((timestamp) => Number.isFinite(timestamp))
+      .map((timestamp) => new Date(timestamp).toISOString()),
+    rangeWidth: evidence.rangeWidth,
+    rangeWidthTicks: evidence.rangeWidthTicks,
+    direction: evidence.direction,
+    patienceOpenTime: iso(evidence.patienceOpenTime),
+    patienceCloseTime: iso(evidence.patienceCloseTime),
+    entryOpenTime: iso(evidence.entryOpenTime),
+    entryCloseTime: iso(evidence.entryCloseTime),
+    confirmationThreshold: evidence.confirmationThreshold,
+    entryClose: evidence.entryClose,
+    entryCompleted: evidence.entryCompleted,
+    entryReachedConfirmation: evidence.entryReachedConfirmation,
+    entryCloseOutsideZone: evidence.entryCloseOutsideZone,
+    entryOutsideFinalizedNtz: evidence.entryOutsideFinalizedNtz,
+    entryBeforeCutoff: evidence.entryBeforeCutoff,
+    consolidationEdgeQualified: evidence.consolidationEdgeQualified,
+    breakoutPullback: evidence.breakoutPullback,
+    rejectionReason: evidence.rejectionReason,
+    detail: evidence.detail,
+  };
+}
+
 export type BacktestAuditRecord = {
   id: string;
   tradingDate: string;
@@ -319,6 +396,7 @@ export type BacktestAuditRecord = {
   supportingConfluences?: string[];
   setupGrade?: "A" | "A+" | "A++";
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: BacktestConsolidationGuardEvidence | null;
   pullbackOccurrences?: Array<{
     eventId?: string;
     armId?: string;
@@ -795,6 +873,7 @@ export type HistoricalOccurrence = {
   confirmationBufferTicks: number | null;
   nextObservedCandle: Record<string, number | boolean> | null;
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: BacktestConsolidationGuardEvidence | null;
   status: string;
   reasonCode: string;
   evaluationCursor: string;
@@ -2124,8 +2203,59 @@ function auditForEvaluation(
   governedConsolidation: ConsolidationThresholds,
   causalSourceCandles?: readonly SimulatedFuturesCandle[],
   causalContractSymbol?: string,
+  visibleCausalCandles?: readonly SimulatedFuturesCandle[],
 ): BacktestAuditRecord {
   const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
+  const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
+    ? snapshot.reversalPatience ?? snapshot.patience
+    : snapshot.patience;
+  const consolidationEdgeEvaluation = snapshot.setupAnalysis.evaluations
+    .find((candidate) => candidate.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION");
+  const toGuardCandle = (candle: typeof signalPatience.patienceCandle | typeof signalPatience.triggerCandle) =>
+    candle && Number.isFinite(Date.parse(candle.openTime)) && Number.isFinite(Date.parse(candle.closeTime))
+      ? {
+        openTime: Date.parse(candle.openTime),
+        closeTime: Date.parse(candle.closeTime),
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: 0,
+        isComplete: candle.isComplete,
+      }
+      : null;
+  const guardPatience = {
+    patienceCandle: toGuardCandle(signalPatience.patienceCandle),
+    triggerCandle: toGuardCandle(signalPatience.triggerCandle),
+    entryBufferTicks: signalPatience.entryBufferTicks,
+    entryBufferPrice: signalPatience.entryBufferPrice,
+  };
+  const guardDirection = evaluation.direction ?? snapshot.breakout.direction ?? null;
+  const finalizedNtz = snapshot.ntz.complete
+    && typeof snapshot.ntz.high === "number"
+    && typeof snapshot.ntz.low === "number"
+    ? { high: snapshot.ntz.high, low: snapshot.ntz.low, complete: true }
+    : null;
+  const consolidationGuard = serializeConsolidationGuard(evaluateConsolidationEntryGuard({
+    candles: visibleCausalCandles ?? [],
+    levels: { ntz: finalizedNtz },
+    patience: guardPatience,
+    direction: guardDirection,
+    breakout: {
+      detected: snapshot.breakout.detected,
+      direction: snapshot.breakout.direction,
+      candleOpenTime: snapshot.breakout.candleOpenTime ? Date.parse(snapshot.breakout.candleOpenTime) : null,
+      continuationConfirmed: snapshot.breakout.continuationConfirmed,
+      failed: snapshot.breakout.failed,
+    },
+    config: activeShadowStrategySnapshot().config,
+    consolidationEvaluation: consolidationEdgeEvaluation,
+    qualifyingPullback: snapshot.pullback.events.some((event) =>
+      event.qualifies === true
+      && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+      && !event.level.trim().toLowerCase().startsWith("fib"),
+    ),
+  }));
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2207,6 +2337,7 @@ function auditForEvaluation(
     supportingConfluences: evaluation.supportingConfluences ?? [],
     setupGrade: evaluation.grade && evaluation.grade >= 2 ? "A++" : evaluation.grade && evaluation.grade >= 1 ? "A+" : "A",
     consolidationThresholds: governedConsolidation,
+    consolidationGuard,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
     patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
   };
@@ -2767,6 +2898,7 @@ export function buildHistoricalOccurrenceLedger(
         pOpenTimestamp: event.candle ? new Date(event.candle.openTime).toISOString() : event.time,
         eOpenTimestamp: null,
         entryObservationTimestamp: null,
+         consolidationGuard: record.consolidationGuard,
          identityInvariantViolations: [],
         confirmationBufferTicks: null,
         nextObservedCandle: null,
@@ -2916,6 +3048,7 @@ export function buildHistoricalOccurrenceLedger(
          finalizedNtzHigh: record.finalizedNtzHigh ?? null,
          finalizedNtzLow: record.finalizedNtzLow ?? null,
          finalizedNtzComplete: record.finalizedNtzComplete ?? false,
+          consolidationGuard: record.consolidationGuard,
          identityInvariantViolations,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
@@ -3016,6 +3149,7 @@ export function buildHistoricalOccurrenceLedger(
          pOpenTimestamp: record.patienceCandleOpenTime,
          eOpenTimestamp: record.triggerCandleOpenTime ?? record.patienceCandleCloseTime,
          entryObservationTimestamp: record.triggerCandleCloseTime,
+         consolidationGuard: record.consolidationGuard,
          identityInvariantViolations: [],
         confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: null,
@@ -3091,6 +3225,31 @@ function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { rea
     details: [
       `Confirmed ORB signal ${occurrence.occurrenceId} has no causal interaction with an executable primary level.`,
       "Fibonacci references are diagnostic-only and cannot authorize an ORB pullback continuation.",
+    ],
+  };
+}
+
+function candidateConsolidationRejection(
+  occurrence: HistoricalOccurrence,
+): { reasonCodes: string[]; details: string[] } | null {
+  const guard = occurrence.consolidationGuard;
+  if (!guard || (!guard.activeZone && !guard.breakoutPullback)) return null;
+  if (guard.executionEligible) return null;
+  const lifecycleCodes = guard.lifecycleStates.filter((state) =>
+    state !== "CONSOLIDATION_ZONE_FROZEN" && state !== "PATIENCE_INSIDE_CONSOLIDATION",
+  );
+  return {
+    reasonCodes: [
+      "REJECTED_CONSOLIDATION_ENTRY_GUARD",
+      ...(guard.rejectionReason ? [guard.rejectionReason] : []),
+      ...lifecycleCodes,
+    ].filter((reason, index, all) => all.indexOf(reason) === index),
+    details: [
+      `Confirmed signal ${occurrence.occurrenceId} was rejected by the deterministic consolidation-entry guard.`,
+      guard.detail,
+      ...(guard.rejectionReason ? [`Consolidation guard reason: ${guard.rejectionReason}.`] : []),
+      ...(guard.consolidationZoneLow !== null && guard.consolidationZoneHigh !== null
+        ? [`Frozen consolidation zone: ${guard.consolidationZoneLow}-${guard.consolidationZoneHigh}.`] : []),
     ],
   };
 }
@@ -3288,6 +3447,15 @@ export function projectHistoricalTradeCandidates(
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: lifecycleRejection.reasonCodes,
         details: lifecycleRejection.details,
+      });
+      continue;
+    }
+    const consolidationRejection = candidateConsolidationRejection(occurrence);
+    if (consolidationRejection) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: consolidationRejection.reasonCodes,
+        details: consolidationRejection.details,
       });
       continue;
     }
@@ -4084,6 +4252,7 @@ export function runCausalBacktest(
         governedConsolidation,
         contractCandles,
         candle.contractSymbol,
+        visibleContractCandles,
       );
       audit.push(record);
       return record;
@@ -4127,6 +4296,21 @@ export function runCausalBacktest(
         "NO_QUALIFIED_SETUP",
         "No non-alert qualified setup was available.",
       );
+      continue;
+    }
+    const selectedConsolidationGuard = selectedAudit?.consolidationGuard;
+    if (selectedConsolidationGuard && !selectedConsolidationGuard.executionEligible) {
+      setAuditRejection(
+        selectedAudit!,
+        "REJECTED_CONSOLIDATION_ENTRY_GUARD",
+        [
+          selectedConsolidationGuard.detail,
+          selectedConsolidationGuard.rejectionReason
+            ? `Reason: ${selectedConsolidationGuard.rejectionReason}.`
+            : null,
+        ].filter((detail): detail is string => detail !== null).join(" "),
+      );
+      rejectedByPeriod[period] += 1;
       continue;
     }
      // Historical candidates are independent Shadow Mode dispositions. The

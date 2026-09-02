@@ -14,6 +14,7 @@ import {
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
+  type BacktestConsolidationGuardEvidence,
   type CausalReplayDataset,
   type HistoricalOccurrence,
 } from "./phase9.js";
@@ -246,6 +247,52 @@ function candidateProjectionDataset(
     outOfSampleDates: [],
     contractMonth: "U26",
   } as CausalReplayDataset;
+}
+
+function consolidationGuard(
+  overrides: Partial<BacktestConsolidationGuardEvidence> = {},
+): BacktestConsolidationGuardEvidence {
+  return {
+    detectorVersion: "phase6-consolidation-entry-guard-v1",
+    lifecycleState: "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
+    lifecycleStates: [
+      "CONSOLIDATION_ZONE_FROZEN",
+      "PATIENCE_INSIDE_CONSOLIDATION",
+      "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED",
+      "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
+    ],
+    zoneDetected: true,
+    activeZone: true,
+    executionEligible: false,
+    consolidationZoneHigh: 101,
+    consolidationZoneLow: 99,
+    consolidationStartTime: "2026-08-25T14:00:00.000Z",
+    consolidationDetectionTime: "2026-08-25T14:15:00.000Z",
+    sourceCandleTimestamps: [
+      "2026-08-25T14:00:00.000Z",
+      "2026-08-25T14:05:00.000Z",
+      "2026-08-25T14:10:00.000Z",
+    ],
+    rangeWidth: 2,
+    rangeWidthTicks: 8,
+    direction: "long",
+    patienceOpenTime: "2026-08-25T14:15:00.000Z",
+    patienceCloseTime: "2026-08-25T14:20:00.000Z",
+    entryOpenTime: "2026-08-25T14:20:00.000Z",
+    entryCloseTime: "2026-08-25T14:25:00.000Z",
+    confirmationThreshold: 103,
+    entryClose: 101,
+    entryCompleted: true,
+    entryReachedConfirmation: true,
+    entryCloseOutsideZone: false,
+    entryOutsideFinalizedNtz: true,
+    entryBeforeCutoff: true,
+    consolidationEdgeQualified: false,
+    breakoutPullback: false,
+    rejectionReason: "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED",
+    detail: "Immediate E closed inside the frozen consolidation zone.",
+    ...overrides,
+  };
 }
 
 function lifecycleForArm(
@@ -2262,4 +2309,41 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
   assert.equal(patience[1]?.status, "SIGNAL_CONFIRMED");
   assert.equal(patience[1]?.entryTimestamp, base.triggerCandleOpenTime);
   assert.equal(patience[1]?.canonicalTrade, true);
+});
+
+test("candidate projection enforces the consolidation guard before candidate-owned execution", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:15:00.000Z",
+    eOpen: "2026-08-25T14:20:00.000Z",
+    eClose: "2026-08-25T14:25:00.000Z",
+  });
+  occurrence.consolidationGuard = consolidationGuard();
+  const dataset = candidateProjectionDataset(occurrence);
+  const rejected = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(rejected.candidates.length, 0);
+  assert.equal(rejected.authoritativeTrades.length, 0);
+  assert.equal(rejected.rejected.length, 1);
+  assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD"), true);
+  assert.equal(rejected.rejected[0]?.reasonCodes.includes("PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"), true);
+
+  occurrence.consolidationGuard = consolidationGuard({
+    lifecycleState: "CONSOLIDATION_BREAKOUT_CONFIRMED",
+    lifecycleStates: ["CONSOLIDATION_ZONE_FROZEN", "PATIENCE_INSIDE_CONSOLIDATION", "CONSOLIDATION_BREAKOUT_CONFIRMED"],
+    executionEligible: true,
+    entryCloseOutsideZone: true,
+    consolidationEdgeQualified: true,
+    rejectionReason: null,
+    detail: "Immediate E closed outside the frozen consolidation zone.",
+  });
+  const accepted = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(accepted.candidates.length, 1);
+  assert.equal(accepted.authoritativeTrades.length, 1);
 });

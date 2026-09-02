@@ -24,6 +24,7 @@
 - [Visual review invariant isolation](visual-review-invariant-isolation.md) — review evidence must remain inspectable when a reconstructed historical snapshot exposes a dashboard consistency contradiction.
 - [Historical occurrence identity](historical-occurrence-identity.md) — merge ledger rows by causal occurrence, not setup label, then retain canonical ownership and secondary strategy matches.
 - [Consolidation threshold governance](consolidation-threshold-governance.md) — active threshold config must fingerprint caches and travel with audit and occurrence provenance.
+- [Consolidation entry guard](consolidation-entry-guard.md) — freeze the zone before P or a completed breakout; only an immediate buffered E closing strictly outside zone and NTZ may execute.
 - [Historical index load concurrency](historical-index-load-concurrency.md) — serialize reads of the large persisted multi-contract index so overlapping visual-review requests do not exhaust string memory.
 - [Patience wick invalidation](patience-wick-invalidation.md) — touching the opposite P wick is not a breach; prefer the exact P/E audit that owns a modeled trade.
 - [Ledger signal taxonomy](ledger-signal-taxonomy.md) — confirmed signals are ledger-owned P→E outcomes classified by E time; arm consumption blocks reuse while ambiguity remains recoverable.

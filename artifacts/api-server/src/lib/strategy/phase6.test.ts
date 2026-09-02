@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   detectExtendedNtzConsolidation,
+  evaluateConsolidationEntryGuard,
   detectReversalEvidence,
   evaluateBonusReversal,
   evaluateStrongBreakoutAfterConsolidation,
@@ -430,6 +431,97 @@ test("consolidation breakout closes outside its frozen pre-breakout range", () =
   assert.equal(result.consolidation?.frozenHigh, 9.99);
   assert.equal(result.consolidation?.frozenLow, 9.91);
   assert.equal(result.rules.find((rule) => rule.key === "strongBreakout")?.passed, true);
+});
+
+test("consolidation guard confirms only an immediate completed outside close", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
+  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...zoneCandles, p, e, candle(base + 1_500_000, 102.25, 104, 102, 103)],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    direction: "long",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.lifecycleState, "CONSOLIDATION_BREAKOUT_CONFIRMED");
+  assert.equal(result.executionEligible, true);
+  assert.equal(result.consolidationZoneHigh, 100.5);
+  assert.equal(result.consolidationZoneLow, 99.5);
+  assert.deepEqual(result.sourceCandleOpenTimes, zoneCandles.map((item) => item.openTime));
+});
+
+test("consolidation guard rejects wick-out/close-in E and freezes before future candles", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
+  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 100.25);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...zoneCandles, p, e, candle(base + 1_500_000, 100.25, 106, 100, 105)],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    direction: "long",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.lifecycleState, "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
+  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"), true);
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.consolidationZoneHigh, 100.5);
+  assert.equal(result.consolidationZoneLow, 99.5);
+});
+
+test("consolidation guard preserves the frozen boundary for breakout-pullback P to E", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const breakout = candle(base + 900_000, 100, 102, 99.9, 101.75);
+  const p = candle(base + 1_200_000, 101.5, 101.75, 100.75, 101.6);
+  const e = candle(base + 1_500_000, 101.6, 103.75, 101.5, 103.75);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...zoneCandles, breakout, p, e],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 103.75 },
+    direction: "long",
+    breakout: {
+      detected: true,
+      direction: "long",
+      candleOpenTime: breakout.openTime,
+      continuationConfirmed: true,
+      failed: false,
+    },
+    qualifyingPullback: true,
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.lifecycleState, "BREAKOUT_PULLBACK_PATIENCE_CONFIRMED");
+  assert.equal(result.executionEligible, true);
+  assert.equal(result.consolidationZoneHigh, 100.5);
 });
 
 test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {

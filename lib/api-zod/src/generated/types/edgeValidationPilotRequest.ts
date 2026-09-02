@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EdgeValidationPilotRequestOhlcvEntryBufferTicks } from './edgeValidationPilotRequestOhlcvEntryBufferTicks';
+import type { EdgeValidationPilotRequestOhlcvStopBufferTicks } from './edgeValidationPilotRequestOhlcvStopBufferTicks';
 import type { EdgeValidationPilotRequestSymbol } from './edgeValidationPilotRequestSymbol';
 
 /**
@@ -21,11 +22,8 @@ export interface EdgeValidationPilotRequest {
   selectedDates: string[];
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
-  /**
-     * @minimum 0
-     * @maximum 12
-     */
-  ohlcvStopBufferTicks?: number;
+  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  ohlcvStopBufferTicks?: EdgeValidationPilotRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0
      * @maximum 12

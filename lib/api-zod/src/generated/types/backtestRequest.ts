@@ -7,6 +7,7 @@
  */
 import type { BacktestRequestExecutionMode } from './backtestRequestExecutionMode';
 import type { BacktestRequestOhlcvEntryBufferTicks } from './backtestRequestOhlcvEntryBufferTicks';
+import type { BacktestRequestOhlcvStopBufferTicks } from './backtestRequestOhlcvStopBufferTicks';
 import type { BacktestRequestSlippageMode } from './backtestRequestSlippageMode';
 import type { BacktestRequestSource } from './backtestRequestSource';
 
@@ -48,11 +49,8 @@ export interface BacktestRequest {
   executionMode?: BacktestRequestExecutionMode;
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
-  /**
-     * @minimum 1
-     * @maximum 8
-     */
-  ohlcvStopBufferTicks?: number;
+  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  ohlcvStopBufferTicks?: BacktestRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0
      * @maximum 8

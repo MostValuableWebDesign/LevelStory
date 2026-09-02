@@ -13,6 +13,7 @@ import type { BacktestAuditRecordPeriod } from './backtestAuditRecordPeriod';
 import type { BacktestAuditRecordPullbackOccurrencesItem } from './backtestAuditRecordPullbackOccurrencesItem';
 import type { BacktestAuditRecordRejectionCategory } from './backtestAuditRecordRejectionCategory';
 import type { BacktestAuditRecordTriggerCandle } from './backtestAuditRecordTriggerCandle';
+import type { ConsolidationEntryGuardEvidence } from './consolidationEntryGuardEvidence';
 import type { ConsolidationThresholds } from './consolidationThresholds';
 
 export interface BacktestAuditRecord {
@@ -80,6 +81,7 @@ export interface BacktestAuditRecord {
   /** @nullable */
   confirmationBufferTicks?: number | null;
   consolidationThresholds: ConsolidationThresholds;
+  consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
   patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
 }

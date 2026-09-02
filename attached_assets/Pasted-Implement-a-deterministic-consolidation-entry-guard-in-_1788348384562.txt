@@ -1,0 +1,146 @@
+Implement a deterministic consolidation-entry guard in LevelStory.
+
+Goal
+
+Prevent patience-candle entries from being triggered while price remains trapped inside an active tight consolidation zone.
+
+Do not change the underlying patience-candle shape definition, immediate P→E pairing, NTZ rule, eight-tick confirmation buffer, key-level pullback tolerance, stop-loss policy, profit-target policy, or 1:00 p.m. ET entry cutoff.
+
+Authoritative behavior
+
+1. Detect and freeze consolidation
+
+When the existing causal consolidation detector identifies a valid tight/stable range, freeze:
+
+- consolidationZoneHigh
+- consolidationZoneLow
+- consolidationStartTime
+- consolidationDetectionTime
+- source candle timestamps
+- range width
+- detector/configuration version
+
+Only completed, machine-visible five-minute candles may contribute.
+
+The frozen zone must not expand afterward to absorb breakout candles.
+
+2. Patience candles inside consolidation
+
+A patience candle may be detected inside an active consolidation zone, but it is evidence only.
+
+Record it as:
+
+PATIENCE_INSIDE_CONSOLIDATION
+
+It must remain non-executable unless its immediate next completed candle becomes a valid consolidation-breakout entry candle.
+
+3. Direct consolidation-breakout entry
+
+A patience candle inside consolidation may produce an entry only when its immediate next candle E:
+
+- Reaches the directional patience confirmation threshold.
+- Uses the configured eight-MES-tick confirmation buffer.
+- Closes outside the frozen consolidation zone in the trade direction.
+- Is outside the finalized ORB/NTZ.
+- Opens before the exclusive 1:00 p.m. ET cutoff.
+- Satisfies the Consolidation Breakout Continuation edge.
+
+Long:
+
+E.close > consolidationZoneHigh
+
+Short:
+
+E.close < consolidationZoneLow
+
+A wick outside the zone without a completed close outside does not qualify.
+
+4. Failed immediate confirmation
+
+If immediate E does not close outside the consolidation zone:
+
+- P expires.
+- No candidate, entry, fill, or trade may be created from that P.
+- Continue scanning for a new patience candle.
+- A later candle cannot confirm the expired P.
+- A later P2 may only be confirmed by its own immediate E2.
+
+5. Breakout-pullback sequence
+
+After a completed breakout close ends the consolidation:
+
+- Preserve the frozen consolidation boundary as a possible key level.
+- Permit a pullback toward the broken boundary or another qualifying key level.
+- Require a new patience candle.
+- Require its immediate next E confirmation.
+- Give this breakout-pullback-patience sequence stronger confluence evidence than a direct breakout.
+
+Do not fabricate a pullback or level interaction.
+
+6. Universal guard
+
+No strategy may bypass the consolidation guard merely because another confluence exists.
+
+If price remains inside an active frozen consolidation zone, no authoritative candidate or trade may be created unless the immediate E candle closes outside the zone under the direct consolidation-breakout rule.
+
+Confluences may increase the setup grade but cannot override this block.
+
+7. Audit evidence
+
+Add explicit deterministic states and reasons:
+
+- CONSOLIDATION_ZONE_FROZEN
+- PATIENCE_INSIDE_CONSOLIDATION
+- CONSOLIDATION_BREAKOUT_CONFIRMED
+- CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED
+- PATIENCE_EXPIRED_INSIDE_CONSOLIDATION
+- BREAKOUT_PULLBACK_PATIENCE_CONFIRMED
+
+Store the exact P, E, zone boundaries, timestamps, direction, threshold, and E closing price.
+
+8. Candidate enforcement
+
+Enforce this before authoritative candidate projection and candidate-owned trade creation.
+
+Rejected signals must not affect:
+
+- Trades
+- Fills
+- P&L
+- Win/loss
+- Drawdown
+- Fees
+- Slippage
+- Exit statistics
+
+9. Tests
+
+Add deterministic tests proving:
+
+- A P→E break that remains inside consolidation creates no trade.
+- A wick outside followed by a close inside creates no trade.
+- An immediate E close outside creates exactly one candidate and trade.
+- A failed P1 expires and a valid P2→E2 may qualify.
+- A later candle cannot confirm P1.
+- Breakout → pullback → new P→E can qualify.
+- Another edge or confluence cannot bypass the active-zone guard.
+- Entries at or after 1:00 p.m. ET remain prohibited.
+- No future candle is used to define or modify the frozen zone.
+
+Verification
+
+Run only focused consolidation, patience, candidate-projection, and directly affected execution tests, plus:
+
+- API typecheck
+- git diff --check
+
+Do not run a historical-index rebuild, broad qualification batch, or cold multi-contract replay.
+
+Report:
+
+1. Files changed
+2. Exact consolidation lifecycle
+3. Where the universal guard is enforced
+4. Rejection reasons added
+5. Focused test totals
+6. Any remaining limitation
