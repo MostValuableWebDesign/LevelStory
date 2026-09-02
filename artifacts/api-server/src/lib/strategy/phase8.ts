@@ -198,6 +198,7 @@ export function simulatePhase8ShadowExecution(input: {
   target?: number | null;
   strategyStop?: number | null;
   catastropheStop?: number | null;
+  primaryLevelStop?: number | null;
   runnerReferencePrice?: number | null;
   runnerImpulse?: number | null;
   runnerMostFavorablePrice?: number | null;
@@ -245,17 +246,27 @@ export function simulatePhase8ShadowExecution(input: {
     && (input.direction === "long" ? low <= input.catastropheStop : high >= input.catastropheStop);
   const strategyHit = input.strategyStop !== null && input.strategyStop !== undefined
     && (input.direction === "long" ? low <= input.strategyStop : high >= input.strategyStop);
+  const primaryLevelHit = input.primaryLevelStop !== null && input.primaryLevelStop !== undefined
+    && (input.direction === "long" ? low <= input.primaryLevelStop : high >= input.primaryLevelStop);
   const stop = stopHit ? "catastrophe" : strategyHit ? "strategy" : null;
-  const stopReference = stop === "catastrophe" ? input.catastropheStop! : input.strategyStop;
+  const stopReference = primaryLevelHit
+    ? input.primaryLevelStop!
+    : stop === "catastrophe" ? input.catastropheStop! : input.strategyStop;
   const targetReference = targetHit ? input.target! : null;
   const fullExitReference = stopReference ?? targetReference ?? input.exitReferencePrice ?? input.currentPrice ?? input.entryReferencePrice;
   const exitSlip = slippageTicks(mode, input.observedSpreadTicks ?? 1, input.normalSlippageTicks, input.fastSlippageTicks);
-  const exit = fillPrice(input.direction, input.exitQuote, "exit", exitSlip, input.specification.tickSize);
+  const exit = primaryLevelHit
+    ? {
+        price: money(input.primaryLevelStop!),
+        quoteSide: (input.direction === "long" ? "bid" : "ask") as "bid" | "ask",
+      }
+    : fillPrice(input.direction, input.exitQuote, "exit", exitSlip, input.specification.tickSize);
   const referenceForExit = stopReference ?? targetReference ?? fullExitReference;
+  const accountingExitSlip = primaryLevelHit ? 0 : exitSlip;
   const legs: ShadowFillLeg[] = [];
 
   if (stop || !targetHit) {
-    legs.push(legAccounting(input.direction, entry.price, input.entryReferencePrice, exit.price, entrySlip, exitSlip, input.contracts, input.specification, "full", exit.quoteSide));
+    legs.push(legAccounting(input.direction, entry.price, input.entryReferencePrice, exit.price, entrySlip, accountingExitSlip, input.contracts, input.specification, "full", exit.quoteSide));
   } else {
     if (targetContracts > 0) {
       const targetExit = fillPrice(input.direction, input.exitQuote, "exit", exitSlip, input.specification.tickSize);
@@ -300,7 +311,7 @@ export function simulatePhase8ShadowExecution(input: {
     exitReferencePrice: money(referenceForExit),
     exitFillPrice: money(exit.price),
     entrySlippageTicks: entrySlip,
-    exitSlippageTicks: exitSlip,
+    exitSlippageTicks: accountingExitSlip,
     contracts: input.contracts,
     targetContracts: targetHit ? targetContracts : 0,
     runnerContracts: targetHit ? runnerContracts : 0,

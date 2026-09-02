@@ -4397,6 +4397,9 @@ export function runCausalBacktest(
       strategyStop: resolution.status === "stop"
         ? resolution.stopLevel === "primary_level" ? resolution.price : snapshot.riskPlan.strategyStop
         : null,
+       primaryLevelStop: resolution.status === "stop" && resolution.stopLevel === "primary_level"
+         ? resolution.price
+         : null,
       catastropheStop: resolution.status === "stop" && resolution.stopLevel !== "primary_level"
         ? snapshot.riskPlan.catastropheStop
         : null,

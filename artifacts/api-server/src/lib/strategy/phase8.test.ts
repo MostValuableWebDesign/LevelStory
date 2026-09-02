@@ -124,6 +124,29 @@ test("Phase 8 gives catastrophe stops precedence over strategy stops", () => {
   assert.equal(execution.exitReason, "catastrophe stop");
 });
 
+test("Phase 8 uses the exact primary level stop as the exit despite quote spread and slippage", () => {
+  const execution = simulatePhase8ShadowExecution({
+    direction: "short",
+    entryQuote: quote,
+    exitQuote: { bid: 6818, ask: 6818.5 },
+    entryReferencePrice: 6800,
+    exitReferencePrice: 6815.5,
+    currentPrice: 6815.5,
+    high: 6818.25,
+    low: 6815,
+    contracts: 1,
+    strategyStop: 6815.5,
+    primaryLevelStop: 6815.5,
+    specification,
+    slippageMode: "abnormal_spread",
+  });
+  assert.equal(execution.exitReferencePrice, 6815.5);
+  assert.equal(execution.exitFillPrice, 6815.5);
+  assert.equal(execution.legs[0]?.fillPrice, 6815.5);
+  assert.equal(execution.exitSlippageTicks, 0);
+  assert.equal(execution.legs[0]?.modeledSlippageTicks, 2);
+});
+
 test("Phase 8 maps setup states and computes excursions in dollars", () => {
   assert.equal(setupOutcome("SETUP QUALIFIED"), "qualified");
   assert.equal(setupOutcome("EXPIRED"), "expired");
