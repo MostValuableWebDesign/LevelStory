@@ -1477,7 +1477,10 @@ function buildAnnotations(
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
-  addLevel("strategy-stop", "Strategy stop", audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice, "Formula-defined thesis stop.", "negative");
+  const strategyStopPrice = trade?.candidateId
+    ? trade.audit?.strategyStopPrice ?? null
+    : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
+  addLevel("strategy-stop", "Strategy stop", strategyStopPrice, "Formula-defined thesis stop.", "negative");
   const primaryLossExitLevel = trade?.audit?.primaryLossExitLevel ?? null;
   if (primaryLossExitLevel?.stopPrice !== null && primaryLossExitLevel?.stopPrice !== undefined) {
     addLevel(
@@ -1555,7 +1558,7 @@ function buildAnnotations(
       eventVisibility(stopHitTime),
     ));
   } else if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
-    lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", audit.strategyStopPrice ?? trade?.audit?.strategyStopPrice ?? null, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
+    lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", strategyStopPrice, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
   }
   if (targetPrice !== null
     && (eventLabels.has("TARGET_REACHED") || trade?.audit?.targetHit === true || trade?.outcome === "target")) {
