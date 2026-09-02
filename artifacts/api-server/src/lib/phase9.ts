@@ -3591,10 +3591,16 @@ function candidateDrivenEntryTrade(
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
-  const calendar = sessionCalendarForContract(context.specification);
-  const regular = sessionWindow(tradingDate, "regular", calendar);
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
+  const managementValidationReasons = candidateManagementValidationReasons(
+    management,
+    entryObservationTimestamp,
+  );
+  const missingContext = managementValidationReasons.length > 0;
+  const regular = !missingContext
+    ? sessionWindow(tradingDate, "regular", sessionCalendarForContract(context.specification))
+    : null;
   const postEntry = contractCandles.filter((item) =>
     item.isComplete
     && item.openTime > entryOpenTime
@@ -3603,11 +3609,6 @@ function candidateDrivenEntryTrade(
     && item.openTime >= regular.openTime
     && item.closeTime <= regular.closeTime,
   );
-  const managementValidationReasons = candidateManagementValidationReasons(
-    management,
-    entryObservationTimestamp,
-  );
-  const missingContext = managementValidationReasons.length > 0;
   const sessionCloseCandle = !missingContext
     ? regular
       ? contractCandles.filter((item) =>

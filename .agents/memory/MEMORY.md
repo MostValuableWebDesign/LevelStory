@@ -46,3 +46,4 @@
 - [Completed-E target snapshots](completed-e-target-snapshots.md) — select only the earliest valid confirmed snapshot at the canonical completed E close; null targets still allow independent exits.
 - [Causal pullback lifecycle](causal-pullback-lifecycle.md) — one pullback arm supports later valid patience candles; only true lifecycle boundaries terminate it.
 - [Causal target indicator provenance](causal-target-indicator-provenance.md) — target planning and Visual Review must share contract-local, non-closed-session indicator history anchored at E.
+- [Regular-session execution boundary](regular-session-execution-boundary.md) — candidate-owned stops must scan only the regular-session candles shown in Visual Review.
