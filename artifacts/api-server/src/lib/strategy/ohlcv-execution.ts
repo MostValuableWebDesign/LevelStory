@@ -151,7 +151,7 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
     MODELED_OHLCV_FILL_LABEL,
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
     ...(input.primaryLossExitLevel
-      ? [`Primary loss exit ${input.primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; vicinity is ${input.primaryLossExitLevel.distanceTicks} ticks.`]
+      ? [`Primary loss exit ${input.primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; the governed vicinity is 12 MES ticks and this reference is ${input.primaryLossExitLevel.distanceTicks} ticks away.`]
       : []),
   ];
   return {

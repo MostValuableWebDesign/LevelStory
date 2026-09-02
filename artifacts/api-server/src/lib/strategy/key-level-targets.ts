@@ -223,7 +223,7 @@ function distanceToRange(price: number, rangeLow: number, rangeHigh: number): nu
 /**
  * A losing position may use a causal primary level/indicator as the first
  * adverse exit reference when the patience candle's opposite wick is within
- * the governed 8-tick vicinity. The P-wick strategy stop remains the
+ * the governed 12-tick vicinity. The P-wick strategy stop remains the
  * secondary fallback and is intentionally not replaced globally.
  */
 export function primaryLossExitReferenceForPatience(input: {
@@ -233,11 +233,11 @@ export function primaryLossExitReferenceForPatience(input: {
   patienceHigh: number;
   levels: readonly KeyLevelTargetInput[];
   tickSize?: number;
-  bufferTicks?: 8;
+  bufferTicks?: 12;
 }): PrimaryLossExitReference | null {
   const tickSize = input.tickSize ?? 0.25;
-  const bufferTicks = input.bufferTicks ?? 8;
-  if (bufferTicks !== 8) throw new Error("Primary loss-exit vicinity must be exactly 8 MES ticks.");
+  const bufferTicks = input.bufferTicks ?? 12;
+  if (bufferTicks !== 12) throw new Error("Primary loss-exit vicinity must be exactly 12 MES ticks.");
   if (
     !Number.isFinite(input.entryPrice)
     || !Number.isFinite(input.patienceLow)

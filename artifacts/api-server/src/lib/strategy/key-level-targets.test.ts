@@ -171,3 +171,22 @@ test("short loss exits use the adverse upper primary level and ignore lower leve
   assert.equal(reference?.distanceTicks, 2);
   assert.equal(reference?.stopPrice, 102.5);
 });
+
+test("a primary loss reference between 8 and 12 ticks now qualifies", () => {
+  const longReference = primaryLossExitReferenceForPatience({
+    direction: "long",
+    entryPrice: 100,
+    patienceLow: 98,
+    patienceHigh: 101,
+    levels: [{ id: "support", type: "major support", price: 95.5 }],
+  });
+  const shortReference = primaryLossExitReferenceForPatience({
+    direction: "short",
+    entryPrice: 100,
+    patienceLow: 99,
+    patienceHigh: 102,
+    levels: [{ id: "resistance", type: "major resistance", price: 104.5 }],
+  });
+  assert.equal(longReference?.distanceTicks, 10);
+  assert.equal(shortReference?.distanceTicks, 10);
+});
