@@ -21,7 +21,7 @@ test("long key-level targets bypass nearby and behind levels", () => {
   assert.equal(plan.targetPrice, 108);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer|near"]);
   assert.ok(plan.availableLevels.every((level) => level.id !== "behind"));
-  assert.equal(plan.skippedLevels[0]?.reason, "ENTRY_WITHIN_12_TICKS");
+  assert.equal(plan.skippedLevels[0]?.reason, "ENTRY_WITHIN_30_TICKS");
 });
 
 test("short key-level targets use the upper zone boundary and bypass nearby levels", () => {
@@ -31,29 +31,28 @@ test("short key-level targets use the upper zone boundary and bypass nearby leve
     levels: [
       { id: "behind", type: "ORB", price: 101 },
       { id: "exact-buffer", type: "VWAP", price: 97 },
-      { id: "next", type: "major-resistance", rangeLow: 91, rangeHigh: 93 },
+      { id: "next", type: "major-resistance", rangeLow: 90, rangeHigh: 92 },
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "next");
-  assert.equal(plan.selectedTargetLevel?.price, 93);
-  assert.equal(plan.targetPrice, 93);
+  assert.equal(plan.selectedTargetLevel?.price, 92);
+  assert.equal(plan.targetPrice, 92);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["exact-buffer"]);
 });
 
 test("only levels outside the entry buffer are selected and raw levels become targets", () => {
   const entryPrice = 7527.75;
-  const vwap = 7522.565477738259;
   const plan = buildKeyLevelTargetPlan({
     direction: "short",
     entryPrice,
     levels: [
       { id: "ema-200", type: "EMA200", price: 7526.092528248642 },
-      { id: "vwap", type: "VWAP", price: vwap },
+      { id: "vwap", type: "VWAP", price: 7519.5 },
     ],
   });
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["ema-200"]);
   assert.equal(plan.selectedTargetLevel?.id, "vwap");
-  assert.equal(plan.targetPrice, vwap);
+  assert.equal(plan.targetPrice, 7519.5);
 });
 
 test("dynamite or duplicate prices become one frozen target level", () => {
@@ -101,25 +100,25 @@ test("exact-level placement is an explicit comparison mode", () => {
     levels: [{ id: "prior-high", type: "previous-day-high", price: 108 }],
   });
   assert.equal(plan.targetPrice, 108);
-  assert.equal(plan.bufferTicks, 12);
-  assert.equal(plan.bufferPoints, 3);
+  assert.equal(plan.bufferTicks, 30);
+  assert.equal(plan.bufferPoints, 7.5);
 });
 
-test("candidate near-side placement stays 12 ticks in front of a directional level", () => {
+test("candidate near-side placement stays 30 ticks in front of a directional level", () => {
   const longPlan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
-    placementMode: "NEAR_SIDE_12_TICKS",
+    placementMode: "NEAR_SIDE_30_TICKS",
     levels: [{ id: "resistance", type: "major resistance", price: 108 }],
   });
   const shortPlan = buildKeyLevelTargetPlan({
     direction: "short",
     entryPrice: 100,
-    placementMode: "NEAR_SIDE_12_TICKS",
+    placementMode: "NEAR_SIDE_30_TICKS",
     levels: [{ id: "support", type: "major support", price: 92 }],
   });
-  assert.equal(longPlan.targetPrice, 105);
-  assert.equal(shortPlan.targetPrice, 95);
+  assert.equal(longPlan.targetPrice, 100.5);
+  assert.equal(shortPlan.targetPrice, 99.5);
 });
 
 test("allowlist excludes Fibonacci, close, critical, and management artifacts", () => {

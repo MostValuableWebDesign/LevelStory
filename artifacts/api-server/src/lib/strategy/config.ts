@@ -329,8 +329,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");
   }
-  if (config.profitTargetPlacement !== "NEAR_SIDE_12_TICKS" && config.profitTargetPlacement !== "EXACT_LEVEL") {
-    throw new Error("Invalid strategy configuration: profitTargetPlacement must be NEAR_SIDE_12_TICKS or EXACT_LEVEL.");
+  if (config.profitTargetPlacement !== "NEAR_SIDE_30_TICKS" && config.profitTargetPlacement !== "EXACT_LEVEL") {
+    throw new Error("Invalid strategy configuration: profitTargetPlacement must be NEAR_SIDE_30_TICKS or EXACT_LEVEL.");
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");

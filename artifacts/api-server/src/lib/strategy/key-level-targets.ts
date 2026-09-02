@@ -1,6 +1,6 @@
 import type { Direction } from "./types.js";
 
-export type ProfitTargetPlacement = "NEAR_SIDE_12_TICKS" | "EXACT_LEVEL";
+export type ProfitTargetPlacement = "NEAR_SIDE_30_TICKS" | "EXACT_LEVEL";
 
 export type KeyLevelTargetInput = {
   id: string;
@@ -34,7 +34,7 @@ export type FrozenTargetLevel = {
 };
 
 export type SkippedTargetLevel = FrozenTargetLevel & {
-  reason: "ENTRY_WITHIN_12_TICKS";
+  reason: "ENTRY_WITHIN_30_TICKS";
 };
 
 export type PrimaryLossExitReference = {
@@ -54,7 +54,7 @@ export type KeyLevelTargetPlan = {
   entryPrice: number;
   direction: Direction;
   tickSize: number;
-  bufferTicks: 12;
+  bufferTicks: 30;
   bufferPoints: number;
   availableLevels: FrozenTargetLevel[];
   skippedLevels: SkippedTargetLevel[];
@@ -64,7 +64,7 @@ export type KeyLevelTargetPlan = {
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
-export const PROFIT_TARGET_BUFFER_TICKS = 12;
+export const PROFIT_TARGET_BUFFER_TICKS = 30;
 
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
 const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
@@ -209,7 +209,7 @@ function nearSideTargetPrice(
     ? levelBoundary - bufferPoints
     : levelBoundary + bufferPoints;
   // Round toward the key level so the executable MES price never lands
-  // farther than the governed 12-tick distance from the raw level.
+  // farther than the governed 30-tick distance from the raw level.
   const tickIndex = unrounded / tickSize;
   const roundedIndex = direction === "long"
     ? Math.ceil(tickIndex - 1e-9)
@@ -295,12 +295,12 @@ export function buildKeyLevelTargetPlan(input: {
   entryPrice: number;
   levels: readonly KeyLevelTargetInput[];
   tickSize?: number;
-  bufferTicks?: 12;
+  bufferTicks?: 30;
   placementMode?: ProfitTargetPlacement;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
   const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
-  if (bufferTicks !== 12) throw new Error("Key-level target buffer must be exactly 12 MES ticks.");
+  if (bufferTicks !== 30) throw new Error("Key-level target buffer must be exactly 30 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
   const placementMode = input.placementMode ?? "EXACT_LEVEL";
   const bufferPoints = bufferTicks * tickSize;
@@ -323,7 +323,7 @@ export function buildKeyLevelTargetPlan(input: {
     .sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
   const skippedLevels: SkippedTargetLevel[] = availableLevels
     .filter((level) => level.distancePoints <= bufferPoints)
-    .map((level) => ({ ...level, reason: "ENTRY_WITHIN_12_TICKS" }));
+    .map((level) => ({ ...level, reason: "ENTRY_WITHIN_30_TICKS" }));
   const eligible = availableLevels.filter((level) => level.distancePoints > bufferPoints);
   const selectedTargetLevel = eligible[0] ?? null;
   const subsequentTargetLevels = eligible.slice(1);
@@ -343,7 +343,7 @@ export function buildKeyLevelTargetPlan(input: {
     entryPrice: normalizePrice(input.entryPrice, tickSize),
     direction: input.direction,
     tickSize,
-    bufferTicks: 12,
+    bufferTicks: 30,
     bufferPoints,
     availableLevels,
     skippedLevels,

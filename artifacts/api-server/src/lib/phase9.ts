@@ -3385,7 +3385,7 @@ function targetPlanForOccurrence(
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: "NEAR_SIDE_12_TICKS",
+    placementMode: "NEAR_SIDE_30_TICKS",
   });
   return {
     ...plan,
