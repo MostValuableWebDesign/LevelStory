@@ -305,7 +305,7 @@ function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id.startsWith("critical-") || annotation.id.includes("support") || annotation.id.includes("resistance")) return "hsl(214 37% 15%)";
   if (annotation.id === "entry-buffer") return "hsl(var(--positive))";
   if (annotation.id === "strategy-stop") return "hsl(var(--negative))";
-  if (annotation.id === "target" || annotation.id === "runner-threshold") return "hsl(var(--positive))";
+   if (annotation.id === "target") return "hsl(var(--positive))";
   return annotationTone(annotation.color);
 }
 
@@ -1334,6 +1334,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       isVisualPresentationAnnotation(annotation)
       && !isDynamicIndicatorAnnotation(annotation)
       && annotation.kind !== "candle"
+       && annotation.id !== "runner-threshold"
       && annotation.price !== null,
     );
   const indicatorLegend = (["vwap", "ema-200"] as const)

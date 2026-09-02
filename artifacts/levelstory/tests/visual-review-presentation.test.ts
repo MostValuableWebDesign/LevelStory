@@ -55,6 +55,7 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /data-testid="review-period"/);
   assert.match(page, /data-testid="chart-level-legend"/);
   assert.match(page, /formatPriceAxisValue\(annotation\.price!\)/);
+   assert.match(page, /annotation\.id !== "runner-threshold"/);
   assert.doesNotMatch(page, /labelYById/);
   assert.doesNotMatch(page, /axisLabelX/);
   assert.doesNotMatch(page, /data-testid="additional-levels".*fib-/s);
