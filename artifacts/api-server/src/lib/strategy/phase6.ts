@@ -63,14 +63,22 @@ export type ExtendedConsolidation = {
   insideOrNearCount: number;
   range: number | null;
   expansionRatio: number | null;
+  causalVolatilityBaseline: number | null;
+  compressionRatio: number | null;
+  overlapRatio: number | null;
+  highRejectionCount: number;
+  lowRejectionCount: number;
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
   startTime: number | null;
   endTime: number | null;
   frozenHigh?: number | null;
   frozenLow?: number | null;
+  qualificationReason: string | null;
   detail: string;
 };
 
-export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v1";
+export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v2";
 
 export type ConsolidationLifecycleState =
   | "CONSOLIDATION_ZONE_FROZEN"
@@ -98,6 +106,15 @@ export type ConsolidationEntryEvidence = {
   sourceCandleOpenTimes: number[];
   rangeWidth: number | null;
   rangeWidthTicks: number | null;
+  causalVolatilityBaseline: number | null;
+  compressionRatio: number | null;
+  overlapRatio: number | null;
+  completedCandleCount: number;
+  highRejectionCount: number;
+  lowRejectionCount: number;
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
+  qualificationReason: string | null;
   direction: Direction | null;
   patienceOpenTime: number | null;
   patienceCloseTime: number | null;
@@ -136,6 +153,20 @@ export type Phase6Analysis = {
   primarySetup: SetupType | null;
   evaluations: SetupEvaluation[];
   explanation: string;
+};
+
+type ConsolidationMetrics = {
+  high: number;
+  low: number;
+  range: number;
+  rangeTicks: number;
+  causalVolatilityBaseline: number | null;
+  compressionRatio: number | null;
+  overlapRatio: number;
+  highRejectionCount: number;
+  lowRejectionCount: number;
+  maxDirectionalSequence: number;
+  expansionRatio: number | null;
 };
 
 export type Phase6Context = {
@@ -290,7 +321,19 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
 }
 
 export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
-  const consolidation = detectExtendedNtzConsolidation(context.candles, context.levels.ntz, context.config.phase6ConsolidationExpansionRatio, context.breakout.candleOpenTime ?? context.breakout.time, context.config.phase6ConsolidationMaxRangeTicks, context.config.phase6ConsolidationMinCandles);
+  const consolidation = detectExtendedNtzConsolidation(
+    context.candles,
+    context.levels.ntz,
+    context.config.phase6ConsolidationExpansionRatio,
+    context.breakout.candleOpenTime ?? context.breakout.time,
+    context.config.phase6ConsolidationMaxRangeTicks,
+    context.config.phase6ConsolidationMinCandles,
+    context.config.phase6ConsolidationVolatilityLookback,
+    context.config.phase6ConsolidationVolatilityMultiplier,
+    context.config.phase6ConsolidationMinOverlapRatio,
+    context.config.phase6ConsolidationMinRejectionCount,
+    context.config.phase6ConsolidationMaxDirectionalSequence,
+  );
   const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
   const breakoutCandle = completedCandles(context.candles).find((candle) => candle.openTime === context.breakout.candleOpenTime);
   const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
@@ -440,53 +483,90 @@ export function detectExtendedNtzConsolidation(
   breakoutTime: number | null = null,
   maxRangeTicks = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMaxRangeTicks,
   minimumCandles = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles,
+  volatilityLookback = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationVolatilityLookback,
+  volatilityMultiplier = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationVolatilityMultiplier,
+  minOverlapRatio = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinOverlapRatio,
+  minRejectionCount = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinRejectionCount,
+  maxDirectionalSequence = DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMaxDirectionalSequence,
 ): ExtendedConsolidation {
-  const completed = completedCandles(candles).filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
+  const completed = completedCandles(candles)
+    .filter(isCompletedFiveMinuteCandle)
+    .filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
   const minimumCount = Math.max(DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles, Math.floor(minimumCandles));
   if (completed.length < minimumCount) return emptyConsolidation(`At least ${minimumCount} contiguous completed candles are required.`);
-  const maxRange = maxRangeTicks * 0.25;
   const candidates: ExtendedConsolidation[] = [];
-  const firstCount = breakoutTime === null ? completed.length : minimumCount;
-  for (let count = firstCount; count <= completed.length; count += 1) {
+  for (let count = minimumCount; count <= completed.length; count += 1) {
     const window = completed.slice(-count);
     if (!isContiguous(window)) break;
-    const midpoint = Math.max(1, Math.floor(count / 2));
-    const firstRange = candleRange(window.slice(0, midpoint));
-    const secondRange = candleRange(window.slice(midpoint));
-    const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
-    const range = Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low));
-    if (range > maxRange || expansionRatio > expansionLimit) continue;
+    const preceding = completed.slice(0, completed.length - count).slice(-Math.max(1, Math.floor(volatilityLookback)));
+    const metrics = consolidationMetrics(window, preceding);
+    if (
+      preceding.length < Math.max(1, Math.floor(volatilityLookback))
+      || metrics.causalVolatilityBaseline === null
+      || metrics.compressionRatio === null
+      || metrics.compressionRatio > volatilityMultiplier
+      || metrics.overlapRatio < minOverlapRatio
+      || metrics.highRejectionCount + metrics.lowRejectionCount < minRejectionCount
+      || metrics.maxDirectionalSequence > maxDirectionalSequence
+      || metrics.expansionRatio === null
+      || metrics.expansionRatio > expansionLimit
+    ) continue;
     const insideOrNear = ntz?.complete ? window.filter((candle) => candle.close >= ntz.low && candle.close <= ntz.high).length : 0;
     candidates.push({
       detected: true, candleCount: count,
       durationMinutes: Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000),
-      insideOrNearCount: insideOrNear, range: Number(range.toFixed(2)),
-      expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(2)) : null,
+      insideOrNearCount: insideOrNear,
+      range: metrics.range,
+      expansionRatio: metrics.expansionRatio,
+      causalVolatilityBaseline: metrics.causalVolatilityBaseline,
+      compressionRatio: metrics.compressionRatio,
+      overlapRatio: metrics.overlapRatio,
+      highRejectionCount: metrics.highRejectionCount,
+      lowRejectionCount: metrics.lowRejectionCount,
+      maxDirectionalSequence: metrics.maxDirectionalSequence,
+      diagnosticRangeCapExceeded: metrics.rangeTicks > maxRangeTicks,
       startTime: window[0]!.openTime, endTime: window.at(-1)!.closeTime,
-      frozenHigh: Math.max(...window.map((candle) => candle.high)),
-      frozenLow: Math.min(...window.map((candle) => candle.low)),
-       detail: `${count} contiguous completed candles (${Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000)} minutes) in a bounded ${range.toFixed(2)} point range; governed thresholds are minimum ${minimumCount} candles, maximum ${maxRangeTicks} ticks, and ${expansionLimit.toFixed(2)}× expansion; ${insideOrNear}/${count} closes inside NTZ (diagnostic confluence only).`,
+      frozenHigh: metrics.high,
+      frozenLow: metrics.low,
+      qualificationReason: `Qualified: ${count} completed contiguous five-minute candles; width ${metrics.range!.toFixed(2)} points (${metrics.rangeTicks.toFixed(2)} ticks) is ${metrics.compressionRatio!.toFixed(2)}× the causal median true-range baseline of ${metrics.causalVolatilityBaseline!.toFixed(2)} points (limit ${volatilityMultiplier.toFixed(2)}×); shared candle-range overlap is ${(metrics.overlapRatio * 100).toFixed(0)}%; repeated rejection counts are high ${metrics.highRejectionCount} / low ${metrics.lowRejectionCount}; maximum directional new-high/new-low sequence is ${metrics.maxDirectionalSequence}; range expansion is ${formatRatio(metrics.expansionRatio)} (limit ${expansionLimit.toFixed(2)}×).`,
+      detail: `Consolidation qualified. ${count} contiguous completed five-minute candles (${Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000)} minutes); ${metrics.range!.toFixed(2)} points (${metrics.rangeTicks.toFixed(2)} ticks) versus ${metrics.causalVolatilityBaseline!.toFixed(2)} point causal volatility baseline, ${metrics.overlapRatio.toFixed(2)} overlap ratio, ${metrics.highRejectionCount + metrics.lowRejectionCount} repeated edge rejections, and ${metrics.maxDirectionalSequence}-candle maximum directional sequence. The legacy ${maxRangeTicks}-tick value is diagnostic only${metrics.rangeTicks > maxRangeTicks ? " and was exceeded" : ""}; NTZ proximity is diagnostic confluence only (${insideOrNear}/${count} closes).`,
     });
   }
   const best = candidates.at(-1);
   if (best) return best;
-  const window = breakoutTime === null ? completed : completed.slice(-Math.min(minimumCount, completed.length));
-  const range = Math.max(...window.map((candle) => candle.high)) - Math.min(...window.map((candle) => candle.low));
-  const midpoint = Math.max(1, Math.floor(window.length / 2));
-  const firstRange = candleRange(window.slice(0, midpoint));
-  const secondRange = candleRange(window.slice(midpoint));
-  const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
+  const window = completed.slice(-Math.min(minimumCount, completed.length));
+  const preceding = completed.slice(0, completed.length - window.length).slice(-Math.max(1, Math.floor(volatilityLookback)));
+  const metrics = consolidationMetrics(window, preceding);
+  const failureReasons = [
+    preceding.length < Math.max(1, Math.floor(volatilityLookback))
+      || metrics.causalVolatilityBaseline === null
+      ? `fewer than ${Math.max(1, Math.floor(volatilityLookback))} preceding completed candles for a causal baseline`
+      : null,
+    metrics.compressionRatio !== null && metrics.compressionRatio > volatilityMultiplier ? `compression ratio ${formatRatio(metrics.compressionRatio)} exceeds ${volatilityMultiplier.toFixed(2)}×` : null,
+    metrics.overlapRatio < minOverlapRatio ? `overlap ratio ${metrics.overlapRatio.toFixed(2)} is below ${minOverlapRatio.toFixed(2)}` : null,
+    metrics.highRejectionCount + metrics.lowRejectionCount < minRejectionCount ? `only ${metrics.highRejectionCount + metrics.lowRejectionCount} repeated edge rejections are present` : null,
+    metrics.maxDirectionalSequence > maxDirectionalSequence ? `directional sequence reaches ${metrics.maxDirectionalSequence} candles` : null,
+    metrics.expansionRatio !== null && metrics.expansionRatio > expansionLimit ? `expansion ratio ${formatRatio(metrics.expansionRatio)} exceeds ${expansionLimit.toFixed(2)}×` : null,
+  ].filter((reason): reason is string => reason !== null);
   return {
     detected: false, candleCount: window.length,
     durationMinutes: Math.round((window.at(-1)!.closeTime - window[0]!.openTime) / 60_000),
     insideOrNearCount: ntz?.complete ? window.filter((candle) => candle.close >= ntz.low && candle.close <= ntz.high).length : 0,
-    range: Number(range.toFixed(2)),
-    expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(2)) : null,
+    range: metrics.range,
+    expansionRatio: metrics.expansionRatio,
+    causalVolatilityBaseline: metrics.causalVolatilityBaseline,
+    compressionRatio: metrics.compressionRatio,
+    overlapRatio: metrics.overlapRatio,
+    highRejectionCount: metrics.highRejectionCount,
+    lowRejectionCount: metrics.lowRejectionCount,
+    maxDirectionalSequence: metrics.maxDirectionalSequence,
+    diagnosticRangeCapExceeded: metrics.rangeTicks > maxRangeTicks,
     startTime: window[0]!.openTime,
     endTime: window.at(-1)!.closeTime,
-    frozenHigh: Math.max(...window.map((candle) => candle.high)),
-    frozenLow: Math.min(...window.map((candle) => candle.low)),
-     detail: `No tight/stable consolidation immediately before breakout: ${window.length} candles span ${range.toFixed(2)} points with expansion ratio ${formatRatio(expansionRatio)}; governed thresholds are minimum ${minimumCount} candles, maximum ${maxRangeTicks} ticks, and ${expansionLimit.toFixed(2)}× expansion.`,
+    frozenHigh: metrics.high,
+    frozenLow: metrics.low,
+    qualificationReason: null,
+    detail: `No causal volatility-adjusted consolidation: ${failureReasons.join("; ") || "the completed window did not satisfy all governed structural criteria"}. Observed ${window.length} candles span ${metrics.range.toFixed(2)} points with expansion ratio ${formatRatio(metrics.expansionRatio)}; the legacy ${maxRangeTicks}-tick value is diagnostic only.`,
   };
 }
 
@@ -521,6 +601,11 @@ export function evaluateConsolidationEntryGuard(input: {
     null,
     input.config.phase6ConsolidationMaxRangeTicks,
     input.config.phase6ConsolidationMinCandles,
+    input.config.phase6ConsolidationVolatilityLookback,
+    input.config.phase6ConsolidationVolatilityMultiplier,
+    input.config.phase6ConsolidationMinOverlapRatio,
+    input.config.phase6ConsolidationMinRejectionCount,
+    input.config.phase6ConsolidationMaxDirectionalSequence,
   );
   if (
     !frozen.detected
@@ -639,6 +724,15 @@ export function evaluateConsolidationEntryGuard(input: {
     sourceCandleOpenTimes,
     rangeWidth: frozen.range,
     rangeWidthTicks: frozen.range === null ? null : Number((frozen.range / 0.25).toFixed(2)),
+    causalVolatilityBaseline: frozen.causalVolatilityBaseline,
+    compressionRatio: frozen.compressionRatio,
+    overlapRatio: frozen.overlapRatio,
+    completedCandleCount: frozen.candleCount,
+    highRejectionCount: frozen.highRejectionCount,
+    lowRejectionCount: frozen.lowRejectionCount,
+    maxDirectionalSequence: frozen.maxDirectionalSequence,
+    diagnosticRangeCapExceeded: frozen.diagnosticRangeCapExceeded,
+    qualificationReason: frozen.qualificationReason,
     direction,
     patienceOpenTime: patienceCandle?.openTime ?? null,
     patienceCloseTime: patienceCandle?.closeTime ?? null,
@@ -812,6 +906,10 @@ function completedCandles(candles: readonly Candle[]): Candle[] {
   return candles.filter((candle) => candle.isComplete).sort((first, second) => first.closeTime - second.closeTime);
 }
 
+function isCompletedFiveMinuteCandle(candle: Candle): boolean {
+  return candle.isComplete && candle.closeTime - candle.openTime === 5 * 60_000;
+}
+
 function isContiguous(candles: readonly Candle[]): boolean {
   return candles.every((candle, index) => index === 0 || candle.openTime === candles[index - 1].closeTime);
 }
@@ -820,8 +918,90 @@ function candleRange(candles: readonly Candle[]): number {
   return candles.length ? Math.max(...candles.map((candle) => candle.high)) - Math.min(...candles.map((candle) => candle.low)) : 0;
 }
 
+function consolidationMetrics(window: readonly Candle[], preceding: readonly Candle[]): ConsolidationMetrics {
+  const high = Math.max(...window.map((candle) => candle.high));
+  const low = Math.min(...window.map((candle) => candle.low));
+  const range = high - low;
+  const midpoint = Math.max(1, Math.floor(window.length / 2));
+  const firstRange = candleRange(window.slice(0, midpoint));
+  const secondRange = candleRange(window.slice(midpoint));
+  const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
+  const sharedHigh = Math.min(...window.map((candle) => candle.high));
+  const sharedLow = Math.max(...window.map((candle) => candle.low));
+  const overlapRatio = range > 0 ? Math.max(0, sharedHigh - sharedLow) / range : 1;
+  const edgeDistance = Math.max(0.25, range * 0.2);
+  const rejectionDistance = Math.max(0.25, edgeDistance * 0.5);
+  const highRejectionCount = window.filter((candle) =>
+    candle.high >= high - edgeDistance && candle.close <= high - rejectionDistance,
+  ).length;
+  const lowRejectionCount = window.filter((candle) =>
+    candle.low <= low + edgeDistance && candle.close >= low + rejectionDistance,
+  ).length;
+  const maxDirectionalSequence = maxDirectionalProgression(window);
+  const baselineRanges = preceding.map((candle, index) => {
+    const previous = preceding[index - 1];
+    return previous
+      ? Math.max(candle.high - candle.low, Math.abs(candle.high - previous.close), Math.abs(candle.low - previous.close))
+      : candle.high - candle.low;
+  }).filter((value) => Number.isFinite(value) && value >= 0);
+  const sortedBaseline = [...baselineRanges].sort((first, second) => first - second);
+  const middle = Math.floor(sortedBaseline.length / 2);
+  const causalVolatilityBaseline = sortedBaseline.length === 0
+    ? null
+    : sortedBaseline.length % 2 === 0
+      ? (sortedBaseline[middle - 1]! + sortedBaseline[middle]!) / 2
+      : sortedBaseline[middle]!;
+  return {
+    high,
+    low,
+    range: Number(range.toFixed(2)),
+    rangeTicks: Number((range / 0.25).toFixed(2)),
+    causalVolatilityBaseline: causalVolatilityBaseline === null ? null : Number(causalVolatilityBaseline.toFixed(4)),
+    compressionRatio: causalVolatilityBaseline !== null && causalVolatilityBaseline > 0
+      ? Number((range / causalVolatilityBaseline).toFixed(4))
+      : null,
+    overlapRatio: Number(overlapRatio.toFixed(4)),
+    highRejectionCount,
+    lowRejectionCount,
+    maxDirectionalSequence,
+    expansionRatio: Number.isFinite(expansionRatio) ? Number(expansionRatio.toFixed(4)) : null,
+  };
+}
+
+function maxDirectionalProgression(candles: readonly Candle[]): number {
+  let higherHighSequence = candles.length ? 1 : 0;
+  let lowerLowSequence = candles.length ? 1 : 0;
+  let maximum = candles.length ? 1 : 0;
+  for (let index = 1; index < candles.length; index += 1) {
+    const previous = candles[index - 1]!;
+    const current = candles[index]!;
+    higherHighSequence = current.high > previous.high ? higherHighSequence + 1 : 1;
+    lowerLowSequence = current.low < previous.low ? lowerLowSequence + 1 : 1;
+    maximum = Math.max(maximum, higherHighSequence, lowerLowSequence);
+  }
+  return maximum;
+}
+
 function emptyConsolidation(detail: string): ExtendedConsolidation {
-  return { detected: false, candleCount: 0, durationMinutes: 0, insideOrNearCount: 0, range: null, expansionRatio: null, startTime: null, endTime: null, detail };
+  return {
+    detected: false,
+    candleCount: 0,
+    durationMinutes: 0,
+    insideOrNearCount: 0,
+    range: null,
+    expansionRatio: null,
+    causalVolatilityBaseline: null,
+    compressionRatio: null,
+    overlapRatio: 0,
+    highRejectionCount: 0,
+    lowRejectionCount: 0,
+    maxDirectionalSequence: 0,
+    diagnosticRangeCapExceeded: false,
+    startTime: null,
+    endTime: null,
+    qualificationReason: null,
+    detail,
+  };
 }
 
 function formatRatio(value: number | null): string {

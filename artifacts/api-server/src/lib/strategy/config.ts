@@ -70,6 +70,11 @@ export type StrategyConfig = {
   phase6ConsolidationExpansionRatio: number;
   phase6ConsolidationMinCandles: number;
   phase6ConsolidationMaxRangeTicks: number;
+  phase6ConsolidationVolatilityLookback: number;
+  phase6ConsolidationVolatilityMultiplier: number;
+  phase6ConsolidationMinOverlapRatio: number;
+  phase6ConsolidationMinRejectionCount: number;
+  phase6ConsolidationMaxDirectionalSequence: number;
   phase7MaxContracts: number;
   phase7StaleDataSeconds: number;
   phase7NormalSlippageTicks: number;
@@ -79,13 +84,18 @@ export type StrategyConfig = {
   phase7RunnerRetracementRatio: number;
 };
 
-export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v1";
+export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
 
 export type ConsolidationThresholds = {
   version: string;
   minCandles: number;
   maxRangeTicks: number;
   maxExpansionRatio: number;
+  volatilityLookback: number;
+  volatilityMultiplier: number;
+  minOverlapRatio: number;
+  minRejectionCount: number;
+  maxDirectionalSequence: number;
 };
 
 export function consolidationThresholds(config: Pick<
@@ -97,6 +107,11 @@ export function consolidationThresholds(config: Pick<
     minCandles: config.phase6ConsolidationMinCandles,
     maxRangeTicks: config.phase6ConsolidationMaxRangeTicks,
     maxExpansionRatio: config.phase6ConsolidationExpansionRatio,
+    volatilityLookback: config.phase6ConsolidationVolatilityLookback,
+    volatilityMultiplier: config.phase6ConsolidationVolatilityMultiplier,
+    minOverlapRatio: config.phase6ConsolidationMinOverlapRatio,
+    minRejectionCount: config.phase6ConsolidationMinRejectionCount,
+    maxDirectionalSequence: config.phase6ConsolidationMaxDirectionalSequence,
   };
 }
 
@@ -163,7 +178,12 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase6ConsolidationThresholdVersion: CONSOLIDATION_THRESHOLD_VERSION,
   phase6ConsolidationExpansionRatio: 1.25,
   phase6ConsolidationMinCandles: 3,
-  phase6ConsolidationMaxRangeTicks: 24, // assumption: bounded consolidation may span up to 24 MES ticks
+  phase6ConsolidationMaxRangeTicks: 24, // diagnostic reference only; never an eligibility cap
+  phase6ConsolidationVolatilityLookback: 12,
+  phase6ConsolidationVolatilityMultiplier: 1.5,
+  phase6ConsolidationMinOverlapRatio: 0.5,
+  phase6ConsolidationMinRejectionCount: 2,
+  phase6ConsolidationMaxDirectionalSequence: 2,
   phase7MaxContracts: 10,
   phase7StaleDataSeconds: 15,
   phase7NormalSlippageTicks: 1,
@@ -312,6 +332,19 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (!Number.isInteger(config.phase6ConsolidationMaxRangeTicks)) {
     throw new Error("Invalid strategy configuration: phase6ConsolidationMaxRangeTicks must be an integer.");
+  }
+  if (!Number.isInteger(config.phase6ConsolidationVolatilityLookback)
+    || config.phase6ConsolidationVolatilityLookback < 3
+    || !Number.isInteger(config.phase6ConsolidationMinRejectionCount)
+    || config.phase6ConsolidationMinRejectionCount < 1
+    || !Number.isInteger(config.phase6ConsolidationMaxDirectionalSequence)
+    || config.phase6ConsolidationMaxDirectionalSequence < 1) {
+    throw new Error("Invalid strategy configuration: adaptive consolidation lookback, rejection count, and directional sequence limits must be positive integers.");
+  }
+  if (config.phase6ConsolidationVolatilityMultiplier <= 0
+    || config.phase6ConsolidationMinOverlapRatio <= 0
+    || config.phase6ConsolidationMinOverlapRatio > 1) {
+    throw new Error("Invalid strategy configuration: adaptive consolidation volatility multiplier must be positive and overlap ratio must be in (0, 1].");
   }
   const approvedTolerancePoints = LEVEL_TOLERANCE_TICKS.map(levelTolerancePoints);
   if (!approvedTolerancePoints.includes(config.levelTolerance)) {
