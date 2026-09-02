@@ -11,6 +11,7 @@ import {
   type CausalReplayDataset,
   type HistoricalOccurrence,
   type HistoricalTradeCandidate,
+  type RejectedCandidateSignal,
   buildQualificationFunnel,
   type QualificationFunnel,
   sourceFingerprint as datasetSourceFingerprint,
@@ -1915,6 +1916,7 @@ type ReviewCandidate = {
   trade: BacktestTrade | null;
   category: VisualValidationCategory;
   occurrence?: HistoricalOccurrence;
+  candidateRejection?: RejectedCandidateSignal;
 };
 
 function candidateOccurrenceTimestamp(candidate: ReviewCandidate): number {
@@ -1996,6 +1998,7 @@ function buildMachineSnapshot(
   occurrence?: HistoricalOccurrence,
   selectionReason = "causal occurrence retained",
   index?: HistoricalVisualValidationIndex,
+  candidateRejection?: RejectedCandidateSignal,
 ): VisualValidationSnapshot {
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
   const auditEvaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
@@ -2098,13 +2101,45 @@ function buildMachineSnapshot(
     }))
     .digest("hex")
     .slice(0, 16);
+  const patience = audit.patienceCandle;
+  const patienceHigh = patience ? Number(patience.high) : Number.NaN;
+  const patienceLow = patience ? Number(patience.low) : Number.NaN;
+  const ntzHigh = audit.finalizedNtzComplete === true && typeof audit.finalizedNtzHigh === "number"
+    ? audit.finalizedNtzHigh
+    : evaluationSnapshot.ntz.high;
+  const ntzLow = audit.finalizedNtzComplete === true && typeof audit.finalizedNtzLow === "number"
+    ? audit.finalizedNtzLow
+    : evaluationSnapshot.ntz.low;
+  const patienceNtzOverlap = Number.isFinite(patienceHigh)
+    && Number.isFinite(patienceLow)
+    && typeof ntzHigh === "number"
+    && typeof ntzLow === "number"
+    && evaluationSnapshot.ntz.complete
+    && patienceLow <= Math.max(ntzHigh, ntzLow)
+    && patienceHigh >= Math.min(ntzHigh, ntzLow);
+  const overlapDetail = patienceNtzOverlap
+    ? `Candidate rejection: patience candle ${patienceLow}-${patienceHigh} overlaps causal ORB/NTZ ${Math.min(ntzHigh!, ntzLow!)}-${Math.max(ntzHigh!, ntzLow!)}.`
+    : null;
+  const projectionRejection = [
+    ...(candidateRejection?.details ?? []),
+    ...(overlapDetail ? [overlapDetail] : []),
+  ].filter((detail, index, details) => detail.trim().length > 0 && details.indexOf(detail) === index);
+  const displayedAudit = projectionRejection.length > 0
+    ? {
+      ...audit,
+      rejectionSummary: [
+        audit.rejectionSummary,
+        `Candidate projection rejected: ${projectionRejection.join(" ")}`,
+      ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" "),
+    }
+    : audit;
   return {
     snapshotId: `visual-${hash}`,
     ...(occurrence ? { occurrenceId: occurrence.occurrenceId, sourceFingerprint: occurrence.sourceFingerprint } : {}),
     sampleIndex,
     category,
     categoryLabel: categoryLabels[category],
-    machineLabel: audit.rejectionCategory === "QUALIFIED" ? `${canonicalStrategyId(audit.setupType) ?? audit.setupType} qualified` : audit.rejectionSummary ?? audit.decision,
+    machineLabel: displayedAudit.rejectionCategory === "QUALIFIED" ? `${canonicalStrategyId(displayedAudit.setupType) ?? displayedAudit.setupType} qualified` : displayedAudit.rejectionSummary ?? displayedAudit.decision,
     strategyKey: canonicalStrategyId(audit.setupType) ?? "ORB_PULLBACK_CONTINUATION",
     formulaHash: report.formulaHash,
     formulaVersion: FIXED_FORMULA_VERSION,
@@ -2113,7 +2148,7 @@ function buildMachineSnapshot(
     contractMonth: audit.contractMonth,
     tradingDate: audit.tradingDate,
     entryWindow: isPrimaryEntryTimestamp(candidateOccurrenceTimestamp({
-      audit,
+       audit: displayedAudit,
       trade,
       category,
       occurrence,
@@ -2146,7 +2181,7 @@ function buildMachineSnapshot(
     machineEvidence: {
       quotesAvailable: report.executionMode === "quote_based_shadow",
       sourceSchema: report.executionMode === "quote_based_shadow" ? "quote_bbo" : "historical_ohlcv",
-      audit,
+      audit: displayedAudit,
       trade,
       market: {
         levels: evaluationSnapshot.levels,
@@ -2228,7 +2263,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   request: VisualValidationRequest,
   dataset: CausalReplayDataset,
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
-    & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates">>,
+    & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates" | "rejectedCandidateSignals">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -2252,6 +2287,7 @@ export function buildHistoricalVisualValidationSetFromReport(
           : "qualified_trade";
     if (!category) return [];
     const candidate = report.tradeCandidates?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+    const candidateRejection = report.rejectedCandidateSignals?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
     const authoritativeTrade = candidate
       ? matchingTradeForOccurrence(occurrence, audit, report.tradeCandidates ?? [], report.trades)
       : null;
@@ -2263,7 +2299,7 @@ export function buildHistoricalVisualValidationSetFromReport(
         : occurrence.canonicalTrade
           ? matchingTradeForOccurrence(occurrence, audit, [], report.trades) ?? matchingTrade(audit, report.trades)
           : null;
-    const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence }];
+    const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence, candidateRejection }];
     if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED") {
       if (candidate && authoritativeTrade) {
         candidates.push({ audit, trade: authoritativeTrade, category: "qualified_trade", occurrence });
@@ -2322,6 +2358,7 @@ export function buildHistoricalVisualValidationSetFromReport(
       candidate.occurrence,
       candidateSelectionReason(candidate),
       visualIndex,
+      candidate.candidateRejection,
     );
   });
   const funnelDiagnostics = report.dataset && report.contract

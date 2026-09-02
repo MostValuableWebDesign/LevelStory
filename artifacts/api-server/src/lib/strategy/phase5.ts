@@ -636,13 +636,16 @@ export function isStrictlyOutsideNtz(
 }
 
 export function isPatienceCandleOutsideNtz(
-  candle: Pick<Candle, "close">,
+  candle: Pick<Candle, "high" | "low">,
   direction: Direction,
   ntz?: NtzRange | null,
   required = false,
 ): boolean {
   if (!ntz?.complete) return !required;
-  return direction === "long" ? candle.close > ntz.high : candle.close < ntz.low;
+  // A patience candle is evidence only when its complete range has cleared the
+  // finalized ORB/NTZ zone. A close outside is insufficient if the wick still
+  // overlaps the no-trade range.
+  return direction === "long" ? candle.low > ntz.high : candle.high < ntz.low;
 }
 
 function directionTrendMatches(direction: Direction, trend: TrendDirection): boolean {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   authoritativePatienceStopPrice,
   effectiveConfirmationThreshold,
+  isPatienceCandleOutsideNtz,
   isStrictlyOutsideNtz,
   patienceCandleEngine,
   patienceArmLifecycleTransitions,
@@ -167,12 +168,46 @@ test("effective confirmation uses the stricter NTZ threshold and accepts wick-on
   assert.equal(result.occurrences?.[0]?.triggerCandle, null);
 });
 
+test("a patience wick that overlaps finalized NTZ is rejected even when its close is outside", () => {
+  const ntz = { high: 12, low: 9, complete: true };
+  assert.equal(isPatienceCandleOutsideNtz({ high: 13, low: 11.75 }, "long", ntz, true), false);
+  assert.equal(isPatienceCandleOutsideNtz({ high: 9.25, low: 8 }, "short", ntz, true), false);
+  const result = patienceCandleEngine(
+    [
+      candle(0, 10, 20, 8, 10.5),
+      candle(1, 13, 14, 11.75, 13.5),
+      candle(2, 13.5, 17, 13, 16.5),
+    ],
+    "long",
+    { eligibilityEvents: eligibility(), tickSize: 0.25, finalizedNtz: ntz, requireFinalizedNtz: true },
+  );
+  assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.occurrences?.[0]?.reasonCode, "PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ");
+  assert.equal(result.occurrences?.[0]?.triggerCandle, null);
+});
+
+test("a short patience wick that overlaps finalized NTZ is rejected even when its close is below", () => {
+  const ntz = { high: 12, low: 9, complete: true };
+  const result = patienceCandleEngine(
+    [
+      candle(0, 10, 12, 8, 9.5),
+      candle(1, 9, 9.25, 8.5, 8.75),
+      candle(2, 8.75, 9, 6.5, 7),
+    ],
+    "short",
+    { eligibilityEvents: eligibility(), tickSize: 0.25, finalizedNtz: ntz, requireFinalizedNtz: true },
+  );
+  assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(result.occurrences?.[0]?.reasonCode, "PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ");
+  assert.equal(result.occurrences?.[0]?.triggerCandle, null);
+});
+
 test("an outside-NTZ patience candle still uses the effective wick threshold", () => {
   const ntz = { high: 12, low: 9, complete: true };
    const candles = [
-    candle(0, 10, 12, 8, 10.5),
-    candle(1, 10.5, 11.5, 10.8, 12.5),
-     candle(2, 12.5, 13.5, 12.3, 13.25),
+     candle(0, 10, 20, 8, 10.5),
+     candle(1, 13, 14, 12.25, 13.5),
+      candle(2, 13.5, 17, 13, 16.5),
   ];
   const result = patienceCandleEngine(candles, "long", {
     eligibilityEvents: eligibility(),
@@ -181,8 +216,8 @@ test("an outside-NTZ patience candle still uses the effective wick threshold", (
     requireFinalizedNtz: true,
   });
   assert.equal(result.state, "ENTRY_TRIGGERED");
-   assert.equal(result.entryBufferPrice, 13.5);
-   assert.equal(result.triggerPrice, 13.5);
+    assert.equal(result.entryBufferPrice, 16);
+    assert.equal(result.triggerPrice, 16);
 });
 
 test("an incomplete patience candle cannot be validated", () => {
@@ -587,7 +622,7 @@ test("a terminal boundary after confirmation preserves the earlier patience occu
   const pOpen = Date.parse("2026-08-25T16:00:00.000Z");
   const candles = [
     datedCandle("2026-08-25T15:55:00.000Z", 10, 12, 8, 10.5),
-    datedCandle("2026-08-25T16:00:00.000Z", 10.5, 11, 7, 10.8),
+    datedCandle("2026-08-25T16:00:00.000Z", 10.5, 11, 10.25, 10.8),
     datedCandle("2026-08-25T16:05:00.000Z", 10.8, 13, 10.2, 13),
   ];
   const pullback: PullbackAnalysis = {

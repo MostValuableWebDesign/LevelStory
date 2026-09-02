@@ -1379,6 +1379,8 @@ test("candidate projection rejects finalized NTZ entries and does not emit a fil
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
+    patienceLow: 102,
+    patienceHigh: 103,
   });
   occurrence.finalizedNtzComplete = true;
   occurrence.finalizedNtzLow = 101;
@@ -1391,6 +1393,31 @@ test("candidate projection rejects finalized NTZ entries and does not emit a fil
   assert.equal(result.candidates.length, 0);
   assert.equal(result.authoritativeTrades.length, 0);
   assert.deepEqual(result.rejected[0]?.reasonCodes, ["REJECTED_INSIDE_NTZ"]);
+});
+
+test("candidate projection rejects a patience candle overlapping inferred ORB/NTZ", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    patienceLow: 99,
+    patienceHigh: 101,
+  }) as HistoricalOccurrence & { targetLevelInputs?: Array<{ id: string; type: string; price: number }> };
+  occurrence.targetLevelInputs = [
+    { id: "orb-high", type: "ORB", price: 101 },
+    { id: "orb-low", type: "ORB", price: 99 },
+    { id: "ntz-high", type: "NTZ", price: 101 },
+    { id: "ntz-low", type: "NTZ", price: 99 },
+  ];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.deepEqual(result.rejected[0]?.reasonCodes, ["REJECTED_PATIENCE_INSIDE_NTZ_ORB"]);
+  assert.match(result.rejected[0]?.details.join(" ") ?? "", /patience candle 99-101 overlaps causal ORB\/NTZ 99-101/);
 });
 
 test("candidate diagnostics report missing, duplicate, and identity-mismatched fills", () => {

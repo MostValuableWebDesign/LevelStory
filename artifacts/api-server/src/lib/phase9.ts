@@ -39,7 +39,11 @@ import {
   type PullbackArmLifecycleObservation,
   type PullbackArmState,
 } from "./strategy/phase4.js";
-import { patienceArmLifecycleTransitions, type PatienceOccurrence } from "./strategy/phase5.js";
+import {
+  isPatienceCandleOutsideNtz,
+  patienceArmLifecycleTransitions,
+  type PatienceOccurrence,
+} from "./strategy/phase5.js";
 import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
 import {
   evaluateConsolidationEntryGuard,
@@ -3213,22 +3217,64 @@ function candidateWindowEligible(occurrence: HistoricalOccurrence): boolean {
     && wallClockMinutesForTimestamp(entryOpenTimestamp, config.sessionTimeZone) < config.primaryEntryEndMinutes;
 }
 
+function causalOrbNtzRange(occurrence: HistoricalOccurrence): { high: number; low: number; complete: true } | null {
+  if (
+    occurrence.finalizedNtzComplete === true
+    && typeof occurrence.finalizedNtzHigh === "number"
+    && typeof occurrence.finalizedNtzLow === "number"
+  ) {
+    return {
+      high: Math.max(occurrence.finalizedNtzHigh, occurrence.finalizedNtzLow),
+      low: Math.min(occurrence.finalizedNtzHigh, occurrence.finalizedNtzLow),
+      complete: true,
+    };
+  }
+  const levels = occurrence.targetLevelSnapshot?.frozenLevelInputs ?? occurrence.targetLevelInputs ?? [];
+  const orbNtzLevels = levels.filter((level) => {
+    const label = `${level.id} ${level.type}`.trim().toLowerCase();
+    return /\b(?:orb|ntz)\b/.test(label);
+  });
+  const highs = orbNtzLevels
+    .filter((level) => /\bhigh\b/.test(`${level.id} ${level.type}`.toLowerCase()))
+    .map((level) => level.price)
+    .filter((price): price is number => typeof price === "number" && Number.isFinite(price));
+  const lows = orbNtzLevels
+    .filter((level) => /\blow\b/.test(`${level.id} ${level.type}`.toLowerCase()))
+    .map((level) => level.price)
+    .filter((price): price is number => typeof price === "number" && Number.isFinite(price));
+  if (!highs.length || !lows.length) return null;
+  return { high: Math.max(...highs), low: Math.min(...lows), complete: true };
+}
+
 function candidateNtzEligibility(occurrence: HistoricalOccurrence): { eligible: boolean; reason?: string } {
   const threshold = occurrence.confirmationThreshold;
-  if (
-    occurrence.finalizedNtzComplete !== true
-    || typeof occurrence.finalizedNtzHigh !== "number"
-    || typeof occurrence.finalizedNtzLow !== "number"
-    || threshold === null
-  ) return { eligible: true };
-  const low = Math.min(occurrence.finalizedNtzLow, occurrence.finalizedNtzHigh);
-  const high = Math.max(occurrence.finalizedNtzLow, occurrence.finalizedNtzHigh);
-  return threshold >= low && threshold <= high
+  const zone = causalOrbNtzRange(occurrence);
+  if (!zone) return { eligible: true };
+  const patienceCandle = occurrence.patienceCandle
     ? {
-      eligible: false,
-      reason: `REJECTED_INSIDE_NTZ: confirmation threshold ${threshold} is inside finalized NTZ ${low}-${high}.`,
+      high: Number(occurrence.patienceCandle.high),
+      low: Number(occurrence.patienceCandle.low),
     }
-    : { eligible: true };
+    : null;
+  if (
+    occurrence.direction
+    && patienceCandle
+    && Number.isFinite(patienceCandle.high)
+    && Number.isFinite(patienceCandle.low)
+    && !isPatienceCandleOutsideNtz(patienceCandle, occurrence.direction, zone, true)
+  ) {
+    return {
+      eligible: false,
+      reason: `REJECTED_PATIENCE_INSIDE_NTZ_ORB: patience candle ${patienceCandle.low}-${patienceCandle.high} overlaps causal ORB/NTZ ${zone.low}-${zone.high}.`,
+    };
+  }
+  if (threshold !== null && threshold >= zone.low && threshold <= zone.high) {
+    return {
+      eligible: false,
+      reason: `REJECTED_INSIDE_NTZ: confirmation threshold ${threshold} is inside finalized NTZ ${zone.low}-${zone.high}.`,
+    };
+  }
+  return { eligible: true };
 }
 
 function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { reasonCodes: string[]; details: string[] } | null {
@@ -3499,10 +3545,15 @@ export function projectHistoricalTradeCandidates(
     const inWindow = candidateWindowEligible(occurrence);
     const identityValid = !(occurrence.identityInvariantViolations?.length);
     if (!ntz.eligible || !inWindow || !identityValid) {
+      const patienceInsideZone = ntz.reason?.startsWith("REJECTED_PATIENCE_INSIDE_NTZ_ORB") === true;
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: [
-          ...(!ntz.eligible ? ["REJECTED_INSIDE_NTZ"] : []),
+          ...(patienceInsideZone
+            ? ["REJECTED_PATIENCE_INSIDE_NTZ_ORB"]
+            : !ntz.eligible
+              ? ["REJECTED_INSIDE_NTZ"]
+              : []),
           ...(!inWindow ? ["REJECTED_OUTSIDE_ENTRY_WINDOW"] : []),
           ...(!identityValid ? ["INVALID_CAUSAL_IDENTITY"] : []),
         ],
