@@ -241,7 +241,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     input.direction === "long" ? second.price - first.price : first.price - second.price,
   )[0] ?? null;
   const initialStop = primaryStop?.price ?? fallbackStop?.price ?? null;
-  const initialRiskPoints = initialStop === null ? null : Math.abs(entryReference - initialStop);
   const convertedTarget = input.targetDollars == null
     ? (input.targetPrice ?? input.target ?? null)
     : (input.direction === "long"
@@ -250,9 +249,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
   const oneRProfitRule = input.oneRProfitRule === true && target === null;
   const structureTrailing = input.structureTrailing === true;
-  const oneRPrice = initialRiskPoints === null
-    ? null
-    : tick(input.direction === "long" ? entryReference + initialRiskPoints : entryReference - initialRiskPoints, size);
   const trailingBufferTicks = input.trailingBufferTicks ?? 8;
   if (!Number.isInteger(trailingBufferTicks) || trailingBufferTicks <= 0) {
     throw new Error("Structure trailing buffer must be a positive whole number of ticks.");
@@ -267,6 +263,12 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     ...(input.primaryLossExitLevel
       ? [`Primary loss exit ${input.primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
       : []),
+    ...(input.oneRProfitRule
+      ? ["No eligible key-level target: 1R is the actual modeled fill-to-initial-stop distance; trailing activates only after +1R."]
+      : []),
+    ...(input.structureTrailing
+      ? [`Structure trailing uses the most recent completed three-candle five-minute swing with an ${input.trailingBufferTicks ?? 8}-tick buffer and never widens.`]
+      : []),
   ];
   const entryTouched = trigger !== null
     && (input.direction === "long" ? trigger.high >= entryReference : trigger.low <= entryReference);
@@ -277,6 +279,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       : (trigger.open < entryReference ? trigger.open : entryReference) - (input.entrySlippageTicks ?? 0) * size,
     size,
   );
+  const initialRiskPoints = initialStop === null ? null : Math.abs(modeledFill - initialStop);
+  const oneRPrice = initialRiskPoints === null
+    ? null
+    : tick(input.direction === "long" ? modeledFill + initialRiskPoints : modeledFill - initialRiskPoints, size);
   const candles = [
     ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
     ...subsequentCandles,
@@ -469,7 +475,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         : reference + (input.exitSlippageTicks ?? 0) * size,
       size,
     );
-     legs.push(makeLeg(targetHit ? "runner" : "full", remaining, reference, fill, "session_close", closeCandle));
+     legs.push(makeLeg(targetHit || oneRReached ? "runner" : "full", remaining, reference, fill, "session_close", closeCandle));
     remaining = 0;
      runnerExited = (targetHit || oneRReached) && runnerQuantity > 0;
     eventLabels.push("SESSION_CLOSE");

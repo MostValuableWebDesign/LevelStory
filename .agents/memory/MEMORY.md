@@ -48,3 +48,4 @@
 - [Causal target indicator provenance](causal-target-indicator-provenance.md) — target planning and Visual Review must share contract-local, non-closed-session indicator history anchored at E.
 - [Regular-session execution boundary](regular-session-execution-boundary.md) — candidate-owned stops must scan only the regular-session candles shown in Visual Review.
 - [Candidate audit annotation precedence](candidate-audit-annotation-precedence.md) — candidate chart levels must use frozen candidate audit values, not legacy record-level stops.
+- [No-level profit management](no-level-profit-management.md) — candidate trades use modeled initial risk, a +1R checkpoint, and monotonic completed-five-minute swing trailing.
