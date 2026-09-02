@@ -54,6 +54,8 @@ import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 
 const FRONTEND_BUILD_ID = import.meta.env.VITE_LEVELSTORY_BUILD_ID ?? "local-development";
+const TRADE_TARGET_LEGEND_ID = "trade-target-exit";
+const TRADE_RUNNER_LEGEND_ID = "trade-runner-exit";
 import { deriveTeachingCompatibilityFields, evaluateDynamicLevelInteraction, normalizeTeachingQualifyingLevels } from "@/lib/visual-review-teaching";
 import {
   CHART_HEIGHT,
@@ -1467,6 +1469,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     return Math.max(top + 5, Math.min(plotBottom - 5, rawY));
   };
    const focusedLevelId = activeLevelId ?? selectedLevelId;
+   const focusedTradeExitKind = focusedLevelId === TRADE_TARGET_LEGEND_ID
+     ? "target"
+     : focusedLevelId === TRADE_RUNNER_LEGEND_ID
+       ? "runner"
+       : null;
    const focusLevel = (id: string) => setActiveLevelId(id);
    const selectLevel = (id: string) => {
      setSelectedLevelId((current) => current === id ? null : id);
@@ -1568,14 +1575,32 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
              <span className="mono font-bold">{valueLabel}</span>
              </button>;
           })}
-          <span className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px] text-[hsl(var(--positive))]" data-testid="legend-trade-target-exit">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-            <span>TARGET EXIT</span>
-          </span>
-          <span className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px] text-[hsl(270_55%_48%)]" data-testid="legend-trade-runner-exit">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-            <span>RUNNER EXIT</span>
-          </span>
+           {(["target", "runner"] as const)
+             .filter((kind) => tradeLegs.some((leg) => leg.kind === kind))
+             .map((kind) => {
+               const id = kind === "target" ? TRADE_TARGET_LEGEND_ID : TRADE_RUNNER_LEGEND_ID;
+               const label = kind === "target" ? "TARGET EXIT" : "RUNNER EXIT";
+               const color = kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)";
+               const selected = focusedLevelId === id;
+               return <button
+                 key={id}
+                 type="button"
+                 className={`inline-flex items-center gap-1 border bg-card px-2 py-1 text-[9px] transition ${selected ? "border-accent bg-accent/10" : "border-border hover:bg-muted/50"}`}
+                 style={{ color }}
+                 onMouseEnter={() => focusLevel(id)}
+                 onMouseLeave={() => setActiveLevelId((current) => current === id ? null : current)}
+                 onFocus={() => focusLevel(id)}
+                 onBlur={() => setActiveLevelId((current) => current === id ? null : current)}
+                 onClick={() => selectLevel(id)}
+                 onKeyDown={(event) => handleLevelKeyDown(event, id)}
+                 aria-pressed={selected}
+                 aria-label={`${label}. Press Enter or Space to keep highlighted; Escape clears selection.`}
+                 data-testid={`legend-trade-${kind}-exit`}
+               >
+                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+                 <span>{label}</span>
+               </button>;
+             })}
         </div>
         <div className="chart-plot-shell mt-3">
           <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the price plot or volume column to inspect the nearest candle and free-roaming crosshair price, or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => { setPointerPosition(null); setHoveredSlot(null); }} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
@@ -1625,7 +1650,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             {exitX !== null && exitPrice !== null && <g data-testid="trade-exit-overlay">
               <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke="hsl(var(--negative))" strokeWidth="2" strokeDasharray="2 3" />
               <circle cx={exitX} cy={y(exitPrice)} r="6" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-exit-marker" />
-               <text x={exitX} y={y(exitPrice) + 16} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">EXIT · {formatPriceAxisValue(exitPrice)}</text>
             </g>}
             {exitX !== null && primaryStopPrice !== null && <g data-testid="primary-level-stop-overlay">
               <line x1={entryX} x2={exitX} y1={y(primaryStopPrice)} y2={y(primaryStopPrice)} stroke="hsl(var(--negative))" strokeWidth="2.4" strokeDasharray="8 3" />
@@ -1634,8 +1658,15 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               <title>{`Primary level stop at ${formatPriceAxisValue(primaryStopPrice)}; the actual fill was ${exitPrice == null ? "unavailable" : formatPriceAxisValue(exitPrice)}.`}</title>
             </g>}
             {legOverlays.map(({ leg, index, x }) => x !== null && <g key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
-               <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)"} strokeWidth="1.5" strokeDasharray="1 4" />
-               <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r="4" fill={leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)"} stroke="hsl(var(--card))" strokeWidth="1.5" />
+               {(() => {
+                 const legColor = leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)";
+                 const legIsFocused = focusedTradeExitKind === leg.kind;
+                 const legIsDimmed = focusedTradeExitKind !== null && !legIsFocused;
+                 return <>
+                   <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={legColor} strokeWidth={legIsFocused ? "3" : "1.5"} strokeDasharray="1 4" opacity={legIsDimmed ? ".18" : "1"} data-testid={`trade-leg-line-${leg.kind ?? "unknown"}-${index}`} />
+                   <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r={legIsFocused ? "6" : "4"} fill={legColor} stroke="hsl(var(--card))" strokeWidth={legIsFocused ? "2" : "1.5"} opacity={legIsDimmed ? ".18" : "1"} />
+                 </>;
+               })()}
               <title>{`${leg.kind ?? "leg"} leg · ${leg.quantity ?? "—"} contracts · ${leg.exitReason ?? "exit"} · ${leg.fillPrice == null ? "price unavailable" : formatPriceAxisValue(leg.fillPrice)}`}</title>
             </g>)}
           </g>}
