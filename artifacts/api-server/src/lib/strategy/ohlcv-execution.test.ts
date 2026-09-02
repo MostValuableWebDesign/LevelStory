@@ -169,7 +169,7 @@ test("uses the short primary level before the upper patience opposite-wick stop"
   assert.equal(result.legs[0]?.referencePrice, 104.25);
 });
 
-test("falls back to the patience opposite-wick stop when the armed primary level has not broken", () => {
+test("keeps the qualified primary stop authoritative until its barrier breaks", () => {
   const result = simulateOhlcvExecution({
     ...base,
     immediateTriggerCandle: candle(100, 101, 100, 100.5),
@@ -187,9 +187,9 @@ test("falls back to the patience opposite-wick stop when the armed primary level
       stopPrice: 96,
     },
   });
-  assert.equal(result.exitReason, "stop");
+  assert.equal(result.exitReason, "manual");
   assert.equal(result.stopPrice, 99.5);
-  assert.equal(result.audit.stopLevel, "strategy");
+  assert.equal(result.audit.stopLevel, null);
 });
 
 test("uses the opening price for a gap-through stop and closes remaining quantity at session close", () => {

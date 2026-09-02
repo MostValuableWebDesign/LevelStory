@@ -1035,6 +1035,7 @@ export function resolveIntrabarOutcome(input: {
   oneMinute?: readonly IntrabarBar[];
 }): IntrabarResolution {
   const primaryStop = input.primaryLossExitLevel?.stopPrice ?? null;
+  const effectiveStop = primaryStop ?? input.stop;
   const stopResult = (
     source: IntrabarResolution["source"],
     timestamp: number,
@@ -1054,7 +1055,7 @@ export function resolveIntrabarOutcome(input: {
   ).sort((first, second) => first.timestamp - second.timestamp);
   if (ticks.length) {
     for (const tick of ticks) {
-      const hit = touches(input.direction, tick.price, input.target, input.stop);
+      const hit = touches(input.direction, tick.price, input.target, effectiveStop);
       const primaryHit = touches(input.direction, tick.price, null, primaryStop).stop;
       if (primaryHit) {
         return stopResult("tick", tick.timestamp, primaryStop!, "Tick data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
@@ -1070,7 +1071,7 @@ export function resolveIntrabarOutcome(input: {
           detail: "Tick data touched the stop and target at the same observation; the conservative stop-first policy was applied.",
         };
       }
-      if (hit.stop) return stopResult("tick", tick.timestamp, input.stop!, "Tick data resolved the patience opposite-wick stop.");
+      if (hit.stop) return stopResult("tick", tick.timestamp, effectiveStop!, "Tick data resolved the patience opposite-wick stop.");
       if (hit.target) return { status: "target", source: "tick", timestamp: tick.timestamp, price: tick.price, ambiguityLabel: null, detail: "Tick data resolved the target." };
     }
     return { status: "open", source: "tick", timestamp: null, price: null, ambiguityLabel: null, detail: "Tick data did not reach a target or stop." };
@@ -1081,7 +1082,7 @@ export function resolveIntrabarOutcome(input: {
     .sort((first, second) => first.closeTime - second.closeTime);
   if (bars.length) {
     for (const bar of bars) {
-      const hit = barTouches(input.direction, bar, input.target, input.stop);
+      const hit = barTouches(input.direction, bar, input.target, effectiveStop);
       const primaryHit = barTouches(input.direction, bar, null, primaryStop).stop;
       if (primaryHit) {
         return stopResult("one-minute", bar.closeTime, primaryStop!, "One-minute data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
@@ -1097,13 +1098,13 @@ export function resolveIntrabarOutcome(input: {
           detail: "One-minute OHLC touched both barriers inside the same minute; the conservative stop-first policy was applied.",
         };
       }
-      if (hit.stop) return stopResult("one-minute", bar.closeTime, input.stop!, "One-minute data resolved the patience opposite-wick stop.");
+      if (hit.stop) return stopResult("one-minute", bar.closeTime, effectiveStop!, "One-minute data resolved the patience opposite-wick stop.");
       if (hit.target) return { status: "target", source: "one-minute", timestamp: bar.closeTime, price: input.target, ambiguityLabel: null, detail: "One-minute data resolved the target." };
     }
     return { status: "open", source: "one-minute", timestamp: null, price: null, ambiguityLabel: null, detail: "One-minute data did not reach a target or stop." };
   }
 
-  const hit = barTouches(input.direction, input.candle, input.target, input.stop);
+  const hit = barTouches(input.direction, input.candle, input.target, effectiveStop);
   const primaryHit = barTouches(input.direction, input.candle, null, primaryStop).stop;
   if (primaryHit) {
     return stopResult("ohlc", input.candle.closeTime, primaryStop!, "Five-minute OHLC reached the primary level/indicator loss exit before the patience opposite-wick stop.");
@@ -1114,9 +1115,9 @@ export function resolveIntrabarOutcome(input: {
       status: ambiguous ? "ambiguous" : hit.stop ? "stop" : "target",
       source: "ohlc",
       timestamp: input.candle.closeTime,
-      price: hit.stop ? input.stop : input.target,
+      price: hit.stop ? effectiveStop : input.target,
       ambiguityLabel: ambiguous ? "AMBIGUOUS_STOP_FIRST" : null,
-      stopLevel: hit.stop ? "strategy" : null,
+      stopLevel: hit.stop ? primaryStop !== null ? "primary_level" : "strategy" : null,
       detail: hit.stop
         ? ambiguous
           ? "Only five-minute OHLC is available and both barriers were touched; stop-first was applied."

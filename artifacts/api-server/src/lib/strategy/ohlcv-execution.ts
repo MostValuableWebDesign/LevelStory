@@ -276,8 +276,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     };
   };
   for (const candle of candles) {
-    const strategyHit = strategyStop !== null && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
-    const catastropheHit = catastropheStop !== null && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
+    const primaryStopArmed = primaryStop !== null;
+    const strategyHit = !primaryStopArmed && strategyStop !== null && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
+    const catastropheHit = !primaryStopArmed && catastropheStop !== null && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
     const primaryHit = primaryStop !== null && (input.direction === "long" ? candle.low <= primaryStop.price : candle.high >= primaryStop.price);
     const adverse = primaryHit || strategyHit || catastropheHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
