@@ -274,6 +274,15 @@ export type BacktestConsolidationGuardEvidence = {
   sourceCandleTimestamps: string[];
   rangeWidth: number | null;
   rangeWidthTicks: number | null;
+  causalVolatilityBaseline: number | null;
+  compressionRatio: number | null;
+  overlapRatio: number | null;
+  completedCandleCount: number;
+  highRejectionCount: number;
+  lowRejectionCount: number;
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
+  qualificationReason: string | null;
   direction: Direction | null;
   patienceOpenTime: string | null;
   patienceCloseTime: string | null;
@@ -314,6 +323,15 @@ function serializeConsolidationGuard(
       .map((timestamp) => new Date(timestamp).toISOString()),
     rangeWidth: evidence.rangeWidth,
     rangeWidthTicks: evidence.rangeWidthTicks,
+    causalVolatilityBaseline: evidence.causalVolatilityBaseline,
+    compressionRatio: evidence.compressionRatio,
+    overlapRatio: evidence.overlapRatio,
+    completedCandleCount: evidence.completedCandleCount,
+    highRejectionCount: evidence.highRejectionCount,
+    lowRejectionCount: evidence.lowRejectionCount,
+    maxDirectionalSequence: evidence.maxDirectionalSequence,
+    diagnosticRangeCapExceeded: evidence.diagnosticRangeCapExceeded,
+    qualificationReason: evidence.qualificationReason,
     direction: evidence.direction,
     patienceOpenTime: iso(evidence.patienceOpenTime),
     patienceCloseTime: iso(evidence.patienceCloseTime),

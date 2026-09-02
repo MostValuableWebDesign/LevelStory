@@ -889,7 +889,7 @@ export function createMarketSnapshot(
       "Doji uses a 10% body-to-range default; equivalent opposing candles use 15% body-size tolerance, 70% minimum body-to-range, and 15% trend-facing-wick limits.",
       (() => {
         const thresholds = consolidationThresholds(config);
-        return `Phase 6 consolidation thresholds ${thresholds.version}: minimum ${thresholds.minCandles} completed five-minute candles, maximum ${thresholds.maxRangeTicks} MES ticks, and no more than ${thresholds.maxExpansionRatio.toFixed(2)}× range expansion. NTZ proximity is diagnostic confluence, not a duration substitute.`;
+        return `Phase 6 consolidation thresholds ${thresholds.version}: minimum ${thresholds.minCandles} completed five-minute candles, median true-range baseline from the preceding ${thresholds.volatilityLookback} completed candles, width compression at or below ${thresholds.volatilityMultiplier.toFixed(2)}× baseline, at least ${(thresholds.minOverlapRatio * 100).toFixed(0)}% shared candle-range overlap, at least ${thresholds.minRejectionCount} repeated edge rejections, maximum ${thresholds.maxDirectionalSequence}-candle directional progression, and no more than ${thresholds.maxExpansionRatio.toFixed(2)}× range expansion. The legacy ${thresholds.maxRangeTicks}-tick value is diagnostic only; NTZ proximity is diagnostic confluence, not a duration substitute.`;
       })(),
        `Phase 7 uses tick-aligned catastrophe risk, ${plan.targetDollars.toFixed(2)} dollar target selection, whole-contract sizing, and a frozen 40% runner retracement.`,
        `Simulated costs: normal slippage is one adverse tick per fill; abnormal spread mode includes the observed spread. Fees include commission, exchange/regulatory, regulatory, and clearing components.`,

@@ -66,6 +66,12 @@ test("intraday reference chart labels and colors are exact", () => {
 });
 
 test("consolidation scanning finds every maximal bounded range in a snapshot", () => {
+  const baseline = Array.from({ length: 12 }, (_, index) => makeCandle(index - 12, {
+    open: 100 + index * 0.5,
+    high: 102 + index * 0.5,
+    low: 98 + index * 0.5,
+    close: 100 + index * 0.5,
+  }));
   const first = Array.from({ length: 5 }, (_, index) => makeCandle(index, {
     open: 100,
     high: 101,
@@ -79,10 +85,15 @@ test("consolidation scanning finds every maximal bounded range in a snapshot", (
     low: 109,
     close: 110,
   }));
-  const zones = findConsolidationZones([...first, separator, ...second], {
+  const zones = findConsolidationZones([...baseline, ...first, separator, ...second], {
     minCandles: 3,
     maxRangeTicks: 24,
     maxExpansionRatio: 1.25,
+    volatilityLookback: 12,
+    volatilityMultiplier: 1.5,
+    minOverlapRatio: 0.5,
+    minRejectionCount: 2,
+    maxDirectionalSequence: 2,
   });
   assert.equal(zones.length, 2);
   assert.equal(zones[0]!.sourceCandleOpenTimes.length, 5);

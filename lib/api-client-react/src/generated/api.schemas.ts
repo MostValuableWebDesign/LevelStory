@@ -2138,6 +2138,19 @@ export interface ConsolidationThresholds {
   maxRangeTicks: number;
   /** @exclusiveMinimum 0 */
   maxExpansionRatio: number;
+  /** @minimum 3 */
+  volatilityLookback: number;
+  /** @exclusiveMinimum 0 */
+  volatilityMultiplier: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  minOverlapRatio: number;
+  /** @minimum 1 */
+  minRejectionCount: number;
+  /** @minimum 1 */
+  maxDirectionalSequence: number;
 }
 
 /**
@@ -2199,6 +2212,23 @@ export interface ConsolidationEntryGuardEvidence {
   rangeWidth: number | null;
   /** @nullable */
   rangeWidthTicks: number | null;
+  /** @nullable */
+  causalVolatilityBaseline: number | null;
+  /** @nullable */
+  compressionRatio: number | null;
+  /** @nullable */
+  overlapRatio: number | null;
+  /** @minimum 0 */
+  completedCandleCount: number;
+  /** @minimum 0 */
+  highRejectionCount: number;
+  /** @minimum 0 */
+  lowRejectionCount: number;
+  /** @minimum 0 */
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
+  /** @nullable */
+  qualificationReason: string | null;
   /** @nullable */
   direction: ConsolidationEntryGuardEvidenceDirection;
   /** @nullable */

@@ -1343,10 +1343,20 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        && typeof rawThresholds.minCandles === "number"
        && typeof rawThresholds.maxRangeTicks === "number"
        && typeof rawThresholds.maxExpansionRatio === "number"
+        && typeof rawThresholds.volatilityLookback === "number"
+        && typeof rawThresholds.volatilityMultiplier === "number"
+        && typeof rawThresholds.minOverlapRatio === "number"
+        && typeof rawThresholds.minRejectionCount === "number"
+        && typeof rawThresholds.maxDirectionalSequence === "number"
        ? {
          minCandles: rawThresholds.minCandles,
          maxRangeTicks: rawThresholds.maxRangeTicks,
          maxExpansionRatio: rawThresholds.maxExpansionRatio,
+          volatilityLookback: rawThresholds.volatilityLookback,
+          volatilityMultiplier: rawThresholds.volatilityMultiplier,
+          minOverlapRatio: rawThresholds.minOverlapRatio,
+          minRejectionCount: rawThresholds.minRejectionCount,
+          maxDirectionalSequence: rawThresholds.maxDirectionalSequence,
        }
        : null;
      if (!thresholds) return [];

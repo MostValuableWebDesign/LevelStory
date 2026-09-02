@@ -907,7 +907,9 @@ function completedCandles(candles: readonly Candle[]): Candle[] {
 }
 
 function isCompletedFiveMinuteCandle(candle: Candle): boolean {
-  return candle.isComplete && candle.closeTime - candle.openTime === 5 * 60_000;
+  return candle.isComplete
+    && candle.openTime % (5 * 60_000) === 0
+    && candle.closeTime - candle.openTime === 5 * 60_000;
 }
 
 function isContiguous(candles: readonly Candle[]): boolean {
@@ -929,8 +931,8 @@ function consolidationMetrics(window: readonly Candle[], preceding: readonly Can
   const sharedHigh = Math.min(...window.map((candle) => candle.high));
   const sharedLow = Math.max(...window.map((candle) => candle.low));
   const overlapRatio = range > 0 ? Math.max(0, sharedHigh - sharedLow) / range : 1;
-  const edgeDistance = Math.max(0.25, range * 0.2);
-  const rejectionDistance = Math.max(0.25, edgeDistance * 0.5);
+  const edgeDistance = Math.max(0.01, range * 0.2);
+  const rejectionDistance = Math.max(0.01, edgeDistance * 0.5);
   const highRejectionCount = window.filter((candle) =>
     candle.high >= high - edgeDistance && candle.close <= high - rejectionDistance,
   ).length;

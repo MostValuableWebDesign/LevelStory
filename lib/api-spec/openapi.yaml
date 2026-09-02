@@ -3122,7 +3122,12 @@ components:
         minCandles: { type: number, minimum: 3 }
         maxRangeTicks: { type: number, minimum: 1 }
         maxExpansionRatio: { type: number, exclusiveMinimum: 0 }
-      required: [version, minCandles, maxRangeTicks, maxExpansionRatio]
+        volatilityLookback: { type: number, minimum: 3 }
+        volatilityMultiplier: { type: number, exclusiveMinimum: 0 }
+        minOverlapRatio: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        minRejectionCount: { type: number, minimum: 1 }
+        maxDirectionalSequence: { type: number, minimum: 1 }
+      required: [version, minCandles, maxRangeTicks, maxExpansionRatio, volatilityLookback, volatilityMultiplier, minOverlapRatio, minRejectionCount, maxDirectionalSequence]
     ConsolidationEntryGuardEvidence:
       type: object
       additionalProperties: false
@@ -3146,6 +3151,15 @@ components:
         sourceCandleTimestamps: { type: array, items: { type: string, format: date-time } }
         rangeWidth: { type: ["number", "null"] }
         rangeWidthTicks: { type: ["number", "null"] }
+        causalVolatilityBaseline: { type: ["number", "null"] }
+        compressionRatio: { type: ["number", "null"] }
+        overlapRatio: { type: ["number", "null"] }
+        completedCandleCount: { type: number, minimum: 0 }
+        highRejectionCount: { type: number, minimum: 0 }
+        lowRejectionCount: { type: number, minimum: 0 }
+        maxDirectionalSequence: { type: number, minimum: 0 }
+        diagnosticRangeCapExceeded: { type: boolean }
+        qualificationReason: { type: ["string", "null"] }
         direction: { type: ["string", "null"], enum: [long, short, null] }
         patienceOpenTime: { type: ["string", "null"], format: date-time }
         patienceCloseTime: { type: ["string", "null"], format: date-time }
@@ -3162,7 +3176,7 @@ components:
         breakoutPullback: { type: boolean }
         rejectionReason: { type: ["string", "null"] }
         detail: { type: string }
-      required: [detectorVersion, lifecycleState, lifecycleStates, zoneDetected, activeZone, executionEligible, consolidationZoneHigh, consolidationZoneLow, consolidationStartTime, consolidationDetectionTime, sourceCandleTimestamps, rangeWidth, rangeWidthTicks, direction, patienceOpenTime, patienceCloseTime, entryOpenTime, entryCloseTime, confirmationThreshold, entryClose, entryCompleted, entryReachedConfirmation, entryCloseOutsideZone, entryOutsideFinalizedNtz, entryBeforeCutoff, consolidationEdgeQualified, breakoutPullback, rejectionReason, detail]
+      required: [detectorVersion, lifecycleState, lifecycleStates, zoneDetected, activeZone, executionEligible, consolidationZoneHigh, consolidationZoneLow, consolidationStartTime, consolidationDetectionTime, sourceCandleTimestamps, rangeWidth, rangeWidthTicks, causalVolatilityBaseline, compressionRatio, overlapRatio, completedCandleCount, highRejectionCount, lowRejectionCount, maxDirectionalSequence, diagnosticRangeCapExceeded, qualificationReason, direction, patienceOpenTime, patienceCloseTime, entryOpenTime, entryCloseTime, confirmationThreshold, entryClose, entryCompleted, entryReachedConfirmation, entryCloseOutsideZone, entryOutsideFinalizedNtz, entryBeforeCutoff, consolidationEdgeQualified, breakoutPullback, rejectionReason, detail]
     BacktestAuditRecord:
       type: object
       additionalProperties: false

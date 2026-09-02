@@ -31,6 +31,23 @@ export interface ConsolidationEntryGuardEvidence {
   /** @nullable */
   rangeWidthTicks: number | null;
   /** @nullable */
+  causalVolatilityBaseline: number | null;
+  /** @nullable */
+  compressionRatio: number | null;
+  /** @nullable */
+  overlapRatio: number | null;
+  /** @minimum 0 */
+  completedCandleCount: number;
+  /** @minimum 0 */
+  highRejectionCount: number;
+  /** @minimum 0 */
+  lowRejectionCount: number;
+  /** @minimum 0 */
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
+  /** @nullable */
+  qualificationReason: string | null;
+  /** @nullable */
   direction: ConsolidationEntryGuardEvidenceDirection;
   /** @nullable */
   patienceOpenTime: Date | null;

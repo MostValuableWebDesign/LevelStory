@@ -14,4 +14,17 @@ export interface ConsolidationThresholds {
   maxRangeTicks: number;
   /** @exclusiveMinimum 0 */
   maxExpansionRatio: number;
+  /** @minimum 3 */
+  volatilityLookback: number;
+  /** @exclusiveMinimum 0 */
+  volatilityMultiplier: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  minOverlapRatio: number;
+  /** @minimum 1 */
+  minRejectionCount: number;
+  /** @minimum 1 */
+  maxDirectionalSequence: number;
 }

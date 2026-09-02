@@ -100,7 +100,15 @@ export type ConsolidationThresholds = {
 
 export function consolidationThresholds(config: Pick<
   StrategyConfig,
-  "phase6ConsolidationThresholdVersion" | "phase6ConsolidationMinCandles" | "phase6ConsolidationMaxRangeTicks" | "phase6ConsolidationExpansionRatio"
+  | "phase6ConsolidationThresholdVersion"
+  | "phase6ConsolidationMinCandles"
+  | "phase6ConsolidationMaxRangeTicks"
+  | "phase6ConsolidationExpansionRatio"
+  | "phase6ConsolidationVolatilityLookback"
+  | "phase6ConsolidationVolatilityMultiplier"
+  | "phase6ConsolidationMinOverlapRatio"
+  | "phase6ConsolidationMinRejectionCount"
+  | "phase6ConsolidationMaxDirectionalSequence"
 >): ConsolidationThresholds {
   return {
     version: config.phase6ConsolidationThresholdVersion,

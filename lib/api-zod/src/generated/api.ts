@@ -800,10 +800,44 @@ export const runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin = 
 
 export const runBacktestResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const runBacktestResponseAuditItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const runBacktestResponseAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const runBacktestResponseAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const runBacktestResponseAuditItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const runBacktestResponseAuditItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const runBacktestResponseAuditItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const runBacktestResponseAuditItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const runBacktestResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
+
 export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
 export const runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const runBacktestResponseOccurrencesItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const runBacktestResponseOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
 export const runBacktestResponseOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -1165,7 +1199,12 @@ export const RunBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(runBacktestResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(runBacktestResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(runBacktestResponseAuditItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(runBacktestResponseAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(runBacktestResponseAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(runBacktestResponseAuditItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -1181,6 +1220,15 @@ export const RunBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(runBacktestResponseAuditItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(runBacktestResponseAuditItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(runBacktestResponseAuditItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(runBacktestResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -1240,7 +1288,12 @@ export const RunBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(runBacktestResponseOccurrencesItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(runBacktestResponseOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(runBacktestResponseOccurrencesItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -1256,6 +1309,15 @@ export const RunBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(runBacktestResponseOccurrencesItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(runBacktestResponseOccurrencesItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(runBacktestResponseOccurrencesItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(runBacktestResponseOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -1419,10 +1481,44 @@ export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresho
 
 export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
+
 export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
 export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
 export const startBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -1801,7 +1897,12 @@ export const StartBatchBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -1817,6 +1918,15 @@ export const StartBatchBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -1876,7 +1986,12 @@ export const StartBatchBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -1892,6 +2007,15 @@ export const StartBatchBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -2458,10 +2582,44 @@ export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThr
 
 export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
+
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -2840,7 +2998,12 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -2856,6 +3019,15 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -2915,7 +3087,12 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -2931,6 +3108,15 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -3497,10 +3683,44 @@ export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresh
 
 export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
+
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -3879,7 +4099,12 @@ export const CancelBatchBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -3895,6 +4120,15 @@ export const CancelBatchBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -3954,7 +4188,12 @@ export const CancelBatchBacktestResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -3970,6 +4209,15 @@ export const CancelBatchBacktestResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),
@@ -4770,6 +5018,23 @@ export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinCand
 
 export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin = 0;
 
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsVolatilityLookbackMin = 3;
+
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin = 0;
+
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin = 0;
+export const getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinOverlapRatioMax = 1;
+
+
+
+export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneCompletedCandleCountMin = 0;
+
+export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneHighRejectionCountMin = 0;
+
+export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneLowRejectionCountMin = 0;
+
+export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
+
 
 
 export const GetBacktestAuditPageResponse = zod.object({
@@ -4827,7 +5092,12 @@ export const GetBacktestAuditPageResponse = zod.object({
   "version": zod.string(),
   "minCandles": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinCandlesMin),
   "maxRangeTicks": zod.number().min(1),
-  "maxExpansionRatio": zod.number().gt(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin)
+  "maxExpansionRatio": zod.number().gt(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMaxExpansionRatioExclusiveMin),
+  "volatilityLookback": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationThresholdsVolatilityLookbackMin),
+  "volatilityMultiplier": zod.number().gt(getBacktestAuditPageResponseAuditItemConsolidationThresholdsVolatilityMultiplierExclusiveMin),
+  "minOverlapRatio": zod.number().gt(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinOverlapRatioExclusiveMin).max(getBacktestAuditPageResponseAuditItemConsolidationThresholdsMinOverlapRatioMax),
+  "minRejectionCount": zod.number().min(1),
+  "maxDirectionalSequence": zod.number().min(1)
 }),
   "consolidationGuard": zod.union([zod.object({
   "detectorVersion": zod.string(),
@@ -4843,6 +5113,15 @@ export const GetBacktestAuditPageResponse = zod.object({
   "sourceCandleTimestamps": zod.array(zod.coerce.date()),
   "rangeWidth": zod.number().nullable(),
   "rangeWidthTicks": zod.number().nullable(),
+  "causalVolatilityBaseline": zod.number().nullable(),
+  "compressionRatio": zod.number().nullable(),
+  "overlapRatio": zod.number().nullable(),
+  "completedCandleCount": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationGuardOneCompletedCandleCountMin),
+  "highRejectionCount": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationGuardOneHighRejectionCountMin),
+  "lowRejectionCount": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationGuardOneLowRejectionCountMin),
+  "maxDirectionalSequence": zod.number().min(getBacktestAuditPageResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin),
+  "diagnosticRangeCapExceeded": zod.boolean(),
+  "qualificationReason": zod.string().nullable(),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "patienceOpenTime": zod.coerce.date().nullable(),
   "patienceCloseTime": zod.coerce.date().nullable(),

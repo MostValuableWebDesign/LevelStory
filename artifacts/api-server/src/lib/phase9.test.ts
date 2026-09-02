@@ -253,7 +253,7 @@ function consolidationGuard(
   overrides: Partial<BacktestConsolidationGuardEvidence> = {},
 ): BacktestConsolidationGuardEvidence {
   return {
-    detectorVersion: "phase6-consolidation-entry-guard-v1",
+    detectorVersion: "phase6-consolidation-entry-guard-v2",
     lifecycleState: "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
     lifecycleStates: [
       "CONSOLIDATION_ZONE_FROZEN",
@@ -275,6 +275,15 @@ function consolidationGuard(
     ],
     rangeWidth: 2,
     rangeWidthTicks: 8,
+    causalVolatilityBaseline: 1,
+    compressionRatio: 2,
+    overlapRatio: 0.75,
+    completedCandleCount: 3,
+    highRejectionCount: 1,
+    lowRejectionCount: 1,
+    maxDirectionalSequence: 1,
+    diagnosticRangeCapExceeded: false,
+    qualificationReason: "Fixture consolidation qualified using causal volatility evidence.",
     direction: "long",
     patienceOpenTime: "2026-08-25T14:15:00.000Z",
     patienceCloseTime: "2026-08-25T14:20:00.000Z",

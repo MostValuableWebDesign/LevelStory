@@ -81,6 +81,14 @@ export type ConsolidationZone = {
   high: number;
   low: number;
   range: number;
+  rangeTicks: number;
+  causalVolatilityBaseline: number;
+  compressionRatio: number;
+  overlapRatio: number;
+  highRejectionCount: number;
+  lowRejectionCount: number;
+  maxDirectionalSequence: number;
+  diagnosticRangeCapExceeded: boolean;
   expansionRatio: number;
   sourceCandleOpenTimes: string[];
 };
@@ -89,6 +97,11 @@ export type ConsolidationThresholds = {
   minCandles: number;
   maxRangeTicks: number;
   maxExpansionRatio: number;
+  volatilityLookback: number;
+  volatilityMultiplier: number;
+  minOverlapRatio: number;
+  minRejectionCount: number;
+  maxDirectionalSequence: number;
 };
 
 export type CandleGeometry = {
@@ -335,18 +348,26 @@ export function findConsolidationZones(
   thresholds: ConsolidationThresholds,
 ): ConsolidationZone[] {
   const minimumCandles = Math.max(3, Math.floor(thresholds.minCandles));
-  const maxRange = thresholds.maxRangeTicks * MES_TICK_SIZE;
+  const volatilityLookback = Math.max(1, Math.floor(thresholds.volatilityLookback));
   const maxExpansionRatio = thresholds.maxExpansionRatio;
+  const volatilityMultiplier = thresholds.volatilityMultiplier;
+  const minOverlapRatio = thresholds.minOverlapRatio;
+  const minRejectionCount = Math.max(1, Math.floor(thresholds.minRejectionCount));
+  const maxDirectionalSequence = Math.max(1, Math.floor(thresholds.maxDirectionalSequence));
   if (
     !Number.isFinite(minimumCandles)
-    || !Number.isFinite(maxRange)
-    || maxRange <= 0
+    || !Number.isFinite(volatilityLookback)
     || !Number.isFinite(maxExpansionRatio)
     || maxExpansionRatio <= 0
+    || !Number.isFinite(volatilityMultiplier)
+    || volatilityMultiplier <= 0
+    || !Number.isFinite(minOverlapRatio)
+    || minOverlapRatio <= 0
+    || minOverlapRatio > 1
   ) return [];
 
   const completed = candles
-    .filter((candle) => candle.isComplete && isValidRawCandle(candle))
+    .filter(isExactFiveMinuteCandle)
     .filter((candle) => Number.isFinite(timestamp(candle.openTime)) && Number.isFinite(timestamp(candle.closeTime)))
     .slice()
     .sort((first, second) => timestamp(first.openTime) - timestamp(second.openTime));
@@ -358,6 +379,7 @@ export function findConsolidationZones(
     for (let end = cursor + minimumCandles - 1; end < completed.length; end += 1) {
       if (end > cursor && timestamp(completed[end - 1]!.closeTime) !== timestamp(completed[end]!.openTime)) break;
       const window = completed.slice(cursor, end + 1);
+      const preceding = completed.slice(0, cursor).slice(-volatilityLookback);
       const midpoint = Math.max(1, Math.floor(window.length / 2));
       const rangeFor = (part: readonly VisualValidationCandle[]) =>
         Math.max(...part.map((candle) => candle.high)) - Math.min(...part.map((candle) => candle.low));
@@ -365,13 +387,63 @@ export function findConsolidationZones(
       const secondRange = rangeFor(window.slice(midpoint));
       const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
       const range = rangeFor(window);
-      if (range > maxRange || expansionRatio > maxExpansionRatio) continue;
+      const sharedHigh = Math.min(...window.map((candle) => candle.high));
+      const sharedLow = Math.max(...window.map((candle) => candle.low));
+      const overlapRatio = range > 0 ? Math.max(0, sharedHigh - sharedLow) / range : 1;
+      const edgeDistance = Math.max(0.01, range * 0.2);
+      const rejectionDistance = Math.max(0.01, edgeDistance * 0.5);
+      const highRejectionCount = window.filter((candle) =>
+        candle.high >= Math.max(...window.map((item) => item.high)) - edgeDistance
+        && candle.close <= Math.max(...window.map((item) => item.high)) - rejectionDistance,
+      ).length;
+      const lowRejectionCount = window.filter((candle) =>
+        candle.low <= Math.min(...window.map((item) => item.low)) + edgeDistance
+        && candle.close >= Math.min(...window.map((item) => item.low)) + rejectionDistance,
+      ).length;
+      let higherHighSequence = window.length ? 1 : 0;
+      let lowerLowSequence = window.length ? 1 : 0;
+      let maximumDirectionalSequence = window.length ? 1 : 0;
+      for (let index = 1; index < window.length; index += 1) {
+        higherHighSequence = window[index]!.high > window[index - 1]!.high ? higherHighSequence + 1 : 1;
+        lowerLowSequence = window[index]!.low < window[index - 1]!.low ? lowerLowSequence + 1 : 1;
+        maximumDirectionalSequence = Math.max(maximumDirectionalSequence, higherHighSequence, lowerLowSequence);
+      }
+      const baselineRanges = preceding.map((candle, index) => {
+        const previous = preceding[index - 1];
+        return previous
+          ? Math.max(candle.high - candle.low, Math.abs(candle.high - previous.close), Math.abs(candle.low - previous.close))
+          : candle.high - candle.low;
+      }).filter((value) => Number.isFinite(value) && value >= 0).sort((first, second) => first - second);
+      const middle = Math.floor(baselineRanges.length / 2);
+      const baseline = baselineRanges.length === 0
+        ? null
+        : baselineRanges.length % 2 === 0
+          ? (baselineRanges[middle - 1]! + baselineRanges[middle]!) / 2
+          : baselineRanges[middle]!;
+      const compressionRatio = baseline !== null && baseline > 0 ? range / baseline : null;
+      if (
+        preceding.length < volatilityLookback
+        || compressionRatio === null
+        || compressionRatio > volatilityMultiplier
+        || overlapRatio < minOverlapRatio
+        || highRejectionCount + lowRejectionCount < minRejectionCount
+        || maximumDirectionalSequence > maxDirectionalSequence
+        || expansionRatio > maxExpansionRatio
+      ) continue;
       best = {
         startTime: window[0]!.openTime,
         endTime: window.at(-1)!.closeTime,
         high: Math.max(...window.map((candle) => candle.high)),
         low: Math.min(...window.map((candle) => candle.low)),
         range: Number(range.toFixed(2)),
+        rangeTicks: Number((range / MES_TICK_SIZE).toFixed(2)),
+        causalVolatilityBaseline: Number(baseline!.toFixed(4)),
+        compressionRatio: Number(compressionRatio.toFixed(4)),
+        overlapRatio: Number(overlapRatio.toFixed(4)),
+        highRejectionCount,
+        lowRejectionCount,
+        maxDirectionalSequence: maximumDirectionalSequence,
+        diagnosticRangeCapExceeded: range / MES_TICK_SIZE > thresholds.maxRangeTicks,
         expansionRatio: Number(expansionRatio.toFixed(2)),
         sourceCandleOpenTimes: window.map((candle) => candle.openTime),
       };
