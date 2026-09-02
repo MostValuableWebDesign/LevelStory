@@ -8,3 +8,9 @@ The patience strategy stop must be recalculated from the frozen P extreme, direc
 **Why:** Management evidence, OHLCV execution, audit records, ledger metrics, and Visual Review must agree on causal exit precedence while still preserving the governed P-wick stop when no nearby adverse primary reference is available.
 
 **How to apply:** Preserve the P timestamp, extreme, buffer, tick size, and calculated stop together when projecting a candidate. Freeze the adverse primary reference when its P-wick vicinity qualifies, resolve it before the P stop, and fall back to the recalculated P stop otherwise.
+
+Visual Review should plot the frozen primary stop barrier as its own machine-visible annotation and event. Keep the actual execution fill separate when slippage or quote resolution moves it away from that barrier.
+
+**Why:** A filled-price marker can make a correctly prioritized primary stop look like the wrong level, especially in historical OHLCV mode where the modeled fill may include slippage.
+
+**How to apply:** Use the stored primary reference stop for the labeled stop line, hit event, and event-rail price; use the trade exit price only for the actual-fill overlay and audit detail.

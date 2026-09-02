@@ -53,6 +53,22 @@ test("simulated visual-validation requests default their persisted source", () =
   assert.equal(set.request.source, "simulated");
 });
 
+test("primary-level exits retain a dedicated buffered stop marker and event price", () => {
+  const snapshot = buildVisualValidationSet(request).snapshots
+    .find((item) => item.category === "stop_exit");
+  assert.ok(snapshot);
+  const stop = snapshot!.machineEvidence.trade?.audit?.primaryLossExitLevel;
+  assert.ok(stop);
+  const stopAnnotation = snapshot!.annotations.find((annotation) => annotation.id === "primary-level-stop");
+  assert.equal(stopAnnotation?.price, stop!.stopPrice);
+  assert.equal(stopAnnotation?.label, `Primary level stop · ${stop!.id}`);
+  const stopHit = snapshot!.annotations.find((annotation) => annotation.id === "primary-level-stop-hit");
+  assert.equal(stopHit?.price, stop!.stopPrice);
+  const stopEvent = snapshot!.tradeEvents.find((event) => event.id === "primary-level-stop");
+  assert.equal(stopEvent?.label, "PRIMARY LEVEL STOP");
+  assert.equal(stopEvent?.modeledPrice, stop!.stopPrice);
+});
+
 test("trade candidates are entry-centered, canonical, and deduplicated", () => {
   const set = buildVisualValidationSet(request);
   const candidates = set.tradeCandidates;
@@ -136,6 +152,8 @@ test("Visual Review preserves no-target stop outcomes without target-hit evidenc
       ...fixture.trade.audit!,
       targetPrice: null,
       targetHit: false,
+      stopLevel: "strategy",
+      primaryLossExitLevel: null,
       eventLabels: ["STRATEGY_STOP_REACHED"],
     },
   };

@@ -146,6 +146,15 @@ type TradeEvidenceView = {
     exitCandleOpenTime?: string | null;
     exitCandleCloseTime?: string | null;
     exitReason?: string;
+    stopLevel?: "primary_level" | "strategy" | "catastrophe" | null;
+    primaryLossExitLevel?: {
+      id: string;
+      type: string;
+      price: number;
+      stopPrice: number;
+      qualificationTicks: number;
+      bufferTicks: number;
+    } | null;
     legs?: TradeLegView[];
   };
 };
@@ -1375,6 +1384,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
    const lifetimeEndX = exitX ?? plotRight;
    const entryPrice = trade?.entryPrice ?? snapshot.tradeEvents.find((event) => event.event === "entry_fill" || event.event === "fill")?.modeledPrice ?? null;
    const exitPrice = trade?.exitPrice ?? null;
+    const primaryStopPrice = trade?.audit?.stopLevel === "primary_level"
+      ? trade.audit.primaryLossExitLevel?.stopPrice ?? null
+      : null;
    const tradeLegs = trade?.audit?.legs ?? [];
    const legOverlays = tradeLegs.map((leg, index) => {
      const legExitTime = leg.exitCandleCloseTime ?? leg.exitCandleOpenTime ?? exitTime;
@@ -1606,6 +1618,12 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke="hsl(var(--negative))" strokeWidth="2" strokeDasharray="2 3" />
               <circle cx={exitX} cy={y(exitPrice)} r="6" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-exit-marker" />
               <text x={exitX} y={y(exitPrice) + 16} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">EXIT · {formatPriceAxisValue(exitPrice)}</text>
+            </g>}
+            {exitX !== null && primaryStopPrice !== null && <g data-testid="primary-level-stop-overlay">
+              <line x1={entryX} x2={exitX} y1={y(primaryStopPrice)} y2={y(primaryStopPrice)} stroke="hsl(var(--negative))" strokeWidth="2.4" strokeDasharray="8 3" />
+              <circle cx={exitX} cy={y(primaryStopPrice)} r="7" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="primary-level-stop-marker" />
+              <text x={exitX} y={y(primaryStopPrice) - 12} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">PRIMARY STOP · {formatPriceAxisValue(primaryStopPrice)}</text>
+              <title>{`Primary level stop at ${formatPriceAxisValue(primaryStopPrice)}; the actual fill was ${exitPrice == null ? "unavailable" : formatPriceAxisValue(exitPrice)}.`}</title>
             </g>}
             {legOverlays.map(({ leg, index, x }) => x !== null && <g key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
               <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke="hsl(270 55% 48%)" strokeWidth="1.5" strokeDasharray="1 4" />

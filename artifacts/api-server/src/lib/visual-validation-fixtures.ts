@@ -304,8 +304,22 @@ function makeTrade(
   const exit = candles[EXIT_INDEX]!;
   const direction = audit.direction!;
   const entryPrice = audit.entryTriggerPrice!;
+  const primaryLossExitLevel = category === "stop_exit"
+    ? {
+        id: "fixture-primary-level",
+        type: "PREMARKET",
+        price: direction === "long" ? entryPrice - 0.5 : entryPrice + 0.5,
+        rangeLow: null,
+        rangeHigh: null,
+        distancePoints: 0.5,
+        distanceTicks: 2,
+        stopPrice: direction === "long" ? entryPrice - 2.5 : entryPrice + 2.5,
+        qualificationTicks: 12,
+        bufferTicks: 8,
+      }
+    : null;
   const exitPrice = category === "stop_exit"
-    ? audit.strategyStopPrice!
+    ? primaryLossExitLevel?.stopPrice ?? audit.strategyStopPrice!
     : category === "target_exit" || category === "runner_exit"
       ? audit.targetPrice!
       : exit.close;
@@ -320,7 +334,7 @@ function makeTrade(
     }],
   });
   const eventLabels = category === "stop_exit"
-    ? ["STRATEGY_STOP_REACHED"]
+    ? ["PRIMARY_LEVEL_EXIT_REACHED", "STRATEGY_STOP_REACHED"]
     : category === "runner_exit"
       ? ["TARGET_REACHED", "RUNNER_ACTIVATED", "RUNNER_EXITED"]
       : ["TARGET_REACHED"];
@@ -331,7 +345,8 @@ function makeTrade(
     targetPrice: audit.targetPrice,
     strategyStopPrice: audit.strategyStopPrice,
     catastropheStopPrice: audit.catastropheStopPrice,
-    stopLevel: category === "stop_exit" ? "strategy" : null,
+    stopLevel: category === "stop_exit" ? "primary_level" : null,
+    primaryLossExitLevel,
     patienceCandleOpenTime: audit.patienceCandleOpenTime,
     patienceCandleCloseTime: audit.patienceCandleCloseTime,
     triggerCandleOpenTime: audit.triggerCandleOpenTime,
