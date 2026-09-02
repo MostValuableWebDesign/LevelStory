@@ -145,7 +145,15 @@ type TradeEvidenceView = {
   slippage?: number;
   netPnl?: number;
   outcome?: string;
+  targetPlan?: {
+    disposition?: string;
+    targetPrice?: number | null;
+    selectedTargetLevel?: { id: string; price: number } | null;
+  };
   audit?: {
+    oneRPrice?: number | null;
+    oneRReached?: boolean;
+    profitCheckpointPrice?: number | null;
     exitCandleOpenTime?: string | null;
     exitCandleCloseTime?: string | null;
     exitReason?: string;
@@ -200,6 +208,15 @@ function storedReviewSetId(): string {
   const requested = new URLSearchParams(window.location.search).get("reviewSetId");
   if (requested) return requested;
   return window.localStorage.getItem("levelstory.visualReviewSetId") ?? "";
+}
+
+function clearStoredReviewSetSelection(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem("levelstory.visualReviewSetId");
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("reviewSetId")) return;
+  url.searchParams.delete("reviewSetId");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function storedGenerationJobId(): string {
@@ -318,6 +335,7 @@ export default function VisualReview() {
   }));
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
+  const [loadLatestReviewSet, setLoadLatestReviewSet] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
   const [selectedStrategyKey, setSelectedStrategyKey] = useState<StrategyId | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
@@ -333,9 +351,10 @@ export default function VisualReview() {
   const [authenticated, setAuthenticated] = useState(false);
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
 
+  const pinnedReviewSetId = loadLatestReviewSet ? "" : reviewSetId;
   const setQuery = useGetVisualValidationSet(
-    reviewSetId ? { reviewSetId } : undefined,
-    { query: { enabled: Boolean(reviewSetId) && !Boolean(generationJobId), staleTime: 30_000, queryKey: ["visual-validation-set", reviewSetId || "latest"] } },
+    pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
+    { query: { enabled: !Boolean(generationJobId) && (Boolean(pinnedReviewSetId) || loadLatestReviewSet), staleTime: 30_000, queryKey: ["visual-validation-set", pinnedReviewSetId || "latest"] } },
   );
   const startGeneration = useStartVisualValidationGenerationJob();
   const generationQuery = useGetVisualValidationGenerationJob(
@@ -384,6 +403,27 @@ export default function VisualReview() {
   }, [generationJobId, generationQuery.error, generationQuery.isError]);
 
   useEffect(() => {
+    if (localSet || generationActive) return;
+    if (setQuery.data?.stale) {
+      if (reviewSetId && !loadLatestReviewSet) {
+        clearStoredReviewSetSelection();
+        setReviewSetId("");
+        setLoadLatestReviewSet(true);
+        setMessage("The saved review set is stale; switched to the latest available set.");
+      } else {
+        setMessage("The latest saved review set is stale. Generate a fresh review set before reviewing candidates.");
+      }
+      return;
+    }
+    if (reviewSetId && !loadLatestReviewSet && setQuery.isError && apiErrorStatus(setQuery.error) === 404) {
+      clearStoredReviewSetSelection();
+      setReviewSetId("");
+      setLoadLatestReviewSet(true);
+      setMessage("The saved review set expired; switched to the latest available set.");
+    }
+  }, [generationActive, loadLatestReviewSet, localSet, reviewSetId, setQuery.data, setQuery.error, setQuery.isError]);
+
+  useEffect(() => {
     if (!generationJob) return;
     if (generationJob.status === "completed" && generationJob.result) {
       setLocalSet(generationJob.result);
@@ -408,7 +448,8 @@ export default function VisualReview() {
     }
   }, [generationJob, request.endDate, request.source]);
 
-  const data = generationActive ? null : localSet ?? setQuery.data;
+  const currentSet = setQuery.data?.stale ? null : setQuery.data;
+  const data = generationActive ? null : localSet ?? currentSet;
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
   const strategySnapshots = useMemo(
@@ -1897,6 +1938,14 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
   if (!trade) return null;
   const open = trade.outcome === "open" || trade.exitTime === null || trade.exitPrice == null;
   const legs = trade.audit?.legs ?? [];
+  const hasKeyLevelTarget = typeof trade.targetPlan?.targetPrice === "number";
+  const noEligibleKeyLevel = trade.targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" || !hasKeyLevelTarget;
+  const oneRPrice = typeof trade.audit?.oneRPrice === "number" ? trade.audit.oneRPrice : null;
+  const targetBasis = hasKeyLevelTarget
+    ? `Key-level · ${formatTradePrice(trade.targetPlan?.targetPrice)}`
+    : oneRPrice !== null
+      ? "1R fallback · no eligible key level"
+      : "No target evidence";
   return <section className="border-t border-border bg-card px-5 py-4 sm:px-6" data-testid="trade-inspector">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><div className="eyebrow text-muted-foreground">Authoritative trade inspector</div><div className="mt-1 text-sm font-bold">{open ? "Open / unscored" : "Completed trade"}</div></div>
@@ -1912,6 +1961,18 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
         ["Fees", formatTradeMoney(trade.fees, open)],
         ["Slippage", formatTradeMoney(trade.slippage, open)],
         ["Net P/L", formatTradeMoney(trade.netPnl, open)],
+      ].map(([label, value]) => <div key={label} className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
+    </div>
+    <div className="mt-3 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-4" data-testid="trade-target-summary">
+      {[
+        ["Target basis", targetBasis],
+        ["1R checkpoint", oneRPrice === null ? "—" : formatTradePrice(oneRPrice)],
+        ["1R status", oneRPrice === null ? "Not applicable" : hasKeyLevelTarget ? "Not active · key-level target" : trade.audit?.oneRReached ? "Reached" : "Not reached"],
+        ["Single-contract rule", trade.contracts === 1 && noEligibleKeyLevel && oneRPrice !== null
+          ? "Full exit at +1R"
+          : trade.contracts === 1 && hasKeyLevelTarget
+            ? "Key-level target has priority"
+            : "—"],
       ].map(([label, value]) => <div key={label} className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
     </div>
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-muted-foreground">

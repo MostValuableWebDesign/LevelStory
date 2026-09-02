@@ -85,6 +85,12 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.doesNotMatch(page, /Critical · Premarket low/);
    assert.match(page, /data-testid="trade-lifetime-overlay"/);
    assert.match(page, /data-testid="trade-inspector"/);
+   assert.match(page, /data-testid="trade-target-summary"/);
+   assert.match(page, /oneRPrice/);
+   assert.match(page, /1R checkpoint/);
+   assert.match(page, /Not active · key-level target/);
+   assert.match(page, /Key-level target has priority/);
+   assert.match(page, /Full exit at \+1R/);
    assert.match(page, /TARGET EXIT/);
    assert.match(page, /RUNNER EXIT/);
    assert.match(page, /data-testid=\{`legend-trade-\$\{kind\}-exit`\}/);
@@ -94,6 +100,15 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.doesNotMatch(page, />EXIT · \{formatPriceAxisValue\(exitPrice\)\}</);
    assert.match(page, /Open \/ unscored/);
    assert.match(page, /data-testid="trade-leg-inspector"/);
+});
+
+test("visual review never keeps a stale or expired pinned review set", () => {
+  assert.match(page, /setQuery\.data\?\.stale/);
+  assert.match(page, /clearStoredReviewSetSelection\(\)/);
+  assert.match(page, /The saved review set is stale/);
+  assert.match(page, /The saved review set expired/);
+  assert.match(page, /setLoadLatestReviewSet\(true\)/);
+  assert.match(page, /pinnedReviewSetId \? \{ reviewSetId: pinnedReviewSetId \} : undefined/);
 });
 
 test("visual review exposes only confirmed trade candidates", () => {

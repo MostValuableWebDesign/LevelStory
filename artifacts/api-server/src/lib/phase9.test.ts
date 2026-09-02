@@ -1840,6 +1840,8 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   assert.equal(trade.audit?.oneRReached, true);
   assert.equal(trade.audit?.oneRPrice, 105.5);
   assert.equal(trade.audit?.profitCheckpointPrice, 105.5);
+  assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1]]);
+  assert.equal(trade.audit?.trailingStopActive, false);
 });
 
 test("candidate target planning never reuses L-time qualifying values as E-time targets", () => {

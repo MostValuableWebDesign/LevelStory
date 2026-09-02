@@ -320,6 +320,27 @@ test("one contract exits fully at +1R when no key-level target exists", () => {
   assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.quantity, leg.exitReason]), [["target", 1, "target"]]);
 });
 
+test("one contract keeps an eligible key-level target instead of replacing it with 1R", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: 104,
+    oneRProfitRule: false,
+    subsequentCompletedCandles: [
+      candle(100, 101, 99, 100.5),
+      candle(100.5, 104.5, 100.5, 104),
+    ],
+  });
+  assert.equal(result.audit.initialRiskPoints, 2);
+  assert.equal(result.audit.oneRPrice, 102);
+  assert.equal(result.audit.oneRReached, false);
+  assert.equal(result.audit.profitCheckpointPrice, 104);
+  assert.equal(result.exitPrice, 104);
+  assert.equal(result.exitReason, "target");
+  assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.quantity, leg.referencePrice]), [["target", 1, 104]]);
+});
+
 test("multiple no-target contracts take one at +1R and trail the runner", () => {
   const result = simulateOhlcvExecution({
     ...base,
