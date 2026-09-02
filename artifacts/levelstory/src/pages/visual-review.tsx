@@ -119,6 +119,15 @@ type CandidateTradeView = {
   setupGrade?: "A" | "A+" | "A++";
 };
 type CandidateAuditView = { entryTriggerPrice?: number };
+type ConsolidationGuardView = {
+  zoneDetected?: boolean;
+  consolidationZoneHigh?: number | null;
+  consolidationZoneLow?: number | null;
+  consolidationStartTime?: string | null;
+  consolidationDetectionTime?: string | null;
+  sourceCandleTimestamps?: string[];
+  lifecycleState?: string | null;
+};
 type TradeLegView = {
   kind?: string;
   quantity?: number;
@@ -1098,6 +1107,7 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-500" />EMA 200</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-red-600" />VWAP</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />support / resistance</span>
+        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-consolidation"><i className="h-3 w-4 border border-red-400 bg-red-200/70" />consolidation zone (when present)</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />entry candle (E)</span>
@@ -1330,6 +1340,51 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView) : -1;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
+   const consolidationZone = (() => {
+     const audit = typeof snapshot.machineEvidence.audit === "object" && snapshot.machineEvidence.audit !== null
+       ? snapshot.machineEvidence.audit as Record<string, unknown>
+       : null;
+     const guard = typeof audit?.consolidationGuard === "object" && audit.consolidationGuard !== null
+       ? audit.consolidationGuard as ConsolidationGuardView
+       : null;
+     if (
+       !guard?.zoneDetected
+       || typeof guard.consolidationZoneLow !== "number"
+       || typeof guard.consolidationZoneHigh !== "number"
+     ) return null;
+     const sourceTimes = [
+       ...(Array.isArray(guard.sourceCandleTimestamps) ? guard.sourceCandleTimestamps : []),
+       guard.consolidationStartTime,
+       guard.consolidationDetectionTime,
+     ].filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)));
+     const sourceSlots = sourceTimes.map((value) => {
+       const target = Date.parse(value);
+       const matchingCandle = candles.find((candle) =>
+         Date.parse(candle.openTime) === target || Date.parse(candle.closeTime) === target);
+       return matchingCandle
+         ? getCandleSlotIndex(matchingCandle, sessionView)
+         : getCandleSlotIndex({ openTime: new Date(target).toISOString() }, sessionView);
+     }).filter((slot) => slot >= 0 && slot < slotCount);
+     if (!sourceSlots.length) return null;
+     const startSlot = Math.min(...sourceSlots);
+     const endSlot = Math.min(slotCount, Math.max(...sourceSlots) + 1);
+     const zoneLow = Math.min(guard.consolidationZoneLow, guard.consolidationZoneHigh);
+     const zoneHigh = Math.max(guard.consolidationZoneLow, guard.consolidationZoneHigh);
+     const clippedLow = Math.max(domain.min, zoneLow);
+     const clippedHigh = Math.min(domain.max, zoneHigh);
+     if (clippedLow >= clippedHigh || endSlot <= startSlot) return null;
+     return {
+       x: left + startSlot * step,
+       width: (endSlot - startSlot) * step,
+       y: y(clippedHigh),
+       height: Math.max(1, y(clippedLow) - y(clippedHigh)),
+       zoneLow,
+       zoneHigh,
+       startSlot,
+       endSlot,
+       lifecycleState: guard.lifecycleState ?? "CONSOLIDATION_ZONE_FROZEN",
+     };
+   })();
     const fixedLevels = annotations.filter((annotation) =>
       isVisualPresentationAnnotation(annotation)
       && !isDynamicIndicatorAnnotation(annotation)
@@ -1644,6 +1699,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       </g>}
        <rect x={Math.max(boundaryX, left)} y={top} width={Math.max(width - right - boundaryX, 0)} height={volumeTop + CHART_VOLUME_HEIGHT - top} fill="hsl(var(--foreground) / .055)" data-testid="human-only-region" />
         <path d={`M ${Math.max(boundaryX - 6, left)} ${top} L ${boundaryX} ${top - 8} L ${Math.min(boundaryX + 6, plotRight)} ${top} Z`} fill="hsl(var(--foreground))" data-testid="causal-boundary-notch" />
+         {consolidationZone && <g pointerEvents="none" data-testid="consolidation-zone-overlay">
+           <title>{`Consolidation zone ${consolidationZone.zoneLow.toFixed(2)}–${consolidationZone.zoneHigh.toFixed(2)}, fixed from slots ${consolidationZone.startSlot + 1}–${consolidationZone.endSlot}. Lifecycle: ${consolidationZone.lifecycleState}.`}</title>
+           <rect x={consolidationZone.x} y={consolidationZone.y} width={consolidationZone.width} height={consolidationZone.height} fill="#fecaca" fillOpacity=".28" stroke="#ef4444" strokeOpacity=".72" strokeWidth="1.4" strokeDasharray="6 4" data-testid="consolidation-zone-band" />
+           <text x={consolidationZone.x + 5} y={consolidationZone.y + 13} fill="#dc2626" fontSize="8.5" fontWeight="800" fontFamily="DM Mono">CONSOLIDATION</text>
+         </g>}
           {trade && entryX !== null && entryPrice !== null && <g pointerEvents="none" data-testid="trade-lifetime-overlay">
             <line x1={entryX} x2={lifetimeEndX} y1={y(entryPrice)} y2={y(entryPrice)} stroke="hsl(var(--accent))" strokeWidth="2" strokeDasharray="5 3" />
             <circle cx={entryX} cy={y(entryPrice)} r="6" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-entry-marker" />
