@@ -37,6 +37,17 @@ export type SkippedTargetLevel = FrozenTargetLevel & {
   reason: "ENTRY_WITHIN_12_TICKS";
 };
 
+export type PrimaryLossExitReference = {
+  id: string;
+  type: string;
+  price: number;
+  rangeLow: number | null;
+  rangeHigh: number | null;
+  distancePoints: number;
+  distanceTicks: number;
+  stopPrice: number;
+};
+
 export type KeyLevelTargetPlan = {
   placementMode: ProfitTargetPlacement;
   disposition: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL";
@@ -201,6 +212,76 @@ function nearSideTargetPrice(
     ? Math.ceil(tickIndex - 1e-9)
     : Math.floor(tickIndex + 1e-9);
   return Number((roundedIndex * tickSize).toFixed(10));
+}
+
+function distanceToRange(price: number, rangeLow: number, rangeHigh: number): number {
+  if (price < rangeLow) return rangeLow - price;
+  if (price > rangeHigh) return price - rangeHigh;
+  return 0;
+}
+
+/**
+ * A losing position may use a causal primary level/indicator as the first
+ * adverse exit reference when the patience candle's opposite wick is within
+ * the governed 8-tick vicinity. The P-wick strategy stop remains the
+ * secondary fallback and is intentionally not replaced globally.
+ */
+export function primaryLossExitReferenceForPatience(input: {
+  direction: Direction;
+  entryPrice: number;
+  patienceLow: number;
+  patienceHigh: number;
+  levels: readonly KeyLevelTargetInput[];
+  tickSize?: number;
+  bufferTicks?: 8;
+}): PrimaryLossExitReference | null {
+  const tickSize = input.tickSize ?? 0.25;
+  const bufferTicks = input.bufferTicks ?? 8;
+  if (bufferTicks !== 8) throw new Error("Primary loss-exit vicinity must be exactly 8 MES ticks.");
+  if (
+    !Number.isFinite(input.entryPrice)
+    || !Number.isFinite(input.patienceLow)
+    || !Number.isFinite(input.patienceHigh)
+    || tickSize <= 0
+  ) return null;
+
+  const oppositeWick = input.direction === "long" ? input.patienceLow : input.patienceHigh;
+  const bufferPoints = bufferTicks * tickSize;
+  const adverseLevels = filterEligibleKeyLevelInputs(input.levels).filter((level) => {
+    const rangeLow = typeof level.rangeLow === "number"
+      ? Math.min(level.rangeLow, level.rangeHigh ?? level.rangeLow)
+      : level.price;
+    const rangeHigh = typeof level.rangeHigh === "number"
+      ? Math.max(level.rangeHigh, level.rangeLow ?? level.rangeHigh)
+      : level.price;
+    if (typeof rangeLow !== "number" || typeof rangeHigh !== "number") return false;
+    return input.direction === "long"
+      ? rangeHigh < input.entryPrice
+      : rangeLow > input.entryPrice;
+  });
+  return mergeLevels(adverseLevels, tickSize)
+    .flatMap((level) => {
+      const rangeLow = level.rangeLow ?? level.price;
+      const rangeHigh = level.rangeHigh ?? level.price;
+      const distancePoints = distanceToRange(oppositeWick, rangeLow, rangeHigh);
+      if (distancePoints > bufferPoints) return [];
+      const stopPrice = input.direction === "long" ? rangeHigh : rangeLow;
+      return [{
+        id: level.id,
+        type: level.type,
+        price: level.price,
+        rangeLow: level.rangeLow,
+        rangeHigh: level.rangeHigh,
+        distancePoints: Number(distancePoints.toFixed(10)),
+        distanceTicks: Math.ceil(distancePoints / tickSize - 1e-9),
+        stopPrice: normalizePrice(stopPrice, tickSize),
+      } satisfies PrimaryLossExitReference];
+    })
+    .sort((first, second) =>
+      first.distancePoints - second.distancePoints
+      || first.stopPrice - second.stopPrice
+      || first.id.localeCompare(second.id),
+    )[0] ?? null;
 }
 
 export function buildKeyLevelTargetPlan(input: {

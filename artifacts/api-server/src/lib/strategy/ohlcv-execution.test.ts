@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AMBIGUOUS_OHLCV_SEQUENCE_LABEL, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./ohlcv-execution.js";
+import { AMBIGUOUS_OHLCV_SEQUENCE_LABEL, MODELED_OHLCV_FILL_LABEL, PRIMARY_LEVEL_EXIT_REACHED_LABEL, simulateOhlcvExecution } from "./ohlcv-execution.js";
 
 const candle = (open: number, high: number, low: number, close: number) => ({ open, high, low, close });
 const base = { direction: "long" as const, entry: 100, patienceCandle: candle(99, 100, 98, 99), tickSize: 0.25, tickValue: 1.25, pointMultiplier: 5, contracts: 1 };
@@ -88,6 +88,79 @@ test("selects the closer protective stop and records its category", () => {
   assert.equal(result.audit.stopLevel, "catastrophe");
   assert.equal(result.exitReason, "stop");
   assert.equal(result.legs[0]?.referencePrice, 99.75);
+});
+
+test("honors a primary level loss exit before the patience opposite-wick stop", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100.5, 100.75, 99.25, 99.5)],
+    strategyStop: 99.5,
+    target: 103,
+    primaryLossExitLevel: {
+      id: "vwap",
+      type: "VWAP",
+      price: 99.75,
+      rangeLow: null,
+      rangeHigh: null,
+      distancePoints: 0.25,
+      distanceTicks: 1,
+      stopPrice: 99.75,
+    },
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.stopPrice, 99.75);
+  assert.equal(result.audit.stopLevel, "primary_level");
+  assert.equal(result.legs[0]?.referencePrice, 99.75);
+  assert.ok(result.audit.eventLabels.includes(PRIMARY_LEVEL_EXIT_REACHED_LABEL));
+});
+
+test("uses the short primary level before the upper patience opposite-wick stop", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100, 99, 99.5),
+    subsequentCompletedCandles: [candle(99.5, 102.75, 99.25, 102)],
+    strategyStop: 102.5,
+    target: 97,
+    primaryLossExitLevel: {
+      id: "ema-200",
+      type: "EMA200",
+      price: 102.25,
+      rangeLow: null,
+      rangeHigh: null,
+      distancePoints: 0.25,
+      distanceTicks: 1,
+      stopPrice: 102.25,
+    },
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.stopPrice, 102.25);
+  assert.equal(result.audit.stopLevel, "primary_level");
+  assert.equal(result.legs[0]?.referencePrice, 102.25);
+});
+
+test("falls back to the patience opposite-wick stop when the armed primary level has not broken", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 101, 100, 100.5),
+    subsequentCompletedCandles: [candle(100.5, 100.75, 99.25, 99.5)],
+    strategyStop: 99.5,
+    target: 103,
+    primaryLossExitLevel: {
+      id: "support",
+      type: "major support",
+      price: 96,
+      rangeLow: null,
+      rangeHigh: null,
+      distancePoints: 2,
+      distanceTicks: 8,
+      stopPrice: 96,
+    },
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.stopPrice, 99.5);
+  assert.equal(result.audit.stopLevel, "strategy");
 });
 
 test("uses the opening price for a gap-through stop and closes remaining quantity at session close", () => {

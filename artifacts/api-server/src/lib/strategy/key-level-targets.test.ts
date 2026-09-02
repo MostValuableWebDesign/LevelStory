@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
+  primaryLossExitReferenceForPatience,
 } from "./key-level-targets.js";
 
 test("long key-level targets bypass nearby and behind levels", () => {
@@ -135,4 +136,38 @@ test("a plan with no eligible level is explicit and cannot create a target", () 
   assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(plan.selectedTargetLevel, null);
   assert.equal(plan.targetPrice, null);
+});
+
+test("long loss exits prefer the nearest adverse primary level within the patience wick vicinity", () => {
+  const reference = primaryLossExitReferenceForPatience({
+    direction: "long",
+    entryPrice: 100,
+    patienceLow: 98,
+    patienceHigh: 101,
+    levels: [
+      { id: "above-entry", type: "VWAP", price: 100.25 },
+      { id: "farther-support", type: "major support", price: 96 },
+      { id: "near-vwap", type: "VWAP", price: 99.5 },
+    ],
+  });
+  assert.equal(reference?.id, "near-vwap");
+  assert.equal(reference?.distanceTicks, 6);
+  assert.equal(reference?.stopPrice, 99.5);
+});
+
+test("short loss exits use the adverse upper primary level and ignore lower levels", () => {
+  const reference = primaryLossExitReferenceForPatience({
+    direction: "short",
+    entryPrice: 100,
+    patienceLow: 99,
+    patienceHigh: 102,
+    levels: [
+      { id: "below-entry", type: "EMA200", price: 99.75 },
+      { id: "farther-resistance", type: "major resistance", price: 104 },
+      { id: "near-ema", type: "EMA200", price: 102.5 },
+    ],
+  });
+  assert.equal(reference?.id, "farther-resistance|near-ema");
+  assert.equal(reference?.distanceTicks, 2);
+  assert.equal(reference?.stopPrice, 102.5);
 });

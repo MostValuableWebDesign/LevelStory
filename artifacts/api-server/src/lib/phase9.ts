@@ -21,7 +21,13 @@ import {
   type SimulatedFuturesCandle,
 } from "./futures/simulated-feed.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
-import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
+import {
+  isExecutionAmbiguityLabel,
+  MODELED_OHLCV_FILL_LABEL,
+  PRIMARY_LEVEL_EXIT_ARMED_LABEL,
+  PRIMARY_LEVEL_EXIT_REACHED_LABEL,
+  simulateOhlcvExecution,
+} from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
@@ -47,7 +53,9 @@ import {
   filterEligibleKeyLevelInputs,
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
+  type PrimaryLossExitReference,
   type TargetLevelSnapshot,
+  primaryLossExitReferenceForPatience,
 } from "./strategy/key-level-targets.js";
 
 export type ReplayCursor = {
@@ -84,6 +92,7 @@ export type IntrabarResolution = {
   timestamp: number | null;
   price: number | null;
   ambiguityLabel: "AMBIGUOUS_STOP_FIRST" | null;
+  stopLevel?: "primary_level" | "strategy" | "catastrophe" | null;
   detail: string;
 };
 
@@ -216,7 +225,8 @@ export type BacktestTrade = {
      targetPlan?: KeyLevelTargetPlan;
     strategyStopPrice?: number | null;
     catastropheStopPrice?: number | null;
-    stopLevel?: "strategy" | "catastrophe" | null;
+    stopLevel?: "primary_level" | "strategy" | "catastrophe" | null;
+    primaryLossExitLevel?: PrimaryLossExitReference | null;
     patienceCandleOpenTime: string | null;
     patienceCandleCloseTime: string | null;
     triggerCandleOpenTime: string | null;
@@ -516,6 +526,7 @@ export type CandidateManagementContext = {
   contracts: number;
   entryPrice: number;
   strategyStopPrice: number | null;
+  primaryLossExitLevel?: PrimaryLossExitReference | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
   runnerActivationPrice: number | null;
@@ -1018,16 +1029,36 @@ export function resolveIntrabarOutcome(input: {
   direction: Direction;
   target: number | null;
   stop: number | null;
+  primaryLossExitLevel?: PrimaryLossExitReference | null;
   candle: SimulatedFuturesCandle;
   ticks?: readonly IntrabarPoint[];
   oneMinute?: readonly IntrabarBar[];
 }): IntrabarResolution {
+  const primaryStop = input.primaryLossExitLevel?.stopPrice ?? null;
+  const stopResult = (
+    source: IntrabarResolution["source"],
+    timestamp: number,
+    price: number,
+    detail: string,
+  ): IntrabarResolution => ({
+    status: "stop",
+    source,
+    timestamp,
+    price,
+    ambiguityLabel: null,
+    stopLevel: primaryStop !== null && price === primaryStop ? "primary_level" : null,
+    detail,
+  });
   const ticks = [...(input.ticks ?? [])].filter((tick) =>
     tick.timestamp >= input.candle.openTime && tick.timestamp <= input.candle.closeTime,
   ).sort((first, second) => first.timestamp - second.timestamp);
   if (ticks.length) {
     for (const tick of ticks) {
       const hit = touches(input.direction, tick.price, input.target, input.stop);
+      const primaryHit = touches(input.direction, tick.price, null, primaryStop).stop;
+      if (primaryHit) {
+        return stopResult("tick", tick.timestamp, primaryStop!, "Tick data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
+      }
       if (hit.stop && hit.target) {
         return {
           status: "ambiguous",
@@ -1035,10 +1066,11 @@ export function resolveIntrabarOutcome(input: {
           timestamp: tick.timestamp,
           price: tick.price,
           ambiguityLabel: "AMBIGUOUS_STOP_FIRST",
+          stopLevel: "strategy",
           detail: "Tick data touched the stop and target at the same observation; the conservative stop-first policy was applied.",
         };
       }
-      if (hit.stop) return { status: "stop", source: "tick", timestamp: tick.timestamp, price: tick.price, ambiguityLabel: null, detail: "Tick data resolved the stop before any target." };
+      if (hit.stop) return stopResult("tick", tick.timestamp, input.stop!, "Tick data resolved the patience opposite-wick stop.");
       if (hit.target) return { status: "target", source: "tick", timestamp: tick.timestamp, price: tick.price, ambiguityLabel: null, detail: "Tick data resolved the target." };
     }
     return { status: "open", source: "tick", timestamp: null, price: null, ambiguityLabel: null, detail: "Tick data did not reach a target or stop." };
@@ -1050,6 +1082,10 @@ export function resolveIntrabarOutcome(input: {
   if (bars.length) {
     for (const bar of bars) {
       const hit = barTouches(input.direction, bar, input.target, input.stop);
+      const primaryHit = barTouches(input.direction, bar, null, primaryStop).stop;
+      if (primaryHit) {
+        return stopResult("one-minute", bar.closeTime, primaryStop!, "One-minute data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
+      }
       if (hit.stop && hit.target) {
         return {
           status: "ambiguous",
@@ -1057,16 +1093,21 @@ export function resolveIntrabarOutcome(input: {
           timestamp: bar.closeTime,
           price: input.stop,
           ambiguityLabel: "AMBIGUOUS_STOP_FIRST",
+          stopLevel: "strategy",
           detail: "One-minute OHLC touched both barriers inside the same minute; the conservative stop-first policy was applied.",
         };
       }
-      if (hit.stop) return { status: "stop", source: "one-minute", timestamp: bar.closeTime, price: input.stop, ambiguityLabel: null, detail: "One-minute data resolved the stop." };
+      if (hit.stop) return stopResult("one-minute", bar.closeTime, input.stop!, "One-minute data resolved the patience opposite-wick stop.");
       if (hit.target) return { status: "target", source: "one-minute", timestamp: bar.closeTime, price: input.target, ambiguityLabel: null, detail: "One-minute data resolved the target." };
     }
     return { status: "open", source: "one-minute", timestamp: null, price: null, ambiguityLabel: null, detail: "One-minute data did not reach a target or stop." };
   }
 
   const hit = barTouches(input.direction, input.candle, input.target, input.stop);
+  const primaryHit = barTouches(input.direction, input.candle, null, primaryStop).stop;
+  if (primaryHit) {
+    return stopResult("ohlc", input.candle.closeTime, primaryStop!, "Five-minute OHLC reached the primary level/indicator loss exit before the patience opposite-wick stop.");
+  }
   if (hit.stop || hit.target) {
     const ambiguous = hit.stop && hit.target;
     return {
@@ -1075,6 +1116,7 @@ export function resolveIntrabarOutcome(input: {
       timestamp: input.candle.closeTime,
       price: hit.stop ? input.stop : input.target,
       ambiguityLabel: ambiguous ? "AMBIGUOUS_STOP_FIRST" : null,
+      stopLevel: hit.stop ? "strategy" : null,
       detail: hit.stop
         ? ambiguous
           ? "Only five-minute OHLC is available and both barriers were touched; stop-first was applied."
@@ -3120,6 +3162,30 @@ function targetPlanForOccurrence(
   };
 }
 
+function primaryLossExitReferenceForOccurrence(
+  occurrence: HistoricalOccurrence,
+  entryPrice: number | null,
+): PrimaryLossExitReference | null {
+  const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
+  const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  const levels = occurrence.targetLevelSnapshot?.frozenLevelInputs
+    ?? occurrence.targetLevelInputs
+    ?? [];
+  if (
+    entryPrice === null
+    || occurrence.direction === null
+    || patienceLow === null
+    || patienceHigh === null
+  ) return null;
+  return primaryLossExitReferenceForPatience({
+    direction: occurrence.direction,
+    entryPrice,
+    patienceLow,
+    patienceHigh,
+    levels,
+  });
+}
+
 function freezeCandidateManagementContext(
   occurrence: HistoricalOccurrence,
   candidateId: string,
@@ -3132,6 +3198,7 @@ function freezeCandidateManagementContext(
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
+  const primaryLossExitLevel = primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = targetPlan?.targetPrice ?? null;
   const hasTarget = targetPlan?.disposition === "KEY_LEVEL_SELECTED" && targetPrice !== null;
@@ -3156,6 +3223,7 @@ function freezeCandidateManagementContext(
     contracts: contracts ?? 0,
     entryPrice: entryPrice ?? 0,
     strategyStopPrice,
+    primaryLossExitLevel,
     catastropheStopPrice,
     targetPrice,
     runnerActivationPrice: hasTarget && management?.runnerExitRule ? targetPrice : null,
@@ -3516,6 +3584,8 @@ function candidateDrivenEntryTrade(
   const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const targetPlan = management.targetPlan;
+  const primaryLossExitLevel = management.primaryLossExitLevel
+    ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const targetPrice = targetPlan?.targetPrice ?? null;
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
@@ -3562,6 +3632,7 @@ function candidateDrivenEntryTrade(
       // catastrophe barrier. Preserve that value in provenance below, but do
       // not let it create a competing operative loss exit.
       catastropheStop: null,
+      primaryLossExitLevel,
       sessionCloseCandle: sessionCloseCandle as any,
       tickSize: context.specification.tickSize,
       tickValue: context.specification.dollarValuePerTick,
@@ -3643,6 +3714,7 @@ function candidateDrivenEntryTrade(
       stopPrice: management.strategyStopPrice,
       targetPrice,
       targetPlan,
+      primaryLossExitLevel,
       strategyStopPrice: management.strategyStopPrice,
       catastropheStopPrice: management.catastropheStopPrice,
       stopLevel: modeled?.audit.stopLevel ?? null,
@@ -3660,6 +3732,9 @@ function candidateDrivenEntryTrade(
         targetPlan
           ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
           : "No eligible key-level target plan was available; the candidate remains open and unscored.",
+        ...(primaryLossExitLevel
+          ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}; the patience opposite-wick stop remains secondary.`]
+          : []),
         ...(missingContext
           ? [`Management context unavailable or invalid: ${[...new Set([
             ...management.missingEvidenceReasons,
@@ -4088,6 +4163,18 @@ export function runCausalBacktest(
           candle.contractSymbol,
           trigger.openTime,
         );
+        const primaryLossExitLevel = primaryLossExitReferenceForPatience({
+          direction: selected.direction,
+          entryPrice: entry,
+          patienceLow: patienceCandle.low,
+          patienceHigh: patienceCandle.high,
+          levels: targetLevelsForSnapshot(
+            snapshot,
+            trigger.openTime,
+            contractCandles,
+            candle.contractSymbol,
+          ),
+        });
         const target = targetPlan.targetPrice;
        const contracts = Math.max(1, snapshot.riskPlan.contracts);
        const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;
@@ -4135,6 +4222,7 @@ export function runCausalBacktest(
          targetQuantity: 1,
          target,
          strategyStop,
+          primaryLossExitLevel,
          catastropheStop: snapshot.riskPlan.catastropheStop,
         sessionCloseCandle,
         tickSize: specification.tickSize,
@@ -4200,6 +4288,7 @@ export function runCausalBacktest(
           strategyStopPrice: modeled.audit.strategyStopPrice,
           catastropheStopPrice: modeled.audit.catastropheStopPrice,
           stopLevel: modeled.audit.stopLevel,
+           primaryLossExitLevel: modeled.audit.primaryLossExitLevel,
           targetPrice: modeled.targetPrice,
            patienceCandleOpenTime: patienceCandle.openTime === undefined ? null : new Date(patienceCandle.openTime).toISOString(),
            patienceCandleCloseTime: patienceCandle.closeTime === undefined ? null : new Date(patienceCandle.closeTime).toISOString(),
@@ -4242,6 +4331,20 @@ export function runCausalBacktest(
       continue;
     }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
+    const primaryLossExitLevel = selectedPatience?.patienceCandle
+      ? primaryLossExitReferenceForPatience({
+        direction: selected.direction,
+        entryPrice: entryReference,
+        patienceLow: selectedPatience.patienceCandle.low,
+        patienceHigh: selectedPatience.patienceCandle.high,
+        levels: targetLevelsForSnapshot(
+          snapshot,
+          candle.openTime,
+          visibleContractCandles,
+          candle.contractSymbol,
+        ),
+      })
+      : null;
     const entryResolution = resolveEntryAndInvalidation({
       direction: selected.direction,
       candle,
@@ -4268,6 +4371,7 @@ export function runCausalBacktest(
         direction: selected.direction,
         target: snapshot.riskPlan.target,
         stop: snapshot.riskPlan.catastropheStop ?? snapshot.riskPlan.strategyStop,
+         primaryLossExitLevel,
         candle: next,
         ticks: replayIndexes.ticksByCandleOpenTime.get(next.openTime),
         oneMinute: replayIndexes.oneMinuteByContractCandle.get(`${currentContractSymbol}:${next.openTime}`),
@@ -4290,8 +4394,12 @@ export function runCausalBacktest(
       targetContracts: snapshot.riskPlan.targetContracts,
       runnerContracts: snapshot.riskPlan.runnerContracts,
       target: resolution.status === "target" ? snapshot.riskPlan.target : null,
-      strategyStop: resolution.status === "stop" ? snapshot.riskPlan.strategyStop : null,
-      catastropheStop: resolution.status === "stop" ? snapshot.riskPlan.catastropheStop : null,
+      strategyStop: resolution.status === "stop"
+        ? resolution.stopLevel === "primary_level" ? resolution.price : snapshot.riskPlan.strategyStop
+        : null,
+      catastropheStop: resolution.status === "stop" && resolution.stopLevel !== "primary_level"
+        ? snapshot.riskPlan.catastropheStop
+        : null,
       specification,
       slippageMode: request.slippageMode,
       observedSpreadTicks: (candle.ask - candle.bid) / specification.tickSize,
@@ -4305,7 +4413,11 @@ export function runCausalBacktest(
      const eventLabels = resolution.status === "target"
        ? ["TARGET_REACHED"]
        : resolvedStop
-         ? ["STRATEGY_STOP_REACHED", ...(snapshot.riskPlan.catastropheStop !== null ? ["CATASTROPHE_STOP_REACHED"] : []), ...(resolution.status === "ambiguous" ? ["AMBIGUOUS_STOP_FIRST"] : [])]
+          ? [
+            ...(resolution.stopLevel === "primary_level" ? [PRIMARY_LEVEL_EXIT_REACHED_LABEL] : ["STRATEGY_STOP_REACHED"]),
+            ...(resolution.stopLevel !== "primary_level" && snapshot.riskPlan.catastropheStop !== null ? ["CATASTROPHE_STOP_REACHED"] : []),
+            ...(resolution.status === "ambiguous" ? ["AMBIGUOUS_STOP_FIRST"] : []),
+          ]
          : ["SESSION_CLOSE"];
      const ambiguityLabels = resolution.ambiguityLabel ? [resolution.ambiguityLabel] : [];
     const segment = segmentation(snapshot, selected.setupType, selected.direction, candle, currentContractSymbol, currentContractMonth);
@@ -4335,11 +4447,14 @@ export function runCausalBacktest(
        audit: {
          entryTriggerPrice: entryReference,
          modeledFillPrice: simulated.entryFillPrice,
-         stopPrice: snapshot.riskPlan.catastropheStop ?? snapshot.riskPlan.strategyStop,
+          stopPrice: resolution.price ?? snapshot.riskPlan.catastropheStop ?? snapshot.riskPlan.strategyStop,
          targetPrice: snapshot.riskPlan.target,
          strategyStopPrice: snapshot.riskPlan.strategyStop,
          catastropheStopPrice: snapshot.riskPlan.catastropheStop,
-         stopLevel: resolvedStop ? snapshot.riskPlan.catastropheStop !== null ? "catastrophe" : "strategy" : null,
+          stopLevel: resolvedStop
+            ? resolution.stopLevel ?? (snapshot.riskPlan.catastropheStop !== null ? "catastrophe" : "strategy")
+            : null,
+          primaryLossExitLevel,
          patienceCandleOpenTime: null,
          patienceCandleCloseTime: null,
          triggerCandleOpenTime: new Date(candle.openTime).toISOString(),
@@ -4347,7 +4462,12 @@ export function runCausalBacktest(
          modeledFillObservationTime: null,
          exitCandleOpenTime: new Date(exitCandle.openTime).toISOString(),
          exitCandleCloseTime: new Date(exitCandle.closeTime).toISOString(),
-         assumptions: ["Quote-based Shadow fill uses genuine bid/ask observations."],
+          assumptions: [
+            "Quote-based Shadow fill uses genuine bid/ask observations.",
+            ...(primaryLossExitLevel
+              ? [`Primary loss exit ${primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
+              : []),
+          ],
          eventLabels,
          ambiguityLabels,
          targetHit: resolution.status === "target",

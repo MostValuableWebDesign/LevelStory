@@ -3,8 +3,8 @@ name: Patience stop authority
 description: The causal source and invariant for patience strategy stops across replay and review.
 ---
 
-The strategy stop for a patience candidate must be recalculated from the candidate's frozen P extreme, direction, governed buffer ticks, and contract tick size. A raw P extreme or stale legacy/risk-plan stop is not authoritative.
+The patience strategy stop must be recalculated from the frozen P extreme, direction, governed buffer ticks, and contract tick size. If the opposite P wick is within 8 MES ticks of a causal adverse primary level/indicator, that reference is the first loss exit and the P-wick stop is the secondary fallback.
 
-**Why:** Management evidence, OHLCV execution, audit records, ledger metrics, and Visual Review must describe one identical causal stop; accepting an older stop formula creates contradictory exits and P/L.
+**Why:** Management evidence, OHLCV execution, audit records, ledger metrics, and Visual Review must agree on causal exit precedence while still preserving the governed P-wick stop when no nearby adverse primary reference is available.
 
-**How to apply:** Preserve the P timestamp, extreme, buffer, tick size, and calculated stop together when projecting a candidate. Recompute from that evidence at execution boundaries and reject or replace stale raw-extreme values.
+**How to apply:** Preserve the P timestamp, extreme, buffer, tick size, and calculated stop together when projecting a candidate. Freeze the adverse primary reference when its P-wick vicinity qualifies, resolve it before the P stop, and fall back to the recalculated P stop otherwise.

@@ -328,6 +328,28 @@ test("tick data takes precedence over one-minute fallback", () => {
   assert.equal(result.status, "target");
 });
 
+test("quote-based resolution honors a primary level before the patience opposite-wick stop", () => {
+  const result = resolveIntrabarOutcome({
+    direction: "long",
+    target: 103,
+    stop: 98,
+    primaryLossExitLevel: {
+      id: "vwap",
+      type: "VWAP",
+      price: 99.5,
+      rangeLow: null,
+      rangeHigh: null,
+      distancePoints: 0.5,
+      distanceTicks: 2,
+      stopPrice: 99.5,
+    },
+    candle: replayCandle(1, "MESU26", 100),
+  });
+  assert.equal(result.status, "stop");
+  assert.equal(result.price, 99.5);
+  assert.equal(result.stopLevel, "primary_level");
+});
+
 test("multi-contract indexing preserves every constituent minute inside its five-minute candle", () => {
   const firstOpen = newYorkTimeToUtc("2026-06-10", "09:30");
   const secondOpen = newYorkTimeToUtc("2026-06-11", "09:30");
