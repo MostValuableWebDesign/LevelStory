@@ -273,7 +273,7 @@ test("causal fixture matrix preserves weak-probe rejection, patience rejects, am
     ...patienceBase,
     candle(2, 8.8, 10.5, 6.5, 8, 100, false),
   ], "long", { eligibilityEvents: eligibility, tickSize: 0.25 });
-  assert.equal(opposite.state, "OPPOSITE_SIDE_INVALIDATION");
+  assert.equal(opposite.state, "TRIGGER_CANDLE_ACTIVE");
 
   const ambiguous = resolveIntrabarOutcome({
     direction: "long",

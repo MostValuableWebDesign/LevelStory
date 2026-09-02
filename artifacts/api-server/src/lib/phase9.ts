@@ -7,6 +7,7 @@ import {
   type FuturesContractSpecification,
 } from "./futures/contracts.js";
 import {
+  classifyFuturesSession,
   sessionCalendarForContract,
   sessionWindow,
   tradingDateForTimestamp,
@@ -22,7 +23,7 @@ import {
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
 import { isExecutionAmbiguityLabel, MODELED_OHLCV_FILL_LABEL, simulateOhlcvExecution } from "./strategy/ohlcv-execution.js";
 import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
-import { causalEmaValueAt, regularSessionVwap } from "./strategy/indicators.js";
+import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
   isTerminalPullbackArmState,
   reducePullbackArmLifecycles,
@@ -1843,26 +1844,48 @@ function setAuditRejection(record: BacktestAuditRecord, reason: string | null, s
 function targetLevelsForSnapshot(
   snapshot: MarketSnapshot,
   causalEntryOpenTime?: number,
+  causalSourceCandles?: readonly SimulatedFuturesCandle[],
+  causalContractSymbol?: string,
 ): KeyLevelTargetInput[] {
   const levels: KeyLevelTargetInput[] = [];
   let vwap = snapshot.indicators.vwap;
   let ema200 = snapshot.indicators.ema200;
   if (causalEntryOpenTime !== undefined) {
-    const entryCandle = snapshot.candles.find((candle) => Date.parse(candle.openTime) === causalEntryOpenTime);
+    const sourceCandles = causalSourceCandles
+      ? (() => {
+        const sourceContractSymbol = causalContractSymbol
+          ?? causalSourceCandles.find((candle) => candle.openTime === causalEntryOpenTime)?.contractSymbol
+          ?? causalSourceCandles
+            .filter((candle) => candle.isComplete && candle.openTime <= causalEntryOpenTime)
+            .sort((first, second) => first.openTime - second.openTime)
+            .at(-1)
+            ?.contractSymbol
+          ?? causalContractSymbol
+          ?? snapshot.contract.fullContractSymbol;
+        const matching = causalSourceCandles.filter((candle) => candle.contractSymbol === sourceContractSymbol);
+        return matching.length ? [...matching] : [...causalSourceCandles];
+      })()
+      : snapshot.candles.map((candle) => ({
+        ...candle,
+        timestamp: Date.parse(candle.timestamp),
+        openTime: Date.parse(candle.openTime),
+        closeTime: Date.parse(candle.closeTime),
+      }));
+    const entryCandle = sourceCandles.find((candle) => candle.openTime === causalEntryOpenTime)
+      ?? sourceCandles
+        .filter((candle) => candle.isComplete && candle.openTime <= causalEntryOpenTime)
+        .sort((first, second) => first.openTime - second.openTime)
+        .at(-1);
     if (entryCandle) {
-      const causalCandles = snapshot.candles
-        .filter((candle) => candle.isComplete && Date.parse(candle.closeTime) <= Date.parse(entryCandle.closeTime))
-        .map((candle) => ({
-          ...candle,
-          timestamp: Date.parse(candle.timestamp),
-          openTime: Date.parse(candle.openTime),
-          closeTime: Date.parse(candle.closeTime),
-        }));
+      const causalCandles = sourceCandles.filter((candle) => candle.isComplete && candle.closeTime <= entryCandle.closeTime);
       const calendar = sessionCalendarForContract(snapshot.contract);
       const causalVwap = regularSessionVwap(causalCandles, calendar, snapshot.replay.tradingDate);
-      const causalEma = causalEmaValueAt(causalCandles, 200, causalEntryOpenTime);
+      const causalEma = causalEmaSeries(
+        causalCandles.filter((candle) => classifyFuturesSession(candle.openTime, calendar) !== "closed"),
+        200,
+      ).points.at(-1)?.value ?? null;
       vwap = Number.isFinite(causalVwap) ? causalVwap : null;
-      ema200 = causalEma;
+      ema200 = causalEma === null ? null : causalEma;
     }
   }
   const add = (id: string, type: string, price: number | null | undefined) => {
@@ -1905,15 +1928,23 @@ function targetPlanForSnapshot(
   snapshot: MarketSnapshot,
   direction: Direction,
   entryPrice: number,
+  causalSourceCandles?: readonly SimulatedFuturesCandle[],
+  causalContractSymbol?: string,
+  causalEntryOpenTime?: number,
 ): KeyLevelTargetPlan {
   const patienceCandle = snapshot.reversalPatience?.patienceCandle
     ?? snapshot.patience.patienceCandle;
+  const entryCandle = snapshot.reversalPatience?.triggerCandle
+    ?? snapshot.patience.triggerCandle;
   return buildKeyLevelTargetPlan({
     direction,
     entryPrice,
     levels: targetLevelsForSnapshot(
       snapshot,
-      patienceCandle ? Date.parse(patienceCandle.openTime) : undefined,
+      causalEntryOpenTime
+        ?? (entryCandle ? Date.parse(entryCandle.openTime) : patienceCandle ? Date.parse(patienceCandle.openTime) : undefined),
+      causalSourceCandles,
+      causalContractSymbol,
     ),
     // The first level beyond the entry buffer is the take-profit price.
     // Do not let an older persisted strategy snapshot re-enable the
@@ -2041,11 +2072,10 @@ function auditForEvaluation(
   contractSymbol: string,
   contractMonth: string,
   governedConsolidation: ConsolidationThresholds,
+  causalSourceCandles?: readonly SimulatedFuturesCandle[],
+  causalContractSymbol?: string,
 ): BacktestAuditRecord {
   const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
-  const targetPatienceCandle = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
-    ? snapshot.reversalPatience?.patienceCandle
-    : snapshot.patience.patienceCandle;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2100,7 +2130,9 @@ function auditForEvaluation(
     targetPrice: snapshot.riskPlan.target,
     targetLevelInputs: targetLevelsForSnapshot(
       snapshot,
-      targetPatienceCandle ? Date.parse(targetPatienceCandle.openTime) : undefined,
+      candle.openTime,
+      causalSourceCandles,
+      causalContractSymbol ?? contractSymbol,
     ),
     contracts: snapshot.riskPlan.contracts,
     eventLabels: [],
@@ -3126,9 +3158,7 @@ function freezeCandidateManagementContext(
     strategyStopPrice,
     catastropheStopPrice,
     targetPrice,
-    runnerActivationPrice: hasTarget
-      ? management?.runnerActivationPrice ?? (management?.runnerExitRule ? targetPrice : null)
-      : null,
+    runnerActivationPrice: hasTarget && management?.runnerExitRule ? targetPrice : null,
     runnerExitRule: hasTarget ? management?.runnerExitRule ?? null : null,
     sessionCloseTime: management?.sessionCloseTime ?? null,
     sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
@@ -3955,6 +3985,8 @@ export function runCausalBacktest(
         currentContractSymbol,
         currentContractMonth,
         governedConsolidation,
+        contractCandles,
+        candle.contractSymbol,
       );
       audit.push(record);
       return record;
@@ -4048,7 +4080,14 @@ export function runCausalBacktest(
         // Recalculate from the frozen P extreme rather than trusting a stale
         // legacy/risk-plan stop. A raw P extreme is never a valid strategy stop.
         const strategyStop = authoritativeStop;
-        const targetPlan = targetPlanForSnapshot(snapshot, selected.direction, entry);
+        const targetPlan = targetPlanForSnapshot(
+          snapshot,
+          selected.direction,
+          entry,
+          contractCandles,
+          candle.contractSymbol,
+          trigger.openTime,
+        );
         const target = targetPlan.targetPrice;
        const contracts = Math.max(1, snapshot.riskPlan.contracts);
        const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;

@@ -45,3 +45,4 @@
 - [Key-level target plans](key-level-target-plans.md) — freeze causal directional levels and near-side placement independently for each candidate; retain bypassed levels as evidence.
 - [Completed-E target snapshots](completed-e-target-snapshots.md) — select only the earliest valid confirmed snapshot at the canonical completed E close; null targets still allow independent exits.
 - [Causal pullback lifecycle](causal-pullback-lifecycle.md) — one pullback arm supports later valid patience candles; only true lifecycle boundaries terminate it.
+- [Causal target indicator provenance](causal-target-indicator-provenance.md) — target planning and Visual Review must share contract-local, non-closed-session indicator history anchored at E.
