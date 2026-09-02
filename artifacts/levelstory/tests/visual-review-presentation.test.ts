@@ -82,7 +82,10 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.match(page, /data-testid="trade-inspector"/);
    assert.match(page, /TARGET EXIT/);
    assert.match(page, /RUNNER EXIT/);
-   assert.match(page, /trade-leg-label-/);
+   assert.match(page, /data-testid="legend-trade-target-exit"/);
+   assert.match(page, /data-testid="legend-trade-runner-exit"/);
+   assert.doesNotMatch(page, /trade-leg-label-/);
+   assert.match(page, />EXIT · \{formatPriceAxisValue\(exitPrice\)\}</);
    assert.match(page, /Open \/ unscored/);
    assert.match(page, /data-testid="trade-leg-inspector"/);
 });

@@ -1388,11 +1388,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       ? trade.audit.primaryLossExitLevel?.stopPrice ?? null
       : null;
    const tradeLegs = trade?.audit?.legs ?? [];
-    const finalExitLabel = tradeLegs.at(-1)?.kind === "runner"
-      ? "RUNNER EXIT"
-      : tradeLegs.at(-1)?.kind === "target"
-        ? "TARGET EXIT"
-        : "EXIT";
    const legOverlays = tradeLegs.map((leg, index) => {
      const legExitTime = leg.exitCandleCloseTime ?? leg.exitCandleOpenTime ?? exitTime;
      const legExitIndex = legExitTime ? findCandleIndexAtTimestamp(candles, legExitTime) : -1;
@@ -1573,6 +1568,14 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
              <span className="mono font-bold">{valueLabel}</span>
              </button>;
           })}
+          <span className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px] text-[hsl(var(--positive))]" data-testid="legend-trade-target-exit">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+            <span>TARGET EXIT</span>
+          </span>
+          <span className="inline-flex items-center gap-1 border border-border bg-card px-2 py-1 text-[9px] text-[hsl(270_55%_48%)]" data-testid="legend-trade-runner-exit">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+            <span>RUNNER EXIT</span>
+          </span>
         </div>
         <div className="chart-plot-shell mt-3">
           <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the price plot or volume column to inspect the nearest candle and free-roaming crosshair price, or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => { setPointerPosition(null); setHoveredSlot(null); }} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
@@ -1622,7 +1625,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             {exitX !== null && exitPrice !== null && <g data-testid="trade-exit-overlay">
               <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke="hsl(var(--negative))" strokeWidth="2" strokeDasharray="2 3" />
               <circle cx={exitX} cy={y(exitPrice)} r="6" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-exit-marker" />
-               <text x={exitX} y={y(exitPrice) + 16} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">{finalExitLabel} · {formatPriceAxisValue(exitPrice)}</text>
+               <text x={exitX} y={y(exitPrice) + 16} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">EXIT · {formatPriceAxisValue(exitPrice)}</text>
             </g>}
             {exitX !== null && primaryStopPrice !== null && <g data-testid="primary-level-stop-overlay">
               <line x1={entryX} x2={exitX} y1={y(primaryStopPrice)} y2={y(primaryStopPrice)} stroke="hsl(var(--negative))" strokeWidth="2.4" strokeDasharray="8 3" />
@@ -1631,20 +1634,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               <title>{`Primary level stop at ${formatPriceAxisValue(primaryStopPrice)}; the actual fill was ${exitPrice == null ? "unavailable" : formatPriceAxisValue(exitPrice)}.`}</title>
             </g>}
             {legOverlays.map(({ leg, index, x }) => x !== null && <g key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
-              <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke="hsl(270 55% 48%)" strokeWidth="1.5" strokeDasharray="1 4" />
-              <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r="4" fill="hsl(270 55% 48%)" stroke="hsl(var(--card))" strokeWidth="1.5" />
-               {(leg.kind === "target" || leg.kind === "runner") && <text
-                 x={x}
-                 y={y(leg.fillPrice ?? entryPrice) + (leg.kind === "runner" ? 18 : -10) + index * (leg.kind === "runner" ? 2 : -2)}
-                 textAnchor="middle"
-                 fill={leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)"}
-                 fontSize="8.5"
-                 fontWeight="800"
-                 fontFamily="DM Mono"
-                 data-testid={`trade-leg-label-${leg.kind}-${index}`}
-               >
-                 {leg.kind === "target" ? "TARGET EXIT" : "RUNNER EXIT"} · {leg.fillPrice == null ? "—" : formatPriceAxisValue(leg.fillPrice)}
-               </text>}
+               <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)"} strokeWidth="1.5" strokeDasharray="1 4" />
+               <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r="4" fill={leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)"} stroke="hsl(var(--card))" strokeWidth="1.5" />
               <title>{`${leg.kind ?? "leg"} leg · ${leg.quantity ?? "—"} contracts · ${leg.exitReason ?? "exit"} · ${leg.fillPrice == null ? "price unavailable" : formatPriceAxisValue(leg.fillPrice)}`}</title>
             </g>)}
           </g>}
