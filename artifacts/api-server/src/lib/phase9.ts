@@ -3591,10 +3591,17 @@ function candidateDrivenEntryTrade(
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
+  const calendar = sessionCalendarForContract(context.specification);
+  const regular = sessionWindow(tradingDate, "regular", calendar);
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
   const postEntry = contractCandles.filter((item) =>
-    item.isComplete && item.openTime > entryOpenTime && item.closeTime > entryCloseTime,
+    item.isComplete
+    && item.openTime > entryOpenTime
+    && item.closeTime > entryCloseTime
+    && regular !== null
+    && item.openTime >= regular.openTime
+    && item.closeTime <= regular.closeTime,
   );
   const managementValidationReasons = candidateManagementValidationReasons(
     management,
@@ -3602,19 +3609,15 @@ function candidateDrivenEntryTrade(
   );
   const missingContext = managementValidationReasons.length > 0;
   const sessionCloseCandle = !missingContext
-    ? (() => {
-      const calendar = sessionCalendarForContract(context.specification);
-      const regular = sessionWindow(tradingDate, "regular", calendar);
-      return regular
-        ? contractCandles.filter((item) =>
-          item.isComplete
-          && item.openTime > entryOpenTime
-          && item.closeTime > entryCloseTime
-          && item.openTime >= regular.openTime
-          && item.closeTime <= regular.closeTime,
-        ).at(-1) ?? null
-        : null;
-    })()
+    ? regular
+      ? contractCandles.filter((item) =>
+        item.isComplete
+        && item.openTime > entryOpenTime
+        && item.closeTime > entryCloseTime
+        && item.openTime >= regular.openTime
+        && item.closeTime <= regular.closeTime,
+      ).at(-1) ?? null
+      : null
     : null;
   let modeled: ReturnType<typeof simulateOhlcvExecution> | null = null;
   if (!missingContext) {
