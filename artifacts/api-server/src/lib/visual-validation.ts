@@ -1541,6 +1541,7 @@ function buildAnnotations(
   const primaryLevelStopHit = trade?.audit?.stopLevel === "primary_level"
     || eventLabels.has("PRIMARY_LEVEL_EXIT_REACHED");
   if (primaryLevelStopHit) {
+    const gapThroughStop = eventLabels.has("GAP_THROUGH_STOP");
     lines.push(annotation(
       "primary-level-stop-hit",
       "Primary level stop hit",
@@ -1548,7 +1549,7 @@ function buildAnnotations(
       primaryLossExitLevel?.stopPrice ?? trade?.exitPrice ?? null,
       "negative",
       primaryLossExitLevel
-        ? `The ${primaryLossExitLevel.id} primary loss reference was reached at the frozen buffered stop of ${primaryLossExitLevel.stopPrice.toFixed(2)}; the actual fill remains ${trade?.exitPrice?.toFixed(2) ?? "unavailable"}.`
+        ? `The ${primaryLossExitLevel.id} primary loss reference was reached at the frozen buffered stop of ${primaryLossExitLevel.stopPrice.toFixed(2)}; ${gapThroughStop ? `the stop was gapped through and the modeled fill used the stop candle open at ${trade?.exitPrice?.toFixed(2) ?? "unavailable"}` : `the actual fill was ${trade?.exitPrice?.toFixed(2) ?? "unavailable"}`}.`
         : "The primary-level stop was reached in the bounded execution outcome.",
       stopHitTime,
       exitClose,
