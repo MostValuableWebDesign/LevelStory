@@ -110,9 +110,38 @@ test("honors a primary level loss exit before the patience opposite-wick stop", 
   });
   assert.equal(result.exitReason, "stop");
   assert.equal(result.stopPrice, 97.75);
+  assert.equal(result.exitPrice, 97.75);
   assert.equal(result.audit.stopLevel, "primary_level");
   assert.equal(result.legs[0]?.referencePrice, 97.75);
+  assert.equal(result.legs[0]?.fillPrice, 97.75);
   assert.ok(result.audit.eventLabels.includes(PRIMARY_LEVEL_EXIT_REACHED_LABEL));
+});
+
+test("primary level stop remains the exact exit even when the stop candle gaps through it", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100, 99, 99.5),
+    subsequentCompletedCandles: [candle(101.5, 102, 101, 101.75)],
+    strategyStop: 102.5,
+    primaryLossExitLevel: {
+      id: "premarket-high|vwap",
+      type: "PREMARKET|VWAP",
+      price: 101.5,
+      rangeLow: 101.5,
+      rangeHigh: 101.5,
+      distancePoints: 0.25,
+      distanceTicks: 1,
+      stopPrice: 101.5,
+    },
+    exitSlippageTicks: 4,
+  });
+  assert.equal(result.audit.stopLevel, "primary_level");
+  assert.equal(result.stopPrice, 101.5);
+  assert.equal(result.exitPrice, 101.5);
+  assert.equal(result.legs[0]?.referencePrice, 101.5);
+  assert.equal(result.legs[0]?.fillPrice, 101.5);
+  assert.equal(result.audit.eventLabels.includes("GAP_THROUGH_STOP"), false);
 });
 
 test("uses the short primary level before the upper patience opposite-wick stop", () => {

@@ -291,10 +291,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       resolvedStopLevel = level.level;
       if (level.level === "primary_level") eventLabels.push(PRIMARY_LEVEL_EXIT_REACHED_LABEL);
       else eventLabels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
-      const gapThrough = input.direction === "long" ? candle.open <= resolvedStopPrice! : candle.open >= resolvedStopPrice!;
+      const primaryLevelExit = level.level === "primary_level";
+      const gapThrough = !primaryLevelExit && (input.direction === "long" ? candle.open <= resolvedStopPrice! : candle.open >= resolvedStopPrice!);
       const reference = gapThrough ? candle.open : resolvedStopPrice!;
       if (gapThrough) eventLabels.push("GAP_THROUGH_STOP");
-      const fill = tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
+      const fill = primaryLevelExit
+        ? resolvedStopPrice!
+        : tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
        legs.push(makeLeg(targetHit ? "runner" : "full", targetHit ? runnerQuantity : remaining, reference, fill, "stop", candle));
       if (targetHit && runnerQuantity > 0) runnerExited = true;
       remaining = 0; exitPrice = fill; exitCandle = candle; exitReason = "stop"; break;
