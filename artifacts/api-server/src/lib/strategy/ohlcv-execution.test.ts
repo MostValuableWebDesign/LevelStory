@@ -293,7 +293,7 @@ test("labels a short same-candle new extreme and retracement", () => {
   assert.equal(result.audit.eventLabels.includes("RUNNER_EXITED"), true);
 });
 
-test("one contract waits for +1R, then trails a confirmed long swing low", () => {
+test("one contract exits fully at +1R when no key-level target exists", () => {
   const result = simulateOhlcvExecution({
     ...base,
     immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
@@ -313,10 +313,11 @@ test("one contract waits for +1R, then trails a confirmed long swing low", () =>
   assert.equal(result.audit.initialRiskPoints, 2);
   assert.equal(result.audit.oneRPrice, 102);
   assert.equal(result.audit.oneRReached, true);
-  assert.equal(result.audit.trailingStopPrice, 98.5);
-  assert.equal(result.audit.stopLevel, "structure_trailing");
-  assert.equal(result.exitPrice, 98.5);
-  assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.exitReason]), [["runner", "stop"]]);
+  assert.equal(result.audit.profitCheckpointPrice, 102);
+  assert.equal(result.audit.trailingStopActive, false);
+  assert.equal(result.exitPrice, 102);
+  assert.equal(result.exitReason, "target");
+  assert.deepEqual(result.legs.map((leg) => [leg.kind, leg.quantity, leg.exitReason]), [["target", 1, "target"]]);
 });
 
 test("multiple no-target contracts take one at +1R and trail the runner", () => {
@@ -352,6 +353,7 @@ test("short structure trailing uses swing highs and never widens", () => {
     ...base,
     direction: "short",
     immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    contracts: 2,
     stop: 102,
     target: null,
     oneRProfitRule: true,

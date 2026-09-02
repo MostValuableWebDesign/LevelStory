@@ -1799,7 +1799,7 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
   assert.equal(result.authoritativeTrades[0]?.audit?.exitCandleOpenTime, occurrence.entryObservationTimestamp);
 });
 
-test("candidate target snapshot rejects legacy target fallback and stays open", () => {
+test("candidate target snapshot rejects legacy target fallback and exits one contract at 1R", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
@@ -1832,11 +1832,14 @@ test("candidate target snapshot rejects legacy target fallback and stays open", 
   assert.equal(candidate.targetPlan?.targetPrice, null);
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.missingEvidenceReasons.includes("NO_ELIGIBLE_KEY_LEVEL"), false);
-  assert.equal(trade.outcome, "session close");
+  assert.equal(trade.outcome, "target");
   assert.notEqual(trade.exitPrice, null);
   assert.notEqual(trade.netPnl, 0);
   assert.equal(trade.audit?.targetPrice, null);
   assert.equal(trade.audit?.targetHit, false);
+  assert.equal(trade.audit?.oneRReached, true);
+  assert.equal(trade.audit?.oneRPrice, 105.5);
+  assert.equal(trade.audit?.profitCheckpointPrice, 105.5);
 });
 
 test("candidate target planning never reuses L-time qualifying values as E-time targets", () => {
@@ -1868,8 +1871,9 @@ test("candidate target planning never reuses L-time qualifying values as E-time 
   });
   assert.equal(result.candidates[0]?.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(result.candidates[0]?.targetPlan?.targetPrice, null);
-  assert.notEqual(result.authoritativeTrades[0]?.outcome, "target");
+  assert.equal(result.authoritativeTrades[0]?.outcome, "target");
   assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, null);
+  assert.equal(result.authoritativeTrades[0]?.audit?.oneRReached, true);
 });
 
 test("a valid strategy stop is sufficient without catastrophe-stop evidence", () => {

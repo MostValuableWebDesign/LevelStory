@@ -137,7 +137,7 @@ export type OhlcvExecutionInput = {
   feeComponents?: OhlcvFeeComponents;
   sessionCloseCandle?: OhlcvCandle | null;
   primaryLossExitLevel?: PrimaryLossExitReference | null;
-  /** Candidate-owned no-target management: take one R before structure trailing. */
+  /** Candidate-owned no-target management: take full 1R with one contract, or one contract at 1R before structure trailing. */
   oneRProfitRule?: boolean;
   /** Candidate-owned runner management: use confirmed five-minute swings. */
   structureTrailing?: boolean;
@@ -264,7 +264,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       ? [`Primary loss exit ${input.primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
       : []),
     ...(input.oneRProfitRule
-      ? ["No eligible key-level target: 1R is the actual modeled fill-to-initial-stop distance; trailing activates only after +1R."]
+      ? ["No eligible key-level target: 1R is the actual modeled fill-to-initial-stop distance; one contract exits fully at +1R, while multi-contract positions take one contract at +1R before trailing the remainder."]
       : []),
     ...(input.structureTrailing
       ? [`Structure trailing uses the most recent completed three-candle five-minute swing with an ${input.trailingBufferTicks ?? 8}-tick buffer and never widens.`]
@@ -287,7 +287,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
     ...subsequentCandles,
   ];
-  const checkpointQuantity = oneRProfitRule ? (quantity > 1 ? 1 : 0) : targetQuantity;
+  const checkpointQuantity = oneRProfitRule ? Math.min(1, quantity) : targetQuantity;
   const runnerQuantity = quantity - checkpointQuantity;
   let remaining = quantity;
   let targetHit = false;
@@ -394,7 +394,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         remaining -= checkpointQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
       }
       runnerBest = target!;
-      trailingStopActive = structureTrailing;
+      trailingStopActive = structureTrailing && runnerQuantity > 0;
       if (trailingStopActive) {
         trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
       }
@@ -403,7 +403,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     }
     if (oneRReachedInCandle) {
       oneRReached = true;
-      trailingStopActive = structureTrailing;
+      trailingStopActive = structureTrailing && runnerQuantity > 0;
       profitCheckpointPrice = oneRPrice;
       if (trailingStopActive) {
         trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
@@ -418,6 +418,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         exitReason = "target";
       }
       if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
+      if (runnerQuantity === 0) break;
     }
     const activatedThisCandle = oneRReachedInCandle || targetReachedInCandle;
     if (!activatedThisCandle && (targetHit || oneRReached) && runnerQuantity > 0 && !structureTrailing) {

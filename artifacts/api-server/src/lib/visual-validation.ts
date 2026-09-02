@@ -1536,6 +1536,20 @@ function buildAnnotations(
       : "No eligible key-level target; candidate remains open and unscored.",
     "positive",
   );
+  const oneRTargetPrice = targetPrice === null && trade?.candidateId && typeof trade.audit?.oneRPrice === "number"
+    ? trade.audit.oneRPrice
+    : null;
+  if (oneRTargetPrice !== null) {
+    addLevel(
+      "one-r-target",
+      "1R target",
+      oneRTargetPrice,
+      trade?.audit?.oneRReached
+        ? "No key-level target was available; the single-contract candidate exited fully at the modeled 1R checkpoint."
+        : "No key-level target was available; the candidate-owned 1R checkpoint is based on the frozen initial-stop distance.",
+      "positive",
+    );
+  }
   addLevel("runner-threshold", "Runner threshold", trade?.audit?.runnerReferencePrice ?? snapshot.riskPlan.runner.retracementThreshold ?? null, "Runner reference or retracement threshold.", "positive");
   const exitOpen = audit.exitCandleOpenTime ? Date.parse(audit.exitCandleOpenTime) : trade?.audit?.exitCandleOpenTime ? Date.parse(trade.audit.exitCandleOpenTime) : null;
   const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade?.exitTime ? Date.parse(trade.exitTime) : null;

@@ -3932,7 +3932,7 @@ function candidateDrivenEntryTrade(
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
         targetPlan
           ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
-           : "No eligible key-level target plan was available; the candidate uses its actual initial-stop distance as 1R before structure trailing.",
+           : "No eligible key-level target plan was available; one contract exits fully at its actual initial-stop 1R distance, while multi-contract positions take one contract at 1R before structure trailing.",
         ...(primaryLossExitLevel
           ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}, 8 MES ticks beyond the adverse level boundary; the patience opposite-wick stop remains secondary.`]
           : []),
