@@ -46,7 +46,7 @@ test("visual review browses one stable queue across dates and categories", () =>
 test("visual review presentation retains human-only shading and semantic level colors", () => {
   assert.match(page, /data-testid="human-only-region"/);
    assert.match(page, /data-testid="consolidation-zone-overlay"/);
-   assert.match(page, /data-testid="consolidation-zone-band"/);
+   assert.match(page, /data-testid=\{`consolidation-zone-band-\$\{index\}`\}/);
    assert.match(page, /fill="#fecaca"/);
    assert.match(page, /data-testid="marker-legend-consolidation"/);
   assert.ok(chart.includes("label: `ORB / NTZ ${side}`"));

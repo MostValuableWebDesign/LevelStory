@@ -26,6 +26,7 @@ import {
   getCandleDomain,
   getCandleGeometry,
   getEdgeIndicators,
+  findConsolidationZones,
   getSessionDomainSlotCount,
   hasExactCandleAnchor,
   hasRepetitiveFixtureData,
@@ -62,6 +63,32 @@ test("intraday reference chart labels and colors are exact", () => {
     "two-sessions-high": { label: "Two-days-ago high", color: "hsl(270 55% 48%)" },
     "two-sessions-low": { label: "Two-days-ago low", color: "hsl(270 55% 48%)" },
   });
+});
+
+test("consolidation scanning finds every maximal bounded range in a snapshot", () => {
+  const first = Array.from({ length: 5 }, (_, index) => makeCandle(index, {
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+  }));
+  const separator = makeCandle(5, { open: 100, high: 108, low: 100, close: 107 });
+  const second = Array.from({ length: 3 }, (_, offset) => makeCandle(offset + 6, {
+    open: 110,
+    high: 111,
+    low: 109,
+    close: 110,
+  }));
+  const zones = findConsolidationZones([...first, separator, ...second], {
+    minCandles: 3,
+    maxRangeTicks: 24,
+    maxExpansionRatio: 1.25,
+  });
+  assert.equal(zones.length, 2);
+  assert.equal(zones[0]!.sourceCandleOpenTimes.length, 5);
+  assert.equal(zones[0]!.high, 101);
+  assert.equal(zones[0]!.low, 99);
+  assert.equal(zones[1]!.sourceCandleOpenTimes.length, 3);
 });
 
 function makeCandle(index: number, overrides: Partial<VisualValidationCandle> = {}): VisualValidationCandle {

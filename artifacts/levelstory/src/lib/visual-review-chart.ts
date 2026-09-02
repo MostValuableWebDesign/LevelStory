@@ -75,6 +75,22 @@ export type ChartDomain = {
   padding: number;
 };
 
+export type ConsolidationZone = {
+  startTime: string;
+  endTime: string;
+  high: number;
+  low: number;
+  range: number;
+  expansionRatio: number;
+  sourceCandleOpenTimes: string[];
+};
+
+export type ConsolidationThresholds = {
+  minCandles: number;
+  maxRangeTicks: number;
+  maxExpansionRatio: number;
+};
+
 export type CandleGeometry = {
   x: number;
   openY: number;
@@ -307,6 +323,68 @@ export function invalidRawCandleIndices(candles: readonly VisualValidationCandle
     if (!isValidRawCandle(candle)) indices.push(index);
     return indices;
   }, []);
+}
+
+/**
+ * Finds every non-overlapping, maximal consolidation range visible in a
+ * snapshot. This mirrors the governed Phase 6 detector, but scans the whole
+ * review candle series instead of only the trade's entry-related window.
+ */
+export function findConsolidationZones(
+  candles: readonly VisualValidationCandle[],
+  thresholds: ConsolidationThresholds,
+): ConsolidationZone[] {
+  const minimumCandles = Math.max(3, Math.floor(thresholds.minCandles));
+  const maxRange = thresholds.maxRangeTicks * MES_TICK_SIZE;
+  const maxExpansionRatio = thresholds.maxExpansionRatio;
+  if (
+    !Number.isFinite(minimumCandles)
+    || !Number.isFinite(maxRange)
+    || maxRange <= 0
+    || !Number.isFinite(maxExpansionRatio)
+    || maxExpansionRatio <= 0
+  ) return [];
+
+  const completed = candles
+    .filter((candle) => candle.isComplete && isValidRawCandle(candle))
+    .filter((candle) => Number.isFinite(timestamp(candle.openTime)) && Number.isFinite(timestamp(candle.closeTime)))
+    .slice()
+    .sort((first, second) => timestamp(first.openTime) - timestamp(second.openTime));
+  const zones: ConsolidationZone[] = [];
+  let cursor = 0;
+
+  while (cursor <= completed.length - minimumCandles) {
+    let best: ConsolidationZone | null = null;
+    for (let end = cursor + minimumCandles - 1; end < completed.length; end += 1) {
+      if (end > cursor && timestamp(completed[end - 1]!.closeTime) !== timestamp(completed[end]!.openTime)) break;
+      const window = completed.slice(cursor, end + 1);
+      const midpoint = Math.max(1, Math.floor(window.length / 2));
+      const rangeFor = (part: readonly VisualValidationCandle[]) =>
+        Math.max(...part.map((candle) => candle.high)) - Math.min(...part.map((candle) => candle.low));
+      const firstRange = rangeFor(window.slice(0, midpoint));
+      const secondRange = rangeFor(window.slice(midpoint));
+      const expansionRatio = firstRange > 0 ? secondRange / firstRange : secondRange === 0 ? 1 : Infinity;
+      const range = rangeFor(window);
+      if (range > maxRange || expansionRatio > maxExpansionRatio) continue;
+      best = {
+        startTime: window[0]!.openTime,
+        endTime: window.at(-1)!.closeTime,
+        high: Math.max(...window.map((candle) => candle.high)),
+        low: Math.min(...window.map((candle) => candle.low)),
+        range: Number(range.toFixed(2)),
+        expansionRatio: Number(expansionRatio.toFixed(2)),
+        sourceCandleOpenTimes: window.map((candle) => candle.openTime),
+      };
+    }
+    if (best) {
+      zones.push(best);
+      const lastSourceTime = best.sourceCandleOpenTimes.at(-1);
+      cursor = completed.findIndex((candle) => candle.openTime === lastSourceTime) + 1;
+    } else {
+      cursor += 1;
+    }
+  }
+  return zones;
 }
 
 export function isExactFiveMinuteCandle(candle: VisualValidationCandle): boolean {
