@@ -1203,8 +1203,11 @@ export function buildCategoryAnchor(
   candles: readonly SimulatedFuturesCandle[],
   occurrence?: HistoricalOccurrence,
   causalCloseTime?: number,
+  completeContractCandles?: readonly SimulatedFuturesCandle[],
 ): VisualValidationCategoryAnchor | null {
-  const contractCandles = candles.filter((candle) => candle.contractSymbol === audit.contractSymbol && candle.isComplete);
+  const contractCandles = completeContractCandles
+    ? [...completeContractCandles]
+    : candles.filter((candle) => candle.contractSymbol === audit.contractSymbol && candle.isComplete);
   const anchorEvent = categoryAnchorEvent(category, audit, trade, occurrence);
   const anchorCandle = resolvedAnchorCandle(anchorEvent, contractCandles);
   if (!anchorCandle) return null;
@@ -1557,6 +1560,87 @@ function regularSessionCandlesForDate(
     .sort((first, second) => first.closeTime - second.closeTime);
 }
 
+type HistoricalVisualValidationIndex = {
+  candlesByContract: Map<string, SimulatedFuturesCandle[]>;
+  completeCandlesByContract: Map<string, SimulatedFuturesCandle[]>;
+  regularCandlesByContractDate: Map<string, SimulatedFuturesCandle[]>;
+  premarketCandlesByContractDate: Map<string, SimulatedFuturesCandle[]>;
+  indicatorHistoryByContract: Map<string, SimulatedFuturesCandle[]>;
+  emaSeriesByContract: Map<string, ReturnType<typeof causalEmaSeries>>;
+  vwapTotalsByContractDate: Map<string, Map<number, { priceVolume: number; volume: number }>>;
+  marketSnapshots: Map<string, MarketSnapshot>;
+};
+
+function visualValidationContractDateKey(contractSymbol: string, tradingDate: string): string {
+  return `${contractSymbol}|${tradingDate}`;
+}
+
+function createHistoricalVisualValidationIndex(
+  dataset: CausalReplayDataset,
+  calendar: ReturnType<typeof sessionCalendarForContract>,
+): HistoricalVisualValidationIndex {
+  const index: HistoricalVisualValidationIndex = {
+    candlesByContract: new Map(),
+    completeCandlesByContract: new Map(),
+    regularCandlesByContractDate: new Map(),
+    premarketCandlesByContractDate: new Map(),
+    indicatorHistoryByContract: new Map(),
+    emaSeriesByContract: new Map(),
+    vwapTotalsByContractDate: new Map(),
+    marketSnapshots: new Map(),
+  };
+  for (const candle of dataset.candles) {
+    const candles = index.candlesByContract.get(candle.contractSymbol) ?? [];
+    candles.push(candle);
+    index.candlesByContract.set(candle.contractSymbol, candles);
+    if (!candle.isComplete) continue;
+    const complete = index.completeCandlesByContract.get(candle.contractSymbol) ?? [];
+    complete.push(candle);
+    index.completeCandlesByContract.set(candle.contractSymbol, complete);
+    const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+    const key = visualValidationContractDateKey(candle.contractSymbol, tradingDate);
+    const session = classifyFuturesSession(candle.openTime, calendar);
+    if (session === "regular") {
+      const regular = index.regularCandlesByContractDate.get(key) ?? [];
+      regular.push(candle);
+      index.regularCandlesByContractDate.set(key, regular);
+    } else if (session === "premarket") {
+      const premarket = index.premarketCandlesByContractDate.get(key) ?? [];
+      premarket.push(candle);
+      index.premarketCandlesByContractDate.set(key, premarket);
+    }
+    if (session !== "closed") {
+      const history = index.indicatorHistoryByContract.get(candle.contractSymbol) ?? [];
+      history.push(candle);
+      index.indicatorHistoryByContract.set(candle.contractSymbol, history);
+    }
+  }
+  const sortCandles = (candles: SimulatedFuturesCandle[]): void => {
+    candles.sort((first, second) => first.closeTime - second.closeTime);
+  };
+  for (const candles of index.candlesByContract.values()) sortCandles(candles);
+  for (const candles of index.completeCandlesByContract.values()) sortCandles(candles);
+  for (const candles of index.regularCandlesByContractDate.values()) sortCandles(candles);
+  for (const candles of index.premarketCandlesByContractDate.values()) sortCandles(candles);
+  for (const candles of index.indicatorHistoryByContract.values()) {
+    sortCandles(candles);
+    const emaSeries = causalEmaSeries(candles, strategyConfig().emaPeriod);
+    index.emaSeriesByContract.set(candles[0]?.contractSymbol ?? "", emaSeries);
+  }
+  for (const [key, candles] of index.regularCandlesByContractDate) {
+    let priceVolume = 0;
+    let volume = 0;
+    const totals = new Map<number, { priceVolume: number; volume: number }>();
+    for (const candle of candles) {
+      priceVolume += ((candle.high + candle.low + candle.close) / 3) * candle.volume;
+      volume += candle.volume;
+      totals.set(candle.openTime, { priceVolume, volume });
+    }
+    index.vwapTotalsByContractDate.set(key, totals);
+  }
+  return index;
+}
+
 function buildIndicatorSeries(
   historicalCandles: readonly SimulatedFuturesCandle[],
   displayedCandles: readonly SimulatedFuturesCandle[],
@@ -1564,29 +1648,36 @@ function buildIndicatorSeries(
   tradingDate: string,
   contractSymbol: string,
   calendar: ReturnType<typeof sessionCalendarForContract>,
+  index?: HistoricalVisualValidationIndex,
 ): VisualValidationIndicatorPoint[] {
   const config = strategyConfig();
-  const orderedHistory = [...historicalCandles, ...displayedCandles]
-    .filter((candle) =>
-      candle.contractSymbol === contractSymbol
-      && candle.isComplete
-      && classifyFuturesSession(candle.openTime, calendar) !== "closed",
-    )
-    .sort((first, second) => first.closeTime - second.closeTime);
-  const dedupedHistory = [...new Map(orderedHistory.map((candle) => [candle.openTime, candle])).values()];
-  const emaSeries = causalEmaSeries(dedupedHistory, config.emaPeriod);
+  const orderedHistory = index?.indicatorHistoryByContract.get(contractSymbol)
+    ?? [...historicalCandles, ...displayedCandles]
+      .filter((candle) =>
+        candle.contractSymbol === contractSymbol
+        && candle.isComplete
+        && classifyFuturesSession(candle.openTime, calendar) !== "closed",
+      )
+      .sort((first, second) => first.closeTime - second.closeTime);
+  const dedupedHistory = index ? orderedHistory : [...new Map(orderedHistory.map((candle) => [candle.openTime, candle])).values()];
+  const emaSeries = index?.emaSeriesByContract.get(contractSymbol)
+    ?? causalEmaSeries(dedupedHistory, config.emaPeriod);
   const emaByOpenTime = new Map(emaSeries.points.map((point) => [point.candle.openTime, point.value]));
   const sourceStartTime = emaSeries.sourceStartTime === null ? null : new Date(emaSeries.sourceStartTime).toISOString();
   const sourceEndTime = emaSeries.sourceEndTime === null ? null : new Date(emaSeries.sourceEndTime).toISOString();
-  const sessionCandles = regularSessionCandlesForDate(historicalCandles, tradingDate, contractSymbol, calendar);
-  const sessionTotals = new Map<number, { priceVolume: number; volume: number }>();
-  let priceVolume = 0;
-  let volume = 0;
-  for (const candle of sessionCandles) {
-    priceVolume += ((candle.high + candle.low + candle.close) / 3) * candle.volume;
-    volume += candle.volume;
-    sessionTotals.set(candle.openTime, { priceVolume, volume });
-  }
+  const sessionTotals = index?.vwapTotalsByContractDate.get(visualValidationContractDateKey(contractSymbol, tradingDate))
+    ?? (() => {
+      const sessionCandles = regularSessionCandlesForDate(historicalCandles, tradingDate, contractSymbol, calendar);
+      const totals = new Map<number, { priceVolume: number; volume: number }>();
+      let priceVolume = 0;
+      let volume = 0;
+      for (const candle of sessionCandles) {
+        priceVolume += ((candle.high + candle.low + candle.close) / 3) * candle.volume;
+        volume += candle.volume;
+        totals.set(candle.openTime, { priceVolume, volume });
+      }
+      return totals;
+    })();
   return displayedCandles.map((candle) => {
     const totals = sessionTotals.get(candle.openTime);
     const visible = candle.closeTime <= evaluationCloseTime;
@@ -1844,6 +1935,7 @@ function buildMachineSnapshot(
   premarketAvailable: boolean,
   occurrence?: HistoricalOccurrence,
   selectionReason = "causal occurrence retained",
+  index?: HistoricalVisualValidationIndex,
 ): VisualValidationSnapshot {
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
   const auditEvaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
@@ -1857,48 +1949,66 @@ function buildMachineSnapshot(
     ? evaluationCloseTime - 5 * 60_000
     : auditEvaluationTime;
   const exitTime = trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : evaluationTime;
-  const historicalCandles = dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
-  const evaluationCandles = regularSessionCandlesForDate(historicalCandles, audit.tradingDate, audit.contractSymbol, calendar);
+  const historicalCandles = index?.candlesByContract.get(audit.contractSymbol)
+    ?? dataset.candles.filter((candle) => candle.contractSymbol === audit.contractSymbol);
+  const evaluationCandles = index?.regularCandlesByContractDate.get(
+    visualValidationContractDateKey(audit.contractSymbol, audit.tradingDate),
+  ) ?? regularSessionCandlesForDate(historicalCandles, audit.tradingDate, audit.contractSymbol, calendar);
   const visibleEvaluation = visibleReplayPrefix(evaluationCandles, evaluationCloseTime);
   const regularWindow = sessionWindow(audit.tradingDate, "regular", calendar);
   const fullRegularEnd = regularWindow?.closeTime ?? reviewCloseTime;
   const reviewTime = Math.max(evaluationCloseTime, exitTime, reviewCloseTime, fullRegularEnd);
   const visibleReview = visibleReplayPrefix(evaluationCandles, reviewTime);
+  const premarketSourceCandles = index?.premarketCandlesByContractDate.get(
+    visualValidationContractDateKey(audit.contractSymbol, audit.tradingDate),
+  ) ?? historicalCandles
+    .filter((candle) =>
+      tradingDateForTimestamp(candle.openTime, calendar) === audit.tradingDate
+      && classifyFuturesSession(candle.openTime, calendar) === "premarket"
+      && candle.isComplete,
+    )
+    .sort((first, second) => first.closeTime - second.closeTime);
   const visiblePremarket = premarketAvailable
-    ? historicalCandles
-      .filter((candle) =>
-        tradingDateForTimestamp(candle.openTime, calendar) === audit.tradingDate
-        && classifyFuturesSession(candle.openTime, calendar) === "premarket"
-        && candle.isComplete
-        && candle.closeTime <= reviewTime,
-      )
-      .sort((first, second) => first.closeTime - second.closeTime)
+    ? premarketSourceCandles.filter((candle) => candle.closeTime <= reviewTime)
     : [];
   const analysisCandles = [...visiblePremarket, ...visibleEvaluation];
-  const evaluationSnapshot = createMarketSnapshot(
-    report.symbol,
-    "regular",
-    undefined,
-    undefined,
-    { targetDollars: undefined, slippageMode: "normal" },
-    {
-      tradingDate: audit.tradingDate,
-      cursor: evaluationCloseTime,
-      allCandles: analysisCandles,
-      // Keep the full contract-local history available to the causal replay
-      // layer; sessionLevels and Phase 4 filter it at the evaluation cursor.
-      historicalFeed: historicalCandles,
-      allCandlesCompleted: true,
-      premarketAvailable,
-      executionMode: report.executionMode,
-      validateDashboardInvariants: false,
-      strategyConfigOverrides: activeShadowStrategySnapshot().config,
-    },
-  );
+  const snapshotCacheKey = `${report.symbol}|${audit.contractSymbol}|${audit.tradingDate}|${evaluationCloseTime}|${premarketAvailable}|${report.executionMode}`;
+  let evaluationSnapshot = index?.marketSnapshots.get(snapshotCacheKey);
+  if (!evaluationSnapshot) {
+    evaluationSnapshot = createMarketSnapshot(
+      report.symbol,
+      "regular",
+      undefined,
+      undefined,
+      { targetDollars: undefined, slippageMode: "normal" },
+      {
+        tradingDate: audit.tradingDate,
+        cursor: evaluationCloseTime,
+        allCandles: analysisCandles,
+        // Keep the full contract-local history available to the causal replay
+        // layer; sessionLevels and Phase 4 filter it at the evaluation cursor.
+        historicalFeed: historicalCandles,
+        allCandlesCompleted: true,
+        premarketAvailable,
+        executionMode: report.executionMode,
+        validateDashboardInvariants: false,
+        strategyConfigOverrides: activeShadowStrategySnapshot().config,
+      },
+    );
+    index?.marketSnapshots.set(snapshotCacheKey, evaluationSnapshot);
+  }
   const machineCandles = visibleEvaluation.map(toRawCandle);
   const reviewCandles = visibleReview.map(toRawCandle);
   const premarketCandles = visiblePremarket.map(toRawCandle);
-  const categoryAnchor = buildCategoryAnchor(category, audit, trade, historicalCandles, occurrence, evaluationCloseTime);
+  const categoryAnchor = buildCategoryAnchor(
+    category,
+    audit,
+    trade,
+    historicalCandles,
+    occurrence,
+    evaluationCloseTime,
+    index?.completeCandlesByContract.get(audit.contractSymbol),
+  );
   const indicatorSeries = buildIndicatorSeries(
     historicalCandles,
     visibleReview,
@@ -1906,6 +2016,7 @@ function buildMachineSnapshot(
     audit.tradingDate,
     audit.contractSymbol,
     calendar,
+    index,
   );
   if (!categoryAnchor) throw new Error(`Category anchor could not resolve to a raw ${audit.contractSymbol} candle.`);
   const hash = createHash("sha256")
@@ -2065,6 +2176,10 @@ export function buildHistoricalVisualValidationSetFromReport(
     executionMode: "ohlcv_modeled",
   };
   const mode = visualValidationReviewMode(request);
+  const visualIndex = createHistoricalVisualValidationIndex(
+    dataset,
+    sessionCalendarForContract(getFuturesContractSpecification(request.symbol)),
+  );
   const ledgerCandidates: ReviewCandidate[] = report.occurrences?.flatMap((occurrence) => {
     const audit = auditForOccurrence(occurrence, report.audit, report.trades);
     if (!audit) return [];
@@ -2122,7 +2237,15 @@ export function buildHistoricalVisualValidationSetFromReport(
           && candidate.occurrence !== undefined
           && hasConfirmedTradeOccurrence(candidate.occurrence)
           && (candidate.category !== "qualified_trade" || candidate.trade !== null)))
-      .filter((candidate) => buildCategoryAnchor(candidate.category, candidate.audit, candidate.trade, dataset.candles, candidate.occurrence) !== null);
+      .filter((candidate) => buildCategoryAnchor(
+        candidate.category,
+        candidate.audit,
+        candidate.trade,
+        dataset.candles,
+        candidate.occurrence,
+        undefined,
+        visualIndex.completeCandlesByContract.get(candidate.audit.contractSymbol),
+      ) !== null);
   const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
       ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
@@ -2138,6 +2261,7 @@ export function buildHistoricalVisualValidationSetFromReport(
       request.premarketAvailable !== false,
       candidate.occurrence,
       candidateSelectionReason(candidate),
+      visualIndex,
     );
   });
   const funnelDiagnostics = report.dataset && report.contract

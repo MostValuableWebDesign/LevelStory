@@ -7,4 +7,4 @@ Large imported backtests can become CPU-bound when every candle repeatedly const
 
 **Why:** Historical ranges repeatedly classify thousands of candles at many causal checkpoints, while the session boundaries are immutable for a given calendar and date.
 
-**How to apply:** Preserve the existing `America/New_York` conversion and causal checkpoints, but reuse calendar-scoped session-window results and bounded timestamp conversions rather than replacing DST-safe logic with a fixed UTC offset.
+**How to apply:** Preserve the existing `America/New_York` conversion and causal checkpoints, but reuse calendar-scoped session-window results, contract/date candle indexes, indicator series, and identical market snapshots rather than rescanning the full replay dataset per Visual Review candidate.
