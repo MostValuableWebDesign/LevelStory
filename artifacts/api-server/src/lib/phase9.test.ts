@@ -341,12 +341,12 @@ test("quote-based resolution honors a primary level before the patience opposite
       rangeHigh: null,
       distancePoints: 0.5,
       distanceTicks: 2,
-      stopPrice: 99.5,
+      stopPrice: 97.5,
     },
     candle: replayCandle(1, "MESU26", 100),
   });
   assert.equal(result.status, "stop");
-  assert.equal(result.price, 99.5);
+  assert.equal(result.price, 97.5);
   assert.equal(result.stopLevel, "primary_level");
 });
 

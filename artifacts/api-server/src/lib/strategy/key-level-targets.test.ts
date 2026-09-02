@@ -152,7 +152,7 @@ test("long loss exits prefer the nearest adverse primary level within the patien
   });
   assert.equal(reference?.id, "near-vwap");
   assert.equal(reference?.distanceTicks, 6);
-  assert.equal(reference?.stopPrice, 99.5);
+  assert.equal(reference?.stopPrice, 97.5);
 });
 
 test("short loss exits use the adverse upper primary level and ignore lower levels", () => {
@@ -169,7 +169,7 @@ test("short loss exits use the adverse upper primary level and ignore lower leve
   });
   assert.equal(reference?.id, "farther-resistance|near-ema");
   assert.equal(reference?.distanceTicks, 2);
-  assert.equal(reference?.stopPrice, 102.5);
+  assert.equal(reference?.stopPrice, 104.5);
 });
 
 test("a primary loss reference between 8 and 12 ticks now qualifies", () => {

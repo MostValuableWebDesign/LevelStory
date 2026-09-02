@@ -65,6 +65,7 @@ export type KeyLevelTargetPlan = {
 };
 
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
+const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
 
 function normalizedLevelText(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
@@ -265,7 +266,10 @@ export function primaryLossExitReferenceForPatience(input: {
       const rangeHigh = level.rangeHigh ?? level.price;
       const distancePoints = distanceToRange(oppositeWick, rangeLow, rangeHigh);
       if (distancePoints > bufferPoints) return [];
-      const stopPrice = input.direction === "long" ? rangeHigh : rangeLow;
+      const stopBufferPoints = PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS * tickSize;
+      const stopPrice = input.direction === "long"
+        ? rangeHigh - stopBufferPoints
+        : rangeLow + stopBufferPoints;
       return [{
         id: level.id,
         type: level.type,

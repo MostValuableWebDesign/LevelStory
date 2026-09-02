@@ -3733,7 +3733,7 @@ function candidateDrivenEntryTrade(
           ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
           : "No eligible key-level target plan was available; the candidate remains open and unscored.",
         ...(primaryLossExitLevel
-          ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}; the patience opposite-wick stop remains secondary.`]
+          ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}, 8 MES ticks beyond the adverse level boundary; the patience opposite-wick stop remains secondary.`]
           : []),
         ...(missingContext
           ? [`Management context unavailable or invalid: ${[...new Set([
@@ -4465,7 +4465,7 @@ export function runCausalBacktest(
           assumptions: [
             "Quote-based Shadow fill uses genuine bid/ask observations.",
             ...(primaryLossExitLevel
-              ? [`Primary loss exit ${primaryLossExitLevel.id} is armed before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
+              ? [`Primary loss exit ${primaryLossExitLevel.id} is armed 8 MES ticks beyond the adverse level boundary before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
               : []),
           ],
          eventLabels,

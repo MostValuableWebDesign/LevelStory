@@ -94,7 +94,7 @@ test("honors a primary level loss exit before the patience opposite-wick stop", 
   const result = simulateOhlcvExecution({
     ...base,
     immediateTriggerCandle: candle(100, 101, 100, 100.5),
-    subsequentCompletedCandles: [candle(100.5, 100.75, 99.25, 99.5)],
+    subsequentCompletedCandles: [candle(100.5, 100.75, 97.5, 98)],
     strategyStop: 99.5,
     target: 103,
     primaryLossExitLevel: {
@@ -105,13 +105,13 @@ test("honors a primary level loss exit before the patience opposite-wick stop", 
       rangeHigh: null,
       distancePoints: 0.25,
       distanceTicks: 1,
-      stopPrice: 99.75,
+      stopPrice: 97.75,
     },
   });
   assert.equal(result.exitReason, "stop");
-  assert.equal(result.stopPrice, 99.75);
+  assert.equal(result.stopPrice, 97.75);
   assert.equal(result.audit.stopLevel, "primary_level");
-  assert.equal(result.legs[0]?.referencePrice, 99.75);
+  assert.equal(result.legs[0]?.referencePrice, 97.75);
   assert.ok(result.audit.eventLabels.includes(PRIMARY_LEVEL_EXIT_REACHED_LABEL));
 });
 
@@ -120,7 +120,7 @@ test("uses the short primary level before the upper patience opposite-wick stop"
     ...base,
     direction: "short",
     immediateTriggerCandle: candle(100, 100, 99, 99.5),
-    subsequentCompletedCandles: [candle(99.5, 102.75, 99.25, 102)],
+    subsequentCompletedCandles: [candle(99.5, 104.5, 99.25, 102)],
     strategyStop: 102.5,
     target: 97,
     primaryLossExitLevel: {
@@ -131,13 +131,13 @@ test("uses the short primary level before the upper patience opposite-wick stop"
       rangeHigh: null,
       distancePoints: 0.25,
       distanceTicks: 1,
-      stopPrice: 102.25,
+      stopPrice: 104.25,
     },
   });
   assert.equal(result.exitReason, "stop");
-  assert.equal(result.stopPrice, 102.25);
+  assert.equal(result.stopPrice, 104.25);
   assert.equal(result.audit.stopLevel, "primary_level");
-  assert.equal(result.legs[0]?.referencePrice, 102.25);
+  assert.equal(result.legs[0]?.referencePrice, 104.25);
 });
 
 test("falls back to the patience opposite-wick stop when the armed primary level has not broken", () => {
