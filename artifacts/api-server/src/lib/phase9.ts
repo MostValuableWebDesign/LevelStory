@@ -4698,6 +4698,11 @@ export function runCausalBacktest(
   const dataset = providedDataset ?? buildReplayDataset(request.symbol, request);
   const executionMode = request.executionMode
     ?? (dataset.quotesAvailable === false ? "ohlcv_modeled" : "quote_based_shadow");
+  // Arm identity must remain stable as the replay cursor advances. The market
+  // snapshot receives only the visible candle prefix, so its default feed
+  // fingerprint would otherwise change at every cursor and split one causal
+  // pullback arm into multiple independent arms.
+  const replaySourceFingerprint = sourceFingerprint(dataset);
   if (executionMode === "quote_based_shadow" && dataset.quotesAvailable === false) {
     throw new Error("Quote-based Shadow execution requires genuine bid/ask data; this dataset is OHLCV-only.");
   }
@@ -4814,6 +4819,7 @@ export function runCausalBacktest(
         strategyConfigOverrides: activeStrategy.config,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
+        sourceFingerprint: replaySourceFingerprint,
         // The active Shadow configuration is authoritative for ordinary backtests.
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
       },
