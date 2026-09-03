@@ -14,6 +14,9 @@ import {
 } from "./visual-validation.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import { APPLICATION_BUILD_ID } from "./build-metadata.js";
+import {
+  visualValidationCacheMetadata,
+} from "./visual-validation-cache.js";
 
 type StoredVisualValidationSet = {
   set: VisualValidationSet;
@@ -72,15 +75,32 @@ function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualVali
   };
 }
 
-export function storeVisualValidationSet(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): VisualValidationSet {
+function currentVersionsMatch(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): boolean {
+  const expected = visualValidationCacheMetadata(set.request, set.sourceFingerprint, set.sessionCalendarVersion);
+  return set.cacheKeyVersion === expected.cacheKeyVersion
+    && set.strategyVersion === expected.strategyVersion
+    && set.formulaHash === expected.formulaHash
+    && set.formulaVersion === expected.formulaVersion
+    && set.candidateProjectionVersion === expected.candidateProjectionVersion
+    && set.executionManagementVersion === expected.executionManagementVersion
+    && set.snapshotProjectionVersion === expected.snapshotProjectionVersion
+    && set.chartProjectionVersion === expected.chartProjectionVersion
+    && set.sessionCalendarVersion === expected.sessionCalendarVersion;
+}
+
+export function storeVisualValidationSet(
+  set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">,
+  options: Partial<Pick<VisualValidationSet, "generationOrigin" | "cacheKey" | "cacheKeyVersion" | "strategyVersion" | "formulaHash" | "formulaVersion" | "candidateProjectionVersion" | "executionManagementVersion" | "snapshotProjectionVersion" | "chartProjectionVersion" | "sessionCalendarVersion">> = {},
+): VisualValidationSet {
   prune();
   const stored: StoredVisualValidationSet = {
     set: {
       ...set,
+       ...options,
       reviewSetId: randomUUID(),
       createdAt: new Date().toISOString(),
       currentBuildId: APPLICATION_BUILD_ID,
-      stale: set.buildId !== APPLICATION_BUILD_ID,
+       stale: set.buildId !== APPLICATION_BUILD_ID || !currentVersionsMatch({ ...set, ...options }),
     },
     reviews: new Map(),
     reviewHistory: [],

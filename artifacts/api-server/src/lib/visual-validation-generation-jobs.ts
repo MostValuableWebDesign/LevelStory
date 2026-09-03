@@ -10,6 +10,13 @@ import {
   type VisualValidationWorkerProgress,
 } from "./visual-validation-worker-client.js";
 import { storeVisualValidationSet } from "./visual-validation-store.js";
+import {
+  simulatedVisualValidationSourceFingerprint,
+  visualValidationCacheMetadata,
+  type VisualValidationCacheMetadata,
+} from "./visual-validation-cache.js";
+import { getReadyHistoricalMultiContractIndex } from "./futures/multi-contract-replay.js";
+import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 
 export type CandidateGenerationPhase =
   | "preparing"
@@ -36,12 +43,20 @@ export type CandidateGenerationJob = {
   message: string;
   error: string | null;
   reviewSetId: string | null;
+  origin: "cached" | "fresh";
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  formulaVersion: string;
+  snapshotProjectionVersion: string;
   result?: VisualValidationSet;
 };
 
 type JobRecord = CandidateGenerationJob & {
   requestKey: string;
   request: VisualValidationRequest;
+  cacheMetadata: VisualValidationCacheMetadata;
+  generationOrigin: "cached" | "fresh";
   startedAt: number | null;
   completedAt: number | null;
 };
@@ -51,6 +66,7 @@ const MAX_JOBS = 12;
 const jobs = new Map<string, JobRecord>();
 const activeByRequest = new Map<string, string>();
 const completedByRequest = new Map<string, string>();
+const pendingStarts = new Map<string, Promise<CandidateGenerationJob>>();
 let latestJobId: string | null = null;
 let generationTail = Promise.resolve();
 
@@ -65,6 +81,23 @@ function requestKey(request: VisualValidationRequest): string {
     source: request.source ?? "historical_databento",
     reviewMode: request.reviewMode ?? "trades_only",
   });
+}
+
+function cleanRequest(request: VisualValidationRequest): VisualValidationRequest {
+  const { regenerateFresh: _regenerateFresh, ...deterministicRequest } = request;
+  return deterministicRequest;
+}
+
+async function cacheMetadataForRequest(request: VisualValidationRequest): Promise<VisualValidationCacheMetadata> {
+  if ((request.source ?? "historical_databento") === "historical_databento") {
+    const imported = await getReadyHistoricalMultiContractIndex();
+    return visualValidationCacheMetadata(
+      request,
+      imported?.contentFingerprint ?? "historical-index-unavailable",
+      imported?.calendar.calendarVersion ?? DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
+    );
+  }
+  return visualValidationCacheMetadata(request, simulatedVisualValidationSourceFingerprint(request));
 }
 
 function pruneJobs(): void {
@@ -88,7 +121,7 @@ function pruneJobs(): void {
   }
 }
 
-function publicJob(job: JobRecord): CandidateGenerationJob {
+function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGenerationJob {
   const elapsedMs = job.startedAt === null
     ? 0
     : Math.max(0, (job.completedAt ?? Date.now()) - job.startedAt);
@@ -106,7 +139,20 @@ function publicJob(job: JobRecord): CandidateGenerationJob {
     message: job.message,
     error: job.error,
     reviewSetId: job.reviewSetId,
-    ...(job.result ? { result: job.result } : {}),
+    ...(job.result
+      ? {
+          result: {
+            ...job.result,
+            generationOrigin: origin,
+          },
+        }
+      : {}),
+    origin,
+    cacheKey: job.cacheMetadata.cacheKey,
+    cacheKeyVersion: job.cacheMetadata.cacheKeyVersion,
+    strategyVersion: job.cacheMetadata.strategyVersion,
+    formulaVersion: job.cacheMetadata.formulaVersion,
+    snapshotProjectionVersion: job.cacheMetadata.snapshotProjectionVersion,
   };
 }
 
@@ -178,7 +224,10 @@ async function runJob(job: JobRecord): Promise<void> {
         updateJob(job, progress);
       });
     }
-    const stored = storeVisualValidationSet(built);
+    const stored = storeVisualValidationSet(built, {
+      ...job.cacheMetadata,
+      generationOrigin: job.generationOrigin,
+    });
     job.result = stored;
     job.reviewSetId = stored.reviewSetId;
     job.completedAt = Date.now();
@@ -205,43 +254,64 @@ async function runJob(job: JobRecord): Promise<void> {
   }
 }
 
-export function startVisualValidationGenerationJob(request: VisualValidationRequest): CandidateGenerationJob {
+export async function startVisualValidationGenerationJob(request: VisualValidationRequest): Promise<CandidateGenerationJob> {
   pruneJobs();
-  const key = requestKey(request);
-  const activeJobId = activeByRequest.get(key);
-  if (activeJobId) {
-    const active = jobs.get(activeJobId);
-    if (active) return publicJob(active);
+  const baseKey = requestKey(request);
+  const pending = pendingStarts.get(baseKey);
+  if (pending) return pending;
+  const start = (async (): Promise<CandidateGenerationJob> => {
+    const deterministicRequest = cleanRequest(request);
+    const metadata = await cacheMetadataForRequest(deterministicRequest);
+    const key = metadata.cacheKey;
+    const activeJobId = activeByRequest.get(key);
+    if (activeJobId) {
+      const active = jobs.get(activeJobId);
+      if (active) return publicJob(active);
+    }
+    const completedJobId = completedByRequest.get(key);
+    if (!request.regenerateFresh && completedJobId) {
+      const completed = jobs.get(completedJobId);
+      if (completed) return publicJob(completed, "cached");
+    }
+    const job: JobRecord = {
+      jobId: randomUUID(),
+      requestKey: key,
+      request: deterministicRequest,
+      cacheMetadata: metadata,
+      generationOrigin: "fresh",
+      origin: "fresh",
+      cacheKey: metadata.cacheKey,
+      cacheKeyVersion: metadata.cacheKeyVersion,
+      strategyVersion: metadata.strategyVersion,
+      formulaVersion: metadata.formulaVersion,
+      snapshotProjectionVersion: metadata.snapshotProjectionVersion,
+      status: "queued",
+      phase: "preparing",
+      completedUnits: 0,
+      totalUnits: 100,
+      percent: 0,
+      completedSessions: 0,
+      totalSessions: 0,
+      elapsedMs: 0,
+      message: "Queued for historical replay",
+      error: null,
+      reviewSetId: null,
+      estimatedRemainingMs: null,
+      startedAt: null,
+      completedAt: null,
+    };
+    jobs.set(job.jobId, job);
+    activeByRequest.set(key, job.jobId);
+    latestJobId = job.jobId;
+    void runJob(job);
+    return publicJob(job);
+  })();
+  pendingStarts.set(baseKey, start);
+  try {
+    return await start;
+  } finally {
+    if (pendingStarts.get(baseKey) === start) pendingStarts.delete(baseKey);
   }
-  const completedJobId = completedByRequest.get(key);
-  if (completedJobId) {
-    const completed = jobs.get(completedJobId);
-    if (completed) return publicJob(completed);
-  }
-  const job: JobRecord = {
-    jobId: randomUUID(),
-    requestKey: key,
-    request,
-    status: "queued",
-    phase: "preparing",
-    completedUnits: 0,
-    totalUnits: 100,
-    percent: 0,
-    completedSessions: 0,
-    totalSessions: 0,
-    elapsedMs: 0,
-    message: "Queued for historical replay",
-    error: null,
-    reviewSetId: null,
-    estimatedRemainingMs: null,
-    startedAt: null,
-    completedAt: null,
-  };
-  jobs.set(job.jobId, job);
-  activeByRequest.set(key, job.jobId);
-  latestJobId = job.jobId;
-  void runJob(job);
-  return publicJob(job);
 }
 
 export function getVisualValidationGenerationJob(jobId: string): CandidateGenerationJob | null {

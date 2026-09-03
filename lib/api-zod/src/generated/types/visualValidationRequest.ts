@@ -33,4 +33,6 @@ export interface VisualValidationRequest {
   source?: VisualValidationRequestSource;
   /** Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. */
   reviewMode?: VisualValidationRequestReviewMode;
+  /** Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. */
+  regenerateFresh?: boolean;
 }

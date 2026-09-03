@@ -405,14 +405,7 @@ export default function VisualReview() {
   useEffect(() => {
     if (localSet || generationActive) return;
     if (setQuery.data?.stale) {
-      if (reviewSetId && !loadLatestReviewSet) {
-        clearStoredReviewSetSelection();
-        setReviewSetId("");
-        setLoadLatestReviewSet(true);
-        setMessage("The saved review set is stale; switched to the latest available set.");
-      } else {
-        setMessage("The latest saved review set is stale. Generate a fresh review set before reviewing candidates.");
-      }
+      setMessage("The saved review set is stale under the current replay or projection versions. Generate fresh to create a new immutable set; existing reviews remain preserved.");
       return;
     }
     if (reviewSetId && !loadLatestReviewSet && setQuery.isError && apiErrorStatus(setQuery.error) === 404) {
@@ -596,12 +589,13 @@ export default function VisualReview() {
     setSelectedSnapshotId(snapshotId);
   };
 
-  const generateReviewSet = () => {
+  const startReviewSetGeneration = (regenerateFresh = false) => {
     if (!confirmDiscardReview()) return;
+    if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setMessage("");
     setReport(null);
     setLocalSet(null);
-    startGeneration.mutate({ data: request }, {
+    startGeneration.mutate({ data: { ...request, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
         setGenerationJobId(job.jobId);
         if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
@@ -610,6 +604,9 @@ export default function VisualReview() {
       onError: (error) => setMessage(apiErrorMessage(error) ?? "The generation job could not be started."),
     });
   };
+
+  const generateReviewSet = () => startReviewSetGeneration(false);
+  const regenerateFreshReviewSet = () => startReviewSetGeneration(true);
 
   const retryGeneration = () => {
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
@@ -714,7 +711,7 @@ export default function VisualReview() {
              <GenerationPanel request={request} setRequest={(next) => {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
-             }} onSubmit={submitGeneration} pending={Boolean(generationBusy)} message={message} />
+             }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
              <CoverageRail
                data={data}
                loading={setQuery.isLoading}
@@ -751,7 +748,8 @@ export default function VisualReview() {
           ) : (
             <>
                {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="mb-5 flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
-               <ReviewSetDiagnostics data={data} />
+                <ReviewSetProvenance data={data} />
+                <ReviewSetDiagnostics data={data} />
               {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
               {activeSnapshot ? (
                 <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
@@ -845,7 +843,28 @@ function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["fu
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; pending: boolean; message: string }) {
+function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
+  const abbreviatedKey = `${data.cacheKey.slice(0, 10)}…${data.cacheKey.slice(-8)}`;
+  return <Panel>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
+      <div>
+        <div className="eyebrow text-muted-foreground">Replay provenance</div>
+        <div className="mt-1 text-xs font-semibold">{data.generationOrigin === "cached" ? "Cached compatible result" : "Freshly generated result"}</div>
+      </div>
+      <div className="mono text-right text-[10px] text-muted-foreground">
+        <div>Generated {formatReviewTime(data.createdAt)}</div>
+        <div>Cache {abbreviatedKey}</div>
+      </div>
+    </div>
+    <div className="grid gap-px bg-border sm:grid-cols-3">
+      <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Formula</div><div className="mono mt-1 text-[10px]">{data.formulaVersion}</div></div>
+      <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Strategy engine</div><div className="mono mt-1 text-[10px]">{data.strategyVersion}</div></div>
+      <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Snapshot projection</div><div className="mono mt-1 text-[10px]">{data.snapshotProjectionVersion}</div></div>
+    </div>
+  </Panel>;
+}
+
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const updateSource = (source: VisualValidationRequest["source"]) => setRequest({
     ...request,
@@ -886,9 +905,14 @@ function GenerationPanel({ request, setRequest, onSubmit, pending, message }: { 
         <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
       </label>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
+       <div className="grid gap-2 sm:grid-cols-2">
        <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
           {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Sparkles size={15} />}{pending ? "Generating trade candidates..." : "Generate trade candidates"}
       </button>
+       <button type="button" disabled={pending} onClick={onRegenerateFresh} className="flex w-full items-center justify-center gap-2 rounded-md border border-accent/55 bg-accent/10 px-4 py-3 text-xs font-bold text-foreground transition hover:bg-accent/15 disabled:cursor-wait disabled:opacity-55" data-testid="button-regenerate-fresh">
+         <RotateCcw size={15} />Regenerate fresh
+       </button>
+       </div>
        <LockedNote>{request.source === "historical_databento" ? "Historical mode reads the existing indexed MES contract candles only. It never rebuilds the index, connects to a broker, creates orders, or produces live execution." : "Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here."}</LockedNote>
     </form>
   </Panel>;

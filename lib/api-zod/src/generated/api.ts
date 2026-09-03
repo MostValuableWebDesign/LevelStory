@@ -5258,6 +5258,7 @@ export const getVisualValidationSetResponseCurrentBuildIdMax = 128;
 
 export const getVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationSetResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const getVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
 export const getVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -5274,6 +5275,7 @@ export const getVisualValidationSetResponseRequestSeedMax = 1000000;
 export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const getVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const getVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
+export const getVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const getVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -5346,6 +5348,15 @@ export const GetVisualValidationSetResponse = zod.object({
   "formulaHash": zod.string().regex(getVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getVisualValidationSetResponseSourceFingerprintRegExp),
+  "generationOrigin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(getVisualValidationSetResponseCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "candidateProjectionVersion": zod.string(),
+  "executionManagementVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string(),
+  "chartProjectionVersion": zod.string(),
+  "sessionCalendarVersion": zod.string(),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -5356,7 +5367,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(getVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
   "startDate": zod.string().regex(getVisualValidationSetResponseReviewPeriodStartDateRegExp),
@@ -5650,6 +5662,7 @@ export const createVisualValidationSetBodySeedMax = 1000000;
 export const createVisualValidationSetBodyPremarketAvailableDefault = true;
 export const createVisualValidationSetBodySourceDefault = `historical_databento`;
 export const createVisualValidationSetBodyReviewModeDefault = `trades_only`;
+export const createVisualValidationSetBodyRegenerateFreshDefault = false;
 
 export const CreateVisualValidationSetBody = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
@@ -5659,7 +5672,8 @@ export const CreateVisualValidationSetBody = zod.object({
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(createVisualValidationSetBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
 export const createVisualValidationSetResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -5669,6 +5683,7 @@ export const createVisualValidationSetResponseCurrentBuildIdMax = 128;
 
 export const createVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const createVisualValidationSetResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const createVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
 export const createVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -5685,6 +5700,7 @@ export const createVisualValidationSetResponseRequestSeedMax = 1000000;
 export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const createVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const createVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
+export const createVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const createVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createVisualValidationSetResponseSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -5757,6 +5773,15 @@ export const CreateVisualValidationSetResponse = zod.object({
   "formulaHash": zod.string().regex(createVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(createVisualValidationSetResponseSourceFingerprintRegExp),
+  "generationOrigin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(createVisualValidationSetResponseCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "candidateProjectionVersion": zod.string(),
+  "executionManagementVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string(),
+  "chartProjectionVersion": zod.string(),
+  "sessionCalendarVersion": zod.string(),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -5767,7 +5792,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(createVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
   "startDate": zod.string().regex(createVisualValidationSetResponseReviewPeriodStartDateRegExp),
@@ -6061,6 +6087,7 @@ export const startVisualValidationGenerationJobBodySeedMax = 1000000;
 export const startVisualValidationGenerationJobBodyPremarketAvailableDefault = true;
 export const startVisualValidationGenerationJobBodySourceDefault = `historical_databento`;
 export const startVisualValidationGenerationJobBodyReviewModeDefault = `trades_only`;
+export const startVisualValidationGenerationJobBodyRegenerateFreshDefault = false;
 
 export const StartVisualValidationGenerationJobBody = zod.object({
   "symbol": zod.enum(['MES']).default(startVisualValidationGenerationJobBodySymbolDefault),
@@ -6070,7 +6097,8 @@ export const StartVisualValidationGenerationJobBody = zod.object({
   "seed": zod.number().min(startVisualValidationGenerationJobBodySeedMin).max(startVisualValidationGenerationJobBodySeedMax).default(startVisualValidationGenerationJobBodySeedDefault),
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
 export const startVisualValidationGenerationJobResponseJobIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
@@ -6096,6 +6124,7 @@ export const startVisualValidationGenerationJobResponseResultCurrentBuildIdMax =
 
 export const startVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const startVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
 export const startVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -6112,6 +6141,7 @@ export const startVisualValidationGenerationJobResponseResultRequestSeedMax = 10
 export const startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const startVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const startVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -6173,6 +6203,7 @@ export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWi
 
 export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
 
+export const startVisualValidationGenerationJobResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 
 
 export const StartVisualValidationGenerationJobResponse = zod.object({
@@ -6198,6 +6229,15 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "generationOrigin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(startVisualValidationGenerationJobResponseResultCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "candidateProjectionVersion": zod.string(),
+  "executionManagementVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string(),
+  "chartProjectionVersion": zod.string(),
+  "sessionCalendarVersion": zod.string(),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -6208,7 +6248,8 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "seed": zod.number().min(startVisualValidationGenerationJobResponseResultRequestSeedMin).max(startVisualValidationGenerationJobResponseResultRequestSeedMax).default(startVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
   "startDate": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
@@ -6480,7 +6521,13 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "outsidePrimaryWindowOccurrences": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
 })
 }).optional()
-}).optional()
+}).optional(),
+  "origin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(startVisualValidationGenerationJobResponseCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "formulaVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string()
 })
 
 
@@ -6510,6 +6557,7 @@ export const getLatestVisualValidationGenerationJobResponseResultCurrentBuildIdM
 
 export const getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getLatestVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
 export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -6526,6 +6574,7 @@ export const getLatestVisualValidationGenerationJobResponseResultRequestSeedMax 
 export const getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -6587,6 +6636,7 @@ export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosti
 
 export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
 
+export const getLatestVisualValidationGenerationJobResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 
 
 export const GetLatestVisualValidationGenerationJobResponse = zod.object({
@@ -6612,6 +6662,15 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "generationOrigin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "candidateProjectionVersion": zod.string(),
+  "executionManagementVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string(),
+  "chartProjectionVersion": zod.string(),
+  "sessionCalendarVersion": zod.string(),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -6622,7 +6681,8 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "seed": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestSeedMin).max(getLatestVisualValidationGenerationJobResponseResultRequestSeedMax).default(getLatestVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
   "startDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
@@ -6894,7 +6954,13 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "outsidePrimaryWindowOccurrences": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
 })
 }).optional()
-}).optional()
+}).optional(),
+  "origin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(getLatestVisualValidationGenerationJobResponseCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "formulaVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string()
 })
 
 
@@ -6931,6 +6997,7 @@ export const getVisualValidationGenerationJobResponseResultCurrentBuildIdMax = 1
 
 export const getVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const getVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
 export const getVisualValidationGenerationJobResponseResultRequestEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -6947,6 +7014,7 @@ export const getVisualValidationGenerationJobResponseResultRequestSeedMax = 1000
 export const getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const getVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const getVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -7008,6 +7076,7 @@ export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWind
 
 export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin = 0;
 
+export const getVisualValidationGenerationJobResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 
 
 export const GetVisualValidationGenerationJobResponse = zod.object({
@@ -7033,6 +7102,15 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
+  "generationOrigin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(getVisualValidationGenerationJobResponseResultCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "candidateProjectionVersion": zod.string(),
+  "executionManagementVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string(),
+  "chartProjectionVersion": zod.string(),
+  "sessionCalendarVersion": zod.string(),
   "source": zod.enum(['simulated', 'historical_databento']),
   "symbol": zod.string(),
   "request": zod.object({
@@ -7043,7 +7121,8 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "seed": zod.number().min(getVisualValidationGenerationJobResponseResultRequestSeedMin).max(getVisualValidationGenerationJobResponseResultRequestSeedMax).default(getVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
-  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.')
+  "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "regenerateFresh": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
   "startDate": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
@@ -7315,7 +7394,13 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "outsidePrimaryWindowOccurrences": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
 })
 }).optional()
-}).optional()
+}).optional(),
+  "origin": zod.enum(['cached', 'fresh']),
+  "cacheKey": zod.string().regex(getVisualValidationGenerationJobResponseCacheKeyRegExp),
+  "cacheKeyVersion": zod.string(),
+  "strategyVersion": zod.string(),
+  "formulaVersion": zod.string(),
+  "snapshotProjectionVersion": zod.string()
 })
 
 

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationGenerationJobOrigin } from './visualValidationGenerationJobOrigin';
 import type { VisualValidationGenerationPhase } from './visualValidationGenerationPhase';
 import type { VisualValidationGenerationStatus } from './visualValidationGenerationStatus';
 import type { VisualValidationSet } from './visualValidationSet';
@@ -43,4 +44,11 @@ export interface VisualValidationGenerationJob {
      */
   reviewSetId: string | null;
   result?: VisualValidationSet;
+  origin: VisualValidationGenerationJobOrigin;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  formulaVersion: string;
+  snapshotProjectionVersion: string;
 }

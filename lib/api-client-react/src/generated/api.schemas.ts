@@ -3659,6 +3659,8 @@ export interface VisualValidationRequest {
   source?: VisualValidationRequestSource;
   /** Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. */
   reviewMode?: VisualValidationRequestReviewMode;
+  /** Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. */
+  regenerateFresh?: boolean;
 }
 
 export type VisualValidationReviewStatus = typeof VisualValidationReviewStatus[keyof typeof VisualValidationReviewStatus];
@@ -4267,6 +4269,14 @@ export interface VisualValidationReviewPeriod {
   endDate: string;
 }
 
+export type VisualValidationSetGenerationOrigin = typeof VisualValidationSetGenerationOrigin[keyof typeof VisualValidationSetGenerationOrigin];
+
+
+export const VisualValidationSetGenerationOrigin = {
+  cached: 'cached',
+  fresh: 'fresh',
+} as const;
+
 export type VisualValidationSetSource = typeof VisualValidationSetSource[keyof typeof VisualValidationSetSource];
 
 
@@ -4332,6 +4342,16 @@ export interface VisualValidationSet {
   formulaVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */
   sourceFingerprint: string;
+  generationOrigin: VisualValidationSetGenerationOrigin;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  candidateProjectionVersion: string;
+  executionManagementVersion: string;
+  snapshotProjectionVersion: string;
+  chartProjectionVersion: string;
+  sessionCalendarVersion: string;
   source: VisualValidationSetSource;
   symbol: string;
   request: VisualValidationRequest;
@@ -4364,6 +4384,14 @@ export const VisualValidationGenerationStatus = {
   running: 'running',
   completed: 'completed',
   failed: 'failed',
+} as const;
+
+export type VisualValidationGenerationJobOrigin = typeof VisualValidationGenerationJobOrigin[keyof typeof VisualValidationGenerationJobOrigin];
+
+
+export const VisualValidationGenerationJobOrigin = {
+  cached: 'cached',
+  fresh: 'fresh',
 } as const;
 
 export interface VisualValidationGenerationJob {
@@ -4400,6 +4428,13 @@ export interface VisualValidationGenerationJob {
      */
   reviewSetId: string | null;
   result?: VisualValidationSet;
+  origin: VisualValidationGenerationJobOrigin;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  formulaVersion: string;
+  snapshotProjectionVersion: string;
 }
 
 export type VisualValidationReviewRequestTeachingDirection = typeof VisualValidationReviewRequestTeachingDirection[keyof typeof VisualValidationReviewRequestTeachingDirection];

@@ -31,8 +31,8 @@ async function waitForCompletion(jobId: string) {
 }
 
 test("visual-validation generation jobs reuse active work and publish completion after storage", async () => {
-  const first = startVisualValidationGenerationJob(request);
-  const duplicate = startVisualValidationGenerationJob(request);
+  const first = await startVisualValidationGenerationJob(request);
+  const duplicate = await startVisualValidationGenerationJob(request);
   assert.equal(duplicate.jobId, first.jobId);
 
   const { current, updates } = await waitForCompletion(first.jobId);
@@ -51,7 +51,7 @@ test("visual-validation generation jobs reuse active work and publish completion
     assert.ok(updates[index]!.completedSessions >= updates[index - 1]!.completedSessions);
   }
 
-  const cached = startVisualValidationGenerationJob(request);
+  const cached = await startVisualValidationGenerationJob(request);
   assert.equal(cached.jobId, first.jobId);
   assert.equal(cached.status, "completed");
   assert.equal(cached.percent, 100);
@@ -64,4 +64,28 @@ test("remaining-time estimates never increase while progress is unchanged", () =
   assert.equal(later, first);
   const progressed = monotonicRemainingEstimate(30_000, 60, 100, later);
   assert.ok(progressed !== null && progressed <= first);
+});
+
+test("fresh regeneration bypasses only the compatible derived result and preserves the old set", async () => {
+  const freshRequest = { ...request, endDate: "2026-08-25", seed: 19 };
+  const first = await startVisualValidationGenerationJob(freshRequest);
+  const firstCompleted = await waitForCompletion(first.jobId);
+  assert.equal(firstCompleted.current.status, "completed");
+  assert.equal(firstCompleted.current.origin, "fresh");
+
+  const cached = await startVisualValidationGenerationJob(freshRequest);
+  assert.equal(cached.jobId, first.jobId);
+  assert.equal(cached.origin, "cached");
+
+  const freshPromise = startVisualValidationGenerationJob({ ...freshRequest, regenerateFresh: true });
+  const duplicateFreshPromise = startVisualValidationGenerationJob({ ...freshRequest, regenerateFresh: true });
+  const [fresh, duplicateFresh] = await Promise.all([freshPromise, duplicateFreshPromise]);
+  assert.equal(fresh.jobId, duplicateFresh.jobId);
+  assert.notEqual(fresh.jobId, first.jobId);
+  const regenerated = await waitForCompletion(fresh.jobId);
+  assert.equal(regenerated.current.status, "completed");
+  assert.equal(regenerated.current.origin, "fresh");
+  assert.notEqual(regenerated.current.reviewSetId, firstCompleted.current.reviewSetId);
+  assert.ok(getVisualValidationSet(firstCompleted.current.reviewSetId!));
+  assert.ok(getVisualValidationSet(regenerated.current.reviewSetId!));
 });

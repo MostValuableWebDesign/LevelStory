@@ -9,6 +9,7 @@ import type { VisualValidationCategoryCoverage } from './visualValidationCategor
 import type { VisualValidationRequest } from './visualValidationRequest';
 import type { VisualValidationReviewPeriod } from './visualValidationReviewPeriod';
 import type { VisualValidationSetFunnelDiagnostics } from './visualValidationSetFunnelDiagnostics';
+import type { VisualValidationSetGenerationOrigin } from './visualValidationSetGenerationOrigin';
 import type { VisualValidationSetSource } from './visualValidationSetSource';
 import type { VisualValidationSnapshot } from './visualValidationSnapshot';
 import type { VisualValidationTradeCandidate } from './visualValidationTradeCandidate';
@@ -33,6 +34,16 @@ export interface VisualValidationSet {
   formulaVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */
   sourceFingerprint: string;
+  generationOrigin: VisualValidationSetGenerationOrigin;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  candidateProjectionVersion: string;
+  executionManagementVersion: string;
+  snapshotProjectionVersion: string;
+  chartProjectionVersion: string;
+  sessionCalendarVersion: string;
   source: VisualValidationSetSource;
   symbol: string;
   request: VisualValidationRequest;

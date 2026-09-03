@@ -34,6 +34,7 @@ import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
+import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
   LEVEL_TOLERANCE_TICKS,
@@ -73,6 +74,7 @@ export type VisualValidationRequest = {
   premarketAvailable?: boolean;
   source?: "simulated" | "historical_databento";
   reviewMode?: VisualValidationReviewMode;
+  regenerateFresh?: boolean;
 };
 
 export type VisualValidationCandle = {
@@ -272,6 +274,15 @@ export type VisualValidationSet = {
   formulaHash: string;
   formulaVersion: string;
   sourceFingerprint: string;
+  generationOrigin: "cached" | "fresh";
+  cacheKey: string;
+  cacheKeyVersion: string;
+  strategyVersion: string;
+  candidateProjectionVersion: string;
+  executionManagementVersion: string;
+  snapshotProjectionVersion: string;
+  chartProjectionVersion: string;
+  sessionCalendarVersion: string;
   source: "simulated" | "historical_databento";
   symbol: string;
   request: VisualValidationRequest;
@@ -2234,9 +2245,9 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     buildId: APPLICATION_BUILD_ID,
     currentBuildId: APPLICATION_BUILD_ID,
     stale: false,
-    formulaHash,
-    formulaVersion: FIXED_FORMULA_VERSION,
     sourceFingerprint,
+    generationOrigin: "fresh",
+    ...visualValidationCacheMetadata(request, sourceFingerprint),
     source: "simulated",
     symbol: request.symbol,
     request: { ...request, source: "simulated" },
@@ -2392,13 +2403,19 @@ export function buildHistoricalVisualValidationSetFromReport(
         };
       })()
     : undefined;
+  const sourceFingerprint = datasetSourceFingerprint(dataset);
+  const cacheSourceFingerprint = dataset.contentFingerprint ?? sourceFingerprint;
   return {
     buildId: APPLICATION_BUILD_ID,
     currentBuildId: APPLICATION_BUILD_ID,
     stale: false,
-    formulaHash: fixtureReport.formulaHash,
-    formulaVersion: FIXED_FORMULA_VERSION,
-    sourceFingerprint: datasetSourceFingerprint(dataset),
+    sourceFingerprint,
+    generationOrigin: "fresh",
+    ...visualValidationCacheMetadata(
+      request,
+      cacheSourceFingerprint,
+      dataset.contractSchedule?.version,
+    ),
     source: "historical_databento",
     symbol: request.symbol,
     request: { ...request, source: "historical_databento" },

@@ -186,7 +186,7 @@ export function createVisualValidationRouter(): IRouter {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const job = startVisualValidationGenerationJob(parsed.data);
+    const job = await startVisualValidationGenerationJob(parsed.data);
     res.json(StartVisualValidationGenerationJobResponse.parse(job));
   });
 
