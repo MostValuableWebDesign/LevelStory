@@ -1493,16 +1493,6 @@ function buildAnnotations(
     ? trade.audit?.strategyStopPrice ?? null
     : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
   addLevel("strategy-stop", "Strategy stop", strategyStopPrice, "Formula-defined thesis stop.", "negative");
-  const primaryLossExitLevel = trade?.audit?.primaryLossExitLevel ?? null;
-  if (primaryLossExitLevel?.stopPrice !== null && primaryLossExitLevel?.stopPrice !== undefined) {
-    addLevel(
-      "primary-level-stop",
-      `Primary level stop · ${primaryLossExitLevel.id}`,
-      primaryLossExitLevel.stopPrice,
-      `Buffered stop is 8 MES ticks beyond the adverse ${primaryLossExitLevel.id} boundary at ${primaryLossExitLevel.price.toFixed(2)}; this stop takes priority over the patience strategy stop.`,
-      "negative",
-    );
-  }
   // Candidate-owned plans are authoritative. Audit target fields are legacy
   // evidence and may only be used for a non-candidate legacy visualization.
   const targetPlan = trade?.targetPlan ?? occurrence?.management?.targetPlan ?? (
@@ -1567,23 +1557,7 @@ function buildAnnotations(
   const exitClose = audit.exitCandleCloseTime ? Date.parse(audit.exitCandleCloseTime) : trade?.audit?.exitCandleCloseTime ? Date.parse(trade.audit.exitCandleCloseTime) : trade?.exitTime ? Date.parse(trade.exitTime) : null;
   const eventLabels = new Set([...(audit.eventLabels ?? []), ...(trade?.audit?.eventLabels ?? [])]);
   const stopHitTime = exitOpen ?? exitClose;
-  const primaryLevelStopHit = trade?.audit?.stopLevel === "primary_level"
-    || eventLabels.has("PRIMARY_LEVEL_EXIT_REACHED");
-  if (primaryLevelStopHit) {
-    lines.push(annotation(
-      "primary-level-stop-hit",
-      "Primary level stop hit",
-      "candle",
-      primaryLossExitLevel?.stopPrice ?? trade?.exitPrice ?? null,
-      "negative",
-      primaryLossExitLevel
-        ? `The ${primaryLossExitLevel.id} primary loss reference was reached at the frozen buffered stop of ${primaryLossExitLevel.stopPrice.toFixed(2)}; the primary stop is the authoritative exit and the modeled fill is ${trade?.exitPrice?.toFixed(2) ?? "unavailable"}.`
-        : "The primary-level stop was reached in the bounded execution outcome.",
-      stopHitTime,
-      exitClose,
-      eventVisibility(stopHitTime),
-    ));
-  } else if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
+  if (eventLabels.has("STRATEGY_STOP_REACHED") || trade?.outcome === "strategy stop") {
     lines.push(annotation("strategy-stop-hit", "Strategy stop hit", "candle", strategyStopPrice, "negative", "The strategy stop was reached in the bounded execution outcome.", stopHitTime, exitClose, eventVisibility(stopHitTime)));
   }
   if (targetPrice !== null
@@ -1844,22 +1818,17 @@ function buildTradeEvents(
     ),
   ];
   if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
-    const primaryLevelStopHit = trade.audit?.stopLevel === "primary_level"
-      || trade.audit?.eventLabels?.includes("PRIMARY_LEVEL_EXIT_REACHED") === true;
-    const primaryLossExitLevel = trade.audit?.primaryLossExitLevel ?? null;
     events.push(tradeEvent(
-      primaryLevelStopHit ? "primary-level-stop" : "stop",
       "stop",
-      primaryLevelStopHit ? "PRIMARY LEVEL STOP" : "STOP",
+      "stop",
+      "STOP",
       trade.direction,
       exitOpen,
       exitClose,
       audit.entryTriggerPrice,
-      primaryLevelStopHit ? primaryLossExitLevel?.stopPrice ?? trade.exitPrice : trade.exitPrice,
+      trade.exitPrice,
       trade.contracts,
-      primaryLevelStopHit && primaryLossExitLevel
-        ? `${trade.outcome} exit: ${primaryLossExitLevel.id} at ${primaryLossExitLevel.price.toFixed(2)} with an 8-MES-tick buffered stop at ${primaryLossExitLevel.stopPrice.toFixed(2)}. Actual fill: ${trade.exitPrice?.toFixed(2) ?? "unavailable"}.`
-        : `${trade.outcome} exit.`,
+      `${trade.outcome} exit at the frozen patience-wick strategy stop.`,
       evaluationCloseTime,
     ));
   }

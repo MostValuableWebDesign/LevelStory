@@ -457,10 +457,10 @@ test("tick data takes precedence over one-minute fallback", () => {
   assert.equal(result.status, "target");
 });
 
-test("quote-based resolution honors a primary level before the patience opposite-wick stop", () => {
+test("quote-based resolution ignores a primary level and uses the patience stop", () => {
   const result = resolveIntrabarOutcome({
     direction: "long",
-    target: 103,
+    target: 110,
     stop: 98,
     primaryLossExitLevel: {
       id: "vwap",
@@ -475,8 +475,8 @@ test("quote-based resolution honors a primary level before the patience opposite
     candle: replayCandle(1, "MESU26", 100),
   });
   assert.equal(result.status, "stop");
-  assert.equal(result.price, 97.5);
-  assert.equal(result.stopLevel, "primary_level");
+  assert.equal(result.price, 98);
+  assert.equal(result.stopLevel, "strategy");
 });
 
 test("multi-contract indexing preserves every constituent minute inside its five-minute candle", () => {

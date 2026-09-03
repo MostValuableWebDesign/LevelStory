@@ -53,20 +53,16 @@ test("simulated visual-validation requests default their persisted source", () =
   assert.equal(set.request.source, "simulated");
 });
 
-test("primary-level exits retain a dedicated buffered stop marker and event price", () => {
+test("visual review exposes only the frozen patience-wick stop", () => {
   const snapshot = buildVisualValidationSet(request).snapshots
     .find((item) => item.category === "stop_exit");
   assert.ok(snapshot);
   const stop = snapshot!.machineEvidence.trade?.audit?.primaryLossExitLevel;
   assert.ok(stop);
-  const stopAnnotation = snapshot!.annotations.find((annotation) => annotation.id === "primary-level-stop");
-  assert.equal(stopAnnotation?.price, stop!.stopPrice);
-  assert.equal(stopAnnotation?.label, `Primary level stop · ${stop!.id}`);
-  const stopHit = snapshot!.annotations.find((annotation) => annotation.id === "primary-level-stop-hit");
-  assert.equal(stopHit?.price, stop!.stopPrice);
-  const stopEvent = snapshot!.tradeEvents.find((event) => event.id === "primary-level-stop");
-  assert.equal(stopEvent?.label, "PRIMARY LEVEL STOP");
-  assert.equal(stopEvent?.modeledPrice, stop!.stopPrice);
+  assert.equal(snapshot!.annotations.some((annotation) => annotation.id === "primary-level-stop"), false);
+  assert.equal(snapshot!.annotations.some((annotation) => annotation.id === "primary-level-stop-hit"), false);
+  assert.equal(snapshot!.tradeEvents.some((event) => event.id === "primary-level-stop"), false);
+  assert.notEqual(stop!.stopPrice, snapshot!.machineEvidence.trade?.audit?.strategyStopPrice);
 });
 
 test("trade candidates are entry-centered, canonical, and deduplicated", () => {

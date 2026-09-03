@@ -1289,8 +1289,10 @@ export function resolveIntrabarOutcome(input: {
   ticks?: readonly IntrabarPoint[];
   oneMinute?: readonly IntrabarBar[];
 }): IntrabarResolution {
-  const primaryStop = input.primaryLossExitLevel?.stopPrice ?? null;
-  const effectiveStop = primaryStop ?? input.stop;
+  // A patience candidate's protective stop is always the frozen P-wick
+  // strategy stop. Nearby key levels remain diagnostic evidence and must not
+  // replace that governed stop.
+  const effectiveStop = input.stop;
   const stopResult = (
     source: IntrabarResolution["source"],
     timestamp: number,
@@ -1302,7 +1304,7 @@ export function resolveIntrabarOutcome(input: {
     timestamp,
     price,
     ambiguityLabel: null,
-    stopLevel: primaryStop !== null && price === primaryStop ? "primary_level" : null,
+    stopLevel: "strategy",
     detail,
   });
   const ticks = [...(input.ticks ?? [])].filter((tick) =>
@@ -1311,10 +1313,6 @@ export function resolveIntrabarOutcome(input: {
   if (ticks.length) {
     for (const tick of ticks) {
       const hit = touches(input.direction, tick.price, input.target, effectiveStop);
-      const primaryHit = touches(input.direction, tick.price, null, primaryStop).stop;
-      if (primaryHit) {
-        return stopResult("tick", tick.timestamp, primaryStop!, "Tick data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
-      }
       if (hit.stop && hit.target) {
         return {
           status: "ambiguous",
@@ -1338,10 +1336,6 @@ export function resolveIntrabarOutcome(input: {
   if (bars.length) {
     for (const bar of bars) {
       const hit = barTouches(input.direction, bar, input.target, effectiveStop);
-      const primaryHit = barTouches(input.direction, bar, null, primaryStop).stop;
-      if (primaryHit) {
-        return stopResult("one-minute", bar.closeTime, primaryStop!, "One-minute data reached the primary level/indicator loss exit before the patience opposite-wick stop.");
-      }
       if (hit.stop && hit.target) {
         return {
           status: "ambiguous",
@@ -1360,10 +1354,6 @@ export function resolveIntrabarOutcome(input: {
   }
 
   const hit = barTouches(input.direction, input.candle, input.target, effectiveStop);
-  const primaryHit = barTouches(input.direction, input.candle, null, primaryStop).stop;
-  if (primaryHit) {
-    return stopResult("ohlc", input.candle.closeTime, primaryStop!, "Five-minute OHLC reached the primary level/indicator loss exit before the patience opposite-wick stop.");
-  }
   if (hit.stop || hit.target) {
     const ambiguous = hit.stop && hit.target;
     return {
@@ -1372,7 +1362,7 @@ export function resolveIntrabarOutcome(input: {
       timestamp: input.candle.closeTime,
       price: hit.stop ? effectiveStop : input.target,
       ambiguityLabel: ambiguous ? "AMBIGUOUS_STOP_FIRST" : null,
-      stopLevel: hit.stop ? primaryStop !== null ? "primary_level" : "strategy" : null,
+      stopLevel: hit.stop ? "strategy" : null,
       detail: hit.stop
         ? ambiguous
           ? "Only five-minute OHLC is available and both barriers were touched; stop-first was applied."
@@ -4482,9 +4472,9 @@ function candidateDrivenEntryTrade(
         targetPlan
           ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
            : "No eligible key-level target plan was available; one contract exits fully at its actual initial-stop 1R distance, while multi-contract positions take one contract at 1R before structure trailing.",
-        ...(primaryLossExitLevel
-          ? [`Primary loss exit freezes ${primaryLossExitLevel.id} at ${primaryLossExitLevel.stopPrice}, 8 MES ticks beyond the adverse level boundary; the patience opposite-wick stop remains secondary.`]
-          : []),
+       ...(primaryLossExitLevel
+           ? [`Nearby ${primaryLossExitLevel.id} level retained as diagnostic evidence only; the frozen patience opposite-wick strategy stop remains authoritative.`]
+           : []),
         ...(missingContext
           ? [`Management context unavailable or invalid: ${[...new Set([
             ...management.missingEvidenceReasons,
@@ -5305,7 +5295,7 @@ export function runCausalBacktest(
           assumptions: [
             "Quote-based Shadow fill uses genuine bid/ask observations.",
             ...(primaryLossExitLevel
-              ? [`Primary loss exit ${primaryLossExitLevel.id} is armed 8 MES ticks beyond the adverse level boundary before the patience opposite-wick strategy stop; the strategy stop remains secondary.`]
+              ? [`Nearby ${primaryLossExitLevel.id} level retained as diagnostic evidence only; the frozen patience opposite-wick strategy stop remains authoritative.`]
               : []),
           ],
          eventLabels,

@@ -1188,7 +1188,7 @@ export function formatDataSource(source: string, contractSymbol?: string): strin
 export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean {
   return isVisualPresentationAnnotation(annotation)
     && (isDynamicIndicatorAnnotation(annotation)
-      || /^(premarket-high|premarket-low|previous-session-high|previous-session-low|two-sessions-high|two-sessions-low|orb-high|orb-low|ntz-high|ntz-low|critical-|major-|dynamite\||entry-buffer|strategy-stop|primary-level-stop|target$|one-r-target|runner-threshold)/i.test(annotation.id));
+      || /^(premarket-high|premarket-low|previous-session-high|previous-session-low|two-sessions-high|two-sessions-low|orb-high|orb-low|ntz-high|ntz-low|critical-|major-|dynamite\||entry-buffer|strategy-stop|target$|one-r-target|runner-threshold)/i.test(annotation.id));
 }
 
 function normalizedAnnotationSemantic(annotation: Pick<VisualValidationAnnotation, "id" | "label" | "kind">): string {

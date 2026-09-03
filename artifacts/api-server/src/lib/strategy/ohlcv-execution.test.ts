@@ -103,7 +103,7 @@ test("selects the closer protective stop and records its category", () => {
   assert.equal(result.legs[0]?.referencePrice, 99.75);
 });
 
-test("honors a primary level loss exit before the patience opposite-wick stop", () => {
+test("keeps the patience wick stop authoritative over a nearby primary level", () => {
   const result = simulateOhlcvExecution({
     ...base,
     immediateTriggerCandle: candle(100, 101, 100, 100.5),
@@ -122,20 +122,20 @@ test("honors a primary level loss exit before the patience opposite-wick stop", 
     },
   });
   assert.equal(result.exitReason, "stop");
-  assert.equal(result.stopPrice, 97.75);
-  assert.equal(result.exitPrice, 97.75);
-  assert.equal(result.audit.stopLevel, "primary_level");
-  assert.equal(result.legs[0]?.referencePrice, 97.75);
-  assert.equal(result.legs[0]?.fillPrice, 97.75);
-  assert.ok(result.audit.eventLabels.includes(PRIMARY_LEVEL_EXIT_REACHED_LABEL));
+  assert.equal(result.stopPrice, 99.5);
+  assert.equal(result.exitPrice, 99.5);
+  assert.equal(result.audit.stopLevel, "strategy");
+  assert.equal(result.legs[0]?.referencePrice, 99.5);
+  assert.equal(result.legs[0]?.fillPrice, 99.5);
+  assert.equal(result.audit.eventLabels.includes(PRIMARY_LEVEL_EXIT_REACHED_LABEL), false);
 });
 
-test("primary level stop remains the exact exit even when the stop candle gaps through it", () => {
+test("the patience wick stop remains authoritative when the stop candle gaps through a nearby level", () => {
   const result = simulateOhlcvExecution({
     ...base,
     direction: "short",
     immediateTriggerCandle: candle(100, 100, 99, 99.5),
-    subsequentCompletedCandles: [candle(101.5, 102, 101, 101.75)],
+    subsequentCompletedCandles: [candle(103, 104, 102, 103)],
     strategyStop: 102.5,
     primaryLossExitLevel: {
       id: "premarket-high|vwap",
@@ -147,17 +147,16 @@ test("primary level stop remains the exact exit even when the stop candle gaps t
       distanceTicks: 1,
       stopPrice: 101.5,
     },
-    exitSlippageTicks: 4,
   });
-  assert.equal(result.audit.stopLevel, "primary_level");
-  assert.equal(result.stopPrice, 101.5);
-  assert.equal(result.exitPrice, 101.5);
-  assert.equal(result.legs[0]?.referencePrice, 101.5);
-  assert.equal(result.legs[0]?.fillPrice, 101.5);
-  assert.equal(result.audit.eventLabels.includes("GAP_THROUGH_STOP"), false);
+  assert.equal(result.audit.stopLevel, "strategy");
+  assert.equal(result.stopPrice, 102.5);
+  assert.equal(result.exitPrice, 103);
+  assert.equal(result.legs[0]?.referencePrice, 103);
+  assert.equal(result.legs[0]?.fillPrice, 103);
+  assert.equal(result.audit.eventLabels.includes("GAP_THROUGH_STOP"), true);
 });
 
-test("uses the short primary level before the upper patience opposite-wick stop", () => {
+test("uses the short patience wick stop instead of the upper primary level", () => {
   const result = simulateOhlcvExecution({
     ...base,
     direction: "short",
@@ -177,12 +176,12 @@ test("uses the short primary level before the upper patience opposite-wick stop"
     },
   });
   assert.equal(result.exitReason, "stop");
-  assert.equal(result.stopPrice, 104.25);
-  assert.equal(result.audit.stopLevel, "primary_level");
-  assert.equal(result.legs[0]?.referencePrice, 104.25);
+  assert.equal(result.stopPrice, 102.5);
+  assert.equal(result.audit.stopLevel, "strategy");
+  assert.equal(result.legs[0]?.referencePrice, 102.5);
 });
 
-test("keeps the qualified primary stop authoritative until its barrier breaks", () => {
+test("a nearby primary level does not suppress a patience wick stop", () => {
   const result = simulateOhlcvExecution({
     ...base,
     immediateTriggerCandle: candle(100, 101, 100, 100.5),
@@ -200,9 +199,9 @@ test("keeps the qualified primary stop authoritative until its barrier breaks", 
       stopPrice: 96,
     },
   });
-  assert.equal(result.exitReason, "manual");
+  assert.equal(result.exitReason, "stop");
   assert.equal(result.stopPrice, 99.5);
-  assert.equal(result.audit.stopLevel, null);
+  assert.equal(result.audit.stopLevel, "strategy");
 });
 
 test("uses the opening price for a gap-through stop and closes remaining quantity at session close", () => {

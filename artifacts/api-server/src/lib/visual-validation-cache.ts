@@ -7,7 +7,7 @@ import type { VisualValidationRequest } from "./visual-validation.js";
 export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v1";
 export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v1-controlled-reentry";
 export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v3-stable-replay-arm-identity";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v2-candidate-owned";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v3-patience-wick-stop";
 export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v2-causal-review";
 export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v2-legend-visibility";
 
