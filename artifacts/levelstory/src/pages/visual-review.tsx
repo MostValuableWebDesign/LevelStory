@@ -1329,7 +1329,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   }, []);
   useEffect(() => {
     const clearPinnedLevelOutsideLegend = (event: PointerEvent) => {
-      if (legendRef.current?.contains(event.target as Node)) return;
+      if (event.target instanceof Element && event.target.closest("[data-legend-level-button]")) return;
       setActiveLevelId(null);
       setSelectedLevelId(null);
     };
@@ -1683,6 +1683,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                onKeyDown={(event) => handleLevelKeyDown(event, annotation.id)}
                aria-pressed={selected}
                aria-label={`${annotation.label}, ${valueLabel}. Press Enter or Space to keep highlighted; Escape clears selection.`}
+                data-legend-level-button="true"
                data-testid={`legend-level-${annotation.id}`}
              >
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
@@ -1710,6 +1711,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                  onKeyDown={(event) => handleLevelKeyDown(event, id)}
                  aria-pressed={selected}
                  aria-label={`${label}. Press Enter or Space to keep highlighted; Escape clears selection.`}
+                  data-legend-level-button="true"
                  data-testid={`legend-trade-${kind}-exit`}
                >
                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
