@@ -1,0 +1,125 @@
+Correct the consolidation-zone entry guard. The current implementation is too strict.
+
+CURRENT INCORRECT BEHAVIOR
+
+The implementation requires the entire entry candle range to be outside the frozen consolidation zone. Any wick touching or overlapping the zone causes rejection.
+
+That is not my strategy.
+
+AUTHORITATIVE RULE
+
+An entry cannot occur inside an active frozen consolidation zone, but the complete E candle does not need to be outside it.
+
+A valid immediate-next entry candle may:
+
+- Open inside the consolidation zone.
+- Trade through the consolidation boundary.
+- Have a wick overlap or retest the boundary.
+- Close outside the frozen zone in the trade direction.
+
+Direction-aware requirements:
+
+LONG
+
+- E must be the immediate completed candle after P.
+- E must reach the bullish patience confirmation threshold.
+- E must close strictly above the frozen consolidation-zone high.
+- The modeled entry/fill price must be above the consolidation-zone high.
+- E may open inside the zone or have a lower wick inside it.
+
+SHORT
+
+- E must be the immediate completed candle after P.
+- E must reach the bearish patience confirmation threshold.
+- E must close strictly below the frozen consolidation-zone low.
+- The modeled entry/fill price must be below the consolidation-zone low.
+- E may open inside the zone or have an upper wick inside it.
+
+INVALID CASES
+
+Reject the entry when:
+
+- E closes inside the frozen consolidation zone.
+- E only wicks outside but closes back inside.
+- The confirmation threshold is reached inside the zone but price does not reach a valid entry price outside it.
+- The modeled fill would be inside or exactly on the consolidation boundary.
+- E is not the immediate candle after P.
+- The entry occurs inside NTZ or at/after 1:00 p.m. ET.
+
+EFFECTIVE ENTRY THRESHOLD
+
+The executable threshold must satisfy both the patience buffer and consolidation boundary:
+
+For a long:
+
+effectiveEntryThreshold =
+  max(
+    P.high + configuredConfirmationBuffer,
+    consolidationZoneHigh + 1 MES tick
+  )
+
+For a short:
+
+effectiveEntryThreshold =
+  min(
+    P.low - configuredConfirmationBuffer,
+    consolidationZoneLow - 1 MES tick
+  )
+
+E must reach this effective threshold and close outside the zone in the correct direction.
+
+Do not fabricate an entry when only the close condition or only the threshold condition passes.
+
+CAUSAL SCOPE
+
+- Apply this rule only to the active frozen consolidation zone associated with the candidate’s causal setup.
+- Do not use stale, future, unrelated, or subsequently detected consolidation zones.
+- An unrelated consolidation zone must not block an ORB or patience-continuation setup.
+- Preserve the frozen zone identity, high, low, detection timestamp, breakout direction, P timestamp, E timestamp, and effective threshold in the audit record.
+
+AUDIT FIELDS
+
+Replace the misleading requirement that entryRangeOutsideZone must always be true.
+
+Record:
+
+- activeConsolidationZoneId
+- consolidationZoneLow
+- consolidationZoneHigh
+- entryOpenedOutsideZone
+- entryClosedOutsideZone
+- entryRangeOverlappedZone
+- patienceConfirmationThreshold
+- consolidationBoundaryThreshold
+- effectiveEntryThreshold
+- effectiveEntryThresholdReached
+- entryFillOutsideZone
+- consolidationEntryDisposition
+
+Use explicit dispositions such as:
+
+- CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE
+- CONSOLIDATION_ENTRY_CLOSE_REMAINED_INSIDE_ZONE
+- CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT
+- CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED
+- CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE
+- CONSOLIDATION_ZONE_NOT_CAUSALLY_APPLICABLE
+
+TESTS
+
+Add deterministic tests proving:
+
+1. Long E opens inside, reaches the effective threshold, and closes above the zone: accepted.
+2. Short E opens inside, reaches the effective threshold, and closes below the zone: accepted.
+3. E wicks outside but closes inside: rejected.
+4. E closes outside but never reaches the effective threshold: rejected.
+5. E overlaps the zone with a wick but closes and fills outside: accepted.
+6. Fill price inside or exactly on the boundary: rejected.
+7. A stale or unrelated consolidation zone does not reject another edge.
+8. P1→E1 failure expires P1; a later P2 may only be confirmed by E2.
+9. NTZ and exclusive 1:00 p.m. ET entry restrictions remain enforced.
+10. Candidate projection and Shadow Mode execution use the same rule and cannot be bypassed by legacy evidence.
+
+Do not change unrelated strategy definitions, pullback tolerance, stop policy, profit-target policy, historical index, broker behavior, or live/paper trading behavior.
+
+Run only focused consolidation, Phase 5/6, candidate-projection, and execution tests because compute is limited. Report the files changed, root cause, final predicate, test totals, and any remaining limitation.
