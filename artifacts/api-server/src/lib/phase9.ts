@@ -100,7 +100,7 @@ export type IntrabarResolution = {
   timestamp: number | null;
   price: number | null;
   ambiguityLabel: "AMBIGUOUS_STOP_FIRST" | null;
-     stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
+      stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
   detail: string;
 };
 
@@ -216,7 +216,7 @@ export type BacktestTrade = {
   fees: number;
   slippage: number;
   netPnl: number;
-  outcome: "target" | "strategy stop" | "catastrophe stop" | "session close" | "manual" | "open";
+   outcome: "target" | "strategy stop" | "catastrophe stop" | "session close" | "breakeven" | "breakeven recovery" | "manual" | "open";
   ambiguityLabel: string | null;
   source: "tick" | "one-minute" | "ohlc";
   segmentation: BacktestSegmentation;
@@ -240,7 +240,7 @@ export type BacktestTrade = {
      targetPlan?: KeyLevelTargetPlan;
     strategyStopPrice?: number | null;
     catastropheStopPrice?: number | null;
-     stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
+     stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
      causalIdentity?: CandidateCausalIdentity;
     primaryLossExitLevel?: PrimaryLossExitReference | null;
     patienceCandleOpenTime: string | null;
@@ -267,6 +267,15 @@ export type BacktestTrade = {
      trailingStopActive?: boolean;
      trailingStopSource?: string | null;
     remainingQuantity?: number;
+     noForwardLevelAtEntry?: boolean;
+     postEntryCompletedBars?: number;
+     breakevenActivationBars?: number | null;
+     breakevenActivated?: boolean;
+      breakevenActivationTimestamp?: string | null;
+      breakevenEffectiveFromTimestamp?: string | null;
+     breakevenPrice?: number | null;
+     breakevenDisposition?: string;
+     originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
   };
@@ -456,6 +465,15 @@ export type BacktestAuditRecord = {
   finalizedNtzComplete?: boolean;
   supportingConfluences?: string[];
   setupGrade?: "A" | "A+" | "A++";
+  noForwardLevelAtEntry?: boolean;
+  postEntryCompletedBars?: number;
+  breakevenActivationBars?: number | null;
+  breakevenActivated?: boolean;
+  breakevenActivationTimestamp?: string | null;
+  breakevenEffectiveFromTimestamp?: string | null;
+  breakevenPrice?: number | null;
+  breakevenDisposition?: string;
+  originalStopStillActive?: boolean;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: BacktestConsolidationGuardEvidence | null;
   pullbackOccurrences?: Array<{
@@ -3993,6 +4011,7 @@ function candidateDrivenEntryTrade(
       oneRProfitRule: targetPrice === null,
       structureTrailing: true,
       trailingBufferTicks: 8,
+      noLevelBreakevenActivationBars: config.noLevelBreakevenActivationBars,
       strategyStop: management.strategyStopPrice,
       // Candidate-driven management deliberately ignores the legacy
       // catastrophe barrier. Preserve that value in provenance below, but do
@@ -4020,11 +4039,15 @@ function candidateDrivenEntryTrade(
       ? "target"
       : modeled?.exitReason === "stop"
         ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
-        : modeled?.exitReason === "runner"
-          ? "manual"
-          : modeled?.exitReason === "session_close"
-            ? "session close"
-            : "open";
+        : modeled?.exitReason === "breakeven"
+          ? "breakeven"
+          : modeled?.exitReason === "breakeven_recovery"
+            ? "breakeven recovery"
+            : modeled?.exitReason === "runner"
+              ? "manual"
+              : modeled?.exitReason === "session_close"
+                ? "session close"
+                : "open";
   const exitCandle = modeled?.audit.exitCandle ?? null;
   const ambiguityLabel = modeled?.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
   const accounting = modeled?.accounting ?? { grossPnl: 0, fees: 0, slippage: 0, netPnl: 0 };
@@ -4126,6 +4149,19 @@ function candidateDrivenEntryTrade(
        trailingStopPrice: modeled?.audit.trailingStopPrice ?? null,
        trailingStopActive: modeled?.audit.trailingStopActive ?? false,
        trailingStopSource: modeled?.audit.trailingStopSource ?? null,
+       noForwardLevelAtEntry: modeled?.audit.noForwardLevelAtEntry ?? false,
+       postEntryCompletedBars: modeled?.audit.postEntryCompletedBars ?? 0,
+       breakevenActivationBars: modeled?.audit.breakevenActivationBars ?? null,
+       breakevenActivated: modeled?.audit.breakevenActivated ?? false,
+       breakevenActivationTimestamp: modeled?.audit.breakevenActivationTimestamp === null || modeled?.audit.breakevenActivationTimestamp === undefined
+         ? null
+         : new Date(modeled.audit.breakevenActivationTimestamp).toISOString(),
+       breakevenEffectiveFromTimestamp: modeled?.audit.breakevenEffectiveFromTimestamp === null || modeled?.audit.breakevenEffectiveFromTimestamp === undefined
+         ? null
+         : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString(),
+       breakevenPrice: modeled?.audit.breakevenPrice ?? null,
+       breakevenDisposition: modeled?.audit.breakevenDisposition ?? "NOT_APPLICABLE",
+       originalStopStillActive: modeled?.audit.originalStopStillActive ?? false,
       remainingQuantity: modeled?.audit.remainingQuantity ?? management.contracts,
       exitReason: modeled?.exitReason ?? "not filled",
       legs: modeled?.legs ?? [],
@@ -4616,6 +4652,7 @@ export function runCausalBacktest(
          strategyStop,
           primaryLossExitLevel,
          catastropheStop: snapshot.riskPlan.catastropheStop,
+         noLevelBreakevenActivationBars: activeStrategy.config.noLevelBreakevenActivationBars,
         sessionCloseCandle,
         tickSize: specification.tickSize,
         tickValue: specification.dollarValuePerTick,
@@ -4654,7 +4691,11 @@ export function runCausalBacktest(
         ? "target"
         : modeled.exitReason === "stop"
           ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
-           : modeled.exitReason === "session_close" ? "session close" : isOpen ? "open" : "manual";
+           : modeled.exitReason === "breakeven"
+             ? "breakeven"
+             : modeled.exitReason === "breakeven_recovery"
+               ? "breakeven recovery"
+               : modeled.exitReason === "session_close" ? "session close" : isOpen ? "open" : "manual";
        const ambiguityLabel = modeled.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
       const segment = segmentation(snapshot, selected.setupType, selected.direction, trigger, currentContractSymbol, currentContractMonth);
       trades.push({
@@ -4711,6 +4752,19 @@ export function runCausalBacktest(
           runnerReferencePrice: modeled.audit.runnerReferencePrice ?? null,
           runnerImpulse: modeled.audit.runnerImpulse ?? null,
           runnerMostFavorablePrice: modeled.audit.runnerMostFavorablePrice ?? null,
+           noForwardLevelAtEntry: modeled.audit.noForwardLevelAtEntry,
+           postEntryCompletedBars: modeled.audit.postEntryCompletedBars,
+           breakevenActivationBars: modeled.audit.breakevenActivationBars,
+           breakevenActivated: modeled.audit.breakevenActivated,
+           breakevenActivationTimestamp: modeled.audit.breakevenActivationTimestamp === null
+             ? null
+             : new Date(modeled.audit.breakevenActivationTimestamp).toISOString(),
+           breakevenEffectiveFromTimestamp: modeled.audit.breakevenEffectiveFromTimestamp === null
+             ? null
+             : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString(),
+           breakevenPrice: modeled.audit.breakevenPrice,
+           breakevenDisposition: modeled.audit.breakevenDisposition,
+           originalStopStillActive: modeled.audit.originalStopStillActive,
           remainingQuantity: modeled.audit.remainingQuantity,
           exitReason: modeled.exitReason,
           legs: modeled.legs,
@@ -4731,6 +4785,19 @@ export function runCausalBacktest(
         selectedAudit.grossPnl = modeled.accounting.grossPnl;
         selectedAudit.netPnl = modeled.accounting.netPnl;
         selectedAudit.exitReason = modeled.exitReason;
+         selectedAudit.noForwardLevelAtEntry = modeled.audit.noForwardLevelAtEntry;
+         selectedAudit.postEntryCompletedBars = modeled.audit.postEntryCompletedBars;
+         selectedAudit.breakevenActivationBars = modeled.audit.breakevenActivationBars;
+         selectedAudit.breakevenActivated = modeled.audit.breakevenActivated;
+         selectedAudit.breakevenActivationTimestamp = modeled.audit.breakevenActivationTimestamp === null
+           ? null
+           : new Date(modeled.audit.breakevenActivationTimestamp).toISOString();
+         selectedAudit.breakevenEffectiveFromTimestamp = modeled.audit.breakevenEffectiveFromTimestamp === null
+           ? null
+           : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString();
+         selectedAudit.breakevenPrice = modeled.audit.breakevenPrice;
+         selectedAudit.breakevenDisposition = modeled.audit.breakevenDisposition;
+         selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
        lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);
       continue;

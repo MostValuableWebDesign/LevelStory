@@ -3421,7 +3421,7 @@ components:
         fees: { type: number }
         slippage: { type: number }
         netPnl: { type: number }
-        outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", "session close", manual, open] }
+        outcome: { type: string, enum: [target, "strategy stop", "catastrophe stop", "session close", breakeven, "breakeven recovery", manual, open] }
         ambiguityLabel: { type: ["string", "null"] }
         source: { type: string, enum: [tick, one-minute, ohlc] }
         segmentation: { $ref: "#/components/schemas/BacktestSegmentation" }
@@ -3442,7 +3442,7 @@ components:
             targetPrice: { type: ["number", "null"] }
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
-            stopLevel: { type: ["string", "null"], enum: [strategy, catastrophe, null] }
+            stopLevel: { type: ["string", "null"], enum: [strategy, catastrophe, structure_trailing, breakeven, null] }
             patienceCandleOpenTime: { type: ["string", "null"] }
             patienceCandleCloseTime: { type: ["string", "null"] }
             triggerCandleOpenTime: { type: ["string", "null"] }
@@ -3460,6 +3460,15 @@ components:
             runnerImpulse: { type: ["number", "null"] }
             runnerMostFavorablePrice: { type: ["number", "null"] }
             remainingQuantity: { type: number }
+            noForwardLevelAtEntry: { type: boolean }
+            postEntryCompletedBars: { type: number }
+            breakevenActivationBars: { type: ["number", "null"] }
+            breakevenActivated: { type: boolean }
+            breakevenActivationTimestamp: { type: ["string", "null"], format: date-time }
+            breakevenEffectiveFromTimestamp: { type: ["string", "null"], format: date-time }
+            breakevenPrice: { type: ["number", "null"] }
+            breakevenDisposition: { type: string }
+            originalStopStillActive: { type: boolean }
             exitReason: { type: string }
             legs:
               type: array
@@ -3474,7 +3483,7 @@ components:
                   slippage: { type: number }
                   fees: { type: number }
                   netPnl: { type: number }
-                  exitReason: { type: string, enum: [target, runner, stop, manual, session_close] }
+                  exitReason: { type: string, enum: [target, runner, stop, breakeven, breakeven_recovery, manual, session_close] }
                 required: [kind, quantity, referencePrice, fillPrice, grossPnl, slippage, fees, netPnl, exitReason]
           required: [entryTriggerPrice, modeledFillPrice, stopPrice, targetPrice, strategyStopPrice, catastropheStopPrice, stopLevel, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, assumptions, eventLabels, ambiguityLabels, targetHit, runnerActivated, runnerExited, runnerReferencePrice, runnerImpulse, runnerMostFavorablePrice, remainingQuantity, exitReason, legs]
       required: [id, tradingDate, contractSymbol, contractMonth, period, setupType, direction, entryTime, exitTime, entryPrice, exitPrice, contracts, grossPnl, fees, slippage, netPnl, outcome, ambiguityLabel, source, segmentation]

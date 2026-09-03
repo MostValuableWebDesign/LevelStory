@@ -35,6 +35,7 @@ export type StrategyConfig = {
   maxRiskTrades: number;
   stopBuffer: number;
   runnerTriggerR: number;
+  noLevelBreakevenActivationBars: number;
   levelTolerance: number;
   patienceEntryBufferTicks: 8;
   patienceStopBufferTicks: number;
@@ -85,6 +86,7 @@ export type StrategyConfig = {
 };
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
+export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 9;
 
 export type ConsolidationThresholds = {
   version: string;
@@ -152,6 +154,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   maxRiskTrades: 1,
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,
+  noLevelBreakevenActivationBars: DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: 8,
   patienceStopBufferTicks: 8,
@@ -245,6 +248,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["maxPositionValue", config.maxPositionValue],
     ["maxRiskTrades", config.maxRiskTrades],
     ["runnerTriggerR", config.runnerTriggerR],
+    ["noLevelBreakevenActivationBars", config.noLevelBreakevenActivationBars],
     ["patienceStopBufferTicks", config.patienceStopBufferTicks],
     ["trendCandleCount", config.trendCandleCount],
     ["historicalLookbackTradingDays", config.historicalLookbackTradingDays],
@@ -319,6 +323,10 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (config.phase7RunnerRetracementRatio !== 0.4) {
     throw new Error("Invalid strategy configuration: Phase 7 runner retracement must be 40%.");
+  }
+  if (!Number.isInteger(config.noLevelBreakevenActivationBars)
+    || config.noLevelBreakevenActivationBars <= 0) {
+    throw new Error("Invalid strategy configuration: noLevelBreakevenActivationBars must be a positive whole number.");
   }
   if (config.patienceEntryBufferTicks !== 8) {
     throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly eight MES ticks (2.00 index points).");

@@ -1083,7 +1083,7 @@ export const RunBacktestResponse = zod.object({
   "fees": zod.number(),
   "slippage": zod.number(),
   "netPnl": zod.number(),
-  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'manual', 'open']),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
   "ambiguityLabel": zod.string().nullable(),
   "source": zod.enum(['tick', 'one-minute', 'ohlc']),
   "segmentation": zod.object({
@@ -1116,7 +1116,7 @@ export const RunBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
-  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal(null)]).nullable(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
   "triggerCandleOpenTime": zod.string().nullable(),
@@ -1134,6 +1134,15 @@ export const RunBacktestResponse = zod.object({
   "runnerImpulse": zod.number().nullable(),
   "runnerMostFavorablePrice": zod.number().nullable(),
   "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
   "exitReason": zod.string(),
   "legs": zod.array(zod.object({
   "kind": zod.enum(['target', 'runner', 'full']),
@@ -1144,7 +1153,7 @@ export const RunBacktestResponse = zod.object({
   "slippage": zod.number(),
   "fees": zod.number(),
   "netPnl": zod.number(),
-  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual', 'session_close'])
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
 }))
 }).optional()
 })),
@@ -1781,7 +1790,7 @@ export const StartBatchBacktestResponse = zod.object({
   "fees": zod.number(),
   "slippage": zod.number(),
   "netPnl": zod.number(),
-  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'manual', 'open']),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
   "ambiguityLabel": zod.string().nullable(),
   "source": zod.enum(['tick', 'one-minute', 'ohlc']),
   "segmentation": zod.object({
@@ -1814,7 +1823,7 @@ export const StartBatchBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
-  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal(null)]).nullable(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
   "triggerCandleOpenTime": zod.string().nullable(),
@@ -1832,6 +1841,15 @@ export const StartBatchBacktestResponse = zod.object({
   "runnerImpulse": zod.number().nullable(),
   "runnerMostFavorablePrice": zod.number().nullable(),
   "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
   "exitReason": zod.string(),
   "legs": zod.array(zod.object({
   "kind": zod.enum(['target', 'runner', 'full']),
@@ -1842,7 +1860,7 @@ export const StartBatchBacktestResponse = zod.object({
   "slippage": zod.number(),
   "fees": zod.number(),
   "netPnl": zod.number(),
-  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual', 'session_close'])
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
 }))
 }).optional()
 })),
@@ -2882,7 +2900,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "fees": zod.number(),
   "slippage": zod.number(),
   "netPnl": zod.number(),
-  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'manual', 'open']),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
   "ambiguityLabel": zod.string().nullable(),
   "source": zod.enum(['tick', 'one-minute', 'ohlc']),
   "segmentation": zod.object({
@@ -2915,7 +2933,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
-  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal(null)]).nullable(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
   "triggerCandleOpenTime": zod.string().nullable(),
@@ -2933,6 +2951,15 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "runnerImpulse": zod.number().nullable(),
   "runnerMostFavorablePrice": zod.number().nullable(),
   "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
   "exitReason": zod.string(),
   "legs": zod.array(zod.object({
   "kind": zod.enum(['target', 'runner', 'full']),
@@ -2943,7 +2970,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "slippage": zod.number(),
   "fees": zod.number(),
   "netPnl": zod.number(),
-  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual', 'session_close'])
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
 }))
 }).optional()
 })),
@@ -3983,7 +4010,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "fees": zod.number(),
   "slippage": zod.number(),
   "netPnl": zod.number(),
-  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'manual', 'open']),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
   "ambiguityLabel": zod.string().nullable(),
   "source": zod.enum(['tick', 'one-minute', 'ohlc']),
   "segmentation": zod.object({
@@ -4016,7 +4043,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
-  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal(null)]).nullable(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
   "triggerCandleOpenTime": zod.string().nullable(),
@@ -4034,6 +4061,15 @@ export const CancelBatchBacktestResponse = zod.object({
   "runnerImpulse": zod.number().nullable(),
   "runnerMostFavorablePrice": zod.number().nullable(),
   "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
   "exitReason": zod.string(),
   "legs": zod.array(zod.object({
   "kind": zod.enum(['target', 'runner', 'full']),
@@ -4044,7 +4080,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "slippage": zod.number(),
   "fees": zod.number(),
   "netPnl": zod.number(),
-  "exitReason": zod.enum(['target', 'runner', 'stop', 'manual', 'session_close'])
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
 }))
 }).optional()
 })),

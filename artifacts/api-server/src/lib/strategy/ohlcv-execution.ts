@@ -1,5 +1,6 @@
 import type { Direction } from "./types.js";
 import type { PrimaryLossExitReference } from "./key-level-targets.js";
+import { DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS } from "./config.js";
 
 export const MODELED_OHLCV_FILL_LABEL = "Modeled OHLCV Fill — Not a Quote-Based Fill";
 export const AMBIGUOUS_OHLCV_SEQUENCE_LABEL = "Ambiguous intrabar sequence — adverse-first policy applied";
@@ -7,6 +8,25 @@ export const AMBIGUOUS_STOP_FIRST_LABEL = "AMBIGUOUS_STOP_FIRST";
 export const AMBIGUOUS_RUNNER_SEQUENCE_LABEL = "AMBIGUOUS_RUNNER_SEQUENCE";
 export const PRIMARY_LEVEL_EXIT_ARMED_LABEL = "PRIMARY_LEVEL_EXIT_ARMED";
 export const PRIMARY_LEVEL_EXIT_REACHED_LABEL = "PRIMARY_LEVEL_EXIT_REACHED";
+export const NO_FORWARD_LEVEL_1R_PLAN_LABEL = "NO_FORWARD_LEVEL_1R_PLAN";
+export const NO_LEVEL_BAR_TIMER_STARTED_LABEL = "NO_LEVEL_BAR_TIMER_STARTED";
+export const NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL = "NO_LEVEL_BREAKEVEN_ACTIVATED";
+export const BREAKEVEN_STOP_ARMED_LABEL = "BREAKEVEN_STOP_ARMED";
+export const BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL = "BREAKEVEN_RECOVERY_EXIT_ARMED";
+export const BREAKEVEN_EXIT_REACHED_LABEL = "BREAKEVEN_EXIT_REACHED";
+export const BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL = "BREAKEVEN_RECOVERY_EXIT_REACHED";
+export const ONE_R_REACHED_BEFORE_BREAKEVEN_LABEL = "ONE_R_REACHED_BEFORE_BREAKEVEN";
+export const ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN_LABEL = "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN";
+
+export type BreakevenDisposition =
+  | "NOT_APPLICABLE"
+  | "PENDING"
+  | "ONE_R_REACHED_BEFORE_BREAKEVEN"
+  | "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN"
+  | "BREAKEVEN_STOP_ARMED"
+  | "BREAKEVEN_RECOVERY_EXIT_ARMED"
+  | "BREAKEVEN_EXIT_REACHED"
+  | "BREAKEVEN_RECOVERY_EXIT_REACHED";
 
 export function isExecutionAmbiguityLabel(label: string): boolean {
   return label === AMBIGUOUS_OHLCV_SEQUENCE_LABEL
@@ -46,7 +66,7 @@ export type ModeledExecutionLeg = {
   slippage: number;
   fees: number;
   netPnl: number;
-  exitReason: "target" | "runner" | "stop" | "manual" | "session_close";
+  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close";
   exitCandleOpenTime?: string;
   exitCandleCloseTime?: string;
 };
@@ -71,7 +91,7 @@ export type OhlcvExecutionAudit = {
   runnerExited: boolean;
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
-  stopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
+  stopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
   initialRiskPoints: number | null;
   oneRPrice: number | null;
@@ -84,6 +104,15 @@ export type OhlcvExecutionAudit = {
   runnerImpulse: number | null;
   runnerMostFavorablePrice: number | null;
   remainingQuantity: number;
+  noForwardLevelAtEntry: boolean;
+  postEntryCompletedBars: number;
+  breakevenActivationBars: number | null;
+  breakevenActivated: boolean;
+  breakevenActivationTimestamp: number | null;
+  breakevenEffectiveFromTimestamp: number | null;
+  breakevenPrice: number | null;
+  breakevenDisposition: BreakevenDisposition;
+  originalStopStillActive: boolean;
 };
 
 export type ModeledOhlcvExecution = {
@@ -92,7 +121,7 @@ export type ModeledOhlcvExecution = {
   stopPrice: number | null;
   targetPrice: number | null;
   exitPrice: number | null;
-  exitReason: "target" | "runner" | "stop" | "manual" | "session_close" | "not filled";
+  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close" | "not filled";
   legs: ModeledExecutionLeg[];
   accounting: ModeledExecutionAccounting;
   audit: OhlcvExecutionAudit;
@@ -142,6 +171,8 @@ export type OhlcvExecutionInput = {
   /** Candidate-owned runner management: use confirmed five-minute swings. */
   structureTrailing?: boolean;
   trailingBufferTicks?: number;
+  /** Governed post-entry completed-bar delay before no-target breakeven management. */
+  noLevelBreakevenActivationBars?: number;
 };
 
 function money(value: number): number {
@@ -178,6 +209,11 @@ function completedSwing(
 }
 
 function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
+  const noForwardLevelAtEntry = input.oneRProfitRule === true
+    && (input.targetPrice ?? input.target ?? null) === null;
+  const breakevenActivationBars = noForwardLevelAtEntry
+    ? input.noLevelBreakevenActivationBars ?? DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS
+    : null;
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
@@ -199,6 +235,15 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       trailingStopPrice: null, trailingStopActive: false, trailingStopSource: null,
       runnerReferencePrice: null, runnerImpulse: null,
       runnerMostFavorablePrice: null, remainingQuantity: input.quantity ?? input.contractQuantity ?? input.contracts ?? 0,
+      noForwardLevelAtEntry,
+      postEntryCompletedBars: 0,
+      breakevenActivationBars,
+      breakevenActivated: false,
+      breakevenActivationTimestamp: null,
+      breakevenEffectiveFromTimestamp: null,
+      breakevenPrice: null,
+      breakevenDisposition: noForwardLevelAtEntry ? "PENDING" : "NOT_APPLICABLE",
+      originalStopStillActive: false,
     },
     ambiguityLabels: [], eventLabels: labels, assumptions,
   };
@@ -248,6 +293,14 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
   const oneRProfitRule = input.oneRProfitRule === true && target === null;
+  const noForwardLevelAtEntry = oneRProfitRule;
+  const breakevenActivationBars = noForwardLevelAtEntry
+    ? input.noLevelBreakevenActivationBars ?? DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS
+    : null;
+  if (breakevenActivationBars !== null
+    && (!Number.isInteger(breakevenActivationBars) || breakevenActivationBars <= 0)) {
+    throw new Error("No-level breakeven activation bars must be a positive whole number.");
+  }
   const structureTrailing = input.structureTrailing === true;
   const trailingBufferTicks = input.trailingBufferTicks ?? 8;
   if (!Number.isInteger(trailingBufferTicks) || trailingBufferTicks <= 0) {
@@ -266,13 +319,21 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     ...(input.oneRProfitRule
       ? ["No eligible key-level target: 1R is the actual modeled fill-to-initial-stop distance; one contract exits fully at +1R, while multi-contract positions take one contract at +1R before trailing the remainder."]
       : []),
+    ...(noForwardLevelAtEntry
+      ? [`No-forward-level breakeven management activates after ${breakevenActivationBars!} completed post-entry candles; candle ${breakevenActivationBars! + 1} is the first eligible candle.`]
+      : []),
     ...(input.structureTrailing
       ? [`Structure trailing uses the most recent completed three-candle five-minute swing with an ${input.trailingBufferTicks ?? 8}-tick buffer and never widens.`]
       : []),
   ];
   const entryTouched = trigger !== null
     && (input.direction === "long" ? trigger.high >= entryReference : trigger.low <= entryReference);
-  if (!trigger || !entryTouched || quantity === 0) return emptyResult({ ...input, targetPrice: target, stopPrice }, []);
+  if (!trigger || !entryTouched || quantity === 0) {
+    return emptyResult(
+      { ...input, targetPrice: target, stopPrice },
+      noForwardLevelAtEntry ? [NO_FORWARD_LEVEL_1R_PLAN_LABEL] : [],
+    );
+  }
   const modeledFill = tick(
     input.direction === "long"
       ? (trigger.open > entryReference ? trigger.open : entryReference) + (input.entrySlippageTicks ?? 0) * size
@@ -287,6 +348,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
     ...subsequentCandles,
   ];
+  const firstPostEntryCandleIndex = input.evaluateEntryCandleForExit === false || trigger === null ? 0 : 1;
   const checkpointQuantity = oneRProfitRule ? Math.min(1, quantity) : targetQuantity;
   const runnerQuantity = quantity - checkpointQuantity;
   let remaining = quantity;
@@ -303,8 +365,18 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let runnerBest = modeledFill;
   let targetCandle: OhlcvCandle | null = null;
   let profitCheckpointPrice: number | null = null;
+  let postEntryCompletedBars = 0;
+  let noLevelTimerStarted = false;
+  let breakevenActivated = false;
+  let breakevenActivationTimestamp: number | null = null;
+  let breakevenEffectiveFromTimestamp: number | null = null;
+  let breakevenPrice: number | null = noForwardLevelAtEntry ? modeledFill : null;
+  let breakevenDisposition: BreakevenDisposition = noForwardLevelAtEntry ? "PENDING" : "NOT_APPLICABLE";
+  let breakevenMode: "none" | "stop" | "recovery" = "none";
+  let originalStopStillActive = initialStop !== null;
+  if (noForwardLevelAtEntry) eventLabels.push(NO_FORWARD_LEVEL_1R_PLAN_LABEL);
   const legs: ModeledExecutionLeg[] = [];
-  let resolvedStopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null = null;
+  let resolvedStopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null = null;
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
   const feePerSide = Object.values(input.fees ?? input.feeComponents ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
@@ -333,40 +405,74 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   };
   for (let candleIndex = 0; candleIndex < candles.length; candleIndex += 1) {
     const candle = candles[candleIndex]!;
+    const postEntryBar = candleIndex >= firstPostEntryCandleIndex
+      ? candleIndex - firstPostEntryCandleIndex + 1
+      : 0;
+    if (postEntryBar > 0) {
+      postEntryCompletedBars = postEntryBar;
+      if (!noLevelTimerStarted && noForwardLevelAtEntry) {
+        noLevelTimerStarted = true;
+        eventLabels.push(NO_LEVEL_BAR_TIMER_STARTED_LABEL);
+      }
+    }
     const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
-    const primaryStopArmed = primaryStop !== null && activeTrailingStop === null;
-    const strategyHit = activeTrailingStop === null
+    const breakevenStopArmed = breakevenMode === "stop";
+    const recoveryExitArmed = breakevenMode === "recovery";
+    const primaryStopArmed = !breakevenStopArmed && primaryStop !== null && activeTrailingStop === null;
+    const strategyHit = !breakevenStopArmed
+      && activeTrailingStop === null
       && !primaryStopArmed
       && strategyStop !== null
       && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
-    const catastropheHit = activeTrailingStop === null
+    const catastropheHit = !breakevenStopArmed
+      && activeTrailingStop === null
       && !primaryStopArmed
       && catastropheStop !== null
       && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
-    const primaryHit = primaryStopArmed
+    const primaryHit = !breakevenStopArmed
+      && primaryStopArmed
       && (input.direction === "long" ? candle.low <= primaryStop!.price : candle.high >= primaryStop!.price);
-    const trailingHit = activeTrailingStop !== null
+    const trailingHit = !breakevenStopArmed
+      && activeTrailingStop !== null
       && (input.direction === "long" ? candle.low <= activeTrailingStop : candle.high >= activeTrailingStop);
-    const adverse = primaryHit || strategyHit || catastropheHit || trailingHit;
+    const breakevenHit = breakevenStopArmed
+      && (input.direction === "long" ? candle.low <= modeledFill : candle.high >= modeledFill);
+    const originalStopHit = primaryHit || strategyHit || catastropheHit || trailingHit;
+    const adverse = breakevenHit || originalStopHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
     const targetReachedInCandle = !targetHit && favorable;
     const oneRReachedInCandle = oneRProfitRule
       && !oneRReached
       && oneRPrice !== null
       && (input.direction === "long" ? candle.high >= oneRPrice : candle.low <= oneRPrice);
+    const recoveryReached = recoveryExitArmed
+      && (input.direction === "long"
+        ? candle.open <= modeledFill && candle.high >= modeledFill
+        : candle.open >= modeledFill && candle.low <= modeledFill);
     if (adverse) {
-      if (favorable) {
+      if (favorable || oneRReachedInCandle || recoveryReached) {
         eventLabels.push(AMBIGUOUS_STOP_FIRST_LABEL);
         ambiguityLabels.push(AMBIGUOUS_STOP_FIRST_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
       }
-      const level = trailingHit
-        ? { price: activeTrailingStop!, level: "structure_trailing" as const }
-        : primaryHit ? primaryStop! : fallbackStop!;
+      const level = breakevenHit
+        ? { price: modeledFill, level: "breakeven" as const }
+        : trailingHit
+          ? { price: activeTrailingStop!, level: "structure_trailing" as const }
+          : primaryHit ? primaryStop! : fallbackStop!;
       resolvedStopPrice = tick(level.price, size);
       resolvedStopLevel = level.level;
       if (level.level === "primary_level") eventLabels.push(PRIMARY_LEVEL_EXIT_REACHED_LABEL);
       else if (level.level === "structure_trailing") eventLabels.push("STRUCTURE_TRAILING_STOP_REACHED");
-      else eventLabels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
+      else if (level.level === "breakeven") {
+        eventLabels.push(BREAKEVEN_EXIT_REACHED_LABEL);
+        breakevenDisposition = "BREAKEVEN_EXIT_REACHED";
+      } else {
+        eventLabels.push(level.level === "strategy" ? "STRATEGY_STOP_REACHED" : "CATASTROPHE_STOP_REACHED");
+        if (noForwardLevelAtEntry && !breakevenActivated) {
+          eventLabels.push(ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN_LABEL);
+          breakevenDisposition = "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN";
+        }
+      }
       const primaryLevelExit = level.level === "primary_level";
       const gapThrough = !primaryLevelExit && (input.direction === "long" ? candle.open <= resolvedStopPrice! : candle.open >= resolvedStopPrice!);
       const reference = gapThrough ? candle.open : resolvedStopPrice!;
@@ -374,16 +480,41 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       const fill = primaryLevelExit
         ? resolvedStopPrice!
         : tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
-       legs.push(makeLeg(
-         targetHit || oneRReached ? "runner" : "full",
-         targetHit || oneRReached ? runnerQuantity : remaining,
-         reference,
-         fill,
-         "stop",
-         candle,
-       ));
+      legs.push(makeLeg(
+        targetHit || oneRReached ? "runner" : "full",
+        targetHit || oneRReached ? runnerQuantity : remaining,
+        reference,
+        fill,
+        level.level === "breakeven" ? "breakeven" : "stop",
+        candle,
+      ));
       if ((targetHit || oneRReached) && runnerQuantity > 0) runnerExited = true;
-      remaining = 0; exitPrice = fill; exitCandle = candle; exitReason = "stop"; break;
+      originalStopStillActive = level.level !== "breakeven";
+      remaining = 0;
+      exitPrice = fill;
+      exitCandle = candle;
+      exitReason = level.level === "breakeven" ? "breakeven" : "stop";
+      break;
+    }
+    if (recoveryReached) {
+      eventLabels.push(BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL);
+      breakevenDisposition = "BREAKEVEN_RECOVERY_EXIT_REACHED";
+      const quantityToExit = targetHit || oneRReached ? runnerQuantity : remaining;
+      legs.push(makeLeg(
+        targetHit || oneRReached ? "runner" : "full",
+        quantityToExit,
+        modeledFill,
+        modeledFill,
+        "breakeven_recovery",
+        candle,
+      ));
+      if ((targetHit || oneRReached) && runnerQuantity > 0) runnerExited = true;
+      originalStopStillActive = false;
+      remaining = 0;
+      exitPrice = modeledFill;
+      exitCandle = candle;
+      exitReason = "breakeven_recovery";
+      break;
     }
     if (targetReachedInCandle) {
       targetHit = true; targetCandle = candle;
@@ -409,6 +540,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
       }
       eventLabels.push("ONE_R_REACHED");
+      if (noForwardLevelAtEntry && !breakevenActivated) {
+        eventLabels.push(ONE_R_REACHED_BEFORE_BREAKEVEN_LABEL);
+        breakevenDisposition = "ONE_R_REACHED_BEFORE_BREAKEVEN";
+      }
       if (checkpointQuantity > 0) {
         const fill = tick(input.direction === "long" ? oneRPrice! - (input.exitSlippageTicks ?? 0) * size : oneRPrice! + (input.exitSlippageTicks ?? 0) * size, size);
         legs.push(makeLeg("target", checkpointQuantity, oneRPrice!, fill, "target", candle));
@@ -465,6 +600,40 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         }
       }
     }
+    if (
+      noForwardLevelAtEntry
+      && !breakevenActivated
+      && remaining > 0
+      && oneRPrice !== null
+      && postEntryBar >= breakevenActivationBars!
+    ) {
+      breakevenActivated = true;
+      breakevenActivationTimestamp = typeof candle.closeTime === "number" && Number.isFinite(candle.closeTime)
+        ? candle.closeTime
+        : null;
+      const nextCandle = subsequentCandles[postEntryBar];
+      breakevenEffectiveFromTimestamp = nextCandle
+        && typeof nextCandle.openTime === "number"
+        && Number.isFinite(nextCandle.openTime)
+        ? nextCandle.openTime
+        : null;
+      eventLabels.push(NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL);
+      const favorableAtActivation = input.direction === "long"
+        ? candle.close >= modeledFill
+        : candle.close <= modeledFill;
+      if (favorableAtActivation) {
+        breakevenMode = "stop";
+        resolvedStopPrice = breakevenPrice;
+        originalStopStillActive = false;
+        breakevenDisposition = "BREAKEVEN_STOP_ARMED";
+        eventLabels.push(BREAKEVEN_STOP_ARMED_LABEL);
+      } else {
+        breakevenMode = "recovery";
+        originalStopStillActive = true;
+        breakevenDisposition = "BREAKEVEN_RECOVERY_EXIT_ARMED";
+        eventLabels.push(BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL);
+      }
+    }
   }
   if (remaining > 0 && input.sessionCloseCandle) {
     const closeCandle = input.sessionCloseCandle;
@@ -479,6 +648,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
      legs.push(makeLeg(targetHit || oneRReached ? "runner" : "full", remaining, reference, fill, "session_close", closeCandle));
     remaining = 0;
      runnerExited = (targetHit || oneRReached) && runnerQuantity > 0;
+     originalStopStillActive = false;
     eventLabels.push("SESSION_CLOSE");
     if (runnerExited) eventLabels.push("RUNNER_EXITED");
     exitPrice = fill;
@@ -497,7 +667,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
       strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
       catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),
-      stopLevel: exitReason === "stop" ? resolvedStopLevel : null,
+       stopLevel: exitReason === "stop" || exitReason === "breakeven" ? resolvedStopLevel : null,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
        initialRiskPoints,
        oneRPrice,
@@ -510,6 +680,15 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        runnerImpulse: (targetHit || oneRReached) && runnerQuantity > 0 ? Math.abs(runnerBest - modeledFill) : null,
        runnerMostFavorablePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? runnerBest : null,
       remainingQuantity: remaining,
+       noForwardLevelAtEntry,
+       postEntryCompletedBars,
+       breakevenActivationBars,
+       breakevenActivated,
+       breakevenActivationTimestamp,
+       breakevenEffectiveFromTimestamp,
+       breakevenPrice,
+       breakevenDisposition,
+       originalStopStillActive,
     },
      ambiguityLabels, eventLabels, assumptions,
   };

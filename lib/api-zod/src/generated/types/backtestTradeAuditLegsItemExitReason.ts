@@ -13,6 +13,8 @@ export const BacktestTradeAuditLegsItemExitReason = {
   target: 'target',
   runner: 'runner',
   stop: 'stop',
+  breakeven: 'breakeven',
+  breakeven_recovery: 'breakeven_recovery',
   manual: 'manual',
   session_close: 'session_close',
 } as const;

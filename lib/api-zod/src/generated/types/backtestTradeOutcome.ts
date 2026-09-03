@@ -14,6 +14,8 @@ export const BacktestTradeOutcome = {
   strategy_stop: 'strategy stop',
   catastrophe_stop: 'catastrophe stop',
   session_close: 'session close',
+  breakeven: 'breakeven',
+  breakeven_recovery: 'breakeven recovery',
   manual: 'manual',
   open: 'open',
 } as const;

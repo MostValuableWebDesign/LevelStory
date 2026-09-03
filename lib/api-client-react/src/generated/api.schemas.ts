@@ -2821,6 +2821,8 @@ export const BacktestTradeOutcome = {
   strategy_stop: 'strategy stop',
   catastrophe_stop: 'catastrophe stop',
   session_close: 'session close',
+  breakeven: 'breakeven',
+  breakeven_recovery: 'breakeven recovery',
   manual: 'manual',
   open: 'open',
 } as const;
@@ -2870,6 +2872,8 @@ export type BacktestTradeAuditStopLevel = typeof BacktestTradeAuditStopLevel[key
 export const BacktestTradeAuditStopLevel = {
   strategy: 'strategy',
   catastrophe: 'catastrophe',
+  structure_trailing: 'structure_trailing',
+  breakeven: 'breakeven',
 } as const;
 
 export type BacktestTradeAuditLegsItemKind = typeof BacktestTradeAuditLegsItemKind[keyof typeof BacktestTradeAuditLegsItemKind];
@@ -2888,6 +2892,8 @@ export const BacktestTradeAuditLegsItemExitReason = {
   target: 'target',
   runner: 'runner',
   stop: 'stop',
+  breakeven: 'breakeven',
+  breakeven_recovery: 'breakeven_recovery',
   manual: 'manual',
   session_close: 'session_close',
 } as const;
@@ -2946,6 +2952,19 @@ export type BacktestTradeAudit = {
   /** @nullable */
   runnerMostFavorablePrice: number | null;
   remainingQuantity: number;
+  noForwardLevelAtEntry?: boolean;
+  postEntryCompletedBars?: number;
+  /** @nullable */
+  breakevenActivationBars?: number | null;
+  breakevenActivated?: boolean;
+  /** @nullable */
+  breakevenActivationTimestamp?: string | null;
+  /** @nullable */
+  breakevenEffectiveFromTimestamp?: string | null;
+  /** @nullable */
+  breakevenPrice?: number | null;
+  breakevenDisposition?: string;
+  originalStopStillActive?: boolean;
   exitReason: string;
   legs: BacktestTradeAuditLegsItem[];
 };

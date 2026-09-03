@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AMBIGUOUS_OHLCV_SEQUENCE_LABEL, MODELED_OHLCV_FILL_LABEL, PRIMARY_LEVEL_EXIT_REACHED_LABEL, simulateOhlcvExecution } from "./ohlcv-execution.js";
+import {
+  AMBIGUOUS_OHLCV_SEQUENCE_LABEL,
+  BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL,
+  BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL,
+  BREAKEVEN_STOP_ARMED_LABEL,
+  MODELED_OHLCV_FILL_LABEL,
+  NO_FORWARD_LEVEL_1R_PLAN_LABEL,
+  NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL,
+  PRIMARY_LEVEL_EXIT_REACHED_LABEL,
+  simulateOhlcvExecution,
+} from "./ohlcv-execution.js";
 
 const candle = (open: number, high: number, low: number, close: number) => ({ open, high, low, close });
+const timedCandle = (open: number, high: number, low: number, close: number, closeTime: number) => ({
+  open, high, low, close, openTime: closeTime - 5 * 60_000, closeTime,
+});
 const base = { direction: "long" as const, entry: 100, patienceCandle: candle(99, 100, 98, 99), tickSize: 0.25, tickValue: 1.25, pointMultiplier: 5, contracts: 1 };
 
 test("models bullish entry, open gap and slippage on ticks", () => {
@@ -393,4 +406,170 @@ test("short structure trailing uses swing highs and never widens", () => {
   assert.equal(result.audit.trailingStopPrice, 99.5);
   assert.equal(result.audit.stopLevel, "structure_trailing");
   assert.equal(result.exitPrice, 99.5);
+});
+
+test("arms long breakeven only after nine completed post-entry candles and exits on candle ten", () => {
+  const start = 1_000_000;
+  const bars = Array.from({ length: 8 }, (_, index) => timedCandle(100, 100.75, 99.75, 100.25, start + (index + 1) * 300_000));
+  bars.push(timedCandle(100.25, 100.5, 99.75, 100, start + 9 * 300_000));
+  bars.push(timedCandle(100, 100.5, 99.75, 100.25, start + 10 * 300_000));
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.5, 97, 100, start),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: bars,
+  });
+  assert.equal(result.audit.noForwardLevelAtEntry, true);
+  assert.equal(result.audit.breakevenActivationBars, 9);
+  assert.equal(result.audit.postEntryCompletedBars, 10);
+  assert.equal(result.audit.breakevenActivated, true);
+  assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_EXIT_REACHED");
+  assert.equal(result.audit.breakevenActivationTimestamp, start + 9 * 300_000);
+  assert.equal(result.audit.breakevenEffectiveFromTimestamp, start + 9 * 300_000);
+  assert.equal(result.exitReason, "breakeven");
+  assert.equal(result.exitPrice, 100);
+  assert.ok(result.audit.eventLabels.includes(NO_FORWARD_LEVEL_1R_PLAN_LABEL));
+  assert.ok(result.audit.eventLabels.includes(NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL));
+  assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
+});
+
+test("applies the same completed-bar breakeven boundary to shorts", () => {
+  const bars = Array.from({ length: 8 }, () => candle(99.75, 100.25, 99.25, 99.75));
+  bars.push(candle(99.75, 100.25, 99.5, 100));
+  bars.push(candle(100, 100.25, 99.5, 99.75));
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 102,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: bars,
+  });
+  assert.equal(result.audit.breakevenActivated, true);
+  assert.equal(result.exitReason, "breakeven");
+  assert.equal(result.exitPrice, 100);
+  assert.equal(result.legs.at(-1)?.exitReason, "breakeven");
+});
+
+test("keeps the original stop through adverse activation, then recovers at entry", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 8 }, () => candle(100, 100.25, 99.5, 99.75)),
+      candle(99.75, 100, 99.25, 99.5),
+      candle(99.5, 100, 99, 99.75),
+    ],
+  });
+  assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_RECOVERY_EXIT_REACHED");
+  assert.equal(result.exitReason, "breakeven_recovery");
+  assert.equal(result.exitPrice, 100);
+  assert.equal(result.legs[0]?.exitReason, "breakeven_recovery");
+  assert.ok(result.audit.eventLabels.includes(BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL));
+  assert.ok(result.audit.eventLabels.includes(BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL));
+});
+
+test("uses conservative adverse-first handling when original stop and recovery coexist", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 8 }, () => candle(100, 100.25, 99.5, 99.75)),
+      candle(99.75, 100, 99.25, 99.5),
+      candle(99.5, 100, 97, 99),
+    ],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_RECOVERY_EXIT_ARMED");
+  assert.ok(result.audit.ambiguityLabels.includes(AMBIGUOUS_OHLCV_SEQUENCE_LABEL));
+});
+
+test("does not start no-level breakeven management when an eligible target exists", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: 104,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 9 }, () => candle(100, 100.25, 99.5, 99.75)),
+      candle(100, 104.25, 99.5, 104),
+    ],
+  });
+  assert.equal(result.audit.noForwardLevelAtEntry, false);
+  assert.equal(result.audit.breakevenActivated, false);
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.audit.eventLabels.includes(NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL), false);
+});
+
+test("preserves multi-contract quantity accounting when breakeven exits the runner", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    contracts: 2,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 8 }, () => candle(100, 100.25, 99.5, 99.75)),
+      candle(99.75, 100, 99.25, 100),
+      candle(100, 100.25, 99.75, 100),
+    ],
+  });
+  assert.equal(result.exitReason, "breakeven");
+  assert.equal(result.audit.remainingQuantity, 0);
+  assert.deepEqual(result.legs.map((leg) => [leg.quantity, leg.exitReason]), [[2, "breakeven"]]);
+});
+
+test("session close remains authoritative after breakeven activation", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: Array.from({ length: 9 }, () => candle(100, 100.25, 99.5, 100)),
+    sessionCloseCandle: candle(100, 100.5, 99.75, 100.25),
+  });
+  assert.equal(result.audit.breakevenActivated, true);
+  assert.equal(result.exitReason, "session_close");
+  assert.equal(result.audit.remainingQuantity, 0);
+});
+
+test("honors a positive governed activation-bar override and remains deterministic", () => {
+  const input = {
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    noLevelBreakevenActivationBars: 2,
+    subsequentCompletedCandles: [
+      candle(100, 100.25, 99.5, 99.75),
+      candle(99.75, 100, 99.25, 100),
+    ],
+  };
+  const first = simulateOhlcvExecution(input);
+  const second = simulateOhlcvExecution(input);
+  assert.deepEqual(first, second);
+  assert.equal(first.audit.breakevenActivationBars, 2);
+  assert.equal(first.audit.breakevenActivated, true);
+  assert.equal(first.exitReason, "manual");
 });

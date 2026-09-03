@@ -50,6 +50,19 @@ export type BacktestTradeAudit = {
   /** @nullable */
   runnerMostFavorablePrice: number | null;
   remainingQuantity: number;
+  noForwardLevelAtEntry?: boolean;
+  postEntryCompletedBars?: number;
+  /** @nullable */
+  breakevenActivationBars?: number | null;
+  breakevenActivated?: boolean;
+  /** @nullable */
+  breakevenActivationTimestamp?: Date | null;
+  /** @nullable */
+  breakevenEffectiveFromTimestamp?: Date | null;
+  /** @nullable */
+  breakevenPrice?: number | null;
+  breakevenDisposition?: string;
+  originalStopStillActive?: boolean;
   exitReason: string;
   legs: BacktestTradeAuditLegsItem[];
 };

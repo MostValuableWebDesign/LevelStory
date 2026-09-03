@@ -15,4 +15,6 @@ export type BacktestTradeAuditStopLevel = typeof BacktestTradeAuditStopLevel[key
 export const BacktestTradeAuditStopLevel = {
   strategy: 'strategy',
   catastrophe: 'catastrophe',
+  structure_trailing: 'structure_trailing',
+  breakeven: 'breakeven',
 } as const;
