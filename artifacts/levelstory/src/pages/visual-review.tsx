@@ -1851,7 +1851,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         if (isDynamicIndicatorAnnotation(annotation)) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
          const stop = annotation.id === "strategy-stop";
-        const target = annotation.id === "target";
+         const target = annotation.id === "target" || annotation.id === "one-r-target";
+         const runner = annotation.id === "runner-threshold";
+         const chartLabel = stop ? "STOP" : annotation.id === "one-r-target" ? "1R TARGET" : target ? "TARGET" : runner ? "RUNNER" : null;
           const stroke = levelStroke(annotation);
           const selected = focusedLevelId === annotation.id;
           const hasRange = annotation.rangeLow != null && annotation.rangeHigh != null;
@@ -1880,7 +1882,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               ? <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
                : <>
                  <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : stop ? 2.4 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : stop ? "5 3" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
-                 {stop && <text x={plotRight - 5} y={y(annotation.price) - 8} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid="chart-level-label-strategy-stop">STOP · {formatPriceAxisValue(annotation.price)}</text>}
+                 {chartLabel && <text x={plotRight - 5} y={y(annotation.price) - 8} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLabel} · {formatPriceAxisValue(annotation.price)}</text>}
                </>}
           </g>;
       })}
