@@ -498,6 +498,11 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
       confirmationPrice: confirmed.confirmationThreshold,
       confirmationBufferTicks: confirmed.confirmationBufferTicks!,
       grade: "A" as const,
+      causalIdentity: {
+        signalOccurrenceId: confirmed.occurrenceId,
+        eligibilityArmId: confirmed.eligibilityArmId ?? null,
+        activeConsolidationZoneId: confirmed.consolidationGuard?.activeConsolidationZoneId ?? null,
+      },
       eligible: true as const,
       fillModelType: "OHLCV_CONFIRMATION_THRESHOLD" as const,
       patienceHigh: typeof confirmed.patienceCandle?.high === "number" ? confirmed.patienceCandle.high : null,

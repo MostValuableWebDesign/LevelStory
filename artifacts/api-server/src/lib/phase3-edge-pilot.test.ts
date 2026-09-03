@@ -93,6 +93,11 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     confirmationPrice: 101,
     confirmationBufferTicks: 8,
     grade: "A+",
+    causalIdentity: {
+      signalOccurrenceId: "signal-1",
+      eligibilityArmId: null,
+      activeConsolidationZoneId: null,
+    },
     eligible: true,
     executionStatus: "MODELED_TRADE_CREATED",
     fillModelType: "OHLCV_CONFIRMATION_THRESHOLD",
@@ -103,6 +108,11 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     entryReachedThreshold: true,
     managementContext: {
       candidateId: "candidate-1",
+      causalIdentity: {
+        signalOccurrenceId: "signal-1",
+        eligibilityArmId: null,
+        activeConsolidationZoneId: null,
+      },
       signalOccurrenceId: "signal-1",
       patienceCandleOpenTime: "2026-07-01T14:55:00.000Z",
       patienceCandleHigh: 101,

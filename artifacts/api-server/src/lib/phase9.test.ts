@@ -1383,6 +1383,84 @@ test("6725.75 short E crossing creates exactly one candidate-owned threshold fil
   });
 });
 
+test("Candidate, fill, stop, and target retain the same signal/arm/zone identity", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    entryHigh: 104,
+    entryLow: 100,
+    management: {
+      strategyStopPrice: 97,
+      catastropheStopPrice: null,
+      targetPrice: 110,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "identity-management-audit",
+      missingEvidenceReasons: [],
+    },
+    eligibilityArmId: "identity-arm",
+    eligibilityArmState: "active",
+  }) as HistoricalOccurrence;
+  occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.targetLevelInputs = [{
+    id: "identity-major-target",
+    type: "major resistance",
+    price: 110,
+  }];
+  occurrence.consolidationGuard = consolidationGuard({
+    activeZone: true,
+    activeConsolidationZoneId: "identity-zone",
+    lifecycleState: "CONSOLIDATION_BREAKOUT_CONFIRMED",
+    lifecycleStates: ["CONSOLIDATION_ZONE_FROZEN", "CONSOLIDATION_BREAKOUT_CONFIRMED"],
+    executionEligible: true,
+    direction: "long",
+    effectiveEntryThreshold: 103,
+    patienceConfirmationThreshold: 101.25,
+    consolidationBoundaryThreshold: 101.25,
+    entryClose: 104,
+    entryReachedConfirmation: true,
+    effectiveEntryThresholdReached: true,
+    entryClosedOutsideZone: true,
+    entryCloseOutsideZone: true,
+    entryFillOutsideZone: true,
+    entryOutsideFinalizedNtz: true,
+    entryBeforeCutoff: true,
+    consolidationEntryDisposition: "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE",
+    rejectionReason: null,
+    detail: "Identity fixture passed the frozen consolidation-entry guard.",
+  });
+  const lifecycle = lifecycleForArm("identity-arm", "CONSUMED", occurrence);
+  (lifecycle.records[0] as any).state = "PATIENCE_ARMED";
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence, { high: 111, low: 100 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle,
+  });
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  const identity = {
+    signalOccurrenceId: occurrence.occurrenceId,
+    eligibilityArmId: "identity-arm",
+    activeConsolidationZoneId: "identity-zone",
+  };
+  assert.equal(result.rejected.length, 0);
+  assert.equal(candidate.executionStatus, "MODELED_TRADE_CREATED");
+  assert.deepEqual(candidate.causalIdentity, identity);
+  assert.deepEqual(candidate.managementContext?.causalIdentity, identity);
+  assert.deepEqual(trade.causalIdentity, identity);
+  assert.deepEqual(trade.audit?.causalIdentity, identity);
+  assert.equal(trade.candidateId, candidate.candidateId);
+  assert.equal(trade.signalOccurrenceId, candidate.signalOccurrenceId);
+  assert.equal(trade.audit?.modeledFillPrice, candidate.confirmationPrice);
+  assert.equal(trade.audit?.strategyStopPrice, candidate.strategyStopPrice);
+  assert.deepEqual(trade.audit?.targetPlan, candidate.targetPlan);
+});
+
 test("candidate projection rejects finalized NTZ entries and does not emit a fill", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -1669,7 +1747,7 @@ test("confirmed signal missing E-close observation is rejected with field-level 
   assert.ok(result.rejected[0]?.details.includes("MISSING_OR_INVALID_entryObservationTimestamp"));
 });
 
-test("candidate window uses E open time across EST and EDT cutoffs", () => {
+test("Entries remain outside NTZ and strictly before 1:00 p.m. ET", () => {
   const cases = [
     {
       label: "EDT before cutoff",

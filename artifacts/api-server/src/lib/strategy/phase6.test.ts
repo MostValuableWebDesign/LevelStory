@@ -478,7 +478,7 @@ test("consolidation breakout closes outside its frozen pre-breakout range", () =
   assert.equal(result.rules.find((rule) => rule.key === "strongBreakout")?.passed, true);
 });
 
-test("consolidation guard confirms only an immediate completed outside close", () => {
+test("Long effective threshold is max(P high + 8 ticks, zone high + 1 tick)", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -510,12 +510,17 @@ test("consolidation guard confirms only an immediate completed outside close", (
    assert.equal(result.entryClosedOutsideZone, true);
    assert.equal(result.entryRangeOutsideZone, false);
    assert.equal(result.entryRangeOverlappedZone, true);
+   assert.equal(result.patienceConfirmationThreshold, 102.25);
+   assert.equal(result.consolidationBoundaryThreshold, 100.75);
    assert.equal(result.effectiveEntryThreshold, 102.25);
    assert.equal(result.effectiveEntryThresholdReached, true);
+   assert.equal(result.entryOutsideFinalizedNtz, true);
+   assert.equal(result.entryBeforeCutoff, true);
+   assert.equal(result.entryFillOutsideZone, true);
   assert.deepEqual(result.sourceCandleOpenTimes, zoneCandles.map((item) => item.openTime));
 });
 
-test("consolidation guard rejects wick-out/close-in E and freezes before future candles", () => {
+test("Wick outside with close inside is rejected", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -586,7 +591,7 @@ test("consolidation guard preserves the frozen boundary for breakout-pullback P 
   assert.equal(result.consolidationZoneHigh, 100.5);
 });
 
-test("consolidation guard accepts a short E that opens and wicks inside the zone", () => {
+test("Short effective threshold is min(P low − 8 ticks, zone low − 1 tick); wick overlapping the zone with fill and close outside is accepted", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -614,11 +619,14 @@ test("consolidation guard accepts a short E that opens and wicks inside the zone
   assert.equal(result.entryOpenedOutsideZone, false);
   assert.equal(result.entryClosedOutsideZone, true);
   assert.equal(result.entryRangeOverlappedZone, true);
+  assert.equal(result.patienceConfirmationThreshold, 97.75);
+  assert.equal(result.consolidationBoundaryThreshold, 99.25);
   assert.equal(result.effectiveEntryThreshold, 97.75);
+  assert.equal(result.effectiveEntryThresholdReached, true);
   assert.equal(result.entryFillOutsideZone, true);
 });
 
-test("consolidation guard rejects an outside close that did not reach the effective threshold", () => {
+test("Close outside with threshold not reached is rejected", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -648,7 +656,7 @@ test("consolidation guard rejects an outside close that did not reach the effect
   assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED");
 });
 
-test("consolidation guard rejects a fill on the zone boundary", () => {
+test("Fill exactly on the boundary is rejected", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),

@@ -193,6 +193,12 @@ export type BacktestRequest = ReplayDatasetOptions & {
   ohlcvCommissionPerContract?: number;
 };
 
+export type CandidateCausalIdentity = {
+  signalOccurrenceId: string;
+  eligibilityArmId: string | null;
+  activeConsolidationZoneId: string | null;
+};
+
 export type BacktestTrade = {
   id: string;
   tradingDate: string;
@@ -220,6 +226,7 @@ export type BacktestTrade = {
   matchedEdges?: string[];
   supportingConfluences?: string[];
   setupGrade?: "A" | "A+" | "A++";
+  causalIdentity?: CandidateCausalIdentity;
   signalOccurrenceId?: string;
   candidateId?: string;
   targetPlan?: KeyLevelTargetPlan;
@@ -234,6 +241,7 @@ export type BacktestTrade = {
     strategyStopPrice?: number | null;
     catastropheStopPrice?: number | null;
      stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | null;
+     causalIdentity?: CandidateCausalIdentity;
     primaryLossExitLevel?: PrimaryLossExitReference | null;
     patienceCandleOpenTime: string | null;
     patienceCandleCloseTime: string | null;
@@ -635,6 +643,7 @@ export type HistoricalTradeCandidate = {
   confirmationPrice: number | null;
   confirmationBufferTicks: number;
   grade: "A" | "A+" | "A++";
+  causalIdentity: CandidateCausalIdentity;
   eligible: true;
   executionStatus: "MODELED_TRADE_CREATED" | "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "INSUFFICIENT_CANDLE_DATA";
   fillModelType: "OHLCV_CONFIRMATION_THRESHOLD";
@@ -651,6 +660,7 @@ export type HistoricalTradeCandidate = {
 
 export type CandidateManagementContext = {
   candidateId: string;
+  causalIdentity: CandidateCausalIdentity;
   signalOccurrenceId: string;
   patienceCandleOpenTime: string | null;
   patienceCandleHigh: number | null;
@@ -989,6 +999,16 @@ export type HistoricalOccurrence = {
   };
   causalEvidenceByAudit?: NonNullable<HistoricalOccurrence["causalEvidence"]>[];
 };
+
+function candidateCausalIdentityForOccurrence(
+  occurrence: HistoricalOccurrence,
+): CandidateCausalIdentity {
+  return {
+    signalOccurrenceId: occurrence.occurrenceId,
+    eligibilityArmId: occurrence.eligibilityArmId ?? null,
+    activeConsolidationZoneId: occurrence.consolidationGuard?.activeConsolidationZoneId ?? null,
+  };
+}
 
 export const QUALIFICATION_FUNNEL_STAGES = [
   "session_loaded",
@@ -3533,6 +3553,7 @@ function freezeCandidateManagementContext(
   ];
   const context: CandidateManagementContext = {
     candidateId,
+    causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
     signalOccurrenceId: occurrence.occurrenceId,
     patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
     patienceCandleHigh: patienceHigh,
@@ -3727,6 +3748,7 @@ export function projectHistoricalTradeCandidates(
     for (const trade of linked) usedRawTradeIds.add(trade.id);
     candidates.push({
       candidateId,
+      causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
       signalOccurrenceId: occurrence.occurrenceId,
       sourceFingerprint: occurrence.sourceFingerprint,
       formulaHash: occurrence.formulaHash,
@@ -4008,6 +4030,7 @@ function candidateDrivenEntryTrade(
   const accounting = modeled?.accounting ?? { grossPnl: 0, fees: 0, slippage: 0, netPnl: 0 };
   return {
     id: `${candidateId}-ohlcv-confirmation`,
+    causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
     signalOccurrenceId: occurrence.occurrenceId,
     candidateId,
     targetPlan,
@@ -4053,6 +4076,7 @@ function candidateDrivenEntryTrade(
       marketRegime: "trend",
     },
     audit: {
+      causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
       entryTriggerPrice: entryPrice,
       modeledFillPrice: entryPrice,
        stopPrice: modeled?.stopPrice ?? management.strategyStopPrice,

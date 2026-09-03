@@ -51,3 +51,4 @@
 - [Candidate audit annotation precedence](candidate-audit-annotation-precedence.md) — candidate chart levels must use frozen candidate audit values, not legacy record-level stops.
 - [No-level profit management](no-level-profit-management.md) — candidate trades use modeled initial risk, a +1R checkpoint, and monotonic completed-five-minute swing trailing.
 - [Snapshot-wide consolidation overlays](visual-snapshot-consolidation-overlays.md) — Visual Review highlights every qualifying range in the snapshot, not only the trade-entry consolidation guard.
+- [Candidate causal identity](candidate-causal-identity.md) — candidate-owned execution artifacts preserve signal, arm, and consolidation-zone provenance together.
