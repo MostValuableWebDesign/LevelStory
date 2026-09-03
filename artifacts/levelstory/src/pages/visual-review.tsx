@@ -1368,8 +1368,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
-  const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
-  const [showRiskLevels, setShowRiskLevels] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const legendRef = useRef<HTMLDivElement>(null);
@@ -1417,7 +1415,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const orbCompleteAtEvaluation = isOpeningRangeCompleteAtEvaluation(regularCandles, snapshot.evaluationCursor.closeTime);
    const annotations = mergeOrbNtzAnnotations(snapshot.annotations.filter((annotation) => isVisualPresentationAnnotation(annotation) && annotation.available
      && (!["orb-high", "orb-low", "ntz-high", "ntz-low"].includes(annotation.id) || orbCompleteAtEvaluation)));
-  const chartEvents = selectChartEvents(snapshot, candles, sessionView, showAllAuditEvents);
+  const chartEvents = selectChartEvents(snapshot, candles, sessionView);
   const domain = getCandleDomain(candles);
   const priceAxis = getPriceAxis(domain);
   const y = (price: number) => priceToY(price, domain, top, plotBottom);
@@ -1515,12 +1513,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     .filter((annotation): annotation is VisualValidationAnnotation => annotation !== undefined);
   const allLevels = [...fixedLevels, ...indicatorLegend];
   const entryReference = fixedLevels.find((annotation) => annotation.id === "entry-buffer")?.price ?? null;
-    const riskLevelIds = new Set(["entry-buffer", "strategy-stop"]);
    const primaryLevels = [
       ...fixedLevels.filter((annotation) => isPrimaryLevel(annotation)),
       ...indicatorLegend.filter((annotation) => isPrimaryLevel(annotation)),
-    ]
-      .filter((annotation) => showRiskLevels || !riskLevelIds.has(annotation.id));
+    ];
    const additionalLevels = fixedLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
    const levelLegend = [...allLevels]
@@ -1683,14 +1679,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          <button type="button" onClick={() => setPan((current) => Math.min(width - width / zoom, current + 80 / zoom))} disabled={pan >= width - width / zoom} className="chart-control" aria-label="Pan chart right" data-testid="button-pan-right"><MoveRight size={13} />Pan right</button>
          <button type="button" onClick={() => { setZoom(1); setPan(0); }} className="chart-control" aria-label="Reset chart view" data-testid="button-reset-chart"><RotateCcw size={13} />Reset</button>
          {sessionView !== "primary" && <button type="button" onClick={onReturnPrimary} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
-          <label className="ml-1 inline-flex min-h-8 items-center gap-2 border border-border bg-card px-2.5 text-[9px] font-bold uppercase tracking-[.04em]">
-            <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showAllAuditEvents} onChange={(event) => { setShowAllAuditEvents(event.target.checked); setActiveEventId(null); }} data-testid="toggle-show-all-audit-events" />
-            Show all audit events
-          </label>
-           <label className="inline-flex min-h-8 items-center gap-2 border border-border bg-card px-2.5 text-[9px] font-bold uppercase tracking-[.04em]">
-             <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showRiskLevels} onChange={(event) => setShowRiskLevels(event.target.checked)} data-testid="toggle-show-risk-levels" />
-             Show planned risk levels
-           </label>
        </div>
      </div>
         <section className="event-strip" aria-label="Causal event strip" data-testid="event-strip">
@@ -1699,7 +1687,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               <div className="eyebrow text-muted-foreground">Causal events</div>
               <div className="mt-1 text-[11px] font-bold">{chartEvents.length ? "Select a numbered marker or event" : "No category events in this window"}</div>
             </div>
-            <span className="mono shrink-0 text-[9px] text-muted-foreground">{chartEvents.length} {showAllAuditEvents ? "audit" : "category"} events</span>
+            <span className="mono shrink-0 text-[9px] text-muted-foreground">{chartEvents.length} category events</span>
           </div>
           {chartEvents.length > 0 && <div className="event-strip-scroll" role="list">
             {chartEvents.map((event) => {
@@ -1974,9 +1962,6 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
   const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
   const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
-  const thresholds = typeof audit.consolidationThresholds === "object" && audit.consolidationThresholds !== null
-    ? audit.consolidationThresholds as Record<string, unknown>
-    : null;
   const qualified = audit.rejectionCategory === "QUALIFIED" && evidence.trade;
   const trade = evidence.trade as TradeEvidenceView | null;
   const behavior = [
@@ -2003,7 +1988,6 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
-      {thresholds && <div className="border-t border-border bg-card px-4 py-3 text-[10px]" data-testid="threshold-provenance"><div className="eyebrow text-muted-foreground">Governed threshold provenance</div><div className="mono mt-2 break-words">{safeValue(thresholds.version)} · min {safeValue(thresholds.minimumCandles)} candles · max {safeValue(thresholds.maximumRangeTicks)} ticks · expansion {safeValue(thresholds.maximumExpansionRatio)}×</div></div>}
       <TradeInspector trade={trade} />
      <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
         <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>
