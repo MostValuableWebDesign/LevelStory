@@ -4246,6 +4246,8 @@ export interface VisualValidationTradeCandidate {
   /** Canonical identity: contract, New York trading date, entry candle, and direction. */
   candidateId: string;
   snapshotId: string;
+  /** @minLength 1 */
+  signalOccurrenceId: string;
   contractSymbol: string;
   tradingDate: string;
   entryCandleOpenTime: string;
@@ -4260,6 +4262,160 @@ export interface VisualValidationTradeCandidate {
   period: VisualValidationTradeCandidatePeriod;
   outcome: string;
   causalEvidence: VisualValidationTradeCandidateCausalEvidenceItem[];
+}
+
+export interface ShadowAccountReplaySegment {
+  /** @minimum 0 */
+  enteredTrades: number;
+  /** @minimum 0 */
+  closedTrades: number;
+  /** @minimum 0 */
+  openTrades: number;
+  /** @minimum 0 */
+  wins: number;
+  /** @minimum 0 */
+  losses: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  winRate: number;
+  netPnl: number;
+  averageWin: number;
+  averageLoss: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  profitFactor: number | null;
+  expectancyPerTrade: number;
+}
+
+export type ShadowAccountReplayTradeDirection = typeof ShadowAccountReplayTradeDirection[keyof typeof ShadowAccountReplayTradeDirection];
+
+
+export const ShadowAccountReplayTradeDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type ShadowAccountReplayTradePeriod = typeof ShadowAccountReplayTradePeriod[keyof typeof ShadowAccountReplayTradePeriod];
+
+
+export const ShadowAccountReplayTradePeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type ShadowAccountReplayTradeStatus = typeof ShadowAccountReplayTradeStatus[keyof typeof ShadowAccountReplayTradeStatus];
+
+
+export const ShadowAccountReplayTradeStatus = {
+  closed: 'closed',
+  open: 'open',
+} as const;
+
+export interface ShadowAccountReplayTrade {
+  /** @minimum 1 */
+  tradeNumber: number;
+  /** @minLength 1 */
+  candidateId: string;
+  /** @minLength 1 */
+  signalOccurrenceId: string;
+  /** @minLength 1 */
+  snapshotId: string;
+  entryTime: string;
+  /** @minLength 1 */
+  contractSymbol: string;
+  /** @minLength 1 */
+  primaryEdge: string;
+  direction: ShadowAccountReplayTradeDirection;
+  entryPrice: number;
+  /** @nullable */
+  exitPrice: number | null;
+  exitReason: string;
+  /** @nullable */
+  netPnl: number | null;
+  runningBalance: number;
+  supportingConfluences: string[];
+  period: ShadowAccountReplayTradePeriod;
+  status: ShadowAccountReplayTradeStatus;
+}
+
+export type ShadowAccountReplayEquityCurveItemStatus = typeof ShadowAccountReplayEquityCurveItemStatus[keyof typeof ShadowAccountReplayEquityCurveItemStatus];
+
+
+export const ShadowAccountReplayEquityCurveItemStatus = {
+  win: 'win',
+  loss: 'loss',
+  flat: 'flat',
+  open: 'open',
+} as const;
+
+export type ShadowAccountReplayEquityCurveItem = {
+  /** @minimum 1 */
+  tradeNumber: number;
+  entryTime: string;
+  balance: number;
+  /** @nullable */
+  netPnl: number | null;
+  status: ShadowAccountReplayEquityCurveItemStatus;
+};
+
+export interface ShadowAccountReplay {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  reviewSetId: string;
+  startingBalance: number;
+  endingRealizedBalance: number;
+  realizedNetPnl: number;
+  percentReturn: number;
+  /** @minimum 0 */
+  candidateTrades: number;
+  /** @minimum 0 */
+  enteredTrades: number;
+  /** @minimum 0 */
+  closedTrades: number;
+  /** @minimum 0 */
+  openTrades: number;
+  /** @minimum 0 */
+  wins: number;
+  /** @minimum 0 */
+  losses: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  winRate: number;
+  averageWin: number;
+  averageLoss: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  profitFactor: number | null;
+  /** @minimum 0 */
+  maxDrawdown: number;
+  /** @minimum 0 */
+  maxConsecutiveWins: number;
+  /** @minimum 0 */
+  maxConsecutiveLosses: number;
+  expectancyPerTrade: number;
+  inSample: ShadowAccountReplaySegment;
+  outOfSample: ShadowAccountReplaySegment;
+  equityCurve: ShadowAccountReplayEquityCurveItem[];
+  ledger: ShadowAccountReplayTrade[];
+  stale: boolean;
+  /** @minLength 1 */
+  cacheKey: string;
+  /** @minLength 1 */
+  formulaHash: string;
+  /** @minLength 1 */
+  sourceFingerprint: string;
+  /** @minLength 1 */
+  candidateProjectionVersion: string;
+  /** @minLength 1 */
+  executionManagementVersion: string;
+  warnings: string[];
 }
 
 export interface VisualValidationReviewPeriod {
@@ -5196,6 +5352,22 @@ export const GetVisualValidationSetReviewMode = {
   confirmed_signals: 'confirmed_signals',
   trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;
+
+export type GetShadowAccountReplayParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+reviewSetId: string;
+/**
+ * @exclusiveMinimum 0
+ */
+startingBalance?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+contractsPerTrade?: number;
+};
 
 export type ExportVisualValidationDiscrepanciesParams = {
 /**

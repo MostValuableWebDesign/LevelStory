@@ -37,6 +37,8 @@ import {
   getVisualValidationGenerationJob,
   startVisualValidationGenerationJob,
 } from "../lib/visual-validation-generation-jobs.js";
+import { buildShadowAccountReplay } from "../lib/shadow-account-replay.js";
+import { GetShadowAccountReplayQueryParams, GetShadowAccountReplayResponse } from "@workspace/api-zod";
 
 const defaultRequest = {
   symbol: "MES" as const,
@@ -178,6 +180,28 @@ export function createVisualValidationRouter(): IRouter {
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
       res.status(unavailable ? 503 : 500).json({ error: detail });
     }
+  });
+
+  router.get("/backtest/visual-validation/replay", (req, res): void => {
+    const parsed = GetShadowAccountReplayQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const set = getVisualValidationSet(parsed.data.reviewSetId);
+    if (!set) {
+      res.status(404).json({ error: "Visual-validation set not found or expired." });
+      return;
+    }
+    if (!Number.isInteger(parsed.data.contractsPerTrade)) {
+      res.status(400).json({ error: "Contracts per trade must be a whole number between 1 and 100." });
+      return;
+    }
+    const replay = buildShadowAccountReplay(set, {
+      startingBalance: parsed.data.startingBalance,
+      contractsPerTrade: parsed.data.contractsPerTrade,
+    });
+    res.json(GetShadowAccountReplayResponse.parse(replay));
   });
 
   router.post("/backtest/visual-validation/generation-jobs", async (req, res): Promise<void> => {

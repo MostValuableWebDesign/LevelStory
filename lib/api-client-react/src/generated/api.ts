@@ -45,6 +45,7 @@ import type {
   GetHistoricalEmaComparisonParams,
   GetMarketDataStatusParams,
   GetMarketSnapshotParams,
+  GetShadowAccountReplayParams,
   GetVisualValidationSetParams,
   GovernanceReasonInput,
   HealthStatus,
@@ -58,6 +59,7 @@ import type {
   MarketSnapshot,
   RiskSettings,
   RiskSettingsUpdate,
+  ShadowAccountReplay,
   StrategyCatalogItem,
   StrategyId,
   StrategyProposal,
@@ -1379,6 +1381,91 @@ export const useCreateVisualValidationSet = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateVisualValidationSetMutationOptions(options));
     }
+
+export const getGetShadowAccountReplayUrl = (params: GetShadowAccountReplayParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/backtest/visual-validation/replay?${stringifiedParams}` : `/api/backtest/visual-validation/replay`
+}
+
+/**
+ * Recomputes a read-only dummy-money account from the selected Visual Review set. It never creates signals, connects to a broker, or places orders.
+ * @summary Replay candidate-owned visual-validation trades in a shadow account
+ */
+export const getShadowAccountReplay = async (params: GetShadowAccountReplayParams, options?: Parameters<typeof customFetch>[1]): Promise<ShadowAccountReplay> => {
+
+  return customFetch<ShadowAccountReplay>(getGetShadowAccountReplayUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShadowAccountReplayQueryKey = (params?: GetShadowAccountReplayParams,) => {
+    return [
+    `/api/backtest/visual-validation/replay`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetShadowAccountReplayQueryOptions = <TData = Awaited<ReturnType<typeof getShadowAccountReplay>>, TError = ErrorType<ErrorResponse>>(params: GetShadowAccountReplayParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShadowAccountReplay>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShadowAccountReplayQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShadowAccountReplay>>> = ({ signal }) => getShadowAccountReplay(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShadowAccountReplay>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShadowAccountReplayQueryResult = NonNullable<Awaited<ReturnType<typeof getShadowAccountReplay>>>
+export type GetShadowAccountReplayQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Replay candidate-owned visual-validation trades in a shadow account
+ */
+
+export function useGetShadowAccountReplay<TData = Awaited<ReturnType<typeof getShadowAccountReplay>>, TError = ErrorType<ErrorResponse>>(
+ params: GetShadowAccountReplayParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShadowAccountReplay>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShadowAccountReplayQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getStartVisualValidationGenerationJobUrl = () => {
 

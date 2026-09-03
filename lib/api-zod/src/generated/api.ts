@@ -5308,6 +5308,7 @@ export const getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineEvi
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 export const getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
@@ -5590,6 +5591,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "tradeCandidates": zod.array(zod.object({
   "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
   "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
   "contractSymbol": zod.string(),
   "tradingDate": zod.string(),
   "entryCandleOpenTime": zod.coerce.date(),
@@ -5733,6 +5735,7 @@ export const createVisualValidationSetResponseSnapshotsItemReviewTeachingMachine
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 export const createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
@@ -6015,6 +6018,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "tradeCandidates": zod.array(zod.object({
   "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
   "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
   "contractSymbol": zod.string(),
   "tradingDate": zod.string(),
   "entryCandleOpenTime": zod.coerce.date(),
@@ -6065,6 +6069,174 @@ export const CreateVisualValidationSetResponse = zod.object({
   "outsidePrimaryWindowOccurrences": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsWindowOutsidePrimaryWindowOccurrencesMin)
 })
 }).optional()
+})
+
+
+/**
+ * Recomputes a read-only dummy-money account from the selected Visual Review set. It never creates signals, connects to a broker, or places orders.
+ * @summary Replay candidate-owned visual-validation trades in a shadow account
+ */
+export const getShadowAccountReplayQueryReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getShadowAccountReplayQueryStartingBalanceDefault = 10000;
+export const getShadowAccountReplayQueryStartingBalanceExclusiveMin = 0;
+
+export const getShadowAccountReplayQueryContractsPerTradeDefault = 1;
+export const getShadowAccountReplayQueryContractsPerTradeMax = 100;
+
+
+
+export const GetShadowAccountReplayQueryParams = zod.object({
+  "reviewSetId": zod.coerce.string().regex(getShadowAccountReplayQueryReviewSetIdRegExp),
+  "startingBalance": zod.coerce.number().gt(getShadowAccountReplayQueryStartingBalanceExclusiveMin).default(getShadowAccountReplayQueryStartingBalanceDefault),
+  "contractsPerTrade": zod.coerce.number().min(1).max(getShadowAccountReplayQueryContractsPerTradeMax).default(getShadowAccountReplayQueryContractsPerTradeDefault)
+})
+
+export const getShadowAccountReplayResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const getShadowAccountReplayResponseCandidateTradesMin = 0;
+
+export const getShadowAccountReplayResponseEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseWinsMin = 0;
+
+export const getShadowAccountReplayResponseLossesMin = 0;
+
+export const getShadowAccountReplayResponseWinRateMin = 0;
+export const getShadowAccountReplayResponseWinRateMax = 100;
+
+export const getShadowAccountReplayResponseProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseMaxDrawdownMin = 0;
+
+export const getShadowAccountReplayResponseMaxConsecutiveWinsMin = 0;
+
+export const getShadowAccountReplayResponseMaxConsecutiveLossesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleWinsMin = 0;
+
+export const getShadowAccountReplayResponseInSampleLossesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleWinRateMin = 0;
+export const getShadowAccountReplayResponseInSampleWinRateMax = 100;
+
+export const getShadowAccountReplayResponseInSampleProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleWinsMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleLossesMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleWinRateMin = 0;
+export const getShadowAccountReplayResponseOutOfSampleWinRateMax = 100;
+
+export const getShadowAccountReplayResponseOutOfSampleProfitFactorMin = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const GetShadowAccountReplayResponse = zod.object({
+  "reviewSetId": zod.string().regex(getShadowAccountReplayResponseReviewSetIdRegExp),
+  "startingBalance": zod.number(),
+  "endingRealizedBalance": zod.number(),
+  "realizedNetPnl": zod.number(),
+  "percentReturn": zod.number(),
+  "candidateTrades": zod.number().min(getShadowAccountReplayResponseCandidateTradesMin),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseLossesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseWinRateMin).max(getShadowAccountReplayResponseWinRateMax),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseProfitFactorMin).nullable(),
+  "maxDrawdown": zod.number().min(getShadowAccountReplayResponseMaxDrawdownMin),
+  "maxConsecutiveWins": zod.number().min(getShadowAccountReplayResponseMaxConsecutiveWinsMin),
+  "maxConsecutiveLosses": zod.number().min(getShadowAccountReplayResponseMaxConsecutiveLossesMin),
+  "expectancyPerTrade": zod.number(),
+  "inSample": zod.object({
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseInSampleEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseInSampleClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseInSampleOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseInSampleWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseInSampleLossesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseInSampleWinRateMin).max(getShadowAccountReplayResponseInSampleWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseInSampleProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+}),
+  "outOfSample": zod.object({
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseOutOfSampleWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseOutOfSampleLossesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseOutOfSampleWinRateMin).max(getShadowAccountReplayResponseOutOfSampleWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseOutOfSampleProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+}),
+  "equityCurve": zod.array(zod.object({
+  "tradeNumber": zod.number().min(1),
+  "entryTime": zod.coerce.date(),
+  "balance": zod.number(),
+  "netPnl": zod.number().nullable(),
+  "status": zod.enum(['win', 'loss', 'flat', 'open'])
+})),
+  "ledger": zod.array(zod.object({
+  "tradeNumber": zod.number().min(1),
+  "candidateId": zod.string().min(1),
+  "signalOccurrenceId": zod.string().min(1),
+  "snapshotId": zod.string().min(1),
+  "entryTime": zod.coerce.date(),
+  "contractSymbol": zod.string().min(1),
+  "primaryEdge": zod.string().min(1),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "exitReason": zod.string(),
+  "netPnl": zod.number().nullable(),
+  "runningBalance": zod.number(),
+  "supportingConfluences": zod.array(zod.string()),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "status": zod.enum(['closed', 'open'])
+})),
+  "stale": zod.boolean(),
+  "cacheKey": zod.string().min(1),
+  "formulaHash": zod.string().min(1),
+  "sourceFingerprint": zod.string().min(1),
+  "candidateProjectionVersion": zod.string().min(1),
+  "executionManagementVersion": zod.string().min(1),
+  "warnings": zod.array(zod.string())
 })
 
 
@@ -6174,6 +6346,7 @@ export const startVisualValidationGenerationJobResponseResultSnapshotsItemReview
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 export const startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -6471,6 +6644,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "tradeCandidates": zod.array(zod.object({
   "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
   "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
   "contractSymbol": zod.string(),
   "tradingDate": zod.string(),
   "entryCandleOpenTime": zod.coerce.date(),
@@ -6607,6 +6781,7 @@ export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemRe
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 export const getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -6904,6 +7079,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "tradeCandidates": zod.array(zod.object({
   "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
   "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
   "contractSymbol": zod.string(),
   "tradingDate": zod.string(),
   "entryCandleOpenTime": zod.coerce.date(),
@@ -7047,6 +7223,7 @@ export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTe
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
 export const getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -7344,6 +7521,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "tradeCandidates": zod.array(zod.object({
   "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
   "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
   "contractSymbol": zod.string(),
   "tradingDate": zod.string(),
   "entryCandleOpenTime": zod.coerce.date(),

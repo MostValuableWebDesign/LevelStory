@@ -43,6 +43,24 @@ test("visual review browses one stable queue across dates and categories", () =>
   assert.match(page, /snapshot\.tradingDate/);
 });
 
+test("visual review presents the read-only Shadow Account Replay states and audit fields", () => {
+  assert.match(page, /data-testid="shadow-account-replay-panel"/);
+  assert.match(page, /data-testid="shadow-replay-empty"/);
+  assert.match(page, /data-testid="shadow-replay-pending"/);
+  assert.match(page, /data-testid="shadow-replay-stale"/);
+  assert.match(page, /data-testid="shadow-replay-zero-trades"/);
+  assert.match(page, /useGetShadowAccountReplay/);
+  assert.match(page, /data-testid="input-shadow-starting-balance"/);
+  assert.match(page, /data-testid="input-shadow-contracts-per-trade"/);
+  assert.match(page, /data-testid="shadow-equity-curve"/);
+  assert.match(page, /data-testid="shadow-trade-ledger"/);
+  assert.match(page, /Date\/time ET/);
+  assert.match(page, /Exit reason/);
+  assert.match(page, /Confluences/);
+  assert.match(page, /No compounding, broker, paper, or live action/);
+  assert.match(page, /formatReplayTime/);
+});
+
 test("visual review presentation retains human-only shading and semantic level colors", () => {
   assert.match(page, /data-testid="human-only-region"/);
    assert.match(page, /data-testid="consolidation-zone-overlay"/);

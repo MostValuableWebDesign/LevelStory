@@ -15,6 +15,8 @@ export interface VisualValidationTradeCandidate {
   /** Canonical identity: contract, New York trading date, entry candle, and direction. */
   candidateId: string;
   snapshotId: string;
+  /** @minLength 1 */
+  signalOccurrenceId: string;
   contractSymbol: string;
   tradingDate: string;
   entryCandleOpenTime: Date;

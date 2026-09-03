@@ -539,6 +539,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/replay:
+    get:
+      operationId: getShadowAccountReplay
+      tags: [backtest]
+      summary: Replay candidate-owned visual-validation trades in a shadow account
+      description: Recomputes a read-only dummy-money account from the selected Visual Review set. It never creates signals, connects to a broker, or places orders.
+      parameters:
+        - name: reviewSetId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        - name: startingBalance
+          in: query
+          required: false
+          schema: { type: number, exclusiveMinimum: 0, default: 10000 }
+        - name: contractsPerTrade
+          in: query
+          required: false
+          schema: { type: number, minimum: 1, maximum: 100, default: 1 }
+      responses:
+        "200":
+          description: Shadow account replay result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShadowAccountReplay"
+        "400":
+          description: Invalid replay options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Review set not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/visual-validation/generation-jobs:
     post:
       operationId: startVisualValidationGenerationJob
@@ -4124,6 +4162,7 @@ components:
       properties:
         candidateId: { type: string, description: "Canonical identity: contract, New York trading date, entry candle, and direction." }
         snapshotId: { type: string }
+        signalOccurrenceId: { type: string, minLength: 1 }
         contractSymbol: { type: string }
         tradingDate: { type: string }
         entryCandleOpenTime: { type: string, format: date-time }
@@ -4149,7 +4188,92 @@ components:
               timestamp: { type: string, format: date-time }
               detail: { type: string }
             required: [kind, timestamp, detail]
-      required: [candidateId, snapshotId, contractSymbol, tradingDate, entryCandleOpenTime, entryCandleCloseTime, direction, entryTriggerPrice, primaryEdge, matchedEdges, supportingConfluences, setupGrade, period, outcome, causalEvidence]
+      required: [candidateId, snapshotId, signalOccurrenceId, contractSymbol, tradingDate, entryCandleOpenTime, entryCandleCloseTime, direction, entryTriggerPrice, primaryEdge, matchedEdges, supportingConfluences, setupGrade, period, outcome, causalEvidence]
+    ShadowAccountReplaySegment:
+      type: object
+      properties:
+        enteredTrades: { type: number, minimum: 0 }
+        closedTrades: { type: number, minimum: 0 }
+        openTrades: { type: number, minimum: 0 }
+        wins: { type: number, minimum: 0 }
+        losses: { type: number, minimum: 0 }
+        winRate: { type: number, minimum: 0, maximum: 100 }
+        netPnl: { type: number }
+        averageWin: { type: number }
+        averageLoss: { type: number }
+        profitFactor: { type: ["number", "null"], minimum: 0 }
+        expectancyPerTrade: { type: number }
+      required: [enteredTrades, closedTrades, openTrades, wins, losses, winRate, netPnl, averageWin, averageLoss, profitFactor, expectancyPerTrade]
+    ShadowAccountReplayTrade:
+      type: object
+      properties:
+        tradeNumber: { type: number, minimum: 1 }
+        candidateId: { type: string, minLength: 1 }
+        signalOccurrenceId: { type: string, minLength: 1 }
+        snapshotId: { type: string, minLength: 1 }
+        entryTime: { type: string, format: date-time }
+        contractSymbol: { type: string, minLength: 1 }
+        primaryEdge: { type: string, minLength: 1 }
+        direction: { type: string, enum: [long, short] }
+        entryPrice: { type: number }
+        exitPrice: { type: ["number", "null"] }
+        exitReason: { type: string }
+        netPnl: { type: ["number", "null"] }
+        runningBalance: { type: number }
+        supportingConfluences:
+          type: array
+          items: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        status: { type: string, enum: [closed, open] }
+      required: [tradeNumber, candidateId, signalOccurrenceId, snapshotId, entryTime, contractSymbol, primaryEdge, direction, entryPrice, exitPrice, exitReason, netPnl, runningBalance, supportingConfluences, period, status]
+    ShadowAccountReplay:
+      type: object
+      properties:
+        reviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        startingBalance: { type: number }
+        endingRealizedBalance: { type: number }
+        realizedNetPnl: { type: number }
+        percentReturn: { type: number }
+        candidateTrades: { type: number, minimum: 0 }
+        enteredTrades: { type: number, minimum: 0 }
+        closedTrades: { type: number, minimum: 0 }
+        openTrades: { type: number, minimum: 0 }
+        wins: { type: number, minimum: 0 }
+        losses: { type: number, minimum: 0 }
+        winRate: { type: number, minimum: 0, maximum: 100 }
+        averageWin: { type: number }
+        averageLoss: { type: number }
+        profitFactor: { type: ["number", "null"], minimum: 0 }
+        maxDrawdown: { type: number, minimum: 0 }
+        maxConsecutiveWins: { type: number, minimum: 0 }
+        maxConsecutiveLosses: { type: number, minimum: 0 }
+        expectancyPerTrade: { type: number }
+        inSample: { $ref: "#/components/schemas/ShadowAccountReplaySegment" }
+        outOfSample: { $ref: "#/components/schemas/ShadowAccountReplaySegment" }
+        equityCurve:
+          type: array
+          items:
+            type: object
+            properties:
+              tradeNumber: { type: number, minimum: 1 }
+              entryTime: { type: string, format: date-time }
+              balance: { type: number }
+              netPnl: { type: ["number", "null"] }
+              status: { type: string, enum: [win, loss, flat, open] }
+            required: [tradeNumber, entryTime, balance, netPnl, status]
+        ledger:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayTrade" }
+        stale: { type: boolean }
+        cacheKey: { type: string, minLength: 1 }
+        formulaHash: { type: string, minLength: 1 }
+        sourceFingerprint: { type: string, minLength: 1 }
+        candidateProjectionVersion: { type: string, minLength: 1 }
+        executionManagementVersion: { type: string, minLength: 1 }
+        warnings:
+          type: array
+          items: { type: string }
+      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, warnings]
     VisualValidationReviewPeriod:
       type: object
       properties:

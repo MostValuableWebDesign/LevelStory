@@ -245,6 +245,7 @@ export type VisualValidationCategoryCoverage = {
 export type VisualValidationTradeCandidate = {
   candidateId: string;
   snapshotId: string;
+  signalOccurrenceId: string;
   contractSymbol: string;
   tradingDate: string;
   entryCandleOpenTime: string;
@@ -313,13 +314,14 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
   }[edge] ?? edge);
   const candidateById = new Map<string, VisualValidationTradeCandidate>();
   for (const snapshot of snapshots) {
+    const trade = snapshot.machineEvidence.trade;
     if (
       snapshot.category !== "qualified_trade"
       || !snapshot.categoryAnchor.direction
-      || !snapshot.machineEvidence.trade?.candidateId
-      || !snapshot.machineEvidence.trade.signalOccurrenceId
+      || !trade?.candidateId
+      || !trade.signalOccurrenceId
     ) continue;
-    const trade = snapshot.machineEvidence.trade;
+    const signalOccurrenceId = trade.signalOccurrenceId;
     const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? snapshot.categoryAnchor.openTime;
     const entryCloseTime = trade?.audit?.triggerCandleCloseTime ?? snapshot.categoryAnchor.closeTime;
     const candidateId = `${snapshot.contractSymbol}|${snapshot.tradingDate}|${entryOpenTime}|${snapshot.categoryAnchor.direction}`;
@@ -336,6 +338,7 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
       candidateById.set(candidateId, {
         candidateId,
         snapshotId: snapshot.snapshotId,
+        signalOccurrenceId,
         contractSymbol: snapshot.contractSymbol,
         tradingDate: snapshot.tradingDate,
         entryCandleOpenTime: entryOpenTime,
