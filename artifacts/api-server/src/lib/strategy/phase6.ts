@@ -78,14 +78,13 @@ export type ExtendedConsolidation = {
   detail: string;
 };
 
-export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v3";
+export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v4";
 
 export type ConsolidationLifecycleState =
   | "CONSOLIDATION_ZONE_FROZEN"
   | "PATIENCE_INSIDE_CONSOLIDATION"
   | "CONSOLIDATION_BREAKOUT_CONFIRMED"
   | "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
-  | "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
   | "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"
   | "BREAKOUT_PULLBACK_PATIENCE_CONFIRMED";
 
@@ -102,6 +101,7 @@ export type ConsolidationEntryEvidence = {
   executionEligible: boolean;
   consolidationZoneHigh: number | null;
   consolidationZoneLow: number | null;
+  activeConsolidationZoneId: string | null;
   consolidationStartTime: number | null;
   consolidationDetectionTime: number | null;
   sourceCandleOpenTimes: number[];
@@ -122,15 +122,24 @@ export type ConsolidationEntryEvidence = {
   entryOpenTime: number | null;
   entryCloseTime: number | null;
   confirmationThreshold: number | null;
+  patienceConfirmationThreshold: number | null;
+  consolidationBoundaryThreshold: number | null;
+  effectiveEntryThreshold: number | null;
   entryClose: number | null;
   entryCompleted: boolean;
   entryReachedConfirmation: boolean | null;
+  effectiveEntryThresholdReached: boolean | null;
+  entryOpenedOutsideZone: boolean | null;
+  entryClosedOutsideZone: boolean | null;
   entryCloseOutsideZone: boolean | null;
   entryRangeOutsideZone: boolean | null;
+  entryRangeOverlappedZone: boolean | null;
+  entryFillOutsideZone: boolean | null;
   entryOutsideFinalizedNtz: boolean | null;
   entryBeforeCutoff: boolean | null;
   consolidationEdgeQualified: boolean;
   breakoutPullback: boolean;
+  consolidationEntryDisposition: string;
   rejectionReason: string | null;
   detail: string;
 };
@@ -581,6 +590,7 @@ export function evaluateConsolidationEntryGuard(input: {
   config: StrategyConfig;
   consolidationEvaluation?: Pick<SetupEvaluation, "setupType" | "decision"> | null;
   qualifyingPullback?: boolean;
+  entryFillPrice?: number | null;
 }): ConsolidationEntryEvidence | null {
   const completed = completedCandles(input.candles);
   const patienceCandle = input.patience?.patienceCandle;
@@ -627,6 +637,13 @@ export function evaluateConsolidationEntryGuard(input: {
   const zoneHigh = frozen.frozenHigh;
   const zoneLow = frozen.frozenLow;
   const direction = input.direction;
+  const activeConsolidationZoneId = [
+    CONSOLIDATION_ENTRY_GUARD_VERSION,
+    frozen.startTime ?? "unknown",
+    frozen.endTime ?? "unknown",
+    zoneLow,
+    zoneHigh,
+  ].join("|");
   const pInside = patienceCandle !== null
     && patienceCandle !== undefined
     && patienceCandle.high <= zoneHigh
@@ -649,21 +666,46 @@ export function evaluateConsolidationEntryGuard(input: {
         input.levels.ntz,
       )
     : null;
-  const entryReachedConfirmation = direction && entry && confirmationThreshold !== null
-    ? reachesEffectiveConfirmation(entry, direction, confirmationThreshold)
-      || (direction === "long" ? entry.open >= confirmationThreshold : entry.open <= confirmationThreshold)
+  const patienceConfirmationThreshold = confirmationThreshold;
+  const consolidationBoundaryThreshold = direction === "long"
+    ? zoneHigh + 0.25
+    : direction === "short"
+      ? zoneLow - 0.25
+      : null;
+  const effectiveEntryThreshold = direction && patienceConfirmationThreshold !== null && consolidationBoundaryThreshold !== null
+    ? Number((
+      direction === "long"
+        ? Math.max(patienceConfirmationThreshold, consolidationBoundaryThreshold)
+        : Math.min(patienceConfirmationThreshold, consolidationBoundaryThreshold)
+    ).toFixed(10))
     : null;
-  const entryCloseOutsideZone = direction && entry
+  const effectiveEntryThresholdReached = direction && entry && effectiveEntryThreshold !== null
+    ? reachesEffectiveConfirmation(entry, direction, effectiveEntryThreshold)
+      || (direction === "long" ? entry.open >= effectiveEntryThreshold : entry.open <= effectiveEntryThreshold)
+    : null;
+  const entryOpenedOutsideZone = direction && entry
+    ? direction === "long" ? entry.open > zoneHigh : entry.open < zoneLow
+    : null;
+  const entryClosedOutsideZone = direction && entry
     ? entry.isComplete
       ? direction === "long" ? entry.close > zoneHigh : entry.close < zoneLow
       : null
     : null;
+  const entryCloseOutsideZone = entryClosedOutsideZone;
   const entryRangeOutsideZone = direction && entry
     ? direction === "long" ? entry.low > zoneHigh : entry.high < zoneLow
     : null;
-  const entryOutsideFinalizedNtz = direction && entry && entry.isComplete && confirmationThreshold !== null
-    ? isStrictlyOutsideNtz(entry, direction, input.levels.ntz, true, confirmationThreshold)
+  const entryRangeOverlappedZone = entry
+    ? entry.low <= zoneHigh && entry.high >= zoneLow
+    : null;
+  const entryOutsideFinalizedNtz = direction && entry && entry.isComplete && effectiveEntryThreshold !== null
+    ? isStrictlyOutsideNtz(entry, direction, input.levels.ntz, true, effectiveEntryThreshold)
     : entry ? false : null;
+  const entryFillPrice = input.entryFillPrice ?? effectiveEntryThreshold;
+  const entryFillOutsideZone = direction && entryFillPrice !== null
+    ? direction === "long" ? entryFillPrice > zoneHigh : entryFillPrice < zoneLow
+    : null;
+  const entryReachedConfirmation = effectiveEntryThresholdReached;
   const entryBeforeCutoff = entry
     ? wallClockMinutesForTimestamp(entry.openTime, input.config.sessionTimeZone) < input.config.primaryEntryEndMinutes
     : null;
@@ -681,8 +723,8 @@ export function evaluateConsolidationEntryGuard(input: {
     && entry?.isComplete
     && entryReachedConfirmation
     && entryCloseOutsideZone
-    && entryRangeOutsideZone
     && entryOutsideFinalizedNtz
+    && entryFillOutsideZone
     && entryBeforeCutoff
     && consolidationEdgeQualified,
   );
@@ -691,8 +733,9 @@ export function evaluateConsolidationEntryGuard(input: {
     && entryIsImmediate
     && entry?.isComplete
     && entryReachedConfirmation
-    && entryRangeOutsideZone
+    && entryCloseOutsideZone
     && entryOutsideFinalizedNtz
+    && entryFillOutsideZone
     && entryBeforeCutoff
     && consolidationEdgeQualified,
   );
@@ -704,26 +747,40 @@ export function evaluateConsolidationEntryGuard(input: {
     lifecycleStates.push("BREAKOUT_PULLBACK_PATIENCE_CONFIRMED");
   } else if (pInside && entryIsImmediate && entry?.isComplete) {
     lifecycleStates.push(
-      ...(entryRangeOutsideZone
-        ? ["CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED" as const]
-        : ["CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE" as const]),
+      "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED",
       "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
     );
   }
   const executionEligible = !pInside
     ? (!breakoutPullback || breakoutPullbackConfirmed)
     : directBreakoutConfirmed;
+  const entryWickedOutsideButClosedInside = direction && entry
+    ? direction === "long"
+      ? entry.high > zoneHigh && entry.close <= zoneHigh
+      : entry.low < zoneLow && entry.close >= zoneLow
+    : false;
+  const consolidationEntryDisposition = !pInside && !breakoutPullback
+    ? "CONSOLIDATION_ZONE_NOT_CAUSALLY_APPLICABLE"
+    : !entryIsImmediate || !entry?.isComplete
+      ? "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
+      : !effectiveEntryThresholdReached
+        ? "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
+        : !entryClosedOutsideZone
+          ? entryWickedOutsideButClosedInside
+            ? "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT"
+            : "CONSOLIDATION_ENTRY_CLOSE_REMAINED_INSIDE_ZONE"
+          : !entryFillOutsideZone
+            ? "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE"
+            : executionEligible
+              ? "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE"
+              : "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED";
   const rejectionReason = executionEligible
     ? null
     : breakoutPullback
-      ? entryIsImmediate && entry?.isComplete && entryRangeOutsideZone === false
-        ? "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
-        : "CONSOLIDATION_BREAKOUT_PULLBACK_SEQUENCE_NOT_CONFIRMED"
+      ? consolidationEntryDisposition
       : pInside
         ? entryIsImmediate && entry?.isComplete
-          ? entryRangeOutsideZone === false
-            ? "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
-            : "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+          ? consolidationEntryDisposition
           : "PATIENCE_INSIDE_CONSOLIDATION"
         : null;
   return {
@@ -735,6 +792,7 @@ export function evaluateConsolidationEntryGuard(input: {
     executionEligible,
     consolidationZoneHigh: zoneHigh,
     consolidationZoneLow: zoneLow,
+    activeConsolidationZoneId,
     consolidationStartTime: frozen.startTime,
     consolidationDetectionTime: frozen.endTime,
     sourceCandleOpenTimes,
@@ -758,24 +816,37 @@ export function evaluateConsolidationEntryGuard(input: {
     entryClose: entry?.isComplete ? entry.close : null,
     entryCompleted: entry?.isComplete === true,
     entryReachedConfirmation,
+    patienceConfirmationThreshold,
+    consolidationBoundaryThreshold,
+    effectiveEntryThreshold,
+    effectiveEntryThresholdReached,
+    entryOpenedOutsideZone,
+    entryClosedOutsideZone,
     entryCloseOutsideZone,
     entryRangeOutsideZone,
+    entryRangeOverlappedZone,
+    entryFillOutsideZone,
     entryOutsideFinalizedNtz,
     entryBeforeCutoff,
     consolidationEdgeQualified,
     breakoutPullback,
+    consolidationEntryDisposition,
     rejectionReason,
     detail: directBreakoutConfirmed
       ? "Immediate E reached the configured confirmation buffer, closed strictly outside the frozen consolidation zone and finalized NTZ, and satisfied the consolidation breakout edge."
       : breakoutPullbackConfirmed
         ? "Completed breakout-pullback patience sequence confirmed from the frozen consolidation boundary and a new immediate P→E."
-        : rejectionReason === "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
-          ? "The completed entry candle overlaps the frozen consolidation zone; the entire candle range must clear the zone before execution."
-          : rejectionReason === "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
-          ? "Immediate E did not close strictly outside the frozen consolidation zone; the P occurrence expired and later candles cannot confirm it."
-          : rejectionReason === "PATIENCE_INSIDE_CONSOLIDATION"
-            ? "The patience candle remains inside the frozen consolidation zone and is evidence only until its immediate E confirms a breakout close."
-            : frozen.detail,
+        : rejectionReason === "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT"
+          ? "The entry candle wicked outside the frozen consolidation zone but closed back inside; a directional close is required."
+          : rejectionReason === "CONSOLIDATION_ENTRY_CLOSE_REMAINED_INSIDE_ZONE"
+            ? "The completed entry candle closed inside the frozen consolidation zone; a strict directional close is required."
+            : rejectionReason === "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
+              ? "The completed entry candle did not reach the effective patience-plus-consolidation entry threshold."
+              : rejectionReason === "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE"
+                ? "The modeled entry fill was inside or exactly on the frozen consolidation boundary."
+                : rejectionReason === "PATIENCE_INSIDE_CONSOLIDATION"
+                  ? "The patience candle remains inside the frozen consolidation zone and is evidence only until its immediate E confirms a breakout close."
+                  : frozen.detail,
   };
 }
 

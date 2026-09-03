@@ -489,7 +489,7 @@ test("consolidation guard confirms only an immediate completed outside close", (
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
   const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-   const e = candle(base + 1_200_000, 100.6, 102.25, 100.6, 102.25);
+   const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 102.25, 104, 102, 103)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
@@ -506,7 +506,12 @@ test("consolidation guard confirms only an immediate completed outside close", (
   assert.equal(result.executionEligible, true);
   assert.equal(result.consolidationZoneHigh, 100.5);
   assert.equal(result.consolidationZoneLow, 99.5);
-  assert.equal(result.entryRangeOutsideZone, true);
+   assert.equal(result.entryOpenedOutsideZone, false);
+   assert.equal(result.entryClosedOutsideZone, true);
+   assert.equal(result.entryRangeOutsideZone, false);
+   assert.equal(result.entryRangeOverlappedZone, true);
+   assert.equal(result.effectiveEntryThreshold, 102.25);
+   assert.equal(result.effectiveEntryThresholdReached, true);
   assert.deepEqual(result.sourceCandleOpenTimes, zoneCandles.map((item) => item.openTime));
 });
 
@@ -535,13 +540,12 @@ test("consolidation guard rejects wick-out/close-in E and freezes before future 
   });
   assert.ok(result);
   assert.equal(result.lifecycleState, "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
-  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
   assert.equal(result.executionEligible, false);
   assert.equal(result.consolidationZoneHigh, 100.5);
   assert.equal(result.consolidationZoneLow, 99.5);
   assert.equal(result.entryRangeOutsideZone, false);
-  assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE");
-  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
+   assert.equal(result.entryRangeOverlappedZone, true);
+   assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT");
 });
 
 test("consolidation guard preserves the frozen boundary for breakout-pullback P to E", () => {
@@ -580,6 +584,99 @@ test("consolidation guard preserves the frozen boundary for breakout-pullback P 
   assert.equal(result.lifecycleState, "BREAKOUT_PULLBACK_PATIENCE_CONFIRMED");
   assert.equal(result.executionEligible, true);
   assert.equal(result.consolidationZoneHigh, 100.5);
+});
+
+test("consolidation guard accepts a short E that opens and wicks inside the zone", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const baselineCandles = Array.from({ length: 12 }, (_, index) =>
+    candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
+  );
+  const p = candle(base + 900_000, 100, 100.25, 99.75, 99.9);
+  const e = candle(base + 1_200_000, 100.1, 100, 97.75, 97.75);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...baselineCandles, ...zoneCandles, p, e],
+    levels: { ntz: { high: 102, low: 101, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 97.75 },
+    direction: "short",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.executionEligible, true);
+  assert.equal(result.entryOpenedOutsideZone, false);
+  assert.equal(result.entryClosedOutsideZone, true);
+  assert.equal(result.entryRangeOverlappedZone, true);
+  assert.equal(result.effectiveEntryThreshold, 97.75);
+  assert.equal(result.entryFillOutsideZone, true);
+});
+
+test("consolidation guard rejects an outside close that did not reach the effective threshold", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const baselineCandles = Array.from({ length: 12 }, (_, index) =>
+    candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
+  );
+  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
+  const e = candle(base + 1_200_000, 100.1, 101.5, 100, 101);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...baselineCandles, ...zoneCandles, p, e],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 12, entryBufferPrice: 103 },
+    direction: "long",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.entryClosedOutsideZone, true);
+  assert.equal(result.effectiveEntryThresholdReached, false);
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED");
+});
+
+test("consolidation guard rejects a fill on the zone boundary", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const zoneCandles = [
+    candle(base, 100, 100.5, 99.5, 100),
+    candle(base + 300_000, 100, 100.5, 99.5, 100.1),
+    candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+  ];
+  const baselineCandles = Array.from({ length: 12 }, (_, index) =>
+    candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
+  );
+  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
+  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...baselineCandles, ...zoneCandles, p, e],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    entryFillPrice: 100.5,
+    direction: "long",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP QUALIFIED",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.entryClosedOutsideZone, true);
+  assert.equal(result.entryFillOutsideZone, false);
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE");
 });
 
 test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {

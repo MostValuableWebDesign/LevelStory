@@ -253,7 +253,7 @@ function consolidationGuard(
   overrides: Partial<BacktestConsolidationGuardEvidence> = {},
 ): BacktestConsolidationGuardEvidence {
   return {
-    detectorVersion: "phase6-consolidation-entry-guard-v3",
+    detectorVersion: "phase6-consolidation-entry-guard-v4",
     lifecycleState: "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
     lifecycleStates: [
       "CONSOLIDATION_ZONE_FROZEN",
@@ -290,11 +290,19 @@ function consolidationGuard(
     entryOpenTime: "2026-08-25T14:20:00.000Z",
     entryCloseTime: "2026-08-25T14:25:00.000Z",
     confirmationThreshold: 103,
+    patienceConfirmationThreshold: 103,
+    consolidationBoundaryThreshold: 101.25,
+    effectiveEntryThreshold: 103,
     entryClose: 101,
     entryCompleted: true,
     entryReachedConfirmation: true,
+    effectiveEntryThresholdReached: true,
+    entryOpenedOutsideZone: false,
+    entryClosedOutsideZone: false,
     entryCloseOutsideZone: false,
     entryRangeOutsideZone: false,
+    entryRangeOverlappedZone: true,
+    entryFillOutsideZone: true,
     entryOutsideFinalizedNtz: true,
     entryBeforeCutoff: true,
     consolidationEdgeQualified: false,
@@ -2360,6 +2368,8 @@ test("candidate projection enforces the consolidation guard before candidate-own
     eOpen: "2026-08-25T14:20:00.000Z",
     eClose: "2026-08-25T14:25:00.000Z",
   });
+  occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.consolidationGuard = consolidationGuard();
   const dataset = candidateProjectionDataset(occurrence);
   const rejected = projectHistoricalTradeCandidates([occurrence], [], {
@@ -2371,7 +2381,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
   assert.equal(rejected.authoritativeTrades.length, 0);
   assert.equal(rejected.rejected.length, 1);
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD"), true);
-  assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
+  assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), false);
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"), true);
 
   occurrence.consolidationGuard = consolidationGuard({
@@ -2379,7 +2389,12 @@ test("candidate projection enforces the consolidation guard before candidate-own
     lifecycleStates: ["CONSOLIDATION_ZONE_FROZEN", "PATIENCE_INSIDE_CONSOLIDATION", "CONSOLIDATION_BREAKOUT_CONFIRMED"],
     executionEligible: true,
     entryCloseOutsideZone: true,
-    entryRangeOutsideZone: true,
+    entryClosedOutsideZone: true,
+    entryRangeOutsideZone: false,
+    entryRangeOverlappedZone: true,
+    effectiveEntryThreshold: 101.25,
+    effectiveEntryThresholdReached: true,
+    entryFillOutsideZone: true,
     consolidationEdgeQualified: true,
     rejectionReason: null,
     detail: "Immediate E closed outside the frozen consolidation zone.",
@@ -2390,5 +2405,30 @@ test("candidate projection enforces the consolidation guard before candidate-own
     executionMode: "ohlcv_modeled",
   });
   assert.equal(accepted.candidates.length, 1);
+  assert.equal(accepted.candidates[0]?.confirmationPrice, 101.25);
   assert.equal(accepted.authoritativeTrades.length, 1);
+  assert.equal(accepted.authoritativeTrades[0]?.entryPrice, 101.25);
+});
+
+test("an unrelated consolidation guard cannot block an ORB candidate", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:15:00.000Z",
+    eOpen: "2026-08-25T14:20:00.000Z",
+    eClose: "2026-08-25T14:25:00.000Z",
+  });
+  occurrence.consolidationGuard = consolidationGuard({
+    executionEligible: false,
+    rejectionReason: "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT",
+  });
+  const projected = projectHistoricalTradeCandidates(
+    [occurrence],
+    [],
+    {
+      dataset: candidateProjectionDataset(occurrence),
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+    },
+  );
+  assert.equal(projected.rejected.some((item) => item.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD")), false);
+  assert.equal(projected.candidates.length, 1);
 });

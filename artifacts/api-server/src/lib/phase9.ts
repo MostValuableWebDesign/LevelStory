@@ -273,6 +273,7 @@ export type BacktestConsolidationGuardEvidence = {
   executionEligible: boolean;
   consolidationZoneHigh: number | null;
   consolidationZoneLow: number | null;
+  activeConsolidationZoneId?: string | null;
   consolidationStartTime: string | null;
   consolidationDetectionTime: string | null;
   sourceCandleTimestamps: string[];
@@ -293,15 +294,24 @@ export type BacktestConsolidationGuardEvidence = {
   entryOpenTime: string | null;
   entryCloseTime: string | null;
   confirmationThreshold: number | null;
+  patienceConfirmationThreshold?: number | null;
+  consolidationBoundaryThreshold?: number | null;
+  effectiveEntryThreshold?: number | null;
   entryClose: number | null;
   entryCompleted: boolean;
   entryReachedConfirmation: boolean | null;
+  effectiveEntryThresholdReached?: boolean | null;
+  entryOpenedOutsideZone?: boolean | null;
+  entryClosedOutsideZone?: boolean | null;
   entryCloseOutsideZone: boolean | null;
   entryRangeOutsideZone: boolean | null;
+  entryRangeOverlappedZone?: boolean | null;
+  entryFillOutsideZone?: boolean | null;
   entryOutsideFinalizedNtz: boolean | null;
   entryBeforeCutoff: boolean | null;
   consolidationEdgeQualified: boolean;
   breakoutPullback: boolean;
+  consolidationEntryDisposition?: string;
   rejectionReason: string | null;
   detail: string;
 };
@@ -321,6 +331,7 @@ function serializeConsolidationGuard(
     executionEligible: evidence.executionEligible,
     consolidationZoneHigh: evidence.consolidationZoneHigh,
     consolidationZoneLow: evidence.consolidationZoneLow,
+    activeConsolidationZoneId: evidence.activeConsolidationZoneId,
     consolidationStartTime: iso(evidence.consolidationStartTime),
     consolidationDetectionTime: iso(evidence.consolidationDetectionTime),
     sourceCandleTimestamps: evidence.sourceCandleOpenTimes
@@ -343,15 +354,24 @@ function serializeConsolidationGuard(
     entryOpenTime: iso(evidence.entryOpenTime),
     entryCloseTime: iso(evidence.entryCloseTime),
     confirmationThreshold: evidence.confirmationThreshold,
+    patienceConfirmationThreshold: evidence.patienceConfirmationThreshold,
+    consolidationBoundaryThreshold: evidence.consolidationBoundaryThreshold,
+    effectiveEntryThreshold: evidence.effectiveEntryThreshold,
     entryClose: evidence.entryClose,
     entryCompleted: evidence.entryCompleted,
     entryReachedConfirmation: evidence.entryReachedConfirmation,
+    effectiveEntryThresholdReached: evidence.effectiveEntryThresholdReached,
+    entryOpenedOutsideZone: evidence.entryOpenedOutsideZone,
+    entryClosedOutsideZone: evidence.entryClosedOutsideZone,
     entryCloseOutsideZone: evidence.entryCloseOutsideZone,
     entryRangeOutsideZone: evidence.entryRangeOutsideZone,
+    entryRangeOverlappedZone: evidence.entryRangeOverlappedZone,
+    entryFillOutsideZone: evidence.entryFillOutsideZone,
     entryOutsideFinalizedNtz: evidence.entryOutsideFinalizedNtz,
     entryBeforeCutoff: evidence.entryBeforeCutoff,
     consolidationEdgeQualified: evidence.consolidationEdgeQualified,
     breakoutPullback: evidence.breakoutPullback,
+    consolidationEntryDisposition: evidence.consolidationEntryDisposition,
     rejectionReason: evidence.rejectionReason,
     detail: evidence.detail,
   };
@@ -395,6 +415,15 @@ export type BacktestAuditRecord = {
   exitCandleOpenTime: string | null;
   exitCandleCloseTime: string | null;
   entryTriggerPrice: number | null;
+  patienceConfirmationThreshold?: number | null;
+  consolidationBoundaryThreshold?: number | null;
+  effectiveEntryThreshold?: number | null;
+  effectiveEntryThresholdReached?: boolean | null;
+  entryOpenedOutsideZone?: boolean | null;
+  entryClosedOutsideZone?: boolean | null;
+  entryRangeOverlappedZone?: boolean | null;
+  entryFillOutsideZone?: boolean | null;
+  consolidationEntryDisposition?: string;
   strategyStopPrice: number | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
@@ -2260,26 +2289,28 @@ function auditForEvaluation(
     && typeof snapshot.ntz.low === "number"
     ? { high: snapshot.ntz.high, low: snapshot.ntz.low, complete: true }
     : null;
-  const consolidationGuard = serializeConsolidationGuard(evaluateConsolidationEntryGuard({
-    candles: visibleCausalCandles ?? [],
-    levels: { ntz: finalizedNtz },
-    patience: guardPatience,
-    direction: guardDirection,
-    breakout: {
-      detected: snapshot.breakout.detected,
-      direction: snapshot.breakout.direction,
-      candleOpenTime: snapshot.breakout.candleOpenTime ? Date.parse(snapshot.breakout.candleOpenTime) : null,
-      continuationConfirmed: snapshot.breakout.continuationConfirmed,
-      failed: snapshot.breakout.failed,
-    },
-    config: activeShadowStrategySnapshot().config,
-    consolidationEvaluation: consolidationEdgeEvaluation,
-    qualifyingPullback: snapshot.pullback.events.some((event) =>
-      event.qualifies === true
-      && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
-      && !event.level.trim().toLowerCase().startsWith("fib"),
-    ),
-  }));
+  const consolidationGuard = evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    ? serializeConsolidationGuard(evaluateConsolidationEntryGuard({
+      candles: visibleCausalCandles ?? [],
+      levels: { ntz: finalizedNtz },
+      patience: guardPatience,
+      direction: guardDirection,
+      breakout: {
+        detected: snapshot.breakout.detected,
+        direction: snapshot.breakout.direction,
+        candleOpenTime: snapshot.breakout.candleOpenTime ? Date.parse(snapshot.breakout.candleOpenTime) : null,
+        continuationConfirmed: snapshot.breakout.continuationConfirmed,
+        failed: snapshot.breakout.failed,
+      },
+      config: activeShadowStrategySnapshot().config,
+      consolidationEvaluation: consolidationEdgeEvaluation,
+      qualifyingPullback: snapshot.pullback.events.some((event) =>
+        event.qualifies === true
+        && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+        && !event.level.trim().toLowerCase().startsWith("fib"),
+      ),
+    }))
+    : null;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2328,7 +2359,16 @@ function auditForEvaluation(
     modeledFillObservationTime: null,
     exitCandleOpenTime: null,
     exitCandleCloseTime: null,
-    entryTriggerPrice: snapshot.patience.entryBufferPrice,
+     entryTriggerPrice: consolidationGuard?.effectiveEntryThreshold ?? snapshot.patience.entryBufferPrice,
+     patienceConfirmationThreshold: consolidationGuard?.patienceConfirmationThreshold ?? snapshot.patience.entryBufferPrice,
+     consolidationBoundaryThreshold: consolidationGuard?.consolidationBoundaryThreshold ?? null,
+     effectiveEntryThreshold: consolidationGuard?.effectiveEntryThreshold ?? snapshot.patience.entryBufferPrice,
+     effectiveEntryThresholdReached: consolidationGuard?.effectiveEntryThresholdReached ?? null,
+     entryOpenedOutsideZone: consolidationGuard?.entryOpenedOutsideZone ?? null,
+     entryClosedOutsideZone: consolidationGuard?.entryClosedOutsideZone ?? null,
+     entryRangeOverlappedZone: consolidationGuard?.entryRangeOverlappedZone ?? null,
+     entryFillOutsideZone: consolidationGuard?.entryFillOutsideZone ?? null,
+     consolidationEntryDisposition: consolidationGuard?.consolidationEntryDisposition,
     strategyStopPrice: snapshot.riskPlan.strategyStop,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
@@ -2976,6 +3016,8 @@ export function buildHistoricalOccurrenceLedger(
           }
           : null,
       );
+      const effectiveEntryThreshold = record.consolidationGuard?.effectiveEntryThreshold
+        ?? confirmationThreshold;
       const confirmationExcursion = patience.actualConfirmationExcursion ?? (
         observedImmediate
           ? patience.direction === "long"
@@ -3046,7 +3088,7 @@ export function buildHistoricalOccurrenceLedger(
         patienceCandle: occurrenceCandle(patience.patienceCandle),
         candidateShapeResult: patience.candidateShapeResult ?? true,
          expectedEntryTimestamp: eOpenTimestamp,
-        confirmationThreshold,
+         confirmationThreshold: effectiveEntryThreshold,
         confirmationExcursion,
          entryTimestamp: confirmedEntry && Number.isFinite(confirmedEntry.openTime)
            ? new Date(confirmedEntry.openTime).toISOString()
@@ -3298,31 +3340,40 @@ function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { rea
 function candidateConsolidationRejection(
   occurrence: HistoricalOccurrence,
 ): { reasonCodes: string[]; details: string[] } | null {
+  const primaryEdge = canonicalStrategyId(occurrence.primaryEdge ?? occurrence.strategyCandidate);
+  if (primaryEdge !== "CONSOLIDATION_BREAKOUT_CONTINUATION") return null;
   const guard = occurrence.consolidationGuard;
   if (!guard || (!guard.activeZone && !guard.breakoutPullback)) return null;
-  const entryRangeOverlaps = guard.entryRangeOutsideZone === false;
-  if (guard.executionEligible && !entryRangeOverlaps) return null;
+  const thresholdReached = guard.effectiveEntryThresholdReached ?? guard.entryReachedConfirmation;
+  const closedOutside = guard.entryClosedOutsideZone ?? guard.entryCloseOutsideZone;
+  const fillOutside = guard.entryFillOutsideZone;
+  const contradictoryEvidence = thresholdReached === false
+    || closedOutside === false
+    || fillOutside === false
+    || guard.entryOutsideFinalizedNtz === false
+    || guard.entryBeforeCutoff === false;
+  if (consolidationGuardIsExecutionEligible(guard) && !contradictoryEvidence) return null;
   const lifecycleCodes = guard.lifecycleStates.filter((state) =>
     state !== "CONSOLIDATION_ZONE_FROZEN" && state !== "PATIENCE_INSIDE_CONSOLIDATION",
   );
   return {
     reasonCodes: [
       "REJECTED_CONSOLIDATION_ENTRY_GUARD",
-      ...(entryRangeOverlaps ? ["REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"] : []),
       ...(guard.rejectionReason ? [guard.rejectionReason] : []),
       ...lifecycleCodes,
     ].filter((reason, index, all) => all.indexOf(reason) === index),
     details: [
       `Confirmed signal ${occurrence.occurrenceId} was rejected by the deterministic consolidation-entry guard.`,
       guard.detail,
-      ...(entryRangeOverlaps
-        ? [
-          "The entire entry candle range must clear the frozen consolidation boundary; a close outside the zone is not sufficient.",
-        ]
-        : []),
       ...(guard.rejectionReason ? [`Consolidation guard reason: ${guard.rejectionReason}.`] : []),
+      ...(guard.activeConsolidationZoneId
+        ? [`Active frozen consolidation zone: ${guard.activeConsolidationZoneId}.`]
+        : []),
       ...(guard.consolidationZoneLow !== null && guard.consolidationZoneHigh !== null
         ? [`Frozen consolidation zone: ${guard.consolidationZoneLow}-${guard.consolidationZoneHigh}.`] : []),
+      ...(guard.effectiveEntryThreshold !== undefined
+        ? [`Effective entry threshold: ${guard.effectiveEntryThreshold ?? "unavailable"}.`]
+        : []),
     ],
   };
 }
@@ -3336,12 +3387,44 @@ function historicalCandidateId(occurrence: HistoricalOccurrence): string {
   ].join("|"));
 }
 
+function effectiveEntryThresholdForOccurrence(occurrence: HistoricalOccurrence): number | null {
+  const guardedThreshold = occurrence.consolidationGuard?.effectiveEntryThreshold;
+  return typeof guardedThreshold === "number" && Number.isFinite(guardedThreshold)
+    ? guardedThreshold
+    : occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? null;
+}
+
+function consolidationGuardIsExecutionEligible(
+  guard: BacktestConsolidationGuardEvidence,
+): boolean {
+  const thresholdReached = guard.effectiveEntryThresholdReached ?? guard.entryReachedConfirmation;
+  const closedOutside = guard.entryClosedOutsideZone ?? guard.entryCloseOutsideZone;
+  return guard.executionEligible
+    && thresholdReached !== false
+    && closedOutside !== false
+    && guard.entryFillOutsideZone !== false
+    && guard.entryOutsideFinalizedNtz !== false
+    && guard.entryBeforeCutoff !== false;
+}
+
+function fillIsStrictlyOutsideConsolidation(
+  guard: BacktestConsolidationGuardEvidence | null | undefined,
+  direction: Direction,
+  fillPrice: number | null,
+): boolean {
+  if (!guard || guard.consolidationZoneHigh === null || guard.consolidationZoneLow === null) return true;
+  if (fillPrice === null || !Number.isFinite(fillPrice)) return false;
+  return direction === "long"
+    ? fillPrice > guard.consolidationZoneHigh
+    : fillPrice < guard.consolidationZoneLow;
+}
+
 function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateEntryDisposition {
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const entryHigh = numericCandleValue(occurrence.entryCandle, "high");
   const entryLow = numericCandleValue(occurrence.entryCandle, "low");
-  const threshold = occurrence.confirmationThreshold;
+  const threshold = effectiveEntryThresholdForOccurrence(occurrence);
   if (
     patienceHigh === null
     || patienceLow === null
@@ -3432,7 +3515,7 @@ function freezeCandidateManagementContext(
   linkedTrade: BacktestTrade | undefined,
 ): CandidateManagementContext {
   const management = occurrence.management;
-  const entryPrice = occurrence.confirmationThreshold;
+  const entryPrice = effectiveEntryThresholdForOccurrence(occurrence);
   const targetPlan = targetPlanForOccurrence(occurrence, entryPrice);
   const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
@@ -3661,7 +3744,7 @@ export function projectHistoricalTradeCandidates(
       entryObservationTimestamp: occurrence.entryObservationTimestamp!,
       patienceTimestamp: occurrence.patienceTimestamp!,
       expectedEntryTimestamp: occurrence.expectedEntryTimestamp!,
-      confirmationPrice: occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? null,
+      confirmationPrice: effectiveEntryThresholdForOccurrence(occurrence),
       confirmationBufferTicks: occurrence.confirmationBufferTicks ?? 0,
       grade: occurrence.setupGrade ?? "A",
       eligible: true,
@@ -3824,7 +3907,7 @@ function candidateDrivenEntryTrade(
   ) return undefined;
   const patience = occurrence.patienceCandle;
   const entryCandle = occurrence.entryCandle;
-  const entryPrice = occurrence.confirmationThreshold;
+  const entryPrice = effectiveEntryThresholdForOccurrence(occurrence);
   const disposition = candidateEntryDisposition(occurrence);
   if (disposition.status !== "MODELED_TRADE_CREATED" || !patience || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
   const tradingDate = occurrence.tradingDate;
@@ -4377,7 +4460,7 @@ export function runCausalBacktest(
       continue;
     }
     const selectedConsolidationGuard = selectedAudit?.consolidationGuard;
-    if (selectedConsolidationGuard && !selectedConsolidationGuard.executionEligible) {
+    if (selectedConsolidationGuard && !consolidationGuardIsExecutionEligible(selectedConsolidationGuard)) {
       setAuditRejection(
         selectedAudit!,
         "REJECTED_CONSOLIDATION_ENTRY_GUARD",
@@ -4412,7 +4495,8 @@ export function runCausalBacktest(
         rejectedByPeriod[period] += 1;
         continue;
       }
-        const entry = selectedPatience?.entryBufferPrice
+        const entry = selectedConsolidationGuard?.effectiveEntryThreshold
+          ?? selectedPatience?.entryBufferPrice
          ?? snapshot.riskPlan.entry
          ?? effectiveConfirmationThreshold(
            patienceCandle,
@@ -4527,6 +4611,19 @@ export function runCausalBacktest(
          if (selectedAudit) setAuditRejection(selectedAudit, "NO_MODELED_FILL", "The confirmed entry did not produce a finite OHLCV trigger fill.");
         continue;
       }
+       if (selectedConsolidationGuard
+         && !fillIsStrictlyOutsideConsolidation(selectedConsolidationGuard, selected.direction, modeled.modeledFill)) {
+         if (selectedAudit) {
+           selectedAudit.entryFillOutsideZone = false;
+           setAuditRejection(
+             selectedAudit,
+             "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE",
+             "The modeled fill was inside or exactly on the frozen consolidation boundary.",
+           );
+         }
+         rejectedByPeriod[period] += 1;
+         continue;
+       }
        const isOpen = modeled.exitPrice === null || !modeled.legs.length;
        const exitCandle = modeled.audit.exitCandle ?? trigger;
       const outcome = modeled.exitReason === "target"
