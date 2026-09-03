@@ -1308,6 +1308,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [showRiskLevels, setShowRiskLevels] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
+  const legendRef = useRef<HTMLDivElement>(null);
   const interactionRef = useRef<SVGSVGElement>(null);
   const pointerFrameRef = useRef<number | null>(null);
   const pendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -1325,6 +1326,15 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   }, [candles.length, focusOpenTime, sessionView, premarketCandles.length]);
   useEffect(() => () => {
     if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
+  useEffect(() => {
+    const clearPinnedLevelOutsideLegend = (event: PointerEvent) => {
+      if (legendRef.current?.contains(event.target as Node)) return;
+      setActiveLevelId(null);
+      setSelectedLevelId(null);
+    };
+    document.addEventListener("pointerdown", clearPinnedLevelOutsideLegend);
+    return () => document.removeEventListener("pointerdown", clearPinnedLevelOutsideLegend);
   }, []);
   if (!candles.length) return <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">No causal candles were returned for this snapshot.</div>;
   const width = CHART_WIDTH;
@@ -1576,8 +1586,13 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        : null;
    const focusLevel = (id: string) => setActiveLevelId(id);
    const selectLevel = (id: string) => {
-     setSelectedLevelId((current) => current === id ? null : id);
-     setActiveLevelId(id);
+      if (selectedLevelId === id) {
+        setSelectedLevelId(null);
+        setActiveLevelId(null);
+      } else {
+        setSelectedLevelId(id);
+        setActiveLevelId(id);
+      }
    };
    const handleLevelKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
      if (event.key === "Escape") {
@@ -1647,7 +1662,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           </div>}
         </section>
          <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} crosshairPrice={pointerPosition?.price ?? null} />
-        <div className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
+         <div ref={legendRef} className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
           {levelLegend.map((annotation) => {
             const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
              const selected = focusedLevelId === annotation.id;
@@ -1664,7 +1679,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                onMouseLeave={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
                onFocus={() => focusLevel(annotation.id)}
                onBlur={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
-               onClick={() => selectLevel(annotation.id)}
+                onClick={() => selectLevel(annotation.id)}
                onKeyDown={(event) => handleLevelKeyDown(event, annotation.id)}
                aria-pressed={selected}
                aria-label={`${annotation.label}, ${valueLabel}. Press Enter or Space to keep highlighted; Escape clears selection.`}
@@ -1808,7 +1823,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             data-testid={`chart-level-${annotation.id}`}
             onMouseEnter={() => focusLevel(annotation.id)}
             onMouseLeave={() => setActiveLevelId((current) => current === annotation.id ? null : current)}
-            onClick={() => selectLevel(annotation.id)}
+             onClick={() => focusLevel(annotation.id)}
             aria-label={`${annotation.label}, ${annotation.detail}`}
           >
             {hasRange && rangeLow != null && rangeHigh != null
