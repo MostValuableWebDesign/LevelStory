@@ -1,0 +1,140 @@
+You’re right. A strict “one trade per arm” rule could remove valid second-chance entries. The issue is not re-entry itself—it’s unlimited re-entry without evidence that conditions improved.
+
+Use a controlled re-entry rule:
+
+- Permit up to **two entries per breakout/pullback arm**.
+- After the first stop, require a **new patience candle**; never reuse the first P candle.
+- The immediate next candle must confirm the new patience candle by the full **8-tick entry buffer**.
+- The new P→E sequence must remain outside the NTZ.
+- The new patience candle must still be within the **12-tick pullback range** of a qualifying key level.
+- The original breakout direction must remain structurally valid.
+- Reject re-entry if price has closed back inside the NTZ or broken the underlying setup’s invalidation level.
+- Calculate the second trade’s entry, stop, and target entirely from its own P→E sequence. Never reuse the first trade’s stop.
+- After two losses on the same arm, retire that arm until a genuinely new breakout structure forms.
+- Grade the second attempt lower unless it has stronger confluence than the first.
+
+A particularly useful distinction is:
+
+- **Early entry:** the first trade stopped, but the breakout structure and qualifying level still held. A new P→E can authorize another attempt.
+- **Failed thesis:** price invalidated the breakout, returned through the NTZ, or broke the structural level. No re-entry from that arm.
+
+I would also avoid automatically reducing the target on the second entry. First fix repeated low-quality entries, then compare 1R performance separately.
+
+Use this wording for Replit:
+
+```text
+Correct LevelStory’s breakout/pullback re-entry policy without imposing a strict one-trade-per-arm limit.
+
+BUSINESS RULE
+
+A trader may be early on the first valid P→E entry. Therefore, a stop-out must not automatically retire an otherwise valid breakout/pullback arm.
+
+Allow a maximum of two authoritative entries per breakout/pullback arm.
+
+FIRST ENTRY
+
+The first trade requires the normal authoritative sequence:
+
+breakout
+→ pullback within 12 MES ticks of a qualifying key level
+→ valid patience candle P
+→ immediate next candle E confirms in the setup direction by the configured 8-tick confirmation buffer
+→ E occurs outside the finalized NTZ
+→ entry occurs before the exclusive 1:00 p.m. ET cutoff
+
+SECOND-CHANCE ENTRY
+
+After the first trade stops out, keep the originating arm eligible only if its structural thesis remains valid.
+
+A second entry must require:
+
+1. A newly completed patience candle P2. P1 may never be reused.
+2. Only the immediate next completed candle E2 may confirm P2.
+3. E2 must reach the configured 8-tick confirmation threshold.
+4. P2 must remain within the configured 12-tick range of at least one qualifying causal key level.
+5. E2 must be outside the finalized NTZ.
+6. The original breakout direction must still be structurally valid.
+7. Neither P2 nor E2 may occur at or after 1:00 p.m. ET.
+8. The second trade must calculate its entry, patience-based stop, target, and management context from P2/E2. It must never inherit values from the first trade.
+
+RE-ENTRY INVALIDATION
+
+Do not allow a second entry when any of the following has occurred:
+
+- A completed candle closes back inside the finalized NTZ in a way that invalidates the breakout.
+- A completed opposite-direction breakout invalidates the arm.
+- The setup’s structural invalidation level is broken.
+- The qualifying pullback/key-level relationship no longer exists.
+- The contract or New York trading date changes.
+- The exclusive 1:00 p.m. ET entry cutoff is reached.
+- Two trades from the arm have already stopped out.
+
+Do not reject a second entry merely because it occurs in the same general price range. Reject it only when structural invalidation or the explicit attempt limit applies.
+
+LIFECYCLE
+
+Extend the arm lifecycle with deterministic attempt data:
+
+- entryAttemptCount
+- firstCandidateId
+- firstTradeId
+- firstExitTimestamp
+- firstExitReason
+- reentryEligible
+- reentryEligibilityReason
+- secondCandidateId
+- secondTradeId
+- armRetirementReason
+
+Suggested lifecycle states:
+
+- FIRST_ENTRY_CONFIRMED
+- FIRST_TRADE_ACTIVE
+- FIRST_TRADE_STOPPED
+- REENTRY_ELIGIBLE
+- SECOND_PATIENCE_ARMED
+- SECOND_ENTRY_CONFIRMED
+- SECOND_TRADE_ACTIVE
+- ARM_RETIRED_AFTER_TWO_LOSSES
+- ARM_STRUCTURALLY_INVALIDATED
+
+A stop-out alone transitions the arm to REENTRY_ELIGIBLE when structure remains valid. It must not automatically mark the arm CONSUMED or permanently invalid.
+
+IDENTITY AND ISOLATION
+
+P1→E1 and P2→E2 must have separate physical signal occurrence IDs and separate candidate IDs.
+
+Both signals retain the shared originating pullbackArmId.
+
+Each trade must own an independently frozen management context, including its own:
+
+- P high and low
+- E timestamp
+- Entry threshold
+- Modeled fill
+- Stop
+- Target
+- Exit and P/L
+
+Never reuse the first trade’s risk plan for the second trade.
+
+TESTS
+
+Add deterministic long and short tests covering:
+
+- First entry stops; valid P2→E2 produces a second trade.
+- Failed P1 confirmation rearms and later P2→E2 produces the first trade attempt.
+- P1 cannot be confirmed by E2 or another later candle.
+- Second entry uses P2’s stop, not P1’s stop.
+- Stop-out alone preserves re-entry eligibility.
+- NTZ re-entry invalidates the arm.
+- Opposite breakout invalidates the arm.
+- Structural-level failure invalidates the arm.
+- Third entry attempt is rejected.
+- No new entry is created at or after 1:00 p.m. ET.
+- One candidate and at most one trade exist per physical P→E signal.
+- P/L and metrics include both attempts independently.
+- Repeated audit observations do not inflate attempt counts.
+
+Preserve Shadow Mode only. Do not add broker, live-order, or paper-order behavior. Run focused lifecycle, candidate, execution, and metric tests plus typecheck and git diff validation. Do not rebuild the historical index or run a broad replay solely for this change.
+```
