@@ -60,11 +60,10 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /data-testid="chart-level-legend"/);
   assert.match(page, /formatPriceAxisValue\(annotation\.price!\)/);
     assert.doesNotMatch(page, /annotation\.id !== "runner-threshold"/);
-    assert.match(page, /const chartLabel = chartLevelLabel\(annotation\)/);
+    assert.match(page, /const chartLabel = \["strategy-stop", "target", "one-r-target", "runner-threshold"\]\.includes\(annotation\.id\)/);
     assert.match(page, /data-testid=\{`chart-level-label-\$\{annotation\.id\}`\}/);
     assert.match(page, /data-testid=\{`edge-indicator-label-\$\{annotation\.id\}`\}/);
-    assert.match(page, /primaryLevels\.filter\(\(annotation\) => isDynamicIndicatorAnnotation/);
-    assert.match(page, /chartLabel && <text/);
+    assert.doesNotMatch(page, /primaryLevels\.filter\(\(annotation\) => isDynamicIndicatorAnnotation/);
   assert.doesNotMatch(page, /labelYById/);
   assert.doesNotMatch(page, /axisLabelX/);
   assert.doesNotMatch(page, /data-testid="additional-levels".*fib-/s);

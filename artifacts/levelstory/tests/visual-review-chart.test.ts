@@ -37,7 +37,6 @@ import {
   isCatastropheStopAnnotation,
   isRedundantPriorSessionAnnotation,
   isVisualPresentationAnnotation,
-  isRequiredChartLabelAnnotation,
   chartLevelLabel,
   isDisplacedLabel,
   isExactFiveMinuteCandle,
@@ -67,7 +66,7 @@ test("intraday reference chart labels and colors are exact", () => {
   });
 });
 
-test("every available primary snapshot level has a deterministic on-chart label", () => {
+test("off-screen primary snapshot levels receive edge labels with their location", () => {
   const requiredIds = [
     "vwap",
     "ema-200",
@@ -83,20 +82,13 @@ test("every available primary snapshot level has a deterministic on-chart label"
     "one-r-target",
     "runner-threshold",
   ];
-  const annotations = requiredIds.map((id, index) => makeAnnotation(id, 100 + index, {
+  const annotations = requiredIds.map((id, index) => makeAnnotation(id, 120 + index, {
     label: id === "target" ? "Key-level target" : id,
     kind: id.startsWith("dynamite|") ? "confluence" : "level",
   }));
-  const excluded = [
-    makeAnnotation("strategy-stop", null),
-    makeAnnotation("target", 125, { available: false }),
-    makeAnnotation("fib-618", 126, { kind: "fibonacci", label: "Fibonacci 61.8%" }),
-    makeAnnotation("catastrophe-stop", 127, { label: "Catastrophe stop" }),
-    makeAnnotation("supporting-candle", 128, { kind: "candle" }),
-  ];
-  const required = [...annotations, ...excluded].filter(isRequiredChartLabelAnnotation);
-
-  assert.deepEqual(required.map((annotation) => annotation.id), requiredIds);
+  const domain = getCandleDomain([makeCandle(0)]);
+  const indicators = getEdgeIndicators(annotations, domain);
+  assert.deepEqual(indicators.map(({ annotation, edge }) => [annotation.id, edge]), requiredIds.map((id) => [id, "top"]));
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "strategy-stop")!), "STOP");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "target")!), "TARGET");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "one-r-target")!), "1R TARGET");

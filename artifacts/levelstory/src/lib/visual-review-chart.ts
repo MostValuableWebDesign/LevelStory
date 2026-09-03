@@ -1191,12 +1191,6 @@ export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean 
       || /^(premarket-high|premarket-low|previous-session-high|previous-session-low|two-sessions-high|two-sessions-low|orb-high|orb-low|ntz-high|ntz-low|critical-|major-|dynamite\||entry-buffer|strategy-stop|target$|one-r-target|runner-threshold)/i.test(annotation.id));
 }
 
-export function isRequiredChartLabelAnnotation(annotation: VisualValidationAnnotation): boolean {
-  return isPrimaryLevel(annotation)
-    && annotation.available
-    && annotation.price != null;
-}
-
 export function chartLevelLabel(annotation: Pick<VisualValidationAnnotation, "id" | "label">): string {
   if (annotation.id === "strategy-stop") return "STOP";
   if (annotation.id === "one-r-target") return "1R TARGET";
