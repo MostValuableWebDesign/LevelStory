@@ -1728,7 +1728,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               const time = event.openTime && event.closeTime
                 ? formatInterval(event.openTime, event.closeTime)
                 : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
-              const displayLabel = chartLevelLabel(annotation);
               return <button
                 key={`event-strip-${event.id}`}
                 type="button"
@@ -1754,6 +1753,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          <div ref={legendRef} className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
           {levelLegend.map((annotation) => {
             const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
+             const displayLabel = chartLevelLabel(annotation);
              const selected = focusedLevelId === annotation.id;
              const exactPriceLabel = formatPriceAxisValue(annotation.price!);
              const valueLabel = annotation.rangeLow != null && annotation.rangeHigh != null
