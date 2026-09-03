@@ -489,7 +489,7 @@ test("consolidation guard confirms only an immediate completed outside close", (
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
   const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
+   const e = candle(base + 1_200_000, 100.6, 102.25, 100.6, 102.25);
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 102.25, 104, 102, 103)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
@@ -506,6 +506,7 @@ test("consolidation guard confirms only an immediate completed outside close", (
   assert.equal(result.executionEligible, true);
   assert.equal(result.consolidationZoneHigh, 100.5);
   assert.equal(result.consolidationZoneLow, 99.5);
+  assert.equal(result.entryRangeOutsideZone, true);
   assert.deepEqual(result.sourceCandleOpenTimes, zoneCandles.map((item) => item.openTime));
 });
 
@@ -534,10 +535,13 @@ test("consolidation guard rejects wick-out/close-in E and freezes before future 
   });
   assert.ok(result);
   assert.equal(result.lifecycleState, "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
-  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"), true);
+  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
   assert.equal(result.executionEligible, false);
   assert.equal(result.consolidationZoneHigh, 100.5);
   assert.equal(result.consolidationZoneLow, 99.5);
+  assert.equal(result.entryRangeOutsideZone, false);
+  assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE");
+  assert.equal(result.lifecycleStates.includes("CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
 });
 
 test("consolidation guard preserves the frozen boundary for breakout-pullback P to E", () => {

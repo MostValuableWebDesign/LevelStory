@@ -253,7 +253,7 @@ function consolidationGuard(
   overrides: Partial<BacktestConsolidationGuardEvidence> = {},
 ): BacktestConsolidationGuardEvidence {
   return {
-    detectorVersion: "phase6-consolidation-entry-guard-v2",
+    detectorVersion: "phase6-consolidation-entry-guard-v3",
     lifecycleState: "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
     lifecycleStates: [
       "CONSOLIDATION_ZONE_FROZEN",
@@ -294,6 +294,7 @@ function consolidationGuard(
     entryCompleted: true,
     entryReachedConfirmation: true,
     entryCloseOutsideZone: false,
+    entryRangeOutsideZone: false,
     entryOutsideFinalizedNtz: true,
     entryBeforeCutoff: true,
     consolidationEdgeQualified: false,
@@ -2370,6 +2371,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
   assert.equal(rejected.authoritativeTrades.length, 0);
   assert.equal(rejected.rejected.length, 1);
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD"), true);
+  assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), true);
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"), true);
 
   occurrence.consolidationGuard = consolidationGuard({
@@ -2377,6 +2379,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
     lifecycleStates: ["CONSOLIDATION_ZONE_FROZEN", "PATIENCE_INSIDE_CONSOLIDATION", "CONSOLIDATION_BREAKOUT_CONFIRMED"],
     executionEligible: true,
     entryCloseOutsideZone: true,
+    entryRangeOutsideZone: true,
     consolidationEdgeQualified: true,
     rejectionReason: null,
     detail: "Immediate E closed outside the frozen consolidation zone.",

@@ -78,13 +78,14 @@ export type ExtendedConsolidation = {
   detail: string;
 };
 
-export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v2";
+export const CONSOLIDATION_ENTRY_GUARD_VERSION = "phase6-consolidation-entry-guard-v3";
 
 export type ConsolidationLifecycleState =
   | "CONSOLIDATION_ZONE_FROZEN"
   | "PATIENCE_INSIDE_CONSOLIDATION"
   | "CONSOLIDATION_BREAKOUT_CONFIRMED"
   | "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+  | "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
   | "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"
   | "BREAKOUT_PULLBACK_PATIENCE_CONFIRMED";
 
@@ -125,6 +126,7 @@ export type ConsolidationEntryEvidence = {
   entryCompleted: boolean;
   entryReachedConfirmation: boolean | null;
   entryCloseOutsideZone: boolean | null;
+  entryRangeOutsideZone: boolean | null;
   entryOutsideFinalizedNtz: boolean | null;
   entryBeforeCutoff: boolean | null;
   consolidationEdgeQualified: boolean;
@@ -656,6 +658,9 @@ export function evaluateConsolidationEntryGuard(input: {
       ? direction === "long" ? entry.close > zoneHigh : entry.close < zoneLow
       : null
     : null;
+  const entryRangeOutsideZone = direction && entry
+    ? direction === "long" ? entry.low > zoneHigh : entry.high < zoneLow
+    : null;
   const entryOutsideFinalizedNtz = direction && entry && entry.isComplete && confirmationThreshold !== null
     ? isStrictlyOutsideNtz(entry, direction, input.levels.ntz, true, confirmationThreshold)
     : entry ? false : null;
@@ -676,6 +681,7 @@ export function evaluateConsolidationEntryGuard(input: {
     && entry?.isComplete
     && entryReachedConfirmation
     && entryCloseOutsideZone
+    && entryRangeOutsideZone
     && entryOutsideFinalizedNtz
     && entryBeforeCutoff
     && consolidationEdgeQualified,
@@ -685,6 +691,7 @@ export function evaluateConsolidationEntryGuard(input: {
     && entryIsImmediate
     && entry?.isComplete
     && entryReachedConfirmation
+    && entryRangeOutsideZone
     && entryOutsideFinalizedNtz
     && entryBeforeCutoff
     && consolidationEdgeQualified,
@@ -696,7 +703,12 @@ export function evaluateConsolidationEntryGuard(input: {
   } else if (breakoutPullbackConfirmed) {
     lifecycleStates.push("BREAKOUT_PULLBACK_PATIENCE_CONFIRMED");
   } else if (pInside && entryIsImmediate && entry?.isComplete) {
-    lifecycleStates.push("CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED", "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
+    lifecycleStates.push(
+      ...(entryRangeOutsideZone
+        ? ["CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED" as const]
+        : ["CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE" as const]),
+      "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
+    );
   }
   const executionEligible = !pInside
     ? (!breakoutPullback || breakoutPullbackConfirmed)
@@ -704,10 +716,14 @@ export function evaluateConsolidationEntryGuard(input: {
   const rejectionReason = executionEligible
     ? null
     : breakoutPullback
-      ? "CONSOLIDATION_BREAKOUT_PULLBACK_SEQUENCE_NOT_CONFIRMED"
+      ? entryIsImmediate && entry?.isComplete && entryRangeOutsideZone === false
+        ? "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
+        : "CONSOLIDATION_BREAKOUT_PULLBACK_SEQUENCE_NOT_CONFIRMED"
       : pInside
         ? entryIsImmediate && entry?.isComplete
-          ? "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+          ? entryRangeOutsideZone === false
+            ? "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
+            : "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
           : "PATIENCE_INSIDE_CONSOLIDATION"
         : null;
   return {
@@ -743,6 +759,7 @@ export function evaluateConsolidationEntryGuard(input: {
     entryCompleted: entry?.isComplete === true,
     entryReachedConfirmation,
     entryCloseOutsideZone,
+    entryRangeOutsideZone,
     entryOutsideFinalizedNtz,
     entryBeforeCutoff,
     consolidationEdgeQualified,
@@ -752,7 +769,9 @@ export function evaluateConsolidationEntryGuard(input: {
       ? "Immediate E reached the configured confirmation buffer, closed strictly outside the frozen consolidation zone and finalized NTZ, and satisfied the consolidation breakout edge."
       : breakoutPullbackConfirmed
         ? "Completed breakout-pullback patience sequence confirmed from the frozen consolidation boundary and a new immediate P→E."
-        : rejectionReason === "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
+        : rejectionReason === "CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"
+          ? "The completed entry candle overlaps the frozen consolidation zone; the entire candle range must clear the zone before execution."
+          : rejectionReason === "CONSOLIDATION_BREAKOUT_CLOSE_NOT_CONFIRMED"
           ? "Immediate E did not close strictly outside the frozen consolidation zone; the P occurrence expired and later candles cannot confirm it."
           : rejectionReason === "PATIENCE_INSIDE_CONSOLIDATION"
             ? "The patience candle remains inside the frozen consolidation zone and is evidence only until its immediate E confirms a breakout close."

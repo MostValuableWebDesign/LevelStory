@@ -297,6 +297,7 @@ export type BacktestConsolidationGuardEvidence = {
   entryCompleted: boolean;
   entryReachedConfirmation: boolean | null;
   entryCloseOutsideZone: boolean | null;
+  entryRangeOutsideZone: boolean | null;
   entryOutsideFinalizedNtz: boolean | null;
   entryBeforeCutoff: boolean | null;
   consolidationEdgeQualified: boolean;
@@ -346,6 +347,7 @@ function serializeConsolidationGuard(
     entryCompleted: evidence.entryCompleted,
     entryReachedConfirmation: evidence.entryReachedConfirmation,
     entryCloseOutsideZone: evidence.entryCloseOutsideZone,
+    entryRangeOutsideZone: evidence.entryRangeOutsideZone,
     entryOutsideFinalizedNtz: evidence.entryOutsideFinalizedNtz,
     entryBeforeCutoff: evidence.entryBeforeCutoff,
     consolidationEdgeQualified: evidence.consolidationEdgeQualified,
@@ -3298,19 +3300,26 @@ function candidateConsolidationRejection(
 ): { reasonCodes: string[]; details: string[] } | null {
   const guard = occurrence.consolidationGuard;
   if (!guard || (!guard.activeZone && !guard.breakoutPullback)) return null;
-  if (guard.executionEligible) return null;
+  const entryRangeOverlaps = guard.entryRangeOutsideZone === false;
+  if (guard.executionEligible && !entryRangeOverlaps) return null;
   const lifecycleCodes = guard.lifecycleStates.filter((state) =>
     state !== "CONSOLIDATION_ZONE_FROZEN" && state !== "PATIENCE_INSIDE_CONSOLIDATION",
   );
   return {
     reasonCodes: [
       "REJECTED_CONSOLIDATION_ENTRY_GUARD",
+      ...(entryRangeOverlaps ? ["REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"] : []),
       ...(guard.rejectionReason ? [guard.rejectionReason] : []),
       ...lifecycleCodes,
     ].filter((reason, index, all) => all.indexOf(reason) === index),
     details: [
       `Confirmed signal ${occurrence.occurrenceId} was rejected by the deterministic consolidation-entry guard.`,
       guard.detail,
+      ...(entryRangeOverlaps
+        ? [
+          "The entire entry candle range must clear the frozen consolidation boundary; a close outside the zone is not sufficient.",
+        ]
+        : []),
       ...(guard.rejectionReason ? [`Consolidation guard reason: ${guard.rejectionReason}.`] : []),
       ...(guard.consolidationZoneLow !== null && guard.consolidationZoneHigh !== null
         ? [`Frozen consolidation zone: ${guard.consolidationZoneLow}-${guard.consolidationZoneHigh}.`] : []),
