@@ -83,6 +83,13 @@ test("trade candidates are entry-centered, canonical, and deduplicated", () => {
   ].includes(candidate.primaryEdge)));
   assert.ok(candidates.every((candidate) => candidate.causalEvidence.some((evidence) => evidence.kind === "patience")
     && candidate.causalEvidence.some((evidence) => evidence.kind === "entry")));
+  for (const candidate of candidates) {
+    const qualifiedSnapshot = set.snapshots.find((snapshot) =>
+      snapshot.snapshotId === candidate.snapshotId && snapshot.category === "qualified_trade");
+    assert.ok(qualifiedSnapshot);
+    assert.equal(qualifiedSnapshot!.machineEvidence.trade?.candidateId, candidate.candidateId);
+    assert.equal(qualifiedSnapshot!.machineEvidence.trade?.signalOccurrenceId, candidate.signalOccurrenceId);
+  }
 });
 
 test("visual-validation sets expose build, formula, source, and freshness provenance", () => {

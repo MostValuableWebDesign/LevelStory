@@ -952,7 +952,7 @@ function ShadowAccountReplayPanel({
     if (generationActive) {
       return <div className="space-y-3" data-testid="shadow-replay-pending">
         <div className="skeleton h-16 w-full rounded" />
-        <div className="grid gap-2 sm:grid-cols-3"><div className="skeleton h-14 rounded" /><div className="skeleton h-14 rounded" /><div className="skeleton h-14 rounded" /></div>
+        <div className="grid grid-cols-1 gap-2"><div className="skeleton h-14 rounded" /><div className="skeleton h-14 rounded" /><div className="skeleton h-14 rounded" /></div>
         <div className="mono text-[10px] text-muted-foreground">The selected review set is being regenerated. Shadow account results will recompute when the immutable set is ready.</div>
       </div>;
     }
@@ -984,7 +984,7 @@ function ShadowAccountReplayPanel({
         </div>
         <div className="mono shrink-0 text-[9px] text-muted-foreground">SET · {reviewSetId ? `${reviewSetId.slice(0, 8)}…` : "NONE"}</div>
       </div>
-      <div className="mt-4 grid gap-3 border border-border bg-muted/15 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end" data-testid="shadow-replay-controls">
+      <div className="mt-4 grid grid-cols-1 gap-3 border border-border bg-muted/15 p-3" data-testid="shadow-replay-controls">
         <label className="block text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">
           Starting balance
           <div className="relative mt-1.5"><span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 mono text-xs text-muted-foreground">$</span><input className="field mono pl-6" type="number" min="0.01" step="0.01" value={startingBalance} onChange={(event) => setStartingBalance(event.target.value)} aria-label="Starting balance" data-testid="input-shadow-starting-balance" /></div>

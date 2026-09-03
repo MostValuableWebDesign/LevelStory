@@ -325,6 +325,14 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
     const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? snapshot.categoryAnchor.openTime;
     const entryCloseTime = trade?.audit?.triggerCandleCloseTime ?? snapshot.categoryAnchor.closeTime;
     const candidateId = `${snapshot.contractSymbol}|${snapshot.tradingDate}|${entryOpenTime}|${snapshot.categoryAnchor.direction}`;
+    if (trade.candidateId !== candidateId) {
+      snapshot.machineEvidence.trade = {
+        ...trade,
+        candidateId,
+        signalOccurrenceId,
+      };
+    }
+    const candidateTrade = snapshot.machineEvidence.trade;
     const primaryEdge = canonicalEdgeId(trade?.primaryEdge ?? trade?.setupType ?? snapshot.strategyKey);
     const causalEvidence = snapshot.categoryAnchor.relatedCandles
       .filter((candle) => candle.role === "evaluation" || candle.role === "patience" || candle.role === "entry")
@@ -344,7 +352,7 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
         entryCandleOpenTime: entryOpenTime,
         entryCandleCloseTime: entryCloseTime,
         direction: snapshot.categoryAnchor.direction,
-        entryTriggerPrice: trade?.audit?.entryTriggerPrice ?? snapshot.categoryAnchor.price,
+        entryTriggerPrice: candidateTrade?.audit?.entryTriggerPrice ?? snapshot.categoryAnchor.price,
         primaryEdge,
         matchedEdges: [...new Set((trade?.matchedEdges ?? [primaryEdge]).map(canonicalEdgeId))],
         supportingConfluences: [...new Set(trade?.supportingConfluences ?? [])],
