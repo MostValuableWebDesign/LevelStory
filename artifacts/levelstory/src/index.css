@@ -755,6 +755,20 @@
 }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes levelstory-selected-pulse {
+  0%, 100% { opacity: .72; }
+  50% { opacity: 1; }
+}
+
+.levelstory-selected-pulse {
+  animation: levelstory-selected-pulse 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .levelstory-selected-pulse {
+    animation: none;
+  }
+}
 
 @media (max-width: 1023px) {
   .cockpit-grid { background-size: 22px 22px; }

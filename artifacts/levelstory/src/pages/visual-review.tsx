@@ -1805,23 +1805,23 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               <text x={exitX} y={y(primaryStopPrice) - 12} textAnchor="middle" fill="hsl(var(--negative))" fontSize="9" fontWeight="800" fontFamily="DM Mono">PRIMARY STOP · {formatPriceAxisValue(primaryStopPrice)}</text>
               <title>{`Primary level stop at ${formatPriceAxisValue(primaryStopPrice)}; the actual fill was ${exitPrice == null ? "unavailable" : formatPriceAxisValue(exitPrice)}.`}</title>
             </g>}
-            {legOverlays.map(({ leg, index, x }) => x !== null && <g key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
+            {legOverlays.map(({ leg, index, x }) => x !== null && <g className={focusedTradeExitKind === leg.kind ? "levelstory-selected-pulse" : undefined} key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
                {(() => {
                  const legColor = leg.kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)";
                  const legIsFocused = focusedTradeExitKind === leg.kind;
                  const legIsDimmed = focusedTradeExitKind !== null && !legIsFocused;
-                 return <>
-                   <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={legColor} strokeWidth={legIsFocused ? "3" : "1.5"} strokeDasharray="1 4" opacity={legIsDimmed ? ".18" : "1"} data-testid={`trade-leg-line-${leg.kind ?? "unknown"}-${index}`} />
+                  return <>
+                    <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={legColor} strokeWidth={legIsFocused ? "3" : "1.5"} strokeDasharray="1 4" opacity={legIsDimmed ? ".18" : "1"} data-testid={`trade-leg-line-${leg.kind ?? "unknown"}-${index}`} />
                    <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r={legIsFocused ? "6" : "4"} fill={legColor} stroke="hsl(var(--card))" strokeWidth={legIsFocused ? "2" : "1.5"} opacity={legIsDimmed ? ".18" : "1"} />
                  </>;
                })()}
               <title>{`${leg.kind ?? "leg"} leg · ${leg.quantity ?? "—"} contracts · ${leg.exitReason ?? "exit"} · ${leg.fillPrice == null ? "price unavailable" : formatPriceAxisValue(leg.fillPrice)}`}</title>
             </g>)}
           </g>}
-         {indicatorPath("vwap", "machine") && <path pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" {...indicatorStyle("vwap")} data-testid="indicator-curve-vwap" />}
-         {indicatorPath("vwap", "human_only") && <path pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
-         {indicatorPath("ema200", "machine") && <path pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
-         {indicatorPath("ema200", "human_only") && <path pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeDasharray="7 4" {...indicatorStyle("ema-200")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "ema-200" ? .8 : .15} data-testid="indicator-curve-ema200-human-only" />}
+          {indicatorPath("vwap", "machine") && <path className={activeIndicatorId === "vwap" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("vwap", "machine")} fill="none" stroke="hsl(5 58% 46%)" {...indicatorStyle("vwap")} data-testid="indicator-curve-vwap" />}
+          {indicatorPath("vwap", "human_only") && <path className={activeIndicatorId === "vwap" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
+          {indicatorPath("ema200", "machine") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
+          {indicatorPath("ema200", "human_only") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeDasharray="7 4" {...indicatorStyle("ema-200")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "ema-200" ? .8 : .15} data-testid="indicator-curve-ema200-human-only" />}
        {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
@@ -1843,8 +1843,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             : rangeLow != null && rangeHigh != null
               ? Math.min(y(rangeLow), y(rangeHigh))
               : y(annotation.price);
-          return <g
+                  return <g
             key={annotation.id}
+                    className={selected ? "levelstory-selected-pulse" : undefined}
             pointerEvents="all"
             data-testid={`chart-level-${annotation.id}`}
             onMouseEnter={() => focusLevel(annotation.id)}
@@ -1862,7 +1863,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          const edgeY = edge === "top" ? top + 8 + edgeIndex * 15 : plotBottom - 8 - edgeIndex * 15;
          const stroke = levelStroke(annotation);
         const label = `${annotation.label} · ${annotation.price?.toFixed(2)}`;
-         return <g key={`edge-${annotation.id}`} data-testid={`edge-indicator-${annotation.id}`}><path d={edge === "top" ? `M ${left} ${edgeY - 7} l 7 7 l -14 0 z` : `M ${left} ${edgeY + 7} l 7 -7 l -14 0 z`} fill={stroke} /><text x={left + 12} y={edgeY + 4} fill={stroke} fontSize="9" fontWeight="700" fontFamily="DM Mono">{edge === "top" ? "↑" : "↓"} {label}</text></g>;
+         const selected = focusedLevelId === annotation.id;
+         return <g className={selected ? "levelstory-selected-pulse" : undefined} key={`edge-${annotation.id}`} data-testid={`edge-indicator-${annotation.id}`}><path d={edge === "top" ? `M ${left} ${edgeY - 7} l 7 7 l -14 0 z` : `M ${left} ${edgeY + 7} l 7 -7 l -14 0 z`} fill={stroke} /><text x={left + 12} y={edgeY + 4} fill={stroke} fontSize="9" fontWeight="700" fontFamily="DM Mono">{edge === "top" ? "↑" : "↓"} {label}</text></g>;
       })}
       {candles.map((candle, index) => {
         const up = candle.close >= candle.open;
