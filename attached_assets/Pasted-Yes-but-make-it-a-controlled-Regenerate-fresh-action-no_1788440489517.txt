@@ -1,0 +1,127 @@
+Yes—but make it a controlled **Regenerate fresh** action, not a broad “clear everything” button.
+
+The deeper fix is automatic cache invalidation. A snapshot cache key should include:
+
+- Source-data fingerprint
+- Formula/configuration hash
+- Strategy-engine version
+- Snapshot/chart projection version
+- Session-calendar version
+- Selected date range and contract
+- Relevant display settings
+
+After any applicable code or configuration change, the key changes automatically and old results cannot be returned.
+
+Add two user actions:
+
+- **Generate** — uses a matching cached result when available.
+- **Regenerate fresh** — bypasses only the selected review set’s generated snapshot/report cache and recomputes it.
+
+Do not clear:
+
+- Imported historical data/index
+- Human reviews or teaching evidence
+- Approved strategy proposals
+- Audit history
+- Other users’ data
+- Browser/application caches globally
+
+Suggested prompt:
+
+```text
+Implement safe cache invalidation and a scoped “Regenerate fresh” control for LevelStory Visual Review.
+
+PROBLEM
+
+After strategy, snapshot, or chart changes, Visual Review can display stale generated candidates or visuals. Running the generator again may reuse a cache entry that does not reflect the current implementation.
+
+AUTHORITATIVE FIX
+
+Do not rely primarily on manual cache clearing. Correct the deterministic cache identity so a cached review set is reusable only when every output-affecting input matches.
+
+The cache key must include, at minimum:
+
+- Historical source fingerprint
+- Formula/configuration hash
+- Strategy qualification version
+- Candidate-projection version
+- Execution/management version when trade outcomes are shown
+- Visual snapshot-projection version
+- Chart annotation/level-projection version
+- Session-calendar version
+- Contract/symbol
+- Selected New York trading dates
+- In-sample/out-of-sample selection
+- Premarket-context setting
+- Entry-window and relevant governed thresholds
+
+Do not use timestamps or random values in normal deterministic cache keys.
+
+REGENERATE FRESH CONTROL
+
+Add a “Regenerate fresh” button beside the normal generation control.
+
+Normal Generate:
+- May return a compatible cached result.
+- Clearly report whether the result was CACHE_HIT or FRESH_GENERATION.
+
+Regenerate fresh:
+- Requires a confirmation dialog.
+- Bypasses the generated review-set/snapshot cache for the current request.
+- Recomputes candidates, snapshots, chart annotations, and displayed results.
+- Replaces or supersedes only the matching derived cache entry.
+- Does not rebuild the historical CSV index.
+- Does not delete other cached date ranges.
+- Does not delete human reviews, teaching evidence, proposals, audit records, or imported market data.
+- Does not clear browser storage globally.
+
+Use “Regenerate fresh,” not the ambiguous label “Clear cache.”
+
+VISIBILITY
+
+Display:
+
+- Result origin: Cached or Fresh
+- Generation timestamp
+- Cache-key/version fingerprint, abbreviated
+- Formula version
+- Snapshot projection version
+- A message when the displayed result is incompatible with the current versions and must be regenerated
+
+STALE RESULT SAFETY
+
+If a loaded saved review set has a different formula, strategy, candidate, or snapshot-projection version:
+
+- Mark it as historical/stale.
+- Do not silently relabel it using current rules.
+- Do not combine old machine evidence with newly calculated chart annotations.
+- Offer “Regenerate fresh.”
+- Preserve submitted human reviews against their original immutable snapshot.
+
+SECURITY AND RESOURCE CONTROL
+
+- Scope invalidation to the authenticated user/current review request where applicable.
+- Keep rate limiting, but allow a fresh request after the prior request completes.
+- Prevent repeated clicks from launching duplicate jobs.
+- Reuse an already-running identical fresh-generation job.
+- Record who requested invalidation, when, the previous key, and the replacement key.
+- Do not expose a public endpoint capable of flushing the complete server cache.
+
+TESTS
+
+Add deterministic tests proving:
+
+1. Identical normal requests reuse cache.
+2. Regenerate fresh bypasses the matching cached derived result.
+3. Strategy-version changes automatically miss the old cache.
+4. Formula/configuration changes automatically miss the old cache.
+5. Snapshot/chart-projection changes invalidate visual output.
+6. Historical-index identity remains unchanged.
+7. Human reviews and teaching records survive regeneration.
+8. Old immutable snapshots retain their original review linkage.
+9. Two simultaneous fresh requests do not create duplicate jobs.
+10. Cache origin and version metadata are truthful.
+11. One user/request cannot invalidate unrelated cached results.
+
+Keep this compute-conscious. Run focused cache, Visual Review, API, and frontend tests plus typechecks and diff validation. Do not perform a historical-index rebuild or broad qualification replay solely for verification.
+```
