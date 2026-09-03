@@ -1,0 +1,105 @@
+Implement a configurable no-visible-level trade-management rule in LevelStory.
+
+CONTEXT
+
+This rule applies only when, at entry time, there is no eligible causal key level visible ahead of the trade in the trade direction.
+
+Do not search future candles for a level. Freeze the no-level determination using only information available at entry.
+
+AUTHORITATIVE RULE
+
+When no eligible forward key level is available:
+
+1. Set the initial profit target to +1R.
+2. Preserve the trade’s existing initial protective stop.
+3. Count completed five-minute candles after the entry candle.
+4. The entry candle is not candle 1.
+5. If price reaches +1R before the time condition, exit at +1R.
+6. If nine completed post-entry candles pass without reaching +1R, activate a breakeven stop at the original modeled entry price.
+7. Do not fabricate a breakeven fill when the ninth candle completes.
+8. A breakeven exit occurs only if a subsequent candle genuinely reaches or crosses the entry price.
+9. Never move the stop backward or increase risk.
+10. Exit any remaining position according to the existing exclusive 1:00 p.m. ET rule.
+
+Nine five-minute candles equal 45 minutes. Make this governed and configurable:
+
+noLevelBreakevenActivationBars = 9
+
+Clarify “whichever comes first” as:
+
+- +1R target fill before breakeven activation, or
+- after activation, the first causally observed fill of either the +1R target or breakeven stop.
+
+The breakeven stop and +1R target may remain active together after the ninth candle.
+
+DIRECTIONAL BEHAVIOR
+
+Long:
+
+- +1R target is above entry.
+- Breakeven stop is at entry.
+- After breakeven activation, a later candle with low at or below entry may fill the breakeven stop.
+
+Short:
+
+- +1R target is below entry.
+- Breakeven stop is at entry.
+- After breakeven activation, a later candle with high at or above entry may fill the breakeven stop.
+
+SAME-CANDLE AMBIGUITY
+
+If a post-activation candle reaches both the +1R target and breakeven stop and intrabar ordering is unavailable:
+
+- Preserve the existing conservative OHLC ambiguity policy.
+- Label the result explicitly.
+- Do not assume the target happened first.
+
+AUDIT EVIDENCE
+
+Record:
+
+- noForwardLevelAtEntry
+- noForwardLevelReason
+- riskAmount
+- oneRTargetPrice
+- postEntryBarsElapsed
+- breakevenActivationBars
+- breakevenActivatedAt
+- breakevenStopPrice
+- targetReachedAt
+- exitReason
+- exitPrice
+- ambiguityDisposition
+
+Use explicit lifecycle events:
+
+- NO_LEVEL_1R_TARGET_ACTIVE
+- NO_LEVEL_BREAKEVEN_TIMER_ACTIVE
+- NO_LEVEL_BREAKEVEN_STOP_ACTIVATED
+- NO_LEVEL_1R_TARGET_FILLED
+- NO_LEVEL_BREAKEVEN_STOP_FILLED
+- NO_LEVEL_TARGET_BREAKEVEN_AMBIGUOUS
+- NO_LEVEL_SESSION_CUTOFF_EXIT
+
+TESTS
+
+Add focused deterministic long and short tests proving:
+
+1. +1R reached before nine bars exits at +1R.
+2. The entry candle is excluded from the nine-bar count.
+3. Nine completed post-entry candles activate breakeven without fabricating an exit.
+4. Price later returns to entry and fills the breakeven stop.
+5. Price never returns to entry and remains managed until another valid exit.
+6. The original protective stop remains active before breakeven activation.
+7. Breakeven never widens the original stop.
+8. Same-candle target/breakeven collision uses the existing ambiguity policy.
+9. An available forward key level uses the key-level target strategy instead.
+10. No new entries or trade management continue beyond the applicable 1:00 p.m. ET boundary.
+11. Long and short calculations are directionally correct.
+12. All calculations use the specific trade’s own entry, stop, risk, and candidate identity.
+
+Do not call the ninth-bar event a breakeven exit. It is only breakeven-stop activation unless price actually fills that stop.
+
+Do not change strategy qualification, patience detection, consolidation handling, pullback tolerance, initial stop calculation, historical indexing, or live/broker behavior.
+
+Because compute is limited, run only focused target-planning, OHLCV execution, Phase 9, and configuration tests. Report files changed, the exact bar-count convention, tests run, and any remaining limitations.

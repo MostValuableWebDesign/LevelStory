@@ -1,0 +1,159 @@
+Implement the missing no-forward-level nine-candle breakeven management rule in LevelStory.
+
+Review the existing implementation before editing:
+
+- artifacts/api-server/src/lib/strategy/ohlcv-execution.ts
+- artifacts/api-server/src/lib/strategy/ohlcv-execution.test.ts
+- artifacts/api-server/src/lib/strategy/key-level-targets.ts
+- artifacts/api-server/src/lib/phase9.ts
+- artifacts/api-server/src/lib/phase9.test.ts
+- strategy configuration and API schemas
+
+Current behavior
+
+The application already freezes the target-level snapshot at entry.
+
+When the frozen target plan has:
+
+disposition === "NO_ELIGIBLE_KEY_LEVEL"
+
+the application correctly uses +1R as the fallback target.
+
+Preserve that behavior and add the following time-based management rule.
+
+Authoritative rule
+
+This rule applies only when no eligible forward key-level target was available in the frozen entry-time snapshot.
+
+1. Calculate +1R using the actual modeled entry fill and authoritative initial protective stop:
+
+   initialRisk = abs(entryFill - initialStop)
+
+   Long:
+   oneRPrice = entryFill + initialRisk
+
+   Short:
+   oneRPrice = entryFill - initialRisk
+
+2. Do not count the entry/confirmation candle E toward the timer.
+
+3. Count completed five-minute candles beginning with the first completed candle after E.
+
+4. During candles 1 through 9:
+
+   - Keep the original protective stop active.
+   - Keep the +1R target active.
+   - If the stop is reached first, exit at the stop.
+   - If +1R is reached first, apply the existing 1R exit policy.
+   - Do not activate breakeven early.
+
+5. After the ninth post-entry candle closes, if neither the stop nor +1R has executed:
+
+   - Activate breakeven management at the modeled entry-fill price.
+   - Activation becomes effective beginning with candle 10.
+   - Never retrospectively fill breakeven using candle 9.
+
+6. If price is already favorable or equal to entry when breakeven activates:
+
+   - Arm entry price as the protective breakeven stop for candle 10 onward.
+
+7. If price is adverse when breakeven activates:
+
+   - Do not fabricate a breakeven fill.
+   - Keep the original protective stop active.
+   - Arm a recovery-to-entry exit at the entry price.
+   - For a long trade, exit when a subsequent candle reaches entry from below.
+   - For a short trade, exit when a subsequent candle reaches entry from above.
+   - Label this honestly as a recovery-to-breakeven exit, not as an intrabar stop fill.
+
+8. If a later candle contains both the original protective stop and the breakeven/recovery price and intrabar order is unknown:
+
+   - Apply the existing conservative adverse-first ambiguity policy.
+   - Record the ambiguity explicitly.
+   - Do not assume breakeven happened first.
+
+9. Preserve the existing multi-contract behavior:
+
+   - If +1R is reached before the timer, use the existing partial-at-1R and runner policy.
+   - If the nine-candle rule activates before +1R, apply breakeven protection to all remaining contracts.
+   - Never create duplicate exits or more exited quantity than the original position.
+
+Add governed configuration
+
+Add an explicit setting such as:
+
+noLevelBreakevenActivationBars: 9
+
+Validate that it is a positive whole number.
+
+Do not hardcode nine independently in multiple execution paths.
+
+Audit evidence
+
+Record at least:
+
+- noForwardLevelAtEntry
+- oneRPrice
+- postEntryCompletedBars
+- breakevenActivationBars
+- breakevenActivated
+- breakevenActivationTimestamp
+- breakevenEffectiveFromTimestamp
+- breakevenPrice
+- breakevenDisposition
+- originalStopStillActive
+- exitReason
+
+Use explicit states or events such as:
+
+- NO_FORWARD_LEVEL_1R_PLAN
+- NO_LEVEL_BAR_TIMER_STARTED
+- NO_LEVEL_BREAKEVEN_ACTIVATED
+- BREAKEVEN_STOP_ARMED
+- BREAKEVEN_RECOVERY_EXIT_ARMED
+- BREAKEVEN_EXIT_REACHED
+- BREAKEVEN_RECOVERY_EXIT_REACHED
+- ONE_R_REACHED_BEFORE_BREAKEVEN
+- ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN
+- AMBIGUOUS_STOP_FIRST
+
+Required deterministic tests
+
+Add long and short tests proving:
+
+1. E is excluded from the nine-candle count.
+2. +1R on candles 1–9 exits normally.
+3. The initial stop remains active during candles 1–9.
+4. Breakeven activates only after candle 9 closes.
+5. Candle 9 cannot retrospectively create a breakeven fill.
+6. Candle 10 can execute the armed breakeven rule.
+7. An adverse position at activation does not fabricate a fill.
+8. A later recovery to entry produces a breakeven recovery exit.
+9. If the original stop and recovery price are both present in one OHLC candle, the conservative adverse-first rule applies.
+10. Multi-contract quantity accounting remains correct.
+11. The rule does not apply when a frozen eligible key-level target exists.
+12. Session-close handling and the no-new-entry-after-1:00 p.m. ET rule remain unchanged.
+13. Repeated replay produces identical audit events and results.
+
+Do not change:
+
+- Strategy qualification
+- Patience-candle detection
+- Immediate P→E confirmation
+- Pullback tolerance
+- Key-level detection
+- Entry confirmation buffer
+- Initial stop calculation
+- Target-level selection
+- Broker, live-order, or paper-order behavior
+
+Run only focused tests, typecheck, and diff validation. Do not rebuild the historical index or run a broad historical qualification batch.
+
+Report:
+
+- Files changed
+- Exact bar-count semantics
+- How adverse-at-activation cases are handled
+- Long/short test results
+- Multi-contract reconciliation
+- Any remaining ambiguity or limitation
