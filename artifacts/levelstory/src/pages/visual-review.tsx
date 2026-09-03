@@ -106,6 +106,26 @@ import {
 const TRADE_CATEGORY_VALUES = new Set<VisualValidationCategory>([
   "qualified_trade",
 ]);
+const CHART_LEVEL_ORDER = [
+  "vwap",
+  "ema-200",
+  "orb-high",
+  "orb-low",
+  "ntz-high",
+  "ntz-low",
+  "premarket-high",
+  "premarket-low",
+  "previous-session-high",
+  "previous-session-low",
+  "two-sessions-high",
+  "two-sessions-low",
+  "major",
+  "confluence",
+  "entry",
+  "strategy-stop",
+  "target",
+  "runner",
+] as const;
 const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
   { id: "ORB_PULLBACK_CONTINUATION", label: "ORB Break–Pullback–Patience Continuation" },
   { id: "PATIENCE_CANDLE_CONTINUATION", label: "Patience Candle Continuation" },
@@ -325,6 +345,45 @@ function levelStroke(annotation: VisualValidationAnnotation): string {
   if (annotation.id === "strategy-stop") return "hsl(var(--negative))";
    if (annotation.id === "target") return "hsl(var(--positive))";
   return annotationTone(annotation.color);
+}
+
+function chartLevelGroup(annotation: VisualValidationAnnotation): string {
+  if (annotation.id === "vwap" || annotation.id === "ema-200") return annotation.id;
+  if (["orb-high", "orb-low", "ntz-high", "ntz-low"].includes(annotation.id)) return annotation.id;
+  if (annotation.id === "premarket-high" || annotation.id === "premarket-low") return annotation.id;
+  if (["previous-session-high", "previous-session-low"].includes(annotation.id)) return annotation.id;
+  if (["two-sessions-high", "two-sessions-low"].includes(annotation.id)) return annotation.id;
+  if (annotation.id.startsWith("major-")) return "major";
+  if (annotation.id.startsWith("dynamite|")) return "confluence";
+  if (annotation.id === "entry-buffer") return "entry";
+  if (annotation.id === "strategy-stop" || annotation.id === "primary-level-stop") return "strategy-stop";
+  if (annotation.id === "target" || annotation.id === "one-r-target" || annotation.id === "selected-target-level" || annotation.id.startsWith("skipped-target-")) return "target";
+  return annotation.id;
+}
+
+function chartLevelLabel(annotation: VisualValidationAnnotation): string {
+  const group = chartLevelGroup(annotation);
+  if (group === "vwap") return "VWAP";
+  if (group === "ema-200") return "200 MA";
+  if (["orb-high", "orb-low", "ntz-high", "ntz-low"].includes(group)) return "ORB / NTZ level";
+  if (group === "premarket-high") return "Premarket high";
+  if (group === "premarket-low") return "Premarket low";
+  if (group === "previous-session-high") return "Yesterday high";
+  if (group === "previous-session-low") return "Yesterday low";
+  if (group === "two-sessions-high") return "2 days ago high";
+  if (group === "two-sessions-low") return "2 days ago low";
+  if (group === "major") return "Major level";
+  if (group === "confluence") return "Confluence";
+  if (group === "entry") return "Entry";
+  if (group === "strategy-stop") return "Strategy stop";
+  if (group === "target") return "Target";
+  return annotation.label;
+}
+
+function chartLevelOrder(annotation: VisualValidationAnnotation): number {
+  const group = chartLevelGroup(annotation);
+  const index = CHART_LEVEL_ORDER.indexOf(group as typeof CHART_LEVEL_ORDER[number]);
+  return index === -1 ? CHART_LEVEL_ORDER.length : index;
 }
 
 export default function VisualReview() {
@@ -1156,23 +1215,24 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
         <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
       </div>
         <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
-     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-orange-500" />ORB / NTZ boundary</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-[hsl(var(--positive))]" />premarket high / low</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-500" />EMA 200</span>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground" data-testid="chart-legend">
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-red-600" />VWAP</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />support / resistance</span>
-        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-consolidation"><i className="h-3 w-4 border border-red-400 bg-red-200/70" />consolidation zone (when present)</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />entry candle (E)</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-invalidation"><i className="h-px w-4 bg-[hsl(var(--negative))]" />invalidation / stop</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />shaded candles · human-only outcome context</span>
-       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 border border-foreground bg-card" />numbered markers · exact event occurrence</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-500" />200 MA</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-orange-500" />ORB / NTZ levels</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-[hsl(var(--positive))]" />Premarket high</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-[hsl(var(--positive))]" />Premarket low</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-700" />Yesterday high</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-green-700" />Yesterday low</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-purple-600" />2 days ago high</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-purple-600" />2 days ago low</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />Major level</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-blue-600" />Confluence</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-accent" />Entry</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-[hsl(var(--negative))]" />Strategy stop</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Target</span>
+       <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-purple-600" />Runner</span>
        <span className="mono ml-auto">5m · NY / UTC · review-bounded</span>
-    </div>
+     </div>
   </div>;
 }
 
@@ -1485,7 +1545,11 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
    const levelLegend = [...allLevels]
       .filter((annotation) => isDynamicIndicatorAnnotation(annotation) || (annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max))
-     .sort((first, second) => (first.price ?? 0) - (second.price ?? 0) || first.label.localeCompare(second.label));
+     .sort((first, second) =>
+       chartLevelOrder(first) - chartLevelOrder(second)
+       || (first.price ?? 0) - (second.price ?? 0)
+       || first.label.localeCompare(second.label),
+     );
   const edgeCounts: Record<"top" | "bottom", number> = { top: 0, bottom: 0 };
    const activeSlot = hoveredSlot ?? selectedSlot;
    const activeIndicatorId = activeLevelId === "vwap" || activeLevelId === "ema-200"
@@ -1664,6 +1728,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
               const time = event.openTime && event.closeTime
                 ? formatInterval(event.openTime, event.closeTime)
                 : event.openTime ? formatCandleTime(event.openTime, "America/New_York") : "Time unavailable";
+              const displayLabel = chartLevelLabel(annotation);
               return <button
                 key={`event-strip-${event.id}`}
                 type="button"
@@ -1706,12 +1771,12 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                 onClick={() => selectLevel(annotation.id)}
                onKeyDown={(event) => handleLevelKeyDown(event, annotation.id)}
                aria-pressed={selected}
-               aria-label={`${annotation.label}, ${valueLabel}. Press Enter or Space to keep highlighted; Escape clears selection.`}
+                aria-label={`${displayLabel}, ${valueLabel}. Press Enter or Space to keep highlighted; Escape clears selection.`}
                 data-legend-level-button="true"
                data-testid={`legend-level-${annotation.id}`}
              >
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-            <span>{annotation.label}</span>
+             <span>{displayLabel}</span>
              <span className="mono font-bold">{valueLabel}</span>
              </button>;
           })}
@@ -1719,7 +1784,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
              .filter((kind) => tradeLegs.some((leg) => leg.kind === kind))
              .map((kind) => {
                const id = kind === "target" ? TRADE_TARGET_LEGEND_ID : TRADE_RUNNER_LEGEND_ID;
-               const label = kind === "target" ? "TARGET EXIT" : "RUNNER EXIT";
+                const label = kind === "target" ? "Target" : "Runner";
                const color = kind === "target" ? "hsl(var(--positive))" : "hsl(270 55% 48%)";
                const selected = focusedLevelId === id;
                return <button
