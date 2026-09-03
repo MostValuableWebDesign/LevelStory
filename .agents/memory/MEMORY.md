@@ -53,3 +53,4 @@
 - [Snapshot-wide consolidation overlays](visual-snapshot-consolidation-overlays.md) — Visual Review highlights every qualifying range in the snapshot, not only the trade-entry consolidation guard.
 - [Candidate causal identity](candidate-causal-identity.md) — candidate-owned execution artifacts preserve signal, arm, and consolidation-zone provenance together.
 - [No-level breakeven management](no-level-breakeven-management.md) — count completed post-E candles; activate after the governed bar closes, with distinct stop and recovery outcomes.
+- [Chart label contract](chart-label-contract.md) — every available priced primary reference needs a shared label in the plot or its edge indicator.

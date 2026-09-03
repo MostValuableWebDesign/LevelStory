@@ -37,6 +37,8 @@ import {
   isCatastropheStopAnnotation,
   isRedundantPriorSessionAnnotation,
   isVisualPresentationAnnotation,
+  isRequiredChartLabelAnnotation,
+  chartLevelLabel,
   isDisplacedLabel,
   isExactFiveMinuteCandle,
   isPrimaryLevel,
@@ -63,6 +65,43 @@ test("intraday reference chart labels and colors are exact", () => {
     "two-sessions-high": { label: "Two-days-ago high", color: "hsl(270 55% 48%)" },
     "two-sessions-low": { label: "Two-days-ago low", color: "hsl(270 55% 48%)" },
   });
+});
+
+test("every available primary snapshot level has a deterministic on-chart label", () => {
+  const requiredIds = [
+    "vwap",
+    "ema-200",
+    "orb-high",
+    "premarket-low",
+    "previous-session-high",
+    "two-sessions-low",
+    "major-resistance-1",
+    "dynamite|MESU6|2026-08-26|13:45|6840.00-6842.00",
+    "entry-buffer",
+    "strategy-stop",
+    "target",
+    "one-r-target",
+    "runner-threshold",
+  ];
+  const annotations = requiredIds.map((id, index) => makeAnnotation(id, 100 + index, {
+    label: id === "target" ? "Key-level target" : id,
+    kind: id.startsWith("dynamite|") ? "confluence" : "level",
+  }));
+  const excluded = [
+    makeAnnotation("strategy-stop", null),
+    makeAnnotation("target", 125, { available: false }),
+    makeAnnotation("fib-618", 126, { kind: "fibonacci", label: "Fibonacci 61.8%" }),
+    makeAnnotation("catastrophe-stop", 127, { label: "Catastrophe stop" }),
+    makeAnnotation("supporting-candle", 128, { kind: "candle" }),
+  ];
+  const required = [...annotations, ...excluded].filter(isRequiredChartLabelAnnotation);
+
+  assert.deepEqual(required.map((annotation) => annotation.id), requiredIds);
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "strategy-stop")!), "STOP");
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "target")!), "TARGET");
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "one-r-target")!), "1R TARGET");
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "runner-threshold")!), "RUNNER");
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "orb-high")!), "orb-high");
 });
 
 test("consolidation scanning finds every maximal bounded range in a snapshot", () => {

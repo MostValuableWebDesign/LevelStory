@@ -93,6 +93,7 @@ import {
   isDynamicIndicatorAnnotation,
   isOpeningRangeCompleteAtEvaluation,
   isPrimaryLevel,
+   chartLevelLabel,
   INTRADAY_REFERENCE_PRESENTATION,
   mergeOrbNtzAnnotations,
   priceToY,
@@ -1505,7 +1506,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
       isVisualPresentationAnnotation(annotation)
       && !isDynamicIndicatorAnnotation(annotation)
       && annotation.kind !== "candle"
-       && annotation.id !== "runner-threshold"
       && annotation.price !== null,
     );
   const indicatorLegend = (["vwap", "ema-200"] as const)
@@ -1845,15 +1845,18 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           {indicatorPath("vwap", "human_only") && <path className={activeIndicatorId === "vwap" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
           {indicatorPath("ema200", "machine") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
           {indicatorPath("ema200", "human_only") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeDasharray="7 4" {...indicatorStyle("ema-200")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "ema-200" ? .8 : .15} data-testid="indicator-curve-ema200-human-only" />}
-       {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
+           {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
+           {primaryLevels.filter((annotation) => isDynamicIndicatorAnnotation(annotation) && annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max).map((annotation) => {
+             const stroke = levelStroke(annotation);
+             return <text key={`chart-level-label-${annotation.id}`} x={plotRight - 5} y={y(annotation.price!) - 8} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLevelLabel(annotation)} · {formatPriceAxisValue(annotation.price!)}</text>;
+           })}
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
         if (isDynamicIndicatorAnnotation(annotation)) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
          const stop = annotation.id === "strategy-stop";
          const target = annotation.id === "target" || annotation.id === "one-r-target";
-         const runner = annotation.id === "runner-threshold";
-         const chartLabel = stop ? "STOP" : annotation.id === "one-r-target" ? "1R TARGET" : target ? "TARGET" : runner ? "RUNNER" : null;
+          const chartLabel = chartLevelLabel(annotation);
           const stroke = levelStroke(annotation);
           const selected = focusedLevelId === annotation.id;
           const hasRange = annotation.rangeLow != null && annotation.rangeHigh != null;
@@ -1868,6 +1871,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             : rangeLow != null && rangeHigh != null
               ? Math.min(y(rangeLow), y(rangeHigh))
               : y(annotation.price);
+           const labelY = hasRange ? bandY + bandHeight / 2 + 3 : y(annotation.price) - 8;
                   return <g
             key={annotation.id}
                     className={selected ? "levelstory-selected-pulse" : undefined}
@@ -1879,10 +1883,13 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             aria-label={`${annotation.label}, ${annotation.detail}`}
           >
             {hasRange && rangeLow != null && rangeHigh != null
-              ? <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
+               ? <>
+                 <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
+                 {chartLabel && <text x={plotRight - 5} y={labelY} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLabel} · {formatPriceAxisValue(annotation.price)}</text>}
+               </>
                : <>
                  <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : stop ? 2.4 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : stop ? "5 3" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
-                 {chartLabel && <text x={plotRight - 5} y={y(annotation.price) - 8} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLabel} · {formatPriceAxisValue(annotation.price)}</text>}
+                  {chartLabel && <text x={plotRight - 5} y={labelY} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLabel} · {formatPriceAxisValue(annotation.price)}</text>}
                </>}
           </g>;
       })}
@@ -1890,9 +1897,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          const edgeIndex = edgeCounts[edge]++;
          const edgeY = edge === "top" ? top + 8 + edgeIndex * 15 : plotBottom - 8 - edgeIndex * 15;
          const stroke = levelStroke(annotation);
-        const label = `${annotation.label} · ${annotation.price?.toFixed(2)}`;
+         const label = `${chartLevelLabel(annotation)} · ${annotation.price?.toFixed(2)}`;
          const selected = focusedLevelId === annotation.id;
-         return <g className={selected ? "levelstory-selected-pulse" : undefined} key={`edge-${annotation.id}`} data-testid={`edge-indicator-${annotation.id}`}><path d={edge === "top" ? `M ${left} ${edgeY - 7} l 7 7 l -14 0 z` : `M ${left} ${edgeY + 7} l 7 -7 l -14 0 z`} fill={stroke} /><text x={left + 12} y={edgeY + 4} fill={stroke} fontSize="9" fontWeight="700" fontFamily="DM Mono">{edge === "top" ? "↑" : "↓"} {label}</text></g>;
+          return <g className={selected ? "levelstory-selected-pulse" : undefined} key={`edge-${annotation.id}`} data-testid={`edge-indicator-${annotation.id}`}><path d={edge === "top" ? `M ${left} ${edgeY - 7} l 7 7 l -14 0 z` : `M ${left} ${edgeY + 7} l 7 -7 l -14 0 z`} fill={stroke} /><text x={left + 12} y={edgeY + 4} fill={stroke} fontSize="9" fontWeight="700" fontFamily="DM Mono" data-testid={`edge-indicator-label-${annotation.id}`}>{edge === "top" ? "↑" : "↓"} {label}</text></g>;
       })}
       {candles.map((candle, index) => {
         const up = candle.close >= candle.open;
