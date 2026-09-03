@@ -1,0 +1,105 @@
+Implement a Visual Review “Shadow Account Replay” feature for dummy-money historical testing.
+
+Goal:
+After Visual Review generates trade candidates, allow me to replay those candidates with a fake account balance so I can see whether my formula is profitable without changing the formula.
+
+Important boundaries:
+- Shadow Mode only.
+- No broker connection.
+- No live orders.
+- No paper trading.
+- No new trade signals should be created by this feature.
+- This feature must only consume the existing Visual Review trade candidates and their candidate-owned modeled trades.
+- Do not change strategy qualification rules, patience candle rules, pullback rules, entry rules, stop rules, or target rules in this task.
+
+Use existing data:
+- Use `VisualValidationSet.tradeCandidates`.
+- Use linked `snapshot.machineEvidence.trade` records only when they have an exact `candidateId` / `signalOccurrenceId` match.
+- Ignore orphan legacy trades.
+- Candidates without a modeled entry should not affect account balance.
+- Open trades should be displayed separately and should not affect realized P/L unless they have an authoritative exit.
+- Closed/finalized trades should update realized account balance using existing `netPnl`.
+
+Add replay options:
+- Starting balance, default `$10,000`.
+- Contracts per trade, default `1`.
+- Keep fees/slippage consistent with existing Shadow Mode trade accounting.
+- Do not use compounding yet unless explicitly enabled later.
+
+Replay logic:
+- Sort candidate-owned trades by entry time.
+- Only include trades that passed the existing candidate pipeline.
+- Respect the existing entry cutoff rules, especially no entries after 1:00 PM ET.
+- For each closed trade, update account balance by realized net P/L.
+- For each open trade, show it as open/unscored and exclude it from realized metrics.
+
+Show these results:
+- Starting balance
+- Ending realized balance
+- Realized net P/L
+- Percent return
+- Number of candidate trades
+- Number of entered trades
+- Number of closed trades
+- Number of open/unscored trades
+- Wins
+- Losses
+- Win rate
+- Average win
+- Average loss
+- Profit factor
+- Max drawdown
+- Max consecutive wins
+- Max consecutive losses
+- Expectancy per trade
+- In-sample vs out-of-sample breakdown if the candidate period is available
+
+Add a simple equity curve:
+- X-axis: trade number or trade time
+- Y-axis: account balance
+- Mark wins in green and losses in red.
+- Open trades should be gray or listed separately.
+
+Add a trade ledger table:
+Columns:
+- Trade #
+- Date/time ET
+- Contract
+- Edge / strategy
+- Direction
+- Entry price
+- Exit price
+- Exit reason
+- Net P/L
+- Running balance
+- Supporting confluences
+- In-sample / out-of-sample
+
+UI placement:
+- Add a panel in Visual Review called “Shadow Account Replay” or “Dummy Money Replay.”
+- Place it near the right pane or below the trade candidate list.
+- Before a set is generated, show an empty state.
+- While trade candidates are generating, show the replay panel as pending.
+- After generation, show the account replay summary, equity curve, and trade ledger.
+- Keep clear “Shadow Mode — no live orders” messaging visible.
+
+Cache/staleness:
+- The replay should recompute from the current Visual Review set.
+- Include the review set cache key, formula hash, source fingerprint, candidate projection version, and execution management version in the replay result.
+- If the Visual Review set is stale, show a warning telling the user to use “Regenerate fresh.”
+
+Tests:
+- Add deterministic tests for:
+  1. Two wins and one loss update ending balance correctly.
+  2. Open trades are excluded from realized P/L.
+  3. Candidates without modeled trades do not affect balance.
+  4. Orphan legacy trades are ignored.
+  5. In-sample and out-of-sample metrics are separated correctly.
+  6. No broker/live/paper trading code paths are introduced.
+
+Verification:
+- Run focused Visual Review/account replay tests.
+- Run API typecheck.
+- Run frontend typecheck.
+- Run git diff --check.
+- Do not rebuild the historical index unless absolutely required.
