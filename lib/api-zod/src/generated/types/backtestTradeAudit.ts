@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestTradeAuditAttemptGrade } from './backtestTradeAuditAttemptGrade';
 import type { BacktestTradeAuditLegsItem } from './backtestTradeAuditLegsItem';
 import type { BacktestTradeAuditStopLevel } from './backtestTradeAuditStopLevel';
 
@@ -21,6 +22,14 @@ export type BacktestTradeAudit = {
   strategyStopPrice: number | null;
   /** @nullable */
   catastropheStopPrice: number | null;
+  /** Stable identity for the independent attempt that produced this trade. */
+  armAttemptId?: string;
+  /**
+     * @minimum 1
+     * @maximum 2
+     */
+  attemptOrdinal?: number;
+  attemptGrade?: BacktestTradeAuditAttemptGrade;
   /** @nullable */
   stopLevel: BacktestTradeAuditStopLevel;
   /** @nullable */

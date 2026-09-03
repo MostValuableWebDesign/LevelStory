@@ -795,6 +795,10 @@ export const RunBacktestBody = zod.object({
 })
 
 export const runBacktestResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const runBacktestResponseTradesItemAttemptOrdinalMax = 2;
+
+export const runBacktestResponseTradesItemAuditAttemptOrdinalMax = 2;
+
 export const runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -1107,6 +1111,9 @@ export const RunBacktestResponse = zod.object({
   "matchedEdges": zod.array(zod.string()).optional(),
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(runBacktestResponseTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -1116,6 +1123,9 @@ export const RunBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(runBacktestResponseTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
@@ -1485,6 +1495,10 @@ export const StartBatchBacktestBody = zod.object({
 
 export const startBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const startBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const startBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
+
+export const startBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
+
 export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -1814,6 +1828,9 @@ export const StartBatchBacktestResponse = zod.object({
   "matchedEdges": zod.array(zod.string()).optional(),
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(startBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -1823,6 +1840,9 @@ export const StartBatchBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(startBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
@@ -2595,6 +2615,10 @@ export const GetBatchBacktestStatusQueryParams = zod.object({
 
 export const getBatchBacktestStatusResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getBatchBacktestStatusResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const getBatchBacktestStatusResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
+
+export const getBatchBacktestStatusResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
+
 export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -2924,6 +2948,9 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "matchedEdges": zod.array(zod.string()).optional(),
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(getBatchBacktestStatusResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -2933,6 +2960,9 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(getBatchBacktestStatusResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),
@@ -3705,6 +3735,10 @@ export const CancelBatchBacktestQueryParams = zod.object({
 
 export const cancelBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const cancelBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+export const cancelBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
+
+export const cancelBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
+
 export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -4034,6 +4068,9 @@ export const CancelBatchBacktestResponse = zod.object({
   "matchedEdges": zod.array(zod.string()).optional(),
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(cancelBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -4043,6 +4080,9 @@ export const CancelBatchBacktestResponse = zod.object({
   "targetPrice": zod.number().nullable(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(cancelBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
   "patienceCandleCloseTime": zod.string().nullable(),

@@ -2854,6 +2854,19 @@ export const BacktestTradeSetupGrade = {
 } as const;
 
 /**
+ * Effective quality grade after applying the controlled re-entry penalty.
+ */
+export type BacktestTradeAttemptGrade = typeof BacktestTradeAttemptGrade[keyof typeof BacktestTradeAttemptGrade];
+
+
+export const BacktestTradeAttemptGrade = {
+  B: 'B',
+  A: 'A',
+  'A+': 'A+',
+  'A++': 'A++',
+} as const;
+
+/**
  * @nullable
  */
 export type BacktestTradePatienceCandle = { [key: string]: unknown } | null;
@@ -2862,6 +2875,16 @@ export type BacktestTradePatienceCandle = { [key: string]: unknown } | null;
  * @nullable
  */
 export type BacktestTradeEntryCandle = { [key: string]: unknown } | null;
+
+export type BacktestTradeAuditAttemptGrade = typeof BacktestTradeAuditAttemptGrade[keyof typeof BacktestTradeAuditAttemptGrade];
+
+
+export const BacktestTradeAuditAttemptGrade = {
+  B: 'B',
+  A: 'A',
+  'A+': 'A+',
+  'A++': 'A++',
+} as const;
 
 /**
  * @nullable
@@ -2923,6 +2946,14 @@ export type BacktestTradeAudit = {
   strategyStopPrice: number | null;
   /** @nullable */
   catastropheStopPrice: number | null;
+  /** Stable identity for the independent attempt that produced this trade. */
+  armAttemptId?: string;
+  /**
+     * @minimum 1
+     * @maximum 2
+     */
+  attemptOrdinal?: number;
+  attemptGrade?: BacktestTradeAuditAttemptGrade;
   /** @nullable */
   stopLevel: BacktestTradeAuditStopLevel;
   /** @nullable */
@@ -3004,6 +3035,16 @@ export interface BacktestTrade {
   matchedEdges?: string[];
   supportingConfluences?: string[];
   setupGrade?: BacktestTradeSetupGrade;
+  /** Stable identity for this independent entry attempt within a shared pullback arm. */
+  armAttemptId?: string;
+  /**
+     * One-based authoritative entry number for the shared pullback arm.
+     * @minimum 1
+     * @maximum 2
+     */
+  attemptOrdinal?: number;
+  /** Effective quality grade after applying the controlled re-entry penalty. */
+  attemptGrade?: BacktestTradeAttemptGrade;
   /** @nullable */
   patienceCandle?: BacktestTradePatienceCandle;
   /** @nullable */

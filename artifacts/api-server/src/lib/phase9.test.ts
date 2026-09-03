@@ -249,6 +249,70 @@ function candidateProjectionDataset(
   } as CausalReplayDataset;
 }
 
+function managedAttemptOccurrence(input: {
+  armId: string;
+  pOpen: string;
+  eOpen: string;
+  eClose: string;
+  direction?: "long" | "short";
+}): any {
+  const direction = input.direction ?? "long";
+  const occurrence = confirmedCandidateOccurrence(input);
+  occurrence.eligibilityArmId = input.armId;
+  occurrence.eligibilityArmState = "active";
+  occurrence.management = {
+    strategyStopPrice: direction === "long" ? 97 : 103,
+    catastropheStopPrice: direction === "long" ? 96 : 104,
+    targetPrice: direction === "long" ? 125 : 75,
+    contracts: 1,
+    runnerActivationPrice: null,
+    runnerExitRule: null,
+    sessionCloseTime: "2026-08-25T20:00:00.000Z",
+    sourceAuditId: `managed-${input.eOpen}`,
+    missingEvidenceReasons: [],
+  };
+  return occurrence;
+}
+
+function managedAttemptDataset(
+  occurrences: readonly any[],
+  postEntry: { high: number; low: number },
+): CausalReplayDataset {
+  const candles = occurrences.flatMap((occurrence) => [
+    candle(0, {
+      openTime: Date.parse(occurrence.pOpenTimestamp),
+      closeTime: Date.parse(occurrence.eOpenTimestamp),
+      contractSymbol: occurrence.contractSymbol,
+      high: 101,
+      low: 99,
+      close: 100,
+    }),
+    candle(0, {
+      ...occurrence.entryCandle,
+      timestamp: Date.parse(occurrence.eOpenTimestamp),
+      openTime: Date.parse(occurrence.eOpenTimestamp),
+      closeTime: Date.parse(occurrence.entryObservationTimestamp),
+      contractSymbol: occurrence.contractSymbol,
+    }),
+    candle(0, {
+      openTime: Date.parse(occurrence.entryObservationTimestamp),
+      closeTime: Date.parse(occurrence.entryObservationTimestamp) + 300_000,
+      contractSymbol: occurrence.contractSymbol,
+      high: postEntry.high,
+      low: postEntry.low,
+      close: occurrence.direction === "long" ? postEntry.high : postEntry.low,
+    }),
+  ]).sort((first, second) => first.openTime - second.openTime);
+  return {
+    source: "historical_databento_multicontract",
+    contractSymbol: occurrences[0]?.contractSymbol ?? "MESU26",
+    candles,
+    inSampleDates: ["2026-08-25"],
+    outOfSampleDates: [],
+    contractMonth: "U26",
+  } as CausalReplayDataset;
+}
+
 function consolidationGuard(
   overrides: Partial<BacktestConsolidationGuardEvidence> = {},
 ): BacktestConsolidationGuardEvidence {
@@ -2509,4 +2573,138 @@ test("an unrelated consolidation guard cannot block an ORB candidate", () => {
   );
   assert.equal(projected.rejected.some((item) => item.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD")), false);
   assert.equal(projected.candidates.length, 1);
+});
+
+test("a stopped first attempt authorizes exactly one independent long re-entry", () => {
+  const first = managedAttemptOccurrence({
+    armId: "reentry-long-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  const second = managedAttemptOccurrence({
+    armId: "reentry-long-arm",
+    pOpen: "2026-08-25T15:15:00.000Z",
+    eOpen: "2026-08-25T15:20:00.000Z",
+    eClose: "2026-08-25T15:25:00.000Z",
+  });
+  const third = managedAttemptOccurrence({
+    armId: "reentry-long-arm",
+    pOpen: "2026-08-25T15:30:00.000Z",
+    eOpen: "2026-08-25T15:35:00.000Z",
+    eClose: "2026-08-25T15:40:00.000Z",
+  });
+  const projection = projectHistoricalTradeCandidates([first, second, third], [], {
+    dataset: managedAttemptDataset([first, second, third], { high: 103, low: 96 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle: lifecycleForArm("reentry-long-arm", "CONSUMED", first),
+  });
+
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.signalOccurrenceId), [
+    first.occurrenceId,
+    second.occurrenceId,
+  ]);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptOrdinal), [1, 2]);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptGrade), ["A", "B"]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["strategy stop", "strategy stop"]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
+  assert.notEqual(projection.authoritativeTrades[0]?.armAttemptId, projection.authoritativeTrades[1]?.armAttemptId);
+  assert.equal(projection.candidates[0]?.attemptState, "REENTRY_ELIGIBLE");
+  assert.equal(projection.candidates[1]?.attemptState, "ARM_RETIRED_AFTER_TWO_LOSSES");
+  assert.equal(projection.candidates[1]?.firstCandidateId, projection.candidates[0]?.candidateId);
+  assert.equal(projection.candidates[1]?.firstTradeId, projection.authoritativeTrades[0]?.id);
+  assert.deepEqual(projection.rejected.at(-1)?.reasonCodes, ["REJECTED_PULLBACK_ARM_ATTEMPT_LIMIT"]);
+  assert.equal(calculateBacktestMetrics(projection.authoritativeTrades).tradeCount, 2);
+  assert.equal(calculateBacktestMetrics(projection.authoritativeTrades).netPnl < 0, true);
+});
+
+test("a stopped first attempt authorizes a short re-entry with P2-owned stop geometry", () => {
+  const first = managedAttemptOccurrence({
+    armId: "reentry-short-stop-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    direction: "short",
+  });
+  const second = managedAttemptOccurrence({
+    armId: "reentry-short-stop-arm",
+    pOpen: "2026-08-25T15:15:00.000Z",
+    eOpen: "2026-08-25T15:20:00.000Z",
+    eClose: "2026-08-25T15:25:00.000Z",
+    direction: "short",
+  });
+  second.patienceCandle.high = 100.5;
+  const projection = projectHistoricalTradeCandidates([first, second], [], {
+    dataset: managedAttemptDataset([first, second], { high: 105, low: 98 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle: lifecycleForArm("reentry-short-stop-arm", "CONSUMED", first),
+  });
+
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.direction), ["short", "short"]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [103, 102.5]);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.entryAttemptCount), [2, 2]);
+  assert.equal(projection.candidates[0]?.secondCandidateId, projection.candidates[1]?.candidateId);
+  assert.equal(projection.candidates[0]?.secondTradeId, projection.authoritativeTrades[1]?.id);
+});
+
+test("a non-stop first outcome does not authorize re-entry while the arm is still valid", () => {
+  const first = managedAttemptOccurrence({
+    armId: "reentry-short-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    direction: "short",
+  });
+  const second = managedAttemptOccurrence({
+    armId: "reentry-short-arm",
+    pOpen: "2026-08-25T15:15:00.000Z",
+    eOpen: "2026-08-25T15:20:00.000Z",
+    eClose: "2026-08-25T15:25:00.000Z",
+    direction: "short",
+  });
+  const projection = projectHistoricalTradeCandidates([first, second], [], {
+    dataset: managedAttemptDataset([first, second], { high: 100, low: 98.5 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle: lifecycleForArm("reentry-short-arm", "CONSUMED", first),
+  });
+
+  assert.equal(projection.candidates.length, 1);
+  assert.equal(projection.authoritativeTrades.length, 1);
+  assert.equal(projection.authoritativeTrades[0]?.outcome, "session close");
+  assert.deepEqual(projection.rejected.at(-1)?.reasonCodes, ["REJECTED_PULLBACK_ARM_REENTRY_INELIGIBLE"]);
+  assert.equal(projection.rejected.at(-1)?.attemptOrdinal, 2);
+});
+
+test("a failed P1 confirmation is not reused and a later P2 becomes attempt one", () => {
+  const first = managedAttemptOccurrence({
+    armId: "reentry-failed-p1-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  first.confirmationThreshold = 110;
+  const second = managedAttemptOccurrence({
+    armId: "reentry-failed-p1-arm",
+    pOpen: "2026-08-25T15:15:00.000Z",
+    eOpen: "2026-08-25T15:20:00.000Z",
+    eClose: "2026-08-25T15:25:00.000Z",
+  });
+  const projection = projectHistoricalTradeCandidates([first, second], [], {
+    dataset: managedAttemptDataset([first, second], { high: 103, low: 96 }),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    lifecycle: lifecycleForArm("reentry-failed-p1-arm", "CONSUMED", first),
+  });
+
+  assert.equal(projection.candidates.length, 2);
+  assert.equal(projection.candidates[0]?.executionStatus, "ENTRY_NOT_REACHED");
+  assert.equal(projection.candidates[0]?.attemptOrdinal, undefined);
+  assert.equal(projection.authoritativeTrades.length, 1);
+  assert.equal(projection.authoritativeTrades[0]?.signalOccurrenceId, second.occurrenceId);
+  assert.equal(projection.authoritativeTrades[0]?.attemptOrdinal, 1);
+  assert.equal(projection.rejected.length, 0);
 });
