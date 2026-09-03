@@ -756,12 +756,18 @@
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes levelstory-selected-pulse {
-  0%, 100% { opacity: .72; }
-  50% { opacity: 1; }
+  0%, 100% {
+    opacity: .42;
+    filter: drop-shadow(0 0 0 hsl(var(--accent) / 0));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 5px hsl(var(--accent) / .95));
+  }
 }
 
 .levelstory-selected-pulse {
-  animation: levelstory-selected-pulse 1.35s ease-in-out infinite;
+  animation: levelstory-selected-pulse .9s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
