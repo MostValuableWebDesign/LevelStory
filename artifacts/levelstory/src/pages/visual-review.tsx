@@ -1199,8 +1199,6 @@ function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["fu
   const hiddenStageKeys = new Set([
     "session_loaded",
     "critical_level_interaction",
-    "fibonacci_context_available",
-    "volume_condition_passed",
     "modeled_entry",
     "final_exit",
   ]);

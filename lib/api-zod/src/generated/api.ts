@@ -272,7 +272,6 @@ export const GetMarketSnapshotResponse = zod.object({
   "dojiAtMajorLevel": zod.boolean(),
   "equivalentOpposingCandles": zod.boolean(),
   "failedBreakout": zod.boolean(),
-  "strongOpposingVolume": zod.boolean(),
   "deepFibonacciRetracement": zod.boolean(),
   "majorLevelRejection": zod.boolean(),
   "structureBreak": zod.boolean(),
@@ -2162,13 +2161,13 @@ export const StartBatchBacktestResponse = zod.object({
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(startBatchBacktestResponseReportOneTwoFunnelStagesItemPercentOfSessionsMin).max(startBatchBacktestResponseReportOneTwoFunnelStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number()
 })),
   "comparisons": zod.array(zod.object({
@@ -2176,7 +2175,7 @@ export const StartBatchBacktestResponse = zod.object({
   "value": zod.string(),
   "candidateCount": zod.number(),
   "stageCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(startBatchBacktestResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMin).max(startBatchBacktestResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
@@ -2193,8 +2192,8 @@ export const StartBatchBacktestResponse = zod.object({
   "timeOfDay": zod.enum(['open', 'midday', 'close']),
   "marketRegime": zod.enum(['trend', 'range', 'transition']),
   "volumeRegime": zod.enum(['normal', 'high']),
-  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
-  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
+  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
   "rejectionDetail": zod.string().nullable(),
   "evidence": zod.record(zod.string(), zod.unknown())
 }))
@@ -3282,13 +3281,13 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(getBatchBacktestStatusResponseReportOneTwoFunnelStagesItemPercentOfSessionsMin).max(getBatchBacktestStatusResponseReportOneTwoFunnelStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number()
 })),
   "comparisons": zod.array(zod.object({
@@ -3296,7 +3295,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "value": zod.string(),
   "candidateCount": zod.number(),
   "stageCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(getBatchBacktestStatusResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMin).max(getBatchBacktestStatusResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
@@ -3313,8 +3312,8 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "timeOfDay": zod.enum(['open', 'midday', 'close']),
   "marketRegime": zod.enum(['trend', 'range', 'transition']),
   "volumeRegime": zod.enum(['normal', 'high']),
-  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
-  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
+  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
   "rejectionDetail": zod.string().nullable(),
   "evidence": zod.record(zod.string(), zod.unknown())
 }))
@@ -4402,13 +4401,13 @@ export const CancelBatchBacktestResponse = zod.object({
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(cancelBatchBacktestResponseReportOneTwoFunnelStagesItemPercentOfSessionsMin).max(cancelBatchBacktestResponseReportOneTwoFunnelStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number()
 })),
   "comparisons": zod.array(zod.object({
@@ -4416,7 +4415,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "value": zod.string(),
   "candidateCount": zod.number(),
   "stageCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(cancelBatchBacktestResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMin).max(cancelBatchBacktestResponseReportOneTwoFunnelComparisonsItemStageCountsItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
@@ -4433,8 +4432,8 @@ export const CancelBatchBacktestResponse = zod.object({
   "timeOfDay": zod.enum(['open', 'midday', 'close']),
   "marketRegime": zod.enum(['trend', 'range', 'transition']),
   "volumeRegime": zod.enum(['normal', 'high']),
-  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
-  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
+  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
   "rejectionDetail": zod.string().nullable(),
   "evidence": zod.record(zod.string(), zod.unknown())
 }))
@@ -4856,7 +4855,7 @@ export const getBatchFunnelQueryPageSizeMax = 100;
 
 export const GetBatchFunnelQueryParams = zod.object({
   "batchId": zod.coerce.string().regex(getBatchFunnelQueryBatchIdRegExp),
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).optional(),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).optional(),
   "page": zod.coerce.number().min(1).default(getBatchFunnelQueryPageDefault),
   "pageSize": zod.coerce.number().min(1).max(getBatchFunnelQueryPageSizeMax).default(getBatchFunnelQueryPageSizeDefault)
 })
@@ -4871,7 +4870,7 @@ export const getBatchFunnelResponseTotalMin = 0;
 
 export const GetBatchFunnelResponse = zod.object({
   "batchId": zod.string().regex(getBatchFunnelResponseBatchIdRegExp),
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
   "page": zod.number().min(1),
   "pageSize": zod.number().min(1).max(getBatchFunnelResponsePageSizeMax),
   "total": zod.number().min(getBatchFunnelResponseTotalMin),
@@ -4887,8 +4886,8 @@ export const GetBatchFunnelResponse = zod.object({
   "timeOfDay": zod.enum(['open', 'midday', 'close']),
   "marketRegime": zod.enum(['trend', 'range', 'transition']),
   "volumeRegime": zod.enum(['normal', 'high']),
-  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
-  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
+  "reachedStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "primaryRejectionStage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']).nullable(),
   "rejectionDetail": zod.string().nullable(),
   "evidence": zod.record(zod.string(), zod.unknown())
 }))
@@ -5750,13 +5749,13 @@ export const GetVisualValidationSetResponse = zod.object({
   "candidateCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
   "occurrenceCount": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(getVisualValidationSetResponseFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(getVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
 })),
   "window": zod.object({
@@ -6305,13 +6304,13 @@ export const CreateVisualValidationSetResponse = zod.object({
   "candidateCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsCandidateCountMin),
   "occurrenceCount": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(createVisualValidationSetResponseFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(createVisualValidationSetResponseFunnelDiagnosticsRejectionCountsItemCountMin)
 })),
   "window": zod.object({
@@ -7322,13 +7321,13 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "candidateCount": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
   "occurrenceCount": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(startVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
 })),
   "window": zod.object({
@@ -7885,13 +7884,13 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "candidateCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
   "occurrenceCount": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
 })),
   "window": zod.object({
@@ -8455,13 +8454,13 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "candidateCount": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsCandidateCountMin),
   "occurrenceCount": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsOccurrenceCountMin),
   "stages": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
   "percentOfPreceding": zod.number(),
   "percentOfSessions": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMin).max(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsStagesItemPercentOfSessionsMax).describe('Percentage of distinct sessions that reached this stage; raw candidate count remains in count.')
 })),
   "rejectionCounts": zod.array(zod.object({
-  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'fibonacci_context_available', 'volume_condition_passed', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
+  "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number().min(getVisualValidationGenerationJobResponseResultFunnelDiagnosticsRejectionCountsItemCountMin)
 })),
   "window": zod.object({

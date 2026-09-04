@@ -330,8 +330,6 @@ const funnelStageLabels: Record<QualificationFunnelStage, string> = {
   strong_continuation_confirmed: "Breakout arm valid (continuation optional)",
   pullback_or_consolidation: "Pullback / consolidation",
   critical_level_interaction: "Critical-level interaction",
-  fibonacci_context_available: "Direct level context (Fibonacci diagnostic)",
-  volume_condition_passed: "Volume evidence (optional)",
   valid_trend_aligned_patience_candle: "Valid trend-aligned patience candle",
   immediate_next_candle_confirmation: "Immediate-next-candle confirmation",
   risk_approved: "Risk approved",

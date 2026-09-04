@@ -48,7 +48,6 @@ export type ReversalEvidence = {
   dojiAtMajorLevel: boolean;
   equivalentOpposingCandles: boolean;
   failedBreakout: boolean;
-  strongOpposingVolume: boolean;
   deepFibonacciRetracement: boolean;
   majorLevelRejection: boolean;
   structureBreak: boolean;
@@ -419,7 +418,7 @@ export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEv
   const retracement = context.fibonacci.retracementPercent;
   const deepRetracement = retracement !== null && retracement > 50;
   const rules: SetupRuleEvidence[] = [
-    rule("peakRetracement", "Greater-than-50% causal impulse retracement", deepRetracement, deepRetracement
+    rule("peakRetracement", "Deep retracement reversal evidence", deepRetracement, deepRetracement
       ? `Causal retracement is ${retracement}%.`
       : "A causal intraday impulse retracement greater than 50% is required."),
     rule("reversalDirection", "Reversal direction established", direction !== null, direction ? `Reversal direction is ${direction}.` : "A reversal direction is not established."),
@@ -438,16 +437,13 @@ export function detectReversalEvidence(
   const dojiAtMajorLevel = latest !== undefined && isDoji(latest, context.config.dojiBodyRatio) && nearMajorLevel(latest, context.levels.majorLevels, context.config);
   const equivalentOpposingCandles = hasEquivalentOpposingCandles(completed, context.levels.majorLevels, context.config);
   const failedBreakout = context.levels.ntzEvents.some((event) => event.type === "Failed breakout");
-  const strongOpposingVolume = context.volume.reversalWarning !== null
-    || (context.volume.breakoutVolume !== null && context.volume.opposingPullbackVolume !== null && context.volume.opposingPullbackVolume >= context.volume.breakoutVolume);
   const deepFibonacciRetracement = ["deep", "elevated failure risk", "fully retraced"].includes(context.fibonacci.classification);
   const majorLevelRejection = latest !== undefined && hasMajorLevelRejection(latest, context.levels.majorLevels, context.config);
   const structureBreak = hasStructureBreak(completed, context.trend.direction);
-  const reversalDirection = confirmedReversalDirection(context, completed, equivalentOpposingCandles, failedBreakout, structureBreak, majorLevelRejection, strongOpposingVolume);
+  const reversalDirection = confirmedReversalDirection(context, completed, equivalentOpposingCandles, failedBreakout, structureBreak, majorLevelRejection);
   const directionalConfirmation = reversalDirection !== null && (
     equivalentOpposingCandles
     || failedBreakout
-    || strongOpposingVolume
     || majorLevelRejection
     || structureBreak
   );
@@ -455,7 +451,6 @@ export function detectReversalEvidence(
     dojiAtMajorLevel,
     equivalentOpposingCandles,
     failedBreakout,
-    strongOpposingVolume,
     deepFibonacciRetracement,
     majorLevelRejection,
     structureBreak,
@@ -464,7 +459,6 @@ export function detectReversalEvidence(
     ["doji at major level", dojiAtMajorLevel],
     ["equivalent opposing candles", equivalentOpposingCandles],
     ["failed breakout", failedBreakout],
-    ["strong opposing volume", strongOpposingVolume],
     ["deep Fibonacci retracement", deepFibonacciRetracement],
     ["major-level rejection", majorLevelRejection],
     ["structure break", structureBreak],
@@ -475,7 +469,6 @@ export function detectReversalEvidence(
     dojiAtMajorLevel,
     equivalentOpposingCandles,
     failedBreakout,
-    strongOpposingVolume,
     deepFibonacciRetracement,
     majorLevelRejection,
     structureBreak,
@@ -911,8 +904,7 @@ function evidenceRules(evidence: ReversalEvidence): SetupRuleEvidence[] {
     { key: "dojiAtMajorLevel", label: "Doji at major level", passed: evidence.dojiAtMajorLevel },
     { key: "equivalentOpposingCandles", label: "Equivalent opposing candles", passed: evidence.equivalentOpposingCandles },
     { key: "failedBreakout", label: "Failed breakout", passed: evidence.failedBreakout },
-    { key: "strongOpposingVolume", label: "Strong opposing volume", passed: evidence.strongOpposingVolume },
-    { key: "deepFibonacciRetracement", label: "Deep Fibonacci retracement", passed: evidence.deepFibonacciRetracement },
+    { key: "deepFibonacciRetracement", label: "Deep retracement reversal evidence", passed: evidence.deepFibonacciRetracement },
     { key: "majorLevelRejection", label: "Major-level rejection", passed: evidence.majorLevelRejection },
     { key: "structureBreak", label: "Structure break", passed: evidence.structureBreak },
   ].map((item) => ({ ...item, mandatory: false, detail: item.passed ? "Detected as reversal alert evidence." : "Not detected in the current completed-candle context." }));
@@ -1126,7 +1118,6 @@ function confirmedReversalDirection(
   failedBreakout: boolean,
   structureBreak: boolean,
   majorLevelRejection: boolean,
-  strongOpposingVolume: boolean,
 ): Direction | null {
   const continuationDirection = context.breakout.direction ?? directionFromTrend(context.trend.direction);
   const oppositeDirection = reverseDirection(continuationDirection);
@@ -1134,8 +1125,7 @@ function confirmedReversalDirection(
   const hasIndependentConfirmation = equivalentOpposingCandles
     || failedBreakout
     || structureBreak
-    || majorLevelRejection
-    || strongOpposingVolume;
+    || majorLevelRejection;
   if (!hasIndependentConfirmation) return null;
   const reversalCandle = [...candles].reverse().find((candle) => candleDirection(candle) === oppositeDirection);
   return reversalCandle ? oppositeDirection : null;

@@ -1115,8 +1115,6 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "strong_continuation_confirmed",
   "pullback_or_consolidation",
   "critical_level_interaction",
-  "fibonacci_context_available",
-  "volume_condition_passed",
   "valid_trend_aligned_patience_candle",
   "immediate_next_candle_confirmation",
   "risk_approved",
@@ -2545,14 +2543,6 @@ function stageEvidence(
     ? passedRule(record, /levelContext/)
     : passedRule(record, /(?:critical|level|ntz|orb)/i)
     || (record.criticalLevelEvidence !== "No critical level evidence." && record.criticalLevelEvidence.length > 0);
-  const fibonacci = record.setupType === "ORB_PULLBACK_CONTINUATION"
-    ? true
-    : passedRule(record, /fibonacci|fib/i)
-      || /fibonacci|fib/i.test(ruleText);
-  const volume = record.setupType === "ORB_PULLBACK_CONTINUATION"
-    ? true
-    : passedRule(record, /volume/i)
-      || /supported|confirmed/i.test(record.volumeEvidence);
   const patience = record.patienceCandle !== null
     || /valid|confirmed|ready|aligned/i.test(record.patienceState);
   const trigger = record.triggerCandle !== null
@@ -2570,8 +2560,6 @@ function stageEvidence(
     continuation,
     pullback,
     criticalLevel,
-    fibonacci,
-    volume,
     patience,
     trigger,
     risk,

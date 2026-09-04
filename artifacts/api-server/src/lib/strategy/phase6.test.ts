@@ -698,7 +698,7 @@ test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {
   assert.equal(hasEquivalentOpposingCandles([first, tooDifferent], [major(10)], config), false);
 });
 
-test("equivalent reversal exposes independent context before entry confirmation", () => {
+test("equivalent reversal ignores opposing-volume warnings", () => {
   const context = baseContext({
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
@@ -718,7 +718,7 @@ test("equivalent reversal exposes independent context before entry confirmation"
   assert.equal(evidence.dojiAtMajorLevel, true);
   assert.equal(evidence.equivalentOpposingCandles, true);
   assert.equal(evidence.failedBreakout, true);
-  assert.equal(evidence.strongOpposingVolume, true);
+  assert.equal(evidence.detail.includes("strong opposing volume"), false);
   assert.equal(evidence.deepFibonacciRetracement, true);
   const result = evaluateBonusReversal(context);
   assert.equal(result.alertOnly, false);

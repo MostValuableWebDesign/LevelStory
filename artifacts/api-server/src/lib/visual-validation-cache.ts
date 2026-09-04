@@ -4,7 +4,7 @@ import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 import type { VisualValidationRequest } from "./visual-validation.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v1";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v2";
 export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v1-controlled-reentry";
 export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v4-canonical-replay-ownership";
 export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v3-patience-wick-stop";

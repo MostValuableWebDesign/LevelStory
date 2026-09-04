@@ -16,8 +16,6 @@ export const QualificationFunnelStage = {
   strong_continuation_confirmed: 'strong_continuation_confirmed',
   pullback_or_consolidation: 'pullback_or_consolidation',
   critical_level_interaction: 'critical_level_interaction',
-  fibonacci_context_available: 'fibonacci_context_available',
-  volume_condition_passed: 'volume_condition_passed',
   valid_trend_aligned_patience_candle: 'valid_trend_aligned_patience_candle',
   immediate_next_candle_confirmation: 'immediate_next_candle_confirmation',
   risk_approved: 'risk_approved',

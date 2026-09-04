@@ -339,7 +339,6 @@ export type MarketSnapshot = {
         dojiAtMajorLevel: boolean;
         equivalentOpposingCandles: boolean;
         failedBreakout: boolean;
-        strongOpposingVolume: boolean;
         deepFibonacciRetracement: boolean;
         majorLevelRejection: boolean;
         structureBreak: boolean;
