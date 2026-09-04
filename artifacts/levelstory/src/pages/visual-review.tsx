@@ -899,7 +899,7 @@ export default function VisualReview() {
                       }} />
                     </Panel>
                      <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
-                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
+                    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
                        <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                       <div className="space-y-5">
                         <SnapshotNavigator snapshots={reviewQueue} active={activeSnapshot} onSelect={selectSnapshot} />

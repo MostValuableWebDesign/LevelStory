@@ -85,6 +85,7 @@ test("trade review panels collapse after generation and can be opened independen
   assert.match(page, /plain-language-summary-content/);
   assert.match(page, /human-judgment-content/);
   assert.match(page, /combined-shadow-replay-content/);
+  assert.match(page, /grid items-start gap-5 xl:grid-cols-\[minmax\(0,1fr\)_minmax\(280px,\.42fr\)\]/);
 });
 
 test("visual review presentation retains human-only shading and semantic level colors", () => {
