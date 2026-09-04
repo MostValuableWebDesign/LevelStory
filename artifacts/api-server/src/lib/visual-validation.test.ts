@@ -442,7 +442,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   const candidateTargetPlan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: confirmed.confirmationThreshold!,
-    levels: [{ id: "candidate-resistance", type: "major resistance", price: 7000 }],
+    levels: [{ id: "candidate-resistance", type: "major resistance", price: confirmed.confirmationThreshold! + 4 }],
   });
   const linkedTrade: BacktestTrade = {
     ...fixture.trade,

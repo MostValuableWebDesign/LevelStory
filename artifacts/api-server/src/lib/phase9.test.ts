@@ -1901,8 +1901,8 @@ test("invalid frozen strategy-stop geometry stays open and unscored without P&L"
       eOpen: "2026-08-25T15:05:00.000Z",
       eClose: "2026-08-25T15:10:00.000Z",
       direction,
-      patienceLow: direction === "long" ? 104 : undefined,
-      patienceHigh: direction === "short" ? 96 : undefined,
+      patienceLow: direction === "long" ? 105 : undefined,
+      patienceHigh: direction === "short" ? 95 : undefined,
       management: {
         strategyStopPrice: direction === "long" ? 99 : 101,
         catastropheStopPrice: direction === "long" ? 100 : 100,
@@ -2016,8 +2016,8 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   assert.equal(trade.audit?.targetPrice, null);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.oneRReached, true);
-  assert.equal(trade.audit?.oneRPrice, 105.5);
-  assert.equal(trade.audit?.profitCheckpointPrice, 105.5);
+  assert.equal(trade.audit?.oneRPrice, 106.5);
+  assert.equal(trade.audit?.profitCheckpointPrice, 106.5);
   assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1]]);
   assert.equal(trade.audit?.trailingStopActive, false);
 });
@@ -2074,7 +2074,7 @@ test("a valid strategy stop is sufficient without catastrophe-stop evidence", ()
   });
   occurrence.targetLevelInputs = [{ id: "fibonacci-618", type: "Fibonacci", price: 110 }];
   const result = projectHistoricalTradeCandidates([occurrence], [], {
-    dataset: candidateProjectionDataset(occurrence, { high: 103, low: 96.5 }),
+    dataset: candidateProjectionDataset(occurrence, { high: 103, low: 95.5 }),
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
   });
@@ -2083,7 +2083,7 @@ test("a valid strategy stop is sufficient without catastrophe-stop evidence", ()
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.catastropheStopPrice, null);
   assert.equal(trade.outcome, "strategy stop");
-  assert.equal(trade.audit?.strategyStopPrice, 97);
+  assert.equal(trade.audit?.strategyStopPrice, 96);
   assert.equal(trade.audit?.catastropheStopPrice, null);
   assert.equal(trade.audit?.stopLevel, "strategy");
 });
@@ -2107,7 +2107,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   });
   occurrence.targetLevelInputs = [{ id: "fibonacci-618", type: "Fibonacci", price: 110 }];
   const result = projectHistoricalTradeCandidates([occurrence], [], {
-    dataset: candidateProjectionDataset(occurrence, { high: 103, low: 96.5 }),
+    dataset: candidateProjectionDataset(occurrence, { high: 103, low: 95.5 }),
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
   });
@@ -2119,7 +2119,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
   assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), false);
-  assert.equal(trade.audit?.stopPrice, 97);
+  assert.equal(trade.audit?.stopPrice, 96);
   assert.equal(trade.audit?.stopLevel, "strategy");
   assert.equal(trade.audit?.catastropheStopPrice, 100);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 1);
@@ -2269,8 +2269,8 @@ test("same-session confirmed occurrences freeze independent target plans", () =>
   });
   first.auditId = "first-audit";
   second.auditId = "second-audit";
-  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 110 }];
-  second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 120 }];
+  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 105 }];
+  second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 106 }];
   const firstDataset = candidateProjectionDataset(first);
   const secondDataset = candidateProjectionDataset(second);
   const result = projectHistoricalTradeCandidates([first, second], [], {
@@ -2644,7 +2644,7 @@ test("a stopped first attempt authorizes a short re-entry with P2-owned stop geo
 
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.direction), ["short", "short"]);
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [103, 102.5]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [104, 103.5]);
   assert.deepEqual(projection.candidates.map((candidate) => candidate.entryAttemptCount), [2, 2]);
   assert.equal(projection.candidates[0]?.secondCandidateId, projection.candidates[1]?.candidateId);
   assert.equal(projection.candidates[0]?.secondTradeId, projection.authoritativeTrades[1]?.id);

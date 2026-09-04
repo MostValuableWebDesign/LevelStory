@@ -1,6 +1,6 @@
 import type { Direction } from "./types.js";
 
-export type ProfitTargetPlacement = "NEAR_SIDE_20_TICKS" | "EXACT_LEVEL";
+export type ProfitTargetPlacement = "NEAR_SIDE_8_TICKS" | "EXACT_LEVEL";
 
 export type KeyLevelTargetInput = {
   id: string;
@@ -34,7 +34,7 @@ export type FrozenTargetLevel = {
 };
 
 export type SkippedTargetLevel = FrozenTargetLevel & {
-  reason: "ENTRY_WITHIN_30_TICKS";
+  reason: "OUTSIDE_20_TICKS" | "TARGET_NOT_PROFITABLE";
 };
 
 export type PrimaryLossExitReference = {
@@ -54,9 +54,11 @@ export type KeyLevelTargetPlan = {
   entryPrice: number;
   direction: Direction;
   tickSize: number;
-  bufferTicks: 30;
+  /** Maximum forward distance from entry for a key level to qualify as a target. */
+  bufferTicks: 20;
   bufferPoints: number;
-  placementTicks: 20;
+  /** Distance from the key level at which the executable target is placed. */
+  placementTicks: 8;
   availableLevels: FrozenTargetLevel[];
   skippedLevels: SkippedTargetLevel[];
   selectedTargetLevel: FrozenTargetLevel | null;
@@ -65,8 +67,8 @@ export type KeyLevelTargetPlan = {
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
-export const PROFIT_TARGET_BUFFER_TICKS = 30;
-export const PROFIT_TARGET_PLACEMENT_TICKS = 20;
+export const PROFIT_TARGET_BUFFER_TICKS = 20;
+export const PROFIT_TARGET_PLACEMENT_TICKS = 8;
 
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
 const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
@@ -297,12 +299,12 @@ export function buildKeyLevelTargetPlan(input: {
   entryPrice: number;
   levels: readonly KeyLevelTargetInput[];
   tickSize?: number;
-  bufferTicks?: 30;
+  bufferTicks?: 20;
   placementMode?: ProfitTargetPlacement;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
   const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
-  if (bufferTicks !== 30) throw new Error("Key-level target buffer must be exactly 30 MES ticks.");
+  if (bufferTicks !== 20) throw new Error("Key-level target distance must be exactly 20 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
   const placementMode = input.placementMode ?? "EXACT_LEVEL";
   const bufferPoints = bufferTicks * tickSize;
@@ -323,29 +325,45 @@ export function buildKeyLevelTargetPlan(input: {
     })
     .filter((level) => level.distancePoints > 0)
     .sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
-  const skippedLevels: SkippedTargetLevel[] = availableLevels
-    .filter((level) => level.distancePoints <= bufferPoints)
-    .map((level) => ({ ...level, reason: "ENTRY_WITHIN_30_TICKS" }));
-  const eligible = availableLevels.filter((level) => level.distancePoints > bufferPoints);
+  const targetPriceForLevel = (level: FrozenTargetLevel): number => {
+    const levelBoundary = rawNearBoundaryForLevel(level, input.levels, input.direction);
+    return placementMode === "EXACT_LEVEL"
+      ? levelBoundary
+      : nearSideTargetPrice(
+        input.direction,
+        levelBoundary,
+        PROFIT_TARGET_PLACEMENT_TICKS * tickSize,
+        tickSize,
+      );
+  };
+  const withinDistance = availableLevels.filter((level) => level.distancePoints <= bufferPoints);
+  const isProfitableTarget = (level: FrozenTargetLevel): boolean => {
+    const target = targetPriceForLevel(level);
+    return input.direction === "long"
+      ? target > input.entryPrice
+      : target < input.entryPrice;
+  };
+  const skippedLevels: SkippedTargetLevel[] = [
+    ...availableLevels
+      .filter((level) => level.distancePoints > bufferPoints)
+      .map((level) => ({ ...level, reason: "OUTSIDE_20_TICKS" as const })),
+    ...withinDistance
+      .filter((level) => !isProfitableTarget(level))
+      .map((level) => ({ ...level, reason: "TARGET_NOT_PROFITABLE" as const })),
+  ].sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
+  const eligible = withinDistance.filter(isProfitableTarget);
   const selectedTargetLevel = eligible[0] ?? null;
   const subsequentTargetLevels = eligible.slice(1);
   const targetPrice = selectedTargetLevel === null
     ? null
-    : placementMode === "EXACT_LEVEL"
-      ? rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction)
-      : nearSideTargetPrice(
-        input.direction,
-        rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction),
-        PROFIT_TARGET_PLACEMENT_TICKS * tickSize,
-        tickSize,
-      );
+    : targetPriceForLevel(selectedTargetLevel);
   return {
     placementMode,
     disposition: selectedTargetLevel === null ? "NO_ELIGIBLE_KEY_LEVEL" : "KEY_LEVEL_SELECTED",
     entryPrice: normalizePrice(input.entryPrice, tickSize),
     direction: input.direction,
     tickSize,
-    bufferTicks: 30,
+    bufferTicks: 20,
     bufferPoints,
     placementTicks: PROFIT_TARGET_PLACEMENT_TICKS,
     availableLevels,

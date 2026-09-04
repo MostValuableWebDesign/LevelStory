@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v7-reusable-pullback-patience-key-target-20-ticks";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v8-reusable-pullback-patience-key-target-20-distance-8-placement";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -33,9 +33,9 @@ export function formulaConfiguration(
       patienceStopFormula: "patience-extreme-buffered-by-governed-ticks",
       patienceStopBufferTicks: config.patienceStopBufferTicks,
       keyLevelTarget: {
-        candidatePlacementMode: "NEAR_SIDE_20_TICKS",
-        selectionBufferTicks: 30,
-        nearSidePlacementTicks: 20,
+        candidatePlacementMode: "NEAR_SIDE_8_TICKS",
+        maximumEntryDistanceTicks: 20,
+        nearSidePlacementTicks: 8,
       },
       qualifyingKeyLevelInteraction: {
         persisted: true,

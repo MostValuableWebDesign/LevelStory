@@ -42,7 +42,10 @@ import {
   MES_TICK_SIZE,
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
-import { PROFIT_TARGET_PLACEMENT_TICKS } from "./strategy/key-level-targets.js";
+import {
+  PROFIT_TARGET_BUFFER_TICKS,
+  PROFIT_TARGET_PLACEMENT_TICKS,
+} from "./strategy/key-level-targets.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -1632,7 +1635,9 @@ function buildAnnotations(
         `skipped-target-${skipped.id}`,
         `Skipped: ${skipped.id}`,
         skipped.price,
-        `Skipped: entry within ${targetPlan.bufferTicks} ticks.`,
+        skipped.reason === "TARGET_NOT_PROFITABLE"
+          ? "Skipped: the governed near-side target would not remain profitable beyond entry."
+          : `Skipped: key level is more than ${targetPlan.bufferTicks} ticks from entry.`,
         "muted",
       );
     }
@@ -1648,8 +1653,8 @@ function buildAnnotations(
     targetPrice,
     targetPlan?.selectedTargetLevel
       ? targetPlan.placementMode === "EXACT_LEVEL"
-        ? `Exact ${targetPlan.selectedTargetLevel.id} level; all levels within ${targetPlan.bufferTicks} ticks of entry were excluded.`
-        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; all levels within ${targetPlan.bufferTicks} ticks of entry were excluded.`
+          ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
+        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
       : "No eligible key-level target; candidate remains open and unscored.",
     "positive",
   );
