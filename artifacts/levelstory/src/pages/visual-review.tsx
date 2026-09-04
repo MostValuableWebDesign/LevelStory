@@ -2180,9 +2180,10 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
         if (isDynamicIndicatorAnnotation(annotation)) return null;
         const orb = annotation.id === "orb-high" || annotation.id === "orb-low";
+         const entry = annotation.id === "entry-buffer";
          const stop = annotation.id === "strategy-stop";
          const target = annotation.id === "target" || annotation.id === "one-r-target";
-           const chartLabel = ["strategy-stop", "target", "one-r-target", "runner-threshold"].includes(annotation.id)
+           const chartLabel = ["entry-buffer", "strategy-stop", "target", "one-r-target", "runner-threshold"].includes(annotation.id)
              ? chartLevelLabel(annotation)
              : null;
           const stroke = levelStroke(annotation);
@@ -2212,7 +2213,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
             {hasRange && rangeLow != null && rangeHigh != null
                ? <rect x={left} y={bandY} width={plotRight - left} height={bandHeight} fill={isDynamite ? "#9dc9ee" : stroke} fillOpacity={isDynamite ? ".24" : ".1"} stroke={stroke} strokeWidth={selected ? "2.2" : isDynamite ? "1.8" : "1.2"} data-testid={`chart-level-band-${annotation.id}`} />
                : <>
-                 <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : stop ? 2.4 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : stop ? "5 3" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
+                  <line x1={left} x2={plotRight} y1={y(annotation.price)} y2={y(annotation.price)} stroke={stroke} strokeWidth={selected ? 2.6 : orb ? 2.8 : entry || stop ? 2.4 : 1.4} strokeDasharray={target ? "7 5" : orb ? "10 4" : entry || stop ? "5 3" : annotation.kind === "indicator" ? "2 5" : "none"} opacity={orb ? ".98" : ".8"} />
                   {chartLabel && <text x={plotRight - 5} y={y(annotation.price) - 8} textAnchor="end" fill={stroke} fontSize="9" fontWeight="800" fontFamily="DM Mono" data-testid={`chart-level-label-${annotation.id}`}>{chartLabel} · {formatPriceAxisValue(annotation.price)}</text>}
                </>}
           </g>;

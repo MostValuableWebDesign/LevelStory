@@ -1192,6 +1192,7 @@ export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean 
 }
 
 export function chartLevelLabel(annotation: Pick<VisualValidationAnnotation, "id" | "label">): string {
+  if (annotation.id === "entry-buffer") return "ENTRY";
   if (annotation.id === "strategy-stop") return "STOP";
   if (annotation.id === "one-r-target") return "1R TARGET";
   if (annotation.id === "target") return "TARGET";
