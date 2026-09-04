@@ -55,7 +55,7 @@ import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
-import { consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
+import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
 import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
@@ -4321,6 +4321,7 @@ function candidateDrivenEntryTrade(
   if (!entryObservationTimestamp) return undefined;
   const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
+  const contracts = SHADOW_CONTRACTS_PER_TRADE;
   const targetPlan = management.targetPlan;
   const primaryLossExitLevel = management.primaryLossExitLevel
     ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
@@ -4366,7 +4367,7 @@ function candidateDrivenEntryTrade(
       immediateTriggerCandle: entryCandle as any,
       evaluateEntryCandleForExit: false,
       subsequentCompletedCandles: postEntry,
-      contracts: management.contracts,
+      contracts,
       targetQuantity: targetPrice === null ? 0 : Math.min(1, management.contracts),
       target: targetPrice,
       oneRProfitRule: targetPrice === null,
@@ -4428,7 +4429,7 @@ function candidateDrivenEntryTrade(
     exitTime: isOpen ? null : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     entryPrice,
     exitPrice: isOpen ? null : modeled?.exitPrice ?? null,
-    contracts: management.contracts,
+     contracts,
     grossPnl: accounting.grossPnl,
     fees: accounting.fees,
     slippage: accounting.slippage,
@@ -4971,7 +4972,7 @@ export function runCausalBacktest(
           ),
         });
         const target = targetPlan.targetPrice;
-       const contracts = Math.max(1, snapshot.riskPlan.contracts);
+       const contracts = SHADOW_CONTRACTS_PER_TRADE;
        const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;
        if (executedEntryKeys.has(entryKey)) continue;
        const entryResolution = resolveEntryAndInvalidation({

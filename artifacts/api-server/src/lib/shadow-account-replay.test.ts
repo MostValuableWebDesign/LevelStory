@@ -113,8 +113,8 @@ test("two wins and one loss update the fixed-size ending balance", () => {
   ]));
 
   assert.equal(result.startingBalance, DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE);
-  assert.equal(result.endingRealizedBalance, 10250);
-  assert.equal(result.realizedNetPnl, 250);
+  assert.equal(result.endingRealizedBalance, 10500);
+  assert.equal(result.realizedNetPnl, 500);
   assert.equal(result.wins, 2);
   assert.equal(result.losses, 1);
   assert.equal(result.maxConsecutiveWins, 1);
@@ -131,7 +131,7 @@ test("open trades are listed but excluded from realized account metrics", () => 
   assert.equal(result.enteredTrades, 2);
   assert.equal(result.openTrades, 1);
   assert.equal(result.closedTrades, 1);
-  assert.equal(result.realizedNetPnl, 100);
+  assert.equal(result.realizedNetPnl, 200);
   assert.equal(result.ledger[0]?.netPnl, null);
   assert.equal(result.equityCurve[0]?.status, "start");
   assert.equal(result.equityCurve[1]?.status, "open");
@@ -159,7 +159,7 @@ test("candidates without modeled trades do not affect the account", () => {
 
   assert.equal(result.candidateTrades, 2);
   assert.equal(result.enteredTrades, 1);
-  assert.equal(result.realizedNetPnl, 75);
+  assert.equal(result.realizedNetPnl, 150);
 });
 
 test("orphan and mismatched legacy trades are ignored", () => {
@@ -172,7 +172,7 @@ test("orphan and mismatched legacy trades are ignored", () => {
   ));
 
   assert.equal(result.enteredTrades, 1);
-  assert.equal(result.realizedNetPnl, 100);
+  assert.equal(result.realizedNetPnl, 200);
   assert.equal(result.ledger[0]?.candidateId, "linked");
 });
 
@@ -190,11 +190,11 @@ test("in-sample and out-of-sample metrics remain separated", () => {
     ],
   ));
 
-  assert.equal(result.inSample.netPnl, 100);
+  assert.equal(result.inSample.netPnl, 200);
   assert.equal(result.inSample.wins, 1);
-  assert.equal(result.outOfSample.netPnl, -40);
+  assert.equal(result.outOfSample.netPnl, -80);
   assert.equal(result.outOfSample.losses, 1);
-  assert.equal(result.realizedNetPnl, 60);
+  assert.equal(result.realizedNetPnl, 120);
 });
 
 test("replay source has no broker, live-order, or paper-trading path", () => {
@@ -236,13 +236,13 @@ test("aggregates authoritative trades across dates with carried balance and zero
   assert.deepEqual(result.datesWithTrades, ["2026-08-25", "2026-08-26", "2026-08-28"]);
   assert.deepEqual(result.datesWithoutTrades, ["2026-08-27"]);
   assert.deepEqual(result.ledger.map((item) => item.candidateId), ["first", "second", "third"]);
-  assert.deepEqual(result.ledger.map((item) => item.runningBalance), [10100, 10060, 10135]);
+  assert.deepEqual(result.ledger.map((item) => item.runningBalance), [10200, 10120, 10270]);
   assert.equal(result.equityCurve[0]?.balance, 10_000);
   assert.equal(result.equityCurve.length, 4);
   assert.equal(result.byDate.length, 4);
   assert.equal(result.byDate.find((item) => item.value === "2026-08-27")?.enteredTrades, 0);
-  assert.equal(result.byDirection.find((item) => item.value === "short")?.netPnl, 75);
-  assert.equal(result.byPrimaryEdge.find((item) => item.value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION")?.netPnl, 75);
+  assert.equal(result.byDirection.find((item) => item.value === "short")?.netPnl, 150);
+  assert.equal(result.byPrimaryEdge.find((item) => item.value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION")?.netPnl, 150);
   assert.equal(result.bestTrade?.candidateId, "first");
   assert.equal(result.worstTrade?.candidateId, "second");
   assert.equal(result.bestTradingDay?.value, "2026-08-25");

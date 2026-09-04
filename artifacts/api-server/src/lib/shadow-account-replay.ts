@@ -1,8 +1,9 @@
 import type { BacktestTrade } from "./phase9.js";
 import type { VisualValidationSet, VisualValidationTradeCandidate } from "./visual-validation.js";
+import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
-export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = 2;
+export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = SHADOW_CONTRACTS_PER_TRADE;
 
 export type ShadowAccountReplayOptions = {
   startingBalance?: number;

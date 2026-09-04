@@ -87,6 +87,7 @@ export type StrategyConfig = {
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
 export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 9;
+export const SHADOW_CONTRACTS_PER_TRADE = 2;
 
 export type ConsolidationThresholds = {
   version: string;

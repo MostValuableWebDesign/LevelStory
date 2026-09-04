@@ -1972,7 +1972,7 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
     },
   );
   assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "complete");
-  assert.equal(result.authoritativeTrades[0]?.outcome, "target");
+  assert.equal(result.authoritativeTrades[0]?.outcome, "session close");
   assert.equal(result.authoritativeTrades[0]?.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
   assert.equal(result.authoritativeTrades[0]?.audit?.exitCandleOpenTime, occurrence.entryObservationTimestamp);
 });
@@ -2010,7 +2010,7 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   assert.equal(candidate.targetPlan?.targetPrice, null);
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.missingEvidenceReasons.includes("NO_ELIGIBLE_KEY_LEVEL"), false);
-  assert.equal(trade.outcome, "target");
+  assert.equal(trade.outcome, "session close");
   assert.notEqual(trade.exitPrice, null);
   assert.notEqual(trade.netPnl, 0);
   assert.equal(trade.audit?.targetPrice, null);
@@ -2018,8 +2018,8 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   assert.equal(trade.audit?.oneRReached, true);
   assert.equal(trade.audit?.oneRPrice, 106.5);
   assert.equal(trade.audit?.profitCheckpointPrice, 106.5);
-  assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1]]);
-  assert.equal(trade.audit?.trailingStopActive, false);
+  assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1], ["runner", 1]]);
+  assert.equal(trade.audit?.trailingStopActive, true);
 });
 
 test("candidate target planning never reuses L-time qualifying values as E-time targets", () => {
@@ -2051,7 +2051,7 @@ test("candidate target planning never reuses L-time qualifying values as E-time 
   });
   assert.equal(result.candidates[0]?.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(result.candidates[0]?.targetPlan?.targetPrice, null);
-  assert.equal(result.authoritativeTrades[0]?.outcome, "target");
+  assert.equal(result.authoritativeTrades[0]?.outcome, "session close");
   assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, null);
   assert.equal(result.authoritativeTrades[0]?.audit?.oneRReached, true);
 });
