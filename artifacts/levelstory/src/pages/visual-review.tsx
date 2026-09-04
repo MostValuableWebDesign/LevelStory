@@ -55,6 +55,7 @@ import {
 } from "@workspace/api-spec/constants";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
+import { UploadedChartAnalysis } from "@/components/uploaded-chart-analysis";
 
 const FRONTEND_BUILD_ID = import.meta.env.VITE_LEVELSTORY_BUILD_ID ?? "local-development";
 const TRADE_TARGET_LEGEND_ID = "trade-target-exit";
@@ -818,6 +819,7 @@ export default function VisualReview() {
           />
 
           <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
+              <div className="xl:col-span-2"><UploadedChartAnalysis activeSnapshot={activeSnapshot} /></div>
              <GenerationPanel request={request} setRequest={(next) => {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
