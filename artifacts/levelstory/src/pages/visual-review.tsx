@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Download,
   FileSearch,
   Fingerprint,
   Info,
@@ -25,18 +26,22 @@ import {
 import {
   useGetVisualValidationGenerationJob,
   useStartVisualValidationGenerationJob,
+  useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
   useRecordVisualValidationReview,
+  useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
 import type {
   VisualValidationAnnotation,
   VisualValidationCategoryAnchor,
   VisualValidationCategory,
+  VisualValidationDiscrepancyReport,
   VisualValidationGenerationJob,
   VisualValidationRequest,
   VisualValidationReviewStatus,
   VisualValidationReviewRequest,
+  VisualValidationProposedRuleAnalysis,
   VisualValidationSet,
   VisualValidationSnapshot,
   ShadowAccountReplay,
@@ -426,6 +431,9 @@ export default function VisualReview() {
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
+  const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
   const toggleReviewPanel = (panel: ReviewDisclosurePanel) => {
     setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
   };
@@ -451,11 +459,17 @@ export default function VisualReview() {
     },
   );
   const recordReview = useRecordVisualValidationReview();
+  const analyzeRule = useAnalyzeVisualValidationTeaching();
   const generationJob: VisualValidationGenerationJob | null = generationQuery.data ?? startGeneration.data ?? null;
   const generationActive = generationJob?.status === "queued"
     || generationJob?.status === "running"
     || (Boolean(generationJobId) && generationQuery.isLoading);
   const replayReviewSetId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
+  const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
+  const exportQuery = useExportVisualValidationDiscrepancies(
+    { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
+    { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
+  );
   const replayParams = useMemo(() => ({
     reviewSetId: replayReviewSetId || "00000000-0000-0000-0000-000000000000",
     startingBalance: Number(startingBalance),
@@ -513,6 +527,7 @@ export default function VisualReview() {
       setReviewSetId(generationJob.result.reviewSetId);
       setReviewStatus(null);
       setReviewNote("");
+       setAnalysis(null);
       setOpenReviewPanels(CLOSED_REVIEW_DISCLOSURES);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
@@ -668,6 +683,7 @@ export default function VisualReview() {
     if (!confirmDiscardReview()) return;
     setSelectedCategory(category);
     setSelectedSnapshotId("");
+    setReport(null);
   };
 
   const selectSnapshot = (snapshotId: string) => {
@@ -682,6 +698,7 @@ export default function VisualReview() {
     if (!confirmDiscardReview()) return;
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setMessage("");
+    setReport(null);
     setLocalSet(null);
     startGeneration.mutate({ data: { ...request, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
@@ -695,6 +712,22 @@ export default function VisualReview() {
 
   const generateReviewSet = () => startReviewSetGeneration(false);
   const regenerateFreshReviewSet = () => startReviewSetGeneration(true);
+
+  const exportReport = () => {
+    if (!exportId) return;
+    setReportOpen(true);
+    exportQuery.refetch().then((result) => {
+      if (!result.data) return;
+      setReport(result.data);
+      const file = new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `levelstory-reviews-${result.data.reviewSetId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    });
+  };
 
   const retryGeneration = () => {
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
@@ -875,6 +908,14 @@ export default function VisualReview() {
           <div className="mt-5 w-full" data-testid="combined-shadow-replay-section">
              <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={openReviewPanels.replay} onToggleOpen={() => toggleReviewPanel("replay")} />
           </div>
+           {data && activeSnapshot && <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
+             <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+             <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
+               analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
+                 onSuccess: setAnalysis,
+               });
+             }} />
+           </div>}
         </div>
       </div>
     </LevelStoryShell>
@@ -2531,6 +2572,30 @@ function UnavailableWorkspace({ coverage, source }: { coverage: VisualValidation
 
 function EmptyReview() {
   return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">No confirmed trade candidates were found in this review period.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic review set to search for causal edge → P → immediate E candidates.</p><p className="mt-3 text-xs text-muted-foreground">Suggested action: extend the review period.</p></div>;
+}
+
+function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
+  return <Panel>
+    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Review export</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-reviews">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
+    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Export the current set as machine-readable evidence for rule review. The report contains only persisted human judgments and their causal cursors.</div>
+    {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.reviews.length ? report.reviews.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No human reviews have been labeled yet.</p>}{report.discrepancies.length > 0 && <p className="text-muted-foreground">{report.discrepancies.length} incorrect or uncertain review{report.discrepancies.length === 1 ? "" : "s"} require attention.</p>}</div>}</div>}
+  </Panel>;
+}
+
+function ProposedRulePanel({ analysis, pending, onAnalyze }: { analysis: VisualValidationProposedRuleAnalysis | null; pending: boolean; onAnalyze: () => void }) {
+  return <Panel>
+    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+      <div><div className="eyebrow text-muted-foreground">Advisory / teaching patterns</div><h2 className="mt-1 text-[14px] font-bold">Propose a rule review</h2></div>
+      <button type="button" onClick={onAnalyze} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-analyze-teaching">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />}Analyze</button>
+    </div>
+    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Compare persisted teaching examples for support, conflict, and likely disagreement causes. This output is advisory only and cannot approve a formula change or start a backtest.</div>
+    {analysis && <div className="space-y-3 border-t border-border bg-accent/5 px-5 py-4 text-[10px] sm:px-6" data-testid="proposed-rule-analysis">
+      <div className="flex items-start gap-2"><Sparkles size={14} className="mt-0.5 shrink-0 text-accent" /><div><div className="font-bold">{analysis.hypothesis}</div><div className="mt-1 text-muted-foreground">Formula {analysis.activeFormulaVersion} · {analysis.supportingExamples.length} supporting · {analysis.conflictingExamples.length} conflicting</div></div></div>
+      <div><div className="eyebrow text-muted-foreground">Likely causes</div><ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">{analysis.likelyCauses.map((cause) => <li key={cause}>{cause}</li>)}</ul></div>
+      <div className="border border-accent/30 bg-card px-3 py-2 font-semibold text-accent-foreground">Approval required. No executable rule was changed.</div>
+      {analysis.insufficientEvidence && <div className="text-muted-foreground">Evidence remains insufficient; collect more structured examples before considering any approved rule change.</div>}
+    </div>}
+  </Panel>;
 }
 
 function moveSnapshot(snapshots: VisualValidationSnapshot[], active: VisualValidationSnapshot, direction: -1 | 1, setSelected: (id: string) => void) {

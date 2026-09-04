@@ -43,14 +43,17 @@ test("visual review browses one stable queue across dates and categories", () =>
   assert.match(page, /snapshot\.tradingDate/);
 });
 
-test("visual review omits secondary sample, export, and rule-advisory panels", () => {
+test("visual review omits the secondary sample panel and keeps bottom review tools together", () => {
   assert.doesNotMatch(page, /Same category \/ sample index/);
   assert.doesNotMatch(page, />Other samples</);
-  assert.doesNotMatch(page, /Output \/ review ledger/);
-  assert.doesNotMatch(page, />Review export</);
-  assert.doesNotMatch(page, /Advisory \/ teaching patterns/);
-  assert.doesNotMatch(page, />Propose a rule review</);
-  assert.doesNotMatch(page, /DiscrepancyPanel|ProposedRulePanel|SnapshotNavigator/);
+  assert.doesNotMatch(page, /SnapshotNavigator/);
+  assert.match(page, /<DiscrepancyPanel report=\{report\}/);
+  assert.match(page, /<ProposedRulePanel analysis=\{analysis\}/);
+  assert.match(page, /Output \/ review ledger/);
+  assert.match(page, /Review export/);
+  assert.match(page, /Advisory \/ teaching patterns/);
+  assert.match(page, /Propose a rule review/);
+  assert.match(page, /mt-5 grid items-start gap-5 md:grid-cols-2/);
 });
 
 test("visual review presents the read-only Shadow Account Replay states and audit fields", () => {
