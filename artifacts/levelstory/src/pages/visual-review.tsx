@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  Download,
   FileSearch,
   Fingerprint,
   Info,
@@ -26,22 +25,18 @@ import {
 import {
   useGetVisualValidationGenerationJob,
   useStartVisualValidationGenerationJob,
-  useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
   useRecordVisualValidationReview,
-  useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
 import type {
   VisualValidationAnnotation,
   VisualValidationCategoryAnchor,
   VisualValidationCategory,
-  VisualValidationDiscrepancyReport,
   VisualValidationGenerationJob,
   VisualValidationRequest,
   VisualValidationReviewStatus,
   VisualValidationReviewRequest,
-  VisualValidationProposedRuleAnalysis,
   VisualValidationSet,
   VisualValidationSnapshot,
   ShadowAccountReplay,
@@ -425,10 +420,7 @@ export default function VisualReview() {
   const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
   const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
   const [message, setMessage] = useState("");
-  const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
-  const [reportOpen, setReportOpen] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
-  const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
@@ -459,12 +451,6 @@ export default function VisualReview() {
     },
   );
   const recordReview = useRecordVisualValidationReview();
-  const analyzeRule = useAnalyzeVisualValidationTeaching();
-  const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
-  const exportQuery = useExportVisualValidationDiscrepancies(
-    { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
-    { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
-  );
   const generationJob: VisualValidationGenerationJob | null = generationQuery.data ?? startGeneration.data ?? null;
   const generationActive = generationJob?.status === "queued"
     || generationJob?.status === "running"
@@ -785,22 +771,6 @@ export default function VisualReview() {
     });
   };
 
-  const exportReport = () => {
-    if (!exportId) return;
-    setReportOpen(true);
-    exportQuery.refetch().then((result) => {
-      if (!result.data) return;
-      setReport(result.data);
-      const file = new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(file);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `levelstory-reviews-${result.data.reviewSetId}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    });
-  };
-
   return (
     <LevelStoryShell>
       <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
@@ -899,19 +869,7 @@ export default function VisualReview() {
                       }} />
                     </Panel>
                      <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
-                    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
-                       <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
-                      <div className="space-y-5">
-                        <SnapshotNavigator snapshots={reviewQueue} active={activeSnapshot} onSelect={selectSnapshot} />
-                        <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
-                         <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
-                           if (!data) return;
-                           analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
-                             onSuccess: setAnalysis,
-                           });
-                         }} />
-                      </div>
-                    </div>
+                    <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                   </div>
                 </div>
               ) : <div className="space-y-5"><UnavailableWorkspace coverage={coverage} source={data.source} /></div>}
@@ -2566,37 +2524,6 @@ function ReviewPanel({
         <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it. Human judgments never mutate executable formula behavior.</div>
        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
      </div></div>}
-  </Panel>;
-}
-
-function SnapshotNavigator({ snapshots, active, onSelect }: { snapshots: VisualValidationSnapshot[]; active: VisualValidationSnapshot; onSelect: (id: string) => void }) {
-  return <Panel>
-    <PanelTitle eyebrow="Same category / sample index" title="Other samples" right={<span className="mono text-[10px] text-muted-foreground">{snapshots.length}</span>} />
-    {snapshots.length > 1 ? <div className="divide-y divide-border border-t border-border">{snapshots.map((snapshot) => <button type="button" key={snapshot.snapshotId} onClick={() => onSelect(snapshot.snapshotId)} className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition hover:bg-muted/40 ${active.snapshotId === snapshot.snapshotId ? "bg-accent/10" : ""}`}><span className="min-w-0"><span className="mono block text-[10px] text-muted-foreground">sample {String(snapshot.sampleIndex).padStart(2, "0")} · {snapshot.tradingDate} · {formatReviewTime(snapshot.categoryAnchor.openTime)}</span><span className="mt-1 block truncate text-xs font-semibold">{snapshot.machineLabel}</span><span className={`mt-1 block text-[9px] font-bold uppercase ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "primary window" : "outside primary window"}</span></span><ReviewDot status={snapshot.review.status} /></button>)}</div> : <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground">Only one generated sample is available for this category.</div>}
-  </Panel>;
-}
-
-function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
-  return <Panel>
-    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Review export</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-reviews">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>
-    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Export the current set as machine-readable evidence for rule review. The report contains only persisted human judgments and their causal cursors.</div>
-    {report && <div className="border-t border-border bg-accent/8 px-5 py-3 text-xs sm:px-6"><div className="flex items-center justify-between gap-3"><span><strong>{report.reviewedSnapshots}</strong> of {report.totalSnapshots} snapshots reviewed</span><button type="button" onClick={() => setOpen(!open)} className="font-bold text-accent-foreground underline">{open ? "Hide detail" : "Show detail"}</button></div>{open && <div className="mt-3 space-y-2">{report.reviews.length ? report.reviews.slice(0, 8).map((item, index) => <pre key={index} className="overflow-auto border border-border bg-card p-2 text-[9px] leading-4">{JSON.stringify(item, null, 2)}</pre>) : <p className="text-muted-foreground">No human reviews have been labeled yet.</p>}{report.discrepancies.length > 0 && <p className="text-muted-foreground">{report.discrepancies.length} incorrect or uncertain review{report.discrepancies.length === 1 ? "" : "s"} require attention.</p>}</div>}</div>}
-  </Panel>;
-}
-
-function ProposedRulePanel({ analysis, pending, onAnalyze }: { analysis: VisualValidationProposedRuleAnalysis | null; pending: boolean; onAnalyze: () => void }) {
-  return <Panel>
-    <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
-      <div><div className="eyebrow text-muted-foreground">Advisory / teaching patterns</div><h2 className="mt-1 text-[14px] font-bold">Propose a rule review</h2></div>
-      <button type="button" onClick={onAnalyze} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-analyze-teaching">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />}Analyze</button>
-    </div>
-    <div className="border-t border-border px-5 py-3 text-[11px] leading-5 text-muted-foreground sm:px-6">Compare persisted teaching examples for support, conflict, and likely disagreement causes. This output is advisory only and cannot approve a formula change or start a backtest.</div>
-    {analysis && <div className="space-y-3 border-t border-border bg-accent/5 px-5 py-4 text-[10px] sm:px-6" data-testid="proposed-rule-analysis">
-      <div className="flex items-start gap-2"><Sparkles size={14} className="mt-0.5 shrink-0 text-accent" /><div><div className="font-bold">{analysis.hypothesis}</div><div className="mt-1 text-muted-foreground">Formula {analysis.activeFormulaVersion} · {analysis.supportingExamples.length} supporting · {analysis.conflictingExamples.length} conflicting</div></div></div>
-      <div><div className="eyebrow text-muted-foreground">Likely causes</div><ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">{analysis.likelyCauses.map((cause) => <li key={cause}>{cause}</li>)}</ul></div>
-      <div className="border border-accent/30 bg-card px-3 py-2 font-semibold text-accent-foreground">Approval required. No executable rule was changed.</div>
-      {analysis.insufficientEvidence && <div className="text-muted-foreground">Evidence remains insufficient; collect more structured examples before considering any approved rule change.</div>}
-    </div>}
   </Panel>;
 }
 
