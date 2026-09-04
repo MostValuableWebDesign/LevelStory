@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -208,6 +209,14 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
   { value: "missed_trade", label: "Missed trade", detail: "The candles contain a valid, causal trade the machine did not capture." },
   { value: "false_positive_trade", label: "False-positive trade", detail: "The machine trade is not supported by the raw causal candle story." },
 ];
+
+type ReviewDisclosurePanel = "summary" | "judgment" | "replay";
+type ReviewDisclosureState = Record<ReviewDisclosurePanel, boolean>;
+const OPEN_REVIEW_DISCLOSURES: ReviewDisclosureState = {
+  summary: true,
+  judgment: true,
+  replay: true,
+};
 
 const INITIAL_REQUEST: VisualValidationRequest = {
   symbol: "MES",
@@ -424,6 +433,10 @@ export default function VisualReview() {
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
+  const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(OPEN_REVIEW_DISCLOSURES);
+  const toggleReviewPanel = (panel: ReviewDisclosurePanel) => {
+    setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
+  };
 
   const pinnedReviewSetId = loadLatestReviewSet ? "" : reviewSetId;
   const setQuery = useGetVisualValidationSet(
@@ -515,6 +528,7 @@ export default function VisualReview() {
       setReviewStatus(null);
       setReviewNote("");
       setAnalysis(null);
+      setOpenReviewPanels(OPEN_REVIEW_DISCLOSURES);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
         window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
@@ -884,9 +898,9 @@ export default function VisualReview() {
                         }));
                       }} />
                     </Panel>
-                    <ChartEvidence snapshot={activeSnapshot} />
+                     <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
                     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
-                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} />
+                       <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                       <div className="space-y-5">
                         <SnapshotNavigator snapshots={reviewQueue} active={activeSnapshot} onSelect={selectSnapshot} />
                         <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
@@ -904,7 +918,7 @@ export default function VisualReview() {
             </>
           )}
           <div className="mt-5 w-full" data-testid="combined-shadow-replay-section">
-            <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} />
+             <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={openReviewPanels.replay} onToggleOpen={() => toggleReviewPanel("replay")} />
           </div>
         </div>
       </div>
@@ -923,6 +937,8 @@ function ShadowAccountReplayPanel({
   setStartingBalance,
   contractsPerTrade,
   setContractsPerTrade,
+  open,
+  onToggleOpen,
 }: {
   reviewSetId: string;
   generationActive?: boolean;
@@ -932,6 +948,8 @@ function ShadowAccountReplayPanel({
   setStartingBalance: (value: string) => void;
   contractsPerTrade: string;
   setContractsPerTrade: (value: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
 }) {
   const replay = query.data as ShadowAccountReplay | undefined;
   const parsedStartingBalance = Number(startingBalance);
@@ -973,12 +991,15 @@ function ShadowAccountReplayPanel({
   };
 
   return <div data-testid="shadow-account-replay-panel"><Panel accent className="shadow-replay-panel">
-    <PanelTitle
+     <DisclosurePanelTitle
+       panelId="combined-shadow-replay-content"
       eyebrow="Account impact / read-only"
        title="Combined Shadow Account Replay"
-      right={<div className="flex items-center gap-2"><ShadowBadge /><LockKeyhole size={14} className="text-muted-foreground" /></div>}
+       right={<div className="flex items-center gap-2"><ShadowBadge /><LockKeyhole size={14} className="text-muted-foreground" /></div>}
+       open={open}
+       onToggleOpen={onToggleOpen}
     />
-    <div className="border-t border-border px-5 py-4 sm:px-6">
+     {open && <div id="combined-shadow-replay-content" className="border-t border-border px-5 py-4 sm:px-6">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div className="max-w-xl text-xs leading-5 text-muted-foreground">
            <span className="font-bold text-foreground">Dummy money only.</span> Replays every processed date in the immutable Visual Review set with fixed contract sizing. It is independent of the selected chart snapshot; no compounding, broker, paper, or live action is available.
@@ -1001,7 +1022,7 @@ function ShadowAccountReplayPanel({
         <button type="button" disabled={generationActive} onClick={onRegenerateFresh} className="shrink-0 self-start border border-accent/55 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15 disabled:cursor-wait disabled:opacity-50 sm:self-auto" data-testid="button-shadow-stale-regenerate">Regenerate fresh</button>
       </div>}
       <div className="mt-4">{stateContent()}</div>
-    </div>
+     </div>}
   </Panel></div>;
 }
 
@@ -2266,7 +2287,45 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
    </div>;
 }
 
-function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+function DisclosurePanelTitle({
+  panelId,
+  eyebrow,
+  title,
+  right,
+  open,
+  onToggleOpen,
+}: {
+  panelId: string;
+  eyebrow?: string;
+  title: string;
+  right?: ReactNode;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  return <div className="flex items-start justify-between gap-4 px-5 pb-4 pt-5 sm:px-6">
+    <div>
+      {eyebrow && <div className="eyebrow mb-1.5 text-muted-foreground">{eyebrow}</div>}
+      <h2 className="text-[14px] font-bold tracking-tight">{title}</h2>
+    </div>
+    <div className="flex items-center gap-3">
+      {right}
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={`${open ? "Collapse" : "Expand"} ${title}`}
+        className="inline-flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-[.08em] text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        data-testid={`toggle-${panelId}`}
+      >
+        <ChevronDown size={13} className={`transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+        <span className="hidden sm:inline">{open ? "Collapse" : "Expand"}</span>
+      </button>
+    </div>
+  </div>;
+}
+
+function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValidationSnapshot; open: boolean; onToggleOpen: () => void }) {
   const evidence = snapshot.machineEvidence;
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
@@ -2287,9 +2346,10 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
       : typeof audit.rejectionReason === "string" && audit.rejectionReason
         ? `Trade qualification stopped at ${audit.rejectionReason}.`
         : "The machine recorded market evidence without authorizing a modeled entry.";
-   return <Panel data-testid="chart-evidence">
-      <PanelTitle eyebrow="Plain-language summary / read-only" title="What the app found" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Machine-owned</span>} />
-     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3" data-testid="trader-readable-reasoning">
+    return <Panel data-testid="chart-evidence">
+       <DisclosurePanelTitle panelId="plain-language-summary-content" eyebrow="Plain-language summary / read-only" title="What the app found" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Machine-owned</span>} open={open} onToggleOpen={onToggleOpen} />
+      {open && <div id="plain-language-summary-content">
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3" data-testid="trader-readable-reasoning">
         <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app found</div><div className="mt-2 text-sm font-bold">{snapshot.categoryLabel}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(audit.setupType)}{audit.direction ? ` · ${safeValue(audit.direction)}` : ""}</div></div>
         <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">Why it matches this category</div><div className="mt-2 text-xs leading-5">{behavior.length ? behavior.join(" ") : "The category anchor and related candles match this review category."}</div></div>
         <div className="min-h-[104px] bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">What the app decided</div><div className="mt-2 text-xs leading-5">{qualification}</div></div>
@@ -2304,6 +2364,7 @@ function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
       <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
     </details>
       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
+      </div>}
   </Panel>;
 }
 
@@ -2386,6 +2447,8 @@ function ReviewPanel({
   teaching,
   setTeaching,
   authenticated,
+  open,
+  onToggleOpen,
 }: {
   snapshot: VisualValidationSnapshot;
   status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null;
@@ -2400,6 +2463,8 @@ function ReviewPanel({
   teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
   setTeaching: (teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null) => void;
   authenticated: boolean;
+  open: boolean;
+  onToggleOpen: () => void;
 }) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   const hasSavedReview = savedStatus !== null;
@@ -2461,8 +2526,9 @@ function ReviewPanel({
     }
   }, [snapshot.snapshotId, levelCandle?.openTime, levelCandle?.closeTime, levelToleranceTicks, selectedIndicator?.openTime, selectedIndicator?.closeTime, selectedIndicator?.vwap, selectedIndicator?.ema200, JSON.stringify(teaching?.qualifyingLevels)]);
   return <Panel accent>
-     <PanelTitle eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} />
-    <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
+     <DisclosurePanelTitle panelId="human-judgment-content" eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} open={open} onToggleOpen={onToggleOpen} />
+     {open && <div id="human-judgment-content">
+     <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
     <div className="space-y-4 border-t border-border p-5 sm:p-6">
       {!authenticated && <div className="border border-accent/35 bg-accent/10 px-3 py-3 text-xs leading-5"><strong>Log in to save reviews.</strong><span className="ml-1 text-muted-foreground">Review evidence is readable without an account, but saving requires an authenticated reviewer.</span><a className="ml-2 font-bold text-accent underline underline-offset-2" href={`/api/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Log in</a></div>}
       <div className="grid gap-2">
@@ -2499,7 +2565,7 @@ function ReviewPanel({
        </div>
         <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it. Human judgments never mutate executable formula behavior.</div>
        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
-    </div>
+     </div>}
   </Panel>;
 }
 
