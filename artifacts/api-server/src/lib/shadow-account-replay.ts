@@ -2,7 +2,7 @@ import type { BacktestTrade } from "./phase9.js";
 import type { VisualValidationSet, VisualValidationTradeCandidate } from "./visual-validation.js";
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
-export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = 1;
+export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = 2;
 
 export type ShadowAccountReplayOptions = {
   startingBalance?: number;
@@ -201,7 +201,7 @@ export function buildShadowAccountReplay(
   options: ShadowAccountReplayOptions = {},
 ): ShadowAccountReplay {
   const startingBalance = roundMoney(safePositive(options.startingBalance, DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE));
-  const contractsPerTrade = Math.max(1, Math.min(100, Math.floor(safePositive(options.contractsPerTrade, DEFAULT_SHADOW_ACCOUNT_CONTRACTS))));
+  const contractsPerTrade = Math.max(2, Math.min(100, Math.floor(safePositive(options.contractsPerTrade, DEFAULT_SHADOW_ACCOUNT_CONTRACTS))));
   const candidatesById = new Map(set.tradeCandidates.map((candidate) => [candidate.candidateId, candidate]));
   const matchingTrades: MatchedTrade[] = [];
   const seenTradeIds = new Set<string>();

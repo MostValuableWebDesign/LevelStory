@@ -430,7 +430,7 @@ export default function VisualReview() {
   const [authenticated, setAuthenticated] = useState(false);
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
-  const [contractsPerTrade, setContractsPerTrade] = useState("1");
+  const [contractsPerTrade, setContractsPerTrade] = useState("2");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -955,7 +955,7 @@ function ShadowAccountReplayPanel({
   const replay = query.data as ShadowAccountReplay | undefined;
   const parsedStartingBalance = Number(startingBalance);
   const parsedContracts = Number(contractsPerTrade);
-  const inputsValid = parsedStartingBalance > 0 && parsedContracts >= 1 && parsedContracts <= 100;
+  const inputsValid = parsedStartingBalance > 0 && parsedContracts >= 2 && parsedContracts <= 100;
 
   const metric = (label: string, value: string, detail?: string, tone?: string) => (
     <div className="metric-cell min-w-0 bg-card px-4 py-3" key={label}>
@@ -977,7 +977,7 @@ function ShadowAccountReplayPanel({
       </div>;
     }
     if (!inputsValid) {
-      return <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/10 px-3 py-3 text-xs text-destructive" role="alert" data-testid="shadow-replay-invalid-inputs"><AlertTriangle size={14} className="mt-0.5 shrink-0" />Starting balance must be greater than 0 and contracts per trade must be between 1 and 100.</div>;
+      return <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/10 px-3 py-3 text-xs text-destructive" role="alert" data-testid="shadow-replay-invalid-inputs"><AlertTriangle size={14} className="mt-0.5 shrink-0" />Starting balance must be greater than 0 and contracts per trade must be between 2 and 100.</div>;
     }
     if (query.isLoading || query.isFetching && !replay) return <QuerySkeleton rows={3} />;
     if (query.isError) return <QueryError onRetry={() => query.refetch()} message="The shadow replay could not be loaded." />;
@@ -1014,7 +1014,7 @@ function ShadowAccountReplayPanel({
         </label>
         <label className="block text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">
           Contracts per trade
-          <input className="field mono mt-1.5" type="number" min="1" max="100" step="1" value={contractsPerTrade} onChange={(event) => setContractsPerTrade(event.target.value)} aria-label="Contracts per trade" data-testid="input-shadow-contracts-per-trade" />
+           <input className="field mono mt-1.5" type="number" min="2" max="100" step="1" value={contractsPerTrade} onChange={(event) => setContractsPerTrade(event.target.value)} aria-label="Contracts per trade (minimum 2)" data-testid="input-shadow-contracts-per-trade" />
         </label>
         <button type="button" disabled={generationActive} onClick={onRegenerateFresh} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-accent/55 bg-accent/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[.06em] text-foreground transition hover:bg-accent/20 disabled:cursor-wait disabled:opacity-50" data-testid="button-shadow-regenerate-fresh"><RotateCcw size={14} />Regenerate fresh</button>
       </div>
