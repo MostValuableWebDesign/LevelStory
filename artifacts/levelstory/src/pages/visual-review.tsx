@@ -1020,7 +1020,7 @@ function ShadowAccountReplayPanel({
       {replay?.stale && <div className="mt-3 flex flex-col gap-2 border border-accent/55 bg-accent/10 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="shadow-replay-stale">
         <div className="flex items-start gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong>Replay is stale.</strong> Its source or execution projection changed. Use <span className="font-bold text-foreground">Regenerate fresh</span> to rebuild the selected review set before relying on these account outcomes.</span></div>
         <button type="button" disabled={generationActive} onClick={onRegenerateFresh} className="shrink-0 self-start border border-accent/55 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15 disabled:cursor-wait disabled:opacity-50 sm:self-auto" data-testid="button-shadow-stale-regenerate">Regenerate fresh</button>
-      </div>}
+       </div>}
       <div className="mt-4">{stateContent()}</div>
      </div>}
   </Panel></div>;
@@ -1213,8 +1213,8 @@ function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["fu
     </div>
     {data.rejectionCounts.length > 0 && <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
       <span className="font-semibold text-foreground">Recorded rejection gates:</span>{" "}
-      {data.rejectionCounts.map((item) => `${item.stage.replaceAll("_", " ")} (${item.count})`).join(" · ")}
-    </div>}
+       {data.rejectionCounts.map((item) => `${item.stage.replaceAll("_", " ")} (${item.count})`).join(" · ")}
+       </div>}
   </Panel>;
 }
 
@@ -2565,7 +2565,7 @@ function ReviewPanel({
        </div>
         <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it. Human judgments never mutate executable formula behavior.</div>
        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
-     </div>}
+     </div></div>}
   </Panel>;
 }
 
