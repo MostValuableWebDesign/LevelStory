@@ -1,0 +1,338 @@
+Implement an uploaded-chart analysis workflow directly on the Visual Review page.
+
+Goal
+
+I want to:
+
+1. Enter the chart’s trading date.
+2. Upload an image of a trading chart.
+3. Have the application analyze the chart using my existing LevelStory strategy.
+4. See which trades the strategy would have taken.
+5. If a valid setup and entry are confirmed, create a Shadow Mode trade candidate.
+6. Present that candidate and its results through the same Visual Review interface used for generated historical trade candidates.
+
+“Place the trade” means create a simulated Shadow Mode trade only. Never connect to a broker or place live or paper orders.
+
+Before editing
+
+Inspect the current Visual Review, candidate-generation, strategy-evaluation, execution-management, and review-storage architecture.
+
+Reuse the existing executable strategy predicates and candidate/result types wherever possible. Do not create a disconnected image-only interpretation of my strategy.
+
+Report the proposed architecture before implementing.
+
+Visual Review upload interface
+
+Add a “Chart Analysis” section containing:
+
+- Required trading-date input
+- “Upload chart image” button
+- Drag-and-drop area
+- PNG, JPEG/JPG, and WebP support
+- Maximum file size of 10 MB
+- Image preview
+- Replace and remove actions
+- Optional chart note
+- Analyze button
+- Analysis progress
+- Clear validation and failure messages
+- Full-size image lightbox
+
+Also collect or confirm:
+
+- Symbol/contract
+- Chart timeframe
+- Timezone
+- Regular or extended-hours session
+- Visible chart start and end time
+- Indicator names and settings when available
+
+If opened from an existing candidate, prefill its date and symbol. Warn before analyzing if the manually entered date differs from the active candidate.
+
+Chart analysis
+
+Analyze the uploaded image using my existing LevelStory strategy, including visible evidence for:
+
+- Premarket high and low
+- Previous-session high and low
+- Two-sessions-ago high and low
+- NTZ boundaries
+- ORB boundaries and breakout
+- Pullback to a qualifying level
+- VWAP
+- 200 EMA
+- RSI
+- Fibonacci retracement
+- Breakout and pullback volume
+- Patience candle
+- Candle-close confirmation
+- Consolidation breakout
+- Equivalent red/green candle reversal
+- Doji or reversal behavior at key levels
+- 15-minute trend context
+- Existing entry cutoff
+- Existing risk, stop, target, and runner rules
+
+Only evaluate evidence visible in the image. Do not infer Level 2 or tape evidence unless the screenshot actually contains it.
+
+Structured rule results
+
+For each strategy requirement, return:
+
+- Rule name
+- Pass, fail, uncertain, or not visible
+- Extracted value
+- Confidence
+- Explanation
+- Image region containing the evidence
+- Whether the rule is mandatory
+- Whether reviewer confirmation is required
+
+Show an annotated overlay for detected:
+
+- Levels
+- ORB
+- NTZ
+- Breakout
+- Pullback
+- Patience candle
+- Entry candle
+- Proposed entry
+- Stop
+- Target
+- Evaluation cutoff
+
+Insufficient evidence
+
+Do not invent missing prices, candles, indicators, fills, exits, or P/L.
+
+If the chart cannot be reliably interpreted, return:
+
+“Insufficient chart evidence”
+
+Then list exactly what is missing, such as:
+
+- Unknown timeframe
+- Unreadable price axis
+- Missing timestamps
+- Required indicator not visible
+- Entry candle unclear
+- Insufficient post-entry candles
+- Image resolution too low
+
+Prevent future leakage
+
+The screenshot may contain candles that formed after the proposed entry.
+
+Candidate qualification must use only information visible at or before the entry-decision candle.
+
+Follow this order:
+
+1. Determine the candidate’s evaluation cutoff.
+2. Hide or logically exclude later candles.
+3. Evaluate the setup using only causal evidence.
+4. Freeze the setup, direction, entry, stop, and target.
+5. Only after freezing the candidate may later candles be used to score the outcome.
+
+Future candles must never help the setup qualify retroactively.
+
+Candidate creation
+
+If the setup satisfies the existing mandatory rules, create an image-derived candidate containing:
+
+- Unique candidate ID
+- Uploaded attachment ID
+- Source: `uploaded_chart`
+- Trading date
+- Symbol/contract
+- Timeframe and timezone
+- Primary edge
+- Matched edges
+- Supporting confluences
+- Direction
+- Setup grade
+- Patience candle
+- Entry-decision candle
+- Entry trigger
+- Stop
+- Target
+- Contracts
+- Risk
+- Evaluation cutoff
+- Evidence confidence
+- Strategy formula version/hash
+- Image-analysis model/version
+- Reviewer-confirmation status
+
+Clearly label the candidate:
+
+“Source: Uploaded chart”
+
+Do not claim that it came from indexed historical candles.
+
+Entry and outcome handling
+
+Return one of these states:
+
+- No strategy setup detected
+- Potential setup—more evidence required
+- Qualified setup—entry not activated
+- Qualified setup—entry activated, outcome open
+- Qualified setup—closed modeled Shadow trade
+- Rejected by risk rules
+- Insufficient chart evidence
+- Analysis failed
+
+A setup is not an entered trade unless entry activation is visible and supported.
+
+If entry activates but no authoritative exit is visible:
+
+- Create an open/unscored trade
+- Do not invent an exit
+- Do not include it in realized P/L
+
+Only calculate exact P/L if the system can reliably calibrate:
+
+- Price axis
+- Time axis
+- Entry
+- Exit
+- Direction
+- Contract
+- Existing fee/slippage assumptions
+
+Approximate pixel locations alone must not produce authoritative monetary P/L.
+
+Reviewer confirmation
+
+Before finalizing the candidate, display:
+
+- Annotated chart
+- Detected strategy
+- Direction
+- Entry
+- Stop
+- Target
+- Contracts
+- Rule checklist
+- Confidence
+- Warnings
+- Modeled outcome, if available
+
+Allow the reviewer to correct metadata and extracted values.
+
+Preserve both:
+
+- Original machine extraction
+- Reviewer-confirmed corrections
+
+Never silently replace the original analysis.
+
+Visual Review presentation
+
+Present the uploaded-chart candidate through the same major components as a generated candidate:
+
+- Candidate selector
+- Candidate header
+- Strategy badge
+- Chart workspace
+- Machine decision
+- Evidence and rule panels
+- Entry, stop, and target
+- Review status choices
+- Reviewer note
+- Outcome
+- P/L
+- Audit trail
+- Trade ledger eligibility
+
+The uploaded image should replace or supplement the generated candlestick visualization for this candidate while preserving the same overall review workflow.
+
+Combined replay inclusion
+
+Provide an explicit control:
+
+“Include confirmed uploaded-chart trade in Combined Shadow Replay”
+
+Default it to off.
+
+Only allow inclusion when:
+
+- The candidate is reviewer-confirmed
+- Entry activation is supported
+- Prices and timestamps are sufficiently calibrated
+- Risk rules pass
+- The result has a unique candidate identity
+
+Check for duplicates against generated historical candidates using:
+
+- Trading date
+- Contract
+- Direction
+- Entry timestamp
+- Strategy
+- Entry price
+- Source linkage
+
+Warn about a possible duplicate. Do not silently count both.
+
+Security
+
+- Validate actual file type server-side
+- Reject SVG and executable formats
+- Reject oversized files
+- Generate safe storage keys
+- Prevent path traversal
+- Do not trust original filenames
+- Record checksum, uploader, size, MIME type, and timestamp
+- Follow existing authentication requirements when saving analysis
+
+Tests
+
+Add deterministic tests proving:
+
+1. A valid upload and date can be submitted.
+2. Invalid and oversized files are rejected.
+3. A qualifying chart produces a proposed candidate.
+4. A non-qualifying chart produces no trade.
+5. Missing metadata produces an insufficient-evidence result.
+6. Missing price calibration prevents exact P/L.
+7. A qualified setup without entry activation is not counted as entered.
+8. An entered trade without an exit remains open/unscored.
+9. Future candles cannot influence setup qualification.
+10. The existing strategy predicates are reused.
+11. Reviewer corrections preserve the original extraction.
+12. Unconfirmed candidates cannot affect combined P/L.
+13. Confirmed and calibrated candidates can enter the combined replay.
+14. Possible duplicates produce a warning.
+15. Uploaded candidates use the same Visual Review presentation as generated candidates.
+16. No broker, live-order, paper-order, or automatic-trading path is introduced.
+
+Verification
+
+Run:
+
+- Visual Review tests
+- Strategy/candidate tests
+- Image-upload security tests
+- Relevant API integration tests
+- API and frontend typechecks
+- Generated-client consistency checks
+- `git diff --check`
+
+Final report
+
+Explain:
+
+- Files changed
+- How chart evidence is extracted
+- Which existing strategy code is reused
+- How future leakage is prevented
+- When a candidate is considered entered
+- When exact P/L is allowed
+- How uploaded candidates are displayed
+- How duplicates are prevented
+- Tests executed and their results
+- Remaining limitations
+
+Do not declare success using only mocked text analysis. Demonstrate the complete Visual Review flow: upload a chart, enter its date, analyze it, inspect the strategy evidence, generate a qualified candidate when appropriate, confirm it, and present it like an existing generated trade candidate.
