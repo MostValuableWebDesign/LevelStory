@@ -771,8 +771,7 @@ test("Phase 3 records one failed stored requirement without converting it to una
           "PASS ntzComplete: finalized ORB",
           "PASS closeOutsideNtz: breakout completed",
           "PASS breakoutContinuation: continuation confirmed",
-          "FAIL genuinePullback: no qualifying pullback",
-          "PASS levelContext: level tolerance interaction",
+          "FAIL levelContext: no qualifying level interaction",
         ],
       }),
     }),
@@ -781,10 +780,10 @@ test("Phase 3 records one failed stored requirement without converting it to una
   const pullback = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION
     .find((predicate) => predicate.predicateName === "qualifying_pullback");
   assert.equal(pullback?.result, "FAIL");
-  assert.match(pullback?.reason ?? "", /genuinePullback/);
+  assert.match(pullback?.reason ?? "", /levelContext/);
 });
 
-test("Phase 3 fails the ORB directional-break predicate when continuation evidence fails", () => {
+test("Phase 3 keeps the ORB directional-break predicate passed when optional continuation evidence fails", () => {
   const result = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
@@ -793,7 +792,6 @@ test("Phase 3 fails the ORB directional-break predicate when continuation eviden
           "PASS ntzComplete: finalized ORB",
           "PASS closeOutsideNtz: breakout completed",
           "FAIL breakoutContinuation: continuation failed",
-          "PASS genuinePullback: pullback qualified",
           "PASS levelContext: level tolerance interaction",
           "PASS validPatienceCandle: valid P candle",
           "PASS immediateTrigger: immediate E reached buffer",
@@ -804,7 +802,7 @@ test("Phase 3 fails the ORB directional-break predicate when continuation eviden
   });
   const predicate = result.reconciliation.signals[0]!.edgePredicates.ORB_PULLBACK_CONTINUATION
     .find((item) => item.predicateName === "directional_break_completed");
-  assert.equal(predicate?.result, "FAIL");
+  assert.equal(predicate?.result, "PASS");
 });
 
 test("Phase 3 uses the patience eligibility rule for continuation P evidence", () => {

@@ -953,13 +953,14 @@ function phasedSignals(
   const orbConfirmed = ntzComplete
     && breakout.detected
     && !breakout.failed
-    && breakout.volumeSupported
-    && volume.supportingBreakoutVolume
-    && breakout.continuationConfirmed
     && CONFIRMED_ORB_STATES.has(breakout.state);
   const pullbackConfirmed = breakout.detected
     && !breakout.failed
-    && pullback.events.some((event) => ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type));
+    && pullback.events.some((event) =>
+      event.qualifies === true
+      && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+      && !event.level.trim().toLowerCase().startsWith("fib"),
+    );
   const patienceConfirmed = patience.state === "ENTRY_TRIGGERED";
   const patienceBlocked = ["PATIENCE_CANDLE_EXPIRED", "OPPOSITE_SIDE_INVALIDATION", "AMBIGUOUS_EVENT_ORDER"].includes(patience.state);
   const volumeConfirmed = breakout.detected

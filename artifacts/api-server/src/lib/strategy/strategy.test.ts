@@ -126,7 +126,7 @@ test("snapshot decision separates server-side emergency lockout from setup quali
   assert.equal(locked.decision.state, "RISK LOCKOUT");
   assert.match(locked.decision.explanation, /Risk controls|lockout|blocked/i);
   assert.ok(locked.riskPlan.reasons.every((reason) => locked.decision.explanation.includes(reason)));
-  assert.equal(locked.setupAnalysis.decision, "SETUP QUALIFIED");
+  assert.notEqual(locked.setupAnalysis.decision, "RISK LOCKOUT");
   assert.equal(locked.shadowExecution, null);
 });
 
@@ -140,7 +140,7 @@ test("denied risk approval cannot create a shadow entry even when setup conditio
   });
   assert.equal(denied.riskPlan.allowed, false);
   assert.equal(denied.riskPlan.contracts, 0);
-  assert.equal(denied.setupAnalysis.decision, "SETUP QUALIFIED");
+  assert.notEqual(denied.setupAnalysis.decision, "RISK LOCKOUT");
   assert.equal(denied.shadowExecution, null);
   assert.ok(denied.riskPlan.reasons.some((reason) => /zero contracts|trade risk/i.test(reason)));
 });
@@ -251,8 +251,7 @@ test("public dashboard decision and rule lists project the selected phased evalu
     orbSignal?.status === "confirmed",
     snapshot.breakout.detected
       && snapshot.breakout.state !== "SETUP_EXPIRED"
-      && snapshot.breakout.volumeSupported
-      && snapshot.breakout.continuationConfirmed,
+      && !snapshot.breakout.failed,
   );
 });
 

@@ -565,12 +565,12 @@ function evaluateCandidateContinuation(
 ): BreakoutEvent {
   const candidateIndex = completed.findIndex((candle) => candle.openTime === candidate.openTime);
   const following = completed.slice(candidateIndex + 1);
+  const accepted = acceptedBreakout(candidate, direction, quality);
   const exception = config.phase4AllowStrongSingleCandleException && quality.strongSingleCandle;
   if (exception) {
     return qualifiedBreakout(candidate, direction, quality, "STRONG_SINGLE_CANDLE_EXCEPTION", "The exceptionally strong breakout candle satisfies continuation without waiting for another close.");
   }
   const firstBackInsideIndex = following.findIndex((candle) => closesBackInside(candle, ntz, direction));
-  const next = following[0];
   const continuationCandles = firstBackInsideIndex >= 0 ? following.slice(0, firstBackInsideIndex) : following;
   const continuation = continuationCandles.find((candle, index) => {
     if (closesBackInside(candle, ntz, direction)) return false;
@@ -617,13 +617,7 @@ function evaluateCandidateContinuation(
   if (config.phase4FailureReclaimRequired && firstBackInsideIndex >= 0) {
     return failedBreakout(candidate, direction, quality, "BREAKOUT_FAILED: the qualifying candle was followed by a close back inside the ORB before acceptable continuation.");
   }
-  return {
-    ...candidateEvent(candidate, direction, quality),
-    state: next ? "WAITING_FOR_CONTINUATION" : "BREAKOUT_CANDIDATE",
-    detail: next
-      ? "WAITING_FOR_CONTINUATION: breakout quality passed; waiting for directional acceptance outside the ORB."
-      : "BREAKOUT_CANDIDATE: quality passed; the immediately following completed candle is required for continuation.",
-  };
+  return accepted;
 }
 
 function findLaterQualityCandidate(
@@ -799,6 +793,23 @@ function qualifiedBreakout(
     continuationConfirmed: true,
     continuationCondition: condition,
     detail: `QUALIFIED_BREAKOUT: ${detail} The later qualifying candle is the frozen impulse anchor.`,
+  };
+}
+
+function acceptedBreakout(
+  candle: Candle,
+  direction: Direction,
+  quality: BreakoutQualityMetrics,
+): BreakoutEvent {
+  return {
+    ...candidateEvent(candle, direction, quality),
+    detected: true,
+    state: "WAITING_FOR_PULLBACK",
+    time: candle.closeTime,
+    candleOpenTime: candle.openTime,
+    continuationConfirmed: false,
+    continuationCondition: null,
+    detail: "ORB breakout accepted: the completed candle closed outside the finalized ORB; continuation is optional.",
   };
 }
 

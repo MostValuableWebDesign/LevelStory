@@ -769,8 +769,8 @@ function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<P
     if (edge === "ORB_PULLBACK_CONTINUATION") {
       map.valid_p_candle = edgeEvidence("valid_p_candle", "validPatienceCandle");
       map.finalized_orb_or_ntz = edgeEvidence("finalized_orb_or_ntz", "ntzComplete");
-      map.directional_break_completed = storedPredicateKeys(sourceOccurrence, "directional_break_completed", ["closeOutsideNtz", "breakoutContinuation"]);
-      map.qualifying_pullback = edgeEvidence("qualifying_pullback", "genuinePullback");
+      map.directional_break_completed = storedPredicateKeys(sourceOccurrence, "directional_break_completed", ["closeOutsideNtz"]);
+      map.qualifying_pullback = edgeEvidence("qualifying_pullback", "levelContext");
       map.permitted_level_within_tolerance = edgeEvidence("permitted_level_within_tolerance", "levelContext");
     } else if (edge === "PATIENCE_CANDLE_CONTINUATION") {
       map.valid_p_candle = edgeEvidence("valid_p_candle", "patienceEligible");

@@ -275,16 +275,17 @@ test("ORB qualification does not require strong-breakout volume or body classifi
   assert.equal(result.rules.some((rule) => rule.key === "strongBreakout" || rule.key === "breakoutVolume"), false);
 });
 
-test("ORB continuation does not qualify a boundary probe without directional continuation", () => {
+test("ORB continuation does not qualify a boundary probe without a completed ORB close", () => {
   const result = evaluateOrbBreakPullbackContinuation(baseContext({
     breakout: {
       ...baseContext().breakout,
+      detected: false,
       continuationConfirmed: false,
       state: "ORB_PROBE_WAIT",
     },
   }));
   assert.notEqual(result.decision, "SETUP QUALIFIED");
-  assert.equal(result.rules.find((rule) => rule.key === "breakoutContinuation")?.passed, false);
+  assert.equal(result.rules.find((rule) => rule.key === "closeOutsideNtz")?.passed, false);
 });
 
 test("taxonomy exposes five strategies and separates components from outcomes", () => {
@@ -825,7 +826,6 @@ test("ORB rejects a genuine pullback whose only qualifying level is Fibonacci", 
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
   });
   const result = evaluateOrbBreakPullbackContinuation(context);
-  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, false);
   assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, false);
 });
 
@@ -848,7 +848,6 @@ test("Fibonacci proximity without causal pullback structure does not qualify ORB
     },
     fibonacci: { ...baseContext().fibonacci, frozen: true, levels: [{ name: "Fib 0.5", label: "50%", ratio: 0.5, price: 10.1 }] },
   }));
-  assert.equal(result.rules.find((rule) => rule.key === "genuinePullback")?.passed, false);
   assert.equal(result.rules.find((rule) => rule.key === "levelContext")?.passed, false);
 });
 

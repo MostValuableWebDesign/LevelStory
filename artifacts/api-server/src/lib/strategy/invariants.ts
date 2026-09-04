@@ -55,14 +55,11 @@ export function validateDashboardInvariants(input: DashboardInvariantInput): Das
     !input.ntz.complete
     || !input.breakout.detected
     || input.breakout.failed
-    || !input.breakout.volumeSupported
-    || !input.breakout.continuationConfirmed
-    || input.signals.find((signal) => signal.key === "volume")?.status !== "confirmed"
     || !confirmedBreakoutStates.has(input.breakout.state)
   )) {
     violations.push({
       code: "ORB_SIGNAL_WITHOUT_QUALIFIED_BREAKOUT",
-      detail: "The ORB signal is confirmed without a finalized, quality-qualified, volume-supported breakout and continuation.",
+      detail: "The ORB signal is confirmed without a finalized, quality-qualified breakout.",
     });
   }
 

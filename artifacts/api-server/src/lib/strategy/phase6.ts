@@ -302,14 +302,11 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.breakout.direction;
-  const genuinePullback = hasGenuinePullback(context.pullback);
-  const levelInteraction = genuinePullback && hasQualifyingPullback(context.pullback);
+  const levelInteraction = hasQualifyingPullback(context.pullback);
   const rules: SetupRuleEvidence[] = [
-    rule("genuinePullback", "Genuine countertrend pullback structure", genuinePullback, genuinePullback ? "A causal post-breakout impulse and countertrend retracement are recorded." : "A Fibonacci-distance candle alone is not a pullback; a causal countertrend retracement is required."),
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
     rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
-    rule("breakoutContinuation", "Directional breakout continuation established", context.breakout.continuationConfirmed && !context.breakout.failed, context.breakout.continuationConfirmed && !context.breakout.failed ? "The completed breakout has directional continuation evidence." : "A boundary break without directional continuation is only a probe and cannot arm this edge."),
-    rule("levelContext", "Pullback L candle interacted with a qualifying primary level", levelInteraction, "The structurally detected pullback L candle must interact with a governed primary level; Fibonacci references are diagnostic-only."),
+    rule("levelContext", "Pullback candle reached a governed level or indicator zone", levelInteraction, levelInteraction ? "A completed pullback candle interacted with a governed level or indicator within the configured tolerance." : "A completed pullback candle must reach a governed level or indicator zone within the configured tolerance."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
     rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
@@ -931,10 +928,6 @@ function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {
     && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
     && !event.level.trim().toLowerCase().startsWith("fib"),
   );
-}
-
-function hasGenuinePullback(pullback: PullbackAnalysis): boolean {
-  return hasQualifyingPullback(pullback) && pullback.structure?.detected !== false;
 }
 
 function patienceDirectionMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {

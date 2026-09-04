@@ -2529,18 +2529,28 @@ function stageEvidence(
   const marketText = `${record.breakoutEvidence} ${record.trendEvidence} ${record.pullbackEvidence}`;
   const orbCompleted = passedRule(record, /(?:ntz|orb)/i)
     || !/(?:NOT_COMPLETED|INCOMPLETE|WAITING)/i.test(record.orbState);
-  const strongBreakout = passedRule(record, /(?:breakout|orb|impulse|strong)/i)
-    || /(?:strong|confirmed|breakout|impulse)/i.test(record.breakoutEvidence);
-  const continuation = passedRule(record, /(?:continuation|trend|alignment|follow)/i)
-    || /(?:continuation|aligned|follow-through|follow through)/i.test(marketText);
+  const strongBreakout = record.setupType === "ORB_PULLBACK_CONTINUATION"
+    ? passedRule(record, /closeOutsideNtz/)
+    : passedRule(record, /(?:breakout|orb|impulse|strong)/i)
+      || /(?:strong|confirmed|breakout|impulse)/i.test(record.breakoutEvidence);
+  const continuation = record.setupType === "ORB_PULLBACK_CONTINUATION"
+    ? orbCompleted && record.orbState !== "SETUP_EXPIRED" && !/BREAKOUT_FAILED|ORB_REENTRY_INVALIDATED/i.test(record.breakoutEvidence)
+    : passedRule(record, /(?:continuation|trend|alignment|follow)/i)
+      || /(?:continuation|aligned|follow-through|follow through)/i.test(marketText);
   const pullback = passedRule(record, /(?:pullback|consolidation|retest)/i)
     || /(?:pullback|consolidation|retest)/i.test(record.pullbackEvidence);
-  const criticalLevel = passedRule(record, /(?:critical|level|ntz|orb)/i)
+  const criticalLevel = record.setupType === "ORB_PULLBACK_CONTINUATION"
+    ? passedRule(record, /levelContext/)
+    : passedRule(record, /(?:critical|level|ntz|orb)/i)
     || (record.criticalLevelEvidence !== "No critical level evidence." && record.criticalLevelEvidence.length > 0);
-  const fibonacci = passedRule(record, /fibonacci|fib/i)
-    || /fibonacci|fib/i.test(ruleText);
-  const volume = passedRule(record, /volume/i)
-    || /supported|confirmed/i.test(record.volumeEvidence);
+  const fibonacci = record.setupType === "ORB_PULLBACK_CONTINUATION"
+    ? true
+    : passedRule(record, /fibonacci|fib/i)
+      || /fibonacci|fib/i.test(ruleText);
+  const volume = record.setupType === "ORB_PULLBACK_CONTINUATION"
+    ? true
+    : passedRule(record, /volume/i)
+      || /supported|confirmed/i.test(record.volumeEvidence);
   const patience = record.patienceCandle !== null
     || /valid|confirmed|ready|aligned/i.test(record.patienceState);
   const trigger = record.triggerCandle !== null

@@ -678,14 +678,15 @@ test("the strong single-candle exception remains separately volume-gated", () =>
   assert.equal(breakout.continuationCondition, "STRONG_SINGLE_CANDLE_EXCEPTION");
 });
 
-test("qualified candidates require continuation and visibly fail when they reclaim the ORB", () => {
+test("qualified candidates arm on the completed ORB close and still fail when they reclaim the ORB", () => {
   const ntz = { high: 102, low: 99, complete: true, completedAt: candleCloseTime(2) };
   const waiting = evaluateOrbBreakoutQuality([
     ...breakoutFixture().slice(0, 3),
     candle(3, 101, 105, 101, 104.5, 130),
   ], ntz, config, specification);
-  assert.equal(waiting.state, "BREAKOUT_CANDIDATE");
-  assert.equal(waiting.detected, false);
+  assert.equal(waiting.state, "WAITING_FOR_PULLBACK");
+  assert.equal(waiting.detected, true);
+  assert.equal(waiting.continuationConfirmed, false);
 
   const failed = evaluateOrbBreakoutQuality([
     ...breakoutFixture().slice(0, 3),
@@ -744,8 +745,9 @@ test("ORB quality remains causal when a future continuation candle is incomplete
     candidate,
     incompleteContinuation,
   ], ntz, config, specification);
-  assert.equal(beforeClose.state, "BREAKOUT_CANDIDATE");
-  assert.equal(beforeClose.detected, false);
+  assert.equal(beforeClose.state, "WAITING_FOR_PULLBACK");
+  assert.equal(beforeClose.detected, true);
+  assert.equal(beforeClose.continuationConfirmed, false);
 
   const afterClose = evaluateOrbBreakoutQuality([
     ...breakoutFixture().slice(0, 3),
