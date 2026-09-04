@@ -513,7 +513,6 @@ export default function VisualReview() {
       setReviewSetId(generationJob.result.reviewSetId);
       setReviewStatus(null);
       setReviewNote("");
-      setAnalysis(null);
       setOpenReviewPanels(CLOSED_REVIEW_DISCLOSURES);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
@@ -669,7 +668,6 @@ export default function VisualReview() {
     if (!confirmDiscardReview()) return;
     setSelectedCategory(category);
     setSelectedSnapshotId("");
-    setReport(null);
   };
 
   const selectSnapshot = (snapshotId: string) => {
@@ -684,7 +682,6 @@ export default function VisualReview() {
     if (!confirmDiscardReview()) return;
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setMessage("");
-    setReport(null);
     setLocalSet(null);
     startGeneration.mutate({ data: { ...request, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
@@ -2572,10 +2569,4 @@ function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return <div className="bg-card px-4 py-4"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-2 text-xs font-medium">{value}</div>{sub && <div className="mono mt-1 text-[9px] text-muted-foreground">{sub}</div>}</div>;
-}
-
-function ReviewDot({ status }: { status: VisualValidationReviewStatus }) {
-  if (status === "unreviewed") return <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/50" aria-label="Unreviewed" />;
-  const tone = status === "correct" ? "bg-[hsl(var(--positive))]" : status === "incorrect" ? "bg-[hsl(var(--negative))]" : "bg-accent";
-  return <span className={`h-2 w-2 shrink-0 rounded-full ${tone}`} aria-label={status.replaceAll("_", " ")} />;
 }

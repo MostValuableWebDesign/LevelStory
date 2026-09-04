@@ -38,9 +38,19 @@ test("visual review browses one stable queue across dates and categories", () =>
   assert.match(page, /selectedSnapshotIndex=\{reviewQueue\.findIndex/);
   assert.match(page, /selectedSnapshotTotal=\{reviewQueue\.length\}/);
   assert.match(page, /moveSnapshot\(reviewQueue, activeSnapshot/);
-  assert.match(page, /<SnapshotNavigator snapshots=\{reviewQueue\}/);
+  assert.doesNotMatch(page, /<SnapshotNavigator snapshots=\{reviewQueue\}/);
   assert.match(page, /setSelectedCategory\(snapshot\.category\)/);
   assert.match(page, /snapshot\.tradingDate/);
+});
+
+test("visual review omits secondary sample, export, and rule-advisory panels", () => {
+  assert.doesNotMatch(page, /Same category \/ sample index/);
+  assert.doesNotMatch(page, />Other samples</);
+  assert.doesNotMatch(page, /Output \/ review ledger/);
+  assert.doesNotMatch(page, />Review export</);
+  assert.doesNotMatch(page, /Advisory \/ teaching patterns/);
+  assert.doesNotMatch(page, />Propose a rule review</);
+  assert.doesNotMatch(page, /DiscrepancyPanel|ProposedRulePanel|SnapshotNavigator/);
 });
 
 test("visual review presents the read-only Shadow Account Replay states and audit fields", () => {
@@ -85,7 +95,6 @@ test("trade review panels collapse after generation and can be opened independen
   assert.match(page, /plain-language-summary-content/);
   assert.match(page, /human-judgment-content/);
   assert.match(page, /combined-shadow-replay-content/);
-  assert.match(page, /grid items-start gap-5 xl:grid-cols-\[minmax\(0,1fr\)_minmax\(280px,\.42fr\)\]/);
 });
 
 test("visual review presentation retains human-only shading and semantic level colors", () => {
