@@ -56,30 +56,39 @@ const extractedLevelSchema = z.object({
 });
 
 export const chartExtractionSchema = z.object({
-  summary: z.string().max(2000),
-  rules: z.array(ruleSchema).max(40),
+  summary: z.string().max(2000).default("No reliable chart summary was extracted."),
+  rules: z.array(ruleSchema).max(40).default([]).catch([]),
   calibration: z.object({
-    priceAxisVisible: z.boolean(),
-    timeAxisVisible: z.boolean(),
-    pricesCalibrated: z.boolean(),
-    timestampsCalibrated: z.boolean(),
-    notes: z.string().max(600),
+    priceAxisVisible: z.boolean().default(false),
+    timeAxisVisible: z.boolean().default(false),
+    pricesCalibrated: z.boolean().default(false),
+    timestampsCalibrated: z.boolean().default(false),
+    notes: z.string().max(600).default("Calibration evidence was not provided."),
+  }).default({
+    priceAxisVisible: false,
+    timeAxisVisible: false,
+    pricesCalibrated: false,
+    timestampsCalibrated: false,
+    notes: "Calibration evidence was not provided.",
   }),
-  trend: z.enum(["bullish", "bearish", "neutral"]),
-  candles: z.array(extractedCandleSchema).max(120),
-  levels: z.array(extractedLevelSchema).max(40),
-  direction: z.enum(["long", "short"]).nullable(),
-  previousCandleIndex: z.number().int().nullable(),
-  patienceCandleIndex: z.number().int().nullable(),
-  entryDecisionCandleIndex: z.number().int().nullable(),
-  entryPrice: z.number().nullable(),
-  entryTimestamp: z.string().nullable(),
-  entryActivated: z.boolean(),
-  exitCandleIndex: z.number().int().nullable(),
-  exitPrice: z.number().nullable(),
-  exitTimestamp: z.string().nullable(),
-  exitReason: z.string().nullable(),
-  confidence: z.number().min(0).max(1),
+  trend: z.enum(["bullish", "bearish", "neutral"]).default("neutral"),
+  // A malformed candle is not converted into a synthetic candle. Discarding
+  // the extracted candle array makes the causal evaluator return insufficient
+  // evidence instead of allowing fabricated OHLC values into the engine.
+  candles: z.array(extractedCandleSchema).max(120).default([]).catch([]),
+  levels: z.array(extractedLevelSchema).max(40).default([]).catch([]),
+  direction: z.enum(["long", "short"]).nullable().default(null),
+  previousCandleIndex: z.number().int().nullable().default(null),
+  patienceCandleIndex: z.number().int().nullable().default(null),
+  entryDecisionCandleIndex: z.number().int().nullable().default(null),
+  entryPrice: z.number().nullable().default(null),
+  entryTimestamp: z.string().nullable().default(null),
+  entryActivated: z.boolean().default(false),
+  exitCandleIndex: z.number().int().nullable().default(null),
+  exitPrice: z.number().nullable().default(null),
+  exitTimestamp: z.string().nullable().default(null),
+  exitReason: z.string().nullable().default(null),
+  confidence: z.number().min(0).max(1).default(0),
 });
 
 export type ChartExtraction = z.infer<typeof chartExtractionSchema>;
@@ -193,6 +202,23 @@ function asCandle(input: ChartExtraction["candles"][number]): Candle | null {
   const openTime = Date.parse(input.openTime);
   if (!Number.isFinite(openTime) || ![input.open, input.high, input.low, input.close, input.volume].every(Number.isFinite)) return null;
   return { openTime, closeTime: openTime + 5 * 60_000, open: input.open, high: input.high, low: input.low, close: input.close, volume: input.volume, isComplete: input.isComplete };
+}
+
+function parseModelExtraction(parsed: unknown): ChartExtraction {
+  const candidate = typeof parsed === "object"
+    && parsed !== null
+    && "extraction" in parsed
+    ? (parsed as { extraction: unknown }).extraction
+    : parsed;
+  const validated = chartExtractionSchema.safeParse(candidate);
+  if (!validated.success) {
+    const details = validated.error.issues
+      .slice(0, 4)
+      .map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Vision analysis returned incomplete or invalid evidence${details ? ` (${details})` : ""}.`);
+  }
+  return validated.data;
 }
 
 export function evaluateUploadedChart(
@@ -335,8 +361,6 @@ Metadata supplied by the reviewer: ${JSON.stringify({
   } catch {
     throw new Error("Vision analysis returned malformed structured output.");
   }
-  const validated = chartExtractionSchema.safeParse(parsed);
-  if (!validated.success) throw new Error("Vision analysis returned incomplete or invalid evidence.");
-  const extraction = validated.data;
+  const extraction = parseModelExtraction(parsed);
   return { extraction, evaluation: evaluateUploadedChart(extraction, metadata, imageChecksum(bytes)) };
 }

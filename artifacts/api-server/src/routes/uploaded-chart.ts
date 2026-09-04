@@ -174,7 +174,11 @@ router.post("/uploaded-chart/analyze", requireRole("reviewer"), requestRateLimit
     if (!record) throw new Error("Uploaded chart analysis was not saved.");
     res.json(imagePayload(record, `/api/uploaded-chart/${record.id}/image`));
   } catch (error) {
-    req.log?.error({ error }, "Uploaded chart analysis failed");
+    req.log?.error({
+      err: error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : error,
+    }, "Uploaded chart analysis failed");
     res.status(422).json({ error: error instanceof Error ? error.message : "Chart analysis failed." });
   }
 });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  chartExtractionSchema,
   detectImageMime,
   evaluateUploadedChart,
   imageChecksum,
@@ -126,4 +127,21 @@ test("combined replay requires reviewer confirmation, calibration, activation, a
   assert.equal(uploadedChartReplayEligibility({ reviewerStatus: "confirmed", candidate: { ...candidate, entryActivated: false }, calibrated: true }), false);
   assert.equal(uploadedChartReplayEligibility({ reviewerStatus: "confirmed", candidate: { ...candidate, riskDollars: 501 }, calibrated: true }), false);
   assert.equal(uploadedChartReplayEligibility({ reviewerStatus: "confirmed", candidate, calibrated: true }), true);
+});
+
+test("incomplete model evidence becomes a conservative insufficient-evidence extraction", () => {
+  const result = chartExtractionSchema.parse({});
+  assert.equal(result.trend, "neutral");
+  assert.deepEqual(result.candles, []);
+  assert.equal(result.direction, null);
+  assert.equal(result.entryActivated, false);
+  assert.equal(result.calibration.pricesCalibrated, false);
+});
+
+test("malformed candle evidence is discarded rather than converted into prices", () => {
+  const result = chartExtractionSchema.parse({
+    candles: [{ openTime: "2026-09-04T13:30:00.000Z", open: 100 }],
+    direction: "long",
+  });
+  assert.deepEqual(result.candles, []);
 });
