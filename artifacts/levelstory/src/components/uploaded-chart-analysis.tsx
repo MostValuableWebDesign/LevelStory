@@ -64,6 +64,7 @@ type AnalysisResponse = {
 
 type Props = {
   activeSnapshot?: VisualValidationSnapshot;
+  authenticated?: boolean;
 };
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -78,7 +79,7 @@ function dateFromSnapshot(snapshot?: VisualValidationSnapshot): string {
   return snapshot?.tradingDate ?? "";
 }
 
-export function UploadedChartAnalysis({ activeSnapshot }: Props) {
+export function UploadedChartAnalysis({ activeSnapshot, authenticated = false }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -237,10 +238,15 @@ export function UploadedChartAnalysis({ activeSnapshot }: Props) {
   const evaluation = analysis?.machineExtraction.evaluation;
   const candidate = analysis?.candidate;
   const errorMessage = /failed|unable|rejected|required|larger|invalid|unavailable|not found/i.test(message);
+  const loginHref = `/api/login?returnTo=${encodeURIComponent(typeof window === "undefined" ? "/visual-review" : window.location.pathname + window.location.search)}`;
 
   return <div data-testid="uploaded-chart-analysis"><Panel accent>
     <PanelTitle eyebrow="Chart Analysis / uploaded evidence" title="Analyze a chart without placing an order" right={<span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground"><FileImage size={14} />Shadow Mode only</span>} />
     <div className="space-y-5 border-t border-border p-5 sm:p-6">
+      {!authenticated && <div className="flex flex-wrap items-center justify-between gap-3 border border-accent/35 bg-accent/10 p-3 text-xs" role="status">
+        <span><strong>Log in to analyze and save uploaded charts.</strong><span className="ml-1 text-muted-foreground">Chart upload, analysis, and reviewer confirmation require an authenticated reviewer.</span></span>
+        <a className="shrink-0 rounded-md bg-primary px-3 py-2 text-[10px] font-bold text-primary-foreground" href={loginHref}>Log in</a>
+      </div>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Trading date *"><input className="field mono" type="date" value={tradingDate} onChange={(event) => setTradingDate(event.target.value)} /></Field>
         <Field label="Symbol / contract"><input className="field mono" value={symbol} onChange={(event) => setSymbol(event.target.value.toUpperCase())} /></Field>
@@ -269,7 +275,7 @@ export function UploadedChartAnalysis({ activeSnapshot }: Props) {
       {file && <div className="flex flex-wrap items-center gap-2"><button type="button" className="rounded-md border border-border px-3 py-2 text-[10px] font-bold" onClick={() => fileInput.current?.click()}>Replace image</button><button type="button" className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 text-[10px] font-bold text-muted-foreground" onClick={() => setSelectedFile(null)}><X size={13} />Remove</button></div>}
       {previewUrl && <div className="relative overflow-hidden border border-border bg-black/5"><img src={previewUrl} alt="Uploaded trading chart preview" className="max-h-[330px] w-full object-contain" /><button type="button" className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-md bg-background/90 px-3 py-2 text-[10px] font-bold shadow" onClick={() => setLightbox(true)}><Maximize2 size={13} />Full size</button></div>}
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${errorMessage ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
-      <button type="button" disabled={busy || !file} onClick={analyze} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{busy ? <LoaderCircle size={15} className="animate-spin" /> : <FileImage size={15} />}{busy ? "Analyzing visible evidence…" : "Analyze uploaded chart"}</button>
+      <button type="button" disabled={busy || !file || !authenticated} onClick={analyze} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{busy ? <LoaderCircle size={15} className="animate-spin" /> : <FileImage size={15} />}{busy ? "Analyzing visible evidence…" : authenticated ? "Analyze uploaded chart" : "Log in to analyze uploaded chart"}</button>
 
       {analysis && <div className="space-y-4 border-t border-border pt-5" data-testid="uploaded-chart-result">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="eyebrow text-muted-foreground">Machine decision · Source: Uploaded chart</div><div className="mt-1 text-lg font-bold">{analysis.status}</div><div className="mt-1 text-[11px] text-muted-foreground">{extraction?.summary ?? "No summary returned."}</div></div><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[10px] font-bold uppercase">{analysis.reviewerStatus}</span></div>

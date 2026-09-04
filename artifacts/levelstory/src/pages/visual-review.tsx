@@ -819,7 +819,7 @@ export default function VisualReview() {
           />
 
           <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-              <div className="xl:col-span-2"><UploadedChartAnalysis activeSnapshot={activeSnapshot} /></div>
+              <div className="xl:col-span-2"><UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} /></div>
              <GenerationPanel request={request} setRequest={(next) => {
               setRequest(next);
               if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
