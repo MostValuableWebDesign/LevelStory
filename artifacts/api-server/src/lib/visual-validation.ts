@@ -42,6 +42,7 @@ import {
   MES_TICK_SIZE,
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
+import { PROFIT_TARGET_PLACEMENT_TICKS } from "./strategy/key-level-targets.js";
 
 export const VISUAL_VALIDATION_CATEGORIES = [
   "qualified_trade",
@@ -1648,7 +1649,7 @@ function buildAnnotations(
     targetPlan?.selectedTargetLevel
       ? targetPlan.placementMode === "EXACT_LEVEL"
         ? `Exact ${targetPlan.selectedTargetLevel.id} level; all levels within ${targetPlan.bufferTicks} ticks of entry were excluded.`
-        : `${targetPlan.bufferTicks} ticks before ${targetPlan.selectedTargetLevel.id}.`
+        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; all levels within ${targetPlan.bufferTicks} ticks of entry were excluded.`
       : "No eligible key-level target; candidate remains open and unscored.",
     "positive",
   );

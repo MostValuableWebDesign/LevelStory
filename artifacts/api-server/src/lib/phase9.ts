@@ -59,6 +59,7 @@ import { consolidationThresholds, type ConsolidationThresholds } from "./strateg
 import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
+  PROFIT_TARGET_PLACEMENT_TICKS,
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
   type PrimaryLossExitReference,
@@ -3594,7 +3595,7 @@ function targetPlanForOccurrence(
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: "NEAR_SIDE_30_TICKS",
+    placementMode: "NEAR_SIDE_20_TICKS",
   });
   return {
     ...plan,
@@ -4480,7 +4481,7 @@ function candidateDrivenEntryTrade(
       assumptions: [
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
         targetPlan
-          ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.bufferTicks} MES ticks of near-side placement.`
+          ? `Target plan freezes ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} at entry with ${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} MES ticks of near-side placement; levels within ${targetPlan.bufferTicks} MES ticks of entry were excluded.`
            : "No eligible key-level target plan was available; one contract exits fully at its actual initial-stop 1R distance, while multi-contract positions take one contract at 1R before structure trailing.",
        ...(primaryLossExitLevel
            ? [`Nearby ${primaryLossExitLevel.id} level retained as diagnostic evidence only; the frozen patience opposite-wick strategy stop remains authoritative.`]

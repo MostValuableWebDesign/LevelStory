@@ -102,23 +102,25 @@ test("exact-level placement is an explicit comparison mode", () => {
   assert.equal(plan.targetPrice, 108);
   assert.equal(plan.bufferTicks, 30);
   assert.equal(plan.bufferPoints, 7.5);
+  assert.equal(plan.placementTicks, 20);
 });
 
-test("candidate near-side placement stays 30 ticks in front of a directional level", () => {
+test("candidate near-side placement stays 20 ticks in front of a directional level", () => {
   const longPlan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
-    placementMode: "NEAR_SIDE_30_TICKS",
+    placementMode: "NEAR_SIDE_20_TICKS",
     levels: [{ id: "resistance", type: "major resistance", price: 108 }],
   });
   const shortPlan = buildKeyLevelTargetPlan({
     direction: "short",
     entryPrice: 100,
-    placementMode: "NEAR_SIDE_30_TICKS",
+    placementMode: "NEAR_SIDE_20_TICKS",
     levels: [{ id: "support", type: "major support", price: 92 }],
   });
-  assert.equal(longPlan.targetPrice, 100.5);
-  assert.equal(shortPlan.targetPrice, 99.5);
+  assert.equal(longPlan.targetPrice, 103);
+  assert.equal(shortPlan.targetPrice, 97);
+  assert.equal(longPlan.placementTicks, 20);
 });
 
 test("allowlist excludes Fibonacci, close, critical, and management artifacts", () => {

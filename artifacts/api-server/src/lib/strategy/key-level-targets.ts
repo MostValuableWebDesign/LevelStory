@@ -1,6 +1,6 @@
 import type { Direction } from "./types.js";
 
-export type ProfitTargetPlacement = "NEAR_SIDE_30_TICKS" | "EXACT_LEVEL";
+export type ProfitTargetPlacement = "NEAR_SIDE_20_TICKS" | "EXACT_LEVEL";
 
 export type KeyLevelTargetInput = {
   id: string;
@@ -56,6 +56,7 @@ export type KeyLevelTargetPlan = {
   tickSize: number;
   bufferTicks: 30;
   bufferPoints: number;
+  placementTicks: 20;
   availableLevels: FrozenTargetLevel[];
   skippedLevels: SkippedTargetLevel[];
   selectedTargetLevel: FrozenTargetLevel | null;
@@ -65,6 +66,7 @@ export type KeyLevelTargetPlan = {
 };
 
 export const PROFIT_TARGET_BUFFER_TICKS = 30;
+export const PROFIT_TARGET_PLACEMENT_TICKS = 20;
 
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
 const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
@@ -209,7 +211,7 @@ function nearSideTargetPrice(
     ? levelBoundary - bufferPoints
     : levelBoundary + bufferPoints;
   // Round toward the key level so the executable MES price never lands
-  // farther than the governed 30-tick distance from the raw level.
+  // farther than the governed placement distance from the raw level.
   const tickIndex = unrounded / tickSize;
   const roundedIndex = direction === "long"
     ? Math.ceil(tickIndex - 1e-9)
@@ -334,7 +336,7 @@ export function buildKeyLevelTargetPlan(input: {
       : nearSideTargetPrice(
         input.direction,
         rawNearBoundaryForLevel(selectedTargetLevel, input.levels, input.direction),
-        bufferPoints,
+        PROFIT_TARGET_PLACEMENT_TICKS * tickSize,
         tickSize,
       );
   return {
@@ -345,6 +347,7 @@ export function buildKeyLevelTargetPlan(input: {
     tickSize,
     bufferTicks: 30,
     bufferPoints,
+    placementTicks: PROFIT_TARGET_PLACEMENT_TICKS,
     availableLevels,
     skippedLevels,
     selectedTargetLevel,
