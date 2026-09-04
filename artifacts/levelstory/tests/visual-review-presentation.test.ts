@@ -73,8 +73,11 @@ test("visual review presents the read-only Shadow Account Replay states and audi
   assert.match(page, /Direction breakdown/);
 });
 
-test("trade review panels open after generation and can be collapsed independently", () => {
-  assert.match(page, /setOpenReviewPanels\(OPEN_REVIEW_DISCLOSURES\)/);
+test("trade review panels collapse after generation and can be opened independently", () => {
+  assert.match(page, /CLOSED_REVIEW_DISCLOSURES/);
+  assert.match(page, /summary: false/);
+  assert.match(page, /judgment: false/);
+  assert.match(page, /replay: false/);
   assert.match(page, /toggleReviewPanel\("summary"\)/);
   assert.match(page, /toggleReviewPanel\("judgment"\)/);
   assert.match(page, /toggleReviewPanel\("replay"\)/);

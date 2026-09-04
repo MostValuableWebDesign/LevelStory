@@ -212,10 +212,10 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
 
 type ReviewDisclosurePanel = "summary" | "judgment" | "replay";
 type ReviewDisclosureState = Record<ReviewDisclosurePanel, boolean>;
-const OPEN_REVIEW_DISCLOSURES: ReviewDisclosureState = {
-  summary: true,
-  judgment: true,
-  replay: true,
+const CLOSED_REVIEW_DISCLOSURES: ReviewDisclosureState = {
+  summary: false,
+  judgment: false,
+  replay: false,
 };
 
 const INITIAL_REQUEST: VisualValidationRequest = {
@@ -433,7 +433,7 @@ export default function VisualReview() {
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
-  const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(OPEN_REVIEW_DISCLOSURES);
+  const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const toggleReviewPanel = (panel: ReviewDisclosurePanel) => {
     setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
   };
@@ -528,7 +528,7 @@ export default function VisualReview() {
       setReviewStatus(null);
       setReviewNote("");
       setAnalysis(null);
-      setOpenReviewPanels(OPEN_REVIEW_DISCLOSURES);
+      setOpenReviewPanels(CLOSED_REVIEW_DISCLOSURES);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
         window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
