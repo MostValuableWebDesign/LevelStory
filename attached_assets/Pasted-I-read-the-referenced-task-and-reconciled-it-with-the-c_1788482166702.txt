@@ -1,0 +1,298 @@
+I read the referenced task and reconciled it with the current code. Use this prompt:
+
+```text
+Project:
+/Users/jawanhiggins/Downloads/LevelStory-main 22
+
+Previous Codex task:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Read the previous task for product and strategy context, especially the discussion about the Combined Shadow Account Replay. Verify every assumption against the current repository before editing.
+
+Problem:
+The UI shows one candidate, one entered trade, one ledger row, and a –$66.60 result. I intended the system to process the complete generated set of trading dates, collect all authoritative trades across those dates, and replay them together through one dummy account.
+
+Do not merely calculate and display one trade at a time.
+
+Important current-code observation:
+`buildShadowAccountReplay()` already appears capable of sorting and aggregating multiple trades when it receives multiple `accountReplayTrades`. Therefore, do not assume the P/L formulas are the root cause. Trace the complete pipeline and determine why the replay received only one trade.
+
+Inspect at least:
+
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- `artifacts/api-server/src/lib/visual-validation-worker.ts`
+- `artifacts/api-server/src/lib/visual-validation.ts`
+- `artifacts/api-server/src/lib/shadow-account-replay.ts`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/api-server/src/routes/visual-validation.ts`
+- `lib/api-spec/openapi.yaml`
+- relevant generated API clients/types
+- existing Shadow Account Replay and Visual Review tests
+
+Before implementing:
+Reproduce or trace the issue and report the verified root cause. Determine whether the single-trade result is caused by:
+
+- only one date being processed
+- only one trade being returned by the backtest
+- candidate projection filtering out other valid trades
+- review snapshots being confused with account replay trades
+- incorrect deduplication
+- selected-date information being lost between the UI, API, worker, dataset, and report
+- stale or incorrectly keyed cache data
+- or the selected date set genuinely containing only one qualifying trade
+
+Required behavior:
+
+1. Combined date-set replay
+
+Treat every eligible trading date in the generated Visual Review period as one replay set.
+
+The existing review-period controls—end date, in-sample sessions, and out-of-sample sessions—must resolve to an exact, sorted, unique list of trading dates. Preserve that exact list throughout the entire pipeline.
+
+If an explicit `selectedDates` field already exists or is needed internally, propagate it through:
+
+- request validation
+- OpenAPI schema
+- generated types/client
+- generation job
+- cache identity
+- historical worker
+- replay dataset
+- backtest report
+- immutable Visual Validation set
+- Shadow Account Replay response
+- frontend display
+
+Do not silently reduce the set to the final date or currently displayed trade candidate.
+
+2. Use all authoritative trades
+
+From the complete processed date set, collect every distinct authoritative candidate-owned modeled trade.
+
+Include trades even when their associated chart snapshot is not currently selected.
+
+Do not restrict account replay data to:
+
+- the active review sample
+- the selected strategy tab
+- the selected candidate card
+- the currently visible chart
+- or only one representative snapshot per date
+
+Only genuine duplicate candidate/trade identities should be removed. Separate valid trades must not be collapsed because they share a date, strategy, setup, direction, or contract.
+
+Do not fabricate trades, fills, exits, or P/L. Candidates without valid modeled fills must remain visible in diagnostics but must not affect realized account metrics.
+
+3. One continuous account replay
+
+Sort all entered trades globally and deterministically by entry timestamp, with stable ID tie-breakers.
+
+Run them through one account:
+
+- apply starting balance once
+- default starting balance: $10,000
+- default contracts per trade: 1
+- fixed contract sizing
+- no balance reset between dates
+- no compounding
+- every closed trade updates the running realized balance
+- open/unscored trades remain in the ledger but do not change realized balance
+- preserve existing MES tick value, commissions, fees, slippage, entry cutoff, rollover handling, execution logic, and exit outcomes
+
+Do not aggregate by averaging per-date statistics. Derive all combined metrics from the complete chronological trade ledger.
+
+4. Combined account statistics
+
+Display these across all processed dates and trades:
+
+- starting balance
+- ending realized balance
+- total realized net P/L
+- percent return
+- processed trading dates
+- dates containing trades
+- dates containing no qualifying trades
+- total candidates
+- entered trades
+- closed trades
+- open/unscored trades
+- wins
+- losses
+- flat trades, if applicable
+- win rate
+- average win
+- average loss
+- profit factor
+- expectancy per closed trade
+- maximum realized drawdown
+- maximum consecutive wins
+- maximum consecutive losses
+- best trade
+- worst trade
+- best trading day
+- worst trading day
+
+The overall results must reconcile exactly to the ledger.
+
+5. Breakdowns
+
+Add combined breakdowns for:
+
+- performance by trading date
+- performance by primary edge/strategy
+- long versus short
+- in-sample versus out-of-sample
+
+For each useful breakdown, show trade count, wins/losses, win rate, net P/L, and expectancy.
+
+Breakdown totals must reconcile with the combined results. A selected date with zero qualifying trades must still appear in date coverage or diagnostics.
+
+Do not change strategy taxonomy or invent new strategy rules.
+
+6. Equity curve
+
+Display one readable combined equity curve:
+
+- X-axis: chronological trades, with trading-date context
+- Y-axis: realized account balance
+- initialize the curve at the starting balance
+- update it after every closed trade
+- mark wins and losses distinctly
+- open/unscored trades must not change the realized curve
+- drawdown must be measured across the complete multi-date sequence
+
+7. Complete trade ledger
+
+Each chronological row should include:
+
+- trade number
+- trading date
+- entry date/time ET
+- exit date/time ET
+- contract
+- direction
+- primary edge
+- entry price
+- exit price
+- exit reason/outcome
+- contracts
+- gross P/L
+- fees/slippage when available
+- net P/L
+- running realized balance
+- supporting confluences
+- in-sample or out-of-sample
+- candidate ID
+- signal occurrence ID
+- status: closed, open, or unscored
+
+8. Make processing scope obvious
+
+Rename the result area to:
+
+“Combined Shadow Account Replay”
+
+Clearly state that it represents the entire generated date set, not the currently selected chart.
+
+At the top, show something like:
+
+“7 processed dates · 4 dates with trades · 6 candidates · 5 entered trades”
+
+Also show the exact processed dates or a collapsible date list.
+
+If all requested dates were processed but only one authoritative trade qualified, display:
+
+“All 7 selected trading dates were processed. Only 1 authoritative trade qualified for account replay.”
+
+This distinction is essential. The UI must make it impossible to confuse “only one qualifying trade” with “only one date was processed.”
+
+9. Layout
+
+The current narrow sidebar makes the metrics, equity curve, sample split, and ledger difficult to read.
+
+Move the detailed Combined Shadow Account Replay into a full-width section below the review workspace or another appropriately wide area.
+
+A compact sidebar summary may remain, but the complete metrics, breakdowns, equity curve, diagnostics, and ledger must use a readable full-width layout with responsive cards and tables.
+
+Fix the current overlapping and clipped text shown in the screenshots.
+
+10. Cache and freshness
+
+Ensure cache identity includes the normalized processed-date list along with the existing:
+
+- review-set cache key
+- formula hash
+- source fingerprint
+- candidate projection version
+- execution management version
+- sizing inputs where appropriate
+
+“Regenerate fresh” must rebuild the entire generated date set, not only the active candidate.
+
+Do not allow an older single-date or single-trade result to masquerade as the current combined replay.
+
+Preserve saved review history and immutable historical review sets.
+
+11. Safety and strategy boundaries
+
+This remains read-only Shadow Mode:
+
+- no broker integration
+- no live orders
+- no paper trading
+- no order submission
+- no automatic trading
+- no new strategy rules
+- no modification of qualification rules merely to create more trades
+- no fabricated outcomes
+- no historical-index rebuild unless genuinely required
+
+Testing requirements:
+
+Add deterministic tests proving:
+
+1. Multiple trades across at least three dates create one combined account result.
+2. Every selected date reaches the replay dataset.
+3. Trades are globally ordered by entry timestamp.
+4. Starting balance is applied only once.
+5. Running balance carries across date boundaries.
+6. Combined net P/L equals the sum of authoritative closed-trade net P/L.
+7. Open/unscored trades do not affect realized metrics.
+8. Candidate-only/no-fill signals do not affect realized metrics.
+9. Orphan or mismatched legacy trades are ignored.
+10. Genuine duplicates are removed without collapsing separate trades.
+11. Drawdown can span multiple trading dates.
+12. Consecutive win/loss streaks can span date boundaries.
+13. In-sample and out-of-sample totals reconcile with the overall ledger.
+14. Daily, edge, and direction breakdowns reconcile with overall results.
+15. Dates with zero qualifying trades remain visible in processing diagnostics.
+16. Cache keys change when the normalized selected-date set changes.
+17. An API or integration test produces multiple ledger rows from one multi-date request.
+18. No broker, paper-trading, or live-order path is introduced.
+19. The frontend clearly distinguishes processed-date count from qualifying-trade count.
+20. The full-width layout does not clip or overlap replay content at supported breakpoints.
+
+Verification:
+
+- Run focused Shadow Account Replay tests.
+- Run Visual Validation tests.
+- Run relevant API route/integration tests.
+- Run API typecheck.
+- Run frontend typecheck.
+- Run generated-client consistency checks if the API schema changes.
+- Run `git diff --check`.
+- Avoid broad historical backtests unless necessary for verification.
+
+Final response must include:
+
+- verified root cause
+- whether all dates were previously processed
+- why only one ledger row appeared
+- files changed
+- exact combined aggregation semantics
+- tests and typechecks executed
+- results
+- remaining limitations
+
+Do not declare success merely because unit tests show that the arithmetic function can sum multiple trades. Prove end-to-end that a multi-date Visual Review request delivers all authoritative trades to the Combined Shadow Account Replay and that the UI clearly reports the processed-date scope.
+```
