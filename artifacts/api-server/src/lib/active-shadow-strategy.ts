@@ -25,7 +25,7 @@ function validateVersion(version: StrategyVersion): ActiveShadowStrategy {
     throw new Error("Active Shadow strategy has an invalid identity.");
   }
   const rawConfig = version.configSnapshot as Partial<StrategyConfig>;
-  const config = strategyConfig({ ...rawConfig, patienceStopBufferTicks: 8 });
+  const config = strategyConfig({ ...rawConfig, patienceStopBufferTicks: 12 });
   const expectedHash = hashConfig(config);
   const legacyConfig = {
     ...DEFAULT_STRATEGY_CONFIG,

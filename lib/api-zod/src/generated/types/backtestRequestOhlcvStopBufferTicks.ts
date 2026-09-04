@@ -7,11 +7,11 @@
  */
 
 /**
- * Exactly eight MES ticks beyond the frozen patience-candle extreme.
+ * Exactly twelve MES ticks beyond the frozen patience-candle extreme.
  */
 export type BacktestRequestOhlcvStopBufferTicks = typeof BacktestRequestOhlcvStopBufferTicks[keyof typeof BacktestRequestOhlcvStopBufferTicks];
 
 
 export const BacktestRequestOhlcvStopBufferTicks = {
-  NUMBER_8: 8,
+  NUMBER_12: 12,
 } as const;

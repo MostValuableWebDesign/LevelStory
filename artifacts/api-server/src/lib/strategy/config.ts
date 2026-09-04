@@ -157,7 +157,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   noLevelBreakevenActivationBars: DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: 8,
-  patienceStopBufferTicks: 8,
+  patienceStopBufferTicks: 12,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
   trendCandleCount: 8, // assumption: eight completed 15m candles
@@ -331,8 +331,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (config.patienceEntryBufferTicks !== 8) {
     throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly eight MES ticks (2.00 index points).");
   }
-  if (config.patienceStopBufferTicks !== 8) {
-    throw new Error("Invalid strategy configuration: patienceStopBufferTicks must be exactly eight MES ticks.");
+  if (config.patienceStopBufferTicks !== 12) {
+    throw new Error("Invalid strategy configuration: patienceStopBufferTicks must be exactly twelve MES ticks.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

@@ -1619,13 +1619,13 @@ export const BacktestRequestOhlcvEntryBufferTicks = {
 } as const;
 
 /**
- * Exactly eight MES ticks beyond the frozen patience-candle extreme.
+ * Exactly twelve MES ticks beyond the frozen patience-candle extreme.
  */
 export type BacktestRequestOhlcvStopBufferTicks = typeof BacktestRequestOhlcvStopBufferTicks[keyof typeof BacktestRequestOhlcvStopBufferTicks];
 
 
 export const BacktestRequestOhlcvStopBufferTicks = {
-  NUMBER_8: 8,
+  NUMBER_12: 12,
 } as const;
 
 export interface BacktestRequest {
@@ -1666,7 +1666,7 @@ export interface BacktestRequest {
   executionMode?: BacktestRequestExecutionMode;
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
-  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  /** Exactly twelve MES ticks beyond the frozen patience-candle extreme. */
   ohlcvStopBufferTicks?: BacktestRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0
@@ -3280,13 +3280,13 @@ export const EdgeValidationPilotRequestOhlcvEntryBufferTicks = {
 } as const;
 
 /**
- * Exactly eight MES ticks beyond the frozen patience-candle extreme.
+ * Exactly twelve MES ticks beyond the frozen patience-candle extreme.
  */
 export type EdgeValidationPilotRequestOhlcvStopBufferTicks = typeof EdgeValidationPilotRequestOhlcvStopBufferTicks[keyof typeof EdgeValidationPilotRequestOhlcvStopBufferTicks];
 
 
 export const EdgeValidationPilotRequestOhlcvStopBufferTicks = {
-  NUMBER_8: 8,
+  NUMBER_12: 12,
 } as const;
 
 /**
@@ -3302,7 +3302,7 @@ export interface EdgeValidationPilotRequest {
   selectedDates: string[];
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
-  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  /** Exactly twelve MES ticks beyond the frozen patience-candle extreme. */
   ohlcvStopBufferTicks?: EdgeValidationPilotRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0

@@ -391,7 +391,7 @@ test("successful route result matches the direct deterministic engine", async ()
       targetDollars: 75,
       slippageMode: "normal",
       ohlcvEntryBufferTicks: 8,
-      ohlcvStopBufferTicks: 8,
+      ohlcvStopBufferTicks: 12,
       ohlcvSlippageTicks: 1,
     });
     assert.equal(response.statusCode, 200);

@@ -95,7 +95,7 @@ test("the Aug 5 10:45 short candidate confirms at the intended buffer", () => {
   assert.equal(occurrence?.triggerCandle?.low, 7778.25);
 });
 
-test("patience strategy stops use exactly eight MES ticks beyond the frozen P extreme", () => {
+test("patience strategy stops use exactly twelve MES ticks beyond the frozen P extreme", () => {
   const long = patienceCandleEngine(
     setup("long", candle(2, 10.8, 12, 10.2, 11.75)),
     "long",
@@ -107,11 +107,11 @@ test("patience strategy stops use exactly eight MES ticks beyond the frozen P ex
     { eligibilityEvents: eligibility(), tickSize: 0.25 },
   );
   assert.equal(long.state, "ENTRY_TRIGGERED");
-  assert.equal(long.strategyStopPrice, 5);
+  assert.equal(long.strategyStopPrice, 4);
   assert.equal(short.state, "ENTRY_TRIGGERED");
-  assert.equal(short.strategyStopPrice, 15);
-  assert.equal(authoritativePatienceStopPrice("long", 6975.75), 6973.75);
-  assert.equal(authoritativePatienceStopPrice("short", 6975.75), 6977.75);
+  assert.equal(short.strategyStopPrice, 16);
+  assert.equal(authoritativePatienceStopPrice("long", 6975.75), 6972.75);
+  assert.equal(authoritativePatienceStopPrice("short", 6975.75), 6978.75);
 });
 
 test("the seventh tick does not confirm, while the eighth tick confirms", () => {
@@ -127,7 +127,7 @@ test("the seventh tick does not confirm, while the eighth tick confirms", () => 
   );
   assert.notEqual(sevenTicks.state, "ENTRY_TRIGGERED");
   assert.equal(eightTicks.state, "ENTRY_TRIGGERED");
-  assert.equal(eightTicks.strategyStopPrice, 5);
+  assert.equal(eightTicks.strategyStopPrice, 4);
 });
 
 test("the exclusive primary cutoff uses E open time and propagates into occurrences", () => {
@@ -385,28 +385,28 @@ test("configured confirmation and stop buffers are retained on every patience oc
   const result = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
     eligibilityEvents: eligibility(),
     entryBufferTicks: 8,
-    stopBufferTicks: 8,
+    stopBufferTicks: 12,
   });
   assert.equal(result.occurrences?.[0]?.entryBufferTicks, 8);
-  assert.equal(result.occurrences?.[0]?.stopBufferTicks, 8);
+  assert.equal(result.occurrences?.[0]?.stopBufferTicks, 12);
   assert.equal(result.occurrences?.[0]?.patienceCandleExtreme, result.occurrences?.[0]?.patienceCandle.low);
-  assert.equal(result.occurrences?.[0]?.stopBufferPoints, 2);
-  assert.equal(result.occurrences?.[0]?.finalStopBoundary, 5);
+  assert.equal(result.occurrences?.[0]?.stopBufferPoints, 3);
+  assert.equal(result.occurrences?.[0]?.finalStopBoundary, 4);
 });
 
-test("governed default patience stops use eight ticks on the P extreme", () => {
+test("governed default patience stops use twelve ticks on the P extreme", () => {
   const long = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
     eligibilityEvents: eligibility(),
   }).occurrences?.[0];
   const short = patienceCandleEngine(setup("short", candle(2, 10.8, 11.75, 10.1, 9.7)), "short", {
     eligibilityEvents: eligibility(),
   }).occurrences?.[0];
-  assert.equal(long?.stopBufferTicks, 8);
-  assert.equal(long?.stopBufferPoints, 2);
-  assert.equal(long?.finalStopBoundary, long ? Math.round((long.patienceCandle.low - 2) / 0.25) * 0.25 : undefined);
-  assert.equal(short?.stopBufferTicks, 8);
-  assert.equal(short?.stopBufferPoints, 2);
-  assert.equal(short?.finalStopBoundary, short ? Math.round((short.patienceCandle.high + 2) / 0.25) * 0.25 : undefined);
+  assert.equal(long?.stopBufferTicks, 12);
+  assert.equal(long?.stopBufferPoints, 3);
+  assert.equal(long?.finalStopBoundary, long ? Math.round((long.patienceCandle.low - 3) / 0.25) * 0.25 : undefined);
+  assert.equal(short?.stopBufferTicks, 12);
+  assert.equal(short?.stopBufferPoints, 3);
+  assert.equal(short?.finalStopBoundary, short ? Math.round((short.patienceCandle.high + 3) / 0.25) * 0.25 : undefined);
 });
 
 test("an active trigger candle does not need to close", () => {
@@ -440,16 +440,16 @@ test("raw patience breaks wait for the full confirmation buffer", () => {
   assert.equal(bearish.entryBufferPrice, 8);
 });
 
-test("eight-tick confirmation is governed and the thesis stop sits eight ticks beyond the opposite wick", () => {
+test("eight-tick confirmation is governed and the thesis stop sits twelve ticks beyond the opposite wick", () => {
   const result = patienceCandleEngine(setup("long", candle(2, 10.8, 13.75, 10.1, 13.7)), "long", {
     eligibilityEvents: eligibility(),
     entryBufferTicks: 8,
-    stopBufferTicks: 8,
+    stopBufferTicks: 12,
   });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.entryBufferTicks, 8);
   assert.equal(result.entryBufferPrice, 12);
-  assert.equal(result.strategyStopPrice, 5);
+  assert.equal(result.strategyStopPrice, 4);
 });
 
 test("a one-tick-short long and short excursion cannot confirm the governed buffer", () => {
@@ -529,7 +529,7 @@ test("a qualifying patience shape remains eligible beyond thirty minutes", () =>
 
 test("buffer configuration rejects unsupported confirmation widths", () => {
   assert.throws(() => patienceCandleEngine([], "long", { entryBufferTicks: 7 }), /exactly eight MES ticks/i);
-  assert.throws(() => patienceCandleEngine([], "long", { stopBufferTicks: 1 }), /exactly eight MES ticks/i);
+  assert.throws(() => patienceCandleEngine([], "long", { stopBufferTicks: 8 }), /exactly twelve MES ticks/i);
 });
 
 test("pullback and consolidation locations can open patience eligibility", () => {
@@ -679,7 +679,7 @@ test("a terminal boundary after confirmation preserves the earlier patience occu
     "bullish",
     0.25,
     8,
-    8,
+    12,
     false,
     "ORB_BREAKOUT",
   );

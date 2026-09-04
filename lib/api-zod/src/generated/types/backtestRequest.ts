@@ -49,7 +49,7 @@ export interface BacktestRequest {
   executionMode?: BacktestRequestExecutionMode;
   /** Exactly 8 MES ticks / 2.00 index points. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
-  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
+  /** Exactly twelve MES ticks beyond the frozen patience-candle extreme. */
   ohlcvStopBufferTicks?: BacktestRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0

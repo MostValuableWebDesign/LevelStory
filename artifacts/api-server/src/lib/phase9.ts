@@ -722,7 +722,7 @@ export type CandidateManagementContext = {
   patienceCandleOpenTime: string | null;
   patienceCandleHigh: number | null;
   patienceCandleLow: number | null;
-  stopBufferTicks: 8;
+  stopBufferTicks: 12;
   tickSize: 0.25;
   derivedStrategyStop: number | null;
   targetPlan?: KeyLevelTargetPlan;
@@ -3566,10 +3566,10 @@ function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): numbe
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   if (occurrence.direction === "long" && patienceLow !== null) {
-    return authoritativePatienceStopPrice("long", patienceLow, 8, 0.25);
+    return authoritativePatienceStopPrice("long", patienceLow, 12, 0.25);
   }
   if (occurrence.direction === "short" && patienceHigh !== null) {
-    return authoritativePatienceStopPrice("short", patienceHigh, 8, 0.25);
+    return authoritativePatienceStopPrice("short", patienceHigh, 12, 0.25);
   }
   return null;
 }
@@ -3655,7 +3655,7 @@ function freezeCandidateManagementContext(
     patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
     patienceCandleHigh: patienceHigh,
     patienceCandleLow: patienceLow,
-    stopBufferTicks: 8,
+    stopBufferTicks: 12,
     tickSize: 0.25,
     derivedStrategyStop: strategyStopPrice,
     targetPlan: targetPlan ?? undefined,
@@ -4713,7 +4713,7 @@ export function runCausalBacktest(
   }
   const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 8;
   const stopBufferTicks: number = Number(request.ohlcvStopBufferTicks ?? activeStrategy.config.patienceStopBufferTicks);
-  if (stopBufferTicks !== 8) throw new Error("OHLCV patience stop buffer must be exactly eight MES ticks.");
+  if (stopBufferTicks !== 12) throw new Error("OHLCV patience stop buffer must be exactly twelve MES ticks.");
   const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
   const commissionPerContract = request.ohlcvCommissionPerContract
     ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);

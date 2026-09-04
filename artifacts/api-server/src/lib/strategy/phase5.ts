@@ -655,7 +655,7 @@ function directionTrendMatches(direction: Direction, trend: TrendDirection): boo
 function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
   if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
   if (entryBufferTicks !== 8) throw new Error("Patience entry confirmation buffer must be exactly eight MES ticks (2.00 index points).");
-  if (stopBufferTicks !== 8) throw new Error("Patience stop buffer must be exactly eight MES ticks.");
+  if (stopBufferTicks !== 12) throw new Error("Patience stop buffer must be exactly twelve MES ticks.");
 }
 
 function roundPrice(price: number, tickSize: number): number {

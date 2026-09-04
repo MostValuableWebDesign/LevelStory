@@ -767,7 +767,7 @@ export const runBacktestBodyTargetDollarsMax = 100;
 export const runBacktestBodySlippageModeDefault = `normal`;
 export const runBacktestBodySourceDefault = `simulated`;
 export const runBacktestBodyOhlcvEntryBufferTicksDefault = 8;
-export const runBacktestBodyOhlcvStopBufferTicksDefault = 8;
+export const runBacktestBodyOhlcvStopBufferTicksDefault = 12;
 export const runBacktestBodyOhlcvSlippageTicksDefault = 1;
 export const runBacktestBodyOhlcvSlippageTicksMin = 0;
 export const runBacktestBodyOhlcvSlippageTicksMax = 8;
@@ -789,7 +789,7 @@ export const RunBacktestBody = zod.object({
   "source": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']).default(runBacktestBodySourceDefault),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
   "ohlcvEntryBufferTicks": zod.literal(8).default(runBacktestBodyOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
-  "ohlcvStopBufferTicks": zod.literal(8).default(runBacktestBodyOhlcvStopBufferTicksDefault).describe('Exactly eight MES ticks beyond the frozen patience-candle extreme.'),
+  "ohlcvStopBufferTicks": zod.literal(12).default(runBacktestBodyOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(runBacktestBodyOhlcvSlippageTicksMin).max(runBacktestBodyOhlcvSlippageTicksMax).default(runBacktestBodyOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(runBacktestBodyOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 })
@@ -1461,7 +1461,7 @@ export const startBatchBacktestBodyOneTargetDollarsMax = 100;
 export const startBatchBacktestBodyOneSlippageModeDefault = `normal`;
 export const startBatchBacktestBodyOneSourceDefault = `simulated`;
 export const startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault = 8;
-export const startBatchBacktestBodyOneOhlcvStopBufferTicksDefault = 8;
+export const startBatchBacktestBodyOneOhlcvStopBufferTicksDefault = 12;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksDefault = 1;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksMin = 0;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksMax = 8;
@@ -1486,7 +1486,7 @@ export const StartBatchBacktestBody = zod.object({
   "source": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']).default(startBatchBacktestBodyOneSourceDefault),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
   "ohlcvEntryBufferTicks": zod.literal(8).default(startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
-  "ohlcvStopBufferTicks": zod.literal(8).default(startBatchBacktestBodyOneOhlcvStopBufferTicksDefault).describe('Exactly eight MES ticks beyond the frozen patience-candle extreme.'),
+  "ohlcvStopBufferTicks": zod.literal(12).default(startBatchBacktestBodyOneOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(startBatchBacktestBodyOneOhlcvSlippageTicksMin).max(startBatchBacktestBodyOneOhlcvSlippageTicksMax).default(startBatchBacktestBodyOneOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(startBatchBacktestBodyOneOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 }).and(zod.object({
@@ -4905,7 +4905,7 @@ export const startEdgeValidationPilotBodySelectedDatesMin = 30;
 export const startEdgeValidationPilotBodySelectedDatesMax = 30;
 
 export const startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault = 8;
-export const startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault = 8;
+export const startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault = 12;
 export const startEdgeValidationPilotBodyOhlcvSlippageTicksDefault = 1;
 export const startEdgeValidationPilotBodyOhlcvSlippageTicksMin = 0;
 export const startEdgeValidationPilotBodyOhlcvSlippageTicksMax = 12;
@@ -4920,7 +4920,7 @@ export const StartEdgeValidationPilotBody = zod.object({
   "symbol": zod.enum(['MES']).default(startEdgeValidationPilotBodySymbolDefault),
   "selectedDates": zod.array(zod.string().regex(startEdgeValidationPilotBodySelectedDatesItemRegExp)).min(startEdgeValidationPilotBodySelectedDatesMin).max(startEdgeValidationPilotBodySelectedDatesMax),
   "ohlcvEntryBufferTicks": zod.literal(8).default(startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
-  "ohlcvStopBufferTicks": zod.literal(8).default(startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault).describe('Exactly eight MES ticks beyond the frozen patience-candle extreme.'),
+  "ohlcvStopBufferTicks": zod.literal(12).default(startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(startEdgeValidationPilotBodyOhlcvSlippageTicksMin).max(startEdgeValidationPilotBodyOhlcvSlippageTicksMax).default(startEdgeValidationPilotBodyOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(startEdgeValidationPilotBodyOhlcvCommissionPerContractMin).max(startEdgeValidationPilotBodyOhlcvCommissionPerContractMax).default(startEdgeValidationPilotBodyOhlcvCommissionPerContractDefault)
 }).describe('Immutable Phase 3 pilot request. Dates must be the exact 20-session in-sample and 10-session chronological holdout.')

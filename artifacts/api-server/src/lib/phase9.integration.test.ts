@@ -141,19 +141,19 @@ test("deterministic bullish and bearish A+ fixtures qualify with the governed en
     assert.equal(snapshot.shadowExecution?.contracts, 2, `seed ${seed}`);
 
     assert.equal(snapshot.patience.entryBufferTicks, 8, `seed ${seed}`);
-    assert.equal(snapshot.patience.stopBufferTicks, 8, `seed ${seed}`);
+    assert.equal(snapshot.patience.stopBufferTicks, 12, `seed ${seed}`);
     const patienceCandle = snapshot.patience.patienceCandle;
     assert.ok(patienceCandle, `seed ${seed} must expose P`);
     assert.equal(snapshot.patience.strategyStopPrice,
       direction === "long"
-        ? patienceCandle.low - 8 * specification.tickSize
-        : patienceCandle.high + 8 * specification.tickSize,
+        ? patienceCandle.low - 12 * specification.tickSize
+        : patienceCandle.high + 12 * specification.tickSize,
       `seed ${seed}`);
   }
 });
 
 test("deterministic modeled lifecycles start management after E and use the buffered P extreme", () => {
-  const longStop = 6973.75;
+  const longStop = 6972.75;
   const longRevisit = simulatePhase8ShadowExecution({
     direction: "long",
     entryQuote: { bid: 6977.75, ask: 6978.25 },
@@ -162,7 +162,7 @@ test("deterministic modeled lifecycles start management after E and use the buff
     currentPrice: 6975.75,
     low: 6975.75,
     strategyStop: longStop,
-    catastropheStop: 6973.5,
+    catastropheStop: 6972.5,
     target: 7000,
     contracts: 1,
     specification,
@@ -176,7 +176,7 @@ test("deterministic modeled lifecycles start management after E and use the buff
     currentPrice: longStop,
     low: longStop,
     strategyStop: longStop,
-    catastropheStop: 6973.5,
+    catastropheStop: 6972.5,
     target: 7000,
     contracts: 1,
     specification,
@@ -185,7 +185,7 @@ test("deterministic modeled lifecycles start management after E and use the buff
   assert.equal(longExit.stop, "strategy");
   assert.equal(longExit.exitFillPrice, 6973.25);
 
-  const shortStop = 6982.25;
+  const shortStop = 6983.25;
   const shortRevisit = simulatePhase8ShadowExecution({
     direction: "short",
     entryQuote: { bid: 6978.25, ask: 6978.75 },
@@ -194,7 +194,7 @@ test("deterministic modeled lifecycles start management after E and use the buff
     currentPrice: 6979.5,
     high: 6980.25,
     strategyStop: shortStop,
-    catastropheStop: 6982.5,
+    catastropheStop: 6983.5,
     target: 6950,
     contracts: 1,
     specification,
@@ -208,7 +208,7 @@ test("deterministic modeled lifecycles start management after E and use the buff
     currentPrice: shortStop,
     high: shortStop,
     strategyStop: shortStop,
-    catastropheStop: 6982.5,
+    catastropheStop: 6983.5,
     target: 6950,
     contracts: 1,
     specification,
