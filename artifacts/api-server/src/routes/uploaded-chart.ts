@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { Router, type IRouter } from "express";
+import { raw, Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, uploadedChartAnalysesTable } from "@workspace/db";
 import { requireRole } from "../middlewares/authMiddleware.js";
@@ -84,13 +84,42 @@ router.post("/uploaded-chart/request-url", requireRole("reviewer"), requestRateL
   }
   try {
     const objectPath = newUploadedChartObjectPath();
-    const uploadUrl = await signUploadedChartObjectUrl(objectPath, "PUT");
-    res.json({ uploadUrl, objectPath, maxBytes: MAX_BYTES, acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp"] });
+    res.json({ uploadUrl: "/api/uploaded-chart/upload", objectPath, maxBytes: MAX_BYTES, acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp"] });
   } catch (error) {
     req.log?.error({ error }, "Uploaded chart URL generation failed");
     res.status(500).json({ error: "Unable to prepare private chart storage." });
   }
 });
+
+router.put(
+  "/uploaded-chart/upload",
+  requireRole("reviewer"),
+  raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "10mb" }),
+  async (req, res) => {
+    const objectPath = typeof req.headers["x-object-path"] === "string" ? req.headers["x-object-path"] : "";
+    const declaredMime = typeof req.headers["content-type"] === "string" ? req.headers["content-type"].split(";")[0] : "";
+    const bytes = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!bytes || !objectPath || !["image/png", "image/jpeg", "image/webp"].includes(declaredMime)) {
+      res.status(400).json({ error: "A valid chart image and upload path are required." });
+      return;
+    }
+    try {
+      validateUploadedChartBytes(bytes, declaredMime as "image/png" | "image/jpeg" | "image/webp");
+      const uploadUrl = await signUploadedChartObjectUrl(objectPath, "PUT");
+      const stored = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": declaredMime },
+        body: bytes,
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!stored.ok) throw new Error(`Private object storage rejected the upload (${stored.status}).`);
+      res.status(201).json({ objectPath, sizeBytes: bytes.length });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Chart upload failed.";
+      res.status(/10 MB/.test(message) ? 413 : 422).json({ error: message });
+    }
+  },
+);
 
 router.post("/uploaded-chart/analyze", requireRole("reviewer"), requestRateLimit({ windowMs: 60_000, max: 20, message: "Chart analysis is temporarily limited." }), async (req, res) => {
   const parsed = uploadedChartMetadataSchema.safeParse(req.body);

@@ -157,7 +157,12 @@ export function UploadedChartAnalysis({ activeSnapshot, authenticated = false }:
       const urlBody = await urlResponse.json() as { uploadUrl?: string; objectPath?: string; error?: string };
       if (!urlResponse.ok || !urlBody.uploadUrl || !urlBody.objectPath) throw new Error(apiError(urlResponse, urlBody));
       setMessage("Image stored. Reading visible chart evidence…");
-      const uploadResponse = await fetch(urlBody.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      const uploadResponse = await fetch(urlBody.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type, "X-Object-Path": urlBody.objectPath },
+        credentials: "include",
+        body: file,
+      });
       if (!uploadResponse.ok) throw new Error("Private image storage rejected the upload.");
       const analysisResponse = await fetch("/api/uploaded-chart/analyze", {
         method: "POST",
