@@ -844,6 +844,10 @@ export default function VisualReview() {
              />
           </div>
 
+           <div className="mt-5 w-full" data-testid="combined-shadow-replay-section">
+             <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={openReviewPanels.replay} onToggleOpen={() => toggleReviewPanel("replay")} />
+           </div>
+
             {generationActive ? <div className="mt-5"><Panel><QuerySkeleton rows={6} /></Panel></div> : setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
              <Panel accent>
                <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -910,9 +914,6 @@ export default function VisualReview() {
               ) : <div className="space-y-5"><UnavailableWorkspace coverage={coverage} source={data.source} /></div>}
             </>
           )}
-          <div className="mt-5 w-full" data-testid="combined-shadow-replay-section">
-             <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={openReviewPanels.replay} onToggleOpen={() => toggleReviewPanel("replay")} />
-          </div>
            {data && activeSnapshot && <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
              <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
              <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
@@ -2169,8 +2170,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                  const legIsFocused = focusedTradeExitKind === leg.kind;
                  const legIsDimmed = focusedTradeExitKind !== null && !legIsFocused;
                   return <>
-                    <line x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={legColor} strokeWidth={legIsFocused ? "3" : "1.5"} strokeDasharray="1 4" opacity={legIsDimmed ? ".18" : "1"} data-testid={`trade-leg-line-${leg.kind ?? "unknown"}-${index}`} />
-                   <circle cx={x} cy={y(leg.fillPrice ?? entryPrice)} r={legIsFocused ? "6" : "4"} fill={legColor} stroke="hsl(var(--card))" strokeWidth={legIsFocused ? "2" : "1.5"} opacity={legIsDimmed ? ".18" : "1"} />
+                    <line className={legIsFocused ? "levelstory-selected-pulse" : undefined} x1={entryX} x2={x} y1={y(leg.fillPrice ?? entryPrice)} y2={y(leg.fillPrice ?? entryPrice)} stroke={legColor} strokeWidth={legIsFocused ? "3" : "1.5"} strokeDasharray="1 4" opacity={legIsDimmed ? ".18" : "1"} data-testid={`trade-leg-line-${leg.kind ?? "unknown"}-${index}`} />
+                   <circle className={legIsFocused ? "levelstory-selected-pulse" : undefined} cx={x} cy={y(leg.fillPrice ?? entryPrice)} r={legIsFocused ? "6" : "4"} fill={legColor} stroke="hsl(var(--card))" strokeWidth={legIsFocused ? "2" : "1.5"} opacity={legIsDimmed ? ".18" : "1"} />
                  </>;
                })()}
               <title>{`${leg.kind ?? "leg"} leg · ${leg.quantity ?? "—"} contracts · ${leg.exitReason ?? "exit"} · ${leg.fillPrice == null ? "price unavailable" : formatPriceAxisValue(leg.fillPrice)}`}</title>
