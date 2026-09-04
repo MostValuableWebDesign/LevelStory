@@ -415,6 +415,7 @@ export default function VisualReview() {
     seed: storedReviewSource() === "simulated" ? 11 : undefined,
   }));
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
+  const [reviewSetRequested, setReviewSetRequested] = useState(false);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
   const [loadLatestReviewSet, setLoadLatestReviewSet] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
@@ -438,17 +439,17 @@ export default function VisualReview() {
     setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
   };
 
-  const pinnedReviewSetId = loadLatestReviewSet ? "" : reviewSetId;
+  const startGeneration = useStartVisualValidationGenerationJob();
+  const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
-    { query: { enabled: !Boolean(generationJobId) && (Boolean(pinnedReviewSetId) || loadLatestReviewSet), staleTime: 30_000, queryKey: ["visual-validation-set", pinnedReviewSetId || "latest"] } },
+    { query: { enabled: reviewSetRequested && !startGeneration.isPending && !Boolean(generationJobId) && (Boolean(pinnedReviewSetId) || loadLatestReviewSet), staleTime: 30_000, queryKey: ["visual-validation-set", pinnedReviewSetId || "latest"] } },
   );
-  const startGeneration = useStartVisualValidationGenerationJob();
   const generationQuery = useGetVisualValidationGenerationJob(
     generationJobId,
     {
       query: {
-        enabled: Boolean(generationJobId),
+        enabled: reviewSetRequested && Boolean(generationJobId),
         queryKey: ["visual-validation-generation-job", generationJobId],
         staleTime: 0,
         refetchInterval: (query) => {
@@ -461,11 +462,12 @@ export default function VisualReview() {
   const recordReview = useRecordVisualValidationReview();
   const analyzeRule = useAnalyzeVisualValidationTeaching();
   const generationJob: VisualValidationGenerationJob | null = generationQuery.data ?? startGeneration.data ?? null;
-  const generationActive = generationJob?.status === "queued"
+  const generationActive = startGeneration.isPending
+    || generationJob?.status === "queued"
     || generationJob?.status === "running"
     || (Boolean(generationJobId) && generationQuery.isLoading);
-  const replayReviewSetId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
-  const exportId = localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId;
+  const replayReviewSetId = reviewSetRequested ? localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId : "";
+  const exportId = reviewSetRequested ? localSet?.reviewSetId ?? setQuery.data?.reviewSetId ?? reviewSetId : "";
   const exportQuery = useExportVisualValidationDiscrepancies(
     { reviewSetId: exportId || "00000000-0000-0000-0000-000000000000" },
     { query: { enabled: false, queryKey: ["visual-validation-discrepancies", exportId || "none"] } },
@@ -697,6 +699,9 @@ export default function VisualReview() {
   const startReviewSetGeneration = (regenerateFresh = false) => {
     if (!confirmDiscardReview()) return;
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
+    setReviewSetRequested(true);
+    setGenerationJobId("");
+    if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
     setMessage("");
     setReport(null);
     setLocalSet(null);

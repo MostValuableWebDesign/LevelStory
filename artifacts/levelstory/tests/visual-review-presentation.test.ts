@@ -172,6 +172,15 @@ test("visual review never keeps a stale or expired pinned review set", () => {
   assert.match(page, /pinnedReviewSetId \? \{ reviewSetId: pinnedReviewSetId \} : undefined/);
 });
 
+test("visual review waits for an explicit generation action before loading saved trade data", () => {
+  assert.match(page, /const \[reviewSetRequested, setReviewSetRequested\] = useState\(false\)/);
+  assert.match(page, /enabled: reviewSetRequested && !startGeneration\.isPending && !Boolean\(generationJobId\)/);
+  assert.match(page, /enabled: reviewSetRequested && Boolean\(generationJobId\)/);
+  assert.match(page, /const replayReviewSetId = reviewSetRequested \?/);
+  assert.match(page, /setReviewSetRequested\(true\)/);
+  assert.match(page, /setGenerationJobId\(""\)/);
+});
+
 test("visual review exposes only confirmed trade candidates", () => {
   assert.match(page, /trades_only/);
   assert.doesNotMatch(page, /data-testid="diagnostic-categories"/);
