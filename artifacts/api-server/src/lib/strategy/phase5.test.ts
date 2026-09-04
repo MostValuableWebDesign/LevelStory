@@ -67,6 +67,24 @@ test("valid bearish patience candle triggers below the patience low", () => {
   assert.equal(result.triggerPrice, 8);
 });
 
+test("patience candles may match the previous candle high or low exactly", () => {
+  const bullish = patienceCandleEngine([
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 12, 7, 11.5),
+    candle(2, 11.5, 14, 11, 14),
+  ], "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
+  const bearish = patienceCandleEngine([
+    candle(0, 10, 12, 8, 9.5),
+    candle(1, 9.5, 13, 8, 8.5),
+    candle(2, 8.5, 8, 6, 6),
+  ], "short", { eligibilityEvents: eligibility(), tickSize: 0.25 });
+
+  assert.equal(bullish.state, "ENTRY_TRIGGERED");
+  assert.equal(bullish.patienceCandle?.high, bullish.previousCandle?.high);
+  assert.equal(bearish.state, "ENTRY_TRIGGERED");
+  assert.equal(bearish.patienceCandle?.low, bearish.previousCandle?.low);
+});
+
 test("the Aug 5 10:45 short candidate confirms at the intended buffer", () => {
   const result = patienceCandleEngine(
     [
