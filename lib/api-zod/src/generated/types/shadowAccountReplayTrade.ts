@@ -18,7 +18,10 @@ export interface ShadowAccountReplayTrade {
   signalOccurrenceId: string;
   /** @minLength 1 */
   snapshotId: string;
+  tradingDate: string;
   entryTime: Date;
+  /** @nullable */
+  exitTime: Date | null;
   /** @minLength 1 */
   contractSymbol: string;
   /** @minLength 1 */
@@ -28,6 +31,14 @@ export interface ShadowAccountReplayTrade {
   /** @nullable */
   exitPrice: number | null;
   exitReason: string;
+  /** @minimum 1 */
+  contracts: number;
+  /** @nullable */
+  grossPnl: number | null;
+  /** @nullable */
+  fees: number | null;
+  /** @nullable */
+  slippage: number | null;
   /** @nullable */
   netPnl: number | null;
   runningBalance: number;

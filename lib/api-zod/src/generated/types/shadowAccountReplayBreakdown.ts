@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ShadowAccountReplaySegment {
+export interface ShadowAccountReplayBreakdown {
+  value: string;
   /** @minimum 0 */
   enteredTrades: number;
   /** @minimum 0 */

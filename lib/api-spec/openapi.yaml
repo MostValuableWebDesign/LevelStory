@@ -4189,6 +4189,13 @@ components:
               detail: { type: string }
             required: [kind, timestamp, detail]
       required: [candidateId, snapshotId, signalOccurrenceId, contractSymbol, tradingDate, entryCandleOpenTime, entryCandleCloseTime, direction, entryTriggerPrice, primaryEdge, matchedEdges, supportingConfluences, setupGrade, period, outcome, causalEvidence]
+    VisualValidationAccountReplayTrade:
+      type: object
+      properties:
+        candidate: { $ref: "#/components/schemas/VisualValidationTradeCandidate" }
+        trade: { $ref: "#/components/schemas/BacktestTrade" }
+        snapshotId: { type: ["string", "null"] }
+      required: [candidate, trade, snapshotId]
     ShadowAccountReplaySegment:
       type: object
       properties:
@@ -4197,13 +4204,15 @@ components:
         openTrades: { type: number, minimum: 0 }
         wins: { type: number, minimum: 0 }
         losses: { type: number, minimum: 0 }
+        flatTrades: { type: number, minimum: 0 }
+        unscoredTrades: { type: number, minimum: 0 }
         winRate: { type: number, minimum: 0, maximum: 100 }
         netPnl: { type: number }
         averageWin: { type: number }
         averageLoss: { type: number }
         profitFactor: { type: ["number", "null"], minimum: 0 }
         expectancyPerTrade: { type: number }
-      required: [enteredTrades, closedTrades, openTrades, wins, losses, winRate, netPnl, averageWin, averageLoss, profitFactor, expectancyPerTrade]
+      required: [enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, flatTrades, winRate, netPnl, averageWin, averageLoss, profitFactor, expectancyPerTrade]
     ShadowAccountReplayTrade:
       type: object
       properties:
@@ -4211,21 +4220,27 @@ components:
         candidateId: { type: string, minLength: 1 }
         signalOccurrenceId: { type: string, minLength: 1 }
         snapshotId: { type: string, minLength: 1 }
+        tradingDate: { type: string }
         entryTime: { type: string, format: date-time }
+        exitTime: { type: ["string", "null"], format: date-time }
         contractSymbol: { type: string, minLength: 1 }
         primaryEdge: { type: string, minLength: 1 }
         direction: { type: string, enum: [long, short] }
         entryPrice: { type: number }
         exitPrice: { type: ["number", "null"] }
         exitReason: { type: string }
+        contracts: { type: number, minimum: 1 }
+        grossPnl: { type: ["number", "null"] }
+        fees: { type: ["number", "null"] }
+        slippage: { type: ["number", "null"] }
         netPnl: { type: ["number", "null"] }
         runningBalance: { type: number }
         supportingConfluences:
           type: array
           items: { type: string }
         period: { type: string, enum: [in_sample, out_of_sample] }
-        status: { type: string, enum: [closed, open] }
-      required: [tradeNumber, candidateId, signalOccurrenceId, snapshotId, entryTime, contractSymbol, primaryEdge, direction, entryPrice, exitPrice, exitReason, netPnl, runningBalance, supportingConfluences, period, status]
+        status: { type: string, enum: [closed, open, unscored] }
+      required: [tradeNumber, candidateId, signalOccurrenceId, snapshotId, tradingDate, entryTime, exitTime, contractSymbol, primaryEdge, direction, entryPrice, exitPrice, exitReason, contracts, grossPnl, fees, slippage, netPnl, runningBalance, supportingConfluences, period, status]
     ShadowAccountReplay:
       type: object
       properties:
@@ -4238,6 +4253,7 @@ components:
         enteredTrades: { type: number, minimum: 0 }
         closedTrades: { type: number, minimum: 0 }
         openTrades: { type: number, minimum: 0 }
+        unscoredTrades: { type: number, minimum: 0 }
         wins: { type: number, minimum: 0 }
         losses: { type: number, minimum: 0 }
         winRate: { type: number, minimum: 0, maximum: 100 }
@@ -4248,6 +4264,22 @@ components:
         maxConsecutiveWins: { type: number, minimum: 0 }
         maxConsecutiveLosses: { type: number, minimum: 0 }
         expectancyPerTrade: { type: number }
+        processedDates: { type: array, items: { type: string } }
+        datesWithTrades: { type: array, items: { type: string } }
+        datesWithoutTrades: { type: array, items: { type: string } }
+        byDate:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayBreakdown" }
+        byPrimaryEdge:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayBreakdown" }
+        byDirection:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayBreakdown" }
+        bestTrade: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/ShadowAccountReplayTrade" }] }
+        worstTrade: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/ShadowAccountReplayTrade" }] }
+        bestTradingDay: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/ShadowAccountReplayBreakdown" }] }
+        worstTradingDay: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/ShadowAccountReplayBreakdown" }] }
         inSample: { $ref: "#/components/schemas/ShadowAccountReplaySegment" }
         outOfSample: { $ref: "#/components/schemas/ShadowAccountReplaySegment" }
         equityCurve:
@@ -4255,11 +4287,11 @@ components:
           items:
             type: object
             properties:
-              tradeNumber: { type: number, minimum: 1 }
+              tradeNumber: { type: number, minimum: 0 }
               entryTime: { type: string, format: date-time }
               balance: { type: number }
               netPnl: { type: ["number", "null"] }
-              status: { type: string, enum: [win, loss, flat, open] }
+              status: { type: string, enum: [win, loss, flat, open, start] }
             required: [tradeNumber, entryTime, balance, netPnl, status]
         ledger:
           type: array
@@ -4273,7 +4305,25 @@ components:
         warnings:
           type: array
           items: { type: string }
-      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, warnings]
+      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, processedDates, datesWithTrades, datesWithoutTrades, byDate, byPrimaryEdge, byDirection, bestTrade, worstTrade, bestTradingDay, worstTradingDay, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, warnings]
+    ShadowAccountReplayBreakdown:
+      type: object
+      properties:
+        value: { type: string }
+        enteredTrades: { type: number, minimum: 0 }
+        closedTrades: { type: number, minimum: 0 }
+        openTrades: { type: number, minimum: 0 }
+        wins: { type: number, minimum: 0 }
+        losses: { type: number, minimum: 0 }
+        flatTrades: { type: number, minimum: 0 }
+        unscoredTrades: { type: number, minimum: 0 }
+        winRate: { type: number, minimum: 0, maximum: 100 }
+        netPnl: { type: number }
+        averageWin: { type: number }
+        averageLoss: { type: number }
+        profitFactor: { type: ["number", "null"], minimum: 0 }
+        expectancyPerTrade: { type: number }
+      required: [value, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, flatTrades, winRate, netPnl, averageWin, averageLoss, profitFactor, expectancyPerTrade]
     VisualValidationReviewPeriod:
       type: object
       properties:
@@ -4304,12 +4354,16 @@ components:
         symbol: { type: string }
         request: { $ref: "#/components/schemas/VisualValidationRequest" }
         reviewPeriod: { $ref: "#/components/schemas/VisualValidationReviewPeriod" }
+        processedDates: { type: array, items: { type: string } }
         snapshots:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationSnapshot" }
         tradeCandidates:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationTradeCandidate" }
+        accountReplayTrades:
+          type: array
+          items: { $ref: "#/components/schemas/VisualValidationAccountReplayTrade" }
         categoryCoverage:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationCategoryCoverage" }
@@ -4344,7 +4398,7 @@ components:
                 outsidePrimaryWindowOccurrences: { type: number, minimum: 0 }
               required: [breakoutOccurrences, qualifyingPullbacks, patienceCandidates, expiredPatienceCandidates, confirmedPairs, riskApprovedEntries, primaryWindowOccurrences, outsidePrimaryWindowOccurrences]
           required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, window]
-      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, generationOrigin, cacheKey, cacheKeyVersion, strategyVersion, candidateProjectionVersion, executionManagementVersion, snapshotProjectionVersion, chartProjectionVersion, sessionCalendarVersion, source, symbol, request, reviewPeriod, snapshots, tradeCandidates, categoryCoverage, defaultSelectionReason]
+      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, generationOrigin, cacheKey, cacheKeyVersion, strategyVersion, candidateProjectionVersion, executionManagementVersion, snapshotProjectionVersion, chartProjectionVersion, sessionCalendarVersion, source, symbol, request, reviewPeriod, processedDates, snapshots, tradeCandidates, accountReplayTrades, categoryCoverage, defaultSelectionReason]
     VisualValidationGenerationPhase:
       type: string
       enum: [preparing, loading_sessions, replaying_sessions, building_ledger, projecting_candidates, building_snapshots, completed]

@@ -54,11 +54,23 @@ test("visual review presents the read-only Shadow Account Replay states and audi
   assert.match(page, /data-testid="input-shadow-contracts-per-trade"/);
   assert.match(page, /data-testid="shadow-equity-curve"/);
   assert.match(page, /data-testid="shadow-trade-ledger"/);
-  assert.match(page, /Date\/time ET/);
+  assert.match(page, /Entry ET/);
+  assert.match(page, /Exit ET/);
+  assert.match(page, /Candidate \/ occurrence/);
+  assert.match(page, /Gross P\/L/);
+  assert.match(page, /Fees/);
+  assert.match(page, /Slippage/);
   assert.match(page, /Exit reason/);
   assert.match(page, /Confluences/);
-  assert.match(page, /No compounding, broker, paper, or live action/);
+  assert.match(page, /no compounding, broker, paper, or live action/i);
   assert.match(page, /formatReplayTime/);
+  assert.match(page, /Combined Shadow Account Replay/);
+  assert.match(page, /data-testid="combined-shadow-replay-section"/);
+  assert.match(page, /data-testid="shadow-replay-date-scope"/);
+  assert.match(page, /Processed dates/);
+  assert.match(page, /Daily breakdown/);
+  assert.match(page, /Primary edge breakdown/);
+  assert.match(page, /Direction breakdown/);
 });
 
 test("visual review presentation retains human-only shading and semantic level colors", () => {

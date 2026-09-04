@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ShadowAccountReplayBreakdown } from './shadowAccountReplayBreakdown';
 import type { ShadowAccountReplayEquityCurveItem } from './shadowAccountReplayEquityCurveItem';
 import type { ShadowAccountReplaySegment } from './shadowAccountReplaySegment';
 import type { ShadowAccountReplayTrade } from './shadowAccountReplayTrade';
@@ -24,6 +25,8 @@ export interface ShadowAccountReplay {
   closedTrades: number;
   /** @minimum 0 */
   openTrades: number;
+  /** @minimum 0 */
+  unscoredTrades: number;
   /** @minimum 0 */
   wins: number;
   /** @minimum 0 */
@@ -47,6 +50,20 @@ export interface ShadowAccountReplay {
   /** @minimum 0 */
   maxConsecutiveLosses: number;
   expectancyPerTrade: number;
+  processedDates: string[];
+  datesWithTrades: string[];
+  datesWithoutTrades: string[];
+  byDate: ShadowAccountReplayBreakdown[];
+  byPrimaryEdge: ShadowAccountReplayBreakdown[];
+  byDirection: ShadowAccountReplayBreakdown[];
+  /** @nullable */
+  bestTrade: ShadowAccountReplayTrade | null;
+  /** @nullable */
+  worstTrade: ShadowAccountReplayTrade | null;
+  /** @nullable */
+  bestTradingDay: ShadowAccountReplayBreakdown | null;
+  /** @nullable */
+  worstTradingDay: ShadowAccountReplayBreakdown | null;
   inSample: ShadowAccountReplaySegment;
   outOfSample: ShadowAccountReplaySegment;
   equityCurve: ShadowAccountReplayEquityCurveItem[];

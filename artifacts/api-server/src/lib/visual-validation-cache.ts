@@ -54,12 +54,14 @@ export function visualValidationCacheMetadata(
   request: VisualValidationRequest,
   sourceFingerprint: string,
   sessionCalendarVersion = DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
+  processedDates: readonly string[] = [],
 ): VisualValidationCacheMetadata {
   const active = activeShadowStrategySnapshot();
   const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, active.config);
   const strategyVersion = active.versionId
     ? `${active.strategyKey}:${active.versionId}:${active.versionNumber ?? "unknown"}`
     : `baseline:${active.formulaVersion}:${active.formulaHash}`;
+  const normalizedProcessedDates = [...new Set(processedDates)].sort();
   const cacheInput = {
     cacheKeyVersion: VISUAL_VALIDATION_CACHE_KEY_VERSION,
     sourceFingerprint,
@@ -79,6 +81,7 @@ export function visualValidationCacheMetadata(
       inSampleDays: request.inSampleDays,
       outOfSampleDays: request.outOfSampleDays,
     },
+    processedDates: normalizedProcessedDates,
     displaySettings: {
       premarketAvailable: request.premarketAvailable !== false,
       reviewMode: request.reviewMode ?? "trades_only",

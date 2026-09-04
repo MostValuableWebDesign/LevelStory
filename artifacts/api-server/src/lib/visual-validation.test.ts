@@ -518,7 +518,27 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
       targetDisposition: "KEY_LEVEL_SELECTED" as const,
     }],
   };
-  const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, report);
+  const unretainedCandidate = {
+    ...report.tradeCandidates![0]!,
+    candidateId: `${candidateId}|unretained`,
+    signalOccurrenceId: "occ-unretained-trade",
+    eOpenTimestamp: new Date(Date.parse(confirmed.eOpenTimestamp!) + 5 * 60_000).toISOString(),
+    entryObservationTimestamp: new Date(Date.parse(confirmed.entryObservationTimestamp!) + 5 * 60_000).toISOString(),
+    expectedEntryTimestamp: new Date(Date.parse(confirmed.expectedEntryTimestamp!) + 5 * 60_000).toISOString(),
+  };
+  const unretainedTrade = {
+    ...linkedTrade,
+    id: "trade-unretained",
+    candidateId: unretainedCandidate.candidateId,
+    signalOccurrenceId: unretainedCandidate.signalOccurrenceId,
+    entryTime: unretainedCandidate.entryObservationTimestamp,
+  };
+  const reportWithUnretainedTrade = {
+    ...report,
+    trades: [linkedTrade, unretainedTrade],
+    tradeCandidates: [report.tradeCandidates![0]!, unretainedCandidate],
+  };
+  const tradeOnly = buildHistoricalVisualValidationSetFromReport(request, fixture.dataset, reportWithUnretainedTrade);
   const tradePatience = tradeOnly.snapshots.filter((snapshot) => snapshot.category === "bullish_patience_candle");
   assert.deepEqual(tradePatience.map((snapshot) => snapshot.occurrenceId), ["occ-91377c979c13164ac403"]);
   assert.equal(tradeOnly.snapshots.some((snapshot) => snapshot.category === "qualified_trade"
@@ -527,6 +547,8 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "entry_fill")?.openTime, confirmed.entryTimestamp);
   assert.equal(tradePatience[0]?.machineEvidence.trade?.candidateId, candidateId);
   assert.equal(tradePatience[0]?.machineEvidence.trade?.signalOccurrenceId, confirmed.occurrenceId);
+  assert.equal(tradeOnly.accountReplayTrades.length, 2);
+  assert.equal(tradeOnly.accountReplayTrades.some((entry) => entry.candidate.candidateId === unretainedCandidate.candidateId && entry.snapshotId === null), true);
   assert.equal(tradePatience[0]?.tradeEvents.find((event) => event.event === "patience")?.closeTime, confirmed.entryTimestamp);
   assert.equal(tradePatience[0]?.annotations.find((annotation) => annotation.id === "target")?.price, candidateTargetPlan.targetPrice);
   assert.match(tradePatience[0]?.annotations.find((annotation) => annotation.id === "selected-target-level")?.label ?? "", /candidate-resistance/);

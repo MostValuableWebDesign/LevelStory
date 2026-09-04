@@ -8,7 +8,7 @@
 import type { ShadowAccountReplayEquityCurveItemStatus } from './shadowAccountReplayEquityCurveItemStatus';
 
 export type ShadowAccountReplayEquityCurveItem = {
-  /** @minimum 1 */
+  /** @minimum 0 */
   tradeNumber: number;
   entryTime: Date;
   balance: number;

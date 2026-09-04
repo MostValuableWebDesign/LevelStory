@@ -12,4 +12,5 @@ export type ShadowAccountReplayTradeStatus = typeof ShadowAccountReplayTradeStat
 export const ShadowAccountReplayTradeStatus = {
   closed: 'closed',
   open: 'open',
+  unscored: 'unscored',
 } as const;

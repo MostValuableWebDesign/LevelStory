@@ -23,6 +23,7 @@ import type { SimulatedFuturesCandle } from "./futures/simulated-feed.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 import {
   classifyFuturesSession,
+  DEFAULT_FUTURES_SESSION_CALENDAR,
   sessionCalendarForContract,
   sessionWindow,
   tradingDateForTimestamp,
@@ -261,6 +262,12 @@ export type VisualValidationTradeCandidate = {
   causalEvidence: Array<{ kind: "level" | "patience" | "entry"; timestamp: string; detail: string }>;
 };
 
+export type VisualValidationAccountReplayTrade = {
+  candidate: VisualValidationTradeCandidate;
+  trade: BacktestTrade;
+  snapshotId: string | null;
+};
+
 export type VisualValidationReviewPeriod = {
   startDate: string;
   endDate: string;
@@ -288,8 +295,10 @@ export type VisualValidationSet = {
   symbol: string;
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
+  processedDates: string[];
   snapshots: VisualValidationSnapshot[];
   tradeCandidates: VisualValidationTradeCandidate[];
+  accountReplayTrades: VisualValidationAccountReplayTrade[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: Pick<QualificationFunnel, "sessionCount" | "candidateCount" | "occurrenceCount" | "stages" | "rejectionCounts"> & {
@@ -368,6 +377,100 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
     }
   }
   return [...candidateById.values()];
+}
+
+function canonicalVisualEdgeId(edge: string): string {
+  return ({
+    ORB_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    ORB_BREAK_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    CONSOLIDATION_BREAKOUT_CONTINUATION: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+  }[edge] ?? edge);
+}
+
+function replayCandidateFromHistorical(
+  candidate: HistoricalTradeCandidate,
+  trade: BacktestTrade,
+  snapshotId: string | null,
+): VisualValidationTradeCandidate {
+  const entryOpenTime = trade.audit?.triggerCandleOpenTime ?? candidate.eOpenTimestamp;
+  const entryCloseTime = trade.audit?.triggerCandleCloseTime
+    ?? new Date(Date.parse(entryOpenTime) + 5 * 60_000).toISOString();
+  return {
+    candidateId: candidate.candidateId,
+    snapshotId: snapshotId ?? `replay-${hashJson([candidate.candidateId, candidate.signalOccurrenceId]).slice(0, 16)}`,
+    signalOccurrenceId: candidate.signalOccurrenceId,
+    contractSymbol: candidate.contractSymbol,
+    tradingDate: candidate.tradingDate,
+    entryCandleOpenTime: entryOpenTime,
+    entryCandleCloseTime: entryCloseTime,
+    direction: candidate.direction,
+    entryTriggerPrice: candidate.confirmationPrice,
+    primaryEdge: canonicalVisualEdgeId(candidate.primaryEdge),
+    matchedEdges: [...new Set([candidate.primaryEdge, ...candidate.matchedEdges].map(canonicalVisualEdgeId))],
+    supportingConfluences: [...new Set([...candidate.supportingConfluences, ...(trade.supportingConfluences ?? [])])],
+    setupGrade: trade.setupGrade ?? candidate.grade,
+    period: candidatePeriod(candidate, trade),
+    outcome: trade.outcome,
+    causalEvidence: [
+      { kind: "level", timestamp: candidate.pOpenTimestamp, detail: "P candle / causal level context" },
+      { kind: "patience", timestamp: candidate.patienceTimestamp, detail: "Confirmed patience candle" },
+      { kind: "entry", timestamp: candidate.entryObservationTimestamp, detail: "Completed E close / entry observation" },
+    ],
+  };
+}
+
+function candidatePeriod(candidate: HistoricalTradeCandidate, trade: BacktestTrade): VisualValidationTradeCandidate["period"] {
+  return trade.period ?? (candidate.tradingDate ? "in_sample" : "out_of_sample");
+}
+
+function buildAccountReplayTradesFromReport(
+  report: Pick<BacktestReport, "trades"> & Partial<Pick<BacktestReport, "tradeCandidates">>,
+  snapshots: readonly VisualValidationSnapshot[],
+): VisualValidationAccountReplayTrade[] {
+  const snapshotsByCandidateId = new Map(
+    buildTradeCandidates([...snapshots]).map((candidate) => [candidate.candidateId, candidate.snapshotId]),
+  );
+  const entries: VisualValidationAccountReplayTrade[] = [];
+  for (const candidate of report.tradeCandidates ?? []) {
+    if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
+    const trades = report.trades
+      .filter((trade) =>
+        trade.candidateId === candidate.candidateId
+        && trade.signalOccurrenceId === candidate.signalOccurrenceId,
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const trade = trades[0];
+    if (!trade) continue;
+    entries.push({
+      candidate: replayCandidateFromHistorical(candidate, trade, snapshotsByCandidateId.get(candidate.candidateId) ?? null),
+      trade: {
+        ...trade,
+        candidateId: candidate.candidateId,
+        signalOccurrenceId: candidate.signalOccurrenceId,
+      },
+      snapshotId: snapshotsByCandidateId.get(candidate.candidateId) ?? null,
+    });
+  }
+  return [...new Map(entries.map((entry) => [`${entry.candidate.candidateId}|${entry.candidate.signalOccurrenceId}`, entry])).values()];
+}
+
+function buildAccountReplayTradesFromSnapshots(
+  snapshots: readonly VisualValidationSnapshot[],
+): VisualValidationAccountReplayTrade[] {
+  const candidates = buildTradeCandidates([...snapshots]);
+  return [...new Map(
+    candidates.flatMap((candidate) => {
+      const snapshot = snapshots.find((item) => item.snapshotId === candidate.snapshotId);
+      const trade = snapshot?.machineEvidence.trade;
+      return snapshot && trade?.candidateId === candidate.candidateId && trade.signalOccurrenceId === candidate.signalOccurrenceId
+        ? [{ candidate, trade, snapshotId: snapshot.snapshotId }]
+        : [];
+    }).map((entry) => [`${entry.candidate.candidateId}|${entry.candidate.signalOccurrenceId}`, entry]),
+  ).values()];
+}
+
+function processedDatesForDataset(dataset: Pick<CausalReplayDataset, "selectedDates" | "inSampleDates" | "outOfSampleDates">): string[] {
+  return [...new Set(dataset.selectedDates ?? [...dataset.inSampleDates, ...dataset.outOfSampleDates])].sort();
 }
 
 export const VISUAL_VALIDATION_TRADE_CATEGORIES: readonly VisualValidationCategory[] = [
@@ -2221,19 +2324,36 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     undefined,
     candidateSelectionReason({ audit: fixture.audit, trade: fixture.trade, category: fixture.category }),
   ));
+  const accountReplayTrades = buildAccountReplayTradesFromSnapshots(snapshots);
+  const snapshotCandidates = buildTradeCandidates(snapshots);
+  const tradeCandidates = [...new Map([
+    ...snapshotCandidates,
+    ...accountReplayTrades.map((entry) => entry.candidate),
+  ].map((candidate) => [candidate.candidateId, candidate])).values()];
+  const fixtureDataset = fixtures[0]?.dataset;
+  const processedDates = fixtureDataset
+    ? [...new Set([...fixtureDataset.inSampleDates, ...fixtureDataset.outOfSampleDates])].sort()
+    : [];
   return {
     buildId: APPLICATION_BUILD_ID,
     currentBuildId: APPLICATION_BUILD_ID,
     stale: false,
     sourceFingerprint,
     generationOrigin: "fresh",
-    ...visualValidationCacheMetadata(request, sourceFingerprint),
+    ...visualValidationCacheMetadata(
+      request,
+      sourceFingerprint,
+      DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
+      processedDates,
+    ),
     source: "simulated",
     symbol: request.symbol,
     request: { ...request, source: "simulated" },
     reviewPeriod,
+    processedDates,
     snapshots,
-     tradeCandidates: buildTradeCandidates(snapshots),
+    tradeCandidates,
+    accountReplayTrades,
     defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,
@@ -2352,6 +2472,12 @@ export function buildHistoricalVisualValidationSetFromReport(
       candidate.candidateRejection,
     );
   });
+  const accountReplayTrades = buildAccountReplayTradesFromReport(report, snapshots);
+  const snapshotCandidates = buildTradeCandidates(snapshots);
+  const tradeCandidates = [...new Map([
+    ...snapshotCandidates,
+    ...accountReplayTrades.map((entry) => entry.candidate),
+  ].map((candidate) => [candidate.candidateId, candidate])).values()];
   const funnelDiagnostics = report.dataset && report.contract
     ? (() => {
         const funnel = buildQualificationFunnel([report as Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">]);
@@ -2395,13 +2521,16 @@ export function buildHistoricalVisualValidationSetFromReport(
       request,
       cacheSourceFingerprint,
       dataset.contractSchedule?.version,
+      processedDatesForDataset(dataset),
     ),
     source: "historical_databento",
     symbol: request.symbol,
     request: { ...request, source: "historical_databento" },
     reviewPeriod: reviewPeriodForDataset(dataset, request.endDate),
+    processedDates: processedDatesForDataset(dataset),
     snapshots,
-    tradeCandidates: buildTradeCandidates(snapshots),
+    tradeCandidates,
+    accountReplayTrades,
     defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available.",
     categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
       category,

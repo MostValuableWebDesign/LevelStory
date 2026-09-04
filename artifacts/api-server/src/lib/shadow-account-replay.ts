@@ -13,8 +13,10 @@ export type ShadowAccountReplaySegment = {
   enteredTrades: number;
   closedTrades: number;
   openTrades: number;
+  unscoredTrades: number;
   wins: number;
   losses: number;
+  flatTrades: number;
   winRate: number;
   netPnl: number;
   averageWin: number;
@@ -28,18 +30,28 @@ export type ShadowAccountReplayTrade = {
   candidateId: string;
   signalOccurrenceId: string;
   snapshotId: string;
+  tradingDate: string;
   entryTime: string;
+  exitTime: string | null;
   contractSymbol: string;
   primaryEdge: string;
   direction: VisualValidationTradeCandidate["direction"];
   entryPrice: number;
   exitPrice: number | null;
   exitReason: string;
+  contracts: number;
+  grossPnl: number | null;
+  fees: number | null;
+  slippage: number | null;
   netPnl: number | null;
   runningBalance: number;
   supportingConfluences: string[];
   period: VisualValidationTradeCandidate["period"];
-  status: "closed" | "open";
+  status: "closed" | "open" | "unscored";
+};
+
+export type ShadowAccountReplayBreakdown = ShadowAccountReplaySegment & {
+  value: string;
 };
 
 export type ShadowAccountReplay = {
@@ -52,6 +64,7 @@ export type ShadowAccountReplay = {
   enteredTrades: number;
   closedTrades: number;
   openTrades: number;
+  unscoredTrades: number;
   wins: number;
   losses: number;
   winRate: number;
@@ -62,6 +75,16 @@ export type ShadowAccountReplay = {
   maxConsecutiveWins: number;
   maxConsecutiveLosses: number;
   expectancyPerTrade: number;
+  processedDates: string[];
+  datesWithTrades: string[];
+  datesWithoutTrades: string[];
+  byDate: ShadowAccountReplayBreakdown[];
+  byPrimaryEdge: ShadowAccountReplayBreakdown[];
+  byDirection: ShadowAccountReplayBreakdown[];
+  bestTrade: ShadowAccountReplayTrade | null;
+  worstTrade: ShadowAccountReplayTrade | null;
+  bestTradingDay: ShadowAccountReplayBreakdown | null;
+  worstTradingDay: ShadowAccountReplayBreakdown | null;
   inSample: ShadowAccountReplaySegment;
   outOfSample: ShadowAccountReplaySegment;
   equityCurve: Array<{
@@ -69,7 +92,7 @@ export type ShadowAccountReplay = {
     entryTime: string;
     balance: number;
     netPnl: number | null;
-    status: "win" | "loss" | "flat" | "open";
+    status: "win" | "loss" | "flat" | "open" | "start";
   }>;
   ledger: ShadowAccountReplayTrade[];
   stale: boolean;
@@ -97,9 +120,11 @@ function roundMoney(value: number): number {
 
 function segmentStats(trades: ShadowAccountReplayTrade[]): ShadowAccountReplaySegment {
   const closed = trades.filter((trade) => trade.status === "closed" && trade.netPnl !== null);
-  const open = trades.length - closed.length;
+  const unscored = trades.filter((trade) => trade.status === "unscored");
+  const open = trades.length - closed.length - unscored.length;
   const wins = closed.filter((trade) => trade.netPnl! > 0);
   const losses = closed.filter((trade) => trade.netPnl! < 0);
+  const flatTrades = closed.filter((trade) => trade.netPnl === 0);
   const netPnl = closed.reduce((total, trade) => total + (trade.netPnl ?? 0), 0);
   const grossWins = wins.reduce((total, trade) => total + (trade.netPnl ?? 0), 0);
   const grossLosses = Math.abs(losses.reduce((total, trade) => total + (trade.netPnl ?? 0), 0));
@@ -107,8 +132,10 @@ function segmentStats(trades: ShadowAccountReplayTrade[]): ShadowAccountReplaySe
     enteredTrades: trades.length,
     closedTrades: closed.length,
     openTrades: open,
+    unscoredTrades: unscored.length,
     wins: wins.length,
     losses: losses.length,
+    flatTrades: flatTrades.length,
     winRate: closed.length ? (wins.length / closed.length) * 100 : 0,
     netPnl: roundMoney(netPnl),
     averageWin: wins.length ? roundMoney(grossWins / wins.length) : 0,
@@ -135,6 +162,15 @@ function isWithinEntryCutoff(entryTime: string): boolean {
 function scaleNetPnl(trade: BacktestTrade, contractsPerTrade: number): number {
   const sourceContracts = trade.contracts > 0 ? trade.contracts : 1;
   return roundMoney(trade.netPnl * (contractsPerTrade / sourceContracts));
+}
+
+function scaleTradeValue(value: number, trade: BacktestTrade, contractsPerTrade: number): number {
+  const sourceContracts = trade.contracts > 0 ? trade.contracts : 1;
+  return roundMoney(value * (contractsPerTrade / sourceContracts));
+}
+
+function breakdown(value: string, trades: ShadowAccountReplayTrade[]): ShadowAccountReplayBreakdown {
+  return { value, ...segmentStats(trades) };
 }
 
 function consecutiveStats(trades: ShadowAccountReplayTrade[]): { maxWins: number; maxLosses: number } {
@@ -170,15 +206,20 @@ export function buildShadowAccountReplay(
   const matchingTrades: MatchedTrade[] = [];
   const seenTradeIds = new Set<string>();
   const warnings: string[] = [];
+  const replaySources = Array.isArray(set.accountReplayTrades)
+    ? set.accountReplayTrades
+    : set.snapshots.flatMap((snapshot) => snapshot.machineEvidence.trade
+      ? [{ candidate: candidatesById.get(snapshot.machineEvidence.trade.candidateId ?? ""), trade: snapshot.machineEvidence.trade, snapshotId: snapshot.snapshotId }]
+      : []);
 
-  for (const snapshot of set.snapshots) {
-    const trade = snapshot.machineEvidence.trade;
+  for (const source of replaySources) {
+    const trade = source.trade;
     if (!trade?.candidateId || !trade.signalOccurrenceId) continue;
-    const candidate = candidatesById.get(trade.candidateId);
+    const candidate = source.candidate ?? candidatesById.get(trade.candidateId);
     if (!candidate || candidate.signalOccurrenceId !== trade.signalOccurrenceId) continue;
     if (seenTradeIds.has(trade.id)) continue;
     seenTradeIds.add(trade.id);
-    matchingTrades.push({ candidate, snapshotId: candidate.snapshotId, trade });
+    matchingTrades.push({ candidate, snapshotId: source.snapshotId ?? candidate.snapshotId, trade });
   }
 
   matchingTrades.sort((left, right) =>
@@ -199,14 +240,27 @@ export function buildShadowAccountReplay(
     selectedByCandidate.set(match.candidate.candidateId, match);
   }
 
+  const processedDates = [...new Set(set.processedDates ?? [
+    ...set.tradeCandidates.map((candidate) => candidate.tradingDate),
+    ...matchingTrades.map((match) => match.trade.tradingDate),
+  ])].sort();
   let runningBalance = startingBalance;
   const ledger: ShadowAccountReplayTrade[] = [];
   const equityCurve: ShadowAccountReplay["equityCurve"] = [];
+  equityCurve.push({
+    tradeNumber: 0,
+    entryTime: processedDates[0] ? `${processedDates[0]}T00:00:00.000Z` : new Date(0).toISOString(),
+    balance: startingBalance,
+    netPnl: null,
+    status: "start",
+  });
   for (const match of [...selectedByCandidate.values()].sort((left, right) =>
     Date.parse(left.trade.entryTime) - Date.parse(right.trade.entryTime)
     || left.candidate.candidateId.localeCompare(right.candidate.candidateId))) {
     const { candidate, trade } = match;
-    const closed = trade.exitTime !== null && trade.outcome !== "open";
+    const unscored = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
+    const closed = !unscored && trade.exitTime !== null && trade.outcome !== "open";
+    const status = unscored ? "unscored" as const : closed ? "closed" as const : "open" as const;
     const netPnl = closed ? scaleNetPnl(trade, contractsPerTrade) : null;
     if (netPnl !== null) runningBalance = roundMoney(runningBalance + netPnl);
     const ledgerTrade: ShadowAccountReplayTrade = {
@@ -214,18 +268,24 @@ export function buildShadowAccountReplay(
       candidateId: candidate.candidateId,
       signalOccurrenceId: candidate.signalOccurrenceId,
       snapshotId: candidate.snapshotId,
+      tradingDate: trade.tradingDate,
       entryTime: trade.entryTime,
+      exitTime: closed ? trade.exitTime : null,
       contractSymbol: candidate.contractSymbol,
       primaryEdge: candidate.primaryEdge,
       direction: candidate.direction,
       entryPrice: trade.entryPrice,
       exitPrice: closed ? trade.exitPrice : null,
-      exitReason: closed ? (trade.audit?.exitReason ?? trade.outcome) : "open",
+      exitReason: unscored ? "unscored" : closed ? (trade.audit?.exitReason ?? trade.outcome) : "open",
+      contracts: contractsPerTrade,
+      grossPnl: closed ? scaleTradeValue(trade.grossPnl, trade, contractsPerTrade) : null,
+      fees: closed ? scaleTradeValue(trade.fees, trade, contractsPerTrade) : null,
+      slippage: closed ? scaleTradeValue(trade.slippage, trade, contractsPerTrade) : null,
       netPnl,
       runningBalance,
       supportingConfluences: [...candidate.supportingConfluences],
       period: candidate.period,
-      status: closed ? "closed" : "open",
+      status,
     };
     ledger.push(ledgerTrade);
     equityCurve.push({
@@ -241,6 +301,26 @@ export function buildShadowAccountReplay(
   const summary = segmentStats(ledger);
   const inSample = segmentStats(ledger.filter((trade) => trade.period === "in_sample"));
   const outOfSample = segmentStats(ledger.filter((trade) => trade.period === "out_of_sample"));
+  const datesWithTrades = [...new Set(ledger.map((trade) => trade.tradingDate))].sort();
+  const datesWithoutTrades = processedDates.filter((date) => !datesWithTrades.includes(date));
+  const byDate = processedDates.map((date) => breakdown(date, ledger.filter((trade) => trade.tradingDate === date)));
+  const byPrimaryEdge = [...new Set(ledger.map((trade) => trade.primaryEdge))].sort()
+    .map((value) => breakdown(value, ledger.filter((trade) => trade.primaryEdge === value)));
+  const byDirection = ["long", "short"].filter((value) => ledger.some((trade) => trade.direction === value))
+    .map((value) => breakdown(value, ledger.filter((trade) => trade.direction === value)));
+  const closedLedger = ledger.filter((trade) => trade.status === "closed" && trade.netPnl !== null);
+  const bestTrade = closedLedger.reduce<ShadowAccountReplayTrade | null>(
+    (best, trade) => !best || trade.netPnl! > best.netPnl! ? trade : best,
+    null,
+  );
+  const worstTrade = closedLedger.reduce<ShadowAccountReplayTrade | null>(
+    (worst, trade) => !worst || trade.netPnl! < worst.netPnl! ? trade : worst,
+    null,
+  );
+  const bestTradingDay = byDate.filter((item) => item.closedTrades > 0)
+    .reduce<ShadowAccountReplayBreakdown | null>((best, item) => !best || item.netPnl > best.netPnl ? item : best, null);
+  const worstTradingDay = byDate.filter((item) => item.closedTrades > 0)
+    .reduce<ShadowAccountReplayBreakdown | null>((worst, item) => !worst || item.netPnl < worst.netPnl ? item : worst, null);
   let peak = startingBalance;
   let maxDrawdown = 0;
   for (const point of equityCurve) {
@@ -260,6 +340,7 @@ export function buildShadowAccountReplay(
     enteredTrades: ledger.length,
     closedTrades: summary.closedTrades,
     openTrades: summary.openTrades,
+    unscoredTrades: summary.unscoredTrades,
     wins: summary.wins,
     losses: summary.losses,
     winRate: summary.winRate,
@@ -270,6 +351,16 @@ export function buildShadowAccountReplay(
     maxConsecutiveWins: consecutive.maxWins,
     maxConsecutiveLosses: consecutive.maxLosses,
     expectancyPerTrade: summary.expectancyPerTrade,
+    processedDates,
+    datesWithTrades,
+    datesWithoutTrades,
+    byDate,
+    byPrimaryEdge,
+    byDirection,
+    bestTrade,
+    worstTrade,
+    bestTradingDay,
+    worstTradingDay,
     inSample,
     outOfSample,
     equityCurve,

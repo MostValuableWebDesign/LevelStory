@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationAccountReplayTrade } from './visualValidationAccountReplayTrade';
 import type { VisualValidationCategoryCoverage } from './visualValidationCategoryCoverage';
 import type { VisualValidationRequest } from './visualValidationRequest';
 import type { VisualValidationReviewPeriod } from './visualValidationReviewPeriod';
@@ -48,8 +49,10 @@ export interface VisualValidationSet {
   symbol: string;
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
+  processedDates: string[];
   snapshots: VisualValidationSnapshot[];
   tradeCandidates: VisualValidationTradeCandidate[];
+  accountReplayTrades: VisualValidationAccountReplayTrade[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;

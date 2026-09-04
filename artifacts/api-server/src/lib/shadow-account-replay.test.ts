@@ -133,7 +133,22 @@ test("open trades are listed but excluded from realized account metrics", () => 
   assert.equal(result.closedTrades, 1);
   assert.equal(result.realizedNetPnl, 100);
   assert.equal(result.ledger[0]?.netPnl, null);
-  assert.equal(result.equityCurve[0]?.status, "open");
+  assert.equal(result.equityCurve[0]?.status, "start");
+  assert.equal(result.equityCurve[1]?.status, "open");
+});
+
+test("ambiguous outcomes remain visible as unscored without changing realized balance", () => {
+  const result = buildShadowAccountReplay(replaySet(
+    [candidate("ambiguous")],
+    [snapshot(trade("ambiguous-trade", 100, "ambiguous", { ambiguityLabel: "AMBIGUOUS_STOP_FIRST" }))],
+  ));
+
+  assert.equal(result.enteredTrades, 1);
+  assert.equal(result.unscoredTrades, 1);
+  assert.equal(result.closedTrades, 0);
+  assert.equal(result.realizedNetPnl, 0);
+  assert.equal(result.ledger[0]?.status, "unscored");
+  assert.equal(result.ledger[0]?.netPnl, null);
 });
 
 test("candidates without modeled trades do not affect the account", () => {
@@ -185,4 +200,52 @@ test("in-sample and out-of-sample metrics remain separated", () => {
 test("replay source has no broker, live-order, or paper-trading path", () => {
   const source = readFileSync(new URL("./shadow-account-replay.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /createOrder|placeOrder|submitOrder|paper trading/i);
+});
+
+test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {
+  const first = candidate("first");
+  const second = { ...candidate("second"), tradingDate: "2026-08-26", entryCandleOpenTime: "2026-08-26T13:30:00.000Z", entryCandleCloseTime: "2026-08-26T13:35:00.000Z" };
+  const third = { ...candidate("third"), tradingDate: "2026-08-28", entryCandleOpenTime: "2026-08-28T13:30:00.000Z", entryCandleCloseTime: "2026-08-28T13:35:00.000Z", direction: "short" as const, primaryEdge: "STRONG_BREAKOUT_AFTER_CONSOLIDATION" };
+  const firstTrade = trade("trade-first", 100, "first");
+  const secondTrade = trade("trade-second", -40, "second", {
+    tradingDate: "2026-08-26",
+    entryTime: "2026-08-26T13:35:00.000Z",
+    exitTime: "2026-08-26T14:00:00.000Z",
+  });
+  const thirdTrade = trade("trade-third", 75, "third", {
+    tradingDate: "2026-08-28",
+    entryTime: "2026-08-28T13:35:00.000Z",
+    exitTime: "2026-08-28T14:00:00.000Z",
+    direction: "short",
+    primaryEdge: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+  });
+  const replaySetWithDates = {
+    ...replaySet([first, second, third], []),
+    processedDates: ["2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28"],
+    accountReplayTrades: [
+      { candidate: first, trade: firstTrade, snapshotId: first.snapshotId },
+      { candidate: second, trade: secondTrade, snapshotId: second.snapshotId },
+      { candidate: third, trade: thirdTrade, snapshotId: null },
+      { candidate: third, trade: thirdTrade, snapshotId: null },
+    ],
+  } as unknown as VisualValidationSet;
+
+  const result = buildShadowAccountReplay(replaySetWithDates, { startingBalance: 10_000, contractsPerTrade: 1 });
+
+  assert.deepEqual(result.processedDates, ["2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28"]);
+  assert.deepEqual(result.datesWithTrades, ["2026-08-25", "2026-08-26", "2026-08-28"]);
+  assert.deepEqual(result.datesWithoutTrades, ["2026-08-27"]);
+  assert.deepEqual(result.ledger.map((item) => item.candidateId), ["first", "second", "third"]);
+  assert.deepEqual(result.ledger.map((item) => item.runningBalance), [10100, 10060, 10135]);
+  assert.equal(result.equityCurve[0]?.balance, 10_000);
+  assert.equal(result.equityCurve.length, 4);
+  assert.equal(result.byDate.length, 4);
+  assert.equal(result.byDate.find((item) => item.value === "2026-08-27")?.enteredTrades, 0);
+  assert.equal(result.byDirection.find((item) => item.value === "short")?.netPnl, 75);
+  assert.equal(result.byPrimaryEdge.find((item) => item.value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION")?.netPnl, 75);
+  assert.equal(result.bestTrade?.candidateId, "first");
+  assert.equal(result.worstTrade?.candidateId, "second");
+  assert.equal(result.bestTradingDay?.value, "2026-08-25");
+  assert.equal(result.worstTradingDay?.value, "2026-08-26");
+  assert.equal(result.byDate.reduce((total, item) => total + item.netPnl, 0), result.realizedNetPnl);
 });

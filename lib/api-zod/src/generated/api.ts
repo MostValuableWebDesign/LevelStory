@@ -5309,6 +5309,11 @@ export const getVisualValidationSetResponseSnapshotsItemReviewTeachingFormulaHas
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
+
+export const getVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
+
+export const getVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
+
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 export const getVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
@@ -5375,6 +5380,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "startDate": zod.string().regex(getVisualValidationSetResponseReviewPeriodStartDateRegExp),
   "endDate": zod.string().regex(getVisualValidationSetResponseReviewPeriodEndDateRegExp)
 }),
+  "processedDates": zod.array(zod.string()),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
   "occurrenceId": zod.string().optional(),
@@ -5610,6 +5616,128 @@ export const GetVisualValidationSetResponse = zod.object({
   "detail": zod.string()
 }))
 })),
+  "accountReplayTrades": zod.array(zod.object({
+  "candidate": zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+}),
+  "trade": zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().nullable().describe('Modeled or observed exit event time in UTC; null while the trade is open.'),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
+  "ambiguityLabel": zod.string().nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "primaryEdge": zod.string().optional(),
+  "matchedEdges": zod.array(zod.string()).optional(),
+  "supportingConfluences": zod.array(zod.string()).optional(),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(getVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(getVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
+  "patienceCandleOpenTime": zod.string().nullable(),
+  "patienceCandleCloseTime": zod.string().nullable(),
+  "triggerCandleOpenTime": zod.string().nullable(),
+  "triggerCandleCloseTime": zod.string().nullable(),
+  "modeledFillObservationTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "exitCandleCloseTime": zod.string().nullable(),
+  "eventLabels": zod.array(zod.string()),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
+}))
+}).optional()
+}),
+  "snapshotId": zod.string().nullable()
+})),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "label": zod.string(),
@@ -5736,6 +5864,11 @@ export const createVisualValidationSetResponseSnapshotsItemReviewTeachingFormula
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
+
+export const createVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
+
+export const createVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
+
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
 export const createVisualValidationSetResponseFunnelDiagnosticsSessionCountMin = 0;
@@ -5802,6 +5935,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "startDate": zod.string().regex(createVisualValidationSetResponseReviewPeriodStartDateRegExp),
   "endDate": zod.string().regex(createVisualValidationSetResponseReviewPeriodEndDateRegExp)
 }),
+  "processedDates": zod.array(zod.string()),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
   "occurrenceId": zod.string().optional(),
@@ -6037,6 +6171,128 @@ export const CreateVisualValidationSetResponse = zod.object({
   "detail": zod.string()
 }))
 })),
+  "accountReplayTrades": zod.array(zod.object({
+  "candidate": zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+}),
+  "trade": zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().nullable().describe('Modeled or observed exit event time in UTC; null while the trade is open.'),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
+  "ambiguityLabel": zod.string().nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "primaryEdge": zod.string().optional(),
+  "matchedEdges": zod.array(zod.string()).optional(),
+  "supportingConfluences": zod.array(zod.string()).optional(),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(createVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(createVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
+  "patienceCandleOpenTime": zod.string().nullable(),
+  "patienceCandleCloseTime": zod.string().nullable(),
+  "triggerCandleOpenTime": zod.string().nullable(),
+  "triggerCandleCloseTime": zod.string().nullable(),
+  "modeledFillObservationTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "exitCandleCloseTime": zod.string().nullable(),
+  "eventLabels": zod.array(zod.string()),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
+}))
+}).optional()
+}),
+  "snapshotId": zod.string().nullable()
+})),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "label": zod.string(),
@@ -6100,6 +6356,8 @@ export const getShadowAccountReplayResponseClosedTradesMin = 0;
 
 export const getShadowAccountReplayResponseOpenTradesMin = 0;
 
+export const getShadowAccountReplayResponseUnscoredTradesMin = 0;
+
 export const getShadowAccountReplayResponseWinsMin = 0;
 
 export const getShadowAccountReplayResponseLossesMin = 0;
@@ -6115,6 +6373,115 @@ export const getShadowAccountReplayResponseMaxConsecutiveWinsMin = 0;
 
 export const getShadowAccountReplayResponseMaxConsecutiveLossesMin = 0;
 
+export const getShadowAccountReplayResponseByDateItemEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemWinsMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemLossesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemUnscoredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDateItemWinRateMin = 0;
+export const getShadowAccountReplayResponseByDateItemWinRateMax = 100;
+
+export const getShadowAccountReplayResponseByDateItemProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemWinsMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemLossesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemUnscoredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemWinRateMin = 0;
+export const getShadowAccountReplayResponseByPrimaryEdgeItemWinRateMax = 100;
+
+export const getShadowAccountReplayResponseByPrimaryEdgeItemProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemWinsMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemLossesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemUnscoredTradesMin = 0;
+
+export const getShadowAccountReplayResponseByDirectionItemWinRateMin = 0;
+export const getShadowAccountReplayResponseByDirectionItemWinRateMax = 100;
+
+export const getShadowAccountReplayResponseByDirectionItemProfitFactorMin = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const getShadowAccountReplayResponseBestTradingDayOneEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneWinsMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneLossesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneUnscoredTradesMin = 0;
+
+export const getShadowAccountReplayResponseBestTradingDayOneWinRateMin = 0;
+export const getShadowAccountReplayResponseBestTradingDayOneWinRateMax = 100;
+
+export const getShadowAccountReplayResponseBestTradingDayOneProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneEnteredTradesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneClosedTradesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneOpenTradesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneWinsMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneLossesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneUnscoredTradesMin = 0;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneWinRateMin = 0;
+export const getShadowAccountReplayResponseWorstTradingDayOneWinRateMax = 100;
+
+export const getShadowAccountReplayResponseWorstTradingDayOneProfitFactorMin = 0;
+
 export const getShadowAccountReplayResponseInSampleEnteredTradesMin = 0;
 
 export const getShadowAccountReplayResponseInSampleClosedTradesMin = 0;
@@ -6124,6 +6491,10 @@ export const getShadowAccountReplayResponseInSampleOpenTradesMin = 0;
 export const getShadowAccountReplayResponseInSampleWinsMin = 0;
 
 export const getShadowAccountReplayResponseInSampleLossesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseInSampleUnscoredTradesMin = 0;
 
 export const getShadowAccountReplayResponseInSampleWinRateMin = 0;
 export const getShadowAccountReplayResponseInSampleWinRateMax = 100;
@@ -6140,10 +6511,16 @@ export const getShadowAccountReplayResponseOutOfSampleWinsMin = 0;
 
 export const getShadowAccountReplayResponseOutOfSampleLossesMin = 0;
 
+export const getShadowAccountReplayResponseOutOfSampleFlatTradesMin = 0;
+
+export const getShadowAccountReplayResponseOutOfSampleUnscoredTradesMin = 0;
+
 export const getShadowAccountReplayResponseOutOfSampleWinRateMin = 0;
 export const getShadowAccountReplayResponseOutOfSampleWinRateMax = 100;
 
 export const getShadowAccountReplayResponseOutOfSampleProfitFactorMin = 0;
+
+export const getShadowAccountReplayResponseEquityCurveItemTradeNumberMin = 0;
 
 
 
@@ -6169,6 +6546,7 @@ export const GetShadowAccountReplayResponse = zod.object({
   "enteredTrades": zod.number().min(getShadowAccountReplayResponseEnteredTradesMin),
   "closedTrades": zod.number().min(getShadowAccountReplayResponseClosedTradesMin),
   "openTrades": zod.number().min(getShadowAccountReplayResponseOpenTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseUnscoredTradesMin),
   "wins": zod.number().min(getShadowAccountReplayResponseWinsMin),
   "losses": zod.number().min(getShadowAccountReplayResponseLossesMin),
   "winRate": zod.number().min(getShadowAccountReplayResponseWinRateMin).max(getShadowAccountReplayResponseWinRateMax),
@@ -6179,12 +6557,145 @@ export const GetShadowAccountReplayResponse = zod.object({
   "maxConsecutiveWins": zod.number().min(getShadowAccountReplayResponseMaxConsecutiveWinsMin),
   "maxConsecutiveLosses": zod.number().min(getShadowAccountReplayResponseMaxConsecutiveLossesMin),
   "expectancyPerTrade": zod.number(),
+  "processedDates": zod.array(zod.string()),
+  "datesWithTrades": zod.array(zod.string()),
+  "datesWithoutTrades": zod.array(zod.string()),
+  "byDate": zod.array(zod.object({
+  "value": zod.string(),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseByDateItemEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseByDateItemClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseByDateItemOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseByDateItemWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseByDateItemLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseByDateItemFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseByDateItemUnscoredTradesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseByDateItemWinRateMin).max(getShadowAccountReplayResponseByDateItemWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseByDateItemProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+})),
+  "byPrimaryEdge": zod.array(zod.object({
+  "value": zod.string(),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemUnscoredTradesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemWinRateMin).max(getShadowAccountReplayResponseByPrimaryEdgeItemWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseByPrimaryEdgeItemProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+})),
+  "byDirection": zod.array(zod.object({
+  "value": zod.string(),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseByDirectionItemEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseByDirectionItemClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseByDirectionItemOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseByDirectionItemWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseByDirectionItemLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseByDirectionItemFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseByDirectionItemUnscoredTradesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseByDirectionItemWinRateMin).max(getShadowAccountReplayResponseByDirectionItemWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseByDirectionItemProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+})),
+  "bestTrade": zod.object({
+  "tradeNumber": zod.number().min(1),
+  "candidateId": zod.string().min(1),
+  "signalOccurrenceId": zod.string().min(1),
+  "snapshotId": zod.string().min(1),
+  "tradingDate": zod.string(),
+  "entryTime": zod.coerce.date(),
+  "exitTime": zod.coerce.date().nullable(),
+  "contractSymbol": zod.string().min(1),
+  "primaryEdge": zod.string().min(1),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "exitReason": zod.string(),
+  "contracts": zod.number().min(1),
+  "grossPnl": zod.number().nullable(),
+  "fees": zod.number().nullable(),
+  "slippage": zod.number().nullable(),
+  "netPnl": zod.number().nullable(),
+  "runningBalance": zod.number(),
+  "supportingConfluences": zod.array(zod.string()),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "status": zod.enum(['closed', 'open', 'unscored'])
+}).nullable(),
+  "worstTrade": zod.object({
+  "tradeNumber": zod.number().min(1),
+  "candidateId": zod.string().min(1),
+  "signalOccurrenceId": zod.string().min(1),
+  "snapshotId": zod.string().min(1),
+  "tradingDate": zod.string(),
+  "entryTime": zod.coerce.date(),
+  "exitTime": zod.coerce.date().nullable(),
+  "contractSymbol": zod.string().min(1),
+  "primaryEdge": zod.string().min(1),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "exitReason": zod.string(),
+  "contracts": zod.number().min(1),
+  "grossPnl": zod.number().nullable(),
+  "fees": zod.number().nullable(),
+  "slippage": zod.number().nullable(),
+  "netPnl": zod.number().nullable(),
+  "runningBalance": zod.number(),
+  "supportingConfluences": zod.array(zod.string()),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "status": zod.enum(['closed', 'open', 'unscored'])
+}).nullable(),
+  "bestTradingDay": zod.object({
+  "value": zod.string(),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneUnscoredTradesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneWinRateMin).max(getShadowAccountReplayResponseBestTradingDayOneWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseBestTradingDayOneProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+}).nullable(),
+  "worstTradingDay": zod.object({
+  "value": zod.string(),
+  "enteredTrades": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneEnteredTradesMin),
+  "closedTrades": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneClosedTradesMin),
+  "openTrades": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneOpenTradesMin),
+  "wins": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneWinsMin),
+  "losses": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneUnscoredTradesMin),
+  "winRate": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneWinRateMin).max(getShadowAccountReplayResponseWorstTradingDayOneWinRateMax),
+  "netPnl": zod.number(),
+  "averageWin": zod.number(),
+  "averageLoss": zod.number(),
+  "profitFactor": zod.number().min(getShadowAccountReplayResponseWorstTradingDayOneProfitFactorMin).nullable(),
+  "expectancyPerTrade": zod.number()
+}).nullable(),
   "inSample": zod.object({
   "enteredTrades": zod.number().min(getShadowAccountReplayResponseInSampleEnteredTradesMin),
   "closedTrades": zod.number().min(getShadowAccountReplayResponseInSampleClosedTradesMin),
   "openTrades": zod.number().min(getShadowAccountReplayResponseInSampleOpenTradesMin),
   "wins": zod.number().min(getShadowAccountReplayResponseInSampleWinsMin),
   "losses": zod.number().min(getShadowAccountReplayResponseInSampleLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseInSampleFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseInSampleUnscoredTradesMin),
   "winRate": zod.number().min(getShadowAccountReplayResponseInSampleWinRateMin).max(getShadowAccountReplayResponseInSampleWinRateMax),
   "netPnl": zod.number(),
   "averageWin": zod.number(),
@@ -6198,6 +6709,8 @@ export const GetShadowAccountReplayResponse = zod.object({
   "openTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleOpenTradesMin),
   "wins": zod.number().min(getShadowAccountReplayResponseOutOfSampleWinsMin),
   "losses": zod.number().min(getShadowAccountReplayResponseOutOfSampleLossesMin),
+  "flatTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleFlatTradesMin),
+  "unscoredTrades": zod.number().min(getShadowAccountReplayResponseOutOfSampleUnscoredTradesMin),
   "winRate": zod.number().min(getShadowAccountReplayResponseOutOfSampleWinRateMin).max(getShadowAccountReplayResponseOutOfSampleWinRateMax),
   "netPnl": zod.number(),
   "averageWin": zod.number(),
@@ -6206,29 +6719,35 @@ export const GetShadowAccountReplayResponse = zod.object({
   "expectancyPerTrade": zod.number()
 }),
   "equityCurve": zod.array(zod.object({
-  "tradeNumber": zod.number().min(1),
+  "tradeNumber": zod.number().min(getShadowAccountReplayResponseEquityCurveItemTradeNumberMin),
   "entryTime": zod.coerce.date(),
   "balance": zod.number(),
   "netPnl": zod.number().nullable(),
-  "status": zod.enum(['win', 'loss', 'flat', 'open'])
+  "status": zod.enum(['win', 'loss', 'flat', 'open', 'start'])
 })),
   "ledger": zod.array(zod.object({
   "tradeNumber": zod.number().min(1),
   "candidateId": zod.string().min(1),
   "signalOccurrenceId": zod.string().min(1),
   "snapshotId": zod.string().min(1),
+  "tradingDate": zod.string(),
   "entryTime": zod.coerce.date(),
+  "exitTime": zod.coerce.date().nullable(),
   "contractSymbol": zod.string().min(1),
   "primaryEdge": zod.string().min(1),
   "direction": zod.enum(['long', 'short']),
   "entryPrice": zod.number(),
   "exitPrice": zod.number().nullable(),
   "exitReason": zod.string(),
+  "contracts": zod.number().min(1),
+  "grossPnl": zod.number().nullable(),
+  "fees": zod.number().nullable(),
+  "slippage": zod.number().nullable(),
   "netPnl": zod.number().nullable(),
   "runningBalance": zod.number(),
   "supportingConfluences": zod.array(zod.string()),
   "period": zod.enum(['in_sample', 'out_of_sample']),
-  "status": zod.enum(['closed', 'open'])
+  "status": zod.enum(['closed', 'open', 'unscored'])
 })),
   "stale": zod.boolean(),
   "cacheKey": zod.string().min(1),
@@ -6347,6 +6866,11 @@ export const startVisualValidationGenerationJobResponseResultSnapshotsItemReview
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
+
+export const startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
+
+export const startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
+
 export const startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const startVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -6428,6 +6952,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "startDate": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
   "endDate": zod.string().regex(startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
 }),
+  "processedDates": zod.array(zod.string()),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
   "occurrenceId": zod.string().optional(),
@@ -6663,6 +7188,128 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "detail": zod.string()
 }))
 })),
+  "accountReplayTrades": zod.array(zod.object({
+  "candidate": zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+}),
+  "trade": zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().nullable().describe('Modeled or observed exit event time in UTC; null while the trade is open.'),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
+  "ambiguityLabel": zod.string().nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "primaryEdge": zod.string().optional(),
+  "matchedEdges": zod.array(zod.string()).optional(),
+  "supportingConfluences": zod.array(zod.string()).optional(),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
+  "patienceCandleOpenTime": zod.string().nullable(),
+  "patienceCandleCloseTime": zod.string().nullable(),
+  "triggerCandleOpenTime": zod.string().nullable(),
+  "triggerCandleCloseTime": zod.string().nullable(),
+  "modeledFillObservationTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "exitCandleCloseTime": zod.string().nullable(),
+  "eventLabels": zod.array(zod.string()),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
+}))
+}).optional()
+}),
+  "snapshotId": zod.string().nullable()
+})),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "label": zod.string(),
@@ -6782,6 +7429,11 @@ export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemRe
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
+
+export const getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
+
+export const getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
+
 export const getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const getLatestVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -6863,6 +7515,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "startDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
   "endDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
 }),
+  "processedDates": zod.array(zod.string()),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
   "occurrenceId": zod.string().optional(),
@@ -7098,6 +7751,128 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "detail": zod.string()
 }))
 })),
+  "accountReplayTrades": zod.array(zod.object({
+  "candidate": zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+}),
+  "trade": zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().nullable().describe('Modeled or observed exit event time in UTC; null while the trade is open.'),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
+  "ambiguityLabel": zod.string().nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "primaryEdge": zod.string().optional(),
+  "matchedEdges": zod.array(zod.string()).optional(),
+  "supportingConfluences": zod.array(zod.string()).optional(),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
+  "patienceCandleOpenTime": zod.string().nullable(),
+  "patienceCandleCloseTime": zod.string().nullable(),
+  "triggerCandleOpenTime": zod.string().nullable(),
+  "triggerCandleCloseTime": zod.string().nullable(),
+  "modeledFillObservationTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "exitCandleCloseTime": zod.string().nullable(),
+  "eventLabels": zod.array(zod.string()),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
+}))
+}).optional()
+}),
+  "snapshotId": zod.string().nullable()
+})),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "label": zod.string(),
@@ -7224,6 +7999,11 @@ export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTe
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
+
+export const getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
+
+export const getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
+
 export const getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
 export const getVisualValidationGenerationJobResponseResultFunnelDiagnosticsSessionCountMin = 0;
@@ -7305,6 +8085,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "startDate": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp),
   "endDate": zod.string().regex(getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp)
 }),
+  "processedDates": zod.array(zod.string()),
   "snapshots": zod.array(zod.object({
   "snapshotId": zod.string(),
   "occurrenceId": zod.string().optional(),
@@ -7539,6 +8320,128 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "timestamp": zod.coerce.date(),
   "detail": zod.string()
 }))
+})),
+  "accountReplayTrades": zod.array(zod.object({
+  "candidate": zod.object({
+  "candidateId": zod.string().describe('Canonical identity: contract, New York trading date, entry candle, and direction.'),
+  "snapshotId": zod.string(),
+  "signalOccurrenceId": zod.string().min(1),
+  "contractSymbol": zod.string(),
+  "tradingDate": zod.string(),
+  "entryCandleOpenTime": zod.coerce.date(),
+  "entryCandleCloseTime": zod.coerce.date(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTriggerPrice": zod.number().nullable(),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "matchedEdges": zod.array(zod.string()),
+  "supportingConfluences": zod.array(zod.string()),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "outcome": zod.string(),
+  "causalEvidence": zod.array(zod.object({
+  "kind": zod.enum(['level', 'patience', 'entry']),
+  "timestamp": zod.coerce.date(),
+  "detail": zod.string()
+}))
+}),
+  "trade": zod.object({
+  "id": zod.string(),
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "contractMonth": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "entryTime": zod.coerce.date().describe('Modeled or observed entry event time in UTC.'),
+  "exitTime": zod.coerce.date().nullable().describe('Modeled or observed exit event time in UTC; null while the trade is open.'),
+  "entryPrice": zod.number(),
+  "exitPrice": zod.number().nullable(),
+  "contracts": zod.number(),
+  "grossPnl": zod.number(),
+  "fees": zod.number(),
+  "slippage": zod.number(),
+  "netPnl": zod.number(),
+  "outcome": zod.enum(['target', 'strategy stop', 'catastrophe stop', 'session close', 'breakeven', 'breakeven recovery', 'manual', 'open']),
+  "ambiguityLabel": zod.string().nullable(),
+  "source": zod.enum(['tick', 'one-minute', 'ohlc']),
+  "segmentation": zod.object({
+  "contract": zod.string(),
+  "contractMonth": zod.string(),
+  "setupType": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "timeOfDay": zod.enum(['open', 'midday', 'close']),
+  "trend": zod.enum(['bullish', 'bearish', 'neutral']),
+  "fibonacciDepth": zod.string(),
+  "volumeCondition": zod.enum(['supported', 'warning', 'neutral']),
+  "levelType": zod.enum(['NTZ', 'ORB', 'major level', 'Fibonacci', 'mixed', 'unmapped']),
+  "confluence": zod.enum(['normal', 'strong', 'dynamite']),
+  "patienceCharacteristic": zod.string(),
+  "orbState": zod.enum(['ORB_FORMING', 'INSIDE_ORB', 'ORB_PROBE_WAIT', 'WEAK_BREAK_WAIT', 'BREAKOUT_CANDIDATE', 'WAITING_FOR_CONTINUATION', 'QUALIFIED_BREAKOUT', 'WAITING_FOR_PULLBACK', 'PULLBACK_IN_PROGRESS', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_VALID', 'TRIGGER_CANDLE_ACTIVE', 'ENTRY_TRIGGERED', 'BREAKOUT_FAILED', 'SETUP_EXPIRED']),
+  "marketRegime": zod.enum(['trend', 'range', 'transition'])
+}),
+  "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional(),
+  "fillLabel": zod.string().nullish(),
+  "primaryEdge": zod.string().optional(),
+  "matchedEdges": zod.array(zod.string()).optional(),
+  "supportingConfluences": zod.array(zod.string()).optional(),
+  "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
+  "audit": zod.object({
+  "entryTriggerPrice": zod.number().nullable(),
+  "modeledFillPrice": zod.number().nullable(),
+  "stopPrice": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "strategyStopPrice": zod.number().nullable(),
+  "catastropheStopPrice": zod.number().nullable(),
+  "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
+  "attemptOrdinal": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
+  "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
+  "patienceCandleOpenTime": zod.string().nullable(),
+  "patienceCandleCloseTime": zod.string().nullable(),
+  "triggerCandleOpenTime": zod.string().nullable(),
+  "triggerCandleCloseTime": zod.string().nullable(),
+  "modeledFillObservationTime": zod.string().nullable(),
+  "exitCandleOpenTime": zod.string().nullable(),
+  "exitCandleCloseTime": zod.string().nullable(),
+  "eventLabels": zod.array(zod.string()),
+  "assumptions": zod.array(zod.string()),
+  "ambiguityLabels": zod.array(zod.string()),
+  "targetHit": zod.boolean(),
+  "runnerActivated": zod.boolean(),
+  "runnerExited": zod.boolean(),
+  "runnerReferencePrice": zod.number().nullable(),
+  "runnerImpulse": zod.number().nullable(),
+  "runnerMostFavorablePrice": zod.number().nullable(),
+  "remainingQuantity": zod.number(),
+  "noForwardLevelAtEntry": zod.boolean().optional(),
+  "postEntryCompletedBars": zod.number().optional(),
+  "breakevenActivationBars": zod.number().nullish(),
+  "breakevenActivated": zod.boolean().optional(),
+  "breakevenActivationTimestamp": zod.coerce.date().nullish(),
+  "breakevenEffectiveFromTimestamp": zod.coerce.date().nullish(),
+  "breakevenPrice": zod.number().nullish(),
+  "breakevenDisposition": zod.string().optional(),
+  "originalStopStillActive": zod.boolean().optional(),
+  "exitReason": zod.string(),
+  "legs": zod.array(zod.object({
+  "kind": zod.enum(['target', 'runner', 'full']),
+  "quantity": zod.number(),
+  "referencePrice": zod.number(),
+  "fillPrice": zod.number(),
+  "grossPnl": zod.number(),
+  "slippage": zod.number(),
+  "fees": zod.number(),
+  "netPnl": zod.number(),
+  "exitReason": zod.enum(['target', 'runner', 'stop', 'breakeven', 'breakeven_recovery', 'manual', 'session_close'])
+}))
+}).optional()
+}),
+  "snapshotId": zod.string().nullable()
 })),
   "categoryCoverage": zod.array(zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),

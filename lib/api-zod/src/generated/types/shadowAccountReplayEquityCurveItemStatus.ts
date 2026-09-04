@@ -14,4 +14,5 @@ export const ShadowAccountReplayEquityCurveItemStatus = {
   loss: 'loss',
   flat: 'flat',
   open: 'open',
+  start: 'start',
 } as const;

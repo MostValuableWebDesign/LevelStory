@@ -17,6 +17,7 @@ import {
 } from "./visual-validation-cache.js";
 import { getReadyHistoricalMultiContractIndex } from "./futures/multi-contract-replay.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
+import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 
 export type CandidateGenerationPhase =
   | "preparing"
@@ -91,13 +92,20 @@ function cleanRequest(request: VisualValidationRequest): VisualValidationRequest
 async function cacheMetadataForRequest(request: VisualValidationRequest): Promise<VisualValidationCacheMetadata> {
   if ((request.source ?? "historical_databento") === "historical_databento") {
     const imported = await getReadyHistoricalMultiContractIndex();
+    const processedDates = imported
+      ? imported.summary.eligibleTradingDates
+        .filter((date) => date <= request.endDate)
+        .slice(-(request.inSampleDays + request.outOfSampleDays))
+      : [];
     return visualValidationCacheMetadata(
       request,
       imported?.contentFingerprint ?? "historical-index-unavailable",
       imported?.calendar.calendarVersion ?? DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
+      processedDates,
     );
   }
-  return visualValidationCacheMetadata(request, simulatedVisualValidationSourceFingerprint(request));
+  const processedDates = [...new Set(createVisualValidationFixtures(request).flatMap((fixture) => fixture.dataset.selectedDates ?? []))].sort();
+  return visualValidationCacheMetadata(request, simulatedVisualValidationSourceFingerprint(request), DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion, processedDates);
 }
 
 function pruneJobs(): void {

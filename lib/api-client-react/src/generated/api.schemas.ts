@@ -4264,6 +4264,13 @@ export interface VisualValidationTradeCandidate {
   causalEvidence: VisualValidationTradeCandidateCausalEvidenceItem[];
 }
 
+export interface VisualValidationAccountReplayTrade {
+  candidate: VisualValidationTradeCandidate;
+  trade: BacktestTrade;
+  /** @nullable */
+  snapshotId: string | null;
+}
+
 export interface ShadowAccountReplaySegment {
   /** @minimum 0 */
   enteredTrades: number;
@@ -4275,6 +4282,10 @@ export interface ShadowAccountReplaySegment {
   wins: number;
   /** @minimum 0 */
   losses: number;
+  /** @minimum 0 */
+  flatTrades: number;
+  /** @minimum 0 */
+  unscoredTrades: number;
   /**
      * @minimum 0
      * @maximum 100
@@ -4313,6 +4324,7 @@ export type ShadowAccountReplayTradeStatus = typeof ShadowAccountReplayTradeStat
 export const ShadowAccountReplayTradeStatus = {
   closed: 'closed',
   open: 'open',
+  unscored: 'unscored',
 } as const;
 
 export interface ShadowAccountReplayTrade {
@@ -4324,7 +4336,10 @@ export interface ShadowAccountReplayTrade {
   signalOccurrenceId: string;
   /** @minLength 1 */
   snapshotId: string;
+  tradingDate: string;
   entryTime: string;
+  /** @nullable */
+  exitTime: string | null;
   /** @minLength 1 */
   contractSymbol: string;
   /** @minLength 1 */
@@ -4334,6 +4349,14 @@ export interface ShadowAccountReplayTrade {
   /** @nullable */
   exitPrice: number | null;
   exitReason: string;
+  /** @minimum 1 */
+  contracts: number;
+  /** @nullable */
+  grossPnl: number | null;
+  /** @nullable */
+  fees: number | null;
+  /** @nullable */
+  slippage: number | null;
   /** @nullable */
   netPnl: number | null;
   runningBalance: number;
@@ -4350,10 +4373,11 @@ export const ShadowAccountReplayEquityCurveItemStatus = {
   loss: 'loss',
   flat: 'flat',
   open: 'open',
+  start: 'start',
 } as const;
 
 export type ShadowAccountReplayEquityCurveItem = {
-  /** @minimum 1 */
+  /** @minimum 0 */
   tradeNumber: number;
   entryTime: string;
   balance: number;
@@ -4361,6 +4385,38 @@ export type ShadowAccountReplayEquityCurveItem = {
   netPnl: number | null;
   status: ShadowAccountReplayEquityCurveItemStatus;
 };
+
+export interface ShadowAccountReplayBreakdown {
+  value: string;
+  /** @minimum 0 */
+  enteredTrades: number;
+  /** @minimum 0 */
+  closedTrades: number;
+  /** @minimum 0 */
+  openTrades: number;
+  /** @minimum 0 */
+  wins: number;
+  /** @minimum 0 */
+  losses: number;
+  /** @minimum 0 */
+  flatTrades: number;
+  /** @minimum 0 */
+  unscoredTrades: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  winRate: number;
+  netPnl: number;
+  averageWin: number;
+  averageLoss: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  profitFactor: number | null;
+  expectancyPerTrade: number;
+}
 
 export interface ShadowAccountReplay {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
@@ -4377,6 +4433,8 @@ export interface ShadowAccountReplay {
   closedTrades: number;
   /** @minimum 0 */
   openTrades: number;
+  /** @minimum 0 */
+  unscoredTrades: number;
   /** @minimum 0 */
   wins: number;
   /** @minimum 0 */
@@ -4400,6 +4458,20 @@ export interface ShadowAccountReplay {
   /** @minimum 0 */
   maxConsecutiveLosses: number;
   expectancyPerTrade: number;
+  processedDates: string[];
+  datesWithTrades: string[];
+  datesWithoutTrades: string[];
+  byDate: ShadowAccountReplayBreakdown[];
+  byPrimaryEdge: ShadowAccountReplayBreakdown[];
+  byDirection: ShadowAccountReplayBreakdown[];
+  /** @nullable */
+  bestTrade: ShadowAccountReplayTrade | null;
+  /** @nullable */
+  worstTrade: ShadowAccountReplayTrade | null;
+  /** @nullable */
+  bestTradingDay: ShadowAccountReplayBreakdown | null;
+  /** @nullable */
+  worstTradingDay: ShadowAccountReplayBreakdown | null;
   inSample: ShadowAccountReplaySegment;
   outOfSample: ShadowAccountReplaySegment;
   equityCurve: ShadowAccountReplayEquityCurveItem[];
@@ -4512,8 +4584,10 @@ export interface VisualValidationSet {
   symbol: string;
   request: VisualValidationRequest;
   reviewPeriod: VisualValidationReviewPeriod;
+  processedDates: string[];
   snapshots: VisualValidationSnapshot[];
   tradeCandidates: VisualValidationTradeCandidate[];
+  accountReplayTrades: VisualValidationAccountReplayTrade[];
   categoryCoverage: VisualValidationCategoryCoverage[];
   defaultSelectionReason: string;
   funnelDiagnostics?: VisualValidationSetFunnelDiagnostics;
