@@ -1215,6 +1215,45 @@ function matchingTradeForOccurrence(
   return candidates.length === 1 ? candidates[0]! : null;
 }
 
+function auditEvidenceForOccurrence(
+  audit: BacktestAuditRecord,
+  occurrence: HistoricalOccurrence,
+): BacktestAuditRecord {
+  const patienceOpenTime = occurrence.patienceTimestamp
+    ?? safeDate(evidenceTime(occurrence.patienceCandle, "openTime"));
+  const patienceCloseTime = safeDate(evidenceTime(occurrence.patienceCandle, "closeTime"));
+  const triggerOpenTime = occurrence.entryTimestamp
+    ?? occurrence.expectedEntryTimestamp
+    ?? safeDate(evidenceTime(occurrence.entryCandle, "openTime"));
+  const triggerCloseTime = safeDate(evidenceTime(occurrence.entryCandle, "closeTime"));
+  const confirmationPrice = occurrence.confirmationThreshold
+    ?? occurrence.confirmationEntryPrice
+    ?? audit.entryTriggerPrice;
+  return {
+    ...audit,
+    direction: occurrence.direction ?? audit.direction,
+    patienceCandle: occurrence.patienceCandle,
+    triggerCandle: occurrence.entryCandle,
+    patienceCandleOpenTime: patienceOpenTime,
+    patienceCandleCloseTime: patienceCloseTime,
+    patienceCandleExtreme: evidenceNumber(
+      occurrence.patienceCandle,
+      occurrence.direction === "short" ? "high" : "low",
+    ),
+    triggerCandleOpenTime: triggerOpenTime,
+    triggerCandleCloseTime: triggerCloseTime,
+    entryTriggerPrice: confirmationPrice,
+    patienceConfirmationThreshold: confirmationPrice,
+    effectiveEntryThreshold: confirmationPrice,
+    effectiveEntryThresholdReached: occurrence.status === "SIGNAL_CONFIRMED",
+    finalStrategyStopBoundary: occurrence.management?.strategyStopPrice ?? audit.finalStrategyStopBoundary,
+    strategyStopPrice: occurrence.management?.strategyStopPrice ?? audit.strategyStopPrice,
+    catastropheStopPrice: occurrence.management?.catastropheStopPrice ?? audit.catastropheStopPrice,
+    stopDirection: occurrence.direction ?? audit.stopDirection,
+    consolidationGuard: occurrence.consolidationGuard ?? audit.consolidationGuard,
+  };
+}
+
 function isAuthoritativeCandidateTrade(
   occurrence: HistoricalOccurrence,
   candidate: HistoricalTradeCandidate,
@@ -1273,10 +1312,11 @@ function auditForOccurrence(
       )
       .sort((first, second) => Date.parse(first.evaluatedCandleOpenTime) - Date.parse(second.evaluatedCandleOpenTime));
     const tradeAudit = exact.find((audit) => matchingTrade(audit, trades) !== null);
-    if (tradeAudit) return tradeAudit;
-    if (exact[0]) return exact[0];
+    if (tradeAudit) return auditEvidenceForOccurrence(tradeAudit, occurrence);
+    if (exact[0]) return auditEvidenceForOccurrence(exact[0], occurrence);
   }
-  return audits.find((candidate) => candidate.id === occurrence.auditId);
+  const fallback = audits.find((candidate) => candidate.id === occurrence.auditId);
+  return fallback ? auditEvidenceForOccurrence(fallback, occurrence) : undefined;
 }
 
 type AnchorEvent = {

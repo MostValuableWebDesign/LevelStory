@@ -2823,6 +2823,20 @@ function linkedPullbackEvents(
   return events.filter((event) => pullbackEventOpenTime(event) === anchorOpenTime);
 }
 
+function consolidationGuardMatchesOccurrence(
+  guard: BacktestConsolidationGuardEvidence | null | undefined,
+  patienceOpenTimestamp: string | null,
+  entryOpenTimestamp: string | null,
+): boolean {
+  return Boolean(
+    guard
+    && patienceOpenTimestamp
+    && entryOpenTimestamp
+    && guard.patienceOpenTime === patienceOpenTimestamp
+    && guard.entryOpenTime === entryOpenTimestamp,
+  );
+}
+
 type CanonicalPatienceStatus =
   | "PATIENCE_SHAPE_FOUND"
   | "IMMEDIATE_CONFIRMATION_FAILED"
@@ -3187,8 +3201,24 @@ export function buildHistoricalOccurrenceLedger(
           }
           : null,
       );
-      const effectiveEntryThreshold = record.consolidationGuard?.effectiveEntryThreshold
-        ?? confirmationThreshold;
+      const pOpenTimestamp = Number.isFinite(patience.patienceCandle.openTime)
+        ? new Date(patience.patienceCandle.openTime).toISOString()
+        : null;
+      const eOpenTimestamp = Number.isFinite(expectedEntryCandleOpenTime)
+        ? new Date(expectedEntryCandleOpenTime).toISOString()
+        : null;
+      // A record is emitted at every replay cursor, while its consolidation
+      // guard is a snapshot-level diagnostic. The guard can still describe an
+      // earlier P→E when a later patience occurrence is appended to the same
+      // audit record. Keep the threshold occurrence-local.
+      const matchingConsolidationGuard = consolidationGuardMatchesOccurrence(
+        record.consolidationGuard,
+        pOpenTimestamp,
+        eOpenTimestamp,
+      );
+      const effectiveEntryThreshold = matchingConsolidationGuard
+        ? record.consolidationGuard?.effectiveEntryThreshold ?? confirmationThreshold
+        : confirmationThreshold;
       const confirmationExcursion = patience.actualConfirmationExcursion ?? (
         observedImmediate
           ? patience.direction === "long"
@@ -3196,12 +3226,6 @@ export function buildHistoricalOccurrenceLedger(
             : Math.max(0, patience.patienceCandle.low - observedImmediate.low)
           : null
       );
-      const pOpenTimestamp = Number.isFinite(patience.patienceCandle.openTime)
-        ? new Date(patience.patienceCandle.openTime).toISOString()
-        : null;
-      const eOpenTimestamp = Number.isFinite(expectedEntryCandleOpenTime)
-        ? new Date(expectedEntryCandleOpenTime).toISOString()
-        : null;
       const entryObservationTimestamp = confirmedEntry && Number.isFinite(confirmedEntry.closeTime)
         ? new Date(confirmedEntry.closeTime).toISOString()
         : null;
@@ -3223,6 +3247,87 @@ export function buildHistoricalOccurrenceLedger(
         && trade.audit?.triggerCandleOpenTime === new Date(confirmedEntry.openTime).toISOString()
         ? trade
         : undefined;
+      const guardZoneHigh = record.consolidationGuard?.consolidationZoneHigh;
+      const guardZoneLow = record.consolidationGuard?.consolidationZoneLow;
+      const occurrenceEntry = confirmedEntry ?? observedImmediate;
+      const guardHasOccurrenceGeometry = Boolean(
+        occurrenceEntry
+        && typeof guardZoneHigh === "number"
+        && typeof guardZoneLow === "number"
+        && Number.isFinite(guardZoneHigh)
+        && Number.isFinite(guardZoneLow),
+      );
+      const entryOutsideGuardZone = guardHasOccurrenceGeometry && occurrenceEntry
+        ? patience.direction === "long"
+          ? occurrenceEntry.open > guardZoneHigh! && occurrenceEntry.close > guardZoneHigh!
+          : occurrenceEntry.open < guardZoneLow! && occurrenceEntry.close < guardZoneLow!
+        : null;
+      const entryRangeOverlapsGuardZone = guardHasOccurrenceGeometry && occurrenceEntry
+        ? occurrenceEntry.low <= guardZoneHigh! && occurrenceEntry.high >= guardZoneLow!
+        : null;
+      const fillOutsideGuardZone = guardHasOccurrenceGeometry
+        ? patience.direction === "long"
+          ? effectiveEntryThreshold > guardZoneHigh!
+          : effectiveEntryThreshold < guardZoneLow!
+        : null;
+      const occurrenceGuardEligible = guardHasOccurrenceGeometry
+        ? Boolean(
+          record.consolidationGuard
+          && (record.consolidationGuard.activeZone || record.consolidationGuard.breakoutPullback)
+          && entryOutsideGuardZone
+          && fillOutsideGuardZone,
+        )
+        : true;
+      const occurrenceConsolidationGuard = record.consolidationGuard
+        ? matchingConsolidationGuard
+          ? record.consolidationGuard
+          : {
+            ...record.consolidationGuard,
+            // Preserve the frozen consolidation-zone identity, but make the
+            // P/E identity and threshold belong to this occurrence.
+            patienceOpenTime: pOpenTimestamp,
+            patienceCloseTime: Number.isFinite(patience.patienceCandle.closeTime)
+              ? new Date(patience.patienceCandle.closeTime).toISOString()
+              : null,
+            entryOpenTime: eOpenTimestamp,
+            entryCloseTime: confirmedEntry && Number.isFinite(confirmedEntry.closeTime)
+              ? new Date(confirmedEntry.closeTime).toISOString()
+              : null,
+            confirmationThreshold: patience.confirmationThreshold ?? confirmationThreshold,
+            patienceConfirmationThreshold: confirmationThreshold,
+            effectiveEntryThreshold,
+            entryClose: confirmedEntry?.close ?? observedImmediate?.close ?? null,
+            entryCompleted: Boolean(confirmedEntry?.isComplete),
+            entryReachedConfirmation: outcomeStatus === "SIGNAL_CONFIRMED",
+            effectiveEntryThresholdReached: outcomeStatus === "SIGNAL_CONFIRMED",
+            executionEligible: occurrenceGuardEligible,
+            entryOpenedOutsideZone: guardHasOccurrenceGeometry && occurrenceEntry
+              ? patience.direction === "long"
+                ? occurrenceEntry.open > guardZoneHigh!
+                : occurrenceEntry.open < guardZoneLow!
+              : null,
+            entryClosedOutsideZone: entryOutsideGuardZone,
+            entryCloseOutsideZone: entryOutsideGuardZone,
+            entryRangeOutsideZone: guardHasOccurrenceGeometry && occurrenceEntry
+              ? patience.direction === "long"
+                ? occurrenceEntry.low > guardZoneHigh!
+                : occurrenceEntry.high < guardZoneLow!
+              : null,
+            entryRangeOverlappedZone: entryRangeOverlapsGuardZone,
+            entryFillOutsideZone: fillOutsideGuardZone,
+            entryOutsideFinalizedNtz: null,
+            entryBeforeCutoff: null,
+            consolidationEntryDisposition: outcomeStatus === "SIGNAL_CONFIRMED"
+              ? "CONSOLIDATION_ENTRY_ELIGIBLE"
+              : record.consolidationGuard.consolidationEntryDisposition,
+            rejectionReason: outcomeStatus === "SIGNAL_CONFIRMED"
+              ? null
+              : record.consolidationGuard.rejectionReason,
+            detail: outcomeStatus === "SIGNAL_CONFIRMED"
+              ? "The occurrence-local completed E reached the effective consolidation entry threshold outside the frozen zone."
+              : record.consolidationGuard.detail,
+          }
+        : null;
       const identity = [
         "patience",
         fingerprint,
@@ -3288,7 +3393,7 @@ export function buildHistoricalOccurrenceLedger(
          finalizedNtzHigh: record.finalizedNtzHigh ?? null,
          finalizedNtzLow: record.finalizedNtzLow ?? null,
          finalizedNtzComplete: record.finalizedNtzComplete ?? false,
-          consolidationGuard: record.consolidationGuard,
+          consolidationGuard: occurrenceConsolidationGuard,
          identityInvariantViolations,
         confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
@@ -3517,6 +3622,7 @@ function candidateConsolidationRejection(
   const primaryEdge = canonicalStrategyId(occurrence.primaryEdge ?? occurrence.strategyCandidate);
   if (primaryEdge !== "CONSOLIDATION_BREAKOUT_CONTINUATION") return null;
   const guard = occurrence.consolidationGuard;
+  if (!consolidationGuardMatchesOccurrence(guard, occurrence.patienceTimestamp, occurrence.eOpenTimestamp)) return null;
   if (!guard || (!guard.activeZone && !guard.breakoutPullback)) return null;
   const thresholdReached = guard.effectiveEntryThresholdReached ?? guard.entryReachedConfirmation;
   const closedOutside = guard.entryClosedOutsideZone ?? guard.entryCloseOutsideZone;
@@ -3564,7 +3670,12 @@ function historicalCandidateId(occurrence: HistoricalOccurrence): string {
 
 function effectiveEntryThresholdForOccurrence(occurrence: HistoricalOccurrence): number | null {
   const guardedThreshold = occurrence.consolidationGuard?.effectiveEntryThreshold;
-  return typeof guardedThreshold === "number" && Number.isFinite(guardedThreshold)
+  const guardMatches = consolidationGuardMatchesOccurrence(
+    occurrence.consolidationGuard,
+    occurrence.patienceTimestamp,
+    occurrence.eOpenTimestamp,
+  );
+  return guardMatches && typeof guardedThreshold === "number" && Number.isFinite(guardedThreshold)
     ? guardedThreshold
     : occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice ?? null;
 }

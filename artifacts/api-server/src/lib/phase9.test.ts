@@ -776,6 +776,59 @@ test("historical occurrence ledger is repeatable and retains causal L/P/E eviden
   assert.equal(patience.evaluationCursor, new Date(1_200_000).toISOString());
 });
 
+test("historical occurrence thresholds do not inherit a stale consolidation P to E", () => {
+  const staleGuard = consolidationGuard({
+    patienceOpenTime: new Date(0).toISOString(),
+    patienceCloseTime: new Date(300_000).toISOString(),
+    entryOpenTime: new Date(300_000).toISOString(),
+    entryCloseTime: new Date(600_000).toISOString(),
+    effectiveEntryThreshold: 104,
+    executionEligible: true,
+    entryOpenedOutsideZone: true,
+    entryClosedOutsideZone: true,
+    entryCloseOutsideZone: true,
+    entryRangeOverlappedZone: false,
+    detail: "Stale earlier P→E evidence.",
+  });
+  const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    consolidationGuard: staleGuard,
+    patienceOccurrences: [{
+      occurrenceId: "later-p-e",
+      direction: "long",
+      entryBufferTicks: 8,
+      stopBufferTicks: 1,
+      eligibilityReason: "pullback",
+      eligibilityTime: 300_000,
+      previousComparisonTimestamp: 600_000,
+      candidateShapeResult: true,
+      expectedEntryCandleOpenTime: 900_000,
+      confirmationThreshold: 108,
+      actualConfirmationExcursion: 4,
+      previousCandle: {
+        openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10, isComplete: true,
+      },
+      patienceCandle: {
+        openTime: 600_000, closeTime: 900_000, open: 101, high: 102, low: 98, close: 100, volume: 11, isComplete: true,
+      },
+      triggerCandle: {
+        openTime: 900_000, closeTime: 1_200_000, open: 100, high: 109, low: 100, close: 108, volume: 12, isComplete: true,
+      },
+      nextObservedCandle: null,
+      outcomeStatus: "CONFIRMED",
+      status: "ENTRY_TRIGGERED",
+      reasonCode: "The later immediate E reached 108.",
+      evaluationCursor: 1_200_000,
+    }],
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], [])
+    .find((item) => item.kind === "patience");
+  assert.ok(occurrence);
+  assert.equal(occurrence.confirmationThreshold, 108);
+  assert.equal(occurrence.consolidationGuard?.effectiveEntryThreshold, 108);
+  assert.equal(occurrence.consolidationGuard?.patienceOpenTime, new Date(600_000).toISOString());
+  assert.equal(occurrence.consolidationGuard?.entryOpenTime, new Date(900_000).toISOString());
+});
+
 test("historical occurrences preserve exact L identity, all same-candle levels, and content fingerprints", () => {
   const previousCandle = { openTime: 0, closeTime: 300_000, open: 99, high: 101, low: 98, close: 100, volume: 9, isComplete: true };
   const patienceCandle = { openTime: 600_000, closeTime: 900_000, open: 101, high: 102, low: 98, close: 100, volume: 11, isComplete: true };
