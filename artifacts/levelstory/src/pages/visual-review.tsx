@@ -217,12 +217,11 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
   { value: "false_positive_trade", label: "False-positive trade", detail: "The machine trade is not supported by the raw causal candle story." },
 ];
 
-type ReviewDisclosurePanel = "summary" | "judgment" | "replay";
+type ReviewDisclosurePanel = "summary" | "judgment";
 type ReviewDisclosureState = Record<ReviewDisclosurePanel, boolean>;
 const CLOSED_REVIEW_DISCLOSURES: ReviewDisclosureState = {
   summary: false,
   judgment: false,
-  replay: false,
 };
 
 const INITIAL_REQUEST: VisualValidationRequest = {

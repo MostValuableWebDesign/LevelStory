@@ -53,7 +53,7 @@ test("visual review omits the secondary sample panel and keeps bottom review too
   assert.match(page, /Review export/);
   assert.match(page, /Advisory \/ teaching patterns/);
   assert.match(page, /Propose a rule review/);
-  assert.match(page, /mt-5 grid items-start gap-5 md:grid-cols-2/);
+  assert.match(page, /grid items-start gap-5 md:grid-cols-2/);
 });
 
 test("visual review presents the read-only Shadow Account Replay states and audit fields", () => {
@@ -90,14 +90,25 @@ test("trade review panels collapse after generation and can be opened independen
   assert.match(page, /CLOSED_REVIEW_DISCLOSURES/);
   assert.match(page, /summary: false/);
   assert.match(page, /judgment: false/);
-  assert.match(page, /replay: false/);
   assert.match(page, /toggleReviewPanel\("summary"\)/);
   assert.match(page, /toggleReviewPanel\("judgment"\)/);
-  assert.match(page, /toggleReviewPanel\("replay"\)/);
   assert.match(page, /data-testid=\{`toggle-\$\{panelId\}`\}/);
   assert.match(page, /plain-language-summary-content/);
   assert.match(page, /human-judgment-content/);
-  assert.match(page, /combined-shadow-replay-content/);
+  assert.match(page, /activeVisualReviewTab === "account-impact"/);
+});
+
+test("visual review separates chart analysis, deterministic generation, and read-only account impact", () => {
+  assert.match(page, /data-testid="visual-review-tabs"/);
+  assert.match(page, /label: "Chart Analysis", detail: "uploaded evidence"/);
+  assert.match(page, /label: "Generate", detail: "deterministic replay"/);
+  assert.match(page, /label: "Account impact", detail: "read-only"/);
+  assert.match(page, /role="tablist"/);
+  assert.match(page, /role="tabpanel"/);
+  assert.match(page, /id="visual-review-panel-chart-analysis"/);
+  assert.match(page, /id="visual-review-panel-generate"/);
+  assert.match(page, /id="visual-review-panel-account-impact"/);
+  assert.match(page, /open=\{true\} onToggleOpen=\{\(\) => undefined\}/);
 });
 
 test("visual review presentation retains human-only shading and semantic level colors", () => {
