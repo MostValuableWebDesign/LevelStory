@@ -7,6 +7,7 @@ import type {
   VisualValidationTradeCandidate,
 } from "./visual-validation.js";
 import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
+import { buildKeyLevelTargetPlan, type KeyLevelTargetInput } from "./strategy/key-level-targets.js";
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
 export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = SHADOW_CONTRACTS_PER_TRADE;
@@ -199,8 +200,52 @@ function replayTradeWithFixedContracts(
 ): BacktestTrade | null {
   const { trade, replayInput } = match;
   if (!replayInput) {
-    return trade.contracts === contractsPerTrade ? trade : null;
+    if (trade.contracts === contractsPerTrade) return trade;
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen execution evidence for a ${contractsPerTrade}-contract replay. Regenerate the review set.`,
+    );
   }
+  if (!Number.isInteger(replayInput.runnerBufferTicks)
+    || replayInput.runnerBufferTicks < 4
+    || replayInput.runnerBufferTicks > 8) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} is missing its frozen runner buffer. Regenerate the review set.`,
+    );
+  }
+  const frozenTargetPlan = trade.targetPlan ?? trade.audit?.targetPlan ?? null;
+  const targetLevelInputs: KeyLevelTargetInput[] | null = frozenTargetPlan
+    ? frozenTargetPlan.targetLevelSnapshot?.frozenLevelInputs
+      ? [...frozenTargetPlan.targetLevelSnapshot.frozenLevelInputs]
+      : frozenTargetPlan.availableLevels.map((level) => ({
+        id: level.id,
+        type: level.type,
+        price: level.price,
+        rangeLow: level.rangeLow,
+        rangeHigh: level.rangeHigh,
+      }))
+    : null;
+  const rebuiltTargetPlan = frozenTargetPlan && targetLevelInputs
+    ? buildKeyLevelTargetPlan({
+      direction: trade.direction,
+      entryPrice: replayInput.entryPrice,
+      levels: targetLevelInputs,
+      tickSize: frozenTargetPlan.tickSize,
+      bufferTicks: frozenTargetPlan.bufferTicks,
+      placementMode: frozenTargetPlan.placementMode,
+      targetBufferTicks: frozenTargetPlan.targetBufferTicks,
+      initialRiskPoints: frozenTargetPlan.initialRiskPoints
+        ?? trade.audit?.initialRiskPoints
+        ?? null,
+      contracts: contractsPerTrade,
+      maximumTargetR: frozenTargetPlan.maximumTargetR ?? 1.5,
+    })
+    : frozenTargetPlan;
+  if (trade.contracts !== contractsPerTrade && !rebuiltTargetPlan) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen target evidence for a ${contractsPerTrade}-contract replay. Regenerate the review set.`,
+    );
+  }
+  const replayTargetPrice = rebuiltTargetPlan?.targetPrice ?? null;
   const specification = getFuturesContractSpecification("MES");
   const execution = simulateOhlcvExecution({
     direction: trade.direction,
@@ -211,12 +256,12 @@ function replayTradeWithFixedContracts(
     subsequentCompletedCandles: replayInput.subsequentCompletedCandles.map(asOhlcvCandle),
     sessionCloseCandle: replayInput.sessionCloseCandle ? asOhlcvCandle(replayInput.sessionCloseCandle) : null,
     contracts: contractsPerTrade,
-    targetQuantity: replayInput.targetPrice === null ? 0 : Math.min(1, contractsPerTrade),
-    target: replayInput.targetPrice,
+    targetQuantity: replayTargetPrice === null ? 0 : Math.min(1, contractsPerTrade),
+    target: replayTargetPrice,
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
     oneRProfitRule: replayInput.targetPrice === null,
     structureTrailing: true,
-    trailingBufferTicks: replayInput.trailingBufferTicks,
+    trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,
     strategyStop: replayInput.strategyStopPrice,
     catastropheStop: null,
@@ -238,6 +283,7 @@ function replayTradeWithFixedContracts(
   return {
     ...trade,
     contracts: contractsPerTrade,
+    targetPlan: rebuiltTargetPlan ?? trade.targetPlan,
     exitTime: closed && exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     exitPrice: closed ? execution.exitPrice : null,
     grossPnl: execution.accounting.grossPnl,
@@ -251,6 +297,7 @@ function replayTradeWithFixedContracts(
       modeledFillPrice: execution.modeledFill,
       stopPrice: execution.stopPrice,
       targetPrice: execution.targetPrice,
+      targetPlan: rebuiltTargetPlan ?? baseAudit.targetPlan,
       strategyStopPrice: execution.audit.strategyStopPrice,
       catastropheStopPrice: execution.audit.catastropheStopPrice,
       stopLevel: execution.audit.stopLevel,
@@ -284,6 +331,15 @@ function replayTradeWithFixedContracts(
         : new Date(execution.audit.breakevenEffectiveFromTimestamp).toISOString(),
       breakevenPrice: execution.audit.breakevenPrice,
       breakevenDisposition: execution.audit.breakevenDisposition,
+      breakevenMfePrice: execution.audit.breakevenMfePrice,
+      breakevenMfePoints: execution.audit.breakevenMfePoints,
+      breakevenMfeTicks: execution.audit.breakevenMfeTicks,
+      breakevenMfeR: execution.audit.breakevenMfeR,
+      breakevenEvaluationClose: execution.audit.breakevenEvaluationClose,
+      breakevenEvaluationCloseDisposition: execution.audit.breakevenEvaluationCloseDisposition,
+      breakevenRecoveryExitTimestamp: execution.audit.breakevenRecoveryExitTimestamp === null
+        ? null
+        : new Date(execution.audit.breakevenRecoveryExitTimestamp).toISOString(),
       originalStopStillActive: execution.audit.originalStopStillActive,
       exitReason: execution.exitReason,
       legs: execution.legs,

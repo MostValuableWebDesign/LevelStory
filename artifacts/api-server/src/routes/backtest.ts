@@ -431,14 +431,14 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
-          cacheVersion: "qualification-batch-v3-controlled-reentry",
+            cacheVersion: "qualification-batch-v4-adaptive-management-audit",
           formulaHash: formulaConfigurationHash(request, activeShadowStrategySnapshot().config),
           request,
           risk,
           contract: specification,
           executionPolicy: {
             entryBufferTicks: request.ohlcvEntryBufferTicks ?? 8,
-            stopBufferTicks: request.ohlcvStopBufferTicks ?? activeShadowStrategySnapshot().config.patienceStopBufferTicks,
+            stopBufferPolicy: "atr-adaptive-v1",
             slippageTicks: request.ohlcvSlippageTicks ?? 1,
             commissionPerContract: request.ohlcvCommissionPerContract ?? null,
           },
@@ -901,14 +901,14 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       const preparationMs = Date.now() - preparationStartedAt;
       const cacheLookupStartedAt = Date.now();
       const cacheKey = buildBacktestCacheKey({
-        cacheVersion: "causal-backtest-v4-controlled-reentry",
+        cacheVersion: "causal-backtest-v5-adaptive-management-audit",
         formulaHash: formulaConfigurationHash(parsed.data, activeShadowStrategySnapshot().config),
         request: parsed.data,
         risk,
         contract: specification,
         executionPolicy: {
           entryBufferTicks: parsed.data.ohlcvEntryBufferTicks ?? 8,
-          stopBufferTicks: parsed.data.ohlcvStopBufferTicks ?? activeShadowStrategySnapshot().config.patienceStopBufferTicks,
+          stopBufferPolicy: "atr-adaptive-v1",
           slippageTicks: parsed.data.ohlcvSlippageTicks ?? 1,
           commissionPerContract: parsed.data.ohlcvCommissionPerContract ?? null,
         },

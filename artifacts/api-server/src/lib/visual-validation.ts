@@ -276,7 +276,7 @@ export type VisualValidationReplayExecutionInput = {
   strategyStopPrice: number | null;
   targetPrice: number | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
-  trailingBufferTicks: number;
+  runnerBufferTicks: number;
 };
 
 export type VisualValidationAccountReplayTrade = {
@@ -473,7 +473,7 @@ function replayInputForSnapshot(
     strategyStopPrice: audit.strategyStopPrice,
     targetPrice: audit.targetPrice,
     primaryLossExitLevel: audit.primaryLossExitLevel ?? null,
-    trailingBufferTicks: Math.max(4, Math.min(8, Math.floor(snapshot.machineEvidence.audit.stopBufferTicks ?? 4))),
+    runnerBufferTicks: snapshot.machineEvidence.audit.runnerBufferTicks ?? 4,
   };
 }
 

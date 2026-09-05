@@ -69,6 +69,7 @@ import {
 } from "./strategy/key-level-targets.js";
 import {
   adaptiveExecutionManagement,
+  causalAtrTicks,
   initialStopForPatience,
   structuralRiskTicks,
 } from "./strategy/execution-management.js";
@@ -305,6 +306,13 @@ export type BacktestTrade = {
       breakevenEffectiveFromTimestamp?: string | null;
      breakevenPrice?: number | null;
      breakevenDisposition?: string;
+      breakevenMfePrice?: number | null;
+      breakevenMfePoints?: number | null;
+      breakevenMfeTicks?: number | null;
+      breakevenMfeR?: number | null;
+      breakevenEvaluationClose?: number | null;
+      breakevenEvaluationCloseDisposition?: "favorable" | "adverse" | "neutral" | null;
+      breakevenRecoveryExitTimestamp?: string | null;
      originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -453,6 +461,7 @@ export type BacktestAuditRecord = {
   patienceCandleExtreme?: number | null;
   stopBufferTicks?: number | null;
   stopBufferPoints?: number | null;
+  runnerBufferTicks?: number | null;
   finalStrategyStopBoundary?: number | null;
   stopDirection?: Direction | null;
   stopSourceAuditId?: string | null;
@@ -503,6 +512,13 @@ export type BacktestAuditRecord = {
   breakevenEffectiveFromTimestamp?: string | null;
   breakevenPrice?: number | null;
   breakevenDisposition?: string;
+  breakevenMfePrice?: number | null;
+  breakevenMfePoints?: number | null;
+  breakevenMfeTicks?: number | null;
+  breakevenMfeR?: number | null;
+  breakevenEvaluationClose?: number | null;
+  breakevenEvaluationCloseDisposition?: "favorable" | "adverse" | "neutral" | null;
+  breakevenRecoveryExitTimestamp?: string | null;
   originalStopStillActive?: boolean;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: BacktestConsolidationGuardEvidence | null;
@@ -2482,6 +2498,11 @@ function auditForEvaluation(
     stopBufferPoints: snapshot.patience.stopBufferTicks * getFuturesContractSpecification(
       parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
     ).tickSize,
+    runnerBufferTicks: adaptiveExecutionManagement(
+      typeof snapshot.pullback.atr14 === "number" && Number.isFinite(snapshot.pullback.atr14)
+        ? snapshot.pullback.atr14 / getFuturesContractSpecification(parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol).tickSize
+        : null,
+    ).runnerBufferTicks,
     finalStrategyStopBoundary: snapshot.patience.strategyStopPrice,
     stopDirection: evaluation.direction ?? null,
     stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
@@ -4755,8 +4776,6 @@ export function runCausalBacktest(
     throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
   }
   const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 8;
-  const stopBufferTicks: number = Number(request.ohlcvStopBufferTicks ?? activeStrategy.config.patienceStopBufferTicks);
-  if (stopBufferTicks !== 12) throw new Error("OHLCV patience stop buffer must be exactly twelve MES ticks.");
   const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
   const commissionPerContract = request.ohlcvCommissionPerContract
     ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);
@@ -4846,6 +4865,8 @@ export function runCausalBacktest(
     };
     assertCausalVisibility(cursor.candles, candle.closeTime);
     finalReplay = cursor;
+    const atrTicksAtEntry = causalAtrTicks(visibleContractCandles, specification.tickSize);
+    const stopBufferTicks = adaptiveExecutionManagement(atrTicksAtEntry).stopBufferTicks;
     const snapshot = createMarketSnapshot(
       request.symbol,
       "regular",
@@ -5172,6 +5193,15 @@ export function runCausalBacktest(
              : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString(),
            breakevenPrice: modeled.audit.breakevenPrice,
            breakevenDisposition: modeled.audit.breakevenDisposition,
+            breakevenMfePrice: modeled.audit.breakevenMfePrice,
+            breakevenMfePoints: modeled.audit.breakevenMfePoints,
+            breakevenMfeTicks: modeled.audit.breakevenMfeTicks,
+            breakevenMfeR: modeled.audit.breakevenMfeR,
+            breakevenEvaluationClose: modeled.audit.breakevenEvaluationClose,
+            breakevenEvaluationCloseDisposition: modeled.audit.breakevenEvaluationCloseDisposition,
+            breakevenRecoveryExitTimestamp: modeled.audit.breakevenRecoveryExitTimestamp === null
+              ? null
+              : new Date(modeled.audit.breakevenRecoveryExitTimestamp).toISOString(),
            originalStopStillActive: modeled.audit.originalStopStillActive,
           remainingQuantity: modeled.audit.remainingQuantity,
           exitReason: modeled.exitReason,
@@ -5205,6 +5235,15 @@ export function runCausalBacktest(
            : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString();
          selectedAudit.breakevenPrice = modeled.audit.breakevenPrice;
          selectedAudit.breakevenDisposition = modeled.audit.breakevenDisposition;
+          selectedAudit.breakevenMfePrice = modeled.audit.breakevenMfePrice;
+          selectedAudit.breakevenMfePoints = modeled.audit.breakevenMfePoints;
+          selectedAudit.breakevenMfeTicks = modeled.audit.breakevenMfeTicks;
+          selectedAudit.breakevenMfeR = modeled.audit.breakevenMfeR;
+          selectedAudit.breakevenEvaluationClose = modeled.audit.breakevenEvaluationClose;
+          selectedAudit.breakevenEvaluationCloseDisposition = modeled.audit.breakevenEvaluationCloseDisposition;
+          selectedAudit.breakevenRecoveryExitTimestamp = modeled.audit.breakevenRecoveryExitTimestamp === null
+            ? null
+            : new Date(modeled.audit.breakevenRecoveryExitTimestamp).toISOString();
          selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
        lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);
@@ -5462,7 +5501,7 @@ export function runCausalBacktest(
           MODELED_OHLCV_FILL_LABEL,
           "Only completed candles are visible. The entry uses the immediate next candle after the patience candle; later candles cannot trigger entry.",
           `Entry and exit slippage are ${modeledSlippageTicks} adverse tick${modeledSlippageTicks === 1 ? "" : "s"} per side.`,
-          `The patience stop buffer is ${stopBufferTicks} ticks and the confirmation buffer is ${entryBufferTicks} ticks.`,
+           `The patience stop buffer is ATR-adaptive between 4 and 8 ticks, and the confirmation buffer is ${entryBufferTicks} ticks.`,
           "OHLCV barriers that share one candle are resolved adverse-first and labeled.",
           `Fees use the configurable ${commissionPerContract.toFixed(2)} per-contract round-trip assumption.`,
         ]
@@ -5477,7 +5516,7 @@ export function runCausalBacktest(
       entrySlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       exitSlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       stopRule: executionMode === "ohlcv_modeled"
-        ? `${stopBufferTicks} ticks beyond the patience candle`
+         ? "ATR-adaptive ticks beyond the patience candle"
         : "Quote-based strategy and catastrophe stops",
       ambiguityRule: executionMode === "ohlcv_modeled"
         ? "Adverse-first when stop and target are both touched inside one OHLCV candle"

@@ -89,7 +89,7 @@ export type Phase3PilotManifest = {
     mode: "ohlcv_modeled";
     fillModel: "OHLCV_CONFIRMATION_THRESHOLD";
     confirmationBufferTicks: number;
-    stopBufferTicks: number;
+    stopBufferPolicy: "atr-adaptive-v1";
     entrySlippageTicks: number;
     exitSlippageTicks: number;
     commissionPerContract: number;
@@ -470,7 +470,7 @@ export function buildPhase3PilotManifest(input: {
       mode: "ohlcv_modeled",
       fillModel: "OHLCV_CONFIRMATION_THRESHOLD",
       confirmationBufferTicks: input.request.ohlcvEntryBufferTicks ?? config.patienceEntryBufferTicks,
-      stopBufferTicks: input.request.ohlcvStopBufferTicks ?? config.patienceStopBufferTicks,
+      stopBufferPolicy: "atr-adaptive-v1",
       entrySlippageTicks: input.request.ohlcvSlippageTicks ?? config.phase7NormalSlippageTicks,
       exitSlippageTicks: input.request.ohlcvSlippageTicks ?? config.phase7NormalSlippageTicks,
       commissionPerContract: input.request.ohlcvCommissionPerContract

@@ -33,6 +33,8 @@ export type BreakevenDisposition =
   | "BREAKEVEN_EXIT_REACHED"
   | "BREAKEVEN_RECOVERY_EXIT_REACHED";
 
+export type BreakevenCloseDisposition = "favorable" | "adverse" | "neutral";
+
 export function isExecutionAmbiguityLabel(label: string): boolean {
   return label === AMBIGUOUS_OHLCV_SEQUENCE_LABEL
     || label === AMBIGUOUS_STOP_FIRST_LABEL
@@ -117,6 +119,13 @@ export type OhlcvExecutionAudit = {
   breakevenEffectiveFromTimestamp: number | null;
   breakevenPrice: number | null;
   breakevenDisposition: BreakevenDisposition;
+  breakevenMfePrice: number | null;
+  breakevenMfePoints: number | null;
+  breakevenMfeTicks: number | null;
+  breakevenMfeR: number | null;
+  breakevenEvaluationClose: number | null;
+  breakevenEvaluationCloseDisposition: BreakevenCloseDisposition | null;
+  breakevenRecoveryExitTimestamp: number | null;
   originalStopStillActive: boolean;
 };
 
@@ -243,6 +252,13 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       breakevenEffectiveFromTimestamp: null,
       breakevenPrice: null,
       breakevenDisposition: noForwardLevelAtEntry ? "PENDING" : "NOT_APPLICABLE",
+      breakevenMfePrice: null,
+      breakevenMfePoints: null,
+      breakevenMfeTicks: null,
+      breakevenMfeR: null,
+      breakevenEvaluationClose: null,
+      breakevenEvaluationCloseDisposition: null,
+      breakevenRecoveryExitTimestamp: null,
       originalStopStillActive: false,
     },
     ambiguityLabels: [], eventLabels: labels, assumptions,
@@ -364,6 +380,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let breakevenEffectiveFromTimestamp: number | null = null;
   let breakevenPrice: number | null = noForwardLevelAtEntry ? modeledFill : null;
   let breakevenDisposition: BreakevenDisposition = "PENDING";
+  let breakevenMfePrice: number | null = null;
+  let breakevenMfePoints: number | null = null;
+  let breakevenMfeTicks: number | null = null;
+  let breakevenMfeR: number | null = null;
+  let breakevenEvaluationClose: number | null = null;
+  let breakevenEvaluationCloseDisposition: BreakevenCloseDisposition | null = null;
+  let breakevenRecoveryExitTimestamp: number | null = null;
   let breakevenMode: "none" | "stop" | "recovery" = "none";
   let breakevenEvaluated = false;
   let runnerBreakevenPending = false;
@@ -483,6 +506,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     if (recoveryReached) {
       eventLabels.push(BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL);
       breakevenDisposition = "BREAKEVEN_RECOVERY_EXIT_REACHED";
+      breakevenRecoveryExitTimestamp = typeof candle.closeTime === "number" && Number.isFinite(candle.closeTime)
+        ? candle.closeTime
+        : null;
       const quantityToExit = targetHit || oneRReached ? runnerQuantity : remaining;
       legs.push(makeLeg(
         targetHit || oneRReached ? "runner" : "full",
@@ -619,6 +645,16 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       const favorableExcursionR = initialRiskPoints && initialRiskPoints > 0
         ? Math.abs(favorableExtreme - modeledFill) / initialRiskPoints
         : 0;
+      breakevenMfePrice = tick(favorableExtreme, size);
+      breakevenMfePoints = Number(Math.abs(favorableExtreme - modeledFill).toFixed(10));
+      breakevenMfeTicks = Number((breakevenMfePoints / size).toFixed(10));
+      breakevenMfeR = Number(favorableExcursionR.toFixed(10));
+      breakevenEvaluationClose = tick(candle.close, size);
+      breakevenEvaluationCloseDisposition = favorableClose(input.direction, candle.close, modeledFill)
+        ? "favorable"
+        : candle.close === modeledFill
+          ? "neutral"
+          : "adverse";
       if (favorableExcursionR >= BREAKEVEN_FAVORABLE_EXCURSION_R
         && favorableClose(input.direction, candle.close, modeledFill)) {
         breakevenMode = "stop";
@@ -689,6 +725,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        breakevenEffectiveFromTimestamp,
        breakevenPrice,
        breakevenDisposition,
+        breakevenMfePrice,
+        breakevenMfePoints,
+        breakevenMfeTicks,
+        breakevenMfeR,
+        breakevenEvaluationClose,
+        breakevenEvaluationCloseDisposition,
+        breakevenRecoveryExitTimestamp,
        originalStopStillActive,
     },
      ambiguityLabels, eventLabels, assumptions,

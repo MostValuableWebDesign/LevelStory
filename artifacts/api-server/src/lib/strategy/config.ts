@@ -209,7 +209,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7RunnerRetracementRatio: 0.4,
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
-  executionManagementVersion: "execution-management-v4-adaptive-atr-fixed-size",
+  executionManagementVersion: "execution-management-v5-adaptive-atr-fixed-size-audit",
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {

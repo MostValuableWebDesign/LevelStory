@@ -428,6 +428,13 @@ test("arms long breakeven after six completed post-entry candles and exits on ca
   assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_EXIT_REACHED");
   assert.equal(result.audit.breakevenActivationTimestamp, start + 6 * 300_000);
   assert.equal(result.audit.breakevenEffectiveFromTimestamp, start + 6 * 300_000);
+  assert.equal(result.audit.breakevenMfePrice, 101);
+  assert.equal(result.audit.breakevenMfePoints, 1);
+  assert.equal(result.audit.breakevenMfeTicks, 4);
+  assert.equal(result.audit.breakevenMfeR, 0.5);
+  assert.equal(result.audit.breakevenEvaluationClose, 100.5);
+  assert.equal(result.audit.breakevenEvaluationCloseDisposition, "favorable");
+  assert.equal(result.audit.breakevenRecoveryExitTimestamp, null);
   assert.equal(result.exitReason, "breakeven");
   assert.equal(result.exitPrice, 100);
   assert.ok(result.audit.eventLabels.includes(NO_FORWARD_LEVEL_1R_PLAN_LABEL));
@@ -469,6 +476,13 @@ test("keeps the original stop through adverse activation, then recovers at entry
     ],
   });
   assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_RECOVERY_EXIT_REACHED");
+  assert.equal(result.audit.breakevenMfePrice, 100.25);
+  assert.equal(result.audit.breakevenMfePoints, 0.25);
+  assert.equal(result.audit.breakevenMfeTicks, 1);
+  assert.equal(result.audit.breakevenMfeR, 0.125);
+  assert.equal(result.audit.breakevenEvaluationClose, 99.75);
+  assert.equal(result.audit.breakevenEvaluationCloseDisposition, "adverse");
+  assert.equal(result.audit.breakevenRecoveryExitTimestamp, null);
   assert.equal(result.exitReason, "breakeven_recovery");
   assert.equal(result.exitPrice, 100);
   assert.equal(result.legs[0]?.exitReason, "breakeven_recovery");

@@ -12,6 +12,7 @@ import type {
   VisualValidationSnapshot,
   VisualValidationTradeCandidate,
 } from "./visual-validation.js";
+import { buildKeyLevelTargetPlan } from "./strategy/key-level-targets.js";
 
 const reviewSetId = "00000000-0000-0000-0000-000000000001";
 
@@ -205,7 +206,17 @@ test("replay source has no broker, live-order, or paper-trading path", () => {
 
 test("fixed-size replay reruns frozen execution instead of scaling stored P/L", () => {
   const replayCandidate = candidate("rerun");
-  const sourceTrade = trade("rerun-trade", 999, "rerun");
+  const frozenTargetPlan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [{ id: "major-resistance", type: "major resistance", price: 102 }],
+    tickSize: 0.25,
+    placementMode: "EXACT_LEVEL",
+    targetBufferTicks: 1,
+    initialRiskPoints: 1,
+    contracts: 1,
+  });
+  const sourceTrade = trade("rerun-trade", 999, "rerun", { targetPlan: frozenTargetPlan });
   const replayInput: VisualValidationReplayExecutionInput = {
     entryPrice: 100,
     patienceCandle: {
@@ -260,7 +271,7 @@ test("fixed-size replay reruns frozen execution instead of scaling stored P/L", 
     strategyStopPrice: 99,
     targetPrice: 102,
     primaryLossExitLevel: null,
-    trailingBufferTicks: 4,
+    runnerBufferTicks: 4,
   };
   const set = {
     ...replaySet([replayCandidate], []),
