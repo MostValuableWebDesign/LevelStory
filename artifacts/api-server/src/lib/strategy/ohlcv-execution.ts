@@ -378,7 +378,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let breakevenActivated = false;
   let breakevenActivationTimestamp: number | null = null;
   let breakevenEffectiveFromTimestamp: number | null = null;
-  let breakevenPrice: number | null = noForwardLevelAtEntry ? modeledFill : null;
+  // This is an active stop level, not the planned no-target checkpoint price.
+  // Keep it null until the sixth-candle confirmation actually arms breakeven.
+  let breakevenPrice: number | null = null;
   let breakevenDisposition: BreakevenDisposition = "PENDING";
   let breakevenMfePrice: number | null = null;
   let breakevenMfePoints: number | null = null;

@@ -441,6 +441,31 @@ test("arms long breakeven after six completed post-entry candles and exits on ca
   assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
 });
 
+test("keeps the original long stop when candle six reaches 0.5R but closes below entry", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: null,
+    oneRProfitRule: true,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 5 }, () => candle(100, 100.25, 99.5, 99.75)),
+      candle(99.75, 101, 99.5, 99.75),
+      candle(99.75, 100, 97.5, 99),
+    ],
+  });
+  assert.equal(result.audit.breakevenMfeR, 0.5);
+  assert.equal(result.audit.breakevenEvaluationCloseDisposition, "adverse");
+  assert.equal(result.audit.breakevenActivated, false);
+  assert.equal(result.audit.breakevenPrice, null);
+  assert.equal(result.audit.originalStopStillActive, true);
+  assert.equal(result.audit.breakevenDisposition, "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN");
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.exitPrice, 98);
+  assert.equal(result.audit.stopLevel, "strategy");
+});
+
 test("applies the same completed-bar breakeven boundary to shorts", () => {
   const bars = Array.from({ length: 5 }, () => candle(99.75, 100.25, 99.25, 99.75));
   bars.push(candle(99.75, 100, 99, 99.5));
