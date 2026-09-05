@@ -1,0 +1,170 @@
+Previous Codex session for project context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 23/
+
+Read the previous session first, then inspect the current repository and existing tests. Implement the fixes below. Do not change trade-setup eligibility, strategy qualification, patience-candle selection, entry-confirmation rules, or live-order behavior.
+
+Objective:
+Complete and consistently integrate the existing Profit Taking, Stop Loss, Breakeven/Recovery, and one-/two-contract management rules across generated Visual Review candidates and the combined multi-date Shadow Account Replay.
+
+1. Profit taking
+
+Use completed five-minute ATR(14) available causally at entry.
+
+TargetBufferTicks =
+clamp(ceil(ATR14Ticks × 0.05), 1, 2)
+
+For each generated candidate:
+
+- Freeze the directional key levels available at entry.
+- Select the nearest eligible profitable directional key level within the governed 20-MES-tick search distance.
+- Place the target TargetBufferTicks before the near side of that level.
+- StructuralR must equal the absolute distance between the modeled entry fill and the revised adaptive initial stop.
+- A key-level target may not exceed 1.50R.
+- Minimum acceptable target distance:
+  - One contract: 0.75R
+  - Two contracts: 0.50R
+- If an obstructing major directional level exists before the applicable minimum, reject the candidate with `INSUFFICIENT_REWARD_TO_RISK`.
+- If no eligible directional key level exists, use 1R as the profit target.
+- Preserve the selected level, frozen inputs, target buffer, StructuralR, target R multiple, and rejection reason in candidate audit evidence.
+- Remove or bypass conflicting legacy exact-level target behavior in every authoritative Visual Review candidate execution path.
+
+2. Stop loss
+
+StopBufferTicks =
+clamp(ceil(ATR14Ticks × 0.10), 4, 8)
+
+Set the initial strategy stop:
+
+- Long: patience-candle low − StopBufferTicks
+- Short: patience-candle high + StopBufferTicks
+
+MaximumStructuralRiskTicks =
+clamp(ceil(ATR14Ticks × 1.50), 20, 40)
+
+Calculate actual structural risk from the modeled fill:
+
+StructuralRiskTicks =
+abs(ModeledFillPrice − InitialStopPrice) ÷ 0.25
+
+If StructuralRiskTicks exceeds MaximumStructuralRiskTicks:
+
+- Reject the candidate with `STOP_DISTANCE_TOO_WIDE`.
+- Do not reduce contract quantity.
+- Do not use starting balance, account equity, account percentage, or permitted dollar risk to size or approve the trade.
+
+Eliminate conflicting fixed 12-tick stop requirements from authoritative backtest, candidate-generation, API-schema, frontend, and replay paths. The adaptive stop must be the stop used to calculate StructuralR, targets, exits, P/L, and displayed audit evidence.
+
+Do not change the existing eight-tick entry-confirmation buffer.
+
+3. Breakeven and recovery
+
+Apply this only when no eligible key-level target existed at entry and the position has not already reached its 1R target.
+
+After exactly six completed post-entry five-minute candles:
+
+- Calculate maximum favorable excursion in R using the original modeled fill and frozen initial stop.
+- If MFE is at least 0.50R and candle six closes favorably relative to entry, arm a breakeven stop at the modeled fill.
+- The breakeven stop becomes effective starting with the following candle, never retroactively on candle six.
+- If MFE is below 0.50R and candle six closes adverse or neutral, enter recovery mode.
+- During recovery mode, keep the original stop fully active.
+- Exit at the modeled entry price if a subsequent candle recovers to entry.
+- If the original stop and recovery price are both touched in one OHLCV candle, apply the existing conservative adverse-first policy and record the ambiguity.
+- Preserve activation candle, effective-from candle, MFE in R, disposition, original-stop state, recovery exit, and ambiguity labels in audit evidence.
+
+4. One- and two-contract management
+
+Only fixed sizes of exactly 1 or 2 contracts are valid. Default to 1.
+
+One contract:
+
+- Exit the entire position at the selected key-level target.
+- If no eligible key level exists, exit the entire position at 1R.
+- Do not create a runner.
+
+Two contracts:
+
+- Exit exactly one contract at the selected key-level target.
+- If no eligible key level exists, exit exactly one contract at 1R.
+- Manage the second contract as a runner.
+- After the first contract exits, wait for the next completed favorable candle before arming runner breakeven.
+- Do not arm runner breakeven on the target-hit candle.
+- Trail the runner using confirmed completed five-minute swings.
+
+RunnerBufferTicks =
+clamp(ceil(ATR14Ticks × 0.10), 4, 8)
+
+- Long runner stop: confirmed swing low − RunnerBufferTicks
+- Short runner stop: confirmed swing high + RunnerBufferTicks
+- A trailing stop may tighten but must never widen.
+
+5. Visual Review and combined replay integration
+
+Fix the Visual Review contract selector:
+
+- Replace the unrestricted numeric input with a control that allows exactly 1 or 2.
+- Default to 1.
+- Apply the same validation in the API schema, route, server logic, and strategy configuration.
+- Never silently convert 1 to 2.
+- Reject any value other than 1 or 2 with a clear validation error.
+
+The combined multi-date Shadow Account Replay must not proportionally scale an already-calculated trade’s P/L when contract size changes.
+
+Instead:
+
+- Re-run each retained candidate’s authoritative execution from its frozen entry-time evidence using the selected fixed size.
+- One-contract replay must use the full-exit/no-runner rules.
+- Two-contract replay must produce separate first-target and runner legs.
+- Recalculate exit prices, exit reasons, gross P/L, fees, slippage, net P/L, running balance, drawdown, win rate, expectancy, profit factor, streaks, date breakdowns, and equity curve from those newly modeled legs.
+- Continue combining all processed dates chronologically in one ledger and one aggregate account result.
+- Starting balance is only the baseline for the displayed equity curve and return. It must not affect trade eligibility, stop distance, targets, or contract sizing.
+
+6. Consistency and cleanup
+
+Remove or reconcile all conflicting legacy behavior, including:
+
+- Fixed 12-tick patience stops in authoritative paths.
+- Visual Review defaulting to two contracts.
+- Minimum-two and maximum-100 contract controls.
+- Replay clamping one contract to two.
+- Contract-dependent P/L scaling without rerunning execution.
+- Exact-level target placement where adaptive near-side placement should be authoritative.
+- Any test that intentionally preserves these obsolete behaviors.
+
+Keep version hashes and cache metadata synchronized so old Visual Review sets are marked stale and must be regenerated.
+
+7. Required tests
+
+Add or update tests proving:
+
+- ATR target buffer clamps to 1–2 ticks.
+- ATR stop and runner buffers clamp to 4–8 ticks.
+- Maximum structural risk clamps to 20–40 ticks.
+- StructuralR uses modeled fill to the adaptive initial stop.
+- `STOP_DISTANCE_TOO_WIDE` rejects without changing quantity.
+- One-contract minimum target is 0.75R.
+- Two-contract minimum target is 0.50R.
+- Maximum key-level target is 1.50R.
+- Obstructing major levels produce `INSUFFICIENT_REWARD_TO_RISK`.
+- No eligible level produces the 1R fallback.
+- One contract exits completely with no runner.
+- Two contracts produce one target leg and one runner leg.
+- Runner breakeven cannot activate on the target candle.
+- Six-candle breakeven and recovery work for long and short trades.
+- Original stop beats recovery in ambiguous candles.
+- The Visual Review API accepts only 1 or 2 contracts.
+- Selecting one contract remains one contract throughout replay.
+- Changing between one and two contracts reruns execution rather than scaling P/L.
+- Combined-date totals equal the chronological sum of the newly modeled trade legs.
+- No account-balance value influences eligibility, sizing, stop, target, or R.
+
+Run focused tests, the complete API-server test suite, type checking, and the frontend build. Report:
+
+- Files changed
+- Conflicting legacy paths removed or reconciled
+- Tests executed and results
+- Any remaining limitations
+
+Do not claim completion merely because constants or helper functions exist. Verify the actual Visual Review generation and combined replay behavior end to end.
