@@ -2633,10 +2633,6 @@ function EmptyReview() {
   return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">No confirmed trade candidates were found in this review period.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic review set to search for causal edge → P → immediate E candidates.</p><p className="mt-3 text-xs text-muted-foreground">Suggested action: extend the review period.</p></div>;
 }
 
-function ReviewSetNotStarted() {
-  return <div className="flex min-h-[220px] flex-col items-center justify-center px-8 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><FileSearch size={21} /></div><h2 className="text-lg font-bold">No review set selected</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Upload chart evidence above or open the Generate tab to run a deterministic replay before reviewing candidates.</p></div>;
-}
-
 function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
   return <Panel>
     <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6"><div><div className="eyebrow text-muted-foreground">Output / review ledger</div><h2 className="mt-1 text-[14px] font-bold">Review export</h2></div><button type="button" onClick={onExport} disabled={pending} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:opacity-55" data-testid="button-export-reviews">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}Export JSON</button></div>

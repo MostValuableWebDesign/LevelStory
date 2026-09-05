@@ -111,12 +111,11 @@ test("visual review separates chart analysis, deterministic generation, and read
   assert.match(page, /open=\{true\} onToggleOpen=\{\(\) => undefined\}/);
 });
 
-test("visual review only shows the no-candidate state after generation finishes", () => {
+test("Generate only shows the no-candidate state after generation finishes", () => {
   assert.match(page, /const generationFinished = generationJob\?\.status === "completed";/);
-  assert.match(page, /!data \? generationFinished \? <Panel><EmptyReview \/><\/Panel> : <Panel><ReviewSetNotStarted \/><\/Panel>/);
   assert.match(page, /!activeSnapshot && <Panel><EmptyReview \/>/);
   assert.match(page, /generationFinished \? <Panel><EmptyReview \/><\/Panel> : null/);
-  assert.match(page, /function ReviewSetNotStarted\(\)/);
+  assert.doesNotMatch(page, /function ReviewSetNotStarted\(\)/);
 });
 
 test("deterministic replay always returns results to the Generate tab", () => {
