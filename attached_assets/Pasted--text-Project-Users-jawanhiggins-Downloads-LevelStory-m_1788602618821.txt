@@ -1,0 +1,451 @@
+```text
+Project:
+/Users/jawanhiggins/Downloads/LevelStory-main 22
+
+Implement only the following four enhancements:
+
+1. Profit taking
+2. Stop loss
+3. Breakeven and recovery
+4. One- and two-contract management
+
+Do not change:
+
+- Setup eligibility
+- Entry-buffer rules
+- Patience-candle detection
+- Breakout rules
+- Pullback rules
+- Trend rules
+- NTZ rules
+- Strategy taxonomy
+- Candidate generation
+- Re-entry eligibility
+- Account-based performance calculations
+- Shadow Mode safety boundaries
+
+This remains simulated Shadow Mode only. Do not add broker, live-order, paper-trading, or order-routing capabilities.
+
+SHARED DEFINITIONS
+
+MES tick size:
+
+0.25 points
+
+MES tick value:
+
+$1.25 per contract
+
+Calculate structural R from the existing modeled entry and revised initial stop:
+
+InitialRiskPoints =
+  abs(ModeledEntryPrice − InitialStopPrice)
+
+InitialRiskTicks =
+  InitialRiskPoints ÷ 0.25
+
+1R equals the complete price distance between the modeled entry and frozen initial stop.
+
+Use R only for target and management calculations.
+
+Do not use:
+
+- Account balance
+- Account percentage
+- Dollar-risk budget
+- Compounding
+- Account value to select contract quantity
+- Account value to move the stop
+
+Dollar risk and P/L are outputs only.
+
+==================================================
+ENHANCEMENT 1 — PROFIT TAKING
+==================================================
+
+Replace the current fixed 8-tick or 30-tick key-level target buffer with an adaptive 1–2 tick buffer.
+
+At candidate creation, calculate:
+
+ATR_ticks =
+  ATR(14) from causally available completed 5-minute candles ÷ 0.25
+
+TargetBufferTicks =
+  clamp(
+    ceil(ATR_ticks × 0.05),
+    minimum 1 tick,
+    maximum 2 ticks
+  )
+
+Freeze ATR and TargetBufferTicks with the candidate.
+
+Eligible directional key levels:
+
+- VWAP
+- 200 EMA
+- ORB/NTZ boundaries
+- Premarket high/low
+- Previous-session high/low
+- Two-sessions-ago high/low
+- Major support/resistance
+- Dynamite/confluence levels
+
+Do not use these as targets:
+
+- Fibonacci levels
+- Stops
+- Entry buffers
+- Runner levels
+- Previous-close aliases
+- Management annotations
+- Non-authoritative or future levels
+
+Target calculation:
+
+Long:
+
+TargetPrice =
+  near-side boundary of the selected level
+  minus TargetBufferTicks × 0.25
+
+Short:
+
+TargetPrice =
+  near-side boundary of the selected level
+  plus TargetBufferTicks × 0.25
+
+Target rules:
+
+- Freeze eligible levels using only causally available completed-candle evidence.
+- Use the nearest profitable directional level.
+- The adjusted target must remain strictly profitable.
+- Do not select or change a target using future candles.
+- Consider key-level targets up to 1.5R from entry.
+- Retain skipped levels and exact rejection reasons in the audit.
+
+Calculate:
+
+TargetR =
+  abs(TargetPrice − EntryPrice) ÷ InitialRiskPoints
+
+One-contract minimum:
+
+- The key-level target must offer at least 0.75R.
+
+Two-contract first-target minimum:
+
+- The key-level target must offer at least 0.50R.
+
+If a major opposing level exists before the required minimum reward:
+
+- Reject the trade as `INSUFFICIENT_REWARD_TO_RISK`.
+- Do not silently ignore the level.
+- Record the obstructing level, adjusted target, TargetR, and required minimum.
+
+If no eligible forward key-level target exists and no major opposing level blocks the trade:
+
+- Use 1R as the fallback target.
+
+==================================================
+ENHANCEMENT 2 — STOP LOSS
+==================================================
+
+Replace the fixed 12-tick patience stop buffer with an adaptive 4–8 tick buffer.
+
+Calculate at candidate creation:
+
+StopBufferTicks =
+  clamp(
+    ceil(ATR_ticks × 0.10),
+    minimum 4 ticks,
+    maximum 8 ticks
+  )
+
+Long stop:
+
+InitialStopPrice =
+  patience-candle low − StopBufferTicks × 0.25
+
+Short stop:
+
+InitialStopPrice =
+  patience-candle high + StopBufferTicks × 0.25
+
+Stop requirements:
+
+- Calculate the buffer from completed-candle ATR.
+- Freeze ATR, StopBufferTicks, patience extreme, and stop price with the candidate.
+- The stop must be on the correct side of entry.
+- Align the stop to the MES tick grid.
+- Do not move the initial stop closer merely to make a trade qualify.
+- Stale or legacy stops cannot override the candidate-owned stop.
+- Catastrophe protection remains separate and takes precedence.
+- Initial protective stops remain intrabar-touch rules; a candle close is not required.
+
+Add a market-structure guard that does not depend on account value:
+
+MaximumRiskTicks =
+  clamp(
+    ceil(ATR_ticks × 1.50),
+    minimum 20 ticks,
+    maximum 40 ticks
+  )
+
+If:
+
+InitialRiskTicks > MaximumRiskTicks
+
+Then:
+
+- Reject the candidate as `STOP_DISTANCE_TOO_WIDE`.
+- Do not reduce contract quantity.
+- Do not pull the stop closer.
+- Display actual risk ticks, ATR ticks, and the permitted maximum.
+
+This is a volatility and trade-geometry rule—not account-based risk sizing.
+
+==================================================
+ENHANCEMENT 3 — BREAKEVEN AND RECOVERY
+==================================================
+
+Replace the unconditional nine-candle breakeven rule with progress-based management after six completed post-entry candles.
+
+Before the first target is reached:
+
+1. Count six completed 5-minute candles after entry.
+2. Calculate maximum favorable excursion in R.
+3. Evaluate the sixth candle’s completed close.
+
+Favorable close:
+
+- Long: close strictly above entry
+- Short: close strictly below entry
+- A close exactly at entry is neutral
+
+Breakeven branch:
+
+If:
+
+- Maximum favorable excursion reached at least 0.50R
+- And the sixth candle closes favorably
+
+Then:
+
+- Arm the stop at the entry price.
+- Make the breakeven stop effective on the next candle.
+- Do not apply it retroactively to the sixth candle.
+- Keep the original stop active until the breakeven stop becomes effective.
+- Record `BREAKEVEN_ARMED` and its effective timestamp.
+
+Recovery branch:
+
+If:
+
+- Maximum favorable excursion did not reach 0.50R
+- And the sixth candle closes adversely or neutrally
+
+Then:
+
+- Enter recovery-exit mode.
+- Keep the original strategy stop active.
+- Do not move the stop to breakeven.
+- Beginning with the next candle, exit at entry if price recovers to the entry price.
+- Record the exit as `ENTRY_PRICE_RECOVERY_EXIT`.
+
+If price never recovers:
+
+- Keep the original stop active.
+- Preserve session-close management.
+- Do not fabricate a breakeven exit.
+
+After the first target on a two-contract position:
+
+- Wait for the next completed favorable candle.
+- Then move the runner stop to entry if doing so improves protection.
+- Do not move the runner to breakeven on the same candle that touches the first target.
+
+Ambiguity:
+
+If the original stop and recovery price are both touched in one historical OHLCV candle and intrabar order is unavailable:
+
+- Apply the adverse stop first.
+- Mark the sequence ambiguous.
+- Do not score it as an ordinary recovery exit.
+
+==================================================
+ENHANCEMENT 4 — CONTRACT MANAGEMENT
+==================================================
+
+Support exactly two fixed-sizing modes:
+
+- Fixed size: 1 contract
+- Fixed size: 2 contracts
+
+Default:
+
+1 contract
+
+Contract quantity must not be calculated from:
+
+- Starting account balance
+- Account percentage
+- Previous P/L
+- Dollar-risk budget
+- Compounding
+- Stop distance
+
+Do not automatically increase or reduce the selected fixed quantity.
+
+ONE CONTRACT
+
+When fixed size is 1:
+
+- Enter one modeled contract.
+- If a qualifying key-level target offers at least 0.75R, exit the entire position there.
+- Otherwise, if no opposing level blocks the trade, exit the entire position at 1R.
+- Do not create a runner.
+- Do not apply runner management after the full exit.
+- Record one entry leg and one exit leg.
+
+TWO CONTRACTS
+
+When fixed size is 2:
+
+- Enter two modeled contracts at the same candidate-owned entry price.
+- If a qualifying key-level target offers at least 0.50R, exit contract 1 there.
+- Otherwise, if no opposing level blocks the trade, exit contract 1 at 1R.
+- After contract 1 exits, contract 2 becomes the runner.
+- The first scale-out may happen only once.
+- Record the scale-out and runner as separate execution legs.
+- Combine both legs into the candidate’s total P/L.
+
+RUNNER MANAGEMENT
+
+After the first contract exits, calculate:
+
+RunnerBufferTicks =
+  clamp(
+    ceil(ATR_ticks × 0.10),
+    minimum 4 ticks,
+    maximum 8 ticks
+  )
+
+Long runner:
+
+- Trail below the latest confirmed completed-candle swing low.
+
+Short runner:
+
+- Trail above the latest confirmed completed-candle swing high.
+
+Runner rules:
+
+- Use only completed 5-minute swing evidence.
+- The new stop must improve protection.
+- Never widen the runner stop.
+- Never move a long stop lower.
+- Never move a short stop higher.
+- Preserve catastrophe-stop and session-close behavior.
+- Record every trailing-stop revision and its source candle.
+- When multiple valid protective stops exist, use the most protective one that does not violate causal ordering.
+
+P/L CALCULATION
+
+Calculate P/L after modeling execution:
+
+GrossPnl =
+  PriceMovementTicks × $1.25 × exited contracts
+
+NetPnl =
+  GrossPnl − fees − slippage
+
+For two contracts:
+
+TotalTradeNetPnl =
+  contract 1 net P/L + runner net P/L
+
+Starting account balance is used only for displaying combined account results. It must not change contract quantity or management behavior.
+
+==================================================
+ORDERING AND COLLISIONS
+==================================================
+
+Use this general precedence:
+
+1. Catastrophe stop
+2. Active original strategy stop
+3. Active breakeven stop
+4. Frozen key-level target or 1R target
+5. Recovery exit
+6. Active runner trailing stop
+7. Session-close exit
+
+Apply the repository’s existing conservative adverse-first policy whenever exact OHLCV intrabar ordering is unknowable.
+
+Do not select favorable ordering to improve performance.
+
+==================================================
+VERSIONING
+==================================================
+
+Create a new execution-management/formula version.
+
+Include these values in the configuration and formula hashes:
+
+- ATR period
+- Target-buffer formula and 1–2 tick bounds
+- Stop-buffer formula and 4–8 tick bounds
+- Maximum structural-risk formula and bounds
+- One-contract minimum TargetR
+- Two-contract minimum TargetR
+- 1R fallback rules
+- Six-candle breakeven evaluation
+- 0.50R favorable-excursion requirement
+- Recovery-exit behavior
+- Runner-buffer formula and bounds
+- Fixed contract selection
+
+Previously generated review sets must become visibly stale rather than silently using the revised management rules.
+
+==================================================
+TESTS
+==================================================
+
+Add deterministic tests proving:
+
+1. Target buffer remains between 1 and 2 ticks.
+2. Stop buffer remains between 4 and 8 ticks.
+3. ATR and buffers freeze with the candidate.
+4. Initial R includes the complete entry-to-stop distance.
+5. Account balance never changes fixed contract quantity.
+6. An excessive structural stop is rejected without moving it.
+7. A one-contract key target requires at least 0.75R.
+8. A two-contract first target requires at least 0.50R.
+9. An obstructing level produces `INSUFFICIENT_REWARD_TO_RISK`.
+10. One contract exits completely and never creates a runner.
+11. Two contracts produce exactly one scale-out and one runner.
+12. Breakeven becomes effective only on the following candle.
+13. Recovery mode retains the original stop.
+14. Runner stops never widen.
+15. Both two-contract exit legs reconcile to total trade P/L.
+16. Ambiguous OHLCV collisions use adverse-first ordering.
+17. Old cached results cannot use the new management version.
+18. Setup eligibility and entry logic remain unchanged.
+19. No broker, live-order, paper-order, or order-routing path is added.
+
+Run focused execution-management, candidate, replay, API, and frontend tests, followed by typechecks and `git diff --check`.
+
+Final response must report:
+
+- Prior management behavior
+- Revised profit-taking behavior
+- Revised stop behavior
+- Revised breakeven/recovery behavior
+- Revised one- and two-contract behavior
+- Formula/version changes
+- Files changed
+- Tests executed and results
+- Remaining limitations
+
+Do not modify unrelated strategy eligibility or entry rules.
+```
