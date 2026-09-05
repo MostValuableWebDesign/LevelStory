@@ -127,6 +127,8 @@ test("deterministic replay always returns results to the Generate tab", () => {
 test("deterministic replay chart evidence is rendered inside the Generate tab", () => {
   assert.match(page, /id="visual-review-panel-generate-evidence"/);
   assert.match(page, /activeVisualReviewTab === "generate" && data && activeSnapshot/);
+  assert.match(page, /id="visual-review-panel-generate-evidence"[^>]*className="order-2 space-y-5"/);
+  assert.match(page, /id="visual-review-panel-generate"[^>]*className="order-1 space-y-5"/);
   assert.match(page, /eyebrow="Raw market evidence \/ causal only"/);
   assert.match(page, /title="Chart evidence"/);
   assert.match(page, /id="visual-review-panel-chart-analysis"[\s\S]*<UploadedChartAnalysis/);

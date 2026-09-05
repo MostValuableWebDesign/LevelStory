@@ -830,7 +830,7 @@ export default function VisualReview() {
   return (
     <LevelStoryShell>
       <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
-        <div className="mx-auto max-w-[1560px]">
+         <div className="mx-auto flex max-w-[1560px] flex-col">
           <PageIntro
             eyebrow="Phase 12 / human-machine alignment"
             title="Look before you trust."
@@ -872,7 +872,7 @@ export default function VisualReview() {
              <UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} />
            </section>}
 
-           {activeVisualReviewTab === "generate" && data && activeSnapshot && <section id="visual-review-panel-generate-evidence" aria-label="Generated replay chart evidence" className="space-y-5">
+           {activeVisualReviewTab === "generate" && data && activeSnapshot && <section id="visual-review-panel-generate-evidence" aria-label="Generated replay chart evidence" className="order-2 space-y-5">
                  <div className={`visual-review-workspace ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                    <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
@@ -926,7 +926,7 @@ export default function VisualReview() {
                  </div>
            </section>}
 
-           {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="space-y-5">
+           {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
              <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
                <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
