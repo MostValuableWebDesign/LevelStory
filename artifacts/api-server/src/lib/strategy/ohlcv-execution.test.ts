@@ -82,6 +82,33 @@ test("records a target leg and a stopped runner as separate outcomes", () => {
   assert.equal(result.exitReason, "stop");
 });
 
+test("runner breakeven waits for the next completed candle after the target candle", () => {
+  const start = 1_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    contracts: 2,
+    targetQuantity: 1,
+    target: 101,
+    stop: 98,
+    structureTrailing: true,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.5, 100, start),
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      timedCandle(100, 101.25, 100, 101, start + 300_000),
+      timedCandle(101, 101.5, 100.5, 101.25, start + 600_000),
+      timedCandle(101.25, 102, 101, 101.5, start + 900_000),
+    ],
+  });
+  assert.equal(result.audit.targetHit, true);
+  assert.equal(result.audit.runnerBreakevenPendingTimestamp, start + 300_000);
+  assert.equal(result.audit.runnerBreakevenQualificationTimestamp, start + 600_000);
+  assert.equal(result.audit.runnerBreakevenEffectiveFromTimestamp, start + 600_000);
+  assert.equal(result.audit.runnerBreakevenPreviousStopPrice, 98);
+  assert.equal(result.audit.runnerBreakevenStopPrice, 100);
+  assert.equal(result.audit.runnerBreakevenTightened, true);
+  assert.equal(result.audit.runnerBreakevenIgnoredForTighterStop, false);
+});
+
 test("returns no fill when no candle triggers", () => {
   const result = simulateOhlcvExecution({ ...base, immediateTriggerCandle: candle(99, 99.5, 98, 99) });
   assert.equal(result.exitReason, "not filled");

@@ -313,6 +313,13 @@ export type BacktestTrade = {
       breakevenEvaluationClose?: number | null;
       breakevenEvaluationCloseDisposition?: "favorable" | "adverse" | "neutral" | null;
       breakevenRecoveryExitTimestamp?: string | null;
+      runnerBreakevenPendingTimestamp?: string | null;
+      runnerBreakevenQualificationTimestamp?: string | null;
+      runnerBreakevenEffectiveFromTimestamp?: string | null;
+      runnerBreakevenPreviousStopPrice?: number | null;
+      runnerBreakevenStopPrice?: number | null;
+      runnerBreakevenTightened?: boolean;
+      runnerBreakevenIgnoredForTighterStop?: boolean;
      originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -519,6 +526,13 @@ export type BacktestAuditRecord = {
   breakevenEvaluationClose?: number | null;
   breakevenEvaluationCloseDisposition?: "favorable" | "adverse" | "neutral" | null;
   breakevenRecoveryExitTimestamp?: string | null;
+  runnerBreakevenPendingTimestamp?: string | null;
+  runnerBreakevenQualificationTimestamp?: string | null;
+  runnerBreakevenEffectiveFromTimestamp?: string | null;
+  runnerBreakevenPreviousStopPrice?: number | null;
+  runnerBreakevenStopPrice?: number | null;
+  runnerBreakevenTightened?: boolean;
+  runnerBreakevenIgnoredForTighterStop?: boolean;
   originalStopStillActive?: boolean;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: BacktestConsolidationGuardEvidence | null;
@@ -4584,6 +4598,19 @@ function candidateDrivenEntryTrade(
          : new Date(modeled.audit.breakevenEffectiveFromTimestamp).toISOString(),
        breakevenPrice: modeled?.audit.breakevenPrice ?? null,
        breakevenDisposition: modeled?.audit.breakevenDisposition ?? "NOT_APPLICABLE",
+        runnerBreakevenPendingTimestamp: modeled?.audit.runnerBreakevenPendingTimestamp === null || modeled?.audit.runnerBreakevenPendingTimestamp === undefined
+          ? null
+          : new Date(modeled.audit.runnerBreakevenPendingTimestamp).toISOString(),
+        runnerBreakevenQualificationTimestamp: modeled?.audit.runnerBreakevenQualificationTimestamp === null || modeled?.audit.runnerBreakevenQualificationTimestamp === undefined
+          ? null
+          : new Date(modeled.audit.runnerBreakevenQualificationTimestamp).toISOString(),
+        runnerBreakevenEffectiveFromTimestamp: modeled?.audit.runnerBreakevenEffectiveFromTimestamp === null || modeled?.audit.runnerBreakevenEffectiveFromTimestamp === undefined
+          ? null
+          : new Date(modeled.audit.runnerBreakevenEffectiveFromTimestamp).toISOString(),
+        runnerBreakevenPreviousStopPrice: modeled?.audit.runnerBreakevenPreviousStopPrice ?? null,
+        runnerBreakevenStopPrice: modeled?.audit.runnerBreakevenStopPrice ?? null,
+        runnerBreakevenTightened: modeled?.audit.runnerBreakevenTightened ?? false,
+        runnerBreakevenIgnoredForTighterStop: modeled?.audit.runnerBreakevenIgnoredForTighterStop ?? false,
        originalStopStillActive: modeled?.audit.originalStopStillActive ?? false,
       remainingQuantity: modeled?.audit.remainingQuantity ?? management.contracts,
       exitReason: modeled?.exitReason ?? "not filled",
@@ -5202,6 +5229,25 @@ export function runCausalBacktest(
             breakevenRecoveryExitTimestamp: modeled.audit.breakevenRecoveryExitTimestamp === null
               ? null
               : new Date(modeled.audit.breakevenRecoveryExitTimestamp).toISOString(),
+             runnerBreakevenPendingTimestamp: modeled.audit.runnerBreakevenPendingTimestamp === null
+               ? null
+               : modeled.audit.runnerBreakevenPendingTimestamp === undefined
+                 ? null
+                 : new Date(modeled.audit.runnerBreakevenPendingTimestamp).toISOString(),
+             runnerBreakevenQualificationTimestamp: modeled.audit.runnerBreakevenQualificationTimestamp === null
+               ? null
+               : modeled.audit.runnerBreakevenQualificationTimestamp === undefined
+                 ? null
+                 : new Date(modeled.audit.runnerBreakevenQualificationTimestamp).toISOString(),
+             runnerBreakevenEffectiveFromTimestamp: modeled.audit.runnerBreakevenEffectiveFromTimestamp === null
+               ? null
+               : modeled.audit.runnerBreakevenEffectiveFromTimestamp === undefined
+                 ? null
+                 : new Date(modeled.audit.runnerBreakevenEffectiveFromTimestamp).toISOString(),
+             runnerBreakevenPreviousStopPrice: modeled.audit.runnerBreakevenPreviousStopPrice,
+             runnerBreakevenStopPrice: modeled.audit.runnerBreakevenStopPrice,
+             runnerBreakevenTightened: modeled.audit.runnerBreakevenTightened,
+             runnerBreakevenIgnoredForTighterStop: modeled.audit.runnerBreakevenIgnoredForTighterStop,
            originalStopStillActive: modeled.audit.originalStopStillActive,
           remainingQuantity: modeled.audit.remainingQuantity,
           exitReason: modeled.exitReason,
@@ -5244,6 +5290,25 @@ export function runCausalBacktest(
           selectedAudit.breakevenRecoveryExitTimestamp = modeled.audit.breakevenRecoveryExitTimestamp === null
             ? null
             : new Date(modeled.audit.breakevenRecoveryExitTimestamp).toISOString();
+           selectedAudit.runnerBreakevenPendingTimestamp = modeled.audit.runnerBreakevenPendingTimestamp === null
+             ? null
+             : modeled.audit.runnerBreakevenPendingTimestamp === undefined
+               ? null
+               : new Date(modeled.audit.runnerBreakevenPendingTimestamp).toISOString();
+           selectedAudit.runnerBreakevenQualificationTimestamp = modeled.audit.runnerBreakevenQualificationTimestamp === null
+             ? null
+             : modeled.audit.runnerBreakevenQualificationTimestamp === undefined
+               ? null
+               : new Date(modeled.audit.runnerBreakevenQualificationTimestamp).toISOString();
+           selectedAudit.runnerBreakevenEffectiveFromTimestamp = modeled.audit.runnerBreakevenEffectiveFromTimestamp === null
+             ? null
+             : modeled.audit.runnerBreakevenEffectiveFromTimestamp === undefined
+               ? null
+               : new Date(modeled.audit.runnerBreakevenEffectiveFromTimestamp).toISOString();
+           selectedAudit.runnerBreakevenPreviousStopPrice = modeled.audit.runnerBreakevenPreviousStopPrice;
+           selectedAudit.runnerBreakevenStopPrice = modeled.audit.runnerBreakevenStopPrice;
+           selectedAudit.runnerBreakevenTightened = modeled.audit.runnerBreakevenTightened;
+           selectedAudit.runnerBreakevenIgnoredForTighterStop = modeled.audit.runnerBreakevenIgnoredForTighterStop;
          selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
        lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);

@@ -340,6 +340,19 @@ function replayTradeWithFixedContracts(
       breakevenRecoveryExitTimestamp: execution.audit.breakevenRecoveryExitTimestamp === null
         ? null
         : new Date(execution.audit.breakevenRecoveryExitTimestamp).toISOString(),
+      runnerBreakevenPendingTimestamp: execution.audit.runnerBreakevenPendingTimestamp === null
+        ? null
+        : new Date(execution.audit.runnerBreakevenPendingTimestamp).toISOString(),
+      runnerBreakevenQualificationTimestamp: execution.audit.runnerBreakevenQualificationTimestamp === null
+        ? null
+        : new Date(execution.audit.runnerBreakevenQualificationTimestamp).toISOString(),
+      runnerBreakevenEffectiveFromTimestamp: execution.audit.runnerBreakevenEffectiveFromTimestamp === null
+        ? null
+        : new Date(execution.audit.runnerBreakevenEffectiveFromTimestamp).toISOString(),
+      runnerBreakevenPreviousStopPrice: execution.audit.runnerBreakevenPreviousStopPrice,
+      runnerBreakevenStopPrice: execution.audit.runnerBreakevenStopPrice,
+      runnerBreakevenTightened: execution.audit.runnerBreakevenTightened,
+      runnerBreakevenIgnoredForTighterStop: execution.audit.runnerBreakevenIgnoredForTighterStop,
       originalStopStillActive: execution.audit.originalStopStillActive,
       exitReason: execution.exitReason,
       legs: execution.legs,

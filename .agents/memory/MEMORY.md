@@ -53,6 +53,7 @@
 - [Snapshot-wide consolidation overlays](visual-snapshot-consolidation-overlays.md) — Visual Review highlights every qualifying range in the snapshot, not only the trade-entry consolidation guard.
 - [Candidate causal identity](candidate-causal-identity.md) — candidate-owned execution artifacts preserve signal, arm, and consolidation-zone provenance together.
 - [No-level breakeven management](no-level-breakeven-management.md) — count completed post-E candles; activate after the governed bar closes, with distinct stop and recovery outcomes.
+- [Runner breakeven boundary](runner-breakeven-boundary.md) — a target/1R candle only creates pending state; qualify on a later completed candle and apply the tighter stop from the following candle.
 - [Chart label contract](chart-label-contract.md) — off-screen primary references need edge labels; in-range chart labels stay limited to execution levels.
 - [Uploaded chart evidence safety](uploaded-chart-evidence-safety.md) — validate image bytes, freeze setup at entry cutoff, and keep pixel-derived exits unscored.
 - [Tolerant chart evidence parsing](tolerant-chart-evidence-parsing.md) — preserve unknown vision fields conservatively; never synthesize malformed candle or price evidence.
