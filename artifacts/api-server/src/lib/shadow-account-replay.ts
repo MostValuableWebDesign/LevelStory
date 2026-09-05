@@ -214,6 +214,19 @@ function replayTradeWithFixedContracts(
   contractsPerTrade: 1 | 2,
 ): ReplayTradeResult {
   const { trade, replayInput } = match;
+  if (
+    trade.candidateId
+    && trade.audit?.strategyStopPrice !== null
+    && trade.audit?.strategyStopPrice !== undefined
+    && (
+      (trade.direction === "long" && trade.audit.strategyStopPrice >= trade.entryPrice)
+      || (trade.direction === "short" && trade.audit.strategyStopPrice <= trade.entryPrice)
+    )
+  ) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId} has a strategy stop on the wrong side of its ${trade.direction} entry. Regenerate the review set.`,
+    );
+  }
   if (!replayInput) {
     if (trade.contracts === contractsPerTrade) return trade;
     throw new Error(

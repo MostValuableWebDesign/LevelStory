@@ -460,6 +460,12 @@ function replayInputForSnapshot(
     && candle.closeTime === audit.triggerCandleCloseTime,
   );
   if (!patienceCandle || !immediateTriggerCandle || audit.strategyStopPrice == null) return undefined;
+  if (
+    (trade.direction === "long" && audit.strategyStopPrice >= trade.entryPrice)
+    || (trade.direction === "short" && audit.strategyStopPrice <= trade.entryPrice)
+  ) {
+    return undefined;
+  }
   const subsequentCompletedCandles = uniqueCandles.filter((candle) =>
     Date.parse(candle.openTime) > Date.parse(immediateTriggerCandle.openTime)
     && Date.parse(candle.closeTime) > Date.parse(immediateTriggerCandle.closeTime),
@@ -1660,9 +1666,25 @@ function buildAnnotations(
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
   addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
-  const strategyStopPrice = trade?.candidateId
+  const candidateStrategyStopPrice = trade?.candidateId
     ? trade.audit?.strategyStopPrice ?? null
     : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
+  const strategyStopValid = trade === null
+    || candidateStrategyStopPrice === null
+    || (trade.direction === "long"
+      ? candidateStrategyStopPrice < trade.entryPrice
+      : candidateStrategyStopPrice > trade.entryPrice);
+  const strategyStopPrice = strategyStopValid ? candidateStrategyStopPrice : null;
+  if (!strategyStopValid) {
+    lines.push(annotation(
+      "strategy-stop-invalid",
+      "Strategy stop unavailable",
+      "level",
+      null,
+      "negative",
+      "The stored stop is on the wrong side of the candidate entry and was withheld from the chart. Regenerate this stale/incompatible review set.",
+    ));
+  }
   addLevel("strategy-stop", "Strategy stop", strategyStopPrice, "Formula-defined thesis stop.", "negative");
   // Candidate-owned plans are authoritative. Audit target fields are legacy
   // evidence and may only be used for a non-candidate legacy visualization.

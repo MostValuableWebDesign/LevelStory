@@ -353,6 +353,17 @@ test("rebuilds a two-contract target plan and rejects an insufficient one-contra
   assert.equal(one.warnings[0], "Rejected candidate target-disposition: INSUFFICIENT_REWARD_TO_RISK.");
 });
 
+test("rejects a stale candidate whose long stop is above entry", () => {
+  const sourceTrade = trade("invalid-stop-trade", 100, "invalid-stop", {
+    audit: { strategyStopPrice: 101 } as NonNullable<BacktestTrade["audit"]>,
+  });
+
+  assert.throws(
+    () => buildShadowAccountReplay(replaySet([candidate("invalid-stop")], [snapshot(sourceTrade)])),
+    /strategy stop on the wrong side of its long entry/i,
+  );
+});
+
 test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {
   const first = candidate("first");
   const second = { ...candidate("second"), tradingDate: "2026-08-26", entryCandleOpenTime: "2026-08-26T13:30:00.000Z", entryCandleCloseTime: "2026-08-26T13:35:00.000Z" };
