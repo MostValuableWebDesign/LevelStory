@@ -5,6 +5,7 @@ import {
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
 import type { ProfitTargetPlacement } from "./key-level-targets.js";
+import { DEFAULT_FIXED_CONTRACTS } from "./execution-management.js";
 
 export type StrategyConfig = {
   defaultContractSymbol: string;
@@ -83,11 +84,14 @@ export type StrategyConfig = {
   phase7DefaultTargetDollars: number;
   profitTargetPlacement: ProfitTargetPlacement;
   phase7RunnerRetracementRatio: number;
+  executionManagementAtrPeriod: number;
+  executionManagementFixedContracts: 1 | 2;
+  executionManagementVersion: string;
 };
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
-export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 9;
-export const SHADOW_CONTRACTS_PER_TRADE = 2;
+export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 6;
+export const SHADOW_CONTRACTS_PER_TRADE = DEFAULT_FIXED_CONTRACTS;
 
 export type ConsolidationThresholds = {
   version: string;
@@ -203,6 +207,9 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7DefaultTargetDollars: 75,
   profitTargetPlacement: "EXACT_LEVEL",
   phase7RunnerRetracementRatio: 0.4,
+  executionManagementAtrPeriod: 14,
+  executionManagementFixedContracts: 1,
+  executionManagementVersion: "execution-management-v4-adaptive-atr-fixed-size",
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -280,6 +287,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase7NormalSlippageTicks", config.phase7NormalSlippageTicks],
     ["phase7FastSlippageTicks", config.phase7FastSlippageTicks],
     ["phase7DefaultTargetDollars", config.phase7DefaultTargetDollars],
+    ["executionManagementAtrPeriod", config.executionManagementAtrPeriod],
   ];
   if (!Number.isInteger(config.primaryEntryStartMinutes)
     || !Number.isInteger(config.primaryEntryEndMinutes)
@@ -332,8 +340,12 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (config.patienceEntryBufferTicks !== 8) {
     throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly eight MES ticks (2.00 index points).");
   }
-  if (config.patienceStopBufferTicks !== 12) {
-    throw new Error("Invalid strategy configuration: patienceStopBufferTicks must be exactly twelve MES ticks.");
+  if (!Number.isInteger(config.executionManagementFixedContracts)
+    || ![1, 2].includes(config.executionManagementFixedContracts)) {
+    throw new Error("Invalid strategy configuration: executionManagementFixedContracts must be 1 or 2.");
+  }
+  if (!Number.isInteger(config.executionManagementAtrPeriod) || config.executionManagementAtrPeriod <= 0) {
+    throw new Error("Invalid strategy configuration: executionManagementAtrPeriod must be a positive whole number.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

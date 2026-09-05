@@ -1,6 +1,6 @@
 import type { Direction } from "./types.js";
 
-export type ProfitTargetPlacement = "NEAR_SIDE_8_TICKS" | "EXACT_LEVEL";
+export type ProfitTargetPlacement = "NEAR_SIDE_8_TICKS" | "NEAR_SIDE_ADAPTIVE_TICKS" | "EXACT_LEVEL";
 
 export type KeyLevelTargetInput = {
   id: string;
@@ -34,7 +34,7 @@ export type FrozenTargetLevel = {
 };
 
 export type SkippedTargetLevel = FrozenTargetLevel & {
-  reason: "OUTSIDE_20_TICKS" | "TARGET_NOT_PROFITABLE";
+  reason: "OUTSIDE_20_TICKS" | "TARGET_NOT_PROFITABLE" | "OUTSIDE_MAX_TARGET_R" | "INSUFFICIENT_REWARD_TO_RISK";
 };
 
 export type PrimaryLossExitReference = {
@@ -58,7 +58,16 @@ export type KeyLevelTargetPlan = {
   bufferTicks: 20;
   bufferPoints: number;
   /** Distance from the key level at which the executable target is placed. */
-  placementTicks: 8;
+  placementTicks: number;
+  /** Frozen adaptive near-side buffer used for this candidate. */
+  targetBufferTicks: number;
+  /** Frozen structural R used to constrain candidate target selection. */
+  initialRiskPoints?: number | null;
+  targetR?: number | null;
+  minimumTargetR?: number | null;
+  maximumTargetR?: number | null;
+  obstructingLevel?: FrozenTargetLevel | null;
+  rejectionReason?: "INSUFFICIENT_REWARD_TO_RISK" | null;
   availableLevels: FrozenTargetLevel[];
   skippedLevels: SkippedTargetLevel[];
   selectedTargetLevel: FrozenTargetLevel | null;
@@ -301,12 +310,20 @@ export function buildKeyLevelTargetPlan(input: {
   tickSize?: number;
   bufferTicks?: 20;
   placementMode?: ProfitTargetPlacement;
+  targetBufferTicks?: number;
+  initialRiskPoints?: number | null;
+  contracts?: number;
+  maximumTargetR?: number;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
   const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
   if (bufferTicks !== 20) throw new Error("Key-level target distance must be exactly 20 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
   const placementMode = input.placementMode ?? "EXACT_LEVEL";
+  const targetBufferTicks = input.targetBufferTicks ?? PROFIT_TARGET_PLACEMENT_TICKS;
+  if (!Number.isInteger(targetBufferTicks) || targetBufferTicks < 1 || targetBufferTicks > 8) {
+    throw new Error("Adaptive target buffer must be a whole number between one and eight MES ticks.");
+  }
   const bufferPoints = bufferTicks * tickSize;
   const availableLevels = mergeLevels(input.levels, tickSize)
     .map((level) => {
@@ -332,17 +349,41 @@ export function buildKeyLevelTargetPlan(input: {
       : nearSideTargetPrice(
         input.direction,
         levelBoundary,
-        PROFIT_TARGET_PLACEMENT_TICKS * tickSize,
+        targetBufferTicks * tickSize,
         tickSize,
       );
   };
   const withinDistance = availableLevels.filter((level) => level.distancePoints <= bufferPoints);
+  const maximumTargetR = input.maximumTargetR ?? Number.POSITIVE_INFINITY;
+  const minimumTargetR = input.contracts === 1 ? 0.75 : input.contracts === 2 ? 0.5 : null;
+  const targetRForLevel = (level: FrozenTargetLevel): number | null => {
+    if (input.initialRiskPoints === null || input.initialRiskPoints === undefined || input.initialRiskPoints <= 0) return null;
+    return Math.abs(targetPriceForLevel(level) - input.entryPrice) / input.initialRiskPoints;
+  };
+  const majorLevel = (level: FrozenTargetLevel): boolean => /\b(?:major|support|resistance)\b/i.test(`${level.id} ${level.type}`);
   const isProfitableTarget = (level: FrozenTargetLevel): boolean => {
     const target = targetPriceForLevel(level);
-    return input.direction === "long"
+    const targetR = targetRForLevel(level);
+    return (input.direction === "long"
       ? target > input.entryPrice
-      : target < input.entryPrice;
+      : target < input.entryPrice)
+      && (targetR === null || targetR <= maximumTargetR);
   };
+  const profitableWithinR = withinDistance.filter((level) => {
+    const target = targetPriceForLevel(level);
+    const targetR = targetRForLevel(level);
+    return (input.direction === "long" ? target > input.entryPrice : target < input.entryPrice)
+      && (targetR === null || targetR <= maximumTargetR);
+  });
+  const obstructingLevel = minimumTargetR === null || input.initialRiskPoints === null || input.initialRiskPoints === undefined
+    ? null
+    : availableLevels.find((level) => {
+      const targetR = targetRForLevel(level);
+      return majorLevel(level)
+        && targetR !== null
+        && targetR > 0
+        && targetR < minimumTargetR;
+    }) ?? null;
   const skippedLevels: SkippedTargetLevel[] = [
     ...availableLevels
       .filter((level) => level.distancePoints > bufferPoints)
@@ -350,8 +391,23 @@ export function buildKeyLevelTargetPlan(input: {
     ...withinDistance
       .filter((level) => !isProfitableTarget(level))
       .map((level) => ({ ...level, reason: "TARGET_NOT_PROFITABLE" as const })),
+    ...profitableWithinR
+      .filter((level) => {
+        const targetR = targetRForLevel(level);
+        return targetR !== null && targetR < (minimumTargetR ?? 0);
+      })
+      .map((level) => ({ ...level, reason: "INSUFFICIENT_REWARD_TO_RISK" as const })),
+    ...availableLevels
+      .filter((level) => {
+        const targetR = targetRForLevel(level);
+        return targetR !== null && targetR > maximumTargetR;
+      })
+      .map((level) => ({ ...level, reason: "OUTSIDE_MAX_TARGET_R" as const })),
   ].sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
-  const eligible = withinDistance.filter(isProfitableTarget);
+  const eligible = profitableWithinR.filter((level) => {
+    const targetR = targetRForLevel(level);
+    return targetR === null || minimumTargetR === null || targetR >= minimumTargetR;
+  });
   const selectedTargetLevel = eligible[0] ?? null;
   const subsequentTargetLevels = eligible.slice(1);
   const targetPrice = selectedTargetLevel === null
@@ -365,7 +421,16 @@ export function buildKeyLevelTargetPlan(input: {
     tickSize,
     bufferTicks: 20,
     bufferPoints,
-    placementTicks: PROFIT_TARGET_PLACEMENT_TICKS,
+    placementTicks: targetBufferTicks,
+    targetBufferTicks,
+    initialRiskPoints: input.initialRiskPoints ?? null,
+    targetR: targetPrice === null || input.initialRiskPoints === null || input.initialRiskPoints === undefined || input.initialRiskPoints <= 0
+      ? null
+      : Math.abs(targetPrice - input.entryPrice) / input.initialRiskPoints,
+    minimumTargetR,
+    maximumTargetR: Number.isFinite(maximumTargetR) ? maximumTargetR : null,
+    obstructingLevel,
+    rejectionReason: obstructingLevel !== null ? "INSUFFICIENT_REWARD_TO_RISK" : null,
     availableLevels,
     skippedLevels,
     selectedTargetLevel,

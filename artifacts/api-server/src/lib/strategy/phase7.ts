@@ -31,6 +31,7 @@ export type Phase7RiskConfig = {
   normalSlippageTicks?: number;
   fastSlippageTicks?: number;
   targetDollars?: number;
+  fixedContracts?: 1 | 2;
 };
 
 export type Phase7CostBreakdown = {
@@ -444,11 +445,12 @@ export function buildPhase7RiskPlan(
   const stopLoss = dollarsForTicks(stopTicks, 1, specification);
   const riskPerContract = stopLoss + costs.totalSlippage + costs.roundTripFees;
   const valuePerContract = notionalValue(entry, 1, specification);
-  const sizedContracts = Math.max(0, Math.floor(Math.min(
-    config.riskDollars / riskPerContract,
-    config.maxPositionValue / valuePerContract,
-    config.maxContracts,
-  )));
+  const sizedContracts = config.fixedContracts
+    ?? Math.max(0, Math.floor(Math.min(
+      config.riskDollars / riskPerContract,
+      config.maxPositionValue / valuePerContract,
+      config.maxContracts,
+    )));
   const allowed = sizedContracts > 0 && Object.values(gates.locks).every((locked) => !locked);
   const contracts = allowed ? sizedContracts : 0;
   const targetTicks = targetTicksForDollars(targetDollars, specification);

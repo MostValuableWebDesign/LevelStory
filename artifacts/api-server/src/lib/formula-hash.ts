@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v9-fixed-two-contract-runner-replay";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v10-adaptive-management-fixed-size";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -29,15 +29,24 @@ export function formulaConfiguration(
       noFutureData: true,
       noParameterOptimization: true,
       ohlcvAmbiguityRule: "adverse-first-stop",
-      runnerRetracementRatio: 0.4,
-      patienceStopFormula: "patience-extreme-buffered-by-governed-ticks",
-      patienceStopBufferTicks: config.patienceStopBufferTicks,
-      keyLevelTarget: {
-        candidatePlacementMode: "NEAR_SIDE_8_TICKS",
-        maximumEntryDistanceTicks: 20,
-        nearSidePlacementTicks: 8,
+      runnerRetracementRatio: null,
+      patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
+      adaptiveManagement: {
+        atrPeriod: config.executionManagementAtrPeriod,
+        targetBuffer: "clamp(ceil(atrTicks*0.05),1,2)",
+        stopBuffer: "clamp(ceil(atrTicks*0.10),4,8)",
+        maximumRisk: "clamp(ceil(atrTicks*1.50),20,40)",
+        breakevenBars: 6,
+        breakevenExcursionR: 0.5,
+        runnerBuffer: "clamp(ceil(atrTicks*0.10),4,8)",
+        fixedContracts: config.executionManagementFixedContracts,
       },
-      shadowContractsPerTrade: 2,
+      keyLevelTarget: {
+        candidatePlacementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+        maximumTargetR: 1.5,
+        minimumTargetR: { oneContract: 0.75, twoContracts: 0.5 },
+      },
+      shadowContractsPerTrade: config.executionManagementFixedContracts,
       qualifyingKeyLevelInteraction: {
         persisted: true,
         causalTimestamp: "L",

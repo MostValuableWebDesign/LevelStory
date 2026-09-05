@@ -25,15 +25,11 @@ function validateVersion(version: StrategyVersion): ActiveShadowStrategy {
     throw new Error("Active Shadow strategy has an invalid identity.");
   }
   const rawConfig = version.configSnapshot as Partial<StrategyConfig>;
-  const config = strategyConfig({ ...rawConfig, patienceStopBufferTicks: 12 });
+  const config = strategyConfig(rawConfig);
   const expectedHash = hashConfig(config);
-  const legacyConfig = {
-    ...DEFAULT_STRATEGY_CONFIG,
-    ...rawConfig,
-    patienceStopBufferTicks: rawConfig.patienceStopBufferTicks,
-  } as StrategyConfig;
-  const legacyHash = hashConfig(legacyConfig);
-  if (version.formulaHash !== expectedHash && version.formulaHash !== legacyHash) throw new Error("Active Shadow strategy formula hash does not match its typed configuration.");
+  if (version.formulaHash !== expectedHash || version.formulaVersion !== FIXED_FORMULA_VERSION) {
+    throw new Error("Active Shadow strategy is stale for the adaptive execution-management formula; activate a matching typed configuration.");
+  }
   return {
     strategyKey: "MES_SHADOW", config, formulaVersion: version.formulaVersion,
     formulaHash: expectedHash, versionId: version.id, versionNumber: version.versionNumber,

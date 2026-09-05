@@ -67,6 +67,11 @@ import {
   type TargetLevelSnapshot,
   primaryLossExitReferenceForPatience,
 } from "./strategy/key-level-targets.js";
+import {
+  adaptiveExecutionManagement,
+  initialStopForPatience,
+  structuralRiskTicks,
+} from "./strategy/execution-management.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -517,6 +522,8 @@ export type BacktestAuditRecord = {
     detail: string;
   }>;
   patienceOccurrences?: PatienceOccurrence[];
+  /** Causal completed-candle ATR snapshot used only by execution management. */
+  atr14?: number | null;
 };
 
 export type BacktestSegmentation = {
@@ -702,7 +709,7 @@ export type HistoricalTradeCandidate = {
   reentryEligibilityReason?: string;
   armRetirementReason?: string | null;
   eligible: true;
-  executionStatus: "MODELED_TRADE_CREATED" | "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "INSUFFICIENT_CANDLE_DATA";
+  executionStatus: "MODELED_TRADE_CREATED" | "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "INSUFFICIENT_CANDLE_DATA" | "REJECTED_RISK_MANAGEMENT";
   fillModelType: "OHLCV_CONFIRMATION_THRESHOLD";
   patienceHigh: number | null;
   patienceLow: number | null;
@@ -711,7 +718,7 @@ export type HistoricalTradeCandidate = {
   entryReachedThreshold: boolean | null;
   strategyStopPrice?: number | null;
   targetPlan?: KeyLevelTargetPlan;
-  targetDisposition?: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL";
+  targetDisposition?: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL" | "INSUFFICIENT_REWARD_TO_RISK";
   managementContext?: CandidateManagementContext;
 };
 
@@ -724,8 +731,9 @@ export type CandidateManagementContext = {
   patienceCandleOpenTime: string | null;
   patienceCandleHigh: number | null;
   patienceCandleLow: number | null;
-  stopBufferTicks: 12;
-  tickSize: 0.25;
+  stopBufferTicks: number;
+  runnerBufferTicks?: number;
+  tickSize: number;
   derivedStrategyStop: number | null;
   targetPlan?: KeyLevelTargetPlan;
   frozenAt: string;
@@ -742,6 +750,7 @@ export type CandidateManagementContext = {
   sourceAuditId: string;
   managementEvidenceStatus: "complete" | "missing" | "invalid";
   missingEvidenceReasons: string[];
+  managementRejectionReason?: "STOP_DISTANCE_TOO_WIDE" | "INSUFFICIENT_REWARD_TO_RISK" | null;
 };
 
 function candidateManagementValidationReasons(
@@ -749,6 +758,7 @@ function candidateManagementValidationReasons(
   entryObservationTimestamp: string | null,
 ): string[] {
   const reasons: string[] = [];
+  if (context.managementRejectionReason) reasons.push(context.managementRejectionReason);
   if (context.managementEvidenceStatus !== "complete") reasons.push("managementEvidenceStatus");
   if (context.missingEvidenceReasons.length > 0) reasons.push("missingEvidenceReasons");
   const finitePrices = [
@@ -971,6 +981,7 @@ export type HistoricalOccurrence = {
   previousComparisonTimestamp: string | null;
   patienceTimestamp: string | null;
   patienceCandle: Record<string, number | boolean> | null;
+  atrTicks?: number | null;
   candidateShapeResult: boolean | null;
   expectedEntryTimestamp: string | null;
   confirmationThreshold: number | null;
@@ -1040,6 +1051,12 @@ export type HistoricalOccurrence = {
     sessionCloseTime: string | null;
     sourceAuditId: string;
     missingEvidenceReasons: string[];
+    atrTicks?: number | null;
+    targetBufferTicks?: number;
+    stopBufferTicks?: number;
+    maximumRiskTicks?: number;
+    initialRiskTicks?: number | null;
+    managementRejectionReason?: "STOP_DISTANCE_TOO_WIDE" | "INSUFFICIENT_REWARD_TO_RISK" | null;
   };
   targetLevelSnapshot?: TargetLevelSnapshot;
   /** Causal evidence copied from the source audit; labels are intentionally excluded. */
@@ -2082,18 +2099,23 @@ function managementFromAudit(
   );
   const calendar = sessionCalendarForContract(specification);
   const close = sessionWindow(record.tradingDate, "regular", calendar)?.closeTime ?? null;
-  const strategyStopPrice = trade?.audit?.strategyStopPrice ?? record.strategyStopPrice;
+  const strategyStopPrice = strategyStopPriceForOccurrence({
+    direction: record.direction,
+    patienceCandle: record.patienceCandle,
+    atrTicks: typeof record.atr14 === "number" && Number.isFinite(record.atr14)
+      ? record.atr14 / specification.tickSize
+      : null,
+  } as HistoricalOccurrence);
   const catastropheStopPrice = trade?.audit?.catastropheStopPrice ?? record.catastropheStopPrice;
   const candidateTargetPlan = trade?.candidateId ? trade.targetPlan : undefined;
   const targetPlan = candidateTargetPlan ?? record.targetPlan;
   const targetPrice = candidateTargetPlan
     ? candidateTargetPlan.targetPrice
     : trade?.audit?.targetPrice ?? record.targetPrice;
-  const contracts = trade?.contracts ?? record.contracts ?? null;
+  const contracts = activeShadowStrategySnapshot().config.executionManagementFixedContracts;
   const missingEvidenceReasons = [
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
     ...(targetPrice === null && targetPlan?.disposition !== "NO_ELIGIBLE_KEY_LEVEL" ? ["targetPrice"] : []),
-    ...(contracts === null ? ["contracts"] : []),
     ...(close === null ? ["sessionCloseTime"] : []),
   ];
   return {
@@ -2109,6 +2131,9 @@ function managementFromAudit(
     sessionCloseTime: close === null ? null : new Date(close).toISOString(),
     sourceAuditId: record.id,
     missingEvidenceReasons,
+    atrTicks: typeof record.atr14 === "number" && Number.isFinite(record.atr14)
+      ? record.atr14 / specification.tickSize
+      : null,
   };
 }
 
@@ -2510,6 +2535,7 @@ function auditForEvaluation(
     consolidationGuard,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
     patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
+    atr14: snapshot.pullback.atr14,
   };
 }
 
@@ -3192,6 +3218,9 @@ export function buildHistoricalOccurrenceLedger(
         previousComparisonTimestamp: new Date(patience.previousComparisonTimestamp ?? patience.previousCandle.openTime).toISOString(),
         patienceTimestamp: new Date(patience.patienceCandle.openTime).toISOString(),
         patienceCandle: occurrenceCandle(patience.patienceCandle),
+         atrTicks: typeof record.atr14 === "number" && Number.isFinite(record.atr14)
+           ? record.atr14 / 0.25
+           : null,
         candidateShapeResult: patience.candidateShapeResult ?? true,
          expectedEntryTimestamp: eOpenTimestamp,
          confirmationThreshold: effectiveEntryThreshold,
@@ -3555,11 +3584,12 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
 function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): number | null {
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  const management = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   if (occurrence.direction === "long" && patienceLow !== null) {
-    return authoritativePatienceStopPrice("long", patienceLow, 12, 0.25);
+    return initialStopForPatience("long", patienceLow, patienceHigh ?? patienceLow, management.stopBufferTicks, 0.25);
   }
   if (occurrence.direction === "short" && patienceHigh !== null) {
-    return authoritativePatienceStopPrice("short", patienceHigh, 12, 0.25);
+    return initialStopForPatience("short", patienceLow ?? patienceHigh, patienceHigh, management.stopBufferTicks, 0.25);
   }
   return null;
 }
@@ -3580,11 +3610,20 @@ function targetPlanForOccurrence(
       }]
       : []),
   ]);
+  const config = activeShadowStrategySnapshot().config;
+  const contracts = config.executionManagementFixedContracts;
+  const stopPrice = strategyStopPriceForOccurrence(occurrence);
+  const initialRiskPoints = stopPrice === null ? null : Math.abs(entryPrice - stopPrice);
+  const management = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   const plan = buildKeyLevelTargetPlan({
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: "NEAR_SIDE_8_TICKS",
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: management.targetBufferTicks,
+    initialRiskPoints,
+    contracts,
+    maximumTargetR: 1.5,
   });
   return {
     ...plan,
@@ -3624,18 +3663,25 @@ function freezeCandidateManagementContext(
   const management = occurrence.management;
   const entryPrice = effectiveEntryThresholdForOccurrence(occurrence);
   const targetPlan = targetPlanForOccurrence(occurrence, entryPrice);
-  const contracts = management?.contracts ?? linkedTrade?.contracts ?? null;
+  const contracts = activeShadowStrategySnapshot().config.executionManagementFixedContracts;
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
+  const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
+  const initialRiskTicks = strategyStopPrice === null
+    ? null
+    : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, 0.25);
+  const managementRejectionReason = initialRiskTicks !== null && initialRiskTicks > managementValues.maximumRiskTicks
+    ? "STOP_DISTANCE_TOO_WIDE" as const
+    : targetPlan?.rejectionReason ?? null;
   const primaryLossExitLevel = primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = targetPlan?.targetPrice ?? null;
   const hasTarget = targetPlan?.disposition === "KEY_LEVEL_SELECTED" && targetPrice !== null;
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
-    ...(contracts === null ? ["contracts"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
+    ...(managementRejectionReason ? [managementRejectionReason] : []),
     ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {
@@ -3645,29 +3691,31 @@ function freezeCandidateManagementContext(
     patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
     patienceCandleHigh: patienceHigh,
     patienceCandleLow: patienceLow,
-    stopBufferTicks: 12,
+    stopBufferTicks: managementValues.stopBufferTicks,
+    runnerBufferTicks: managementValues.runnerBufferTicks,
     tickSize: 0.25,
     derivedStrategyStop: strategyStopPrice,
     targetPlan: targetPlan ?? undefined,
     frozenAt: occurrence.evaluationCursor,
     direction: occurrence.direction!,
-    contracts: contracts ?? 0,
+    contracts,
     entryPrice: entryPrice ?? 0,
     strategyStopPrice,
     primaryLossExitLevel,
     catastropheStopPrice,
     targetPrice,
-    runnerActivationPrice: hasTarget && management?.runnerExitRule ? targetPrice : null,
-    runnerExitRule: hasTarget ? management?.runnerExitRule ?? null : null,
+    runnerActivationPrice: hasTarget ? targetPrice : null,
+    runnerExitRule: hasTarget ? management?.runnerExitRule ?? "Adaptive completed-swing runner." : null,
     sessionCloseTime: management?.sessionCloseTime ?? null,
     sourceAuditId: management?.sourceAuditId ?? occurrence.auditId,
-    managementEvidenceStatus: "complete",
-    missingEvidenceReasons: [],
+    managementEvidenceStatus: managementRejectionReason ? "invalid" : "complete",
+    missingEvidenceReasons: managementRejectionReason ? [managementRejectionReason] : [],
+    managementRejectionReason,
   };
   const validationReasons = candidateManagementValidationReasons(context, occurrence.entryObservationTimestamp);
   const allReasons = [...new Set([...missingEvidenceReasons, ...validationReasons])];
   const invalidReasons = validationReasons.filter((reason) => !missingEvidenceReasons.includes(reason));
-  const managementEvidenceStatus = invalidReasons.length > 0
+  const managementEvidenceStatus = context.managementRejectionReason || invalidReasons.length > 0
     ? "invalid"
     : allReasons.length > 0
       ? "missing"
@@ -3930,10 +3978,14 @@ export function projectHistoricalTradeCandidates(
       entryHigh: numericCandleValue(occurrenceForExecution.entryCandle, "high"),
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
       entryReachedThreshold: entryDisposition.reached,
-      executionStatus: entryDisposition.status,
+       executionStatus: managementContext.managementRejectionReason && entryDisposition.reached
+         ? "REJECTED_RISK_MANAGEMENT"
+         : entryDisposition.status,
       strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
       targetPlan: managementContext.targetPlan,
-      targetDisposition: managementContext.targetPlan?.disposition ?? "NO_ELIGIBLE_KEY_LEVEL",
+       targetDisposition: managementContext.targetPlan?.rejectionReason
+         ?? managementContext.targetPlan?.disposition
+         ?? "NO_ELIGIBLE_KEY_LEVEL",
       managementContext,
       },
     });
@@ -4309,7 +4361,7 @@ function candidateDrivenEntryTrade(
   if (!entryObservationTimestamp) return undefined;
   const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
-  const contracts = SHADOW_CONTRACTS_PER_TRADE;
+  const contracts = config.executionManagementFixedContracts;
   const targetPlan = management.targetPlan;
   const primaryLossExitLevel = management.primaryLossExitLevel
     ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
@@ -4356,12 +4408,12 @@ function candidateDrivenEntryTrade(
       evaluateEntryCandleForExit: false,
       subsequentCompletedCandles: postEntry,
       contracts,
-      targetQuantity: targetPrice === null ? 0 : Math.min(1, management.contracts),
+       targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
       target: targetPrice,
       oneRProfitRule: targetPrice === null,
-      structureTrailing: true,
-      trailingBufferTicks: 8,
-      noLevelBreakevenActivationBars: config.noLevelBreakevenActivationBars,
+       structureTrailing: true,
+       trailingBufferTicks: management.runnerBufferTicks ?? 4,
+       noLevelBreakevenActivationBars: 6,
       strategyStop: management.strategyStopPrice,
       // Candidate-driven management deliberately ignores the legacy
       // catastrophe barrier. Preserve that value in provenance below, but do

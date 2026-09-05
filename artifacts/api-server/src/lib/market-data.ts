@@ -1082,6 +1082,7 @@ function phase7Config(
     normalSlippageTicks: phase7Input?.normalSlippageTicks ?? config.phase7NormalSlippageTicks,
     fastSlippageTicks: config.phase7FastSlippageTicks,
     targetDollars: phase7Input?.targetDollars ?? config.phase7DefaultTargetDollars,
+    fixedContracts: config.executionManagementFixedContracts,
   };
 }
 
