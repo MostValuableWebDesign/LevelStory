@@ -58,3 +58,4 @@
 - [Uploaded chart evidence safety](uploaded-chart-evidence-safety.md) — validate image bytes, freeze setup at entry cutoff, and keep pixel-derived exits unscored.
 - [Tolerant chart evidence parsing](tolerant-chart-evidence-parsing.md) — preserve unknown vision fields conservatively; never synthesize malformed candle or price evidence.
 - [Adaptive execution management](adaptive-execution-management.md) — candidate-owned MES management freezes causal ATR buffers and fixed quantity; account risk must not alter structural R.
+- [Compact batch funnel](compact-batch-funnel.md) — use compact qualification batches for large historical blocker analysis; reconcile funnel counts with causal-ledger diagnostics.
