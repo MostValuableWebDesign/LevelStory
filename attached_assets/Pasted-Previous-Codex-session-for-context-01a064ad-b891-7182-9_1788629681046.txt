@@ -1,0 +1,252 @@
+Previous Codex session for context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 26/
+
+Inspect the current repository before editing. Preserve the runner-breakeven timing fix and all working behavior already implemented.
+
+Scope this task only to the remaining Profit Taking, Stop Loss, Breakeven/Recovery release integration, and one-/two-contract replay inconsistencies below.
+
+Do not change:
+
+- Setup eligibility rules
+- Strategy qualification rules
+- Patience-candle selection
+- Eight-tick entry-confirmation buffer
+- Entry timing
+- Historical date selection
+- Starting-balance behavior
+- Live-order behavior
+
+1. Make adaptive target placement authoritative everywhere
+
+The generated-candidate path uses adaptive near-side targets, but the preliminary historical path still uses `EXACT_LEVEL`.
+
+Replace conflicting authoritative `EXACT_LEVEL` execution behavior with:
+
+`TargetBufferTicks = clamp(ceil(ATR14Ticks × 0.05), 1, 2)`
+
+For every authoritative historical, candidate, Visual Review, and combined-replay path:
+
+- Freeze directional key levels causally available at entry.
+- Select the nearest eligible profitable directional level within 20 MES ticks.
+- Place the target TargetBufferTicks before the level’s near side.
+- Use StructuralR based on modeled fill to the adaptive initial stop.
+- Maximum key-level target: 1.50R.
+- One-contract minimum: 0.75R.
+- Two-contract minimum: 0.50R.
+- An obstructing major directional level before the applicable minimum must produce `INSUFFICIENT_REWARD_TO_RISK`.
+- If no eligible key level exists and there is no rejection, use 1R.
+
+Remove or isolate `EXACT_LEVEL` so it cannot determine executable targets, exits, P/L, or Visual Review results. It may remain only in explicitly labeled legacy diagnostic data.
+
+Preliminary historical execution, candidate projection, and replay must produce the same target plan from the same frozen evidence and contract quantity.
+
+2. Enforce rebuilt replay target dispositions
+
+The combined replay rebuilds the target plan for the selected contract quantity but currently executes without checking `rebuiltTargetPlan.rejectionReason`.
+
+Before simulation:
+
+- If the rebuilt plan returns `INSUFFICIENT_REWARD_TO_RISK`, do not enter or simulate the trade.
+- Record the candidate as rejected in replay diagnostics.
+- Preserve the rejection reason and rebuilt target-plan evidence.
+- Do not include rejected candidates in entered-trade P/L statistics.
+- Keep them visible in candidate/rejection counts.
+- Apply the same disposition that fresh candidate generation would apply.
+
+Determine the fallback from the rebuilt plan:
+
+- If `rebuiltTargetPlan.targetPrice` is null and there is no rejection, enable the 1R fallback.
+- If the rebuilt target exists, disable the 1R fallback.
+- Do not base `oneRProfitRule` on the original stored `replayInput.targetPrice`.
+- Base it on `replayTargetPrice` and the rebuilt plan’s disposition.
+
+Add coverage for both direction changes:
+
+- A 0.60R level is rejected or unavailable for one contract but eligible for two.
+- A plan rebuilt from two-contract evidence to one contract correctly becomes rejected or falls back according to the frozen level structure.
+- A rejected rebuilt plan is never simulated.
+
+3. Complete the adaptive-stop migration
+
+Adaptive stop execution is now functional, but legacy 12-tick values remain exposed across configuration, schemas, frontend requests, and tests.
+
+The authoritative executable formula must be:
+
+`StopBufferTicks = clamp(ceil(ATR14Ticks × 0.10), 4, 8)`
+
+Initial stop:
+
+- Long: patience-candle low − StopBufferTicks
+- Short: patience-candle high + StopBufferTicks
+
+Structural risk:
+
+`StructuralRiskTicks = abs(ModeledFillPrice − InitialStopPrice) ÷ 0.25`
+
+Maximum risk:
+
+`MaximumStructuralRiskTicks = clamp(ceil(ATR14Ticks × 1.50), 20, 40)`
+
+Reject excessive distance with `STOP_DISTANCE_TOO_WIDE`.
+
+Update or remove conflicting executable fixed-12 behavior from:
+
+- Strategy configuration
+- Phase 5 validation
+- Historical backtest requests
+- Batch requests
+- Edge-validation pilot requests
+- OpenAPI
+- Zod schemas
+- Generated API types
+- Frontend defaults and request payloads
+- Tests
+- User-facing descriptions
+- Formula and cache metadata
+
+Do not let a caller override the executable stop with 12 ticks.
+
+If the old 12-tick measurement must remain for legacy setup evidence, separate it from execution management:
+
+- Give it an explicitly diagnostic name.
+- Do not call it the strategy stop.
+- Do not use it for StructuralR, targets, rejection, exits, or P/L.
+- Document the distinction in code and audit output.
+
+Do not change the eight-tick entry-confirmation rule.
+
+Do not use account balance, account equity, percentage risk, or permitted dollar risk.
+
+4. Preserve the completed breakeven implementation
+
+Do not regress the existing runner-breakeven behavior:
+
+- Target/checkpoint candle only sets breakeven pending.
+- Qualification requires a later completed favorable candle.
+- Stop becomes effective on the following candle.
+- No retroactive same-candle stop.
+- Existing tighter stop is never widened.
+- Pending, qualification, effective-from, prior-stop, resulting-stop, tightened, and ignored audit fields remain available.
+- Six-candle no-level breakeven/recovery and MFE evidence remain intact.
+- Original stop remains active during recovery.
+- Conservative adverse-first handling remains intact.
+
+Add an integration test proving these fields survive:
+
+- Execution simulation
+- Phase 9 trade audit
+- Visual Review set creation
+- Combined Shadow Account Replay
+
+5. Remove unreachable partial-replay behavior
+
+The replay helper now throws when frozen evidence is missing, but the caller still contains a branch that attempts to skip a null trade.
+
+Clean this up so behavior is unambiguous:
+
+- Missing required frozen evidence makes the entire review set stale/incompatible.
+- Return a clear regeneration-required error.
+- Never silently omit a candidate.
+- Never return partial combined totals.
+- Never scale or reuse an incompatible old trade.
+- Include every eligible retained candidate exactly once.
+
+6. Version and cache invalidation
+
+The runner behavior and audit contract changed, but the execution-management version remains the same as the previous implementation.
+
+Bump all relevant identifiers together:
+
+- Execution-management version
+- Candidate-projection version if its serialized evidence changed
+- Visual Review cache-key version
+- Formula hash inputs
+- Snapshot/replay projection version where applicable
+- Backtest cache versions where executable target or stop behavior changed
+
+Old review sets must be marked stale or incompatible and require regeneration. They must not appear current after the runner, target, or stop changes.
+
+7. Required tests
+
+Add or update tests proving:
+
+- No executable target path uses `EXACT_LEVEL`.
+- Historical execution and candidate projection produce identical adaptive targets.
+- Rebuilt replay rejection is enforced.
+- `oneRProfitRule` uses the rebuilt target.
+- One-contract minimum is 0.75R.
+- Two-contract minimum is 0.50R.
+- Maximum target is 1.50R.
+- Adaptive target buffer clamps to 1–2 ticks.
+- Adaptive stop buffer clamps to 4–8 ticks.
+- Maximum structural risk clamps to 20–40 ticks.
+- StructuralR uses modeled fill to the adaptive stop.
+- `STOP_DISTANCE_TOO_WIDE` works without reducing quantity.
+- Historical Visual Review generation works with adaptive stops.
+- No executable API or frontend path forces 12 ticks.
+- One contract exits fully with no runner.
+- Two contracts create one target leg and one runner leg.
+- Runner breakeven remains pending on the checkpoint candle.
+- Runner breakeven becomes effective only after a later favorable candle.
+- Runner audit evidence survives Phase 9 and combined replay.
+- Missing frozen evidence fails the entire replay instead of skipping candidates.
+- Changed version identifiers invalidate old review sets.
+- Starting balance does not alter trades, stops, targets, legs, or P/L.
+- Combined-date totals include every eligible candidate exactly once.
+
+Run:
+
+- Execution-management tests
+- Key-level target tests
+- Phase 5 tests
+- Phase 9 unit and integration tests
+- Shadow-account replay tests
+- Visual-validation tests
+- Route tests
+- API typecheck
+- Frontend typecheck/build
+- Full API test suite, or report the exact test where it stalls with elapsed time and captured output
+- `git diff --check`
+
+Report:
+
+- Files changed
+- Legacy paths removed or isolated
+- Version identifiers changed
+- Tests executed and results
+- Any remaining limitations
+
+Do not claim completion based only on constants or focused unit tests. Verify the actual historical Visual Review generation and combined one-/two-contract multi-date replay behavior end to end.
+
+
+1:33 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
+
+
+
+
+
+
+
+5.6 TerraExtra High5.6 SolMedium
