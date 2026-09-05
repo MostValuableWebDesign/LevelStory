@@ -17,6 +17,7 @@ import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 
 export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
+  | "EARLY_ORB_MOMENTUM_CONTINUATION"
   | "CONSOLIDATION_BREAKOUT_CONTINUATION"
   | "PATIENCE_CANDLE_CONTINUATION"
   | "EQUIVALENT_CANDLE_REVERSAL"
@@ -187,6 +188,7 @@ export type Phase6Context = {
   fibonacci: FibonacciAnalysis;
   volume: Phase4VolumeAnalysis;
   patience: PatienceAnalysis;
+  earlyOrbMomentum?: PatienceAnalysis;
   reversalPatience?: PatienceAnalysis;
   trend: {
     direction: TrendDirection;
@@ -238,6 +240,7 @@ function dynamiteInteractionMatchesSignal(
 export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   const evaluations = [
     evaluateOrbBreakPullbackContinuation(context),
+    evaluateEarlyOrbMomentumContinuation(context),
     evaluateStrongBreakoutAfterConsolidation(context),
     evaluatePatienceCandleContinuation(context),
     evaluateEquivalentCandleReversal(context),
@@ -245,6 +248,8 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   ].map((evaluation) => {
     const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
       ? context.reversalPatience
+      : evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
+        ? context.earlyOrbMomentum
       : context.patience;
     const signalDynamite = evaluation.decision === "SETUP QUALIFIED"
       ? context.dynamiteLevels?.filter((level) =>
@@ -270,6 +275,9 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
   });
   const attributionOrder: SetupType[] = [
     "ORB_PULLBACK_CONTINUATION",
+    // Existing ORB pullback attribution wins when the same physical P→E
+    // sequence also satisfies the isolated early-momentum detector.
+    "EARLY_ORB_MOMENTUM_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",
     "PEAK_RETRACEMENT_REVERSAL",
@@ -311,6 +319,23 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
     rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
   ];
   return buildEvaluation("ORB_PULLBACK_CONTINUATION", direction, rules, false, context.patience.state);
+}
+
+export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): SetupEvaluation {
+  const patience = context.earlyOrbMomentum;
+  const direction = patience?.direction ?? null;
+  const hasFirstClose = patience?.patienceCandle !== null
+    && patience?.patienceCandle !== undefined
+    && patience.eligibilityReason === "early orb momentum";
+  const isolatedPathActive = patience?.eligibilityReason === "early orb momentum";
+  const rules: SetupRuleEvidence[] = [
+    rule("ntzComplete", "Finalized ORB/NTZ", context.levels.ntz?.complete === true, "The opening range must be finalized before an early momentum arm can open."),
+    rule("firstCloseOutsideOrb", "First completed close at least one MES tick outside ORB", hasFirstClose, hasFirstClose ? patience!.detail : "Waiting for the first qualifying completed close outside the finalized ORB."),
+    rule("noPullbackRequired", "Isolated momentum path does not require pullback interaction", isolatedPathActive, isolatedPathActive ? "This setup intentionally does not require a pullback, indicator interaction, trend, body, close-location, or volume gate." : "The isolated early ORB path is not active."),
+    rule("immediateTrigger", "Immediately following candle reached the eight-tick confirmation buffer", patience?.state === "ENTRY_TRIGGERED", patience?.state === "ENTRY_TRIGGERED" ? patience.detail : `Early momentum state is ${patience?.state ?? "WAITING_FOR_VALID_CONTEXT"}; only ENTRY_TRIGGERED qualifies.`),
+    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized ORB", strictNtzEntry(context, patience ?? context.patience, direction), direction && patience ? "Completed E is strictly outside the finalized ORB/NTZ." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
+  ];
+  return buildEvaluation("EARLY_ORB_MOMENTUM_CONTINUATION", direction, rules, false, patience?.state ?? "WAITING_FOR_VALID_CONTEXT");
 }
 
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {

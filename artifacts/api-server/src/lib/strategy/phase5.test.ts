@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   authoritativePatienceStopPrice,
   effectiveConfirmationThreshold,
+  earlyOrbMomentumPatienceAnalysis,
   isPatienceCandleOutsideNtz,
   isStrictlyOutsideNtz,
   patienceCandleEngine,
@@ -59,6 +60,48 @@ test("valid bullish patience candle triggers only on the immediate next candle",
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.triggerPrice, 12);
   assert.equal(result.patienceCandle?.isComplete, true);
+});
+
+test("early ORB momentum uses the first outside close as P and the adjacent candle as the only E", () => {
+  const start = Date.parse("2026-06-01T13:30:00.000Z"); // 09:30 ET
+  const candles = [
+    datedCandle("2026-06-01T13:30:00.000Z", 100, 101, 99, 100),
+    datedCandle("2026-06-01T13:35:00.000Z", 100, 101.25, 99.75, 100.5),
+    datedCandle("2026-06-01T13:40:00.000Z", 100.5, 101.25, 100, 101),
+    datedCandle("2026-06-01T13:45:00.000Z", 101, 101.5, 100.75, 101.25),
+    datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
+    datedCandle("2026-06-01T13:55:00.000Z", 103, 105.25, 102.75, 105),
+  ];
+  const result = earlyOrbMomentumPatienceAnalysis(candles, {
+    high: 101.25,
+    low: 99.75,
+    complete: true,
+    completedAt: start + 15 * 60_000,
+  }, {
+    enabled: true,
+    tickSize: 0.25,
+    entryBufferTicks: 8,
+    stopBufferTicks: 4,
+    entryCutoffMinutes: 630,
+    minimumCloseDistanceTicks: 1,
+    maxAttemptsPerDirection: 1,
+  });
+  assert.equal(result.direction, "long");
+  assert.equal(result.patienceCandle?.openTime, Date.parse("2026-06-01T13:50:00.000Z"));
+  assert.equal(result.triggerCandle?.openTime, Date.parse("2026-06-01T13:55:00.000Z"));
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.occurrences?.[0]?.eligibilityReason, "early orb momentum");
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "CONFIRMED");
+});
+
+test("disabled early ORB momentum does not create a patience occurrence", () => {
+  const result = earlyOrbMomentumPatienceAnalysis([], null, {
+    enabled: false,
+    entryBufferTicks: 8,
+    stopBufferTicks: 4,
+  });
+  assert.equal(result.occurrences?.length ?? 0, 0);
+  assert.equal(result.state, "WAITING_FOR_VALID_CONTEXT");
 });
 
 test("valid bearish patience candle triggers below the patience low", () => {

@@ -34,6 +34,7 @@ export function summarizeDashboardEntries(
   const pnl = closedTrades.reduce((total, entry) => total + pnlFor(entry), 0);
   const setupTypes = [
     "ORB_PULLBACK_CONTINUATION",
+    "EARLY_ORB_MOMENTUM_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "PATIENCE_CANDLE_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",

@@ -26,7 +26,7 @@ export type PatienceState =
   | "AMBIGUOUS_EVENT_ORDER"
   | "RISK_REJECTED";
 
-export type PatienceEligibilityReason = "pullback" | "consolidation" | "ntz consolidation";
+export type PatienceEligibilityReason = "pullback" | "consolidation" | "ntz consolidation" | "early orb momentum";
 export type PatienceEligibilityArmState = "active" | "consumed" | "invalidated" | "superseded";
 export type PatienceEligibilityEvent = {
   time: number;
@@ -493,6 +493,160 @@ export function phase5PatienceAnalysis(
     entryCutoffMinutes: 780,
     maxCandidateCloseTime: terminalTime,
   });
+}
+
+/**
+ * Isolated early-ORB path. The first completed close one tick outside the
+ * finalized ORB is P itself; no pullback, trend, candle-shape, or volume
+ * evidence is consulted. Only the adjacent E candle can confirm it.
+ */
+export function earlyOrbMomentumPatienceAnalysis(
+  candles: readonly Candle[],
+  ntz: NtzRange | null,
+  options: {
+    enabled: boolean;
+    tickSize?: number;
+    entryBufferTicks?: number;
+    stopBufferTicks?: number;
+    entryCutoffMinutes?: number;
+    minimumCloseDistanceTicks?: number;
+    maxAttemptsPerDirection?: number;
+  },
+): PatienceAnalysis {
+  const tickSize = options.tickSize ?? 0.25;
+  const entryBufferTicks = options.entryBufferTicks ?? 8;
+  const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
+  const cutoff = options.entryCutoffMinutes ?? 630;
+  const minimumDistance = options.minimumCloseDistanceTicks ?? 1;
+  const maxAttempts = options.maxAttemptsPerDirection ?? 1;
+  if (!options.enabled) {
+    return {
+      ...waiting("WAITING_FOR_VALID_CONTEXT", "Early ORB Momentum Continuation is disabled.", "neutral", entryBufferTicks, stopBufferTicks),
+      direction: undefined,
+      directionSource: "ORB_BREAKOUT",
+    };
+  }
+  if (!ntz?.complete) {
+    return {
+      ...waiting("WAITING_FOR_VALID_CONTEXT", "Early ORB Momentum requires a finalized ORB/NTZ.", "neutral", entryBufferTicks, stopBufferTicks),
+      direction: undefined,
+      directionSource: "ORB_BREAKOUT",
+    };
+  }
+  validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
+  const completed = [...candles].filter((candle) => candle.isComplete).sort((a, b) => a.openTime - b.openTime);
+  const completionTime = ntz.completedAt ?? completed[2]?.closeTime;
+  const afterOrb = completed.filter((candle) => completionTime === undefined || candle.openTime >= completionTime);
+  const candidates = (["long", "short"] as const).flatMap((direction) => {
+    const boundary = direction === "long"
+      ? ntz.high + minimumDistance * tickSize
+      : ntz.low - minimumDistance * tickSize;
+    return afterOrb
+      .filter((candle) => direction === "long" ? candle.close >= boundary : candle.close <= boundary)
+      .filter((candle) => wallClockMinutesForTimestamp(candle.closeTime) < cutoff)
+      .slice(0, maxAttempts)
+      .map((candle) => ({ candle, direction }));
+  }).sort((a, b) => a.candle.closeTime - b.candle.closeTime);
+  const candidate = candidates[0];
+  if (!candidate) {
+    return {
+      ...waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for the first completed close outside the finalized ORB before the eligibility cutoff.", "neutral", entryBufferTicks, stopBufferTicks),
+      direction: undefined,
+      directionSource: "ORB_BREAKOUT",
+    };
+  }
+  const index = completed.findIndex((candle) => candle.openTime === candidate.candle.openTime);
+  const previous = completed[index - 1] ?? candidate.candle;
+  const next = candles
+    .filter((candle) => candle.openTime > candidate.candle.openTime)
+    .sort((a, b) => a.openTime - b.openTime)[0];
+  const event: PatienceEligibilityEvent = {
+    time: candidate.candle.closeTime,
+    reason: "early orb momentum",
+    detail: `First completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick.`,
+    eventId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
+    armId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
+  };
+  const base = {
+    direction: candidate.direction,
+    directionSource: "ORB_BREAKOUT" as const,
+    eligible: true,
+    eligibilityReason: event.reason,
+    eligibilityTime: event.time,
+    trend: "neutral" as const,
+    previousCandle: snapshot(previous),
+    patienceCandle: snapshot(candidate.candle),
+    triggerCandle: null as PatienceCandleSnapshot | null,
+    entryBufferTicks,
+    entryBufferPrice: effectiveConfirmationThreshold(candidate.candle, candidate.direction, entryBufferTicks, tickSize, ntz),
+    stopBufferTicks,
+    strategyStopPrice: authoritativePatienceStopPrice(candidate.direction, candidate.direction === "long" ? candidate.candle.low : candidate.candle.high, stopBufferTicks, tickSize),
+    stateTime: candidate.candle.closeTime,
+  };
+  const provenance = {
+    eventId: event.eventId ?? null,
+    reason: event.reason,
+    time: event.time,
+    detail: event.detail ?? null,
+  };
+  const occurrenceBase = {
+    occurrenceId: `patience|early-orb|${candidate.direction}|${candidate.candle.openTime}|${next?.openTime ?? "none"}`,
+    direction: candidate.direction,
+    directionSource: "ORB_BREAKOUT" as const,
+    entryBufferTicks,
+    stopBufferTicks,
+    patienceCandleExtreme: candidate.direction === "long" ? candidate.candle.low : candidate.candle.high,
+    stopBufferPoints: stopBufferTicks * tickSize,
+    finalStopBoundary: base.strategyStopPrice!,
+    eligibilityReason: event.reason,
+    eligibilityTime: event.time,
+    eligibilityEventId: event.eventId,
+    previousComparisonTimestamp: previous.openTime,
+    candidateShapeResult: true,
+    expectedEntryCandleOpenTime: candidate.candle.closeTime,
+    confirmationThreshold: base.entryBufferPrice!,
+    actualConfirmationExcursion: next
+      ? candidate.direction === "long" ? Math.max(0, next.high - candidate.candle.high) : Math.max(0, candidate.candle.low - next.low)
+      : null,
+    previousCandle: snapshot(previous),
+    patienceCandle: snapshot(candidate.candle),
+    nextObservedCandle: next ? snapshot(next) : null,
+    eligibilityArmId: event.armId,
+    eligibilityArmState: "active" as const,
+    eligibilityArmStateReason: "The isolated early ORB arm permits exactly one attempt for this direction.",
+    eligibilityProvenance: provenance,
+  };
+  let analysis: PatienceAnalysis;
+  let occurrenceStatus: PatienceOccurrenceStatus = "CANDIDATE";
+  if (!next) {
+    analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "The first qualifying ORB-outside close is frozen as P; only its immediate next candle may confirm.", triggerPrice: null };
+  } else if (next.openTime !== candidate.candle.closeTime) {
+    analysis = { ...base, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
+    occurrenceStatus = "EXPIRED_MISSING_E";
+  } else {
+    analysis = evaluateTrigger(candidate.candle, previous, next, candidate.direction, event, "neutral", "ORB_BREAKOUT", tickSize, entryBufferTicks, stopBufferTicks, ntz, true, cutoff);
+    occurrenceStatus = analysis.state === "ENTRY_TRIGGERED"
+      ? "CONFIRMED"
+      : analysis.state === "OPPOSITE_SIDE_INVALIDATION" ? "EXPIRED_WRONG_DIRECTION"
+        : "EXPIRED_NO_IMMEDIATE_CONFIRMATION";
+  }
+  const occurrence: PatienceOccurrence = {
+    ...occurrenceBase,
+    triggerCandle: analysis.triggerCandle,
+    outcomeStatus: occurrenceStatus,
+    qualificationStatus: occurrenceStatus === "CONFIRMED" ? "SIGNAL_CONFIRMED" : "IMMEDIATE_CONFIRMATION_FAILED",
+    status: analysis.state,
+    reasonCode: analysis.detail,
+    evaluationCursor: analysis.triggerCandle?.closeTime ?? candidate.candle.closeTime,
+  };
+  return {
+    ...analysis,
+    occurrences: [occurrence],
+    eligibilityArmId: event.armId,
+    eligibilityArmState: "active",
+    eligibilityArmStateReason: occurrenceStatus === "CONFIRMED" ? "Early ORB arm confirmed on its immediate E candle." : "Early ORB arm remains a single-attempt historical occurrence.",
+    eligibilityProvenance: provenance,
+  };
 }
 
 export function patienceStateLabels(): readonly PatienceState[] {

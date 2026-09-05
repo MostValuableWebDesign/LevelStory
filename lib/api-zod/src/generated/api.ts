@@ -253,10 +253,10 @@ export const GetMarketSnapshotResponse = zod.object({
 }),
   "setupAnalysis": zod.object({
   "decision": zod.enum(['NO TRADE', 'WAITING', 'SETUP FORMING', 'SETUP QUALIFIED', 'POSSIBLE REVERSAL', 'EXPIRED', 'AMBIGUOUS']),
-  "primarySetup": zod.union([zod.literal('ORB_PULLBACK_CONTINUATION'),zod.literal('CONSOLIDATION_BREAKOUT_CONTINUATION'),zod.literal('PATIENCE_CANDLE_CONTINUATION'),zod.literal('EQUIVALENT_CANDLE_REVERSAL'),zod.literal('PEAK_RETRACEMENT_REVERSAL'),zod.literal(null)]).nullable(),
+  "primarySetup": zod.union([zod.literal('ORB_PULLBACK_CONTINUATION'),zod.literal('EARLY_ORB_MOMENTUM_CONTINUATION'),zod.literal('CONSOLIDATION_BREAKOUT_CONTINUATION'),zod.literal('PATIENCE_CANDLE_CONTINUATION'),zod.literal('EQUIVALENT_CANDLE_REVERSAL'),zod.literal('PEAK_RETRACEMENT_REVERSAL'),zod.literal(null)]).nullable(),
   "explanation": zod.string(),
   "evaluations": zod.array(zod.object({
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "direction": zod.union([zod.literal('long'),zod.literal('short'),zod.literal(null)]).nullable(),
   "decision": zod.enum(['NO TRADE', 'WAITING', 'SETUP FORMING', 'SETUP QUALIFIED', 'POSSIBLE REVERSAL', 'EXPIRED', 'AMBIGUOUS']),
   "mandatoryPassed": zod.boolean(),
@@ -5388,7 +5388,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
   "machineLabel": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "formulaHash": zod.string().regex(getVisualValidationSetResponseSnapshotsItemFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "symbol": zod.string(),
@@ -5561,7 +5561,7 @@ export const GetVisualValidationSetResponse = zod.object({
 })).min(1).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(getVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(getVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -5603,7 +5603,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -5626,7 +5626,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -5943,7 +5943,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
   "machineLabel": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "formulaHash": zod.string().regex(createVisualValidationSetResponseSnapshotsItemFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "symbol": zod.string(),
@@ -6116,7 +6116,7 @@ export const CreateVisualValidationSetResponse = zod.object({
 })).min(1).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(createVisualValidationSetResponseSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(createVisualValidationSetResponseSnapshotsItemReviewTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -6158,7 +6158,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -6181,7 +6181,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -6960,7 +6960,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
   "machineLabel": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "symbol": zod.string(),
@@ -7133,7 +7133,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
 })).min(1).max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -7175,7 +7175,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -7198,7 +7198,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -7523,7 +7523,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
   "machineLabel": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "symbol": zod.string(),
@@ -7696,7 +7696,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
 })).min(1).max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -7738,7 +7738,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -7761,7 +7761,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -8093,7 +8093,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "category": zod.enum(['qualified_trade', 'rejected_setup', 'bullish_patience_candle', 'bearish_patience_candle', 'weak_orb_probe', 'strong_breakout', 'pullback', 'consolidation', 'ambiguous_candle', 'stop_exit', 'target_exit', 'runner_exit']),
   "categoryLabel": zod.string(),
   "machineLabel": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "symbol": zod.string(),
@@ -8266,7 +8266,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
 })).min(1).max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -8308,7 +8308,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -8331,7 +8331,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "direction": zod.enum(['long', 'short']),
   "entryTriggerPrice": zod.number().nullable(),
-  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "primaryEdge": zod.enum(['ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'STRONG_BREAKOUT_AFTER_CONSOLIDATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "matchedEdges": zod.array(zod.string()),
   "supportingConfluences": zod.array(zod.string()),
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
@@ -8533,7 +8533,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "rangeHigh": zod.number().nullable()
 })).min(1).max(recordVisualValidationReviewBodyTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(recordVisualValidationReviewBodyTeachingPullbackLevelsMax),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(recordVisualValidationReviewBodyTeachingExplanationMax)
 }).optional()
@@ -8595,7 +8595,7 @@ export const RecordVisualValidationReviewResponse = zod.object({
 })).min(1).max(recordVisualValidationReviewResponseTeachingQualifyingLevelsMax).optional(),
   "pullbackLevels": zod.array(zod.number()).max(recordVisualValidationReviewResponseTeachingPullbackLevelsMax),
   "pullbackLevel": zod.number().optional().describe('Legacy single-level field retained for older saved reviews.'),
-  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "setupType": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "confidence": zod.enum(['low', 'medium', 'high']),
   "explanation": zod.string().max(recordVisualValidationReviewResponseTeachingExplanationMax),
   "calculatedEntryPrice": zod.number(),
@@ -9659,7 +9659,7 @@ export const SupersedeTeachingExampleResponse = zod.object({
  */
 export const ListStrategyProposalsResponseItem = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -9721,7 +9721,7 @@ export const CreateStrategyProposalBody = zod.object({
 
 export const CreateStrategyProposalResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -9768,7 +9768,7 @@ export const getStrategyProposalResponseValidationRunsItemProgressPercentMax = 1
 export const GetStrategyProposalResponse = zod.object({
   "proposal": zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -9881,7 +9881,7 @@ export const RequestStrategyProposalClarificationBody = zod.object({
 
 export const RequestStrategyProposalClarificationResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -9984,7 +9984,7 @@ export const ApproveStrategyProposalBody = zod.object({
 
 export const ApproveStrategyProposalResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10040,7 +10040,7 @@ export const RejectStrategyProposalBody = zod.object({
 
 export const RejectStrategyProposalResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10092,7 +10092,7 @@ export const PublishStrategyProposalCandidateHeader = zod.object({
 export const PublishStrategyProposalCandidateResponse = zod.object({
   "proposal": zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10165,7 +10165,7 @@ export const ActivateStrategyProposalCandidateHeader = zod.object({
 export const ActivateStrategyProposalCandidateResponse = zod.object({
   "proposal": zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10234,7 +10234,7 @@ export const RetireStrategyProposalHeader = zod.object({
 
 export const RetireStrategyProposalResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10290,7 +10290,7 @@ export const RollbackStrategyProposalBody = zod.object({
 
 export const RollbackStrategyProposalResponse = zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10337,7 +10337,7 @@ export const getStrategyProposalAuditResponseValidationRunsItemProgressPercentMa
 export const GetStrategyProposalAuditResponse = zod.object({
   "proposal": zod.object({
   "id": zod.string(),
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "title": zod.string(),
   "hypothesis": zod.string(),
   "rationale": zod.string(),
@@ -10472,14 +10472,14 @@ export const listStrategyCatalogResponseThresholdsMinReviewedExampleAgreementMax
 
 export const ListStrategyCatalogResponseItem = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10518,7 +10518,7 @@ export const ListStrategyCatalogResponse = zod.array(ListStrategyCatalogResponse
  * @summary Get readiness for one canonical strategy
  */
 export const GetStrategyReadinessParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 
@@ -10536,14 +10536,14 @@ export const getStrategyReadinessResponseThresholdsMinReviewedExampleAgreementMa
 
 export const GetStrategyReadinessResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10581,7 +10581,7 @@ export const GetStrategyReadinessResponse = zod.object({
  * @summary Set owner-approved fitness thresholds for one strategy
  */
 export const ApproveStrategyFitnessThresholdsParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 
@@ -10622,14 +10622,14 @@ export const approveStrategyFitnessThresholdsResponseThresholdsMinReviewedExampl
 
 export const ApproveStrategyFitnessThresholdsResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10667,7 +10667,7 @@ export const ApproveStrategyFitnessThresholdsResponse = zod.object({
  * @summary Validate one strategy against its approved fitness thresholds
  */
 export const ValidateStrategyReadinessParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 
@@ -10685,14 +10685,14 @@ export const validateStrategyReadinessResponseThresholdsMinReviewedExampleAgreem
 
 export const ValidateStrategyReadinessResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10730,7 +10730,7 @@ export const ValidateStrategyReadinessResponse = zod.object({
  * @summary Enable one FIT_AVAILABLE strategy in Shadow Mode
  */
 export const ActivateStrategyShadowParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 
@@ -10748,14 +10748,14 @@ export const activateStrategyShadowResponseThresholdsMinReviewedExampleAgreement
 
 export const ActivateStrategyShadowResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10793,7 +10793,7 @@ export const ActivateStrategyShadowResponse = zod.object({
  * @summary Pause one strategy without changing other strategies
  */
 export const PauseStrategyParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 export const pauseStrategyBodyReasonMax = 4000;
@@ -10819,14 +10819,14 @@ export const pauseStrategyResponseThresholdsMinReviewedExampleAgreementMax = 1;
 
 export const PauseStrategyResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),
@@ -10864,7 +10864,7 @@ export const PauseStrategyResponse = zod.object({
  * @summary Resume one paused strategy
  */
 export const ResumeStrategyParams = zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL'])
 })
 
 
@@ -10882,14 +10882,14 @@ export const resumeStrategyResponseThresholdsMinReviewedExampleAgreementMax = 1;
 
 export const ResumeStrategyResponse = zod.object({
   "definition": zod.object({
-  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "id": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "name": zod.string(),
   "description": zod.string(),
   "components": zod.array(zod.string()),
   "alertOnly": zod.boolean()
 }),
   "readiness": zod.object({
-  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
+  "strategyKey": zod.enum(['ORB_PULLBACK_CONTINUATION', 'EARLY_ORB_MOMENTUM_CONTINUATION', 'CONSOLIDATION_BREAKOUT_CONTINUATION', 'PATIENCE_CANDLE_CONTINUATION', 'EQUIVALENT_CANDLE_REVERSAL', 'PEAK_RETRACEMENT_REVERSAL']),
   "status": zod.enum(['NOT_ENOUGH_EVIDENCE', 'COLLECTING_EVIDENCE', 'READY_FOR_VALIDATION', 'VALIDATION_FAILED', 'SHADOW_CANDIDATE', 'FIT_AVAILABLE', 'PAUSED']),
   "thresholdsApproved": zod.boolean(),
   "setupCount": zod.number(),

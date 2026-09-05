@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v11-adaptive-target-runner-audit";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v12-early-orb-momentum";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -59,6 +59,12 @@ export function formulaConfiguration(
         startMinutes: config.primaryEntryStartMinutes,
         endMinutes: config.primaryEntryEndMinutes,
         completedFiveMinuteCandlesOnly: true,
+      },
+      earlyOrbMomentum: {
+        enabled: config.earlyOrbMomentumContinuationEnabled,
+        eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
+        minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
+        maxAttemptsPerDirection: config.earlyOrbMomentumMaxAttemptsPerDirection,
       },
     },
   };

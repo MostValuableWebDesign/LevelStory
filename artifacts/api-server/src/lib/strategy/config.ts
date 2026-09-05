@@ -87,6 +87,10 @@ export type StrategyConfig = {
   executionManagementAtrPeriod: number;
   executionManagementFixedContracts: 1 | 2;
   executionManagementVersion: string;
+  earlyOrbMomentumContinuationEnabled: boolean;
+  earlyOrbMomentumEligibilityCutoffMinutes: number;
+  earlyOrbMomentumMinimumCloseDistanceTicks: number;
+  earlyOrbMomentumMaxAttemptsPerDirection: number;
 };
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
@@ -210,6 +214,10 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
   executionManagementVersion: "execution-management-v6-adaptive-target-runner-audit",
+  earlyOrbMomentumContinuationEnabled: false,
+  earlyOrbMomentumEligibilityCutoffMinutes: 630,
+  earlyOrbMomentumMinimumCloseDistanceTicks: 1,
+  earlyOrbMomentumMaxAttemptsPerDirection: 1,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -288,6 +296,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["phase7FastSlippageTicks", config.phase7FastSlippageTicks],
     ["phase7DefaultTargetDollars", config.phase7DefaultTargetDollars],
     ["executionManagementAtrPeriod", config.executionManagementAtrPeriod],
+    ["earlyOrbMomentumEligibilityCutoffMinutes", config.earlyOrbMomentumEligibilityCutoffMinutes],
+    ["earlyOrbMomentumMinimumCloseDistanceTicks", config.earlyOrbMomentumMinimumCloseDistanceTicks],
+    ["earlyOrbMomentumMaxAttemptsPerDirection", config.earlyOrbMomentumMaxAttemptsPerDirection],
   ];
   if (!Number.isInteger(config.primaryEntryStartMinutes)
     || !Number.isInteger(config.primaryEntryEndMinutes)
@@ -346,6 +357,15 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   }
   if (!Number.isInteger(config.executionManagementAtrPeriod) || config.executionManagementAtrPeriod <= 0) {
     throw new Error("Invalid strategy configuration: executionManagementAtrPeriod must be a positive whole number.");
+  }
+  if (!Number.isInteger(config.earlyOrbMomentumEligibilityCutoffMinutes)
+    || config.earlyOrbMomentumEligibilityCutoffMinutes < 0
+    || config.earlyOrbMomentumEligibilityCutoffMinutes > 24 * 60
+    || !Number.isInteger(config.earlyOrbMomentumMinimumCloseDistanceTicks)
+    || config.earlyOrbMomentumMinimumCloseDistanceTicks < 1
+    || !Number.isInteger(config.earlyOrbMomentumMaxAttemptsPerDirection)
+    || config.earlyOrbMomentumMaxAttemptsPerDirection !== 1) {
+    throw new Error("Invalid strategy configuration: Early ORB Momentum uses a wall-clock cutoff, a positive tick distance, and exactly one attempt per direction.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

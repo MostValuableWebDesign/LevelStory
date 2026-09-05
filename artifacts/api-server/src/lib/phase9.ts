@@ -1066,7 +1066,7 @@ export type HistoricalOccurrence = {
   auditIds?: string[];
   eligibilityProvenance?: {
     eventId: string | null;
-    reason: "pullback" | "consolidation" | "ntz consolidation";
+    reason: "pullback" | "consolidation" | "ntz consolidation" | "early orb momentum";
     time: string;
     detail: string | null;
   };
@@ -2277,11 +2277,13 @@ function targetPlanForSnapshot(
   causalSourceCandles?: readonly SimulatedFuturesCandle[],
   causalContractSymbol?: string,
   causalEntryOpenTime?: number,
+  patienceOverride?: MarketSnapshot["patience"],
 ): KeyLevelTargetPlan {
-  const patienceCandle = snapshot.reversalPatience?.patienceCandle
-    ?? snapshot.patience.patienceCandle;
-  const entryCandle = snapshot.reversalPatience?.triggerCandle
-    ?? snapshot.patience.triggerCandle;
+  const patience = patienceOverride
+    ?? snapshot.reversalPatience
+    ?? snapshot.patience;
+  const patienceCandle = patience.patienceCandle
+  const entryCandle = patience.triggerCandle;
   return buildKeyLevelTargetPlan({
     direction,
     entryPrice,
@@ -2426,6 +2428,8 @@ function auditForEvaluation(
   const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
     ? snapshot.reversalPatience ?? snapshot.patience
+    : evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
+      ? snapshot.earlyOrbMomentum ?? snapshot.patience
     : snapshot.patience;
   const consolidationEdgeEvaluation = snapshot.setupAnalysis.evaluations
     .find((candidate) => candidate.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION");
@@ -2974,6 +2978,7 @@ export function buildHistoricalOccurrenceLedger(
     }
     const edgePrecedence = (setupType: string): number => [
       "ORB_PULLBACK_CONTINUATION",
+      "EARLY_ORB_MOMENTUM_CONTINUATION",
       "CONSOLIDATION_BREAKOUT_CONTINUATION",
       "EQUIVALENT_CANDLE_REVERSAL",
       "PATIENCE_CANDLE_CONTINUATION",
@@ -5056,6 +5061,7 @@ export function runCausalBacktest(
     }
     const selected = ([
       "ORB_PULLBACK_CONTINUATION",
+      "EARLY_ORB_MOMENTUM_CONTINUATION",
       "CONSOLIDATION_BREAKOUT_CONTINUATION",
       "EQUIVALENT_CANDLE_REVERSAL",
       "PATIENCE_CANDLE_CONTINUATION",
@@ -5078,7 +5084,9 @@ export function runCausalBacktest(
       : gradeScore >= 2 ? "A+" : "A";
     const selectedPatience = selected && ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(selected.setupType)
       ? snapshot.reversalPatience ?? snapshot.patience
-      : snapshot.patience;
+      : selected?.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
+        ? snapshot.earlyOrbMomentum ?? snapshot.patience
+        : snapshot.patience;
     const selectedAudit = selected
       ? evaluationAudits.find((record) => record.setupType === selected.setupType)
       : undefined;
@@ -5165,6 +5173,7 @@ export function runCausalBacktest(
           contractCandles,
           candle.contractSymbol,
           trigger.openTime,
+           selectedPatience,
         );
         const primaryLossExitLevel = primaryLossExitReferenceForPatience({
           direction: selected.direction,

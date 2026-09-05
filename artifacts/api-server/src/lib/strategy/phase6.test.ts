@@ -8,6 +8,7 @@ import {
   evaluateStrongBreakoutAfterConsolidation,
   evaluateExtendedNtzConsolidationBreakout,
   evaluateOrbBreakPullbackContinuation,
+  evaluateEarlyOrbMomentumContinuation,
   hasEquivalentOpposingCandles,
   isDoji,
   phase6Analysis,
@@ -184,6 +185,21 @@ test("ORB continuation qualifies only when every mandatory rule passes", () => {
   assert.ok(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed));
 });
 
+test("early ORB momentum qualifies without pullback or trend evidence", () => {
+  const result = evaluateEarlyOrbMomentumContinuation(baseContext({
+    pullback: { ...baseContext().pullback, status: "pending", events: [] },
+    trend: { direction: "neutral", structure: "neutral" },
+    earlyOrbMomentum: {
+      ...patience("ENTRY_TRIGGERED", "bullish", "long"),
+      eligibilityReason: "early orb momentum",
+      direction: "long",
+    },
+  }));
+  assert.equal(result.setupType, "EARLY_ORB_MOMENTUM_CONTINUATION");
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.mandatoryPassed, true);
+});
+
 test("Dynamite boosts only a matching qualified signal and preserves its confluence evidence", () => {
   const result = phase6Analysis(baseContext({
     patience: { ...patience(), direction: "long" },
@@ -288,9 +304,10 @@ test("ORB continuation does not qualify a boundary probe without a completed ORB
   assert.equal(result.rules.find((rule) => rule.key === "closeOutsideNtz")?.passed, false);
 });
 
-test("taxonomy exposes five strategies and separates components from outcomes", () => {
+test("taxonomy exposes six strategies and separates components from outcomes", () => {
   assert.deepEqual(STRATEGY_IDS, [
     "ORB_PULLBACK_CONTINUATION",
+    "EARLY_ORB_MOMENTUM_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
     "PATIENCE_CANDLE_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",

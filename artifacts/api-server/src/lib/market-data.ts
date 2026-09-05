@@ -8,6 +8,7 @@ import {
   fibonacciAnalysis,
   phase4Volume,
   phase5PatienceAnalysis,
+  earlyOrbMomentumPatienceAnalysis,
   patienceArmLifecycleTransitions,
   phase6Analysis,
   reducePullbackArmLifecycles,
@@ -217,6 +218,7 @@ export type MarketSnapshot = {
     eligibilityArmStateReason?: string | null;
     eligibilityProvenance?: PatienceOccurrence["eligibilityProvenance"] | null;
   };
+  earlyOrbMomentum?: MarketSnapshot["patience"];
   reversalPatience?: MarketSnapshot["patience"];
   fibonacci: {
     direction: "bullish" | "bearish" | null;
@@ -620,6 +622,15 @@ export function createMarketSnapshot(
     false,
     breakoutDirection ? "ORB_BREAKOUT" : "CONFIRMED_15M_TREND",
   );
+  const earlyOrbMomentum = earlyOrbMomentumPatienceAnalysis(regular, levels.ntz, {
+    enabled: config.earlyOrbMomentumContinuationEnabled,
+    tickSize: specification.tickSize,
+    entryBufferTicks: config.patienceEntryBufferTicks,
+    stopBufferTicks: config.patienceStopBufferTicks,
+    entryCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
+    minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
+    maxAttemptsPerDirection: config.earlyOrbMomentumMaxAttemptsPerDirection,
+  });
   const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
   const baseSetupContext = {
     candles: regular,
@@ -629,6 +640,7 @@ export function createMarketSnapshot(
     fibonacci,
     volume: volumeAnalysis,
     patience,
+    earlyOrbMomentum,
     trend,
     riskApproved: true,
     config,
@@ -659,6 +671,8 @@ export function createMarketSnapshot(
   const executablePatience = preliminarySetupAnalysis.primarySetup === "EQUIVALENT_CANDLE_REVERSAL"
     || preliminarySetupAnalysis.primarySetup === "PEAK_RETRACEMENT_REVERSAL"
     ? reversalPatience
+    : preliminarySetupAnalysis.primarySetup === "EARLY_ORB_MOMENTUM_CONTINUATION"
+      ? earlyOrbMomentum
     : patience;
   const plan = buildRiskPlan(direction, levels, executablePatience, riskInput, config, specification, {
     ...phase7Input,
@@ -674,6 +688,7 @@ export function createMarketSnapshot(
     fibonacci,
     volume: volumeAnalysis,
     patience,
+    earlyOrbMomentum,
     reversalPatience,
     trend,
     riskApproved: plan.allowed,
@@ -844,7 +859,8 @@ export function createMarketSnapshot(
        qualifyingLevelCount: pullback.qualifyingLevelCount,
        detail: pullback.detail,
      },
-      patience: toApiPatience(executablePatience),
+     patience: toApiPatience(executablePatience),
+     earlyOrbMomentum: toApiPatience(earlyOrbMomentum),
      fibonacci: {
        direction: fibonacci.direction,
        impulseLow: fibonacci.impulseLow,
