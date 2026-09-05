@@ -132,6 +132,17 @@ test("patience strategy stops use exactly twelve MES ticks beyond the frozen P e
   assert.equal(authoritativePatienceStopPrice("short", 6975.75), 6978.75);
 });
 
+test("patience strategy accepts the ATR-adaptive four-to-eight tick stop range", () => {
+  const result = patienceCandleEngine(
+    setup("long", candle(2, 10.8, 12, 10.2, 11.75)),
+    "long",
+    { eligibilityEvents: eligibility(), tickSize: 0.25, stopBufferTicks: 4 },
+  );
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.stopBufferTicks, 4);
+  assert.equal(result.strategyStopPrice, 6);
+});
+
 test("the seventh tick does not confirm, while the eighth tick confirms", () => {
   const sevenTicks = patienceCandleEngine(
     setup("long", candle(2, 10.8, 11.75, 10.2, 11.75)),
@@ -547,7 +558,7 @@ test("a qualifying patience shape remains eligible beyond thirty minutes", () =>
 
 test("buffer configuration rejects unsupported confirmation widths", () => {
   assert.throws(() => patienceCandleEngine([], "long", { entryBufferTicks: 7 }), /exactly eight MES ticks/i);
-  assert.throws(() => patienceCandleEngine([], "long", { stopBufferTicks: 8 }), /exactly twelve MES ticks/i);
+  assert.throws(() => patienceCandleEngine([], "long", { stopBufferTicks: 9 }), /legacy twelve-tick value or an ATR-adaptive integer from four through eight/i);
 });
 
 test("pullback and consolidation locations can open patience eligibility", () => {

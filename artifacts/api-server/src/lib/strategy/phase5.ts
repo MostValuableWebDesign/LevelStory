@@ -8,6 +8,7 @@ import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
+import { MAX_STOP_BUFFER_TICKS, MIN_STOP_BUFFER_TICKS } from "./execution-management.js";
 
 export type PatienceState =
   | "WAITING_FOR_VALID_CONTEXT"
@@ -655,7 +656,13 @@ function directionTrendMatches(direction: Direction, trend: TrendDirection): boo
 function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
   if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
   if (entryBufferTicks !== 8) throw new Error("Patience entry confirmation buffer must be exactly eight MES ticks (2.00 index points).");
-  if (stopBufferTicks !== 12) throw new Error("Patience stop buffer must be exactly twelve MES ticks.");
+  const isLegacyFixedBuffer = stopBufferTicks === DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
+  const isAdaptiveBuffer = Number.isInteger(stopBufferTicks)
+    && stopBufferTicks >= MIN_STOP_BUFFER_TICKS
+    && stopBufferTicks <= MAX_STOP_BUFFER_TICKS;
+  if (!isLegacyFixedBuffer && !isAdaptiveBuffer) {
+    throw new Error("Patience stop buffer must be the legacy twelve-tick value or an ATR-adaptive integer from four through eight MES ticks.");
+  }
 }
 
 function roundPrice(price: number, tickSize: number): number {
