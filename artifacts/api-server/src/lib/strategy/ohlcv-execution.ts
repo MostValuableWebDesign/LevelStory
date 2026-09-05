@@ -126,6 +126,13 @@ export type OhlcvExecutionAudit = {
   breakevenEvaluationClose: number | null;
   breakevenEvaluationCloseDisposition: BreakevenCloseDisposition | null;
   breakevenRecoveryExitTimestamp: number | null;
+  runnerBreakevenPendingTimestamp: number | null;
+  runnerBreakevenQualificationTimestamp: number | null;
+  runnerBreakevenEffectiveFromTimestamp: number | null;
+  runnerBreakevenPreviousStopPrice: number | null;
+  runnerBreakevenStopPrice: number | null;
+  runnerBreakevenTightened: boolean;
+  runnerBreakevenIgnoredForTighterStop: boolean;
   originalStopStillActive: boolean;
 };
 
@@ -259,6 +266,13 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       breakevenEvaluationClose: null,
       breakevenEvaluationCloseDisposition: null,
       breakevenRecoveryExitTimestamp: null,
+      runnerBreakevenPendingTimestamp: null,
+      runnerBreakevenQualificationTimestamp: null,
+      runnerBreakevenEffectiveFromTimestamp: null,
+      runnerBreakevenPreviousStopPrice: null,
+      runnerBreakevenStopPrice: null,
+      runnerBreakevenTightened: false,
+      runnerBreakevenIgnoredForTighterStop: false,
       originalStopStillActive: false,
     },
     ambiguityLabels: [], eventLabels: labels, assumptions,
@@ -392,6 +406,14 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let breakevenMode: "none" | "stop" | "recovery" = "none";
   let breakevenEvaluated = false;
   let runnerBreakevenPending = false;
+  let runnerBreakevenPendingCandleIndex: number | null = null;
+  let runnerBreakevenPendingTimestamp: number | null = null;
+  let runnerBreakevenQualificationTimestamp: number | null = null;
+  let runnerBreakevenEffectiveFromTimestamp: number | null = null;
+  let runnerBreakevenPreviousStopPrice: number | null = null;
+  let runnerBreakevenStopPrice: number | null = null;
+  let runnerBreakevenTightened = false;
+  let runnerBreakevenIgnoredForTighterStop = false;
   let originalStopStillActive = initialStop !== null;
   if (noForwardLevelAtEntry) eventLabels.push(NO_FORWARD_LEVEL_1R_PLAN_LABEL);
   const legs: ModeledExecutionLeg[] = [];
@@ -542,7 +564,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
       }
       if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
-      if (runnerQuantity > 0) runnerBreakevenPending = true;
+      if (runnerQuantity > 0) {
+        runnerBreakevenPending = true;
+        runnerBreakevenPendingCandleIndex = candleIndex;
+        runnerBreakevenPendingTimestamp = typeof candle.closeTime === "number" && Number.isFinite(candle.closeTime)
+          ? candle.closeTime
+          : null;
+      }
       if (runnerQuantity === 0) break;
     }
     if (oneRReachedInCandle) {
@@ -566,7 +594,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         exitReason = "target";
       }
       if (runnerQuantity > 0) eventLabels.push("RUNNER_ACTIVATED");
-      if (runnerQuantity > 0) runnerBreakevenPending = true;
+      if (runnerQuantity > 0) {
+        runnerBreakevenPending = true;
+        runnerBreakevenPendingCandleIndex = candleIndex;
+        runnerBreakevenPendingTimestamp = typeof candle.closeTime === "number" && Number.isFinite(candle.closeTime)
+          ? candle.closeTime
+          : null;
+      }
       if (runnerQuantity === 0) break;
     }
     const activatedThisCandle = oneRReachedInCandle || targetReachedInCandle;
@@ -614,15 +648,36 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         }
       }
     }
-    if (runnerBreakevenPending && runnerQuantity > 0 && favorableClose(input.direction, candle.close, modeledFill)) {
+    if (
+      runnerBreakevenPending
+      && runnerQuantity > 0
+      && runnerBreakevenPendingCandleIndex !== null
+      && candleIndex > runnerBreakevenPendingCandleIndex
+      && favorableClose(input.direction, candle.close, modeledFill)
+    ) {
+      runnerBreakevenQualificationTimestamp = typeof candle.closeTime === "number" && Number.isFinite(candle.closeTime)
+        ? candle.closeTime
+        : null;
+      runnerBreakevenPreviousStopPrice = trailingStopPrice;
       const improves = trailingStopPrice === null
         || (input.direction === "long" ? modeledFill > trailingStopPrice : modeledFill < trailingStopPrice);
       if (improves) {
         trailingStopPrice = modeledFill;
+        runnerBreakevenStopPrice = modeledFill;
+        runnerBreakevenTightened = true;
+        const nextCandle = candles[candleIndex + 1];
+        runnerBreakevenEffectiveFromTimestamp = nextCandle
+          && typeof nextCandle.openTime === "number"
+          && Number.isFinite(nextCandle.openTime)
+          ? nextCandle.openTime
+          : null;
         trailingStopSource = "runner-breakeven-after-favorable-completed-candle";
         eventLabels.push(BREAKEVEN_STOP_ARMED_LABEL);
+      } else {
+        runnerBreakevenIgnoredForTighterStop = true;
       }
       runnerBreakevenPending = false;
+      runnerBreakevenPendingCandleIndex = null;
     }
     if (
       !breakevenEvaluated
@@ -734,6 +789,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         breakevenEvaluationClose,
         breakevenEvaluationCloseDisposition,
         breakevenRecoveryExitTimestamp,
+        runnerBreakevenPendingTimestamp,
+        runnerBreakevenQualificationTimestamp,
+        runnerBreakevenEffectiveFromTimestamp,
+        runnerBreakevenPreviousStopPrice,
+        runnerBreakevenStopPrice,
+        runnerBreakevenTightened,
+        runnerBreakevenIgnoredForTighterStop,
        originalStopStillActive,
     },
      ambiguityLabels, eventLabels, assumptions,

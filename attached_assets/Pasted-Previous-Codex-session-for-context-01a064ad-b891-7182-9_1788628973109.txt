@@ -1,0 +1,229 @@
+Previous Codex session for context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 25/
+
+Inspect the current code before editing. Preserve the Profit Taking, Stop Loss, Breakeven/Recovery, and one-/two-contract features already implemented. Fix only the remaining inconsistencies identified below.
+
+Do not change:
+
+- Trade-setup eligibility
+- Strategy qualification rules
+- Patience-candle selection
+- Eight-tick entry-confirmation buffer
+- Entry timing or confirmation
+- Historical date selection
+- Live-order behavior
+- Starting-balance behavior
+
+Starting balance must remain display-only and must not influence trade eligibility, stops, targets, contract quantity, or R.
+
+1. Resolve the adaptive-stop versus fixed-12 conflict
+
+Historical execution now calculates:
+
+`StopBufferTicks = clamp(ceil(ATR14Ticks × 0.10), 4, 8)`
+
+However, Phase 5 and several API/configuration paths still require exactly 12 ticks. This creates a direct runtime conflict because historical replay passes 4–8 ticks into a patience engine that throws unless the value is 12.
+
+Separate setup evidence from execution management clearly:
+
+- The patience candle and setup qualification must remain unchanged.
+- Phase 5 must not reject a valid setup because its execution-management stop uses an adaptive 4–8 tick buffer.
+- Remove the exact-12 validation from every authoritative execution path.
+- Replace fixed-12 execution stop values with the adaptive value.
+- Preserve the existing eight-tick entry-confirmation buffer.
+- If a legacy 12-tick value is needed only for non-executable diagnostic evidence, rename and isolate it so it cannot become the candidate’s strategy stop or affect P/L.
+
+Make the adaptive stop authoritative for:
+
+- Generated candidates
+- Historical OHLCV backtests
+- Visual Review
+- Combined multi-date replay
+- StructuralR
+- Target R calculations
+- Stop-distance rejection
+- Trade exits
+- P/L
+- Displayed annotations
+- Audit evidence
+
+Initial stop:
+
+- Long: patience-candle low − StopBufferTicks
+- Short: patience-candle high + StopBufferTicks
+
+Maximum structural risk:
+
+`MaximumStructuralRiskTicks = clamp(ceil(ATR14Ticks × 1.50), 20, 40)`
+
+Structural risk:
+
+`StructuralRiskTicks = abs(ModeledFillPrice − InitialStopPrice) ÷ 0.25`
+
+Reject excessive distance with `STOP_DISTANCE_TOO_WIDE`.
+
+Do not reduce contract quantity or use account-based risk.
+
+Update and regenerate:
+
+- OpenAPI definitions
+- Zod schemas
+- Generated API types
+- Backtest request types
+- Batch and pilot request types
+- Frontend defaults
+- Strategy configuration
+- Tests
+- User-facing descriptions
+
+No authoritative API field should still describe the executable stop as “exactly twelve MES ticks.”
+
+2. Make adaptive near-side target placement authoritative
+
+The candidate projection uses adaptive near-side placement, but the preliminary historical target path still uses `EXACT_LEVEL`.
+
+Use one authoritative target-plan builder throughout generated candidates, historical backtests, Visual Review, and combined replay.
+
+Apply:
+
+`TargetBufferTicks = clamp(ceil(ATR14Ticks × 0.05), 1, 2)`
+
+Target rules:
+
+- Freeze directional key levels causally available at entry.
+- Select the nearest eligible profitable directional level within the governed 20-tick search distance.
+- Place the target TargetBufferTicks before the level’s near side.
+- Maximum target: 1.50R.
+- One-contract minimum: 0.75R.
+- Two-contract minimum: 0.50R.
+- An obstructing major directional level before the applicable minimum produces `INSUFFICIENT_REWARD_TO_RISK`.
+- If no eligible key level exists, use the 1R fallback.
+
+Remove or bypass `EXACT_LEVEL` from all authoritative execution paths. It may remain only for explicitly labeled legacy diagnostic data that cannot affect generated trades or replay results.
+
+3. Fix runner-breakeven timing
+
+The code currently sets `runnerBreakevenPending` when the first target or 1R checkpoint is hit, then evaluates that flag later in the same candle loop. This can arm runner breakeven on the target-hit candle.
+
+Correct behavior:
+
+- When the first contract exits, record the target/checkpoint candle index.
+- Set runner breakeven to pending.
+- Do not evaluate runner breakeven on that same candle.
+- Begin evaluating it with the next completed five-minute candle.
+- Arm breakeven only when that later candle closes favorably relative to the modeled entry.
+- The breakeven stop must become effective on the candle after the qualifying favorable candle.
+- Do not apply it retroactively within the qualifying candle.
+- Keep the existing stop active until breakeven becomes effective.
+- Never widen an existing tighter stop.
+- Preserve conservative adverse-first OHLCV handling.
+
+Add explicit audit evidence:
+
+- First-target/checkpoint candle
+- Runner-breakeven pending timestamp
+- Favorable qualifying candle
+- Breakeven activation timestamp
+- Effective-from timestamp
+- Previous active stop
+- New stop
+- Whether tightening was applied or ignored because a tighter stop already existed
+
+4. Enforce rebuilt target-plan rejection during replay
+
+Combined replay now rebuilds target plans for one or two contracts. Before executing the trade:
+
+- Inspect the rebuilt plan’s `rejectionReason`.
+- If it contains `INSUFFICIENT_REWARD_TO_RISK`, do not simulate or include an entered trade.
+- Record the rejected candidate and reason in replay diagnostics.
+- Apply the same behavior as fresh candidate generation.
+- Never execute a target plan that fresh generation would reject.
+- Ensure the one-contract and two-contract selections use their respective minimum R requirements.
+
+If the rebuilt plan has no eligible key-level target but no rejection reason, use the 1R fallback.
+
+Ensure `oneRProfitRule` is based on the rebuilt replay target, not the original stored `targetPrice`.
+
+5. Clean up stale replay handling
+
+The replay helper now throws a stale/incompatible error when required evidence is missing. Remove the obsolete unreachable branch that still attempts to skip the candidate after that helper returns.
+
+Required behavior:
+
+- Missing frozen execution or target evidence marks the review set stale/incompatible.
+- Return a clear error requiring regeneration.
+- Do not silently skip candidates.
+- Do not return partial combined totals.
+- Do not reuse or proportionally scale an old trade.
+- Every eligible retained candidate from every processed date must be included exactly once.
+
+6. Preserve completed work
+
+Keep the existing functionality that is already correct:
+
+- Contract selector defaults to 1.
+- Only contract quantities 1 and 2 are accepted.
+- Replay reruns execution rather than scaling P/L.
+- Frozen target levels are used to rebuild contract-dependent targets.
+- Runner buffer is stored separately.
+- MFE price, points, ticks, and R are retained.
+- Six-candle breakeven/recovery behavior remains.
+- Original stop remains active during recovery.
+- Adverse-first ambiguity handling remains.
+- One contract exits fully with no runner.
+- Two contracts exit one at the target/1R and manage one runner.
+- Combined dates remain chronological with aggregate P/L and metrics.
+
+7. Required tests
+
+Add or update tests proving:
+
+- Historical Visual Review generation no longer throws when adaptive stop is 4–8 ticks.
+- Phase 5 setup detection remains unchanged when adaptive execution management is enabled.
+- No authoritative execution path requires exactly 12 stop ticks.
+- OpenAPI, Zod, generated types, frontend, and backend agree on adaptive stops.
+- StructuralR uses modeled fill to the adaptive stop.
+- `STOP_DISTANCE_TOO_WIDE` works consistently.
+- Preliminary backtest and candidate projection produce the same adaptive near-side target.
+- No authoritative trade uses `EXACT_LEVEL`.
+- One-contract target eligibility uses 0.75R.
+- Two-contract target eligibility uses 0.50R.
+- Rebuilt target rejection prevents replay execution.
+- Rebuilt no-target plans use 1R.
+- Runner breakeven does not arm on the target-hit candle.
+- It begins evaluation on the next completed candle.
+- It becomes effective only after the qualifying candle completes.
+- A tighter existing stop is never widened.
+- Missing replay evidence returns a stale/incompatible error and never partial totals.
+- One-contract execution has no runner.
+- Two-contract execution has exactly one target leg and one runner leg.
+- Combined-date totals include every eligible retained candidate exactly once.
+- Changing starting balance does not alter trades or P/L.
+
+Update execution-management, formula-hash, candidate-projection, and cache-version identifiers so older review sets are marked stale.
+
+Run:
+
+- Focused execution-management tests
+- Phase 5 tests
+- Phase 9 tests and integration tests
+- Shadow-account replay tests
+- Visual-validation route tests
+- Complete API-server test suite
+- Type checking
+- Frontend build
+
+Report:
+
+- Files changed
+- Fixed conflicting paths
+- Tests executed and their results
+- Any remaining limitations
+
+Do not claim completion based only on constants or helper functions. Verify historical Visual Review generation and one-/two-contract combined replay end to end.
+
+
+1:22 PM
