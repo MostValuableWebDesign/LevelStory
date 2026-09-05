@@ -1,0 +1,228 @@
+Inspect the previous requirements and current repository before editing. Implement a new setup named:
+
+`EARLY_ORB_MOMENTUM_CONTINUATION`
+
+Purpose:
+Capture valid early directional ORB moves when there was no previously established pullback arm. A completed candle outside the finalized ORB may create its own temporary momentum arm, serve as the patience candle, and allow the immediately following candle to confirm entry.
+
+This must be a separate setup path. Do not weaken or change the existing pullback-arm requirements for other continuation setups.
+
+1. Eligibility window
+
+Evaluate the Early ORB Momentum setup only when:
+
+- The ORB/NTZ is finalized.
+- The candle occurs after ORB finalization.
+- The candidate candle opens before 10:30 AM ET.
+- The candle is a completed five-minute candle.
+- No Early ORB Momentum trade has already been entered in the same direction for that trading session.
+
+Do not require:
+
+- A previously established pullback arm.
+- A pullback interaction.
+- Price to be above or below VWAP.
+- Price to be above or below the 200 MA.
+- A particular VWAP or moving-average slope.
+- A minimum candle-body percentage.
+- The close to be within a particular portion of the candle.
+- A strong-volume classification.
+- A specific candle color beyond any existing directionally necessary patience-candle rules.
+
+VWAP, the 200 MA, volume, and other indicators may remain visible as diagnostic context or supporting confluence, but they must not control this setup’s eligibility.
+
+2. Momentum-arm creation
+
+A completed candle creates an Early ORB Momentum Arm when it closes at least one MES tick outside the finalized ORB/NTZ:
+
+Long:
+
+`CandleClose >= FinalizedOrbHigh + 0.25`
+
+Short:
+
+`CandleClose <= FinalizedOrbLow − 0.25`
+
+The same completed candle may simultaneously:
+
+- Establish the Early ORB Momentum Arm.
+- Serve as the patience candle.
+- Freeze the directional context and entry-time evidence.
+
+This is causal because the arm and patience classification become valid only after that candle closes. No entry may occur inside that candle.
+
+Record:
+
+- Arm ID
+- Direction
+- Trading date
+- ORB high and low
+- ORB finalization timestamp
+- Arm-creation candle open and close timestamps
+- Arm-creation close
+- Distance outside the ORB in points and ticks
+- Patience-candle high, low, open, and close
+- Evaluation timestamp
+- Source formula and version
+
+3. Entry confirmation
+
+Only the immediately following five-minute candle may confirm entry.
+
+Use the existing eight-tick confirmation buffer without modification:
+
+Long:
+
+`EntryThreshold = PatienceHigh + 8 MES ticks`
+
+Short:
+
+`EntryThreshold = PatienceLow − 8 MES ticks`
+
+Requirements:
+
+- The entry candle must be the immediately adjacent five-minute candle.
+- It must be completed before the trade becomes authoritative.
+- Its high or low must actually reach the threshold.
+- Do not assume a fill from a later candle.
+- Do not enter during the arm-creation/patience candle.
+- Preserve the existing conservative OHLCV fill and ambiguity handling.
+
+If the immediately following candle does not reach the threshold, expire that Early ORB Momentum attempt. Do not allow a later candle to reuse it.
+
+4. Invalidation
+
+Invalidate the arm before entry when any of these occurs:
+
+- The immediately following candle fails to reach the buffered entry.
+- The next completed candle closes back inside the finalized ORB.
+- The existing patience-candle invalidation rules are triggered.
+- The entry sequence is ambiguous under existing OHLCV sequencing rules.
+- The adaptive stop produces `STOP_DISTANCE_TOO_WIDE`.
+- The target plan produces `INSUFFICIENT_REWARD_TO_RISK`.
+- The early eligibility window has ended.
+- An Early ORB Momentum trade was already entered in that direction during the session.
+
+After expiration, the normal pullback-arm strategy may still create a later independent setup.
+
+5. Stop, target, breakeven, and contracts
+
+Do not create separate management formulas for this setup. Use the existing authoritative management engine.
+
+Stop:
+
+`StopBufferTicks = clamp(ceil(ATR14Ticks × 0.10), 4, 8)`
+
+- Long: patience low − StopBufferTicks
+- Short: patience high + StopBufferTicks
+
+Maximum structural risk:
+
+`clamp(ceil(ATR14Ticks × 1.50), 20, 40)`
+
+Reject excessive structural distance with `STOP_DISTANCE_TOO_WIDE`.
+
+Profit target:
+
+`TargetBufferTicks = clamp(ceil(ATR14Ticks × 0.05), 1, 2)`
+
+- Use the nearest eligible profitable directional key level within 20 ticks.
+- Place the target before the level’s near side.
+- Maximum target: 1.50R.
+- One-contract minimum: 0.75R.
+- Two-contract minimum: 0.50R.
+- Use `INSUFFICIENT_REWARD_TO_RISK` for an obstructing major level.
+- Use 1R when no eligible level exists and there is no rejection.
+
+Contract management:
+
+- One contract exits fully at the key-level target or 1R.
+- Two contracts exit one at the key-level target or 1R and manage one runner.
+- Preserve the existing runner-breakeven timing and confirmed-swing trailing.
+- Starting balance must not affect eligibility or management.
+
+6. Strategy priority and deduplication
+
+Integrate the new setup into strategy selection without creating duplicate trades.
+
+- Use the canonical physical P-to-E sequence identity.
+- Emit at most one candidate for the same contract, date, direction, patience candle, entry candle, and threshold.
+- If an existing strategy and Early ORB Momentum identify the same physical trade, create one primary candidate with the other setup listed as a matched/supporting edge.
+- Do not count the same trade twice in Visual Review, Shadow Account Replay, funnel statistics, or aggregate P/L.
+- Preserve deterministic setup priority.
+- Do not let the new setup authorize unrelated later-session entries.
+
+7. Visual Review integration
+
+Present an eligible Early ORB Momentum trade exactly like any generated trade candidate.
+
+Display and retain:
+
+- Setup name
+- Direction
+- Arm-creation candle
+- Patience candle
+- Entry-confirmation candle
+- Finalized ORB boundaries
+- Buffered entry
+- Adaptive stop
+- Target or 1R fallback
+- One-/two-contract legs
+- Runner events
+- P/L
+- Rejection or ambiguity reason
+- Complete causal audit evidence
+
+Include the trade in combined multi-date Shadow Account Replay and all aggregate attributes when it is eligible and entered.
+
+Add an explicit explanation such as:
+
+“Early ORB momentum arm created by the first completed close outside the finalized ORB. No prior pullback arm was required. Entry remained conditional on the immediately following candle reaching the standard eight-tick buffered threshold.”
+
+8. Rule configuration
+
+Add an independently configurable toggle:
+
+`earlyOrbMomentumContinuationEnabled`
+
+Recommended default: `false` until validated across a sufficiently broad historical sample.
+
+Also expose:
+
+- Eligibility cutoff, default 10:30 AM ET.
+- Minimum close distance outside ORB, default one MES tick.
+- Maximum attempts per direction per session, default one.
+
+Keep defaults versioned and included in formula hashes and cache keys.
+
+9. Tests
+
+Add tests proving:
+
+- The ORB must be finalized.
+- A completed close one tick outside the ORB creates the arm.
+- VWAP position does not affect eligibility.
+- The 200 MA does not affect eligibility.
+- Candle-body ratio does not affect eligibility.
+- Close-location ratio does not affect eligibility.
+- No pullback arm is required.
+- The same candle can create the arm and serve as P.
+- Entry cannot occur until the immediately following candle.
+- The normal eight-tick buffer is used.
+- A non-adjacent candle cannot confirm entry.
+- A close back inside the ORB invalidates the attempt.
+- The 10:30 cutoff is enforced.
+- Only one attempt per direction is entered.
+- Long and short behavior is symmetric.
+- Adaptive stops and targets are used.
+- Management rejection reasons remain authoritative.
+- Duplicate physical trades are merged rather than counted twice.
+- Visual Review displays the candidate and causal evidence.
+- Combined replay includes the trade and its P/L exactly once.
+- Disabling the toggle preserves existing strategy output exactly.
+
+Update formula, strategy, candidate-projection, and cache versions so older review sets are marked stale.
+
+Run focused tests, the complete API typecheck, frontend typecheck/build, relevant Visual Review and replay tests, and `git diff --check`.
+
+Report files changed, tests executed, results, and any remaining limitations. Do not claim completion based only on unit-level detection; verify candidate creation, execution, Visual Review projection, and combined replay integration.
