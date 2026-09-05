@@ -125,6 +125,14 @@ test("deterministic replay always returns results to the Generate tab", () => {
   assert.match(page, /const regenerateFreshReviewSet = \(\) => startReviewSetGeneration\(true\);/);
 });
 
+test("deterministic replay chart evidence is rendered inside the Generate tab", () => {
+  assert.match(page, /id="visual-review-panel-generate-evidence"/);
+  assert.match(page, /activeVisualReviewTab === "generate" && data && activeSnapshot/);
+  assert.match(page, /eyebrow="Raw market evidence \/ causal only"/);
+  assert.match(page, /title="Chart evidence"/);
+  assert.match(page, /id="visual-review-panel-chart-analysis"[\s\S]*<UploadedChartAnalysis/);
+});
+
 test("visual review presentation retains human-only shading and semantic level colors", () => {
   assert.match(page, /data-testid="human-only-region"/);
    assert.match(page, /data-testid="consolidation-zone-overlay"/);

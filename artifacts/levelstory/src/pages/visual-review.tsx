@@ -870,8 +870,9 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "chart-analysis" && <section id="visual-review-panel-chart-analysis" role="tabpanel" aria-labelledby="visual-review-tab-chart-analysis" tabIndex={0} className="space-y-5">
              <UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} />
-              {generationActive || setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : !data ? generationFinished ? <Panel><EmptyReview /></Panel> : <Panel><ReviewSetNotStarted /></Panel> : activeSnapshot ? (
-               <>
+           </section>}
+
+           {activeVisualReviewTab === "generate" && data && activeSnapshot && <section id="visual-review-panel-generate-evidence" aria-label="Generated replay chart evidence" className="space-y-5">
                  <div className={`visual-review-workspace ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                    <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
@@ -923,8 +924,6 @@ export default function VisualReview() {
                      });
                    }} />
                  </div>
-               </>
-              ) : <Panel><EmptyReview /></Panel>}
            </section>}
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="space-y-5">
