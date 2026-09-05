@@ -749,6 +749,7 @@ export default function VisualReview() {
   };
 
   const generationBusy = startGeneration.isPending || generationActive;
+  const generationFinished = generationJob?.status === "completed";
   const handleVisualReviewTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
@@ -868,7 +869,7 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "chart-analysis" && <section id="visual-review-panel-chart-analysis" role="tabpanel" aria-labelledby="visual-review-tab-chart-analysis" tabIndex={0} className="space-y-5">
              <UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} />
-             {generationActive ? <Panel><QuerySkeleton rows={6} /></Panel> : !data ? <Panel><EmptyReview /></Panel> : activeSnapshot ? (
+              {generationActive || setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : !data ? generationFinished ? <Panel><EmptyReview /></Panel> : <Panel><ReviewSetNotStarted /></Panel> : activeSnapshot ? (
                <>
                  <div className={`visual-review-workspace ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
                    <div className="visual-review-chart-column min-w-0 space-y-5">
@@ -922,7 +923,7 @@ export default function VisualReview() {
                    }} />
                  </div>
                </>
-             ) : <UnavailableWorkspace coverage={coverage} source={data.source} />}
+              ) : <Panel><EmptyReview /></Panel>}
            </section>}
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="space-y-5">
@@ -965,8 +966,9 @@ export default function VisualReview() {
                  <ReviewSetProvenance data={data} />
                  <ReviewSetDiagnostics data={data} />
                  {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
+                  {!activeSnapshot && <Panel><EmptyReview /></Panel>}
                </>
-             ) : <Panel><EmptyReview /></Panel>}
+              ) : generationFinished ? <Panel><EmptyReview /></Panel> : null}
            </section>}
 
            {activeVisualReviewTab === "account-impact" && <section id="visual-review-panel-account-impact" role="tabpanel" aria-labelledby="visual-review-tab-account-impact" tabIndex={0} className="space-y-5">
@@ -2629,6 +2631,10 @@ function UnavailableWorkspace({ coverage, source }: { coverage: VisualValidation
 
 function EmptyReview() {
   return <div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-accent/20"><FileSearch size={24} /></div><h2 className="display text-2xl font-bold">No confirmed trade candidates were found in this review period.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Generate a deterministic review set to search for causal edge → P → immediate E candidates.</p><p className="mt-3 text-xs text-muted-foreground">Suggested action: extend the review period.</p></div>;
+}
+
+function ReviewSetNotStarted() {
+  return <div className="flex min-h-[220px] flex-col items-center justify-center px-8 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground"><FileSearch size={21} /></div><h2 className="text-lg font-bold">No review set selected</h2><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Upload chart evidence above or open the Generate tab to run a deterministic replay before reviewing candidates.</p></div>;
 }
 
 function DiscrepancyPanel({ report, open, setOpen, pending, onExport }: { report: VisualValidationDiscrepancyReport | null; open: boolean; setOpen: (open: boolean) => void; pending: boolean; onExport: () => void }) {
