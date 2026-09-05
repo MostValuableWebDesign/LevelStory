@@ -1,0 +1,231 @@
+Previous Codex session for project context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 24/
+
+Inspect the current repository before editing. Most execution-management functionality already exists, so preserve working behavior and fix only the remaining integration problems described below.
+
+Do not change:
+
+- Strategy setup eligibility
+- Trade qualification rules
+- Patience-candle selection
+- Eight-tick entry-confirmation buffer
+- Entry timing
+- Historical data selection
+- Live-order behavior
+
+The objective is to finish the existing Profit Taking, Stop Loss, Breakeven/Recovery, and one-/two-contract management implementation across generated Visual Review candidates and the combined multi-date Shadow Account Replay.
+
+1. Recalculate profit-target plans for the selected contract size
+
+The combined replay currently stores and reuses only a previously calculated `targetPrice`. That target was generally calculated using the default one-contract configuration.
+
+This is incorrect because target eligibility depends on contract quantity:
+
+- One contract requires at least 0.75R.
+- Two contracts require at least 0.50R.
+- Maximum target distance is 1.50R.
+- If no eligible level exists, use 1R.
+- An obstructing major directional level before the minimum threshold must produce `INSUFFICIENT_REWARD_TO_RISK`.
+
+Extend the frozen Visual Review replay evidence to include everything required to rebuild the target plan:
+
+- Frozen directional key-level inputs available at entry
+- ATR(14) ticks available at entry
+- Adaptive target-buffer ticks
+- Modeled entry price
+- Adaptive strategy stop
+- Structural risk
+- Target-plan source timestamps and identifiers
+- Any existing causal target-level snapshot metadata
+
+When the Visual Review user selects one or two contracts:
+
+- Rebuild the target plan using the frozen entry-time evidence and selected contract quantity.
+- Never inspect candles, levels, or indicator values that became available after entry.
+- Do not reuse a target selected for a different contract quantity.
+- Apply adaptive near-side target placement:
+  `TargetBufferTicks = clamp(ceil(ATR14Ticks × 0.05), 1, 2)`
+- Re-run the entire trade execution using the newly selected target plan.
+- Recalculate all legs, exits, P/L, fees, slippage, running balance, drawdown, win rate, profit factor, expectancy, streaks, date breakdowns, and equity curve.
+- Store the rebuilt target plan and target disposition in replay audit evidence.
+
+Do not merely scale an existing trade’s P/L.
+
+2. Make adaptive stops authoritative everywhere
+
+Generated candidate management already calculates:
+
+`StopBufferTicks = clamp(ceil(ATR14Ticks × 0.10), 4, 8)`
+
+Complete the migration by removing or bypassing conflicting fixed 12-tick stop requirements in all authoritative paths, including:
+
+- Historical OHLCV backtests
+- Visual Review generation
+- Batch and pilot requests
+- API schemas
+- Generated API types and validators
+- Frontend backtest requests
+- Strategy validation
+- Tests and descriptions
+
+The initial stop must be:
+
+- Long: patience-candle low − StopBufferTicks
+- Short: patience-candle high + StopBufferTicks
+
+The adaptive stop must be used consistently for:
+
+- StructuralR
+- Target R calculations
+- Stop-distance rejection
+- Trade simulation
+- P/L
+- Visual Review annotations
+- Combined replay
+- Audit evidence
+
+Keep the existing eight-tick entry-confirmation buffer unchanged.
+
+Apply:
+
+`MaximumStructuralRiskTicks = clamp(ceil(ATR14Ticks × 1.50), 20, 40)`
+
+Reject trades exceeding that value with `STOP_DISTANCE_TOO_WIDE`.
+
+Do not reduce contracts and do not use account balance, equity, percentage risk, or permitted dollar risk.
+
+3. Fix runner-breakeven timing
+
+The runner currently can arm breakeven during the same loop iteration in which the first target or 1R checkpoint is reached.
+
+Correct behavior:
+
+- When the first contract exits, mark runner breakeven as pending.
+- Do not evaluate runner breakeven on that target-hit candle.
+- Starting with the next completed five-minute candle, arm breakeven only after a favorable close relative to the modeled entry.
+- The new breakeven stop becomes effective on the candle after the qualifying favorable candle.
+- Do not apply the stop retroactively.
+- The original or existing tighter trailing stop remains active until the new breakeven stop becomes effective.
+- Never widen an existing stop.
+- Preserve activation candle, qualifying candle, effective-from candle, and event labels in audit evidence.
+
+Ensure conservative adverse-first OHLCV handling remains intact.
+
+4. Preserve breakeven MFE audit evidence
+
+The no-level six-candle breakeven/recovery logic calculates favorable excursion in R but does not retain it.
+
+Add audit fields that preserve:
+
+- MFE price
+- MFE points
+- MFE ticks
+- MFE in R
+- Six-candle evaluation timestamp
+- Evaluation candle close
+- Whether the close was favorable, adverse, or neutral
+- Resulting disposition
+- Breakeven effective-from timestamp
+- Whether the original stop remained active
+- Recovery exit timestamp, when applicable
+
+Apply the existing rules:
+
+- Evaluate after exactly six completed post-entry candles.
+- If MFE is at least 0.50R and candle six closes favorably, arm breakeven.
+- If MFE is below 0.50R and candle six closes adverse or neutral, enter recovery mode.
+- Keep the original stop active during recovery.
+- Exit at entry on a subsequent recovery.
+- If the original stop and entry recovery are both touched in one candle, use adverse-first handling and record ambiguity.
+
+5. Preserve the correct runner buffer
+
+The replay currently derives `trailingBufferTicks` from a field named `stopBufferTicks`.
+
+Freeze and replay the actual runner value explicitly:
+
+`RunnerBufferTicks = clamp(ceil(ATR14Ticks × 0.10), 4, 8)`
+
+Store `runnerBufferTicks` separately in replay evidence and pass that exact value into execution.
+
+Runner trailing rules:
+
+- Long: confirmed completed five-minute swing low − RunnerBufferTicks
+- Short: confirmed completed five-minute swing high + RunnerBufferTicks
+- The stop may tighten but must never widen.
+
+Do not infer the runner buffer from the stop-buffer audit field, even if both formulas currently produce the same numerical result.
+
+6. Do not silently omit candidates from combined replay
+
+The current fallback skips a candidate when frozen replay evidence is unavailable and its original contract quantity differs from the selected quantity.
+
+For every retained candidate:
+
+- Generate complete frozen replay evidence when the Visual Review set is created.
+- One- and two-contract replays must both be reproducible from that evidence.
+- If a legacy cached review set lacks required evidence, mark the set stale and require regeneration.
+- Do not silently exclude the candidate from totals.
+- Do not reuse or scale the original trade as a substitute.
+- Return a clear stale/incompatible-set error instead of producing incomplete aggregate results.
+
+The chronological ledger must include every replay-eligible retained candidate from every processed date exactly once.
+
+7. One- and two-contract rules
+
+Continue enforcing exactly one or two contracts, defaulting to one.
+
+One contract:
+
+- Exit the entire position at the eligible key-level target.
+- If no eligible key level exists, exit the entire position at 1R.
+- Never create a runner.
+
+Two contracts:
+
+- Exit exactly one contract at the eligible key-level target.
+- If no eligible key level exists, exit exactly one contract at 1R.
+- Manage exactly one remaining contract as the runner.
+- Apply the corrected next-candle runner-breakeven behavior.
+- Apply adaptive confirmed-swing trailing.
+
+Starting balance must only affect displayed account balance, return, and equity-curve calculations. It must never influence eligibility, sizing, stops, targets, R, or execution decisions.
+
+8. Tests required
+
+Add or update tests proving:
+
+- One- and two-contract replay rebuild different target plans from the same frozen levels.
+- A level between 0.50R and 0.75R is eligible for two contracts but not one.
+- The replay uses adaptive near-side target placement.
+- No eligible level produces a 1R fallback.
+- Obstructing major levels produce `INSUFFICIENT_REWARD_TO_RISK`.
+- No authoritative path continues to require the old 12-tick stop.
+- Adaptive stop values are used in backtest, Visual Review, and replay.
+- `STOP_DISTANCE_TOO_WIDE` is consistently enforced.
+- Runner breakeven cannot arm on the target-hit candle.
+- Runner breakeven is evaluated beginning with the next completed candle.
+- The new stop is effective only on the following candle.
+- MFE and breakeven decision evidence are retained in the audit.
+- Replay uses the explicitly frozen runner buffer.
+- One contract creates no runner.
+- Two contracts create exactly one target leg and one runner leg.
+- Missing replay evidence marks a legacy set stale or returns a clear incompatibility error instead of skipping trades.
+- Combined-date totals include every eligible candidate exactly once.
+- Changing starting balance does not change trades, targets, stops, legs, or P/L.
+
+Update execution-management and cache-version identifiers so older Visual Review sets are recognized as stale.
+
+Run:
+
+- Focused execution-management tests
+- Shadow replay tests
+- Visual-validation route tests
+- Complete API-server test suite
+- Type checking
+- Frontend build
+
+Report the files changed, legacy paths reconciled, tests executed, results, and any remaining limitations. Do not claim completion merely because helper functions or constants exist—verify the generated candidate and combined multi-date Visual Review replay behavior end to end.
