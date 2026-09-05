@@ -706,6 +706,7 @@ export default function VisualReview() {
   const startReviewSetGeneration = (regenerateFresh = false) => {
     if (!confirmDiscardReview()) return;
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
+    setActiveVisualReviewTab("generate");
     setReviewSetRequested(true);
     setGenerationJobId("");
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");

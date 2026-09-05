@@ -119,6 +119,12 @@ test("visual review only shows the no-candidate state after generation finishes"
   assert.match(page, /function ReviewSetNotStarted\(\)/);
 });
 
+test("deterministic replay always returns results to the Generate tab", () => {
+  assert.match(page, /setActiveVisualReviewTab\("generate"\);\s*setReviewSetRequested\(true\);/);
+  assert.match(page, /const generateReviewSet = \(\) => startReviewSetGeneration\(false\);/);
+  assert.match(page, /const regenerateFreshReviewSet = \(\) => startReviewSetGeneration\(true\);/);
+});
+
 test("visual review presentation retains human-only shading and semantic level colors", () => {
   assert.match(page, /data-testid="human-only-region"/);
    assert.match(page, /data-testid="consolidation-zone-overlay"/);
