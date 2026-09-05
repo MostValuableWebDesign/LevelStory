@@ -137,6 +137,12 @@ const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
   { id: "CONSOLIDATION_BREAKOUT_CONTINUATION", label: "Strong Breakout After Consolidation" },
   { id: "EQUIVALENT_CANDLE_REVERSAL", label: "Equivalent-Candle Reversal" },
 ];
+type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
+const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: string }> = [
+  { id: "chart-analysis", label: "Chart Analysis", detail: "uploaded evidence" },
+  { id: "generate", label: "Generate", detail: "deterministic replay" },
+  { id: "account-impact", label: "Account impact", detail: "read-only" },
+];
 type CandidateTradeView = {
   entryPrice?: number;
   primaryEdge?: string;
@@ -432,6 +438,7 @@ export default function VisualReview() {
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("2");
+  const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("chart-analysis");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -743,6 +750,18 @@ export default function VisualReview() {
   };
 
   const generationBusy = startGeneration.isPending || generationActive;
+  const handleVisualReviewTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const currentIndex = VISUAL_REVIEW_TABS.findIndex((tab) => tab.id === activeVisualReviewTab);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? VISUAL_REVIEW_TABS.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + VISUAL_REVIEW_TABS.length) % VISUAL_REVIEW_TABS.length;
+    const nextTab = VISUAL_REVIEW_TABS[nextIndex];
+    if (nextTab) setActiveVisualReviewTab(nextTab.id);
+  };
 
   const submitGeneration = (event: FormEvent) => {
     event.preventDefault();
@@ -818,112 +837,144 @@ export default function VisualReview() {
             action={<ShadowBadge />}
           />
 
-          <div className="mb-5 grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-              <div className="xl:col-span-2"><UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} /></div>
-             <GenerationPanel request={request} setRequest={(next) => {
-              setRequest(next);
-              if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
-             }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
-             <CoverageRail
-               data={data}
-               loading={setQuery.isLoading}
-               selectedStrategyKey={selectedStrategyKey}
-               selectedCategory={selectedCategory}
-               selectedSnapshot={activeSnapshot}
-               selectedSnapshotIndex={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
-               selectedSnapshotTotal={reviewQueue.length}
-               onSelectStrategy={(key) => {
-                 if (!confirmDiscardReview()) return;
-                 setSelectedStrategyKey(key);
-                 setSelectedCategory(null);
-                 setSelectedSnapshotId("");
-               }}
-                 onSelectSnapshot={selectSnapshot}
-               onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
-                onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
-                generationJob={generationJob}
-                onRetryGeneration={retryGeneration}
-             />
-          </div>
-
-           <div className="mt-5 w-full" data-testid="combined-shadow-replay-section">
-             <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={openReviewPanels.replay} onToggleOpen={() => toggleReviewPanel("replay")} />
+           <div className="mb-5 border border-border bg-card" data-testid="visual-review-tabs">
+             <div className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+               <div>
+                 <div className="eyebrow text-muted-foreground">Visual Review workspace</div>
+                 <div className="mt-1 text-xs font-bold">Choose an evidence mode</div>
+               </div>
+               <div className="grid grid-cols-1 gap-1 sm:grid-cols-3" role="tablist" aria-label="Visual Review modes">
+                 {VISUAL_REVIEW_TABS.map((tab) => {
+                   const selected = activeVisualReviewTab === tab.id;
+                   const panelId = `visual-review-panel-${tab.id}`;
+                   return <button
+                     type="button"
+                     key={tab.id}
+                     id={`visual-review-tab-${tab.id}`}
+                     role="tab"
+                     aria-selected={selected}
+                     aria-controls={panelId}
+                     tabIndex={selected ? 0 : -1}
+                     onClick={() => setActiveVisualReviewTab(tab.id)}
+                     onKeyDown={handleVisualReviewTabKeyDown}
+                     className={`min-w-0 rounded-sm border px-3 py-2.5 text-left transition sm:min-w-[180px] ${selected ? "border-primary bg-primary text-primary-foreground" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/55"}`}
+                   >
+                     <span className="block text-[10px] font-bold uppercase tracking-[.08em]">{tab.label}</span>
+                     <span className={`mt-0.5 block text-[10px] ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}>{tab.detail}</span>
+                   </button>;
+                 })}
+               </div>
+             </div>
            </div>
 
-            {generationActive ? <div className="mt-5"><Panel><QuerySkeleton rows={6} /></Panel></div> : setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
-             <Panel accent>
-               <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-                 <div><div className="eyebrow text-destructive">Review set unavailable</div><p className="mt-1 text-sm font-semibold">This review set expired or was generated by an older server process.</p><p className="mt-1 text-xs text-muted-foreground">Regenerate from the ready historical index; no source index rebuild is required.</p></div>
-                 <button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90">Regenerate review set</button>
-               </div>
-             </Panel>
-           ) : (
-            <Panel accent><QueryError onRetry={() => setQuery.refetch()} message="The visual-validation set could not be loaded." /></Panel>
-          ) : !data ? (
-            <div className="space-y-5">
-              <Panel><EmptyReview /></Panel>
-            </div>
-          ) : (
-            <>
-               {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="mb-5 flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
-                <ReviewSetProvenance data={data} />
-                <ReviewSetDiagnostics data={data} />
-              {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
-              {activeSnapshot ? (
-                <div className={`visual-review-workspace mt-5 ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
-                  <div className="visual-review-chart-column min-w-0 space-y-5">
+           {activeVisualReviewTab === "chart-analysis" && <section id="visual-review-panel-chart-analysis" role="tabpanel" aria-labelledby="visual-review-tab-chart-analysis" tabIndex={0} className="space-y-5">
+             <UploadedChartAnalysis activeSnapshot={activeSnapshot} authenticated={authenticated} />
+             {generationActive ? <Panel><QuerySkeleton rows={6} /></Panel> : !data ? <Panel><EmptyReview /></Panel> : activeSnapshot ? (
+               <>
+                 <div className={`visual-review-workspace ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
+                   <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
-                      <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
-                      <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
-                        setLockedEntryCandle(candle);
-                        if (!candle) return;
-                        const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
-                        const patience = entryIndex > 0 ? activeSnapshot.reviewCandles[entryIndex - 1] : null;
-                        const direction = activeSnapshot.categoryAnchor.direction === "short" ? "short" : "long";
-                        const tolerancePoints = levelTolerancePoints(teachingDraft?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS);
-                        const containedLevels = activeSnapshot.annotations
-                          .filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")
-                          .filter((annotation) => !patience || Math.max(0, (annotation.rangeLow ?? annotation.price as number) - patience.high, patience.low - (annotation.rangeHigh ?? annotation.price as number)) <= tolerancePoints);
-                        const selectedLevel = containedLevels[0];
-                        const pullbackLevel = selectedLevel?.price ?? candle.close;
-                        const existingLevels = (current: NonNullable<typeof teachingDraft>) => current.pullbackLevels
-                          .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= levelTolerancePoints(current.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS));
-                        setTeachingDraft((current) => ({
-                          judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
-                          direction: current?.direction ?? direction,
-                          levelCandleOpenTime: patience?.openTime ?? candle.openTime,
-                          levelCandleCloseTime: patience?.closeTime ?? candle.closeTime,
-                          entryCandleOpenTime: candle.openTime,
-                          entryCandleCloseTime: candle.closeTime,
-                          patienceCandleOpenTime: patience?.openTime ?? "",
-                          patienceCandleCloseTime: patience?.closeTime ?? "",
-                          entryBufferTicks: current?.entryBufferTicks ?? 8,
-                            levelToleranceTicks: current?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
-                          qualifyingLevelId: current?.qualifyingLevelId ?? selectedLevel?.id,
-                          qualifyingLevelRangeLow: current?.qualifyingLevelRangeLow ?? selectedLevel?.rangeLow,
-                          qualifyingLevelRangeHigh: current?.qualifyingLevelRangeHigh ?? selectedLevel?.rangeHigh,
-                          pullbackLevels: current ? (existingLevels(current).length ? existingLevels(current) : [pullbackLevel]) : [pullbackLevel],
-                          setupType: current?.setupType ?? activeSnapshot.strategyKey,
-                          confidence: current?.confidence ?? "low",
-                          explanation: current?.explanation ?? "",
-                        }));
-                      }} />
-                    </Panel>
+                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
+                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
+                         setLockedEntryCandle(candle);
+                         if (!candle) return;
+                         const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
+                         const patience = entryIndex > 0 ? activeSnapshot.reviewCandles[entryIndex - 1] : null;
+                         const direction = activeSnapshot.categoryAnchor.direction === "short" ? "short" : "long";
+                         const tolerancePoints = levelTolerancePoints(teachingDraft?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS);
+                         const containedLevels = activeSnapshot.annotations
+                           .filter((annotation) => annotation.available && annotation.price !== null && annotation.kind !== "candle")
+                           .filter((annotation) => !patience || Math.max(0, (annotation.rangeLow ?? annotation.price as number) - patience.high, patience.low - (annotation.rangeHigh ?? annotation.price as number)) <= tolerancePoints);
+                         const selectedLevel = containedLevels[0];
+                         const pullbackLevel = selectedLevel?.price ?? candle.close;
+                         const existingLevels = (current: NonNullable<typeof teachingDraft>) => current.pullbackLevels
+                           .filter((price) => !patience || Math.max(0, price - patience.high, patience.low - price) <= levelTolerancePoints(current.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS));
+                         setTeachingDraft((current) => ({
+                           judgment: current?.judgment === "false_positive_trade" ? "missed_trade" : current?.judgment ?? "missed_trade",
+                           direction: current?.direction ?? direction,
+                           levelCandleOpenTime: patience?.openTime ?? candle.openTime,
+                           levelCandleCloseTime: patience?.closeTime ?? candle.closeTime,
+                           entryCandleOpenTime: candle.openTime,
+                           entryCandleCloseTime: candle.closeTime,
+                           patienceCandleOpenTime: patience?.openTime ?? "",
+                           patienceCandleCloseTime: patience?.closeTime ?? "",
+                           entryBufferTicks: current?.entryBufferTicks ?? 8,
+                           levelToleranceTicks: current?.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
+                           qualifyingLevelId: current?.qualifyingLevelId ?? selectedLevel?.id,
+                           qualifyingLevelRangeLow: current?.qualifyingLevelRangeLow ?? selectedLevel?.rangeLow,
+                           qualifyingLevelRangeHigh: current?.qualifyingLevelRangeHigh ?? selectedLevel?.rangeHigh,
+                           pullbackLevels: current ? (existingLevels(current).length ? existingLevels(current) : [pullbackLevel]) : [pullbackLevel],
+                           setupType: current?.setupType ?? activeSnapshot.strategyKey,
+                           confidence: current?.confidence ?? "low",
+                           explanation: current?.explanation ?? "",
+                         }));
+                       }} />
+                     </Panel>
                      <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
-                    <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
-                  </div>
-                </div>
-              ) : <div className="space-y-5"><UnavailableWorkspace coverage={coverage} source={data.source} /></div>}
-            </>
-          )}
-           {data && activeSnapshot && <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
-             <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
-             <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
-               analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
-                 onSuccess: setAnalysis,
-               });
-             }} />
-           </div>}
+                     <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                   </div>
+                 </div>
+                 <div className="grid items-start gap-5 md:grid-cols-2">
+                   <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                   <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
+                     analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
+                       onSuccess: setAnalysis,
+                     });
+                   }} />
+                 </div>
+               </>
+             ) : <UnavailableWorkspace coverage={coverage} source={data.source} />}
+           </section>}
+
+           {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="space-y-5">
+             <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
+               <GenerationPanel request={request} setRequest={(next) => {
+                 setRequest(next);
+                 if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
+               }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
+               <CoverageRail
+                 data={data}
+                 loading={setQuery.isLoading}
+                 selectedStrategyKey={selectedStrategyKey}
+                 selectedCategory={selectedCategory}
+                 selectedSnapshot={activeSnapshot}
+                 selectedSnapshotIndex={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot?.snapshotId)}
+                 selectedSnapshotTotal={reviewQueue.length}
+                 onSelectStrategy={(key) => {
+                   if (!confirmDiscardReview()) return;
+                   setSelectedStrategyKey(key);
+                   setSelectedCategory(null);
+                   setSelectedSnapshotId("");
+                 }}
+                 onSelectSnapshot={selectSnapshot}
+                 onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
+                 onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
+                 generationJob={generationJob}
+                 onRetryGeneration={retryGeneration}
+               />
+             </div>
+             {generationActive ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
+               <Panel accent>
+                 <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                   <div><div className="eyebrow text-destructive">Review set unavailable</div><p className="mt-1 text-sm font-semibold">This review set expired or was generated by an older server process.</p><p className="mt-1 text-xs text-muted-foreground">Regenerate from the ready historical index; no source index rebuild is required.</p></div>
+                   <button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90">Regenerate review set</button>
+                 </div>
+               </Panel>
+             ) : <Panel accent><QueryError onRetry={() => setQuery.refetch()} message="The visual-validation set could not be loaded." /></Panel> : data ? (
+               <>
+                 {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
+                 <ReviewSetProvenance data={data} />
+                 <ReviewSetDiagnostics data={data} />
+                 {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
+               </>
+             ) : <Panel><EmptyReview /></Panel>}
+           </section>}
+
+           {activeVisualReviewTab === "account-impact" && <section id="visual-review-panel-account-impact" role="tabpanel" aria-labelledby="visual-review-tab-account-impact" tabIndex={0} className="space-y-5">
+             <div data-testid="combined-shadow-replay-section">
+               <ShadowAccountReplayPanel reviewSetId={replayReviewSetId} generationActive={generationActive} onRegenerateFresh={regenerateFreshReviewSet} query={shadowReplayQuery} startingBalance={startingBalance} setStartingBalance={setStartingBalance} contractsPerTrade={contractsPerTrade} setContractsPerTrade={setContractsPerTrade} open={true} onToggleOpen={() => undefined} />
+             </div>
+           </section>}
         </div>
       </div>
     </LevelStoryShell>
