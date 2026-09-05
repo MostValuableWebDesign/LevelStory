@@ -1541,8 +1541,6 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
     ? "Primary trade window · 9:30 AM–1:00 PM ET"
     : "Full regular session · 9:30 AM–4:00 PM ET";
   const sourceLabel = `${windowLabel} · ${historical ? "Historical Databento" : "Simulated fixture data"}`;
-  const primaryCoverage = snapshot.coverage.find((item) => item.session === "primary");
-  const fullCoverage = snapshot.coverage.find((item) => item.session === "full_regular");
   return <div ref={frameRef} className={`chart-frame border-t border-border p-3 sm:p-5 ${isFullscreen ? "visual-review-chart-fullscreen" : ""}`} data-testid="visual-review-chart">
     <div className="mb-4 flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -1578,12 +1576,6 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
       <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-border bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground" data-testid="compact-coverage-details">
-        <span className="font-semibold text-foreground">Coverage</span>
-        {primaryCoverage && <span className="mono">Primary {primaryCoverage.observedCandleCount}/{primaryCoverage.expectedCandleCount}</span>}
-        {fullCoverage && <span className="mono">Full {fullCoverage.observedCandleCount}/{fullCoverage.expectedCandleCount}</span>}
-        <span>{primaryCoverage?.complete && fullCoverage?.complete ? "complete; blank fixed slots remain inspectable" : "missing intervals preserved as blank fixed slots"}</span>
-      </div>
         <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
