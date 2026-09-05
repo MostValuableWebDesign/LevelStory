@@ -211,7 +211,7 @@ test("fixed-size replay reruns frozen execution instead of scaling stored P/L", 
     entryPrice: 100,
     levels: [{ id: "major-resistance", type: "major resistance", price: 102 }],
     tickSize: 0.25,
-    placementMode: "EXACT_LEVEL",
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
     targetBufferTicks: 1,
     initialRiskPoints: 1,
     contracts: 1,
@@ -290,6 +290,67 @@ test("fixed-size replay reruns frozen execution instead of scaling stored P/L", 
   assert.equal(two.ledger[0]?.contracts, 2);
   assert.notEqual(one.ledger[0]?.netPnl, 999);
   assert.notEqual(two.ledger[0]?.netPnl, (one.ledger[0]?.netPnl ?? 0) * 2);
+});
+
+test("rebuilds a two-contract target plan and rejects an insufficient one-contract disposition", () => {
+  const replayCandidate = candidate("target-disposition");
+  const frozenTargetPlan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [{ id: "major-resistance", type: "major resistance", price: 100.75 }],
+    tickSize: 0.25,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    initialRiskPoints: 1,
+    contracts: 2,
+  });
+  const sourceTrade = trade("target-disposition-trade", 999, "target-disposition", {
+    contracts: 2,
+    targetPlan: frozenTargetPlan,
+  });
+  const replayInput = {
+    entryPrice: 100,
+    patienceCandle: {
+      openTime: "2026-08-25T13:30:00.000Z",
+      closeTime: "2026-08-25T13:35:00.000Z",
+      timestamp: "2026-08-25T13:35:00.000Z",
+      open: 100, high: 101, low: 99, close: 100, volume: 1_000,
+      bid: 100, ask: 100, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    immediateTriggerCandle: {
+      openTime: "2026-08-25T13:35:00.000Z",
+      closeTime: "2026-08-25T13:40:00.000Z",
+      timestamp: "2026-08-25T13:40:00.000Z",
+      open: 100, high: 100.25, low: 99.75, close: 100, volume: 1_000,
+      bid: 100, ask: 100, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    subsequentCompletedCandles: [],
+    sessionCloseCandle: null,
+    strategyStopPrice: 99,
+    targetPrice: 100.5,
+    primaryLossExitLevel: null,
+    runnerBufferTicks: 4,
+  } satisfies VisualValidationReplayExecutionInput;
+  const set = {
+    ...replaySet([replayCandidate], []),
+    accountReplayTrades: [{
+      candidate: replayCandidate,
+      trade: sourceTrade,
+      snapshotId: replayCandidate.snapshotId,
+      replayInput,
+    }],
+  } as unknown as VisualValidationSet;
+
+  const two = buildShadowAccountReplay(set, { contractsPerTrade: 2 });
+  assert.equal(two.enteredTrades, 1);
+  assert.equal(two.rejectedCandidates.length, 0);
+
+  const one = buildShadowAccountReplay(set, { contractsPerTrade: 1 });
+  assert.equal(one.enteredTrades, 0);
+  assert.equal(one.rejectedCandidates.length, 1);
+  assert.equal(one.rejectedCandidates[0]?.reason, "INSUFFICIENT_REWARD_TO_RISK");
+  assert.equal(one.rejectedCandidates[0]?.targetPlan.minimumTargetR, 0.75);
+  assert.equal(one.warnings[0], "Rejected candidate target-disposition: INSUFFICIENT_REWARD_TO_RISK.");
 });
 
 test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {

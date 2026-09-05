@@ -444,7 +444,12 @@ export function createMarketSnapshot(
     ...activeShadowStrategySnapshot().config,
     ...(replayOptions?.strategyConfigOverrides ?? {}),
     ...(replayOptions?.ohlcvEntryBufferTicks === undefined ? {} : { patienceEntryBufferTicks: replayOptions.ohlcvEntryBufferTicks }),
-    ...(replayOptions?.ohlcvStopBufferTicks === undefined ? {} : { patienceStopBufferTicks: replayOptions.ohlcvStopBufferTicks }),
+    // The historical 12-tick field is retained only for legacy Phase 5
+    // diagnostic snapshots. Modeled execution derives its stop from the
+    // causal ATR snapshot and must not accept a caller override here.
+    ...(replayOptions?.executionMode === "ohlcv_modeled" || replayOptions?.ohlcvStopBufferTicks === undefined
+      ? {}
+      : { patienceStopBufferTicks: replayOptions.ohlcvStopBufferTicks }),
   });
   const calendar = sessionCalendarForContract(specification);
   const requestedCursor = replayOptions?.cursor;

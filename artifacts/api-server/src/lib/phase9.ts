@@ -2271,6 +2271,9 @@ function targetPlanForSnapshot(
   snapshot: MarketSnapshot,
   direction: Direction,
   entryPrice: number,
+  atrTicks: number | null,
+  initialRiskPoints: number | null,
+  contracts: 1 | 2,
   causalSourceCandles?: readonly SimulatedFuturesCandle[],
   causalContractSymbol?: string,
   causalEntryOpenTime?: number,
@@ -2289,10 +2292,11 @@ function targetPlanForSnapshot(
       causalSourceCandles,
       causalContractSymbol,
     ),
-    // The first level beyond the entry buffer is the take-profit price.
-    // Do not let an older persisted strategy snapshot re-enable the
-    // deprecated near-side placement behavior.
-    placementMode: "EXACT_LEVEL",
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: adaptiveExecutionManagement(atrTicks).targetBufferTicks,
+    initialRiskPoints,
+    contracts,
+    maximumTargetR: 1.5,
   });
 }
 
@@ -5039,10 +5043,14 @@ export function runCausalBacktest(
         // Recalculate from the frozen P extreme rather than trusting a stale
         // legacy/risk-plan stop. A raw P extreme is never a valid strategy stop.
         const strategyStop = authoritativeStop;
+         const contracts = SHADOW_CONTRACTS_PER_TRADE;
         const targetPlan = targetPlanForSnapshot(
           snapshot,
           selected.direction,
           entry,
+           atrTicksAtEntry,
+           Math.abs(entry - strategyStop),
+           contracts,
           contractCandles,
           candle.contractSymbol,
           trigger.openTime,
@@ -5060,7 +5068,28 @@ export function runCausalBacktest(
           ),
         });
         const target = targetPlan.targetPrice;
-       const contracts = SHADOW_CONTRACTS_PER_TRADE;
+        if (selectedAudit) {
+          selectedAudit.targetPrice = target;
+          selectedAudit.targetPlan = targetPlan;
+          selectedAudit.targetLevelInputs = targetPlan.availableLevels.map((level) => ({
+            id: level.id,
+            type: level.type,
+            price: level.price,
+            rangeLow: level.rangeLow,
+            rangeHigh: level.rangeHigh,
+          }));
+        }
+        if (targetPlan.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK") {
+          if (selectedAudit) {
+            setAuditRejection(
+              selectedAudit,
+              "INSUFFICIENT_REWARD_TO_RISK",
+              "The nearest causal key level does not meet the contract-specific minimum reward-to-risk.",
+            );
+          }
+          rejectedByPeriod[period] += 1;
+          continue;
+        }
        const entryKey = `${currentContractSymbol}|${tradingDate}|${selected.direction}|${trigger.openTime}|${Math.round(entry / specification.tickSize)}`;
        if (executedEntryKeys.has(entryKey)) continue;
        const entryResolution = resolveEntryAndInvalidation({

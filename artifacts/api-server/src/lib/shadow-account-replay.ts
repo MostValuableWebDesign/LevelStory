@@ -7,7 +7,11 @@ import type {
   VisualValidationTradeCandidate,
 } from "./visual-validation.js";
 import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
-import { buildKeyLevelTargetPlan, type KeyLevelTargetInput } from "./strategy/key-level-targets.js";
+import {
+  buildKeyLevelTargetPlan,
+  type KeyLevelTargetInput,
+  type KeyLevelTargetPlan,
+} from "./strategy/key-level-targets.js";
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
 export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = SHADOW_CONTRACTS_PER_TRADE;
@@ -109,8 +113,19 @@ export type ShadowAccountReplay = {
   sourceFingerprint: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  rejectedCandidates: ShadowAccountReplayRejectedCandidate[];
   warnings: string[];
 };
+
+export type ShadowAccountReplayRejectedCandidate = {
+  candidateId: string;
+  signalOccurrenceId: string;
+  tradingDate: string;
+  reason: "INSUFFICIENT_REWARD_TO_RISK";
+  targetPlan: KeyLevelTargetPlan;
+};
+
+type ReplayTradeResult = BacktestTrade | ShadowAccountReplayRejectedCandidate;
 
 type MatchedTrade = {
   candidate: VisualValidationTradeCandidate;
@@ -197,7 +212,7 @@ function outcomeForExecution(
 function replayTradeWithFixedContracts(
   match: MatchedTrade,
   contractsPerTrade: 1 | 2,
-): BacktestTrade | null {
+): ReplayTradeResult {
   const { trade, replayInput } = match;
   if (!replayInput) {
     if (trade.contracts === contractsPerTrade) return trade;
@@ -224,6 +239,16 @@ function replayTradeWithFixedContracts(
         rangeHigh: level.rangeHigh,
       }))
     : null;
+  if (replayInput && (!frozenTargetPlan || !targetLevelInputs)) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen target evidence. Regenerate the review set.`,
+    );
+  }
+  if (replayInput && frozenTargetPlan?.placementMode === "EXACT_LEVEL") {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} contains a legacy exact-level executable target. Regenerate the review set.`,
+    );
+  }
   const rebuiltTargetPlan = frozenTargetPlan && targetLevelInputs
     ? buildKeyLevelTargetPlan({
       direction: trade.direction,
@@ -240,12 +265,24 @@ function replayTradeWithFixedContracts(
       maximumTargetR: frozenTargetPlan.maximumTargetR ?? 1.5,
     })
     : frozenTargetPlan;
+  if (rebuiltTargetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK") {
+    return {
+      candidateId: trade.candidateId ?? trade.id,
+      signalOccurrenceId: trade.signalOccurrenceId ?? match.candidate.signalOccurrenceId,
+      tradingDate: trade.tradingDate,
+      reason: "INSUFFICIENT_REWARD_TO_RISK",
+      targetPlan: rebuiltTargetPlan,
+    };
+  }
   if (trade.contracts !== contractsPerTrade && !rebuiltTargetPlan) {
     throw new Error(
       `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen target evidence for a ${contractsPerTrade}-contract replay. Regenerate the review set.`,
     );
   }
   const replayTargetPrice = rebuiltTargetPlan?.targetPrice ?? null;
+  const useOneRProfitRule = rebuiltTargetPlan !== null
+    && rebuiltTargetPlan?.rejectionReason == null
+    && rebuiltTargetPlan.targetPrice === null;
   const specification = getFuturesContractSpecification("MES");
   const execution = simulateOhlcvExecution({
     direction: trade.direction,
@@ -259,7 +296,7 @@ function replayTradeWithFixedContracts(
     targetQuantity: replayTargetPrice === null ? 0 : Math.min(1, contractsPerTrade),
     target: replayTargetPrice,
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
-    oneRProfitRule: replayInput.targetPrice === null,
+    oneRProfitRule: useOneRProfitRule,
     structureTrailing: true,
     trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,
@@ -446,6 +483,7 @@ export function buildShadowAccountReplay(
   ])].sort();
   let runningBalance = startingBalance;
   const ledger: ShadowAccountReplayTrade[] = [];
+  const rejectedCandidates: ShadowAccountReplayRejectedCandidate[] = [];
   const equityCurve: ShadowAccountReplay["equityCurve"] = [];
   equityCurve.push({
     tradeNumber: 0,
@@ -458,11 +496,13 @@ export function buildShadowAccountReplay(
     Date.parse(left.trade.entryTime) - Date.parse(right.trade.entryTime)
     || left.candidate.candidateId.localeCompare(right.candidate.candidateId))) {
     const { candidate } = match;
-    const trade = replayTradeWithFixedContracts(match, contractsPerTrade);
-    if (!trade) {
-      warnings.push(`Skipped candidate ${candidate.candidateId}: frozen execution evidence is unavailable for a ${contractsPerTrade}-contract replay.`);
+    const replayResult = replayTradeWithFixedContracts(match, contractsPerTrade);
+    if ("reason" in replayResult) {
+      rejectedCandidates.push(replayResult);
+      warnings.push(`Rejected candidate ${candidate.candidateId}: ${replayResult.reason}.`);
       continue;
     }
+    const trade = replayResult;
     const unscored = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
     const closed = !unscored && trade.exitTime !== null && trade.outcome !== "open";
     const status = unscored ? "unscored" as const : closed ? "closed" as const : "open" as const;
@@ -576,6 +616,7 @@ export function buildShadowAccountReplay(
     sourceFingerprint: set.sourceFingerprint,
     candidateProjectionVersion: set.candidateProjectionVersion,
     executionManagementVersion: set.executionManagementVersion,
+    rejectedCandidates,
     warnings: [...new Set(warnings)],
   };
 }
