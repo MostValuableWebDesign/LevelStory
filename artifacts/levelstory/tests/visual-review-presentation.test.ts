@@ -65,6 +65,12 @@ test("visual review presents the read-only Shadow Account Replay states and audi
   assert.match(page, /useGetShadowAccountReplay/);
   assert.match(page, /data-testid="input-shadow-starting-balance"/);
   assert.match(page, /data-testid="input-shadow-contracts-per-trade"/);
+  assert.match(page, /useState\("1"\)/);
+  assert.match(page, /<select/);
+  assert.match(page, /data-testid="input-shadow-contracts-per-trade"/);
+  assert.match(page, /<option value="1">1 contract<\/option>/);
+  assert.match(page, /<option value="2">2 contracts<\/option>/);
+  assert.doesNotMatch(page, /min="2" max="100"/);
   assert.match(page, /data-testid="shadow-equity-curve"/);
   assert.match(page, /data-testid="shadow-trade-ledger"/);
   assert.match(page, /Entry ET/);

@@ -6336,14 +6336,14 @@ export const getShadowAccountReplayQueryStartingBalanceDefault = 10000;
 export const getShadowAccountReplayQueryStartingBalanceExclusiveMin = 0;
 
 export const getShadowAccountReplayQueryContractsPerTradeDefault = 1;
-export const getShadowAccountReplayQueryContractsPerTradeMax = 100;
+export const getShadowAccountReplayQueryContractsPerTradeMax = 2;
 
 
 
 export const GetShadowAccountReplayQueryParams = zod.object({
   "reviewSetId": zod.coerce.string().regex(getShadowAccountReplayQueryReviewSetIdRegExp),
   "startingBalance": zod.coerce.number().gt(getShadowAccountReplayQueryStartingBalanceExclusiveMin).default(getShadowAccountReplayQueryStartingBalanceDefault),
-  "contractsPerTrade": zod.coerce.number().min(1).max(getShadowAccountReplayQueryContractsPerTradeMax).default(getShadowAccountReplayQueryContractsPerTradeDefault)
+  "contractsPerTrade": zod.coerce.number().int().min(1).max(getShadowAccountReplayQueryContractsPerTradeMax).default(getShadowAccountReplayQueryContractsPerTradeDefault)
 })
 
 export const getShadowAccountReplayResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');

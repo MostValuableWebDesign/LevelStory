@@ -193,8 +193,8 @@ export function createVisualValidationRouter(): IRouter {
       res.status(404).json({ error: "Visual-validation set not found or expired." });
       return;
     }
-    if (!Number.isInteger(parsed.data.contractsPerTrade)) {
-      res.status(400).json({ error: "Contracts per trade must be a whole number between 1 and 100." });
+    if (!Number.isInteger(parsed.data.contractsPerTrade) || ![1, 2].includes(parsed.data.contractsPerTrade)) {
+      res.status(400).json({ error: "Contracts per trade must be exactly 1 or 2." });
       return;
     }
     const replay = buildShadowAccountReplay(set, {

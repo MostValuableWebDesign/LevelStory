@@ -7,6 +7,7 @@ import {
 } from "./shadow-account-replay.js";
 import type { BacktestTrade } from "./phase9.js";
 import type {
+  VisualValidationReplayExecutionInput,
   VisualValidationSet,
   VisualValidationSnapshot,
   VisualValidationTradeCandidate,
@@ -113,8 +114,8 @@ test("two wins and one loss update the fixed-size ending balance", () => {
   ]));
 
   assert.equal(result.startingBalance, DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE);
-  assert.equal(result.endingRealizedBalance, 10500);
-  assert.equal(result.realizedNetPnl, 500);
+  assert.equal(result.endingRealizedBalance, 10250);
+  assert.equal(result.realizedNetPnl, 250);
   assert.equal(result.wins, 2);
   assert.equal(result.losses, 1);
   assert.equal(result.maxConsecutiveWins, 1);
@@ -131,7 +132,7 @@ test("open trades are listed but excluded from realized account metrics", () => 
   assert.equal(result.enteredTrades, 2);
   assert.equal(result.openTrades, 1);
   assert.equal(result.closedTrades, 1);
-  assert.equal(result.realizedNetPnl, 200);
+  assert.equal(result.realizedNetPnl, 100);
   assert.equal(result.ledger[0]?.netPnl, null);
   assert.equal(result.equityCurve[0]?.status, "start");
   assert.equal(result.equityCurve[1]?.status, "open");
@@ -159,7 +160,7 @@ test("candidates without modeled trades do not affect the account", () => {
 
   assert.equal(result.candidateTrades, 2);
   assert.equal(result.enteredTrades, 1);
-  assert.equal(result.realizedNetPnl, 150);
+  assert.equal(result.realizedNetPnl, 75);
 });
 
 test("orphan and mismatched legacy trades are ignored", () => {
@@ -172,7 +173,7 @@ test("orphan and mismatched legacy trades are ignored", () => {
   ));
 
   assert.equal(result.enteredTrades, 1);
-  assert.equal(result.realizedNetPnl, 200);
+  assert.equal(result.realizedNetPnl, 100);
   assert.equal(result.ledger[0]?.candidateId, "linked");
 });
 
@@ -190,16 +191,94 @@ test("in-sample and out-of-sample metrics remain separated", () => {
     ],
   ));
 
-  assert.equal(result.inSample.netPnl, 200);
+  assert.equal(result.inSample.netPnl, 100);
   assert.equal(result.inSample.wins, 1);
-  assert.equal(result.outOfSample.netPnl, -80);
+  assert.equal(result.outOfSample.netPnl, -40);
   assert.equal(result.outOfSample.losses, 1);
-  assert.equal(result.realizedNetPnl, 120);
+  assert.equal(result.realizedNetPnl, 60);
 });
 
 test("replay source has no broker, live-order, or paper-trading path", () => {
   const source = readFileSync(new URL("./shadow-account-replay.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /createOrder|placeOrder|submitOrder|paper trading/i);
+});
+
+test("fixed-size replay reruns frozen execution instead of scaling stored P/L", () => {
+  const replayCandidate = candidate("rerun");
+  const sourceTrade = trade("rerun-trade", 999, "rerun");
+  const replayInput: VisualValidationReplayExecutionInput = {
+    entryPrice: 100,
+    patienceCandle: {
+      openTime: "2026-08-25T13:30:00.000Z",
+      closeTime: "2026-08-25T13:35:00.000Z",
+      timestamp: "2026-08-25T13:35:00.000Z",
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 1_000,
+      bid: 100,
+      ask: 100,
+      bidSize: 1,
+      askSize: 1,
+      contractSymbol: "MESU26",
+      isComplete: true,
+    },
+    immediateTriggerCandle: {
+      openTime: "2026-08-25T13:35:00.000Z",
+      closeTime: "2026-08-25T13:40:00.000Z",
+      timestamp: "2026-08-25T13:40:00.000Z",
+      open: 100,
+      high: 100.25,
+      low: 99.75,
+      close: 100,
+      volume: 1_000,
+      bid: 100,
+      ask: 100,
+      bidSize: 1,
+      askSize: 1,
+      contractSymbol: "MESU26",
+      isComplete: true,
+    },
+    subsequentCompletedCandles: [{
+      openTime: "2026-08-25T13:40:00.000Z",
+      closeTime: "2026-08-25T13:45:00.000Z",
+      timestamp: "2026-08-25T13:45:00.000Z",
+      open: 100,
+      high: 102,
+      low: 100,
+      close: 101,
+      volume: 1_000,
+      bid: 101,
+      ask: 101,
+      bidSize: 1,
+      askSize: 1,
+      contractSymbol: "MESU26",
+      isComplete: true,
+    }],
+    sessionCloseCandle: null,
+    strategyStopPrice: 99,
+    targetPrice: 102,
+    primaryLossExitLevel: null,
+    trailingBufferTicks: 4,
+  };
+  const set = {
+    ...replaySet([replayCandidate], []),
+    accountReplayTrades: [{
+      candidate: replayCandidate,
+      trade: sourceTrade,
+      snapshotId: replayCandidate.snapshotId,
+      replayInput,
+    }],
+  } as unknown as VisualValidationSet;
+
+  const one = buildShadowAccountReplay(set, { contractsPerTrade: 1 });
+  const two = buildShadowAccountReplay(set, { contractsPerTrade: 2 });
+
+  assert.equal(one.ledger[0]?.contracts, 1);
+  assert.equal(two.ledger[0]?.contracts, 2);
+  assert.notEqual(one.ledger[0]?.netPnl, 999);
+  assert.notEqual(two.ledger[0]?.netPnl, (one.ledger[0]?.netPnl ?? 0) * 2);
 });
 
 test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {
@@ -236,13 +315,13 @@ test("aggregates authoritative trades across dates with carried balance and zero
   assert.deepEqual(result.datesWithTrades, ["2026-08-25", "2026-08-26", "2026-08-28"]);
   assert.deepEqual(result.datesWithoutTrades, ["2026-08-27"]);
   assert.deepEqual(result.ledger.map((item) => item.candidateId), ["first", "second", "third"]);
-  assert.deepEqual(result.ledger.map((item) => item.runningBalance), [10200, 10120, 10270]);
+  assert.deepEqual(result.ledger.map((item) => item.runningBalance), [10100, 10060, 10135]);
   assert.equal(result.equityCurve[0]?.balance, 10_000);
   assert.equal(result.equityCurve.length, 4);
   assert.equal(result.byDate.length, 4);
   assert.equal(result.byDate.find((item) => item.value === "2026-08-27")?.enteredTrades, 0);
-  assert.equal(result.byDirection.find((item) => item.value === "short")?.netPnl, 150);
-  assert.equal(result.byPrimaryEdge.find((item) => item.value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION")?.netPnl, 150);
+  assert.equal(result.byDirection.find((item) => item.value === "short")?.netPnl, 75);
+  assert.equal(result.byPrimaryEdge.find((item) => item.value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION")?.netPnl, 75);
   assert.equal(result.bestTrade?.candidateId, "first");
   assert.equal(result.worstTrade?.candidateId, "second");
   assert.equal(result.bestTradingDay?.value, "2026-08-25");

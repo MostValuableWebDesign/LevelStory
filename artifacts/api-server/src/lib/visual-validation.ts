@@ -16,6 +16,7 @@ import {
   type QualificationFunnel,
   sourceFingerprint as datasetSourceFingerprint,
 } from "./phase9.js";
+import type { PrimaryLossExitReference } from "./strategy/key-level-targets.js";
 import { buildHistoricalVisualValidationSetInWorker } from "./visual-validation-worker-client.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { APPLICATION_BUILD_ID } from "./build-metadata.js";
@@ -266,10 +267,23 @@ export type VisualValidationTradeCandidate = {
   causalEvidence: Array<{ kind: "level" | "patience" | "entry"; timestamp: string; detail: string }>;
 };
 
+export type VisualValidationReplayExecutionInput = {
+  entryPrice: number;
+  patienceCandle: VisualValidationCandle;
+  immediateTriggerCandle: VisualValidationCandle;
+  subsequentCompletedCandles: VisualValidationCandle[];
+  sessionCloseCandle: VisualValidationCandle | null;
+  strategyStopPrice: number | null;
+  targetPrice: number | null;
+  primaryLossExitLevel: PrimaryLossExitReference | null;
+  trailingBufferTicks: number;
+};
+
 export type VisualValidationAccountReplayTrade = {
   candidate: VisualValidationTradeCandidate;
   trade: BacktestTrade;
   snapshotId: string | null;
+  replayInput?: VisualValidationReplayExecutionInput;
 };
 
 export type VisualValidationReviewPeriod = {
@@ -427,6 +441,42 @@ function candidatePeriod(candidate: HistoricalTradeCandidate, trade: BacktestTra
   return trade.period ?? (candidate.tradingDate ? "in_sample" : "out_of_sample");
 }
 
+function replayInputForSnapshot(
+  snapshot: VisualValidationSnapshot | undefined,
+  trade: BacktestTrade,
+): VisualValidationReplayExecutionInput | undefined {
+  if (!snapshot || !trade.audit) return undefined;
+  const audit = trade.audit;
+  const candles = [...snapshot.machineCandles, ...snapshot.reviewCandles]
+    .filter((candle) => candle.isComplete)
+    .sort((left, right) => Date.parse(left.openTime) - Date.parse(right.openTime));
+  const uniqueCandles = [...new Map(candles.map((candle) => [candle.openTime, candle])).values()];
+  const patienceCandle = uniqueCandles.find((candle) =>
+    candle.openTime === audit.patienceCandleOpenTime
+    && candle.closeTime === audit.patienceCandleCloseTime,
+  );
+  const immediateTriggerCandle = uniqueCandles.find((candle) =>
+    candle.openTime === audit.triggerCandleOpenTime
+    && candle.closeTime === audit.triggerCandleCloseTime,
+  );
+  if (!patienceCandle || !immediateTriggerCandle || audit.strategyStopPrice == null) return undefined;
+  const subsequentCompletedCandles = uniqueCandles.filter((candle) =>
+    Date.parse(candle.openTime) > Date.parse(immediateTriggerCandle.openTime)
+    && Date.parse(candle.closeTime) > Date.parse(immediateTriggerCandle.closeTime),
+  );
+  return {
+    entryPrice: trade.entryPrice,
+    patienceCandle,
+    immediateTriggerCandle,
+    subsequentCompletedCandles,
+    sessionCloseCandle: subsequentCompletedCandles.at(-1) ?? null,
+    strategyStopPrice: audit.strategyStopPrice,
+    targetPrice: audit.targetPrice,
+    primaryLossExitLevel: audit.primaryLossExitLevel ?? null,
+    trailingBufferTicks: Math.max(4, Math.min(8, Math.floor(snapshot.machineEvidence.audit.stopBufferTicks ?? 4))),
+  };
+}
+
 function buildAccountReplayTradesFromReport(
   report: Pick<BacktestReport, "trades"> & Partial<Pick<BacktestReport, "tradeCandidates">>,
   snapshots: readonly VisualValidationSnapshot[],
@@ -445,6 +495,8 @@ function buildAccountReplayTradesFromReport(
       .sort((left, right) => left.id.localeCompare(right.id));
     const trade = trades[0];
     if (!trade) continue;
+    const snapshotId = snapshotsByCandidateId.get(candidate.candidateId) ?? null;
+    const snapshot = snapshots.find((item) => item.snapshotId === snapshotId);
     entries.push({
       candidate: replayCandidateFromHistorical(candidate, trade, snapshotsByCandidateId.get(candidate.candidateId) ?? null),
       trade: {
@@ -452,7 +504,8 @@ function buildAccountReplayTradesFromReport(
         candidateId: candidate.candidateId,
         signalOccurrenceId: candidate.signalOccurrenceId,
       },
-      snapshotId: snapshotsByCandidateId.get(candidate.candidateId) ?? null,
+      snapshotId,
+      replayInput: replayInputForSnapshot(snapshot, trade),
     });
   }
   return [...new Map(entries.map((entry) => [`${entry.candidate.candidateId}|${entry.candidate.signalOccurrenceId}`, entry])).values()];
@@ -467,7 +520,7 @@ function buildAccountReplayTradesFromSnapshots(
       const snapshot = snapshots.find((item) => item.snapshotId === candidate.snapshotId);
       const trade = snapshot?.machineEvidence.trade;
       return snapshot && trade?.candidateId === candidate.candidateId && trade.signalOccurrenceId === candidate.signalOccurrenceId
-        ? [{ candidate, trade, snapshotId: snapshot.snapshotId }]
+        ? [{ candidate, trade, snapshotId: snapshot.snapshotId, replayInput: replayInputForSnapshot(snapshot, trade) }]
         : [];
     }).map((entry) => [`${entry.candidate.candidateId}|${entry.candidate.signalOccurrenceId}`, entry]),
   ).values()];

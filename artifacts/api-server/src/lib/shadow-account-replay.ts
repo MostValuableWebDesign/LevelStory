@@ -1,5 +1,11 @@
 import type { BacktestTrade } from "./phase9.js";
-import type { VisualValidationSet, VisualValidationTradeCandidate } from "./visual-validation.js";
+import { getFuturesContractSpecification } from "./futures/contracts.js";
+import { simulateOhlcvExecution, type OhlcvCandle } from "./strategy/ohlcv-execution.js";
+import type {
+  VisualValidationReplayExecutionInput,
+  VisualValidationSet,
+  VisualValidationTradeCandidate,
+} from "./visual-validation.js";
 import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
@@ -109,6 +115,7 @@ type MatchedTrade = {
   candidate: VisualValidationTradeCandidate;
   snapshotId: string;
   trade: BacktestTrade;
+  replayInput?: VisualValidationReplayExecutionInput;
 };
 
 function safePositive(value: number | undefined, fallback: number): number {
@@ -160,14 +167,128 @@ function isWithinEntryCutoff(entryTime: string): boolean {
   return Number.isFinite(hour) && Number.isFinite(minute) && (hour < 13 || (hour === 13 && minute === 0));
 }
 
-function scaleNetPnl(trade: BacktestTrade, contractsPerTrade: number): number {
-  const sourceContracts = trade.contracts > 0 ? trade.contracts : 1;
-  return roundMoney(trade.netPnl * (contractsPerTrade / sourceContracts));
+function asOhlcvCandle(candle: VisualValidationReplayExecutionInput["patienceCandle"]): OhlcvCandle {
+  return {
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    openTime: Date.parse(candle.openTime),
+    closeTime: Date.parse(candle.closeTime),
+    isComplete: candle.isComplete,
+  };
 }
 
-function scaleTradeValue(value: number, trade: BacktestTrade, contractsPerTrade: number): number {
-  const sourceContracts = trade.contracts > 0 ? trade.contracts : 1;
-  return roundMoney(value * (contractsPerTrade / sourceContracts));
+function outcomeForExecution(
+  execution: ReturnType<typeof simulateOhlcvExecution>,
+): BacktestTrade["outcome"] {
+  if (execution.exitReason === "target") return "target";
+  if (execution.exitReason === "stop") {
+    return execution.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop";
+  }
+  if (execution.exitReason === "breakeven") return "breakeven";
+  if (execution.exitReason === "breakeven_recovery") return "breakeven recovery";
+  if (execution.exitReason === "session_close") return "session close";
+  if (execution.exitReason === "runner") return "manual";
+  return "open";
+}
+
+function replayTradeWithFixedContracts(
+  match: MatchedTrade,
+  contractsPerTrade: 1 | 2,
+): BacktestTrade | null {
+  const { trade, replayInput } = match;
+  if (!replayInput) {
+    return trade.contracts === contractsPerTrade ? trade : null;
+  }
+  const specification = getFuturesContractSpecification("MES");
+  const execution = simulateOhlcvExecution({
+    direction: trade.direction,
+    entry: replayInput.entryPrice,
+    patienceCandle: asOhlcvCandle(replayInput.patienceCandle),
+    immediateTriggerCandle: asOhlcvCandle(replayInput.immediateTriggerCandle),
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: replayInput.subsequentCompletedCandles.map(asOhlcvCandle),
+    sessionCloseCandle: replayInput.sessionCloseCandle ? asOhlcvCandle(replayInput.sessionCloseCandle) : null,
+    contracts: contractsPerTrade,
+    targetQuantity: replayInput.targetPrice === null ? 0 : Math.min(1, contractsPerTrade),
+    target: replayInput.targetPrice,
+    primaryLossExitLevel: replayInput.primaryLossExitLevel,
+    oneRProfitRule: replayInput.targetPrice === null,
+    structureTrailing: true,
+    trailingBufferTicks: replayInput.trailingBufferTicks,
+    noLevelBreakevenActivationBars: 6,
+    strategyStop: replayInput.strategyStopPrice,
+    catastropheStop: null,
+    tickSize: specification.tickSize,
+    tickValue: specification.dollarValuePerTick,
+    pointMultiplier: specification.pointValue * specification.contractMultiplier,
+    entrySlippageTicks: 0,
+    exitSlippageTicks: 0,
+    fees: {
+      commission: specification.commissionPerContract,
+      exchange: specification.exchangeFeePerContract ?? specification.exchangeAndRegulatoryFeesPerContract,
+      regulatory: specification.regulatoryFeePerContract,
+      clearing: specification.clearingFeePerContract,
+    },
+  });
+  const exitCandle = execution.audit.exitCandle;
+  const closed = execution.exitPrice !== null && execution.exitReason !== "not filled";
+  const baseAudit = trade.audit;
+  return {
+    ...trade,
+    contracts: contractsPerTrade,
+    exitTime: closed && exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
+    exitPrice: closed ? execution.exitPrice : null,
+    grossPnl: execution.accounting.grossPnl,
+    fees: execution.accounting.fees,
+    slippage: execution.accounting.slippage,
+    netPnl: execution.accounting.netPnl,
+    outcome: closed ? outcomeForExecution(execution) : "open",
+    ambiguityLabel: execution.ambiguityLabels[0] ?? null,
+    audit: baseAudit ? {
+      ...baseAudit,
+      modeledFillPrice: execution.modeledFill,
+      stopPrice: execution.stopPrice,
+      targetPrice: execution.targetPrice,
+      strategyStopPrice: execution.audit.strategyStopPrice,
+      catastropheStopPrice: execution.audit.catastropheStopPrice,
+      stopLevel: execution.audit.stopLevel,
+      exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
+      exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
+      assumptions: [...execution.assumptions],
+      eventLabels: [...execution.eventLabels],
+      ambiguityLabels: [...execution.ambiguityLabels],
+      targetHit: execution.audit.targetHit,
+      runnerActivated: execution.audit.runnerActivated,
+      runnerExited: execution.audit.runnerExited,
+      runnerReferencePrice: execution.audit.runnerReferencePrice,
+      runnerImpulse: execution.audit.runnerImpulse,
+      runnerMostFavorablePrice: execution.audit.runnerMostFavorablePrice,
+      initialRiskPoints: execution.audit.initialRiskPoints,
+      oneRPrice: execution.audit.oneRPrice,
+      oneRReached: execution.audit.oneRReached,
+      profitCheckpointPrice: execution.audit.profitCheckpointPrice,
+      trailingStopPrice: execution.audit.trailingStopPrice,
+      trailingStopActive: execution.audit.trailingStopActive,
+      trailingStopSource: execution.audit.trailingStopSource,
+      remainingQuantity: execution.audit.remainingQuantity,
+      postEntryCompletedBars: execution.audit.postEntryCompletedBars,
+      breakevenActivationBars: execution.audit.breakevenActivationBars,
+      breakevenActivated: execution.audit.breakevenActivated,
+      breakevenActivationTimestamp: execution.audit.breakevenActivationTimestamp === null
+        ? null
+        : new Date(execution.audit.breakevenActivationTimestamp).toISOString(),
+      breakevenEffectiveFromTimestamp: execution.audit.breakevenEffectiveFromTimestamp === null
+        ? null
+        : new Date(execution.audit.breakevenEffectiveFromTimestamp).toISOString(),
+      breakevenPrice: execution.audit.breakevenPrice,
+      breakevenDisposition: execution.audit.breakevenDisposition,
+      originalStopStillActive: execution.audit.originalStopStillActive,
+      exitReason: execution.exitReason,
+      legs: execution.legs,
+    } : trade.audit,
+  };
 }
 
 function breakdown(value: string, trades: ShadowAccountReplayTrade[]): ShadowAccountReplayBreakdown {
@@ -202,7 +323,11 @@ export function buildShadowAccountReplay(
   options: ShadowAccountReplayOptions = {},
 ): ShadowAccountReplay {
   const startingBalance = roundMoney(safePositive(options.startingBalance, DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE));
-  const contractsPerTrade = Math.max(2, Math.min(100, Math.floor(safePositive(options.contractsPerTrade, DEFAULT_SHADOW_ACCOUNT_CONTRACTS))));
+  const requestedContracts = options.contractsPerTrade ?? DEFAULT_SHADOW_ACCOUNT_CONTRACTS;
+  if (!Number.isInteger(requestedContracts) || ![1, 2].includes(requestedContracts)) {
+    throw new Error("contractsPerTrade must be exactly 1 or 2.");
+  }
+  const contractsPerTrade = requestedContracts as 1 | 2;
   const candidatesById = new Map(set.tradeCandidates.map((candidate) => [candidate.candidateId, candidate]));
   const matchingTrades: MatchedTrade[] = [];
   const seenTradeIds = new Set<string>();
@@ -220,7 +345,12 @@ export function buildShadowAccountReplay(
     if (!candidate || candidate.signalOccurrenceId !== trade.signalOccurrenceId) continue;
     if (seenTradeIds.has(trade.id)) continue;
     seenTradeIds.add(trade.id);
-    matchingTrades.push({ candidate, snapshotId: source.snapshotId ?? candidate.snapshotId, trade });
+    matchingTrades.push({
+      candidate,
+      snapshotId: source.snapshotId ?? candidate.snapshotId,
+      trade,
+      replayInput: "replayInput" in source ? source.replayInput : undefined,
+    });
   }
 
   matchingTrades.sort((left, right) =>
@@ -258,11 +388,16 @@ export function buildShadowAccountReplay(
   for (const match of [...selectedByCandidate.values()].sort((left, right) =>
     Date.parse(left.trade.entryTime) - Date.parse(right.trade.entryTime)
     || left.candidate.candidateId.localeCompare(right.candidate.candidateId))) {
-    const { candidate, trade } = match;
+    const { candidate } = match;
+    const trade = replayTradeWithFixedContracts(match, contractsPerTrade);
+    if (!trade) {
+      warnings.push(`Skipped candidate ${candidate.candidateId}: frozen execution evidence is unavailable for a ${contractsPerTrade}-contract replay.`);
+      continue;
+    }
     const unscored = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
     const closed = !unscored && trade.exitTime !== null && trade.outcome !== "open";
     const status = unscored ? "unscored" as const : closed ? "closed" as const : "open" as const;
-    const netPnl = closed ? scaleNetPnl(trade, contractsPerTrade) : null;
+    const netPnl = closed ? roundMoney(trade.netPnl) : null;
     if (netPnl !== null) runningBalance = roundMoney(runningBalance + netPnl);
     const ledgerTrade: ShadowAccountReplayTrade = {
       tradeNumber: ledger.length + 1,
@@ -279,9 +414,9 @@ export function buildShadowAccountReplay(
       exitPrice: closed ? trade.exitPrice : null,
       exitReason: unscored ? "unscored" : closed ? (trade.audit?.exitReason ?? trade.outcome) : "open",
       contracts: contractsPerTrade,
-      grossPnl: closed ? scaleTradeValue(trade.grossPnl, trade, contractsPerTrade) : null,
-      fees: closed ? scaleTradeValue(trade.fees, trade, contractsPerTrade) : null,
-      slippage: closed ? scaleTradeValue(trade.slippage, trade, contractsPerTrade) : null,
+      grossPnl: closed ? roundMoney(trade.grossPnl) : null,
+      fees: closed ? roundMoney(trade.fees) : null,
+      slippage: closed ? roundMoney(trade.slippage) : null,
       netPnl,
       runningBalance,
       supportingConfluences: [...candidate.supportingConfluences],

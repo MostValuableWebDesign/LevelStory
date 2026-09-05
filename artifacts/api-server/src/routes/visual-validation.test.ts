@@ -142,6 +142,9 @@ test("replay route returns every authoritative report trade across dates", async
     assert.equal(response.body.enteredTrades, 2);
     assert.equal((response.body.ledger as unknown[]).length, 2);
     assert.equal(response.body.endingRealizedBalance, 10050);
+    const invalidResponse = await getJson(address.port, `/api/backtest/visual-validation/replay?reviewSetId=${set.reviewSetId}&startingBalance=10000&contractsPerTrade=3`);
+    assert.equal(invalidResponse.status, 400);
+    assert.match(String(invalidResponse.body.error), /less than or equal to 2|exactly 1 or 2/i);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

@@ -557,7 +557,7 @@ paths:
         - name: contractsPerTrade
           in: query
           required: false
-          schema: { type: number, minimum: 1, maximum: 100, default: 1 }
+          schema: { type: integer, minimum: 1, maximum: 2, default: 1 }
       responses:
         "200":
           description: Shadow account replay result

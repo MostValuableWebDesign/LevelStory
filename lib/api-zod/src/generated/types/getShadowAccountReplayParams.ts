@@ -17,7 +17,7 @@ reviewSetId: string;
 startingBalance?: number;
 /**
  * @minimum 1
- * @maximum 100
+ * @maximum 2
  */
 contractsPerTrade?: number;
 };
