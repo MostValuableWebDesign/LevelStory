@@ -1,0 +1,346 @@
+Inspect the current repository and previous requirements before editing.
+
+Previous Codex session:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 29/
+
+Finish the remaining implementation and verification work for:
+
+EARLY_ORB_MOMENTUM_CONTINUATION
+
+The core detector is already present. Do not rewrite it unnecessarily, loosen other strategies, or change the intended Early ORB trading rules. Correct the remaining gaps and verify the complete executable path.
+
+1. Bump all affected versions
+
+Executable behavior changed after the current formula version was introduced, but `FIXED_FORMULA_VERSION` remains:
+
+`phase9-fixed-formula-v12-early-orb-momentum`
+
+Bump the formula version so existing formula identities, strategy versions, reports, and generated artifacts become stale when appropriate.
+
+Confirm that these are also bumped or already correctly bumped:
+
+- Formula version
+- Strategy-engine version
+- Visual Review cache-key version
+- Candidate-projection version
+- Snapshot-projection version
+- Audit/projection version if its serialized fields change
+
+Ensure the formula hash includes:
+
+- `earlyOrbMomentumContinuationEnabled`
+- `earlyOrbMomentumEligibilityCutoffMinutes`
+- `earlyOrbMomentumMinimumCloseDistanceTicks`
+- `earlyOrbMomentumMaxAttemptsPerDirection`
+
+2. Remove the Early ORB fallback to normal patience evidence
+
+Historical execution currently contains logic equivalent to:
+
+`snapshot.earlyOrbMomentum ?? snapshot.patience`
+
+Do not silently use normal pullback patience for an Early ORB trade.
+
+When `EARLY_ORB_MOMENTUM_CONTINUATION` is selected:
+
+- Require `snapshot.earlyOrbMomentum`.
+- Require its P candle.
+- Require its immediately adjacent E candle.
+- Require its confirmation threshold.
+- Require its eligibility arm and provenance.
+- Reject the candidate with `MISSING_EARLY_ORB_EVIDENCE` if required evidence is absent.
+- Do not execute, simulate, or contribute P/L using `snapshot.patience` as a substitute.
+
+Use the Early ORB evidence consistently throughout:
+
+- Risk-plan creation
+- Phase 9 execution
+- Historical occurrence ledger
+- Candidate projection
+- Visual Review
+- Shadow Account Replay
+- Combined multi-date metrics
+
+3. Persist complete Early ORB causal evidence
+
+Add typed fields necessary to retain and display:
+
+- Trading date
+- Setup name
+- Direction
+- Arm ID
+- ORB high
+- ORB low
+- ORB finalization timestamp
+- P/arm-creation candle open and close timestamps
+- P candle OHLC
+- P close
+- P distance outside the ORB in points
+- P distance outside the ORB in MES ticks
+- E candle open and close timestamps
+- E candle OHLC
+- Whether E was immediately adjacent
+- Buffered entry threshold
+- Entry-buffer ticks
+- Adaptive stop-buffer ticks
+- Final strategy stop
+- ATR snapshot used for management
+- Target-plan evidence or 1R fallback
+- Contract legs
+- Runner events
+- Ambiguity or rejection reason
+- Formula version and hash
+- Source fingerprint
+- Realized P/L
+
+Calculate distance outside the ORB as:
+
+Long:
+`P.close - FinalizedOrbHigh`
+
+Short:
+`FinalizedOrbLow - P.close`
+
+Ticks:
+`DistancePoints / 0.25`
+
+Do not rely only on prose inside `eligibilityProvenance.detail`. Store these as typed evidence.
+
+Propagate the ORB `completedAt` timestamp through the market snapshot, API schema, generated clients, Phase 9 audit, historical occurrence, candidate projection, and Visual Review.
+
+4. Display the full evidence in Visual Review
+
+An entered or rejected Early ORB candidate must be presented the same way as other generated candidates, including chart annotations and management results.
+
+Display an explanation equivalent to:
+
+“Early ORB momentum arm created by the first completed close outside the finalized ORB. No prior pullback arm was required. Entry remained conditional on the immediately following candle reaching the standard eight-tick buffered threshold.”
+
+Show:
+
+- P/arm-creation candle
+- Immediately adjacent E candle
+- ORB boundaries and finalization time
+- Distance outside the ORB
+- Buffered entry
+- Adaptive stop
+- Target or 1R fallback
+- One- or two-contract legs
+- Runner events
+- P/L
+- Rejection or ambiguity evidence
+
+Do not display pullback-arm evidence as though it authorized an isolated Early ORB trade.
+
+5. Expose governed controls on the Visual Review page
+
+The settings are available through Strategy Proposals, but they are not exposed in the Visual Review generation workflow.
+
+Add a clearly labeled Early ORB Momentum section to the Visual Review generation settings containing:
+
+- Enable Early ORB Momentum
+- P-open eligibility cutoff, default 10:30 AM ET
+- Minimum close distance outside the ORB, default one tick
+- Maximum attempts per direction, fixed/default one
+
+Preserve governance:
+
+- Do not create an untracked client-only override.
+- The control must use an approved/active governed configuration or clearly initiate the existing proposal-validation and activation workflow.
+- Show whether the setup is currently active or disabled.
+- Explain that the recommended default is disabled until historically validated.
+- Include the effective values in generation requests, audit evidence, formula hashes, and cache identities.
+- Regenerating with a changed active configuration must not reuse stale review sets.
+
+6. Preserve current eligibility rules
+
+Do not add any requirement for:
+
+- Prior pullback arm
+- Pullback interaction
+- VWAP position
+- 200 MA position
+- VWAP or MA slope
+- Candle-body percentage
+- Close-location percentage
+- Strong-volume classification
+- Specific candle color
+
+The setup remains:
+
+Long P:
+`P.close >= FinalizedOrbHigh + 0.25`
+
+Short P:
+`P.close <= FinalizedOrbLow - 0.25`
+
+P must open before 10:30 AM ET by default.
+
+A 10:25 P may use the immediately adjacent 10:30 E.
+
+Long entry:
+`P.high + 8 ticks`
+
+Short entry:
+`P.low - 8 ticks`
+
+Only the immediately adjacent completed E can confirm entry.
+
+E closing inside or onto the ORB must invalidate the attempt even when its high or low touched the threshold.
+
+7. Verify independent directional attempts
+
+Confirm through the entire Phase 9 and candidate-projection path that:
+
+- The first long attempt and first short attempt are tracked independently.
+- A failed long attempt does not block a short attempt.
+- A failed short attempt does not block a long attempt.
+- A successful attempt cannot be repeatedly emitted at later replay cursors.
+- At most one Early ORB trade per direction is entered per session.
+- If valid long and short attempts both occur in one session, each can be represented once when otherwise eligible.
+- No later candle can reuse an expired P.
+- Evaluation remains causal.
+
+Do not rely only on the Phase 5 occurrence array; verify the resulting Phase 6 decisions, Phase 9 candidates, executions, and P/L.
+
+8. Enforce management rejection before P/L
+
+For Early ORB trades, confirm the shared adaptive management engine remains authoritative.
+
+Before an entered trade contributes to P/L, enforce:
+
+- `STOP_DISTANCE_TOO_WIDE`
+- `INSUFFICIENT_REWARD_TO_RISK`
+- Conservative OHLCV ambiguity rejection
+- Missing causal-management evidence rejection
+
+Rejected candidates must remain visible with diagnostics but must not appear as entered trades or affect:
+
+- Realized P/L
+- Win rate
+- Profit factor
+- Expectancy
+- Drawdown
+- Trade streaks
+- Combined replay totals
+
+Use the existing management formulas without creating Early ORB-specific stop, target, breakeven, or runner formulas.
+
+9. Verify deduplication
+
+Use a canonical physical identity containing:
+
+- Contract
+- Trading date
+- Direction
+- P candle
+- E candle
+- Effective entry threshold
+
+When Early ORB and another strategy qualify the same physical P→E trade:
+
+- Create one candidate.
+- Enter one trade.
+- Calculate P/L once.
+- Preserve deterministic strategy priority.
+- Record the other strategy as a matched/supporting edge.
+- Do not double-count the trade in Visual Review, Shadow Account Replay, funnels, or aggregate metrics.
+
+10. Add missing tests
+
+Add focused tests for:
+
+- Missing Early ORB evidence never falls back to normal patience.
+- Phase 9 uses the Early ORB P, E, threshold, and stop.
+- ORB finalization timestamp is retained.
+- Actual distance outside the ORB is retained in points and ticks.
+- Formula version/hash changes invalidate stale results.
+- Visual Review renders the complete Early ORB evidence.
+- Visual Review shows whether the toggle is active.
+- Governed configuration changes affect generation and cache identity.
+- Failed long followed by valid short.
+- Failed short followed by valid long.
+- Valid long and valid short in one session are each emitted at most once.
+- Same-direction trade is never emitted twice across replay cursors.
+- Duplicate strategy matches produce one physical trade.
+- `STOP_DISTANCE_TOO_WIDE` excludes entered P/L.
+- `INSUFFICIENT_REWARD_TO_RISK` excludes entered P/L.
+- One-contract replay.
+- Two-contract replay and runner management.
+- Combined multi-date replay includes each Early ORB trade exactly once.
+- Disabling the toggle preserves existing strategy output.
+- Starting balance does not change eligibility or management.
+
+Include at least one end-to-end fixture covering:
+
+detector
+→ Phase 6 qualification
+→ Phase 9 historical replay
+→ occurrence ledger
+→ candidate projection
+→ Visual Review set
+→ Shadow Account Replay
+→ combined aggregate P/L
+
+11. Verification
+
+Run:
+
+- Focused Early ORB tests
+- Phase 5 tests
+- Phase 6 tests
+- Phase 9 tests
+- Phase 9 integration tests
+- Visual Review generation and projection tests
+- Shadow Account Replay tests
+- Combined multi-date tests
+- API typecheck
+- Frontend typecheck
+- Frontend production build
+- `git diff --check`
+
+Do not claim completion based only on Phase 5 tests.
+
+Report:
+
+- Root causes corrected
+- Files changed
+- Versions bumped
+- Tests executed with pass/fail totals
+- Whether the full end-to-end fixture passed
+- Whether a real historical Visual Review set was generated
+- Whether combined replay included the trade and P/L exactly once
+- Any remaining validation limitations
+
+
+11:57 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
+
+
+
+
+
+
+
+5.6 TerraExtra High5.6 SolMedium
