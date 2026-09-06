@@ -7,11 +7,11 @@
  */
 
 /**
- * Exactly 8 MES ticks / 2.00 index points.
+ * Exactly 4 MES ticks / 1.00 index point.
  */
 export type VisualValidationReviewRequestTeachingEntryBufferTicks = typeof VisualValidationReviewRequestTeachingEntryBufferTicks[keyof typeof VisualValidationReviewRequestTeachingEntryBufferTicks];
 
 
 export const VisualValidationReviewRequestTeachingEntryBufferTicks = {
-  NUMBER_8: 8,
+  NUMBER_4: 4,
 } as const;

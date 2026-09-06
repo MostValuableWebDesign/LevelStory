@@ -131,7 +131,7 @@ test("visual review separates chart analysis, deterministic generation, and read
 });
 
 test("Generate only shows the no-candidate state after generation finishes", () => {
-  assert.match(page, /const generationFinished = generationJob\?\.status === "completed";/);
+  assert.match(page, /const generationFinished = generationJob\?\.status === "completed" \|\| generationJob\?\.status === "partial";/);
   assert.match(page, /!activeSnapshot && <Panel><EmptyReview \/>/);
   assert.match(page, /generationFinished \? <Panel><EmptyReview \/><\/Panel> : null/);
   assert.doesNotMatch(page, /function ReviewSetNotStarted\(\)/);
@@ -196,7 +196,7 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.match(page, /indicator-curve-vwap/);
    assert.match(page, /indicator-curve-ema200/);
    assert.match(page, /activeIndicatorId/);
-   assert.match(page, /8 MES ticks · 2\.00 points/);
+   assert.match(page, /4 MES ticks · 1\.00 point/);
    assert.doesNotMatch(page, /Critical · Premarket high/);
    assert.doesNotMatch(page, /Critical · Premarket low/);
    assert.match(page, /data-testid="trade-lifetime-overlay"/);

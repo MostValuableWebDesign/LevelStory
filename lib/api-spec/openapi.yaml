@@ -2135,7 +2135,7 @@ components:
             - type: "null"
         entryBufferTicks:
           type: number
-          enum: [8]
+          enum: [4]
         entryBufferPrice:
           type: ["number", "null"]
         stopBufferTicks:
@@ -2923,14 +2923,14 @@ components:
           description: Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source.
         ohlcvEntryBufferTicks:
           type: number
-          enum: [8]
-          default: 8
-          description: Exactly 8 MES ticks / 2.00 index points.
+          enum: [4]
+          default: 4
+          description: Exactly 4 MES ticks / 1.00 index point.
         ohlcvStopBufferTicks:
           type: number
-          enum: [12]
-          default: 12
-          description: Exactly twelve MES ticks beyond the frozen patience-candle extreme.
+          enum: [8]
+          default: 8
+          description: Exactly eight MES ticks beyond the frozen patience-candle extreme.
         ohlcvSlippageTicks:
           type: number
           minimum: 0
@@ -3741,7 +3741,7 @@ components:
           minItems: 30
           maxItems: 30
           items: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
-        ohlcvEntryBufferTicks: { type: number, enum: [8], default: 8, description: Exactly 8 MES ticks / 2.00 index points. }
+        ohlcvEntryBufferTicks: { type: number, enum: [4], default: 4, description: Exactly 4 MES ticks / 1.00 index point. }
         ohlcvStopBufferTicks: { type: number, enum: [12], default: 12, description: Exactly twelve MES ticks beyond the frozen patience-candle extreme. }
         ohlcvSlippageTicks: { type: number, minimum: 0, maximum: 12, default: 1 }
         ohlcvCommissionPerContract: { type: number, minimum: 0, maximum: 100, default: 3.2 }
@@ -4008,7 +4008,7 @@ components:
         entryCandleCloseTime: { type: string, format: date-time }
         patienceCandleOpenTime: { type: string, format: date-time }
         patienceCandleCloseTime: { type: string, format: date-time }
-        entryBufferTicks: { type: number, enum: [8], description: Exactly 8 MES ticks / 2.00 index points. }
+        entryBufferTicks: { type: number, enum: [4], description: Exactly 4 MES ticks / 1.00 index point. }
         levelToleranceTicks: { type: number, enum: [4, 8, 12], default: 12, description: MES ticks; approved MES tolerances only. }
         qualifyingLevelId: { type: string, maxLength: 120, description: Stable annotation ID for the qualifying level. }
         qualifyingLevelRangeLow: { type: ["number", "null"] }
@@ -4520,7 +4520,7 @@ components:
             entryCandleCloseTime: { type: string, format: date-time }
             patienceCandleOpenTime: { type: string, format: date-time }
             patienceCandleCloseTime: { type: string, format: date-time }
-            entryBufferTicks: { type: number, enum: [8], description: Exactly 8 MES ticks / 2.00 index points. }
+            entryBufferTicks: { type: number, enum: [4], description: Exactly 4 MES ticks / 1.00 index point. }
             levelToleranceTicks: { type: number, enum: [4, 8, 12], default: 12, description: MES ticks; approved MES tolerances only. }
             qualifyingLevelId: { type: string, maxLength: 120 }
             qualifyingLevelRangeLow: { type: ["number", "null"] }

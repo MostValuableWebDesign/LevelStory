@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v13-early-orb-evidence";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v14-four-tick-entry";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -28,6 +28,7 @@ export function formulaConfiguration(
       immediateNextCandleOnly: true,
       noFutureData: true,
       noParameterOptimization: true,
+      patienceEntryBufferTicks: config.patienceEntryBufferTicks,
       ohlcvAmbiguityRule: "adverse-first-stop",
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",

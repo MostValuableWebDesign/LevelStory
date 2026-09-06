@@ -202,7 +202,7 @@ export type BacktestRequest = ReplayDatasetOptions & {
   targetDollars?: number;
   slippageMode?: "normal" | "fast" | "abnormal_spread";
   executionMode?: "quote_based_shadow" | "ohlcv_modeled";
-  ohlcvEntryBufferTicks?: 8;
+  ohlcvEntryBufferTicks?: 4;
   ohlcvStopBufferTicks?: number;
   ohlcvSlippageTicks?: number;
   ohlcvCommissionPerContract?: number;
@@ -3442,7 +3442,7 @@ export function buildHistoricalOccurrenceLedger(
          finalizedNtzComplete: record.finalizedNtzComplete ?? false,
           consolidationGuard: occurrenceConsolidationGuard,
          identityInvariantViolations,
-        confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: occurrenceCandle(confirmedEntry ? null : observedImmediate),
         consolidationThresholds: record.consolidationThresholds,
          causalEvidence: causalEvidenceForAudit(record),
@@ -3560,7 +3560,7 @@ export function buildHistoricalOccurrenceLedger(
          entryObservationTimestamp: record.triggerCandleCloseTime,
          consolidationGuard: record.consolidationGuard,
          identityInvariantViolations: [],
-        confirmationBufferTicks: record.confirmationBufferTicks ?? 8,
+        confirmationBufferTicks: record.confirmationBufferTicks ?? 4,
         nextObservedCandle: null,
         consolidationThresholds: record.consolidationThresholds,
          causalEvidence: causalEvidenceForAudit(record),
@@ -5003,7 +5003,7 @@ export function runCausalBacktest(
     && dataset.quotesAvailable !== false) {
     throw new Error("Modeled OHLCV execution is reserved for explicitly historical OHLCV datasets.");
   }
-  const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 8;
+  const entryBufferTicks = request.ohlcvEntryBufferTicks ?? 4;
   const modeledSlippageTicks = request.ohlcvSlippageTicks ?? 1;
   const commissionPerContract = request.ohlcvCommissionPerContract
     ?? 2 * (specification.commissionPerContract + specification.exchangeAndRegulatoryFeesPerContract);

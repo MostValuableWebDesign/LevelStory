@@ -390,7 +390,7 @@ test("successful route result matches the direct deterministic engine", async ()
       premarketAvailable: true,
       targetDollars: 75,
       slippageMode: "normal",
-      ohlcvEntryBufferTicks: 8,
+      ohlcvEntryBufferTicks: 4,
       ohlcvStopBufferTicks: 12,
       ohlcvSlippageTicks: 1,
     });

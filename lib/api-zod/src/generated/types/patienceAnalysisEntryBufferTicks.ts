@@ -10,5 +10,5 @@ export type PatienceAnalysisEntryBufferTicks = typeof PatienceAnalysisEntryBuffe
 
 
 export const PatienceAnalysisEntryBufferTicks = {
-  NUMBER_8: 8,
+  NUMBER_4: 4,
 } as const;

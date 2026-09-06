@@ -47,9 +47,9 @@ export interface BacktestRequest {
   source?: BacktestRequestSource;
   /** Quote-based Shadow requires bid/ask; OHLCV modeled is restricted to the historical Databento source. */
   executionMode?: BacktestRequestExecutionMode;
-  /** Exactly 8 MES ticks / 2.00 index points. */
+  /** Exactly 4 MES ticks / 1.00 index point. */
   ohlcvEntryBufferTicks?: BacktestRequestOhlcvEntryBufferTicks;
-  /** Exactly twelve MES ticks beyond the frozen patience-candle extreme. */
+  /** Exactly eight MES ticks beyond the frozen patience-candle extreme. */
   ohlcvStopBufferTicks?: BacktestRequestOhlcvStopBufferTicks;
   /**
      * @minimum 0

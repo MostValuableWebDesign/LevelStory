@@ -242,7 +242,7 @@ export const GetMarketSnapshotResponse = zod.object({
   "close": zod.number(),
   "isComplete": zod.boolean()
 }),zod.null()]),
-  "entryBufferTicks": zod.literal(8),
+  "entryBufferTicks": zod.literal(4),
   "entryBufferPrice": zod.number().nullable(),
   "stopBufferTicks": zod.number(),
   "strategyStopPrice": zod.number().nullable(),
@@ -804,8 +804,8 @@ export const runBacktestBodyTargetDollarsMax = 100;
 
 export const runBacktestBodySlippageModeDefault = `normal`;
 export const runBacktestBodySourceDefault = `simulated`;
-export const runBacktestBodyOhlcvEntryBufferTicksDefault = 8;
-export const runBacktestBodyOhlcvStopBufferTicksDefault = 12;
+export const runBacktestBodyOhlcvEntryBufferTicksDefault = 4;
+export const runBacktestBodyOhlcvStopBufferTicksDefault = 8;
 export const runBacktestBodyOhlcvSlippageTicksDefault = 1;
 export const runBacktestBodyOhlcvSlippageTicksMin = 0;
 export const runBacktestBodyOhlcvSlippageTicksMax = 8;
@@ -826,8 +826,8 @@ export const RunBacktestBody = zod.object({
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(runBacktestBodySlippageModeDefault),
   "source": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']).default(runBacktestBodySourceDefault),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
-  "ohlcvEntryBufferTicks": zod.literal(8).default(runBacktestBodyOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
-  "ohlcvStopBufferTicks": zod.literal(12).default(runBacktestBodyOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
+  "ohlcvEntryBufferTicks": zod.literal(4).default(runBacktestBodyOhlcvEntryBufferTicksDefault).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
+  "ohlcvStopBufferTicks": zod.literal(8).default(runBacktestBodyOhlcvStopBufferTicksDefault).describe('Exactly eight MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(runBacktestBodyOhlcvSlippageTicksMin).max(runBacktestBodyOhlcvSlippageTicksMax).default(runBacktestBodyOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(runBacktestBodyOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 })
@@ -1576,8 +1576,8 @@ export const startBatchBacktestBodyOneTargetDollarsMax = 100;
 
 export const startBatchBacktestBodyOneSlippageModeDefault = `normal`;
 export const startBatchBacktestBodyOneSourceDefault = `simulated`;
-export const startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault = 8;
-export const startBatchBacktestBodyOneOhlcvStopBufferTicksDefault = 12;
+export const startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault = 4;
+export const startBatchBacktestBodyOneOhlcvStopBufferTicksDefault = 8;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksDefault = 1;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksMin = 0;
 export const startBatchBacktestBodyOneOhlcvSlippageTicksMax = 8;
@@ -1601,8 +1601,8 @@ export const StartBatchBacktestBody = zod.object({
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(startBatchBacktestBodyOneSlippageModeDefault),
   "source": zod.enum(['simulated', 'historical_databento', 'historical_databento_multicontract']).default(startBatchBacktestBodyOneSourceDefault),
   "executionMode": zod.enum(['quote_based_shadow', 'ohlcv_modeled']).optional().describe('Quote-based Shadow requires bid\/ask; OHLCV modeled is restricted to the historical Databento source.'),
-  "ohlcvEntryBufferTicks": zod.literal(8).default(startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
-  "ohlcvStopBufferTicks": zod.literal(12).default(startBatchBacktestBodyOneOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
+  "ohlcvEntryBufferTicks": zod.literal(4).default(startBatchBacktestBodyOneOhlcvEntryBufferTicksDefault).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
+  "ohlcvStopBufferTicks": zod.literal(8).default(startBatchBacktestBodyOneOhlcvStopBufferTicksDefault).describe('Exactly eight MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(startBatchBacktestBodyOneOhlcvSlippageTicksMin).max(startBatchBacktestBodyOneOhlcvSlippageTicksMax).default(startBatchBacktestBodyOneOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(startBatchBacktestBodyOneOhlcvCommissionPerContractMin).optional().describe('Round-trip commission and exchange\/regulatory fee assumption per contract.')
 }).and(zod.object({
@@ -5254,7 +5254,7 @@ export const startEdgeValidationPilotBodySelectedDatesItemRegExp = new RegExp('^
 export const startEdgeValidationPilotBodySelectedDatesMin = 30;
 export const startEdgeValidationPilotBodySelectedDatesMax = 30;
 
-export const startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault = 8;
+export const startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault = 4;
 export const startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault = 12;
 export const startEdgeValidationPilotBodyOhlcvSlippageTicksDefault = 1;
 export const startEdgeValidationPilotBodyOhlcvSlippageTicksMin = 0;
@@ -5269,7 +5269,7 @@ export const startEdgeValidationPilotBodyOhlcvCommissionPerContractMax = 100;
 export const StartEdgeValidationPilotBody = zod.object({
   "symbol": zod.enum(['MES']).default(startEdgeValidationPilotBodySymbolDefault),
   "selectedDates": zod.array(zod.string().regex(startEdgeValidationPilotBodySelectedDatesItemRegExp)).min(startEdgeValidationPilotBodySelectedDatesMin).max(startEdgeValidationPilotBodySelectedDatesMax),
-  "ohlcvEntryBufferTicks": zod.literal(8).default(startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "ohlcvEntryBufferTicks": zod.literal(4).default(startEdgeValidationPilotBodyOhlcvEntryBufferTicksDefault).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "ohlcvStopBufferTicks": zod.literal(12).default(startEdgeValidationPilotBodyOhlcvStopBufferTicksDefault).describe('Exactly twelve MES ticks beyond the frozen patience-candle extreme.'),
   "ohlcvSlippageTicks": zod.number().min(startEdgeValidationPilotBodyOhlcvSlippageTicksMin).max(startEdgeValidationPilotBodyOhlcvSlippageTicksMax).default(startEdgeValidationPilotBodyOhlcvSlippageTicksDefault),
   "ohlcvCommissionPerContract": zod.number().min(startEdgeValidationPilotBodyOhlcvCommissionPerContractMin).max(startEdgeValidationPilotBodyOhlcvCommissionPerContractMax).default(startEdgeValidationPilotBodyOhlcvCommissionPerContractDefault)
@@ -5948,7 +5948,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(getVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -6523,7 +6523,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(createVisualValidationSetResponseSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -7560,7 +7560,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -8133,7 +8133,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -8713,7 +8713,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -8981,7 +8981,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(recordVisualValidationReviewBodyTeachingQualifyingLevelIdMax).optional(),
   "qualifyingLevelRangeLow": zod.number().nullish(),
@@ -9042,7 +9042,7 @@ export const RecordVisualValidationReviewResponse = zod.object({
   "entryCandleCloseTime": zod.coerce.date(),
   "patienceCandleOpenTime": zod.coerce.date(),
   "patienceCandleCloseTime": zod.coerce.date(),
-  "entryBufferTicks": zod.literal(8).describe('Exactly 8 MES ticks \/ 2.00 index points.'),
+  "entryBufferTicks": zod.literal(4).describe('Exactly 4 MES ticks \/ 1.00 index point.'),
   "levelToleranceTicks": zod.union([zod.literal(4),zod.literal(8),zod.literal(12)]).default(recordVisualValidationReviewResponseTeachingLevelToleranceTicksDefault).describe('MES ticks; approved MES tolerances only.'),
   "qualifyingLevelId": zod.string().max(recordVisualValidationReviewResponseTeachingQualifyingLevelIdMax).optional().describe('Stable annotation ID for the qualifying level.'),
   "qualifyingLevelRangeLow": zod.number().nullish(),

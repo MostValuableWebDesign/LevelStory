@@ -91,7 +91,7 @@ function candidate(overrides: Partial<HistoricalTradeCandidate> = {}): Historica
     patienceTimestamp: "2026-07-01T14:55:00.000Z",
     expectedEntryTimestamp: "2026-07-01T15:00:00.000Z",
     confirmationPrice: 101,
-    confirmationBufferTicks: 8,
+    confirmationBufferTicks: 4,
     grade: "A+",
     causalIdentity: {
       signalOccurrenceId: "signal-1",
@@ -203,7 +203,7 @@ function confirmedSignal(overrides: Record<string, unknown> = {}): any {
     levelInteractionTypes: { ORB: ["touch"] },
     confirmationThreshold: 101,
     confirmationExcursion: 1,
-    confirmationBufferTicks: 8,
+    confirmationBufferTicks: 4,
     entryCandle: { high: 102 },
     ...overrides,
   };
@@ -328,7 +328,7 @@ test("Phase 3 reconciliation gives each confirmed signal one disposition and kee
     levelInteractionTypes: { ORB: ["touch"] },
     confirmationThreshold: 101,
     confirmationExcursion: 1,
-    confirmationBufferTicks: 8,
+    confirmationBufferTicks: 4,
     entryCandle: { high: 102 },
   } as never;
   const item = {
@@ -570,7 +570,7 @@ function historicalAuditRecord(tradingDate: string): any {
     grossPnl: null,
     netPnl: null,
     exitReason: null,
-    confirmationBufferTicks: 8,
+    confirmationBufferTicks: 4,
     consolidationThresholds: {},
     pullbackOccurrences: [{
       type: "touch",
@@ -588,7 +588,7 @@ function historicalAuditRecord(tradingDate: string): any {
     patienceOccurrences: [{
       occurrenceId: "historical-p1",
       direction: "long",
-      entryBufferTicks: 8,
+      entryBufferTicks: 4,
       stopBufferTicks: 12,
       eligibilityReason: "pullback",
       eligibilityTime: lOpen,

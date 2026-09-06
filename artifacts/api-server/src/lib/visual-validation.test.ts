@@ -456,11 +456,11 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     eOpenTimestamp: new Date(patienceCandle.closeTime).toISOString(),
     entryObservationTimestamp: confirmed ? new Date(immediate.closeTime).toISOString() : null,
     identityInvariantViolations: [],
-     confirmationBufferTicks: 8,
+     confirmationBufferTicks: 4,
     nextObservedCandle: confirmed ? null : evidenceCandle(immediate),
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     status: confirmed ? "SIGNAL_CONFIRMED" : "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
-     reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the eight-tick buffer; P1 expired.",
+     reasonCode: confirmed ? "Immediate E2 confirmed P2." : "Immediate candle failed the four-tick buffer; P1 expired.",
     evaluationCursor: new Date(immediate.closeTime).toISOString(),
     formulaVersion: "test",
     formulaHash: "a".repeat(64),
@@ -927,7 +927,7 @@ function teachingInput(snapshot: ReturnType<typeof buildVisualValidationSet>["sn
     entryCandleCloseTime: base.entry.closeTime,
     patienceCandleOpenTime: base.patience.openTime,
     patienceCandleCloseTime: base.patience.closeTime,
-     entryBufferTicks: 8,
+     entryBufferTicks: 4,
     pullbackLevels: [base.level],
     setupType: "ORB_PULLBACK_CONTINUATION",
     confidence: "medium",
@@ -941,7 +941,7 @@ test("teaching validation accepts deterministic long and short buffered examples
     const input = teachingInput(snapshot, direction);
     const result = validateVisualValidationTeaching(snapshot, input);
     assert.equal(result.valid, true, `${direction}: ${result.messages.join("; ")}`);
-   assert.equal(result.calculatedEntryPrice, direction === "long" ? 103.5 : 99.5);
+    assert.equal(result.calculatedEntryPrice, direction === "long" ? 102.5 : 100.5);
   }
 });
 
@@ -1200,7 +1200,7 @@ test("teaching validation rejects future, non-adjacent, and non-MES-buffer corre
   const input = teachingInput(snapshot, "long");
   const invalid = {
     ...input,
-     entryBufferTicks: 7 as unknown as 8,
+    entryBufferTicks: 8 as unknown as 4,
     patienceCandleCloseTime: "2026-08-26T13:34:00.000Z",
     entryCandleCloseTime: "2026-08-26T14:40:00.000Z",
     explanation: "invalid teaching case",

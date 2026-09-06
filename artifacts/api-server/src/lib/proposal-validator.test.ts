@@ -42,9 +42,9 @@ function teaching(id: string, judgment: string, buffer: number) {
 
 test("typed candidate comparison reports a governed no-op for the fixed buffer", () => {
   const result = compareCandidate([
-     teaching("missed", "missed_trade", 8),
-     teaching("false-positive", "false_positive_trade", 8),
-   ], [{ field: "patienceEntryBufferTicks", value: 8 }]);
+     teaching("missed", "missed_trade", 4),
+     teaching("false-positive", "false_positive_trade", 4),
+    ], [{ field: "patienceEntryBufferTicks", value: 4 }]);
 
   assert.equal(result.holdoutCompleted, true);
   assert.equal(result.noFutureData, true);
@@ -58,16 +58,16 @@ test("typed candidate comparison reports a governed no-op for the fixed buffer",
 test("candidate construction rejects free-form and unknown rule changes", () => {
   assert.throws(() => buildCandidateConfiguration({ mode: "execute arbitrary text" }), /typed deterministicRuleDiff/);
   assert.throws(() => buildCandidateConfiguration([{ field: "notAFormulaField", value: 1 }]), /Unknown or invalid/);
-   assert.throws(() => buildCandidateConfiguration([{ field: "patienceEntryBufferTicks", value: 2 }]), /exactly eight MES ticks/);
+   assert.throws(() => buildCandidateConfiguration([{ field: "patienceEntryBufferTicks", value: 2 }]), /exactly four MES ticks/);
 });
 
 test("candidate preserves non-default parent settings while changing only the typed rule", () => {
   const { parent, candidate } = buildCandidateConfiguration(
-     [{ field: "patienceEntryBufferTicks", value: 8 }],
-     { phase4BreakoutVolumeRatio: 1.9, patienceEntryBufferTicks: 8 },
+     [{ field: "patienceEntryBufferTicks", value: 4 }],
+      { phase4BreakoutVolumeRatio: 1.9, patienceEntryBufferTicks: 4 },
   );
    assert.equal(parent.phase4BreakoutVolumeRatio, 1.9);
    assert.equal(candidate.phase4BreakoutVolumeRatio, 1.9);
-   assert.equal(parent.patienceEntryBufferTicks, 8);
-   assert.equal(candidate.patienceEntryBufferTicks, 8);
+    assert.equal(parent.patienceEntryBufferTicks, 4);
+    assert.equal(candidate.patienceEntryBufferTicks, 4);
 });

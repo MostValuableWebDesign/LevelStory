@@ -20,7 +20,7 @@ export interface EdgeValidationPilotRequest {
      * @items.pattern ^\d{4}-\d{2}-\d{2}$
      */
   selectedDates: string[];
-  /** Exactly 8 MES ticks / 2.00 index points. */
+  /** Exactly 4 MES ticks / 1.00 index point. */
   ohlcvEntryBufferTicks?: EdgeValidationPilotRequestOhlcvEntryBufferTicks;
   /** Exactly twelve MES ticks beyond the frozen patience-candle extreme. */
   ohlcvStopBufferTicks?: EdgeValidationPilotRequestOhlcvStopBufferTicks;

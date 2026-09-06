@@ -30,7 +30,7 @@ export interface VisualValidationTeachingExample {
   entryCandleCloseTime: Date;
   patienceCandleOpenTime: Date;
   patienceCandleCloseTime: Date;
-  /** Exactly 8 MES ticks / 2.00 index points. */
+  /** Exactly 4 MES ticks / 1.00 index point. */
   entryBufferTicks: VisualValidationTeachingExampleEntryBufferTicks;
   /** MES ticks; approved MES tolerances only. */
   levelToleranceTicks: VisualValidationTeachingExampleLevelToleranceTicks;

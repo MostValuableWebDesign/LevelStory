@@ -140,7 +140,7 @@ test("deterministic bullish and bearish A+ fixtures qualify with the governed en
     assert.equal(snapshot.riskPlan.direction, direction, `seed ${seed}`);
     assert.equal(snapshot.shadowExecution?.contracts, 1, `seed ${seed}`);
 
-    assert.equal(snapshot.patience.entryBufferTicks, 8, `seed ${seed}`);
+    assert.equal(snapshot.patience.entryBufferTicks, 4, `seed ${seed}`);
     assert.equal(snapshot.patience.stopBufferTicks, 8, `seed ${seed}`);
     const patienceCandle = snapshot.patience.patienceCandle;
     assert.ok(patienceCandle, `seed ${seed} must expose P`);

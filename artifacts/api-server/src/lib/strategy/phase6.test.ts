@@ -66,8 +66,8 @@ function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE
     previousCandle: { openTime: 1, closeTime: 2, open: 10, high: 10.4, low: 9.6, close: 10.1, isComplete: true },
     patienceCandle: { openTime: 2, closeTime: 3, open: 10, high: 10.2, low: 9.8, close: 10.15, isComplete: true },
     triggerCandle: { openTime: 3, closeTime: 4, open: 10.15, high: 10.3, low: 10.1, close: 10.25, isComplete: true },
-    entryBufferTicks: 8,
-    entryBufferPrice: 12.2,
+    entryBufferTicks: 4,
+    entryBufferPrice: 11.2,
     stopBufferTicks: 1,
     strategyStopPrice: 9.55,
     triggerPrice: 10.2,
@@ -512,7 +512,7 @@ test("consolidation breakout closes outside its frozen pre-breakout range", () =
   assert.equal(result.rules.find((rule) => rule.key === "strongBreakout")?.passed, true);
 });
 
-test("Long effective threshold is max(P high + 8 ticks, zone high + 1 tick)", () => {
+test("Long effective threshold is max(P high + 4 ticks, zone high + 1 tick)", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -527,7 +527,7 @@ test("Long effective threshold is max(P high + 8 ticks, zone high + 1 tick)", ()
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 102.25, 104, 102, 103)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
     config,
     consolidationEvaluation: {
@@ -544,9 +544,9 @@ test("Long effective threshold is max(P high + 8 ticks, zone high + 1 tick)", ()
    assert.equal(result.entryClosedOutsideZone, true);
    assert.equal(result.entryRangeOutsideZone, false);
    assert.equal(result.entryRangeOverlappedZone, true);
-   assert.equal(result.patienceConfirmationThreshold, 102.25);
+    assert.equal(result.patienceConfirmationThreshold, 101.25);
    assert.equal(result.consolidationBoundaryThreshold, 100.75);
-   assert.equal(result.effectiveEntryThreshold, 102.25);
+    assert.equal(result.effectiveEntryThreshold, 101.25);
    assert.equal(result.effectiveEntryThresholdReached, true);
    assert.equal(result.entryOutsideFinalizedNtz, true);
    assert.equal(result.entryBeforeCutoff, true);
@@ -569,7 +569,7 @@ test("Wick outside with close inside is rejected", () => {
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 100.25, 106, 100, 105)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
     config,
     consolidationEvaluation: {
@@ -603,7 +603,7 @@ test("consolidation guard preserves the frozen boundary for breakout-pullback P 
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, breakout, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 103.75 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
     breakout: {
       detected: true,
@@ -625,7 +625,7 @@ test("consolidation guard preserves the frozen boundary for breakout-pullback P 
   assert.equal(result.consolidationZoneHigh, 100.5);
 });
 
-test("Short effective threshold is min(P low − 8 ticks, zone low − 1 tick); wick overlapping the zone with fill and close outside is accepted", () => {
+test("Short effective threshold is min(P low − 4 ticks, zone low − 1 tick); wick overlapping the zone with fill and close outside is accepted", () => {
   const base = Date.parse("2026-08-25T13:45:00.000Z");
   const zoneCandles = [
     candle(base, 100, 100.5, 99.5, 100),
@@ -640,7 +640,7 @@ test("Short effective threshold is min(P low − 8 ticks, zone low − 1 tick); 
   const result = evaluateConsolidationEntryGuard({
     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 102, low: 101, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 97.75 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 98.75 },
     direction: "short",
     config,
     consolidationEvaluation: {
@@ -653,9 +653,9 @@ test("Short effective threshold is min(P low − 8 ticks, zone low − 1 tick); 
   assert.equal(result.entryOpenedOutsideZone, false);
   assert.equal(result.entryClosedOutsideZone, true);
   assert.equal(result.entryRangeOverlappedZone, true);
-  assert.equal(result.patienceConfirmationThreshold, 97.75);
+   assert.equal(result.patienceConfirmationThreshold, 98.75);
   assert.equal(result.consolidationBoundaryThreshold, 99.25);
-  assert.equal(result.effectiveEntryThreshold, 97.75);
+   assert.equal(result.effectiveEntryThreshold, 98.75);
   assert.equal(result.effectiveEntryThresholdReached, true);
   assert.equal(result.entryFillOutsideZone, true);
 });
@@ -671,11 +671,11 @@ test("Close outside with threshold not reached is rejected", () => {
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
   const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-  const e = candle(base + 1_200_000, 100.1, 101.5, 100, 101);
+   const e = candle(base + 1_200_000, 100.1, 101, 100, 101);
   const result = evaluateConsolidationEntryGuard({
     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 12, entryBufferPrice: 103 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
     config,
     consolidationEvaluation: {
@@ -705,7 +705,7 @@ test("Fill exactly on the boundary is rejected", () => {
   const result = evaluateConsolidationEntryGuard({
     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
-    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 8, entryBufferPrice: 102.25 },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     entryFillPrice: 100.5,
     direction: "long",
     config,

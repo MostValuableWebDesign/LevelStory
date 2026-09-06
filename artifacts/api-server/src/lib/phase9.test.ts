@@ -92,12 +92,12 @@ function trade(netPnl: number, overrides: Partial<BacktestTrade> = {}): Backtest
   };
 }
 
-test("API contracts accept only the governed eight-tick entry buffer", () => {
+test("API contracts accept only the governed four-tick entry buffer", () => {
   const defaults = RunBacktestBody.safeParse({});
   assert.equal(defaults.success, true);
-  if (defaults.success) assert.equal(defaults.data.ohlcvEntryBufferTicks, 8);
-  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 8 }).success, true);
-  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 7 }).success, false);
+  if (defaults.success) assert.equal(defaults.data.ohlcvEntryBufferTicks, 4);
+  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 4 }).success, true);
+  assert.equal(RunBacktestBody.safeParse({ ohlcvEntryBufferTicks: 8 }).success, false);
 });
 
 function replayCandle(openTime: number, contractSymbol: string, base: number): SimulatedFuturesCandle {
@@ -717,7 +717,7 @@ function occurrenceAudit(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
-    confirmationBufferTicks: 8,
+     confirmationBufferTicks: 4,
     consolidationThresholds: consolidationThresholds(DEFAULT_STRATEGY_CONFIG),
     pullbackOccurrences: [{
       type: "touch",
@@ -735,14 +735,14 @@ function occurrenceAudit(
     patienceOccurrences: [{
       occurrenceId: "p1",
       direction: "long",
-      entryBufferTicks: 8,
+      entryBufferTicks: 4,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: lOpen,
       previousComparisonTimestamp: lCandle.openTime,
       candidateShapeResult: true,
       expectedEntryCandleOpenTime: eCandle.openTime,
-      confirmationThreshold: 104,
+      confirmationThreshold: 103,
       actualConfirmationExcursion: 3,
       previousCandle: lCandle,
       patienceCandle: pCandle,
@@ -775,7 +775,7 @@ test("historical occurrence ledger is repeatable and retains causal L/P/E eviden
   assert.deepEqual(report, repeat);
   const patience = report.find((occurrence) => occurrence.kind === "patience");
   assert.ok(patience);
-   assert.equal(patience.confirmationBufferTicks, 8);
+   assert.equal(patience.confirmationBufferTicks, 4);
   assert.equal(patience.lCandle?.openTime, 300_000);
   assert.equal(patience.patienceCandle?.openTime, 600_000);
   assert.equal(patience.entryCandle?.openTime, 900_000);
@@ -801,14 +801,14 @@ test("historical occurrence thresholds do not inherit a stale consolidation P to
     patienceOccurrences: [{
       occurrenceId: "later-p-e",
       direction: "long",
-      entryBufferTicks: 8,
+      entryBufferTicks: 4,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
       previousComparisonTimestamp: 600_000,
       candidateShapeResult: true,
       expectedEntryCandleOpenTime: 900_000,
-      confirmationThreshold: 108,
+      confirmationThreshold: 103,
       actualConfirmationExcursion: 4,
       previousCandle: {
         openTime: 300_000, closeTime: 600_000, open: 100, high: 103, low: 99, close: 101, volume: 10, isComplete: true,
@@ -829,8 +829,8 @@ test("historical occurrence thresholds do not inherit a stale consolidation P to
   const occurrence = buildHistoricalOccurrenceLedger(occurrenceDataset(), [audit], [])
     .find((item) => item.kind === "patience");
   assert.ok(occurrence);
-  assert.equal(occurrence.confirmationThreshold, 108);
-  assert.equal(occurrence.consolidationGuard?.effectiveEntryThreshold, 108);
+   assert.equal(occurrence.confirmationThreshold, 103);
+   assert.equal(occurrence.consolidationGuard?.effectiveEntryThreshold, 103);
   assert.equal(occurrence.consolidationGuard?.patienceOpenTime, new Date(600_000).toISOString());
   assert.equal(occurrence.consolidationGuard?.entryOpenTime, new Date(900_000).toISOString());
 });
@@ -877,7 +877,7 @@ test("historical occurrences preserve exact L identity, all same-candle levels, 
     patienceOccurrences: [{
       occurrenceId: "p1",
       direction: "long",
-      entryBufferTicks: 8,
+      entryBufferTicks: 4,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -2517,7 +2517,7 @@ test("ledger retains an expired patience attempt without inventing an E candle",
     patienceOccurrences: [{
       occurrenceId: "expired-p1",
       direction: "long",
-      entryBufferTicks: 8,
+       entryBufferTicks: 4,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -2574,7 +2574,7 @@ test("failed immediate confirmation remains a no-trade patience occurrence", () 
     patienceOccurrences: [{
       occurrenceId: "failed-p1",
       direction: "long",
-      entryBufferTicks: 8,
+       entryBufferTicks: 4,
       stopBufferTicks: 1,
       eligibilityReason: "pullback",
       eligibilityTime: 300_000,
@@ -2627,14 +2627,14 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
   const expired: NonNullable<BacktestAuditRecord["patienceOccurrences"]>[number] = {
     occurrenceId: "expired-p1",
     direction: "long",
-    entryBufferTicks: 8,
+     entryBufferTicks: 4,
     stopBufferTicks: 1,
     eligibilityReason: "pullback",
     eligibilityTime: 300_000,
     previousComparisonTimestamp: previous.openTime,
     candidateShapeResult: true,
     expectedEntryCandleOpenTime: failedImmediate.openTime,
-    confirmationThreshold: 102.75,
+     confirmationThreshold: 103,
     actualConfirmationExcursion: 0.5,
     previousCandle: previous,
     patienceCandle: expiredPatience,
@@ -2642,7 +2642,7 @@ test("only the exact confirmed P2 to E2 occurrence inherits a qualified trade", 
     nextObservedCandle: failedImmediate,
     outcomeStatus: "EXPIRED_NO_IMMEDIATE_CONFIRMATION",
     status: "PATIENCE_CANDLE_EXPIRED",
-    reasonCode: "10:10 failed to reach the eight-tick confirmation buffer.",
+     reasonCode: "10:10 failed to reach the four-tick confirmation buffer.",
     evaluationCursor: failedImmediate.closeTime,
   };
   const audit = { ...base, patienceOccurrences: [expired, confirmed] };

@@ -7,7 +7,7 @@ import {
 import type { NtzEvent, NtzRange } from "./levels.js";
 import type { Candle, Direction, TrendDirection } from "./types.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
-import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
+import { DEFAULT_STRATEGY_CONFIG, PATIENCE_ENTRY_BUFFER_TICKS } from "./config.js";
 import { MAX_STOP_BUFFER_TICKS, MIN_STOP_BUFFER_TICKS } from "./execution-management.js";
 
 export type PatienceState =
@@ -246,7 +246,7 @@ export function authoritativePatienceStopPrice(
   stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
   tickSize = 0.25,
 ): number {
-  validateBuffers(tickSize, 8, stopBufferTicks);
+  validateBuffers(tickSize, PATIENCE_ENTRY_BUFFER_TICKS, stopBufferTicks);
   const stop = direction === "long"
     ? patienceExtreme - stopBufferTicks * tickSize
     : patienceExtreme + stopBufferTicks * tickSize;
@@ -279,7 +279,7 @@ export function patienceCandleEngine(
   const eligibility = [...(options.eligibilityEvents ?? [])].sort((first, second) => first.time - second.time);
   const trend = options.trend ?? (direction === "long" ? "bullish" : "bearish");
   const tickSize = options.tickSize ?? 0.25;
-  const entryBufferTicks = options.entryBufferTicks ?? 8;
+  const entryBufferTicks = options.entryBufferTicks ?? PATIENCE_ENTRY_BUFFER_TICKS;
   const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
   const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
@@ -454,7 +454,7 @@ export function phase5PatienceAnalysis(
   minimumEligibilityTime?: number | null,
   trend: TrendDirection = "neutral",
   tickSize = 0.25,
-  entryBufferTicks = 8,
+  entryBufferTicks = PATIENCE_ENTRY_BUFFER_TICKS,
   stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
   allowOpposingTrend = false,
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
@@ -553,7 +553,7 @@ export function earlyOrbMomentumPatienceAnalysis(
   },
 ): PatienceAnalysis {
   const tickSize = options.tickSize ?? 0.25;
-  const entryBufferTicks = options.entryBufferTicks ?? 8;
+  const entryBufferTicks = options.entryBufferTicks ?? PATIENCE_ENTRY_BUFFER_TICKS;
   const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const cutoff = options.entryCutoffMinutes ?? 630;
   const minimumDistance = options.minimumCloseDistanceTicks ?? 1;
@@ -910,7 +910,7 @@ function directionTrendMatches(direction: Direction, trend: TrendDirection): boo
 
 function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferTicks: number): void {
   if (!Number.isFinite(tickSize) || tickSize <= 0) throw new Error("Patience tick size must be finite and positive.");
-  if (entryBufferTicks !== 8) throw new Error("Patience entry confirmation buffer must be exactly eight MES ticks (2.00 index points).");
+  if (entryBufferTicks !== PATIENCE_ENTRY_BUFFER_TICKS) throw new Error("Patience entry confirmation buffer must be exactly four MES ticks (1.00 index point).");
   const isLegacyFixedBuffer = stopBufferTicks === DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const isAdaptiveBuffer = Number.isInteger(stopBufferTicks)
     && stopBufferTicks >= MIN_STOP_BUFFER_TICKS

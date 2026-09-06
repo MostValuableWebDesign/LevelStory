@@ -38,7 +38,7 @@ export type StrategyConfig = {
   runnerTriggerR: number;
   noLevelBreakevenActivationBars: number;
   levelTolerance: number;
-  patienceEntryBufferTicks: 8;
+  patienceEntryBufferTicks: typeof PATIENCE_ENTRY_BUFFER_TICKS;
   patienceStopBufferTicks: number;
   dojiBodyRatio: number;
   equivalentBodyTolerance: number;
@@ -95,6 +95,7 @@ export type StrategyConfig = {
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
 export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 6;
 export const SHADOW_CONTRACTS_PER_TRADE = DEFAULT_FIXED_CONTRACTS;
+export const PATIENCE_ENTRY_BUFFER_TICKS = 4;
 
 export type ConsolidationThresholds = {
   version: string;
@@ -164,7 +165,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   runnerTriggerR: 1.5,
   noLevelBreakevenActivationBars: DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
-  patienceEntryBufferTicks: 8,
+  patienceEntryBufferTicks: PATIENCE_ENTRY_BUFFER_TICKS,
   patienceStopBufferTicks: 8,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
@@ -345,8 +346,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     || config.noLevelBreakevenActivationBars <= 0) {
     throw new Error("Invalid strategy configuration: noLevelBreakevenActivationBars must be a positive whole number.");
   }
-  if (config.patienceEntryBufferTicks !== 8) {
-    throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly eight MES ticks (2.00 index points).");
+  if (config.patienceEntryBufferTicks !== PATIENCE_ENTRY_BUFFER_TICKS) {
+    throw new Error("Invalid strategy configuration: patienceEntryBufferTicks must be exactly four MES ticks (1.00 index point).");
   }
   if (!Number.isInteger(config.executionManagementFixedContracts)
     || ![1, 2].includes(config.executionManagementFixedContracts)) {
