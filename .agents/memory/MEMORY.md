@@ -62,3 +62,4 @@
 - [Strategy registration surfaces](strategy-registration-surfaces.md) — new strategy IDs must reach replay selection and dashboard performance allowlists, not just taxonomy and evaluators.
 - [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.
 - [Unlimited confirmed entries](unlimited-confirmed-entries.md) — evaluate every eligible Early ORB P→E sequence; do not cap confirmed entries per direction.
+- [Early ORB provenance](early-orb-provenance.md) — identify merged Early ORB occurrences from arm/provenance metadata, not only optional evidence or canonical strategy labels.

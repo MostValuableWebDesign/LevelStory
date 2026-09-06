@@ -3051,6 +3051,7 @@ export function buildHistoricalOccurrenceLedger(
     const primaryByEvidence = existing.kind === "patience" && value.kind === "patience"
       ? compareEvidence(existing, value)
       : primaryByEdge;
+    const earlyOrbEvidence = value.earlyOrbEvidence ?? existing.earlyOrbEvidence;
     const selectedTargetSnapshot = preferredTargetLevelSnapshot(
       [existing.targetLevelSnapshot, value.targetLevelSnapshot],
       primaryByEvidence,
@@ -3124,6 +3125,7 @@ export function buildHistoricalOccurrenceLedger(
         ...(existing.matchedEdges ?? [existing.primaryEdge ?? existing.strategyCandidate]),
         ...(value.matchedEdges ?? [value.primaryEdge ?? value.strategyCandidate]),
       ])].sort(),
+      ...(earlyOrbEvidence ? { earlyOrbEvidence } : {}),
       ...(existing.kind === "patience" && value.kind === "patience" ? {
          status: patienceStatusRank(value.status) > patienceStatusRank(existing.status) ? value.status : existing.status,
         canonicalOccurrence: true,
@@ -3663,7 +3665,21 @@ function candidateNtzEligibility(occurrence: HistoricalOccurrence): { eligible: 
   return { eligible: true };
 }
 
+function isEarlyOrbOccurrence(occurrence: HistoricalOccurrence): boolean {
+  return [
+    occurrence.strategyCandidate,
+    occurrence.primaryEdge,
+    ...(occurrence.secondaryStrategyMatches ?? []),
+    ...(occurrence.matchedEdges ?? []),
+  ].filter((edge): edge is string => Boolean(edge))
+    .some((edge) => canonicalStrategyId(edge) === "EARLY_ORB_MOMENTUM_CONTINUATION")
+    || occurrence.earlyOrbEvidence?.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION"
+    || occurrence.eligibilityArmId?.startsWith("early-orb|") === true
+    || occurrence.eligibilityProvenance?.reason === "early orb momentum";
+}
+
 function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { reasonCodes: string[]; details: string[] } | null {
+  if (isEarlyOrbOccurrence(occurrence)) return null;
   if (canonicalStrategyId(occurrence.strategyCandidate) !== "ORB_PULLBACK_CONTINUATION") return null;
   const hasExecutablePrimaryLevel = occurrence.levelIdentifiers.some((level) =>
     !level.trim().toLowerCase().startsWith("fib")
@@ -4490,7 +4506,7 @@ function candidateLifecycleRejection(
   // Early ORB candidates open their own independent arm at P. They do not
   // belong to the pullback lifecycle ledger, so requiring a pullback lifecycle
   // record would incorrectly hide valid Early ORB candidates from Visual Review.
-  if (primaryEdge === "EARLY_ORB_MOMENTUM_CONTINUATION") return null;
+  if (primaryEdge === "EARLY_ORB_MOMENTUM_CONTINUATION" || isEarlyOrbOccurrence(occurrence)) return null;
   const armId = occurrence.eligibilityArmId;
   if (!armId) return null;
   if (occurrence.eligibilityArmState === "invalidated" || occurrence.eligibilityArmState === "superseded") {

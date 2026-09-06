@@ -411,6 +411,40 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
   return [...candidateById.values()];
 }
 
+function visualTradeCandidateIdentity(candidate: Pick<VisualValidationTradeCandidate, "signalOccurrenceId" | "contractSymbol" | "tradingDate" | "entryCandleOpenTime" | "entryCandleCloseTime" | "direction">): string {
+  return [
+    candidate.signalOccurrenceId,
+    candidate.contractSymbol,
+    candidate.tradingDate,
+    candidate.entryCandleOpenTime,
+    candidate.entryCandleCloseTime,
+    candidate.direction,
+  ].join("|");
+}
+
+function mergeVisualTradeCandidates(
+  candidates: readonly VisualValidationTradeCandidate[],
+): VisualValidationTradeCandidate[] {
+  const merged = new Map<string, VisualValidationTradeCandidate>();
+  for (const candidate of candidates) {
+    const identity = visualTradeCandidateIdentity(candidate);
+    const existing = merged.get(identity);
+    if (!existing) {
+      merged.set(identity, { ...candidate });
+      continue;
+    }
+    existing.matchedEdges = [...new Set([...existing.matchedEdges, ...candidate.matchedEdges])];
+    existing.supportingConfluences = [...new Set([...existing.supportingConfluences, ...candidate.supportingConfluences])];
+    existing.causalEvidence = [
+      ...existing.causalEvidence,
+      ...candidate.causalEvidence.filter((evidence) => !existing.causalEvidence.some(
+        (item) => item.kind === evidence.kind && item.timestamp === evidence.timestamp,
+      )),
+    ];
+  }
+  return [...merged.values()];
+}
+
 function canonicalVisualEdgeId(edge: string): string {
   return ({
     ORB_PULLBACK_CONTINUATION: "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
@@ -2471,10 +2505,10 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
   ));
   const accountReplayTrades = buildAccountReplayTradesFromSnapshots(snapshots);
   const snapshotCandidates = buildTradeCandidates(snapshots);
-  const tradeCandidates = [...new Map([
+  const tradeCandidates = mergeVisualTradeCandidates([
     ...snapshotCandidates,
     ...accountReplayTrades.map((entry) => entry.candidate),
-  ].map((candidate) => [candidate.candidateId, candidate])).values()];
+  ]);
   const fixtureDataset = fixtures[0]?.dataset;
   const processedDates = fixtureDataset
     ? [...new Set([...fixtureDataset.inSampleDates, ...fixtureDataset.outOfSampleDates])].sort()
@@ -2626,10 +2660,10 @@ export function buildHistoricalVisualValidationSetFromReport(
   });
   const accountReplayTrades = buildAccountReplayTradesFromReport(report, snapshots);
   const snapshotCandidates = buildTradeCandidates(snapshots);
-  const tradeCandidates = [...new Map([
+  const tradeCandidates = mergeVisualTradeCandidates([
     ...snapshotCandidates,
     ...accountReplayTrades.map((entry) => entry.candidate),
-  ].map((candidate) => [candidate.candidateId, candidate])).values()];
+  ]);
   const funnelDiagnostics = report.dataset && report.contract
     ? (() => {
         const funnel = buildQualificationFunnel([report as Pick<BacktestReport, "audit" | "trades" | "dataset" | "contract">]);

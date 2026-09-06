@@ -1336,6 +1336,88 @@ test("confirmed Early ORB candidates do not require pullback lifecycle records",
   assert.equal(result.rejected.length, 0);
 });
 
+test("confirmed Early ORB candidates do not require ORB pullback level interaction", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "early-orb|short|1787666400000",
+    eligibilityArmState: "active",
+  });
+  occurrence.strategyCandidate = "ORB_PULLBACK_CONTINUATION";
+  occurrence.primaryEdge = "ORB_PULLBACK_CONTINUATION";
+  occurrence.matchedEdges = ["ORB_PULLBACK_CONTINUATION", "EARLY_ORB_MOMENTUM_CONTINUATION"];
+  occurrence.levelIdentifiers = ["Fibonacci"];
+  occurrence.levelInteractionTypes = { Fibonacci: ["touch"] };
+  occurrence.earlyOrbEvidence = {
+    strategy: "EARLY_ORB_MOMENTUM_CONTINUATION",
+    direction: "long",
+    armId: occurrence.eligibilityArmId,
+  };
+
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.rejected.length, 0);
+});
+
+test("an Early ORB secondary edge preserves an independently confirmed candidate", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+  });
+  occurrence.strategyCandidate = "ORB_PULLBACK_CONTINUATION";
+  occurrence.primaryEdge = "ORB_PULLBACK_CONTINUATION";
+  occurrence.secondaryStrategyMatches = ["EARLY_ORB_MOMENTUM_CONTINUATION"];
+  occurrence.matchedEdges = ["ORB_PULLBACK_CONTINUATION", "EARLY_ORB_MOMENTUM_CONTINUATION"];
+  occurrence.levelIdentifiers = ["Fibonacci"];
+  occurrence.levelInteractionTypes = { Fibonacci: ["touch"] };
+
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.rejected.length, 0);
+});
+
+test("an Early ORB eligibility arm preserves a candidate when edge labels are canonicalized to ORB", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+  });
+  occurrence.strategyCandidate = "ORB_PULLBACK_CONTINUATION";
+  occurrence.primaryEdge = "ORB_PULLBACK_CONTINUATION";
+  occurrence.secondaryStrategyMatches = [];
+  occurrence.matchedEdges = ["ORB_PULLBACK_CONTINUATION"];
+  occurrence.eligibilityArmId = "early-orb|short|1756126800000";
+  occurrence.eligibilityProvenance = {
+    eventId: occurrence.eligibilityArmId,
+    reason: "early orb momentum",
+    time: Date.parse(occurrence.patienceTimestamp),
+    detail: "Early ORB arm confirmed on its immediate E candle.",
+  };
+  occurrence.levelIdentifiers = ["Fibonacci"];
+  occurrence.levelInteractionTypes = { Fibonacci: ["touch"] };
+
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.rejected.length, 0);
+});
+
 test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {
   const patienceTimestamp = "2026-08-25T13:55:00.000Z";
   const entryTimestamp = "2026-08-25T14:00:00.000Z";
