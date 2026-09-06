@@ -1,0 +1,301 @@
+Copy and paste this prompt:
+Inspect the previous requirements, previous Codex session, and current repository before making changes.
+
+Previous Codex session:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 28/
+
+Finish and correct the existing implementation of:
+
+EARLY_ORB_MOMENTUM_CONTINUATION
+
+Do not redesign or weaken the existing ORB pullback, consolidation, patience-continuation, or reversal strategies. Early ORB Momentum must remain a separate, independently configurable setup.
+
+The detector already exists, but the implementation is incomplete. Verify each issue directly in the current code and fix the entire executable path—not only the unit-level detector.
+
+1. Correct Phase 9 Early ORB evidence propagation
+
+`auditForEvaluation` selects `signalPatience`, including `snapshot.earlyOrbMomentum`, but then populates many audit fields from `snapshot.patience`.
+
+For EARLY_ORB_MOMENTUM_CONTINUATION, use the selected `signalPatience` consistently for:
+
+- Patience state
+- Patience candle
+- Entry/trigger candle
+- P and E timestamps
+- Patience-candle extreme
+- Entry-buffer ticks and price
+- Confirmation threshold
+- Strategy stop boundary
+- Patience occurrences
+- Eligibility arm ID, state, reason, and provenance
+- Historical occurrence ledger
+- Candidate projection
+- Visual Review evidence
+- Shadow Account Replay evidence
+
+Do not silently fall back to normal pullback patience when valid Early ORB evidence should exist. If required Early ORB evidence is missing, reject the candidate with an explicit deterministic reason.
+
+Ensure the Early ORB P→E occurrence generates the same complete candidate, execution, management, audit, and P/L representation as every other generated candidate.
+
+2. Enforce one attempt per direction correctly
+
+The current detector combines long and short candidates and selects only the first candidate overall. Replace this behavior.
+
+Rules:
+
+- Allow a maximum of one Early ORB attempt for long per trading session.
+- Allow a maximum of one Early ORB attempt for short per trading session.
+- A failed long attempt must not prevent evaluation of the first valid short attempt.
+- A failed short attempt must not prevent evaluation of the first valid long attempt.
+- After an Early ORB trade is entered in one direction, do not enter another Early ORB trade in that same direction during that session.
+- Never permit a later candle to reuse an expired P.
+- Preserve causal evaluation at every replay cursor without reading future candles.
+- Maintain deterministic strategy priority and physical-trade deduplication.
+
+Represent both directional occurrences when applicable and select only an occurrence whose immediate E is valid at the current causal cursor.
+
+3. Correct the 10:30 AM ET cutoff
+
+The cutoff applies to the P/arm-creation candle’s OPEN time.
+
+Eligibility must be:
+
+`P.openTime < 10:30 AM ET`
+
+Do not require P to close before 10:30.
+
+A valid 10:25–10:30 P candle is eligible. Its immediately adjacent 10:30–10:35 E candle may confirm the trade after E completes.
+
+Do not reject that E merely because it opens at 10:30.
+
+Continue requiring:
+
+- A finalized ORB before P opens.
+- A completed five-minute P.
+- A completed, immediately adjacent five-minute E before authoritative entry.
+- No entry inside P.
+
+Replace misleading hard-coded cutoff messages such as “1:00 p.m. ET” with messages generated from the configured Early ORB cutoff.
+
+4. Enforce close-back-inside-ORB invalidation
+
+The immediate E candle must invalidate the Early ORB attempt if its completed close returns inside or onto the finalized ORB:
+
+Long invalidation:
+
+`E.close <= FinalizedOrbHigh`
+
+Short invalidation:
+
+`E.close >= FinalizedOrbLow`
+
+This invalidation must remain authoritative even if E’s intrabar high or low touched the buffered entry threshold.
+
+Do not qualify entry based only on E’s high/low when E closes back inside the ORB.
+
+Record a specific reason such as:
+
+`EARLY_ORB_E_CLOSED_BACK_INSIDE_FINALIZED_ORB`
+
+Preserve the existing conservative OHLCV ambiguity and adverse-first sequencing rules.
+
+5. Expose the configuration controls
+
+Keep:
+
+`earlyOrbMomentumContinuationEnabled`
+
+Recommended default:
+
+`false`
+
+Expose the following through the governed strategy configuration workflow and the appropriate Visual Review rule controls:
+
+- Enable/disable Early ORB Momentum Continuation
+- Eligibility cutoff, default 10:30 AM ET
+- Minimum close distance outside ORB, default one MES tick
+- Maximum attempts per direction, fixed/default one
+
+Update API schemas, generated clients, validation, persistence, active-strategy activation, and frontend controls as needed.
+
+Do not limit the proposal/configuration allowlist to only `patienceEntryBufferTicks` if that prevents these Early ORB settings from being configured.
+
+Changing any of these settings must change the formula hash and invalidate stale generated review sets.
+
+6. Preserve the intended relaxed eligibility
+
+Early ORB Momentum must not require:
+
+- A prior pullback arm
+- A pullback interaction
+- Price above or below VWAP
+- Price above or below the 200 MA
+- VWAP or MA slope
+- Minimum candle-body percentage
+- Close-location percentage
+- Strong-volume classification
+- Specific candle color
+
+VWAP, 200 MA, volume, candle shape, and trend may remain diagnostic or supporting evidence only. They must not control eligibility.
+
+Momentum-arm creation remains:
+
+Long:
+`P.close >= FinalizedOrbHigh + 0.25`
+
+Short:
+`P.close <= FinalizedOrbLow - 0.25`
+
+The same completed candle creates the arm and serves as P.
+
+Entry remains:
+
+Long:
+`EntryThreshold = P.high + 8 MES ticks`
+
+Short:
+`EntryThreshold = P.low - 8 MES ticks`
+
+Only the immediately adjacent E candle can confirm it.
+
+7. Preserve authoritative management and rejection behavior
+
+Use the existing shared adaptive management engine:
+
+- Adaptive ATR stop buffer
+- Maximum structural-risk rejection
+- Adaptive key-level target
+- 1R fallback
+- One-contract exit behavior
+- Two-contract partial and runner behavior
+- Runner breakeven timing
+- Confirmed-swing trailing
+- Conservative OHLCV ambiguity handling
+
+Enforce `STOP_DISTANCE_TOO_WIDE` and `INSUFFICIENT_REWARD_TO_RISK` before an entered trade contributes P/L.
+
+Rejected candidates must remain visible with their diagnostics but must not be counted as entered trades or included in realized P/L.
+
+Starting balance must not affect signal eligibility or management decisions.
+
+8. Complete the audit evidence
+
+Persist and display:
+
+- Setup name
+- Trading date
+- Direction
+- Arm ID
+- ORB high and low
+- ORB finalization timestamp
+- Arm-creation/P candle OHLC and timestamps
+- Distance outside the ORB in points and ticks
+- Immediately adjacent E candle OHLC and timestamps
+- Buffered entry threshold
+- Adaptive stop evidence
+- Target-plan evidence or 1R fallback
+- Contract legs and runner events
+- Rejection and ambiguity reasons
+- Formula version and hash
+- Source fingerprint
+- Realized P/L
+
+Display an explanation equivalent to:
+
+“Early ORB momentum arm created by the first completed close outside the finalized ORB. No prior pullback arm was required. Entry remained conditional on the immediately following candle reaching the standard eight-tick buffered threshold.”
+
+9. Deduplicate physical trades
+
+Use the canonical physical P→E identity:
+
+- Contract
+- Trading date
+- Direction
+- P candle
+- E candle
+- Effective threshold
+
+If Early ORB Momentum and another setup identify the same physical trade:
+
+- Produce one candidate and one trade.
+- Preserve deterministic setup priority.
+- Record the other qualifying setup as a matched/supporting edge.
+- Count P/L, funnel statistics, and replay attributes exactly once.
+
+10. Add comprehensive tests
+
+Add deterministic tests proving:
+
+- Toggle disabled preserves existing output.
+- Finalized ORB is required.
+- P must occur after ORB finalization.
+- A one-tick outside close creates P.
+- The same candle creates the arm and serves as P.
+- No prior pullback is required.
+- VWAP does not affect eligibility.
+- 200 MA does not affect eligibility.
+- MA slope does not affect eligibility.
+- Volume does not affect eligibility.
+- Candle-body ratio does not affect eligibility.
+- Close-location ratio does not affect eligibility.
+- No entry occurs during P.
+- Only the immediately adjacent E can confirm.
+- A later non-adjacent candle cannot confirm.
+- The eight-tick buffer is used.
+- A 10:25 P with a 10:30 E remains eligible.
+- A P opening at 10:30 is ineligible.
+- An E closing back inside the ORB invalidates, even after touching the threshold.
+- Failed long does not block the first short attempt.
+- Failed short does not block the first long attempt.
+- Only one entered attempt per direction is permitted.
+- Long and short behavior is symmetric.
+- Adaptive stops and targets are used.
+- Management rejections exclude entered P/L.
+- Duplicate physical trades merge.
+- Phase 9 uses Early ORB evidence instead of normal pullback patience.
+- Visual Review displays the complete Early ORB candidate.
+- Combined multi-date replay includes its P/L exactly once.
+- One- and two-contract replay behave correctly.
+
+Include at least one true end-to-end historical fixture passing through:
+
+detector → Phase 6 → Phase 9 → candidate projection → Visual Review set → Shadow Account Replay → aggregate P/L
+
+11. Versioning and verification
+
+Bump all affected versions, including:
+
+- Formula version
+- Strategy-engine version
+- Visual Review cache-key version
+- Candidate-projection version
+- Snapshot-projection version
+- Any execution/audit projection version whose serialized output changed
+
+Run:
+
+- Focused Early ORB tests
+- Phase 5 and Phase 6 tests
+- Phase 9 and historical replay tests
+- Visual Review generation/projection tests
+- Shadow Account Replay tests
+- Deduplication and combined multi-date tests
+- Complete API typecheck
+- Frontend typecheck
+- Frontend production build
+- `git diff --check`
+
+Do not claim completion based only on detector unit tests.
+
+Report:
+
+- Root causes found
+- Files changed
+- Exact behavior corrected
+- Tests and checks executed
+- Pass/fail totals
+- Any remaining validation limitations
+- Whether a real historical Visual Review generation and combined replay were successfully completed
