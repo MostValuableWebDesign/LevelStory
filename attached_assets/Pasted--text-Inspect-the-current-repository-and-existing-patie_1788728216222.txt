@@ -1,0 +1,192 @@
+```text
+Inspect the current repository and existing patience-candle implementation before editing.
+
+Change the standard patience-candle entry confirmation buffer from 8 MES ticks to 4 MES ticks.
+
+New rule:
+
+Long:
+`EntryThreshold = PatienceCandleHigh + 4 MES ticks`
+
+Short:
+`EntryThreshold = PatienceCandleLow - 4 MES ticks`
+
+For MES:
+
+- Tick size: 0.25 points
+- Four ticks: 1.00 point
+
+Apply this consistently to every strategy that uses the shared patience-candle confirmation rule, including:
+
+- ORB Pullback Continuation
+- Early ORB Momentum Continuation
+- Patience Candle Continuation
+- Consolidation Breakout Continuation when it uses the shared patience threshold
+- Reversal setups that use the same patience-entry engine
+
+Do not change a strategy that intentionally defines a separate entry formula. Document any such exception.
+
+Requirements:
+
+1. Entry confirmation
+
+- P must be completed before E begins.
+- No entry may occur inside P.
+- Only the immediately adjacent E candle may confirm.
+- Long E must actually reach `P.high + 4 ticks`.
+- Short E must actually reach `P.low - 4 ticks`.
+- A later candle cannot reuse an expired P.
+- E must be completed before the generated trade becomes authoritative.
+- Preserve gap-through-entry handling.
+- Preserve conservative OHLCV ambiguity handling.
+- Preserve finalized ORB/NTZ boundary requirements.
+- Early ORB E-close-back-inside invalidation remains authoritative.
+
+2. Configuration
+
+Change the built-in default:
+
+`patienceEntryBufferTicks: 8`
+
+to:
+
+`patienceEntryBufferTicks: 4`
+
+Update all validation that currently requires exactly eight ticks.
+
+Update any literal types such as:
+
+`ohlcvEntryBufferTicks?: 8`
+
+so the authoritative four-tick value is supported consistently.
+
+Do not leave hidden eight-tick constants, fallback values, labels, tooltips, descriptions, or test fixtures in executable paths.
+
+3. Visual Review
+
+Update the Visual Review interface to display:
+
+“Patience entry buffer: 4 MES ticks / 1.00 point”
+
+If the value is configurable from the generation page, default it to four ticks.
+
+Generated candidates must display the actual four-tick threshold used for that candidate.
+
+Update Early ORB explanatory text from “standard eight-tick buffered threshold” to “standard four-tick buffered threshold.”
+
+4. Historical replay and P/L
+
+Apply the four-tick entry threshold consistently in:
+
+- Market snapshot generation
+- Historical Phase 9 replay
+- Candidate creation
+- Visual Review
+- Combined multi-date generation
+- Shadow Account Replay
+- One- and two-contract replay
+- Entry audit evidence
+- Deduplication identities
+- Aggregate P/L calculations
+
+Do not recalculate entry using eight ticks anywhere downstream.
+
+Previously generated eight-tick review sets must be treated as stale and require regeneration. Do not silently reinterpret their stored trades as four-tick entries.
+
+5. Formula identity and versioning
+
+Include the four-tick setting in the formula hash and cache identity.
+
+Bump every affected version, including:
+
+- Formula version
+- Strategy-engine version
+- Visual Review cache version
+- Candidate-projection version
+- Snapshot-projection version
+- Execution/audit version if its serialized evidence changes
+
+A four-tick review set must never reuse an eight-tick cached result.
+
+6. Preserve all other rules
+
+Do not change:
+
+- Patience-candle identification
+- Pullback-arm requirements
+- Early ORB eligibility
+- ORB finalization
+- Entry cutoff times
+- Stop-loss formulas
+- Adaptive ATR stop buffer
+- Maximum structural risk
+- Profit-target selection
+- Reward-to-risk rejection
+- Breakeven and recovery
+- One- and two-contract management
+- Runner activation or trailing
+- Fees or slippage
+- Starting-balance behavior
+
+This request changes only the entry confirmation buffer from eight ticks to four ticks.
+
+7. Audit evidence
+
+Persist and display:
+
+- P high/low
+- Direction
+- Configured buffer: 4 ticks
+- Buffer distance: 1.00 point
+- Calculated entry threshold
+- Immediate E candle
+- Whether E reached the threshold
+- Modeled fill price
+- Formula version and hash
+
+Do not claim a four-tick entry when the stored evidence was generated with eight ticks.
+
+8. Tests
+
+Add or update deterministic tests proving:
+
+- Long threshold equals `P.high + 1.00`.
+- Short threshold equals `P.low - 1.00`.
+- A candle reaching three ticks does not enter.
+- A candle reaching exactly four ticks enters.
+- Entry cannot occur during P.
+- Only the adjacent E can confirm.
+- A later candle cannot confirm.
+- Gap-through behavior uses the four-tick threshold.
+- Early ORB uses four ticks.
+- E-close-back-inside-ORB still invalidates Early ORB.
+- Reversal and continuation paths use the intended shared value.
+- Four-tick and eight-tick formula hashes differ.
+- Old eight-tick review sets are rejected as stale.
+- Visual Review displays four ticks and the correct price.
+- Combined replay uses the four-tick modeled entry.
+- P/L is calculated from the resulting modeled fill.
+- One- and two-contract management remain unchanged.
+- Starting balance does not change entry eligibility.
+
+Run:
+
+- Phase 5 tests
+- Phase 6 tests
+- Phase 9 tests
+- Historical replay tests
+- Visual Review tests
+- Shadow Account Replay tests
+- API typecheck
+- Frontend typecheck
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Files changed
+- Every removed or updated eight-tick assumption
+- Versions bumped
+- Tests executed and pass/fail totals
+- Any remaining limitations
+```
