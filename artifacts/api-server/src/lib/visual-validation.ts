@@ -80,8 +80,28 @@ export type VisualValidationRequest = {
   premarketAvailable?: boolean;
   source?: "simulated" | "historical_databento";
   reviewMode?: VisualValidationReviewMode;
+  earlyOrbMomentum?: {
+    enabled: boolean;
+    eligibilityCutoffMinutes: number;
+    minimumCloseDistanceTicks: number;
+    maxAttemptsPerDirection: 1;
+  };
   regenerateFresh?: boolean;
 };
+
+export function withGovernedVisualValidationRequest(request: VisualValidationRequest): VisualValidationRequest {
+  const config = activeShadowStrategySnapshot().config;
+  const governed = {
+    enabled: config.earlyOrbMomentumContinuationEnabled,
+    eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
+    minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
+    maxAttemptsPerDirection: 1 as const,
+  };
+  if (request.earlyOrbMomentum && JSON.stringify(request.earlyOrbMomentum) !== JSON.stringify(governed)) {
+    throw new Error("Early ORB Momentum settings must match the active governed Shadow strategy configuration.");
+  }
+  return { ...request, earlyOrbMomentum: governed };
+}
 
 export type VisualValidationCandle = {
   openTime: string;
@@ -228,6 +248,7 @@ export type VisualValidationSnapshot = {
       breakout: MarketSnapshot["breakout"];
       pullback: MarketSnapshot["pullback"];
       patience: MarketSnapshot["patience"];
+      earlyOrbMomentum: MarketSnapshot["earlyOrbMomentum"];
       fibonacci: MarketSnapshot["fibonacci"];
       indicators: MarketSnapshot["indicators"];
       trend: MarketSnapshot["trend"];
@@ -2403,6 +2424,7 @@ function buildMachineSnapshot(
         breakout: evaluationSnapshot.breakout,
         pullback: evaluationSnapshot.pullback,
         patience: evaluationSnapshot.patience,
+        earlyOrbMomentum: evaluationSnapshot.earlyOrbMomentum,
         fibonacci: evaluationSnapshot.fibonacci,
         indicators: evaluationSnapshot.indicators,
         trend: evaluationSnapshot.trend,
@@ -2414,6 +2436,7 @@ function buildMachineSnapshot(
 }
 
 export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
+  request = withGovernedVisualValidationRequest(request);
   const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config);
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -2488,6 +2511,7 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
 export async function buildHistoricalVisualValidationSet(
   request: VisualValidationRequest,
 ): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> {
+  request = withGovernedVisualValidationRequest(request);
   return buildHistoricalVisualValidationSetInWorker(request, 300_000);
 }
 
@@ -2497,6 +2521,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
     & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates" | "rejectedCandidateSignals">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
+  request = withGovernedVisualValidationRequest(request);
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
     formulaHash: formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config),

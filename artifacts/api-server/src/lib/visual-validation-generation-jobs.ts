@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildHistoricalVisualValidationSet,
   buildVisualValidationSet,
+  withGovernedVisualValidationRequest,
   type VisualValidationRequest,
   type VisualValidationSet,
 } from "./visual-validation.js";
@@ -81,6 +82,7 @@ function requestKey(request: VisualValidationRequest): string {
     premarketAvailable: request.premarketAvailable !== false,
     source: request.source ?? "historical_databento",
     reviewMode: request.reviewMode ?? "trades_only",
+    earlyOrbMomentum: request.earlyOrbMomentum,
   });
 }
 
@@ -264,6 +266,7 @@ async function runJob(job: JobRecord): Promise<void> {
 
 export async function startVisualValidationGenerationJob(request: VisualValidationRequest): Promise<CandidateGenerationJob> {
   pruneJobs();
+  request = withGovernedVisualValidationRequest(request);
   const baseKey = requestKey(request);
   const pending = pendingStarts.get(baseKey);
   if (pending) return pending;

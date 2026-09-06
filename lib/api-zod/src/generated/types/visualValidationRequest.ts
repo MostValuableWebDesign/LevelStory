@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VisualValidationRequestEarlyOrbMomentum } from './visualValidationRequestEarlyOrbMomentum';
 import type { VisualValidationRequestReviewMode } from './visualValidationRequestReviewMode';
 import type { VisualValidationRequestSource } from './visualValidationRequestSource';
 import type { VisualValidationRequestSymbol } from './visualValidationRequestSymbol';
@@ -33,6 +34,8 @@ export interface VisualValidationRequest {
   source?: VisualValidationRequestSource;
   /** Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. */
   reviewMode?: VisualValidationRequestReviewMode;
+  /** Server-validated governed Early ORB Momentum settings captured with the deterministic review request. */
+  earlyOrbMomentum?: VisualValidationRequestEarlyOrbMomentum;
   /** Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. */
   regenerateFresh?: boolean;
 }

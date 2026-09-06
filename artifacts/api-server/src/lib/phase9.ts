@@ -42,6 +42,7 @@ import {
 import {
   isPatienceCandleOutsideNtz,
   patienceArmLifecycleTransitions,
+  type EarlyOrbMomentumEvidence,
   type PatienceEligibilityArmState,
   type PatienceOccurrence,
 } from "./strategy/phase5.js";
@@ -562,6 +563,7 @@ export type BacktestAuditRecord = {
     detail: string;
   }>;
   patienceOccurrences?: PatienceOccurrence[];
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   /** Causal completed-candle ATR snapshot used only by execution management. */
   atr14?: number | null;
 };
@@ -1099,6 +1101,7 @@ export type HistoricalOccurrence = {
     managementRejectionReason?: "STOP_DISTANCE_TOO_WIDE" | "INSUFFICIENT_REWARD_TO_RISK" | null;
   };
   targetLevelSnapshot?: TargetLevelSnapshot;
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence;
   /** Causal evidence copied from the source audit; labels are intentionally excluded. */
   causalEvidence?: {
     sourceAuditId: string;
@@ -2594,6 +2597,7 @@ function auditForEvaluation(
          detail: effectiveSignalPatience.eligibilityProvenance.detail ?? null,
        }
        : null,
+     earlyOrbEvidence: effectiveSignalPatience.earlyOrbEvidence ?? null,
     pullbackArmTransitions: (snapshot.pullback.armTransitions ?? []).map((transition) => ({
       ...transition,
       time: new Date(transition.time).toISOString(),
@@ -3459,6 +3463,23 @@ export function buildHistoricalOccurrenceLedger(
            confirmationEntryPrice: linkedTrade.entryPrice,
          } : {}),
           management: managementFromAudit(record, linkedTrade),
+          ...(patience.earlyOrbEvidence ? {
+            earlyOrbEvidence: {
+              ...patience.earlyOrbEvidence,
+              atrTicks: record.atr14 === null || record.atr14 === undefined
+                ? null
+                : record.atr14 / getFuturesContractSpecification(
+                  parseMesContractSymbol(record.contractSymbol)?.rootSymbol ?? "MES",
+                ).tickSize,
+              targetPlan: record.targetPlan ?? null,
+              contracts: record.contracts ?? null,
+              rejectionReason: record.rejectionReason,
+              formulaVersion: FIXED_FORMULA_VERSION,
+              formulaHash,
+              sourceFingerprint: fingerprint,
+              realizedPnl: linkedTrade?.netPnl ?? record.netPnl ?? null,
+            } satisfies EarlyOrbMomentumEvidence,
+          } : {}),
          ...(outcomeStatus !== "CANDIDATE"
             ? { signalStatus: outcomeStatus === "SIGNAL_CONFIRMED" ? "SIGNAL_CONFIRMED" as const : "ENTRY_CONFIRMATION_FAILED" as const }
            : {}),

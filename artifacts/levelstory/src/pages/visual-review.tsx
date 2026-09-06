@@ -29,6 +29,7 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
+  useGetStrategyActive,
   useRecordVisualValidationReview,
   useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
@@ -234,6 +235,12 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   premarketAvailable: true,
   source: "historical_databento",
   reviewMode: "trades_only",
+  earlyOrbMomentum: {
+    enabled: false,
+    eligibilityCutoffMinutes: 630,
+    minimumCloseDistanceTicks: 1,
+    maxAttemptsPerDirection: 1,
+  },
 };
 
 function storedReviewSource(): VisualValidationRequest["source"] {
@@ -448,11 +455,26 @@ export default function VisualReview() {
   };
 
   const startGeneration = useStartVisualValidationGenerationJob();
+  const activeStrategy = useGetStrategyActive();
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
     { query: { enabled: reviewSetRequested && !startGeneration.isPending && !Boolean(generationJobId) && (Boolean(pinnedReviewSetId) || loadLatestReviewSet), staleTime: 30_000, queryKey: ["visual-validation-set", pinnedReviewSetId || "latest"] } },
   );
+
+  useEffect(() => {
+    const config = activeStrategy.data?.config;
+    if (!config || reviewSetRequested) return;
+    setRequest((current) => ({
+      ...current,
+      earlyOrbMomentum: {
+        enabled: config.earlyOrbMomentumContinuationEnabled,
+        eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
+        minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
+        maxAttemptsPerDirection: 1,
+      },
+    }));
+  }, [activeStrategy.data, reviewSetRequested]);
   const generationQuery = useGetVisualValidationGenerationJob(
     generationJobId,
     {
@@ -928,7 +950,7 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
              <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-               <GenerationPanel request={request} setRequest={(next) => {
+               <GenerationPanel request={request} governedConfig={activeStrategy.data?.config} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
@@ -1296,7 +1318,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
+function GenerationPanel({ request, governedConfig, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; governedConfig?: { earlyOrbMomentumContinuationEnabled: boolean; earlyOrbMomentumEligibilityCutoffMinutes: number; earlyOrbMomentumMinimumCloseDistanceTicks: number; earlyOrbMomentumMaxAttemptsPerDirection: number }; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const updateSource = (source: VisualValidationRequest["source"]) => setRequest({
     ...request,
@@ -1304,6 +1326,12 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
     seed: source === "simulated" ? (request.seed ?? 11) : undefined,
   });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include"].some((term) => message.toLowerCase().includes(term));
+  const earlyOrb = request.earlyOrbMomentum ?? {
+    enabled: governedConfig?.earlyOrbMomentumContinuationEnabled ?? false,
+    eligibilityCutoffMinutes: governedConfig?.earlyOrbMomentumEligibilityCutoffMinutes ?? 630,
+    minimumCloseDistanceTicks: governedConfig?.earlyOrbMomentumMinimumCloseDistanceTicks ?? 1,
+    maxAttemptsPerDirection: 1 as const,
+  };
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
@@ -1336,6 +1364,31 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <input type="checkbox" className="mt-0.5 accent-[hsl(var(--accent))]" checked={request.premarketAvailable ?? true} onChange={(event) => update("premarketAvailable", event.target.checked)} />
         <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
       </label>
+      <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="early-orb-generation-settings">
+        <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Governed strategy settings</legend>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold">Early ORB Momentum Continuation</div>
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Disabled by default. When enabled, P is the first completed candle closing outside the finalized ORB; only the adjacent E candle can confirm.</p>
+          </div>
+          <span className={`shrink-0 border px-2 py-1 text-[9px] font-bold uppercase ${earlyOrb.enabled ? "border-[hsl(var(--positive)/.35)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]" : "border-border bg-muted text-muted-foreground"}`}>
+            {earlyOrb.enabled ? "Enabled" : "Disabled"}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="P-open cutoff · New York">
+            <input className="field mono" type="text" value={`${Math.floor(earlyOrb.eligibilityCutoffMinutes / 60)}:${String(earlyOrb.eligibilityCutoffMinutes % 60).padStart(2, "0")} ET`} readOnly aria-label="Early ORB P-open cutoff" />
+          </Field>
+          <Field label="Minimum ORB distance">
+            <input className="field mono" type="text" value={`${earlyOrb.minimumCloseDistanceTicks} MES tick${earlyOrb.minimumCloseDistanceTicks === 1 ? "" : "s"}`} readOnly aria-label="Early ORB minimum distance" />
+          </Field>
+        </div>
+        <div className="flex items-center justify-between border-t border-border pt-3 text-[10px]">
+          <span className="text-muted-foreground">Attempts per direction</span>
+          <span className="mono font-bold">Exactly {earlyOrb.maxAttemptsPerDirection}</span>
+        </div>
+        <p className="text-[10px] leading-4 text-muted-foreground">These values are read from the active governed Shadow strategy and are captured in the request fingerprint. Change them through strategy governance, not this review form.</p>
+      </fieldset>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <div className="grid gap-2 sm:grid-cols-2">
        <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
@@ -2381,6 +2434,9 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
   const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
   const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
+  const earlyOrb = typeof market.earlyOrbMomentum === "object" && market.earlyOrbMomentum
+    ? market.earlyOrbMomentum as Record<string, unknown>
+    : null;
   const qualified = audit.rejectionCategory === "QUALIFIED" && evidence.trade;
   const trade = evidence.trade as TradeEvidenceView | null;
   const behavior = [
@@ -2408,6 +2464,12 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
+      {earlyOrb && earlyOrb.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="early-orb-causal-evidence">
+        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Early ORB P/E</div><div className="mt-1 text-xs font-semibold">{safeValue(earlyOrb.direction)} · {earlyOrb.eImmediatelyAdjacent === true ? "adjacent E" : "missing adjacent E"}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{formatReviewTime(typeof earlyOrb.pOpenTime === "number" ? new Date(earlyOrb.pOpenTime).toISOString() : "")} → {formatReviewTime(typeof earlyOrb.eOpenTime === "number" ? new Date(earlyOrb.eOpenTime).toISOString() : "")}</div></div>
+        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.orbLow)} – {safeValue(earlyOrb.orbHigh)}</div><div className="mt-1 text-[10px] text-muted-foreground">Finalized {formatReviewTime(typeof earlyOrb.orbFinalizedAt === "number" ? new Date(earlyOrb.orbFinalizedAt).toISOString() : "")}</div></div>
+        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">P close distance</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.pDistanceTicks)} ticks · {safeValue(earlyOrb.pDistancePoints)} pt</div><div className="mt-1 text-[10px] text-muted-foreground">Minimum governed distance is captured in the request.</div></div>
+        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.confirmationThreshold)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(earlyOrb.eClose)} E close · {safeValue(earlyOrb.finalStrategyStop)} stop</div></div>
+      </div>}
       <TradeInspector trade={trade} />
      <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
         <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>

@@ -17,6 +17,7 @@ import type { BacktestAuditRecordRejectionCategory } from './backtestAuditRecord
 import type { BacktestAuditRecordTriggerCandle } from './backtestAuditRecordTriggerCandle';
 import type { ConsolidationEntryGuardEvidence } from './consolidationEntryGuardEvidence';
 import type { ConsolidationThresholds } from './consolidationThresholds';
+import type { EarlyOrbMomentumEvidence } from './earlyOrbMomentumEvidence';
 
 export interface BacktestAuditRecord {
   id: string;
@@ -94,4 +95,5 @@ export interface BacktestAuditRecord {
   consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
   patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
 }

@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActiveShadowStrategy,
   AuthUserEnvelope,
   BacktestAuditPage,
   BacktestReport,
@@ -4174,6 +4175,83 @@ export function useListStrategyCatalog<TData = Awaited<ReturnType<typeof listStr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListStrategyCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStrategyActiveUrl = () => {
+
+
+
+
+  return `/api/strategy-active`
+}
+
+/**
+ * @summary Read the active Shadow Mode strategy configuration
+ */
+export const getStrategyActive = async ( options?: Parameters<typeof customFetch>[1]): Promise<ActiveShadowStrategy> => {
+
+  return customFetch<ActiveShadowStrategy>(getGetStrategyActiveUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStrategyActiveQueryKey = () => {
+    return [
+    `/api/strategy-active`
+    ] as const;
+    }
+
+
+export const getGetStrategyActiveQueryOptions = <TData = Awaited<ReturnType<typeof getStrategyActive>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyActive>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStrategyActiveQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStrategyActive>>> = ({ signal }) => getStrategyActive({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStrategyActive>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStrategyActiveQueryResult = NonNullable<Awaited<ReturnType<typeof getStrategyActive>>>
+export type GetStrategyActiveQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read the active Shadow Mode strategy configuration
+ */
+
+export function useGetStrategyActive<TData = Awaited<ReturnType<typeof getStrategyActive>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStrategyActive>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStrategyActiveQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

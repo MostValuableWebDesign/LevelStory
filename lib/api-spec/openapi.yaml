@@ -1245,6 +1245,17 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/StrategyCatalogItem" }
+  /strategy-active:
+    get:
+      operationId: getStrategyActive
+      tags: [governance]
+      summary: Read the active Shadow Mode strategy configuration
+      responses:
+        "200":
+          description: Active Shadow Mode strategy and governed configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveShadowStrategy" }
   /strategy-catalog/{strategyKey}:
     get:
       operationId: getStrategyReadiness
@@ -2041,6 +2052,45 @@ components:
         isComplete:
           type: boolean
       required: [openTime, closeTime, open, high, low, close, isComplete]
+    EarlyOrbMomentumEvidence:
+      type: object
+      additionalProperties: false
+      properties:
+        strategy: { type: string, enum: [EARLY_ORB_MOMENTUM_CONTINUATION] }
+        direction: { type: string, enum: [long, short] }
+        armId: { type: ["string", "null"] }
+        orbHigh: { type: ["number", "null"] }
+        orbLow: { type: ["number", "null"] }
+        orbFinalizedAt: { type: ["number", "null"] }
+        pOpenTime: { type: ["number", "null"] }
+        pCloseTime: { type: ["number", "null"] }
+        pOpen: { type: ["number", "null"] }
+        pHigh: { type: ["number", "null"] }
+        pLow: { type: ["number", "null"] }
+        pClose: { type: ["number", "null"] }
+        pDistancePoints: { type: ["number", "null"] }
+        pDistanceTicks: { type: ["number", "null"] }
+        eOpenTime: { type: ["number", "null"] }
+        eCloseTime: { type: ["number", "null"] }
+        eOpen: { type: ["number", "null"] }
+        eHigh: { type: ["number", "null"] }
+        eLow: { type: ["number", "null"] }
+        eClose: { type: ["number", "null"] }
+        eImmediatelyAdjacent: { type: boolean }
+        confirmationThreshold: { type: ["number", "null"] }
+        entryBufferTicks: { type: number }
+        stopBufferTicks: { type: number }
+        finalStrategyStop: { type: ["number", "null"] }
+        atrTicks: { type: ["number", "null"] }
+        targetPlan: { type: ["object", "null"], additionalProperties: true }
+        contracts: { type: ["number", "null"] }
+        runnerEvents: { type: array, items: { type: object, additionalProperties: true } }
+        rejectionReason: { type: ["string", "null"] }
+        formulaVersion: { type: string }
+        formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        sourceFingerprint: { type: string }
+        realizedPnl: { type: ["number", "null"] }
+      required: [strategy, direction, armId, orbHigh, orbLow, orbFinalizedAt, pOpenTime, pCloseTime, pOpen, pHigh, pLow, pClose, pDistancePoints, pDistanceTicks, eOpenTime, eCloseTime, eOpen, eHigh, eLow, eClose, eImmediatelyAdjacent, confirmationThreshold, entryBufferTicks, stopBufferTicks, finalStrategyStop]
     PatienceAnalysis:
       type: object
       properties:
@@ -2065,7 +2115,7 @@ components:
           type: boolean
         eligibilityReason:
           type: ["string", "null"]
-          enum: [pullback, consolidation, "ntz consolidation", null]
+          enum: [pullback, consolidation, "ntz consolidation", "early orb momentum", null]
         eligibilityTime:
           type: ["string", "null"]
         trend:
@@ -2106,6 +2156,10 @@ components:
         eligibilityProvenance:
           type: ["object", "null"]
           additionalProperties: true
+        earlyOrbEvidence:
+          oneOf:
+            - $ref: "#/components/schemas/EarlyOrbMomentumEvidence"
+            - type: "null"
         detail:
           type: string
       required: [state, eligible, eligibilityReason, eligibilityTime, trend, previousCandle, patienceCandle, triggerCandle, entryBufferTicks, entryBufferPrice, stopBufferTicks, strategyStopPrice, triggerPrice, stateTime, detail]
@@ -3268,6 +3322,10 @@ components:
         consolidationGuard: { oneOf: [{ $ref: "#/components/schemas/ConsolidationEntryGuardEvidence" }, { type: "null" }] }
         pullbackOccurrences: { type: array, items: { type: object, additionalProperties: true } }
         patienceOccurrences: { type: array, items: { type: object, additionalProperties: true } }
+        earlyOrbEvidence:
+          oneOf:
+            - $ref: "#/components/schemas/EarlyOrbMomentumEvidence"
+            - type: "null"
       required: [id, tradingDate, contractSymbol, contractMonth, period, evaluatedCandleOpenTime, setupType, direction, decision, alertOnly, rejectionReason, rejectionCategory, rejectionSummary, ruleEvidence, orbState, breakoutEvidence, volumeEvidence, pullbackEvidence, criticalLevelEvidence, trendEvidence, patienceState, patienceCandle, triggerCandle, patienceCandleOpenTime, patienceCandleCloseTime, triggerCandleOpenTime, triggerCandleCloseTime, modeledFillObservationTime, exitCandleOpenTime, exitCandleCloseTime, entryTriggerPrice, strategyStopPrice, catastropheStopPrice, targetPrice, eventLabels, ambiguityLabels, executionMode, fees, slippage, grossPnl, netPnl, exitReason, consolidationThresholds]
     HistoricalOccurrence:
       type: object
@@ -3317,6 +3375,10 @@ components:
         eligibilityArmState: { type: string, enum: [active, consumed, invalidated, superseded] }
         eligibilityArmStateReason: { type: string }
         eligibilityProvenance: { type: object, additionalProperties: true }
+        earlyOrbEvidence:
+          oneOf:
+            - $ref: "#/components/schemas/EarlyOrbMomentumEvidence"
+            - type: "null"
         reasonCode: { type: string }
         evaluationCursor: { type: string, format: date-time }
         formulaVersion: { type: string }
@@ -3875,6 +3937,15 @@ components:
         premarketAvailable: { type: boolean, default: true }
         source: { type: string, enum: [simulated, historical_databento], default: historical_databento, description: Historical Databento is the default; simulated fixtures are an explicit testing option. }
         reviewMode: { type: string, enum: [trades_only, confirmed_signals, trades_and_diagnostics], default: trades_only, description: Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. }
+        earlyOrbMomentum:
+          type: object
+          description: Server-validated governed Early ORB Momentum settings captured with the deterministic review request.
+          properties:
+            enabled: { type: boolean }
+            eligibilityCutoffMinutes: { type: number, minimum: 0, maximum: 1439 }
+            minimumCloseDistanceTicks: { type: number, minimum: 1, maximum: 32 }
+            maxAttemptsPerDirection: { type: number, enum: [1] }
+          required: [enabled, eligibilityCutoffMinutes, minimumCloseDistanceTicks, maxAttemptsPerDirection]
         regenerateFresh: { type: boolean, default: false, description: Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. }
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:
@@ -4702,6 +4773,28 @@ components:
         createdAt: { type: string, format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
       required: [id, proposalId, requestFingerprint, status, progressStage, progressPercent, regressions, conflicts, warnings, formulaFingerprint, sourceFingerprint, evidenceIds, requestedBy, createdAt]
+    ActiveShadowStrategy:
+      type: object
+      additionalProperties: true
+      properties:
+        strategyKey: { type: string, enum: [MES_SHADOW] }
+        config:
+          type: object
+          additionalProperties: true
+          properties:
+            earlyOrbMomentumContinuationEnabled: { type: boolean }
+            earlyOrbMomentumEligibilityCutoffMinutes: { type: number }
+            earlyOrbMomentumMinimumCloseDistanceTicks: { type: number }
+            earlyOrbMomentumMaxAttemptsPerDirection: { type: number }
+          required: [earlyOrbMomentumContinuationEnabled, earlyOrbMomentumEligibilityCutoffMinutes, earlyOrbMomentumMinimumCloseDistanceTicks, earlyOrbMomentumMaxAttemptsPerDirection]
+        formulaVersion: { type: string }
+        formulaHash: { type: string }
+        versionId: { type: ["string", "null"] }
+        versionNumber: { type: ["number", "null"] }
+        activatedAt: { type: ["string", "null"], format: date-time }
+        activatedBy: { type: ["string", "null"] }
+        source: { type: string, enum: [baseline, database] }
+      required: [strategyKey, config, formulaVersion, formulaHash, versionId, versionNumber, activatedAt, activatedBy, source]
     StrategyVersion:
       type: object
       additionalProperties: true

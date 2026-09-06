@@ -174,6 +174,24 @@ test("Early ORB keeps independent long and short attempts when the first directi
   assert.equal(result.occurrences?.find((occurrence) => occurrence.direction === "short")?.outcomeStatus, "CONFIRMED");
 });
 
+test("Early ORB does not use a later candle when the immediate E candle is missing", () => {
+  const result = earlyOrbMomentumPatienceAnalysis([
+    datedCandle("2026-06-01T13:30:00.000Z", 100, 101, 99, 100),
+    datedCandle("2026-06-01T13:35:00.000Z", 100, 101.25, 99.75, 100.5),
+    datedCandle("2026-06-01T13:40:00.000Z", 100.5, 101.25, 100, 101),
+    datedCandle("2026-06-01T13:45:00.000Z", 101, 101.5, 100.75, 101.25),
+    datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
+    datedCandle("2026-06-01T14:00:00.000Z", 103, 105.25, 102.75, 105),
+  ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
+    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1,
+  });
+  const occurrence = result.occurrences?.find((item) => item.direction === "long");
+  assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
+  assert.equal(occurrence?.outcomeStatus, "EXPIRED_MISSING_E");
+  assert.equal(occurrence?.earlyOrbEvidence?.eImmediatelyAdjacent, false);
+  assert.equal(occurrence?.earlyOrbEvidence?.eOpenTime, null);
+});
+
 test("valid bearish patience candle triggers below the patience low", () => {
   const result = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 7.8, 8)), "short", { eligibilityEvents: eligibility(), tickSize: 0.25 });
   assert.equal(result.state, "ENTRY_TRIGGERED");

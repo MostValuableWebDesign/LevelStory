@@ -16,6 +16,7 @@ import {
   type Phase6Decision,
   type SetupType,
   type ManualFibAnchors,
+  type EarlyOrbMomentumEvidence,
   type PatienceAnalysis,
   type PatienceOccurrence,
   type PatienceEligibilityReason,
@@ -217,6 +218,7 @@ export type MarketSnapshot = {
     eligibilityArmState?: "active" | "consumed" | "invalidated" | "superseded" | null;
     eligibilityArmStateReason?: string | null;
     eligibilityProvenance?: PatienceOccurrence["eligibilityProvenance"] | null;
+    earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   };
   earlyOrbMomentum?: MarketSnapshot["patience"];
   reversalPatience?: MarketSnapshot["patience"];
@@ -1187,6 +1189,7 @@ function toApiPatience(analysis: PatienceAnalysis): MarketSnapshot["patience"] {
     eligibilityArmState: analysis.eligibilityArmState ?? null,
     eligibilityArmStateReason: analysis.eligibilityArmStateReason ?? null,
     eligibilityProvenance: analysis.eligibilityProvenance ?? null,
+    earlyOrbEvidence: analysis.earlyOrbEvidence ?? null,
   };
 }
 

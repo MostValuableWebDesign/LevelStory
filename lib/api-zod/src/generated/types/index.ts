@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './activeShadowStrategy';
+export * from './activeShadowStrategyConfig';
+export * from './activeShadowStrategySource';
+export * from './activeShadowStrategyStrategyKey';
 export * from './authUser';
 export * from './authUserEnvelope';
 export * from './backtestAuditPage';
@@ -99,6 +103,11 @@ export * from './criticalLevel';
 export * from './dashboardOverview';
 export * from './dynamiteLevel';
 export * from './dynamiteLevelPullbackInteractionsItem';
+export * from './earlyOrbMomentumEvidence';
+export * from './earlyOrbMomentumEvidenceDirection';
+export * from './earlyOrbMomentumEvidenceRunnerEventsItem';
+export * from './earlyOrbMomentumEvidenceStrategy';
+export * from './earlyOrbMomentumEvidenceTargetPlan';
 export * from './edgeValidationPilotReport';
 export * from './edgeValidationPilotReportCompute';
 export * from './edgeValidationPilotReportDiagnostics';
@@ -389,6 +398,8 @@ export * from './visualValidationRelatedCandle';
 export * from './visualValidationRelatedCandleRole';
 export * from './visualValidationRelatedCandleVisibility';
 export * from './visualValidationRequest';
+export * from './visualValidationRequestEarlyOrbMomentum';
+export * from './visualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection';
 export * from './visualValidationRequestReviewMode';
 export * from './visualValidationRequestSource';
 export * from './visualValidationRequestSymbol';

@@ -747,6 +747,91 @@ export interface PatienceCandle {
   isComplete: boolean;
 }
 
+export type EarlyOrbMomentumEvidenceStrategy = typeof EarlyOrbMomentumEvidenceStrategy[keyof typeof EarlyOrbMomentumEvidenceStrategy];
+
+
+export const EarlyOrbMomentumEvidenceStrategy = {
+  EARLY_ORB_MOMENTUM_CONTINUATION: 'EARLY_ORB_MOMENTUM_CONTINUATION',
+} as const;
+
+export type EarlyOrbMomentumEvidenceDirection = typeof EarlyOrbMomentumEvidenceDirection[keyof typeof EarlyOrbMomentumEvidenceDirection];
+
+
+export const EarlyOrbMomentumEvidenceDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+/**
+ * @nullable
+ */
+export type EarlyOrbMomentumEvidenceTargetPlan = { [key: string]: unknown } | null;
+
+export type EarlyOrbMomentumEvidenceRunnerEventsItem = { [key: string]: unknown };
+
+export interface EarlyOrbMomentumEvidence {
+  strategy: EarlyOrbMomentumEvidenceStrategy;
+  direction: EarlyOrbMomentumEvidenceDirection;
+  /** @nullable */
+  armId: string | null;
+  /** @nullable */
+  orbHigh: number | null;
+  /** @nullable */
+  orbLow: number | null;
+  /** @nullable */
+  orbFinalizedAt: number | null;
+  /** @nullable */
+  pOpenTime: number | null;
+  /** @nullable */
+  pCloseTime: number | null;
+  /** @nullable */
+  pOpen: number | null;
+  /** @nullable */
+  pHigh: number | null;
+  /** @nullable */
+  pLow: number | null;
+  /** @nullable */
+  pClose: number | null;
+  /** @nullable */
+  pDistancePoints: number | null;
+  /** @nullable */
+  pDistanceTicks: number | null;
+  /** @nullable */
+  eOpenTime: number | null;
+  /** @nullable */
+  eCloseTime: number | null;
+  /** @nullable */
+  eOpen: number | null;
+  /** @nullable */
+  eHigh: number | null;
+  /** @nullable */
+  eLow: number | null;
+  /** @nullable */
+  eClose: number | null;
+  eImmediatelyAdjacent: boolean;
+  /** @nullable */
+  confirmationThreshold: number | null;
+  entryBufferTicks: number;
+  stopBufferTicks: number;
+  /** @nullable */
+  finalStrategyStop: number | null;
+  /** @nullable */
+  atrTicks?: number | null;
+  /** @nullable */
+  targetPlan?: EarlyOrbMomentumEvidenceTargetPlan;
+  /** @nullable */
+  contracts?: number | null;
+  runnerEvents?: EarlyOrbMomentumEvidenceRunnerEventsItem[];
+  /** @nullable */
+  rejectionReason?: string | null;
+  formulaVersion?: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  formulaHash?: string;
+  sourceFingerprint?: string;
+  /** @nullable */
+  realizedPnl?: number | null;
+}
+
 export type PatienceAnalysisState = typeof PatienceAnalysisState[keyof typeof PatienceAnalysisState];
 
 
@@ -777,6 +862,7 @@ export const PatienceAnalysisEligibilityReason = {
   pullback: 'pullback',
   consolidation: 'consolidation',
   ntz_consolidation: 'ntz consolidation',
+  early_orb_momentum: 'early orb momentum',
 } as const;
 
 export type PatienceAnalysisTrend = typeof PatienceAnalysisTrend[keyof typeof PatienceAnalysisTrend];
@@ -842,6 +928,7 @@ export interface PatienceAnalysis {
   eligibilityArmStateReason?: string | null;
   /** @nullable */
   eligibilityProvenance?: PatienceAnalysisEligibilityProvenance;
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   detail: string;
 }
 
@@ -2409,6 +2496,7 @@ export interface BacktestAuditRecord {
   consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];
   patienceOccurrences?: BacktestAuditRecordPatienceOccurrencesItem[];
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
 }
 
 export type HistoricalOccurrenceKind = typeof HistoricalOccurrenceKind[keyof typeof HistoricalOccurrenceKind];
@@ -2582,6 +2670,7 @@ export interface HistoricalOccurrence {
   eligibilityArmState?: HistoricalOccurrenceEligibilityArmState;
   eligibilityArmStateReason?: string;
   eligibilityProvenance?: HistoricalOccurrenceEligibilityProvenance;
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   reasonCode: string;
   evaluationCursor: string;
   formulaVersion: string;
@@ -3661,6 +3750,31 @@ export const VisualValidationRequestReviewMode = {
   trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;
 
+export type VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection = typeof VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection[keyof typeof VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection];
+
+
+export const VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection = {
+  NUMBER_1: 1,
+} as const;
+
+/**
+ * Server-validated governed Early ORB Momentum settings captured with the deterministic review request.
+ */
+export type VisualValidationRequestEarlyOrbMomentum = {
+  enabled: boolean;
+  /**
+     * @minimum 0
+     * @maximum 1439
+     */
+  eligibilityCutoffMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 32
+     */
+  minimumCloseDistanceTicks: number;
+  maxAttemptsPerDirection: VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection;
+};
+
 export interface VisualValidationRequest {
   symbol: VisualValidationRequestSymbol;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
@@ -3685,6 +3799,8 @@ export interface VisualValidationRequest {
   source?: VisualValidationRequestSource;
   /** Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence. */
   reviewMode?: VisualValidationRequestReviewMode;
+  /** Server-validated governed Early ORB Momentum settings captured with the deterministic review request. */
+  earlyOrbMomentum?: VisualValidationRequestEarlyOrbMomentum;
   /** Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. */
   regenerateFresh?: boolean;
 }
@@ -5152,6 +5268,46 @@ export interface ValidationRun {
   createdAt: string;
   /** @nullable */
   completedAt?: string | null;
+  [key: string]: unknown;
+ }
+
+export type ActiveShadowStrategyStrategyKey = typeof ActiveShadowStrategyStrategyKey[keyof typeof ActiveShadowStrategyStrategyKey];
+
+
+export const ActiveShadowStrategyStrategyKey = {
+  MES_SHADOW: 'MES_SHADOW',
+} as const;
+
+export type ActiveShadowStrategyConfig = {
+  earlyOrbMomentumContinuationEnabled: boolean;
+  earlyOrbMomentumEligibilityCutoffMinutes: number;
+  earlyOrbMomentumMinimumCloseDistanceTicks: number;
+  earlyOrbMomentumMaxAttemptsPerDirection: number;
+  [key: string]: unknown;
+ };
+
+export type ActiveShadowStrategySource = typeof ActiveShadowStrategySource[keyof typeof ActiveShadowStrategySource];
+
+
+export const ActiveShadowStrategySource = {
+  baseline: 'baseline',
+  database: 'database',
+} as const;
+
+export interface ActiveShadowStrategy {
+  strategyKey: ActiveShadowStrategyStrategyKey;
+  config: ActiveShadowStrategyConfig;
+  formulaVersion: string;
+  formulaHash: string;
+  /** @nullable */
+  versionId: string | null;
+  /** @nullable */
+  versionNumber: number | null;
+  /** @nullable */
+  activatedAt: string | null;
+  /** @nullable */
+  activatedBy: string | null;
+  source: ActiveShadowStrategySource;
   [key: string]: unknown;
  }
 

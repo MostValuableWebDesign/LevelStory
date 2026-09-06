@@ -7,6 +7,7 @@
  */
 import type { ConsolidationEntryGuardEvidence } from './consolidationEntryGuardEvidence';
 import type { ConsolidationThresholds } from './consolidationThresholds';
+import type { EarlyOrbMomentumEvidence } from './earlyOrbMomentumEvidence';
 import type { HistoricalOccurrenceDirection } from './historicalOccurrenceDirection';
 import type { HistoricalOccurrenceEligibilityArmState } from './historicalOccurrenceEligibilityArmState';
 import type { HistoricalOccurrenceEligibilityProvenance } from './historicalOccurrenceEligibilityProvenance';
@@ -86,6 +87,7 @@ export interface HistoricalOccurrence {
   eligibilityArmState?: HistoricalOccurrenceEligibilityArmState;
   eligibilityArmStateReason?: string;
   eligibilityProvenance?: HistoricalOccurrenceEligibilityProvenance;
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   reasonCode: string;
   evaluationCursor: Date;
   formulaVersion: string;

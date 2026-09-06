@@ -44,6 +44,9 @@ export const GetMarketSnapshotQueryParams = zod.object({
   "slippageMode": zod.enum(['normal', 'fast', 'abnormal_spread']).default(getMarketSnapshotQuerySlippageModeDefault).describe('Descriptive slippage regime used by the shadow cost model.')
 })
 
+export const getMarketSnapshotResponsePatienceEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
 export const GetMarketSnapshotResponse = zod.object({
   "mode": zod.enum(['SHADOW MODE — NO LIVE ORDERS']),
   "symbol": zod.string(),
@@ -209,7 +212,7 @@ export const GetMarketSnapshotResponse = zod.object({
   "patience": zod.object({
   "state": zod.enum(['WAITING_FOR_VALID_CONTEXT', 'WAITING_FOR_LEVEL', 'WAITING_FOR_PATIENCE_CANDLE', 'PATIENCE_CANDLE_FORMING', 'PATIENCE_CANDLE_VALID', 'PATIENCE_TREND_MISMATCH', 'TRIGGER_CANDLE_ACTIVE', 'BREAK_DETECTED_WAITING_FOR_BUFFER', 'ENTRY_BUFFER_REACHED', 'ENTRY_TRIGGERED', 'OPPOSITE_SIDE_INVALIDATION', 'PATIENCE_CANDLE_EXPIRED', 'AMBIGUOUS_EVENT_ORDER', 'RISK_REJECTED']),
   "eligible": zod.boolean(),
-  "eligibilityReason": zod.union([zod.literal('pullback'),zod.literal('consolidation'),zod.literal('ntz consolidation'),zod.literal(null)]).nullable(),
+  "eligibilityReason": zod.union([zod.literal('pullback'),zod.literal('consolidation'),zod.literal('ntz consolidation'),zod.literal('early orb momentum'),zod.literal(null)]).nullable(),
   "eligibilityTime": zod.string().nullable(),
   "trend": zod.enum(['bullish', 'bearish', 'neutral']),
   "previousCandle": zod.union([zod.object({
@@ -249,6 +252,42 @@ export const GetMarketSnapshotResponse = zod.object({
   "eligibilityArmState": zod.union([zod.literal('active'),zod.literal('consumed'),zod.literal('invalidated'),zod.literal('superseded'),zod.literal(null)]).nullish(),
   "eligibilityArmStateReason": zod.string().nullish(),
   "eligibilityProvenance": zod.record(zod.string(), zod.unknown()).nullish(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(getMarketSnapshotResponsePatienceEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional(),
   "detail": zod.string()
 }),
   "setupAnalysis": zod.object({
@@ -820,6 +859,7 @@ export const runBacktestResponseAuditItemConsolidationGuardOneLowRejectionCountM
 
 export const runBacktestResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const runBacktestResponseAuditItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const runBacktestResponseOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -842,6 +882,7 @@ export const runBacktestResponseOccurrencesItemConsolidationGuardOneLowRejection
 
 export const runBacktestResponseOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const runBacktestResponseOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const runBacktestResponseOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const runBacktestResponseAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
@@ -1269,7 +1310,43 @@ export const RunBacktestResponse = zod.object({
   "detail": zod.string()
 }),zod.null()]).optional(),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(runBacktestResponseAuditItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional()
 })),
   "occurrences": zod.array(zod.object({
   "occurrenceId": zod.string(),
@@ -1363,6 +1440,42 @@ export const RunBacktestResponse = zod.object({
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
   "eligibilityArmStateReason": zod.string().optional(),
   "eligibilityProvenance": zod.record(zod.string(), zod.unknown()).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(runBacktestResponseOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
@@ -1524,6 +1637,7 @@ export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOn
 
 export const startBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const startBatchBacktestResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -1546,6 +1660,7 @@ export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationG
 
 export const startBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const startBatchBacktestResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
@@ -1990,7 +2105,43 @@ export const StartBatchBacktestResponse = zod.object({
   "detail": zod.string()
 }),zod.null()]).optional(),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(startBatchBacktestResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional()
 })),
   "occurrences": zod.array(zod.object({
   "occurrenceId": zod.string(),
@@ -2084,6 +2235,42 @@ export const StartBatchBacktestResponse = zod.object({
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
   "eligibilityArmStateReason": zod.string().optional(),
   "eligibilityProvenance": zod.record(zod.string(), zod.unknown()).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(startBatchBacktestResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
@@ -2648,6 +2835,7 @@ export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGua
 
 export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const getBatchBacktestStatusResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -2670,6 +2858,7 @@ export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidat
 
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getBatchBacktestStatusResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getBatchBacktestStatusResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
@@ -3114,7 +3303,43 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "detail": zod.string()
 }),zod.null()]).optional(),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(getBatchBacktestStatusResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional()
 })),
   "occurrences": zod.array(zod.object({
   "occurrenceId": zod.string(),
@@ -3208,6 +3433,42 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
   "eligibilityArmStateReason": zod.string().optional(),
   "eligibilityProvenance": zod.record(zod.string(), zod.unknown()).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(getBatchBacktestStatusResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
@@ -3772,6 +4033,7 @@ export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardO
 
 export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const cancelBatchBacktestResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationThresholdsMinCandlesMin = 3;
 
 
@@ -3794,6 +4056,7 @@ export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidation
 
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const cancelBatchBacktestResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const cancelBatchBacktestResponseReportOneOneOccurrencesItemFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const cancelBatchBacktestResponseReportOneOneAuditPageRunIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
@@ -4238,7 +4501,43 @@ export const CancelBatchBacktestResponse = zod.object({
   "detail": zod.string()
 }),zod.null()]).optional(),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(cancelBatchBacktestResponseReportOneOneAuditItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional()
 })),
   "occurrences": zod.array(zod.object({
   "occurrenceId": zod.string(),
@@ -4332,6 +4631,42 @@ export const CancelBatchBacktestResponse = zod.object({
   "eligibilityArmState": zod.enum(['active', 'consumed', 'invalidated', 'superseded']).optional(),
   "eligibilityArmStateReason": zod.string().optional(),
   "eligibilityProvenance": zod.record(zod.string(), zod.unknown()).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(cancelBatchBacktestResponseReportOneOneOccurrencesItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional(),
   "reasonCode": zod.string(),
   "evaluationCursor": zod.coerce.date(),
   "formulaVersion": zod.string(),
@@ -5126,6 +5461,7 @@ export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneLowReject
 
 export const getBacktestAuditPageResponseAuditItemConsolidationGuardOneMaxDirectionalSequenceMin = 0;
 
+export const getBacktestAuditPageResponseAuditItemEarlyOrbEvidenceOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 
 
 export const GetBacktestAuditPageResponse = zod.object({
@@ -5235,7 +5571,43 @@ export const GetBacktestAuditPageResponse = zod.object({
   "detail": zod.string()
 }),zod.null()]).optional(),
   "pullbackOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "patienceOccurrences": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "earlyOrbEvidence": zod.union([zod.object({
+  "strategy": zod.enum(['EARLY_ORB_MOMENTUM_CONTINUATION']),
+  "direction": zod.enum(['long', 'short']),
+  "armId": zod.string().nullable(),
+  "orbHigh": zod.number().nullable(),
+  "orbLow": zod.number().nullable(),
+  "orbFinalizedAt": zod.number().nullable(),
+  "pOpenTime": zod.number().nullable(),
+  "pCloseTime": zod.number().nullable(),
+  "pOpen": zod.number().nullable(),
+  "pHigh": zod.number().nullable(),
+  "pLow": zod.number().nullable(),
+  "pClose": zod.number().nullable(),
+  "pDistancePoints": zod.number().nullable(),
+  "pDistanceTicks": zod.number().nullable(),
+  "eOpenTime": zod.number().nullable(),
+  "eCloseTime": zod.number().nullable(),
+  "eOpen": zod.number().nullable(),
+  "eHigh": zod.number().nullable(),
+  "eLow": zod.number().nullable(),
+  "eClose": zod.number().nullable(),
+  "eImmediatelyAdjacent": zod.boolean(),
+  "confirmationThreshold": zod.number().nullable(),
+  "entryBufferTicks": zod.number(),
+  "stopBufferTicks": zod.number(),
+  "finalStrategyStop": zod.number().nullable(),
+  "atrTicks": zod.number().nullish(),
+  "targetPlan": zod.record(zod.string(), zod.unknown()).nullish(),
+  "contracts": zod.number().nullish(),
+  "runnerEvents": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "rejectionReason": zod.string().nullish(),
+  "formulaVersion": zod.string().optional(),
+  "formulaHash": zod.string().regex(getBacktestAuditPageResponseAuditItemEarlyOrbEvidenceOneFormulaHashRegExp).optional(),
+  "sourceFingerprint": zod.string().optional(),
+  "realizedPnl": zod.number().nullish()
+}),zod.null()]).optional()
 }))
 })
 
@@ -5294,6 +5666,11 @@ export const getVisualValidationSetResponseRequestSeedMax = 1000000;
 export const getVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const getVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const getVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
+export const getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const getVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const getVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -5393,6 +5770,12 @@ export const GetVisualValidationSetResponse = zod.object({
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -5811,6 +6194,11 @@ export const createVisualValidationSetBodySeedMax = 1000000;
 export const createVisualValidationSetBodyPremarketAvailableDefault = true;
 export const createVisualValidationSetBodySourceDefault = `historical_databento`;
 export const createVisualValidationSetBodyReviewModeDefault = `trades_only`;
+export const createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const createVisualValidationSetBodyRegenerateFreshDefault = false;
 
 export const CreateVisualValidationSetBody = zod.object({
@@ -5822,6 +6210,12 @@ export const CreateVisualValidationSetBody = zod.object({
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
@@ -5849,6 +6243,11 @@ export const createVisualValidationSetResponseRequestSeedMax = 1000000;
 export const createVisualValidationSetResponseRequestPremarketAvailableDefault = true;
 export const createVisualValidationSetResponseRequestSourceDefault = `historical_databento`;
 export const createVisualValidationSetResponseRequestReviewModeDefault = `trades_only`;
+export const createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const createVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const createVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -5948,6 +6347,12 @@ export const CreateVisualValidationSetResponse = zod.object({
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(createVisualValidationSetResponseRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -6797,6 +7202,11 @@ export const startVisualValidationGenerationJobBodySeedMax = 1000000;
 export const startVisualValidationGenerationJobBodyPremarketAvailableDefault = true;
 export const startVisualValidationGenerationJobBodySourceDefault = `historical_databento`;
 export const startVisualValidationGenerationJobBodyReviewModeDefault = `trades_only`;
+export const startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const startVisualValidationGenerationJobBodyRegenerateFreshDefault = false;
 
 export const StartVisualValidationGenerationJobBody = zod.object({
@@ -6808,6 +7218,12 @@ export const StartVisualValidationGenerationJobBody = zod.object({
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobBodyReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
@@ -6851,6 +7267,11 @@ export const startVisualValidationGenerationJobResponseResultRequestSeedMax = 10
 export const startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const startVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const startVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -6965,6 +7386,12 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(startVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -7414,6 +7841,11 @@ export const getLatestVisualValidationGenerationJobResponseResultRequestSeedMax 
 export const getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -7528,6 +7960,12 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "premarketAvailable": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getLatestVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -7984,6 +8422,11 @@ export const getVisualValidationGenerationJobResponseResultRequestSeedMax = 1000
 export const getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault = true;
 export const getVisualValidationGenerationJobResponseResultRequestSourceDefault = `historical_databento`;
 export const getVisualValidationGenerationJobResponseResultRequestReviewModeDefault = `trades_only`;
+export const getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin = 0;
+export const getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax = 1439;
+
+export const getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
+
 export const getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -8098,6 +8541,12 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "premarketAvailable": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
   "reviewMode": zod.enum(['trades_only', 'confirmed_signals', 'trades_and_diagnostics']).default(getVisualValidationGenerationJobResponseResultRequestReviewModeDefault).describe('Historical review defaults to trade-linked samples; confirmed signals may be unfinalized; diagnostics explicitly includes no-entry evidence.'),
+  "earlyOrbMomentum": zod.object({
+  "enabled": zod.boolean(),
+  "eligibilityCutoffMinutes": zod.number().min(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
+  "maxAttemptsPerDirection": zod.literal(1)
+}).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -10532,6 +10981,27 @@ export const ListStrategyCatalogResponseItem = zod.object({
   "message": zod.string()
 })
 export const ListStrategyCatalogResponse = zod.array(ListStrategyCatalogResponseItem)
+
+
+/**
+ * @summary Read the active Shadow Mode strategy configuration
+ */
+export const GetStrategyActiveResponse = zod.object({
+  "strategyKey": zod.enum(['MES_SHADOW']),
+  "config": zod.object({
+  "earlyOrbMomentumContinuationEnabled": zod.boolean(),
+  "earlyOrbMomentumEligibilityCutoffMinutes": zod.number(),
+  "earlyOrbMomentumMinimumCloseDistanceTicks": zod.number(),
+  "earlyOrbMomentumMaxAttemptsPerDirection": zod.number()
+}),
+  "formulaVersion": zod.string(),
+  "formulaHash": zod.string(),
+  "versionId": zod.string().nullable(),
+  "versionNumber": zod.number().nullable(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "activatedBy": zod.string().nullable(),
+  "source": zod.enum(['baseline', 'database'])
+})
 
 
 /**

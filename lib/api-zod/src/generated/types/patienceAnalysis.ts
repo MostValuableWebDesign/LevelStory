@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EarlyOrbMomentumEvidence } from './earlyOrbMomentumEvidence';
 import type { PatienceAnalysisEligibilityArmState } from './patienceAnalysisEligibilityArmState';
 import type { PatienceAnalysisEligibilityProvenance } from './patienceAnalysisEligibilityProvenance';
 import type { PatienceAnalysisEligibilityReason } from './patienceAnalysisEligibilityReason';
@@ -42,5 +43,6 @@ export interface PatienceAnalysis {
   eligibilityArmStateReason?: string | null;
   /** @nullable */
   eligibilityProvenance?: PatienceAnalysisEligibilityProvenance;
+  earlyOrbEvidence?: EarlyOrbMomentumEvidence | null;
   detail: string;
 }

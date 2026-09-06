@@ -69,6 +69,7 @@ function historicalGenerationKey(request: VisualValidationRequest): string {
     outOfSampleDays: request.outOfSampleDays,
     premarketAvailable: request.premarketAvailable !== false,
     reviewMode: request.reviewMode ?? "trades_only",
+    earlyOrbMomentum: request.earlyOrbMomentum,
   });
 }
 

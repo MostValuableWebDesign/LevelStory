@@ -16,4 +16,5 @@ export const PatienceAnalysisEligibilityReason = {
   pullback: 'pullback',
   consolidation: 'consolidation',
   ntz_consolidation: 'ntz consolidation',
+  early_orb_momentum: 'early orb momentum',
 } as const;
