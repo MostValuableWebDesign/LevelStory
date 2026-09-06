@@ -1,0 +1,165 @@
+Use this prompt:
+Inspect the current repository before editing.
+
+Repository:
+ /Users/jawanhiggins/Downloads/LevelStory-main 30/
+
+On the Visual Review generation page, replace the read-only “DISABLED” badge for Early ORB Momentum Continuation with an interactive toggle switch.
+
+Do not require Strategy Proposals, teaching examples, validation, approval, publishing, activation, or special user roles to use this Visual Review setting.
+
+1. Toggle design
+
+Place the toggle where the current ENABLED/DISABLED badge appears.
+
+Label it:
+
+“Early ORB Momentum Continuation”
+
+Show an obvious state:
+
+- ON / Enabled
+- OFF / Disabled
+
+Requirements:
+
+- Use an accessible checkbox/switch control.
+- Support keyboard interaction.
+- Include `role="switch"`.
+- Include an accurate `aria-checked` value.
+- Keep the existing visual design language.
+- Show a short explanation under the control.
+
+Use this description:
+
+“When enabled, the first completed candle closing outside the finalized ORB may create its own momentum arm and serve as P. Only the immediately adjacent E candle can confirm entry.”
+
+2. Default behavior
+
+Default the Visual Review toggle to enabled:
+
+`enabled: true`
+
+The user must be able to turn it off before generating a review set.
+
+Persist the selected state in local storage using a dedicated key such as:
+
+`levelstory.visualReview.earlyOrbMomentumEnabled`
+
+On page load:
+
+- Use the saved user preference when one exists.
+- Otherwise default to enabled.
+- Do not overwrite the user’s selection when the active strategy request finishes loading.
+
+3. Generation behavior
+
+When the toggle is ON, send:
+
+```json
+{
+  "earlyOrbMomentum": {
+    "enabled": true,
+    "eligibilityCutoffMinutes": 630,
+    "minimumCloseDistanceTicks": 1,
+    "maxAttemptsPerDirection": 1
+  }
+}
+When the toggle is OFF, send the same object with:
+"enabled": false
+The selected state must control whether Early ORB Momentum candidates are generated across every selected date.
+Both “Generate trade candidates” and “Regenerate fresh” must use the currently displayed toggle state.
+Remove the governance-only restriction
+The server currently requires submitted Early ORB settings to match the active governed Shadow strategy configuration.
+Change this behavior for Visual Review generation.
+Allow the request-level earlyOrbMomentum.enabled value to be either true or false without requiring a Strategy Proposal or active strategy version.
+Validate it as a boolean and use it when constructing every historical market snapshot for the requested date range.
+Do not silently replace the submitted toggle with the governed default.
+Keep these fixed values server-validated:
+Cutoff: 630 minutes / 10:30 AM ET
+Minimum ORB distance: 1 MES tick
+Maximum attempts per direction: exactly 1
+This override is scoped only to Visual Review and its Shadow Account Replay. It must not alter the persistent production strategy configuration.
+Formula and cache identity
+Include the selected toggle state in:
+Generation request
+Generation-job payload
+Formula configuration hash
+Visual Review cache key
+Review-set metadata
+Candidate evidence
+Combined Shadow Account Replay
+Generating with ON and generating with OFF must produce different cache identities.
+A review set generated with the toggle OFF must not be reused when the toggle is ON.
+“Regenerate fresh” must bypass any earlier compatible or incompatible cached set as intended.
+Display effective state
+Store the effective setting with the generated review set.
+When viewing an existing review set, display whether that specific set was generated with Early ORB Momentum:
+Enabled for this review set
+Disabled for this review set
+Do not display the current local toggle state as though it were the setting used by an older review set.
+Preserve strategy rules
+Do not modify the Early ORB trading formula.
+When enabled:
+ORB must be finalized.
+P must be a completed five-minute candle.
+P must open before 10:30 AM ET.
+Long P must close at least one tick above ORB high.
+Short P must close at least one tick below ORB low.
+P creates the momentum arm and serves as the patience candle.
+No pullback arm is required.
+No VWAP, 200 MA, slope, volume, body-ratio, or close-location gate is required.
+No entry occurs inside P.
+Only the immediately adjacent completed E may confirm.
+The normal eight-tick buffer remains authoritative.
+E closing inside or onto the ORB invalidates the attempt.
+Existing adaptive stop, target, breakeven, contracts, runner, ambiguity, deduplication, and P/L rules remain authoritative.
+When disabled:
+Generate no Early ORB Momentum candidates.
+Preserve all other strategy output exactly.
+Safety boundary
+This toggle must remain:
+Visual Review only
+Historical replay only
+Shadow Account Replay only
+It must never:
+Connect to a broker
+Submit live orders
+Submit paper orders
+Change the persistent active strategy
+Modify previously generated review sets
+Update the panel language so it no longer says the setting can only be changed through strategy governance.
+Use wording such as:
+“This setting applies only to this Visual Review generation and its read-only Shadow Account Replay. No live or paper orders are created.”
+Tests
+Add tests proving:
+Toggle defaults to ON when no preference exists.
+Toggle can be turned OFF.
+Toggle can be turned back ON.
+Toggle state survives a page reload.
+Active-strategy loading does not overwrite the user’s choice.
+Generate uses the current toggle state.
+Regenerate Fresh uses the current toggle state.
+Server accepts ON without a Strategy Proposal.
+Server accepts OFF without a Strategy Proposal.
+Invalid non-boolean values are rejected.
+ON generates eligible Early ORB candidates.
+OFF generates no Early ORB candidates.
+All other strategies remain unchanged when toggling this setting.
+ON and OFF generate different formula hashes and cache keys.
+Combined multi-date generation applies the setting to every date.
+Shadow Account Replay includes Early ORB trades and P/L exactly once when enabled.
+Existing review sets display their captured setting rather than the current toggle.
+No live or paper execution path is introduced.
+Run:
+Focused frontend toggle tests
+Visual Review request tests
+Generation-job tests
+Phase 9 tests
+Shadow Account Replay tests
+API typecheck
+Frontend typecheck
+Frontend production build
+git diff --check
+Report files changed, tests executed, pass/fail totals, and any remaining limitations.
+```
