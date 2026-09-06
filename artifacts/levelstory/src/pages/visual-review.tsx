@@ -140,8 +140,8 @@ const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
 ];
 type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
 const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: string }> = [
-  { id: "chart-analysis", label: "Chart Analysis", detail: "uploaded evidence" },
   { id: "generate", label: "Generate", detail: "deterministic replay" },
+  { id: "chart-analysis", label: "Chart Analysis", detail: "uploaded evidence" },
   { id: "account-impact", label: "Account impact", detail: "read-only" },
 ];
 type CandidateTradeView = {
