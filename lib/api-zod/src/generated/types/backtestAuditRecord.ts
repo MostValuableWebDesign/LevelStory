@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestAuditRecordDirection } from './backtestAuditRecordDirection';
+import type { BacktestAuditRecordEligibilityArmState } from './backtestAuditRecordEligibilityArmState';
+import type { BacktestAuditRecordEligibilityProvenance } from './backtestAuditRecordEligibilityProvenance';
 import type { BacktestAuditRecordExecutionMode } from './backtestAuditRecordExecutionMode';
 import type { BacktestAuditRecordPatienceCandle } from './backtestAuditRecordPatienceCandle';
 import type { BacktestAuditRecordPatienceOccurrencesItem } from './backtestAuditRecordPatienceOccurrencesItem';
@@ -80,6 +82,14 @@ export interface BacktestAuditRecord {
   exitReason: string | null;
   /** @nullable */
   confirmationBufferTicks?: number | null;
+  /** @nullable */
+  eligibilityArmId?: string | null;
+  /** @nullable */
+  eligibilityArmState?: BacktestAuditRecordEligibilityArmState;
+  /** @nullable */
+  eligibilityArmStateReason?: string | null;
+  /** @nullable */
+  eligibilityProvenance?: BacktestAuditRecordEligibilityProvenance;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];

@@ -3260,6 +3260,10 @@ components:
         netPnl: { type: ["number", "null"] }
         exitReason: { type: ["string", "null"] }
         confirmationBufferTicks: { type: ["number", "null"] }
+        eligibilityArmId: { type: ["string", "null"] }
+        eligibilityArmState: { type: ["string", "null"], enum: [active, consumed, invalidated, superseded, null] }
+        eligibilityArmStateReason: { type: ["string", "null"] }
+        eligibilityProvenance: { type: ["object", "null"], additionalProperties: true }
         consolidationThresholds: { $ref: "#/components/schemas/ConsolidationThresholds" }
         consolidationGuard: { oneOf: [{ $ref: "#/components/schemas/ConsolidationEntryGuardEvidence" }, { type: "null" }] }
         pullbackOccurrences: { type: array, items: { type: object, additionalProperties: true } }

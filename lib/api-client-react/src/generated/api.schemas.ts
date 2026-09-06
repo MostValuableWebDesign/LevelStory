@@ -2311,6 +2311,24 @@ export const BacktestAuditRecordExecutionMode = {
   ohlcv_modeled: 'ohlcv_modeled',
 } as const;
 
+/**
+ * @nullable
+ */
+export type BacktestAuditRecordEligibilityArmState = typeof BacktestAuditRecordEligibilityArmState[keyof typeof BacktestAuditRecordEligibilityArmState] | null;
+
+
+export const BacktestAuditRecordEligibilityArmState = {
+  active: 'active',
+  consumed: 'consumed',
+  invalidated: 'invalidated',
+  superseded: 'superseded',
+} as const;
+
+/**
+ * @nullable
+ */
+export type BacktestAuditRecordEligibilityProvenance = { [key: string]: unknown } | null;
+
 export type BacktestAuditRecordPullbackOccurrencesItem = { [key: string]: unknown };
 
 export type BacktestAuditRecordPatienceOccurrencesItem = { [key: string]: unknown };
@@ -2379,6 +2397,14 @@ export interface BacktestAuditRecord {
   exitReason: string | null;
   /** @nullable */
   confirmationBufferTicks?: number | null;
+  /** @nullable */
+  eligibilityArmId?: string | null;
+  /** @nullable */
+  eligibilityArmState?: BacktestAuditRecordEligibilityArmState;
+  /** @nullable */
+  eligibilityArmStateReason?: string | null;
+  /** @nullable */
+  eligibilityProvenance?: BacktestAuditRecordEligibilityProvenance;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: ConsolidationEntryGuardEvidence | null;
   pullbackOccurrences?: BacktestAuditRecordPullbackOccurrencesItem[];

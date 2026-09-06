@@ -12,6 +12,8 @@ export * from './backtestAuditPage';
 export * from './backtestAuditPageFilters';
 export * from './backtestAuditRecord';
 export * from './backtestAuditRecordDirection';
+export * from './backtestAuditRecordEligibilityArmState';
+export * from './backtestAuditRecordEligibilityProvenance';
 export * from './backtestAuditRecordExecutionMode';
 export * from './backtestAuditRecordPatienceCandle';
 export * from './backtestAuditRecordPatienceOccurrencesItem';

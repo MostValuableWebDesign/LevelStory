@@ -10,6 +10,10 @@ export type DeterministicRuleDiff = { field: RuleField; value: number | boolean 
 
 const ALLOWED_FIELDS = new Set<RuleField>([
   "patienceEntryBufferTicks",
+  "earlyOrbMomentumContinuationEnabled",
+  "earlyOrbMomentumEligibilityCutoffMinutes",
+  "earlyOrbMomentumMinimumCloseDistanceTicks",
+  "earlyOrbMomentumMaxAttemptsPerDirection",
 ]);
 
 export type ComparisonMetrics = {

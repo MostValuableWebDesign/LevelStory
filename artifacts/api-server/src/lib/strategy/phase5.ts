@@ -543,109 +543,113 @@ export function earlyOrbMomentumPatienceAnalysis(
       : ntz.low - minimumDistance * tickSize;
     return afterOrb
       .filter((candle) => direction === "long" ? candle.close >= boundary : candle.close <= boundary)
-      .filter((candle) => wallClockMinutesForTimestamp(candle.closeTime) < cutoff)
+      .filter((candle) => wallClockMinutesForTimestamp(candle.openTime) < cutoff)
       .slice(0, maxAttempts)
       .map((candle) => ({ candle, direction }));
-  }).sort((a, b) => a.candle.closeTime - b.candle.closeTime);
-  const candidate = candidates[0];
-  if (!candidate) {
+  }).sort((a, b) => a.candle.closeTime - b.candle.closeTime || (a.direction === "long" ? -1 : 1));
+  if (candidates.length === 0) {
     return {
-      ...waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for the first completed close outside the finalized ORB before the eligibility cutoff.", "neutral", entryBufferTicks, stopBufferTicks),
+      ...waiting("WAITING_FOR_PATIENCE_CANDLE", `Waiting for the first completed close outside the finalized ORB with P opening before ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET.`, "neutral", entryBufferTicks, stopBufferTicks),
       direction: undefined,
       directionSource: "ORB_BREAKOUT",
     };
   }
-  const index = completed.findIndex((candle) => candle.openTime === candidate.candle.openTime);
-  const previous = completed[index - 1] ?? candidate.candle;
-  const next = candles
-    .filter((candle) => candle.openTime > candidate.candle.openTime)
-    .sort((a, b) => a.openTime - b.openTime)[0];
-  const event: PatienceEligibilityEvent = {
-    time: candidate.candle.closeTime,
-    reason: "early orb momentum",
-    detail: `First completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick.`,
-    eventId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
-    armId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
-  };
-  const base = {
-    direction: candidate.direction,
-    directionSource: "ORB_BREAKOUT" as const,
-    eligible: true,
-    eligibilityReason: event.reason,
-    eligibilityTime: event.time,
-    trend: "neutral" as const,
-    previousCandle: snapshot(previous),
-    patienceCandle: snapshot(candidate.candle),
-    triggerCandle: null as PatienceCandleSnapshot | null,
-    entryBufferTicks,
-    entryBufferPrice: effectiveConfirmationThreshold(candidate.candle, candidate.direction, entryBufferTicks, tickSize, ntz),
-    stopBufferTicks,
-    strategyStopPrice: authoritativePatienceStopPrice(candidate.direction, candidate.direction === "long" ? candidate.candle.low : candidate.candle.high, stopBufferTicks, tickSize),
-    stateTime: candidate.candle.closeTime,
-  };
-  const provenance = {
-    eventId: event.eventId ?? null,
-    reason: event.reason,
-    time: event.time,
-    detail: event.detail ?? null,
-  };
-  const occurrenceBase = {
-    occurrenceId: `patience|early-orb|${candidate.direction}|${candidate.candle.openTime}|${next?.openTime ?? "none"}`,
-    direction: candidate.direction,
-    directionSource: "ORB_BREAKOUT" as const,
-    entryBufferTicks,
-    stopBufferTicks,
-    patienceCandleExtreme: candidate.direction === "long" ? candidate.candle.low : candidate.candle.high,
-    stopBufferPoints: stopBufferTicks * tickSize,
-    finalStopBoundary: base.strategyStopPrice!,
-    eligibilityReason: event.reason,
-    eligibilityTime: event.time,
-    eligibilityEventId: event.eventId,
-    previousComparisonTimestamp: previous.openTime,
-    candidateShapeResult: true,
-    expectedEntryCandleOpenTime: candidate.candle.closeTime,
-    confirmationThreshold: base.entryBufferPrice!,
-    actualConfirmationExcursion: next
-      ? candidate.direction === "long" ? Math.max(0, next.high - candidate.candle.high) : Math.max(0, candidate.candle.low - next.low)
-      : null,
-    previousCandle: snapshot(previous),
-    patienceCandle: snapshot(candidate.candle),
-    nextObservedCandle: next ? snapshot(next) : null,
-    eligibilityArmId: event.armId,
-    eligibilityArmState: "active" as const,
-    eligibilityArmStateReason: "The isolated early ORB arm permits exactly one attempt for this direction.",
-    eligibilityProvenance: provenance,
-  };
-  let analysis: PatienceAnalysis;
-  let occurrenceStatus: PatienceOccurrenceStatus = "CANDIDATE";
-  if (!next) {
-    analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "The first qualifying ORB-outside close is frozen as P; only its immediate next candle may confirm.", triggerPrice: null };
-  } else if (next.openTime !== candidate.candle.closeTime) {
-    analysis = { ...base, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
-    occurrenceStatus = "EXPIRED_MISSING_E";
-  } else {
-    analysis = evaluateTrigger(candidate.candle, previous, next, candidate.direction, event, "neutral", "ORB_BREAKOUT", tickSize, entryBufferTicks, stopBufferTicks, ntz, true, cutoff);
-    occurrenceStatus = analysis.state === "ENTRY_TRIGGERED"
-      ? "CONFIRMED"
-      : analysis.state === "OPPOSITE_SIDE_INVALIDATION" ? "EXPIRED_WRONG_DIRECTION"
-        : "EXPIRED_NO_IMMEDIATE_CONFIRMATION";
-  }
-  const occurrence: PatienceOccurrence = {
-    ...occurrenceBase,
-    triggerCandle: analysis.triggerCandle,
-    outcomeStatus: occurrenceStatus,
-    qualificationStatus: occurrenceStatus === "CONFIRMED" ? "SIGNAL_CONFIRMED" : "IMMEDIATE_CONFIRMATION_FAILED",
-    status: analysis.state,
-    reasonCode: analysis.detail,
-    evaluationCursor: analysis.triggerCandle?.closeTime ?? candidate.candle.closeTime,
-  };
+  const attempts = candidates.map((candidate) => {
+    const index = completed.findIndex((candle) => candle.openTime === candidate.candle.openTime);
+    const previous = completed[index - 1] ?? candidate.candle;
+    const next = candles
+      .filter((candle) => candle.openTime > candidate.candle.openTime)
+      .sort((a, b) => a.openTime - b.openTime)[0];
+    const event: PatienceEligibilityEvent = {
+      time: candidate.candle.closeTime,
+      reason: "early orb momentum",
+      detail: `First completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick; P opened before the configured ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET cutoff.`,
+      eventId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
+      armId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
+    };
+    const base = {
+      direction: candidate.direction,
+      directionSource: "ORB_BREAKOUT" as const,
+      eligible: true,
+      eligibilityReason: event.reason,
+      eligibilityTime: event.time,
+      trend: "neutral" as const,
+      previousCandle: snapshot(previous),
+      patienceCandle: snapshot(candidate.candle),
+      triggerCandle: null as PatienceCandleSnapshot | null,
+      entryBufferTicks,
+      entryBufferPrice: effectiveConfirmationThreshold(candidate.candle, candidate.direction, entryBufferTicks, tickSize, ntz),
+      stopBufferTicks,
+      strategyStopPrice: authoritativePatienceStopPrice(candidate.direction, candidate.direction === "long" ? candidate.candle.low : candidate.candle.high, stopBufferTicks, tickSize),
+      stateTime: candidate.candle.closeTime,
+    };
+    const provenance = {
+      eventId: event.eventId ?? null,
+      reason: event.reason,
+      time: event.time,
+      detail: event.detail ?? null,
+    };
+    const occurrenceBase = {
+      occurrenceId: `patience|early-orb|${candidate.direction}|${candidate.candle.openTime}|${next?.openTime ?? "none"}`,
+      direction: candidate.direction,
+      directionSource: "ORB_BREAKOUT" as const,
+      entryBufferTicks,
+      stopBufferTicks,
+      patienceCandleExtreme: candidate.direction === "long" ? candidate.candle.low : candidate.candle.high,
+      stopBufferPoints: stopBufferTicks * tickSize,
+      finalStopBoundary: base.strategyStopPrice!,
+      eligibilityReason: event.reason,
+      eligibilityTime: event.time,
+      eligibilityEventId: event.eventId,
+      previousComparisonTimestamp: previous.openTime,
+      candidateShapeResult: true,
+      expectedEntryCandleOpenTime: candidate.candle.closeTime,
+      confirmationThreshold: base.entryBufferPrice!,
+      actualConfirmationExcursion: next
+        ? candidate.direction === "long" ? Math.max(0, next.high - candidate.candle.high) : Math.max(0, candidate.candle.low - next.low)
+        : null,
+      previousCandle: snapshot(previous),
+      patienceCandle: snapshot(candidate.candle),
+      nextObservedCandle: next ? snapshot(next) : null,
+      eligibilityArmId: event.armId,
+      eligibilityArmState: "active" as const,
+      eligibilityArmStateReason: "The isolated early ORB arm permits exactly one attempt for this direction.",
+      eligibilityProvenance: provenance,
+    };
+    let analysis: PatienceAnalysis;
+    let occurrenceStatus: PatienceOccurrenceStatus = "CANDIDATE";
+    if (!next) {
+      analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "The first qualifying ORB-outside close is frozen as P; only its immediate next candle may confirm.", triggerPrice: null };
+    } else if (next.openTime !== candidate.candle.closeTime) {
+      analysis = { ...base, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
+      occurrenceStatus = "EXPIRED_MISSING_E";
+    } else {
+      analysis = evaluateTrigger(candidate.candle, previous, next, candidate.direction, event, "neutral", "ORB_BREAKOUT", tickSize, entryBufferTicks, stopBufferTicks, ntz, true, undefined, true);
+      occurrenceStatus = analysis.state === "ENTRY_TRIGGERED"
+        ? "CONFIRMED"
+        : analysis.state === "OPPOSITE_SIDE_INVALIDATION" ? "EXPIRED_WRONG_DIRECTION"
+          : "EXPIRED_NO_IMMEDIATE_CONFIRMATION";
+    }
+    const occurrence: PatienceOccurrence = {
+      ...occurrenceBase,
+      triggerCandle: analysis.triggerCandle,
+      outcomeStatus: occurrenceStatus,
+      qualificationStatus: occurrenceStatus === "CONFIRMED" ? "SIGNAL_CONFIRMED" : "IMMEDIATE_CONFIRMATION_FAILED",
+      status: analysis.state,
+      reasonCode: analysis.detail,
+      evaluationCursor: analysis.triggerCandle?.closeTime ?? candidate.candle.closeTime,
+    };
+    return { candidate, analysis: { ...analysis, eligibilityArmId: event.armId, eligibilityArmState: "active" as const, eligibilityArmStateReason: occurrenceStatus === "CONFIRMED" ? "Early ORB arm confirmed on its immediate E candle." : "Early ORB arm remains a single-attempt historical occurrence.", eligibilityProvenance: provenance }, occurrence };
+  });
+  const selected = attempts
+    .filter((attempt) => attempt.analysis.state === "ENTRY_TRIGGERED")
+    .sort((a, b) => a.candidate.candle.closeTime - b.candidate.candle.closeTime || (a.candidate.direction === "long" ? -1 : 1))[0]
+    ?? attempts[0]!;
   return {
-    ...analysis,
-    occurrences: [occurrence],
-    eligibilityArmId: event.armId,
-    eligibilityArmState: "active",
-    eligibilityArmStateReason: occurrenceStatus === "CONFIRMED" ? "Early ORB arm confirmed on its immediate E candle." : "Early ORB arm remains a single-attempt historical occurrence.",
-    eligibilityProvenance: provenance,
+    ...selected.analysis,
+    occurrences: attempts
+      .sort((a, b) => a.candidate.candle.openTime - b.candidate.candle.openTime || (a.candidate.direction === "long" ? -1 : 1))
+      .map((attempt) => attempt.occurrence),
   };
 }
 
@@ -667,6 +671,7 @@ function evaluateTrigger(
   finalizedNtz?: NtzRange | null,
   requireFinalizedNtz = false,
   entryCutoffMinutes?: number,
+  requireDirectionalCloseOutsideNtz = false,
 ): PatienceAnalysis {
   const intendedPrice = direction === "long" ? patience.high : patience.low;
   const stopExtreme = direction === "long" ? patience.low : patience.high;
@@ -704,7 +709,20 @@ function evaluateTrigger(
     stateTime: trigger.openTime,
   };
   if (entryCutoffMinutes !== undefined && wallClockMinutesForTimestamp(trigger.openTime) >= entryCutoffMinutes) {
-    return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: "ENTRY_AFTER_PRIMARY_CUTOFF: E opens at or after 1:00 p.m. ET." };
+    return { ...base, state: "PATIENCE_CANDLE_EXPIRED", triggerPrice: null, detail: `ENTRY_AFTER_PRIMARY_CUTOFF: E opens at or after the configured ${Math.floor(entryCutoffMinutes / 60)}:${String(entryCutoffMinutes % 60).padStart(2, "0")} ET cutoff.` };
+  }
+  if (
+    requireDirectionalCloseOutsideNtz
+    && trigger.isComplete
+    && finalizedNtz?.complete
+    && (direction === "long" ? trigger.close <= finalizedNtz.high : trigger.close >= finalizedNtz.low)
+  ) {
+    return {
+      ...base,
+      state: "PATIENCE_CANDLE_EXPIRED",
+      triggerPrice: null,
+      detail: "EARLY_ORB_E_CLOSED_BACK_INSIDE_FINALIZED_ORB: immediate E reached or touched the entry threshold but its completed close returned inside or onto the finalized ORB.",
+    };
   }
   // E qualifies solely by reaching the intended confirmation threshold. The
   // opposite P wick is not an entry or invalidation rule.

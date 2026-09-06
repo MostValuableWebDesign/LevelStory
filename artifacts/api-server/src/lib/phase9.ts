@@ -42,6 +42,7 @@ import {
 import {
   isPatienceCandleOutsideNtz,
   patienceArmLifecycleTransitions,
+  type PatienceEligibilityArmState,
   type PatienceOccurrence,
 } from "./strategy/phase5.js";
 import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "./strategy/phase5.js";
@@ -504,6 +505,15 @@ export type BacktestAuditRecord = {
   confirmationBufferTicks?: number;
   pullbackArmId?: string | null;
   pullbackArmState?: PullbackArmState;
+  eligibilityArmId?: string | null;
+  eligibilityArmState?: PatienceEligibilityArmState | null;
+  eligibilityArmStateReason?: string | null;
+  eligibilityProvenance?: {
+    eventId: string | null;
+    reason: string;
+    time: number;
+    detail: string | null;
+  } | null;
   pullbackArmTransitions?: Array<{ from: PullbackArmState | null; to: PullbackArmState; time: string; reason: string }>;
   latePullbackInteractions?: number;
   finalizedNtzHigh?: number | null;
@@ -2425,15 +2435,19 @@ function auditForEvaluation(
   causalContractSymbol?: string,
   visibleCausalCandles?: readonly SimulatedFuturesCandle[],
 ): BacktestAuditRecord {
-  const rejectionReason = evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
     ? snapshot.reversalPatience ?? snapshot.patience
     : evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
-      ? snapshot.earlyOrbMomentum ?? snapshot.patience
+      ? snapshot.earlyOrbMomentum
     : snapshot.patience;
+  const earlyEvidenceMissing = evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION" && !signalPatience;
+  const effectiveSignalPatience = signalPatience ?? snapshot.patience;
+  const rejectionReason = earlyEvidenceMissing
+    ? "MISSING_EARLY_ORB_EVIDENCE"
+    : evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   const consolidationEdgeEvaluation = snapshot.setupAnalysis.evaluations
     .find((candidate) => candidate.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION");
-  const toGuardCandle = (candle: typeof signalPatience.patienceCandle | typeof signalPatience.triggerCandle) =>
+  const toGuardCandle = (candle: typeof effectiveSignalPatience.patienceCandle | typeof effectiveSignalPatience.triggerCandle) =>
     candle && Number.isFinite(Date.parse(candle.openTime)) && Number.isFinite(Date.parse(candle.closeTime))
       ? {
         openTime: Date.parse(candle.openTime),
@@ -2447,10 +2461,10 @@ function auditForEvaluation(
       }
       : null;
   const guardPatience = {
-    patienceCandle: toGuardCandle(signalPatience.patienceCandle),
-    triggerCandle: toGuardCandle(signalPatience.triggerCandle),
-    entryBufferTicks: signalPatience.entryBufferTicks,
-    entryBufferPrice: signalPatience.entryBufferPrice,
+    patienceCandle: toGuardCandle(effectiveSignalPatience.patienceCandle),
+    triggerCandle: toGuardCandle(effectiveSignalPatience.triggerCandle),
+    entryBufferTicks: effectiveSignalPatience.entryBufferTicks,
+    entryBufferPrice: effectiveSignalPatience.entryBufferPrice,
   };
   const guardDirection = evaluation.direction ?? snapshot.breakout.direction ?? null;
   const finalizedNtz = snapshot.ntz.complete
@@ -2489,14 +2503,19 @@ function auditForEvaluation(
     evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
     setupType: evaluation.setupType,
     direction: evaluation.direction,
-    decision: evaluation.decision,
+    decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
     alertOnly: evaluation.alertOnly,
     rejectionReason,
     rejectionCategory: classifyRejection(rejectionReason, evaluation.decision),
-    rejectionSummary: evaluation.decision === "SETUP QUALIFIED"
+    rejectionSummary: earlyEvidenceMissing
+      ? "Early ORB Momentum was selected, but its isolated patience evidence was unavailable at this causal cursor."
+      : evaluation.decision === "SETUP QUALIFIED"
       ? null
       : evaluation.rules.filter((rule) => !rule.passed).map((rule) => `${rule.key}: ${rule.detail}`).join("; ") || evaluation.explanation,
-    ruleEvidence: evaluation.rules.map((rule) => `${rule.passed ? "PASS" : "FAIL"} ${rule.key}: ${rule.detail}`),
+    ruleEvidence: [
+      ...evaluation.rules.map((rule) => `${rule.passed ? "PASS" : "FAIL"} ${rule.key}: ${rule.detail}`),
+      ...(earlyEvidenceMissing ? ["FAIL earlyOrbEvidence: Isolated Early ORB patience evidence is missing at this causal cursor."] : []),
+    ],
     orbState: snapshot.breakout.state,
     breakoutEvidence: snapshot.breakout.detail,
     volumeEvidence: snapshot.volumeAnalysis.reversalWarning
@@ -2506,18 +2525,18 @@ function auditForEvaluation(
       : snapshot.pullback.detail,
     criticalLevelEvidence: snapshot.levels.critical.map((level) => `${level.name} ${level.price}`).join("; ") || "No critical level evidence.",
     trendEvidence: `${snapshot.trend.direction}: ${snapshot.trend.evidence.join("; ")}`,
-    patienceState: snapshot.patience.state,
-    patienceCandle: evidenceCandle(snapshot.patience.patienceCandle as SimulatedFuturesCandle | null),
-    triggerCandle: evidenceCandle(snapshot.patience.triggerCandle as SimulatedFuturesCandle | null),
-    patienceCandleOpenTime: snapshot.patience.patienceCandle?.openTime ?? null,
-    patienceCandleCloseTime: snapshot.patience.patienceCandle?.closeTime ?? null,
-    patienceCandleExtreme: snapshot.patience.patienceCandle
+    patienceState: effectiveSignalPatience.state,
+    patienceCandle: evidenceCandle(effectiveSignalPatience.patienceCandle as SimulatedFuturesCandle | null),
+    triggerCandle: evidenceCandle(effectiveSignalPatience.triggerCandle as SimulatedFuturesCandle | null),
+    patienceCandleOpenTime: effectiveSignalPatience.patienceCandle?.openTime ?? null,
+    patienceCandleCloseTime: effectiveSignalPatience.patienceCandle?.closeTime ?? null,
+    patienceCandleExtreme: effectiveSignalPatience.patienceCandle
       ? evaluation.direction === "long"
-        ? snapshot.patience.patienceCandle.low
-        : snapshot.patience.patienceCandle.high
+        ? effectiveSignalPatience.patienceCandle.low
+        : effectiveSignalPatience.patienceCandle.high
       : null,
-    stopBufferTicks: snapshot.patience.stopBufferTicks,
-    stopBufferPoints: snapshot.patience.stopBufferTicks * getFuturesContractSpecification(
+    stopBufferTicks: effectiveSignalPatience.stopBufferTicks,
+    stopBufferPoints: effectiveSignalPatience.stopBufferTicks * getFuturesContractSpecification(
       parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
     ).tickSize,
     runnerBufferTicks: adaptiveExecutionManagement(
@@ -2525,18 +2544,18 @@ function auditForEvaluation(
         ? snapshot.pullback.atr14 / getFuturesContractSpecification(parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol).tickSize
         : null,
     ).runnerBufferTicks,
-    finalStrategyStopBoundary: snapshot.patience.strategyStopPrice,
+    finalStrategyStopBoundary: effectiveSignalPatience.strategyStopPrice,
     stopDirection: evaluation.direction ?? null,
     stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
-    triggerCandleOpenTime: snapshot.patience.triggerCandle?.openTime ?? null,
-    triggerCandleCloseTime: snapshot.patience.triggerCandle?.closeTime ?? null,
+    triggerCandleOpenTime: effectiveSignalPatience.triggerCandle?.openTime ?? null,
+    triggerCandleCloseTime: effectiveSignalPatience.triggerCandle?.closeTime ?? null,
     modeledFillObservationTime: null,
     exitCandleOpenTime: null,
     exitCandleCloseTime: null,
-     entryTriggerPrice: consolidationGuard?.effectiveEntryThreshold ?? snapshot.patience.entryBufferPrice,
-     patienceConfirmationThreshold: consolidationGuard?.patienceConfirmationThreshold ?? snapshot.patience.entryBufferPrice,
+      entryTriggerPrice: consolidationGuard?.effectiveEntryThreshold ?? effectiveSignalPatience.entryBufferPrice,
+      patienceConfirmationThreshold: consolidationGuard?.patienceConfirmationThreshold ?? effectiveSignalPatience.entryBufferPrice,
      consolidationBoundaryThreshold: consolidationGuard?.consolidationBoundaryThreshold ?? null,
-     effectiveEntryThreshold: consolidationGuard?.effectiveEntryThreshold ?? snapshot.patience.entryBufferPrice,
+      effectiveEntryThreshold: consolidationGuard?.effectiveEntryThreshold ?? effectiveSignalPatience.entryBufferPrice,
      effectiveEntryThresholdReached: consolidationGuard?.effectiveEntryThresholdReached ?? null,
      entryOpenedOutsideZone: consolidationGuard?.entryOpenedOutsideZone ?? null,
      entryClosedOutsideZone: consolidationGuard?.entryClosedOutsideZone ?? null,
@@ -2561,9 +2580,20 @@ function auditForEvaluation(
     grossPnl: null,
     netPnl: null,
     exitReason: null,
-    confirmationBufferTicks: snapshot.patience.entryBufferTicks,
-    pullbackArmId: snapshot.pullback.armId ?? null,
-    pullbackArmState: snapshot.pullback.armState,
+     confirmationBufferTicks: effectiveSignalPatience.entryBufferTicks,
+     pullbackArmId: evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION" ? null : snapshot.pullback.armId ?? null,
+     pullbackArmState: snapshot.pullback.armState,
+     eligibilityArmId: effectiveSignalPatience.eligibilityArmId ?? null,
+     eligibilityArmState: effectiveSignalPatience.eligibilityArmState ?? null,
+     eligibilityArmStateReason: effectiveSignalPatience.eligibilityArmStateReason ?? null,
+     eligibilityProvenance: effectiveSignalPatience.eligibilityProvenance
+       ? {
+         eventId: effectiveSignalPatience.eligibilityProvenance.eventId ?? null,
+         reason: effectiveSignalPatience.eligibilityProvenance.reason,
+         time: effectiveSignalPatience.eligibilityProvenance.time,
+         detail: effectiveSignalPatience.eligibilityProvenance.detail ?? null,
+       }
+       : null,
     pullbackArmTransitions: (snapshot.pullback.armTransitions ?? []).map((transition) => ({
       ...transition,
       time: new Date(transition.time).toISOString(),
@@ -2577,7 +2607,7 @@ function auditForEvaluation(
     consolidationThresholds: governedConsolidation,
     consolidationGuard,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
-    patienceOccurrences: [...(snapshot.patience.occurrences ?? [])],
+     patienceOccurrences: earlyEvidenceMissing ? [] : [...(effectiveSignalPatience.occurrences ?? [])],
     atr14: snapshot.pullback.atr14,
   };
 }
