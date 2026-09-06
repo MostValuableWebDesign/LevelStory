@@ -536,9 +536,9 @@ export function phase5PatienceAnalysis(
 
 /**
  * Isolated early-ORB path. Any completed close one tick outside the finalized
- * ORB can be P; no chronological-first requirement, pullback, trend,
- * candle-shape, or volume evidence is consulted. Only the adjacent E candle
- * can confirm a P.
+ * ORB can be P when it also has the governed patience-candle shape; no
+ * chronological-first requirement, pullback, trend, or volume evidence is
+ * consulted. Only the adjacent E candle can confirm a P.
  */
 export function earlyOrbMomentumPatienceAnalysis(
   candles: readonly Candle[],
@@ -584,6 +584,11 @@ export function earlyOrbMomentumPatienceAnalysis(
     return afterOrb
       .filter((candle) => direction === "long" ? candle.close >= boundary : candle.close <= boundary)
       .filter((candle) => wallClockMinutesForTimestamp(candle.openTime) < cutoff)
+      .filter((candle) => {
+        const index = completed.findIndex((item) => item.openTime === candle.openTime);
+        const previous = completed[index - 1];
+        return previous !== undefined && patienceShape(candle, previous, direction);
+      })
       .map((candle) => ({ candle, direction }));
   }).sort((a, b) => a.candle.closeTime - b.candle.closeTime || (a.direction === "long" ? -1 : 1));
   if (candidates.length === 0) {
@@ -603,7 +608,7 @@ export function earlyOrbMomentumPatienceAnalysis(
     const event: PatienceEligibilityEvent = {
       time: candidate.candle.closeTime,
       reason: "early orb momentum",
-      detail: `Completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick; P opened before the configured ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET cutoff.`,
+      detail: `Completed patience-shaped ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick; P opened before the configured ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET cutoff.`,
       eventId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
       armId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
     };
