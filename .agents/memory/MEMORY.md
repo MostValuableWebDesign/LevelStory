@@ -63,3 +63,4 @@
 - [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.
 - [Unlimited confirmed entries](unlimited-confirmed-entries.md) — evaluate every eligible Early ORB P→E sequence; do not cap confirmed entries per direction.
 - [Early ORB provenance](early-orb-provenance.md) — identify merged Early ORB occurrences from arm/provenance metadata, not only optional evidence or canonical strategy labels.
+- [Visual replay timeout fallback](visual-replay-timeout-fallback.md) — timeouts may expose the last same-request completed set as partial; never present unrelated or unverified data.

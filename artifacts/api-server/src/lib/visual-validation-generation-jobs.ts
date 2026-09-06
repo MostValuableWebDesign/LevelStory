@@ -29,7 +29,7 @@ export type CandidateGenerationPhase =
   | "building_snapshots"
   | "completed";
 
-export type CandidateGenerationStatus = "queued" | "running" | "completed" | "failed";
+export type CandidateGenerationStatus = "queued" | "running" | "completed" | "partial" | "failed";
 
 export type CandidateGenerationJob = {
   jobId: string;
@@ -61,6 +61,7 @@ type JobRecord = CandidateGenerationJob & {
   generationOrigin: "cached" | "fresh";
   startedAt: number | null;
   completedAt: number | null;
+  fallbackResult?: VisualValidationSet;
 };
 
 const JOB_TTL_MS = 30 * 60_000;
@@ -252,6 +253,22 @@ async function runJob(job: JobRecord): Promise<void> {
     completedByRequest.set(job.requestKey, job.jobId);
   } catch (error) {
     job.completedAt = Date.now();
+    const timedOut = error instanceof Error && /historical replay timed out/i.test(error.message);
+    if (timedOut && job.fallbackResult) {
+      job.result = job.fallbackResult;
+      job.reviewSetId = job.fallbackResult.reviewSetId;
+      job.origin = "cached";
+      job.generationOrigin = "cached";
+      updateJob(job, {
+        status: "partial",
+        phase: "completed",
+        completedUnits: job.completedUnits,
+        completedSessions: job.completedSessions,
+        message: "Historical replay timed out; showing the last completed result.",
+        error: error instanceof Error ? error.message : "Historical replay timed out.",
+      });
+      return;
+    }
     updateJob(job, {
       status: "failed",
       error: error instanceof Error ? error.message : "Unable to generate the visual-validation set.",
@@ -310,6 +327,7 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       estimatedRemainingMs: null,
       startedAt: null,
       completedAt: null,
+      fallbackResult: completedJobId ? jobs.get(completedJobId)?.result : undefined,
     };
     jobs.set(job.jobId, job);
     activeByRequest.set(key, job.jobId);

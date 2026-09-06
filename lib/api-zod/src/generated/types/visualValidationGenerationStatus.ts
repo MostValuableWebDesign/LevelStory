@@ -13,5 +13,6 @@ export const VisualValidationGenerationStatus = {
   queued: 'queued',
   running: 'running',
   completed: 'completed',
+  partial: 'partial',
   failed: 'failed',
 } as const;

@@ -549,7 +549,7 @@ export default function VisualReview() {
 
   useEffect(() => {
     if (!generationJob) return;
-    if (generationJob.status === "completed" && generationJob.result) {
+    if ((generationJob.status === "completed" || generationJob.status === "partial") && generationJob.result) {
       setLocalSet(generationJob.result);
       setReviewSetId(generationJob.result.reviewSetId);
       setReviewStatus(null);
@@ -561,9 +561,11 @@ export default function VisualReview() {
         window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
       }
       const qualifiedCount = generationJob.result.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length;
-      setMessage(qualifiedCount > 0
-        ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
-        : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
+      setMessage(generationJob.status === "partial"
+        ? `${generationJob.message} ${qualifiedCount} previously completed trade candidate${qualifiedCount === 1 ? "" : "s"} remain available.`
+        : qualifiedCount > 0
+          ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
+          : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
     } else if (generationJob.status === "failed" && request.source === "historical_databento") {
       const recovery = historicalRangeRecovery(generationJob.error);
       if (recovery && request.endDate === recovery.requestedEndDate) {
@@ -768,7 +770,7 @@ export default function VisualReview() {
   };
 
   const generationBusy = startGeneration.isPending || generationActive;
-  const generationFinished = generationJob?.status === "completed";
+  const generationFinished = generationJob?.status === "completed" || generationJob?.status === "partial";
   const handleVisualReviewTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
@@ -1324,7 +1326,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
     source,
     seed: source === "simulated" ? (request.seed ?? 11) : undefined,
   });
-  const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include"].some((term) => message.toLowerCase().includes(term));
+  const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
     enabled: true,
     eligibilityCutoffMinutes: 630,

@@ -4476,7 +4476,7 @@ components:
       enum: [preparing, loading_sessions, replaying_sessions, building_ledger, projecting_candidates, building_snapshots, completed]
     VisualValidationGenerationStatus:
       type: string
-      enum: [queued, running, completed, failed]
+      enum: [queued, running, completed, partial, failed]
     VisualValidationGenerationJob:
       type: object
       properties:

@@ -7341,7 +7341,7 @@ export const startVisualValidationGenerationJobResponseCacheKeyRegExp = new RegE
 
 export const StartVisualValidationGenerationJobResponse = zod.object({
   "jobId": zod.string().regex(startVisualValidationGenerationJobResponseJobIdRegExp),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'completed', 'partial', 'failed']),
   "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
   "completedUnits": zod.number().min(startVisualValidationGenerationJobResponseCompletedUnitsMin),
   "totalUnits": zod.number().min(1),
@@ -7914,7 +7914,7 @@ export const getLatestVisualValidationGenerationJobResponseCacheKeyRegExp = new 
 
 export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "jobId": zod.string().regex(getLatestVisualValidationGenerationJobResponseJobIdRegExp),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'completed', 'partial', 'failed']),
   "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
   "completedUnits": zod.number().min(getLatestVisualValidationGenerationJobResponseCompletedUnitsMin),
   "totalUnits": zod.number().min(1),
@@ -8494,7 +8494,7 @@ export const getVisualValidationGenerationJobResponseCacheKeyRegExp = new RegExp
 
 export const GetVisualValidationGenerationJobResponse = zod.object({
   "jobId": zod.string().regex(getVisualValidationGenerationJobResponseJobIdRegExp),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'completed', 'partial', 'failed']),
   "phase": zod.enum(['preparing', 'loading_sessions', 'replaying_sessions', 'building_ledger', 'projecting_candidates', 'building_snapshots', 'completed']),
   "completedUnits": zod.number().min(getVisualValidationGenerationJobResponseCompletedUnitsMin),
   "totalUnits": zod.number().min(1),
