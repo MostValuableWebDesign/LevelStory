@@ -456,7 +456,7 @@ export default function VisualReview() {
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
-  const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("chart-analysis");
+  const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("generate");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);

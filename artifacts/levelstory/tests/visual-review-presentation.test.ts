@@ -118,6 +118,7 @@ test("trade review panels collapse after generation and can be opened independen
 
 test("visual review separates chart analysis, deterministic generation, and read-only account impact", () => {
   assert.match(page, /data-testid="visual-review-tabs"/);
+  assert.match(page, /useState<VisualReviewTab>\("generate"\)/);
   assert.match(page, /label: "Chart Analysis", detail: "uploaded evidence"/);
   assert.match(page, /label: "Generate", detail: "deterministic replay"/);
   assert.match(page, /label: "Account impact", detail: "read-only"/);
