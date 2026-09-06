@@ -61,7 +61,6 @@ test("Visual Review captures its Early ORB choice without changing the persisten
       enabled: false,
       eligibilityCutoffMinutes: 630,
       minimumCloseDistanceTicks: 1,
-      maxAttemptsPerDirection: 1,
     },
   });
   assert.equal(enabled.request.earlyOrbMomentum?.enabled, true);

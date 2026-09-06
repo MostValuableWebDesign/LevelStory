@@ -631,7 +631,6 @@ export function createMarketSnapshot(
     stopBufferTicks: config.patienceStopBufferTicks,
     entryCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
     minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
-    maxAttemptsPerDirection: config.earlyOrbMomentumMaxAttemptsPerDirection,
   });
   const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
   const baseSetupContext = {

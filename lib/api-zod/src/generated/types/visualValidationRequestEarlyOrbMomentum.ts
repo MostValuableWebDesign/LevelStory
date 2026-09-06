@@ -5,7 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection } from './visualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection';
 
 /**
  * Server-validated governed Early ORB Momentum settings captured with the deterministic review request.
@@ -22,5 +21,4 @@ export type VisualValidationRequestEarlyOrbMomentum = {
      * @maximum 32
      */
   minimumCloseDistanceTicks: number;
-  maxAttemptsPerDirection: VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection;
 };

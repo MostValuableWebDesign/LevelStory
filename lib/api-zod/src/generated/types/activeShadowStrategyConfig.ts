@@ -10,6 +10,5 @@ export type ActiveShadowStrategyConfig = {
   earlyOrbMomentumContinuationEnabled: boolean;
   earlyOrbMomentumEligibilityCutoffMinutes: number;
   earlyOrbMomentumMinimumCloseDistanceTicks: number;
-  earlyOrbMomentumMaxAttemptsPerDirection: number;
   [key: string]: unknown;
  };

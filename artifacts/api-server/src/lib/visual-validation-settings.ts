@@ -4,14 +4,12 @@ export type VisualReviewEarlyOrbMomentumSettings = {
   enabled: boolean;
   eligibilityCutoffMinutes: number;
   minimumCloseDistanceTicks: number;
-  maxAttemptsPerDirection: number;
 };
 
 export const DEFAULT_VISUAL_REVIEW_EARLY_ORB_MOMENTUM: VisualReviewEarlyOrbMomentumSettings = {
   enabled: true,
   eligibilityCutoffMinutes: 630,
   minimumCloseDistanceTicks: 1,
-  maxAttemptsPerDirection: 1,
 };
 
 export function normalizeVisualReviewEarlyOrbMomentum(
@@ -30,9 +28,6 @@ export function normalizeVisualReviewEarlyOrbMomentum(
   if (settings.minimumCloseDistanceTicks !== 1) {
     throw new Error("Visual Review Early ORB Momentum minimum distance is fixed at 1 MES tick.");
   }
-  if (settings.maxAttemptsPerDirection !== 1) {
-    throw new Error("Visual Review Early ORB Momentum allows exactly 1 attempt per direction.");
-  }
   return DEFAULT_VISUAL_REVIEW_EARLY_ORB_MOMENTUM.enabled === settings.enabled
     ? DEFAULT_VISUAL_REVIEW_EARLY_ORB_MOMENTUM
     : { ...DEFAULT_VISUAL_REVIEW_EARLY_ORB_MOMENTUM, enabled: settings.enabled };
@@ -47,6 +42,5 @@ export function strategyConfigForVisualReview(
     earlyOrbMomentumContinuationEnabled: settings.enabled,
     earlyOrbMomentumEligibilityCutoffMinutes: settings.eligibilityCutoffMinutes,
     earlyOrbMomentumMinimumCloseDistanceTicks: settings.minimumCloseDistanceTicks,
-    earlyOrbMomentumMaxAttemptsPerDirection: settings.maxAttemptsPerDirection,
   });
 }

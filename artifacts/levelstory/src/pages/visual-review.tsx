@@ -238,7 +238,6 @@ const INITIAL_REQUEST: VisualValidationRequest = {
     enabled: true,
     eligibilityCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
-    maxAttemptsPerDirection: 1,
   },
 };
 
@@ -1330,7 +1329,6 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
     enabled: true,
     eligibilityCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
-    maxAttemptsPerDirection: 1 as const,
   };
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
@@ -1395,11 +1393,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
             <input className="field mono" type="text" value={`${earlyOrb.minimumCloseDistanceTicks} MES tick${earlyOrb.minimumCloseDistanceTicks === 1 ? "" : "s"}`} readOnly aria-label="Early ORB minimum distance" />
           </Field>
         </div>
-        <div className="flex items-center justify-between border-t border-border pt-3 text-[10px]">
-          <span className="text-muted-foreground">Attempts per direction</span>
-          <span className="mono font-bold">Exactly {earlyOrb.maxAttemptsPerDirection}</span>
-        </div>
-        <p className="text-[10px] leading-4 text-muted-foreground">The cutoff, one-tick distance, and one-attempt limit are server-validated constants. The enabled choice applies only to Visual Review and its read-only Shadow Account Replay.</p>
+         <p className="border-t border-border pt-3 text-[10px] leading-4 text-muted-foreground">The cutoff and one-tick distance are server-validated constants. Every eligible patience sequence is evaluated independently. The enabled choice applies only to Visual Review and its read-only Shadow Account Replay.</p>
       </fieldset>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <div className="grid gap-2 sm:grid-cols-2">

@@ -32,8 +32,4 @@ test("Visual Review Early ORB accepts only its fixed server-governed thresholds"
     () => normalizeVisualReviewEarlyOrbMomentum({ minimumCloseDistanceTicks: 2 }),
     /fixed at 1/,
   );
-  assert.throws(
-    () => normalizeVisualReviewEarlyOrbMomentum({ maxAttemptsPerDirection: 2 }),
-    /exactly 1/,
-  );
 });

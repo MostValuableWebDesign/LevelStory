@@ -64,7 +64,6 @@ export function formulaConfiguration(
         enabled: config.earlyOrbMomentumContinuationEnabled,
         eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
         minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
-        maxAttemptsPerDirection: config.earlyOrbMomentumMaxAttemptsPerDirection,
       },
     },
   };

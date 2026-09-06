@@ -3750,13 +3750,6 @@ export const VisualValidationRequestReviewMode = {
   trades_and_diagnostics: 'trades_and_diagnostics',
 } as const;
 
-export type VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection = typeof VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection[keyof typeof VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection];
-
-
-export const VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection = {
-  NUMBER_1: 1,
-} as const;
-
 /**
  * Server-validated governed Early ORB Momentum settings captured with the deterministic review request.
  */
@@ -3772,7 +3765,6 @@ export type VisualValidationRequestEarlyOrbMomentum = {
      * @maximum 32
      */
   minimumCloseDistanceTicks: number;
-  maxAttemptsPerDirection: VisualValidationRequestEarlyOrbMomentumMaxAttemptsPerDirection;
 };
 
 export interface VisualValidationRequest {
@@ -5282,7 +5274,6 @@ export type ActiveShadowStrategyConfig = {
   earlyOrbMomentumContinuationEnabled: boolean;
   earlyOrbMomentumEligibilityCutoffMinutes: number;
   earlyOrbMomentumMinimumCloseDistanceTicks: number;
-  earlyOrbMomentumMaxAttemptsPerDirection: number;
   [key: string]: unknown;
  };
 

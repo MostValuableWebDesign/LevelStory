@@ -550,7 +550,6 @@ export function earlyOrbMomentumPatienceAnalysis(
     stopBufferTicks?: number;
     entryCutoffMinutes?: number;
     minimumCloseDistanceTicks?: number;
-    maxAttemptsPerDirection?: number;
   },
 ): PatienceAnalysis {
   const tickSize = options.tickSize ?? 0.25;
@@ -558,7 +557,6 @@ export function earlyOrbMomentumPatienceAnalysis(
   const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const cutoff = options.entryCutoffMinutes ?? 630;
   const minimumDistance = options.minimumCloseDistanceTicks ?? 1;
-  const maxAttempts = options.maxAttemptsPerDirection ?? 1;
   if (!options.enabled) {
     return {
       ...waiting("WAITING_FOR_VALID_CONTEXT", "Early ORB Momentum Continuation is disabled.", "neutral", entryBufferTicks, stopBufferTicks),
@@ -689,7 +687,7 @@ export function earlyOrbMomentumPatienceAnalysis(
       nextObservedCandle: immediateNext ? snapshot(immediateNext) : null,
       eligibilityArmId: event.armId,
       eligibilityArmState: "active" as const,
-      eligibilityArmStateReason: "The isolated early ORB arm permits exactly one attempt for this direction.",
+      eligibilityArmStateReason: "The isolated early ORB arm evaluates every eligible patience sequence for this direction.",
       eligibilityProvenance: provenance,
       earlyOrbEvidence,
     };
@@ -723,20 +721,9 @@ export function earlyOrbMomentumPatienceAnalysis(
     };
     return { candidate, analysis: { ...analysis, eligibilityArmId: event.armId, eligibilityArmState: "active" as const, eligibilityArmStateReason: occurrenceStatus === "CONFIRMED" ? "Early ORB arm confirmed on its immediate E candle." : "Early ORB arm remains a single-attempt historical occurrence.", eligibilityProvenance: provenance, earlyOrbEvidence: occurrenceBase.earlyOrbEvidence }, occurrence };
   });
-  // Inspect every eligible P. The one-attempt rule limits confirmed
-  // executions per direction; it must not prevent a later P from being
-  // evaluated when an earlier P's adjacent E failed to confirm.
-  const attemptsByDirection = (["long", "short"] as const).flatMap((direction) => {
-    let confirmedCount = 0;
-    return attempts
-      .filter((attempt) => attempt.candidate.direction === direction)
-      .filter((attempt) => {
-        if (attempt.analysis.state !== "ENTRY_TRIGGERED") return true;
-        if (confirmedCount >= maxAttempts) return false;
-        confirmedCount += 1;
-        return true;
-      });
-  });
+  // Inspect every eligible P. Each occurrence owns its own immediate E;
+  // confirmed sequences are no longer capped per direction.
+  const attemptsByDirection = attempts;
   const selected = attemptsByDirection
     .filter((attempt) => attempt.analysis.state === "ENTRY_TRIGGERED")
     .sort((a, b) => a.candidate.candle.closeTime - b.candidate.candle.closeTime || (a.candidate.direction === "long" ? -1 : 1))[0]

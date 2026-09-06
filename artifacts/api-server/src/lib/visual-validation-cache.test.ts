@@ -35,7 +35,6 @@ test("visual review cache identity changes for output-affecting request or sourc
         enabled: false,
         eligibilityCutoffMinutes: 630,
         minimumCloseDistanceTicks: 1,
-        maxAttemptsPerDirection: 1,
       },
     }, "source-a").cacheKey,
   );
@@ -47,7 +46,6 @@ test("visual review cache identity changes for output-affecting request or sourc
         enabled: true,
         eligibilityCutoffMinutes: 630,
         minimumCloseDistanceTicks: 1,
-        maxAttemptsPerDirection: 1,
       },
     }, "source-a").cacheKey,
   );

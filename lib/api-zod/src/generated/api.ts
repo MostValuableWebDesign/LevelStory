@@ -5773,8 +5773,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
@@ -6213,8 +6212,7 @@ export const CreateVisualValidationSetBody = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
@@ -6350,8 +6348,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
@@ -7221,8 +7218,7 @@ export const StartVisualValidationGenerationJobBody = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
@@ -7389,8 +7385,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
@@ -7963,8 +7958,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
@@ -8544,8 +8538,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "earlyOrbMomentum": zod.object({
   "enabled": zod.boolean(),
   "eligibilityCutoffMinutes": zod.number().min(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
-  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax),
-  "maxAttemptsPerDirection": zod.literal(1)
+  "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
@@ -10991,8 +10984,7 @@ export const GetStrategyActiveResponse = zod.object({
   "config": zod.object({
   "earlyOrbMomentumContinuationEnabled": zod.boolean(),
   "earlyOrbMomentumEligibilityCutoffMinutes": zod.number(),
-  "earlyOrbMomentumMinimumCloseDistanceTicks": zod.number(),
-  "earlyOrbMomentumMaxAttemptsPerDirection": zod.number()
+  "earlyOrbMomentumMinimumCloseDistanceTicks": zod.number()
 }),
   "formulaVersion": zod.string(),
   "formulaHash": zod.string(),

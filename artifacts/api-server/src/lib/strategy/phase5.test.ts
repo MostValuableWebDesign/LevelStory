@@ -84,7 +84,6 @@ test("early ORB momentum uses a qualifying patience-shaped outside close as P an
     stopBufferTicks: 4,
     entryCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
-    maxAttemptsPerDirection: 1,
   });
   assert.equal(result.direction, "long");
   assert.equal(result.patienceCandle?.openTime, Date.parse("2026-06-01T13:50:00.000Z"));
@@ -115,7 +114,6 @@ test("early ORB evaluates a later P after an earlier P fails its adjacent E", ()
     stopBufferTicks: 4,
     entryCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
-    maxAttemptsPerDirection: 1,
   });
 
   assert.equal(result.state, "ENTRY_TRIGGERED");
@@ -124,6 +122,37 @@ test("early ORB evaluates a later P after an earlier P fails its adjacent E", ()
   assert.equal(result.occurrences?.length, 2);
   assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
   assert.equal(result.occurrences?.[1]?.outcomeStatus, "CONFIRMED");
+});
+
+test("early ORB retains multiple confirmed entries in the same direction", () => {
+  const result = earlyOrbMomentumPatienceAnalysis([
+    datedCandle("2026-06-01T13:30:00.000Z", 100, 101, 99, 100),
+    datedCandle("2026-06-01T13:35:00.000Z", 100, 101.25, 99.75, 100.5),
+    datedCandle("2026-06-01T13:40:00.000Z", 100.5, 101.25, 100, 101),
+    datedCandle("2026-06-01T13:45:00.000Z", 101, 103.25, 100.75, 101.25),
+    datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
+    datedCandle("2026-06-01T13:55:00.000Z", 103, 105.25, 102.75, 105),
+    datedCandle("2026-06-01T14:00:00.000Z", 105, 105, 104, 104.75),
+    datedCandle("2026-06-01T14:05:00.000Z", 104.75, 107.25, 104.5, 107),
+  ], {
+    high: 101.25,
+    low: 99.75,
+    complete: true,
+    completedAt: Date.parse("2026-06-01T13:45:00.000Z"),
+  }, {
+    enabled: true,
+    entryBufferTicks: 8,
+    stopBufferTicks: 4,
+    entryCutoffMinutes: 630,
+    minimumCloseDistanceTicks: 1,
+  });
+
+  const confirmed = result.occurrences?.filter((occurrence) => occurrence.outcomeStatus === "CONFIRMED") ?? [];
+  assert.equal(confirmed.length, 2);
+  assert.deepEqual(
+    confirmed.map((occurrence) => occurrence.patienceCandle.openTime),
+    [Date.parse("2026-06-01T13:50:00.000Z"), Date.parse("2026-06-01T14:00:00.000Z")],
+  );
 });
 
 test("disabled early ORB momentum does not create a patience occurrence", () => {
@@ -150,7 +179,7 @@ test("Early ORB eligibility uses P open time, so a 10:25 P may confirm on the 10
     low: 99.75,
     complete: true,
     completedAt: Date.parse("2026-06-01T13:45:00.000Z"),
-  }, { enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1 });
+  }, { enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1 });
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.patienceCandle?.openTime, Date.parse("2026-06-01T14:25:00.000Z"));
   assert.equal(result.triggerCandle?.openTime, Date.parse("2026-06-01T14:30:00.000Z"));
@@ -165,7 +194,7 @@ test("Early ORB rejects a P opening at the 10:30 cutoff", () => {
     datedCandle("2026-06-01T14:30:00.000Z", 101.25, 103.25, 101, 103),
     datedCandle("2026-06-01T14:35:00.000Z", 103, 105.25, 102.75, 104),
   ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
-    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1,
+    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1,
   });
   assert.equal(result.occurrences?.length ?? 0, 0);
   assert.equal(result.state, "WAITING_FOR_PATIENCE_CANDLE");
@@ -180,7 +209,7 @@ test("Early ORB invalidates a threshold-touching E that closes back onto the fin
     datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
     datedCandle("2026-06-01T13:55:00.000Z", 103, 105.25, 101, 101.25),
   ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
-    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1,
+    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1,
   });
   assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
   assert.match(result.detail, /EARLY_ORB_E_CLOSED_BACK_INSIDE_FINALIZED_ORB/);
@@ -197,7 +226,7 @@ test("Early ORB keeps independent long and short attempts when the first directi
     datedCandle("2026-06-01T14:00:00.000Z", 101.75, 100, 98.75, 99.5),
     datedCandle("2026-06-01T14:05:00.000Z", 99.5, 100, 96.5, 97),
   ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
-    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1,
+    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1,
   });
   assert.equal(result.direction, "short");
   assert.equal(result.state, "ENTRY_TRIGGERED");
@@ -215,7 +244,7 @@ test("Early ORB does not use a later candle when the immediate E candle is missi
     datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
     datedCandle("2026-06-01T14:00:00.000Z", 103, 105.25, 102.75, 105),
   ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
-    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1, maxAttemptsPerDirection: 1,
+    enabled: true, entryBufferTicks: 8, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1,
   });
   const occurrence = result.occurrences?.find((item) => item.direction === "long");
   assert.equal(result.state, "PATIENCE_CANDLE_EXPIRED");
@@ -249,7 +278,6 @@ test("Early ORB rejects the raw 9:55 breakout and lets the later 10:05 patience 
     stopBufferTicks: 4,
     entryCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
-    maxAttemptsPerDirection: 1,
   });
 
   assert.equal(result.direction, "short");

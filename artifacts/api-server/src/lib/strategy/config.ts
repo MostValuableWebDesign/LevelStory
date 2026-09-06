@@ -90,7 +90,6 @@ export type StrategyConfig = {
   earlyOrbMomentumContinuationEnabled: boolean;
   earlyOrbMomentumEligibilityCutoffMinutes: number;
   earlyOrbMomentumMinimumCloseDistanceTicks: number;
-  earlyOrbMomentumMaxAttemptsPerDirection: number;
 };
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
@@ -217,7 +216,6 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,
-  earlyOrbMomentumMaxAttemptsPerDirection: 1,
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -298,7 +296,6 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["executionManagementAtrPeriod", config.executionManagementAtrPeriod],
     ["earlyOrbMomentumEligibilityCutoffMinutes", config.earlyOrbMomentumEligibilityCutoffMinutes],
     ["earlyOrbMomentumMinimumCloseDistanceTicks", config.earlyOrbMomentumMinimumCloseDistanceTicks],
-    ["earlyOrbMomentumMaxAttemptsPerDirection", config.earlyOrbMomentumMaxAttemptsPerDirection],
   ];
   if (!Number.isInteger(config.primaryEntryStartMinutes)
     || !Number.isInteger(config.primaryEntryEndMinutes)
@@ -363,9 +360,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     || config.earlyOrbMomentumEligibilityCutoffMinutes > 24 * 60
     || !Number.isInteger(config.earlyOrbMomentumMinimumCloseDistanceTicks)
     || config.earlyOrbMomentumMinimumCloseDistanceTicks < 1
-    || !Number.isInteger(config.earlyOrbMomentumMaxAttemptsPerDirection)
-    || config.earlyOrbMomentumMaxAttemptsPerDirection !== 1) {
-    throw new Error("Invalid strategy configuration: Early ORB Momentum uses a wall-clock cutoff, a positive tick distance, and exactly one attempt per direction.");
+  ) {
+    throw new Error("Invalid strategy configuration: Early ORB Momentum uses a wall-clock cutoff and a positive tick distance.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

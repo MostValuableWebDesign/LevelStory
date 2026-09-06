@@ -13,7 +13,6 @@ const ALLOWED_FIELDS = new Set<RuleField>([
   "earlyOrbMomentumContinuationEnabled",
   "earlyOrbMomentumEligibilityCutoffMinutes",
   "earlyOrbMomentumMinimumCloseDistanceTicks",
-  "earlyOrbMomentumMaxAttemptsPerDirection",
 ]);
 
 export type ComparisonMetrics = {

@@ -3944,8 +3944,7 @@ components:
             enabled: { type: boolean }
             eligibilityCutoffMinutes: { type: number, minimum: 0, maximum: 1439 }
             minimumCloseDistanceTicks: { type: number, minimum: 1, maximum: 32 }
-            maxAttemptsPerDirection: { type: number, enum: [1] }
-          required: [enabled, eligibilityCutoffMinutes, minimumCloseDistanceTicks, maxAttemptsPerDirection]
+          required: [enabled, eligibilityCutoffMinutes, minimumCloseDistanceTicks]
         regenerateFresh: { type: boolean, default: false, description: Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. }
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:
@@ -4785,8 +4784,7 @@ components:
             earlyOrbMomentumContinuationEnabled: { type: boolean }
             earlyOrbMomentumEligibilityCutoffMinutes: { type: number }
             earlyOrbMomentumMinimumCloseDistanceTicks: { type: number }
-            earlyOrbMomentumMaxAttemptsPerDirection: { type: number }
-          required: [earlyOrbMomentumContinuationEnabled, earlyOrbMomentumEligibilityCutoffMinutes, earlyOrbMomentumMinimumCloseDistanceTicks, earlyOrbMomentumMaxAttemptsPerDirection]
+          required: [earlyOrbMomentumContinuationEnabled, earlyOrbMomentumEligibilityCutoffMinutes, earlyOrbMomentumMinimumCloseDistanceTicks]
         formulaVersion: { type: string }
         formulaHash: { type: string }
         versionId: { type: ["string", "null"] }
