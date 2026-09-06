@@ -1314,6 +1314,28 @@ test("arm-backed confirmed signals fail closed when lifecycle data is missing", 
   assert.equal(missingRecord.rejected[0]?.reasonCodes[0], "REJECTED_PULLBACK_ARM_LIFECYCLE_MISSING");
 });
 
+test("confirmed Early ORB candidates do not require pullback lifecycle records", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T14:00:00.000Z",
+    eOpen: "2026-08-25T14:05:00.000Z",
+    eClose: "2026-08-25T14:10:00.000Z",
+    eligibilityArmId: "early-orb|long|1787666400000",
+    eligibilityArmState: "active",
+  });
+  occurrence.strategyCandidate = "EARLY_ORB_MOMENTUM_CONTINUATION";
+  occurrence.primaryEdge = "EARLY_ORB_MOMENTUM_CONTINUATION";
+  occurrence.matchedEdges = ["EARLY_ORB_MOMENTUM_CONTINUATION"];
+
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset: candidateProjectionDataset(occurrence),
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.rejected.length, 0);
+});
+
 test("eligible confirmed candidate creates one threshold trade without a legacy raw trade", () => {
   const patienceTimestamp = "2026-08-25T13:55:00.000Z";
   const entryTimestamp = "2026-08-25T14:00:00.000Z";

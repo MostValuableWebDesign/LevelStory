@@ -4486,6 +4486,11 @@ function candidateLifecycleRejection(
   occurrence: HistoricalOccurrence,
   lifecycle: HistoricalPullbackLifecycle | undefined,
 ): { reasonCodes: string[]; details: string[] } | null {
+  const primaryEdge = canonicalStrategyId(occurrence.primaryEdge ?? occurrence.strategyCandidate);
+  // Early ORB candidates open their own independent arm at P. They do not
+  // belong to the pullback lifecycle ledger, so requiring a pullback lifecycle
+  // record would incorrectly hide valid Early ORB candidates from Visual Review.
+  if (primaryEdge === "EARLY_ORB_MOMENTUM_CONTINUATION") return null;
   const armId = occurrence.eligibilityArmId;
   if (!armId) return null;
   if (occurrence.eligibilityArmState === "invalidated" || occurrence.eligibilityArmState === "superseded") {
