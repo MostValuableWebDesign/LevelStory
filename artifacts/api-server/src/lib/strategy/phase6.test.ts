@@ -200,6 +200,22 @@ test("early ORB momentum qualifies without pullback or trend evidence", () => {
   assert.equal(result.mandatoryPassed, true);
 });
 
+test("early ORB momentum rejects an outside close that is not patience-shaped", () => {
+  const result = evaluateEarlyOrbMomentumContinuation(baseContext({
+    pullback: { ...baseContext().pullback, status: "pending", events: [] },
+    trend: { direction: "neutral", structure: "neutral" },
+    earlyOrbMomentum: {
+      ...patience("ENTRY_TRIGGERED", "bullish", "long"),
+      eligibilityReason: "early orb momentum",
+      direction: "long",
+      previousCandle: { ...patience().previousCandle, high: 10.1 },
+    },
+  }));
+  const shapeRule = result.rules.find((rule) => rule.key === "patienceCandleOutsideOrb");
+  assert.equal(shapeRule?.passed, false);
+  assert.equal(result.mandatoryPassed, false);
+});
+
 test("Dynamite boosts only a matching qualified signal and preserves its confluence evidence", () => {
   const result = phase6Analysis(baseContext({
     patience: { ...patience(), direction: "long" },

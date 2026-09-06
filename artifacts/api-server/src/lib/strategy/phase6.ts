@@ -326,6 +326,7 @@ export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): Se
   const direction = patience?.direction ?? null;
   const hasCloseOutsideOrb = patience?.patienceCandle !== null
     && patience?.patienceCandle !== undefined
+    && patienceShapeMatches(patience, direction)
     && patience.eligibilityReason === "early orb momentum";
   const isolatedPathActive = patience?.eligibilityReason === "early orb momentum";
   const rules: SetupRuleEvidence[] = [
@@ -951,6 +952,13 @@ function patienceDirectionMatches(patience: PatienceAnalysis, direction: Directi
   if (!direction) return false;
   if (patience.direction) return patience.direction === direction;
   return direction === "long" ? patience.trend === "bullish" : patience.trend === "bearish";
+}
+
+function patienceShapeMatches(patience: PatienceAnalysis, direction: Direction | null): boolean {
+  if (!direction || !patience.previousCandle || !patience.patienceCandle) return false;
+  return direction === "long"
+    ? patience.patienceCandle.high <= patience.previousCandle.high
+    : patience.patienceCandle.low >= patience.previousCandle.low;
 }
 
 function strictNtzEntry(context: Phase6Context, patience: PatienceAnalysis, direction: Direction | null): boolean {

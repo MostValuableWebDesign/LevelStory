@@ -535,8 +535,8 @@ export function phase5PatienceAnalysis(
 }
 
 /**
- * Isolated early-ORB path. Any completed close one tick outside the finalized
- * ORB can be P when it also has the governed patience-candle shape; no
+ * Isolated early-ORB path. Any completed patience-shaped close one tick outside
+ * the finalized ORB can be P; no
  * chronological-first requirement, pullback, trend, or volume evidence is
  * consulted. Only the adjacent E candle can confirm a P.
  */
@@ -593,7 +593,7 @@ export function earlyOrbMomentumPatienceAnalysis(
   }).sort((a, b) => a.candle.closeTime - b.candle.closeTime || (a.direction === "long" ? -1 : 1));
   if (candidates.length === 0) {
     return {
-      ...waiting("WAITING_FOR_PATIENCE_CANDLE", `Waiting for a completed close outside the finalized ORB with P opening before ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET.`, "neutral", entryBufferTicks, stopBufferTicks),
+      ...waiting("WAITING_FOR_PATIENCE_CANDLE", `Waiting for a completed patience-shaped close outside the finalized ORB with P opening before ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET.`, "neutral", entryBufferTicks, stopBufferTicks),
       direction: undefined,
       directionSource: "ORB_BREAKOUT",
     };
@@ -696,7 +696,7 @@ export function earlyOrbMomentumPatienceAnalysis(
     let analysis: PatienceAnalysis;
     let occurrenceStatus: PatienceOccurrenceStatus = "CANDIDATE";
     if (!immediateNext) {
-      analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "This qualifying ORB-outside close is P; only its immediate next candle may confirm.", triggerPrice: null };
+      analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "This qualifying patience-shaped ORB-outside close is P; only its immediate next candle may confirm.", triggerPrice: null };
       if (next) {
         analysis = { ...analysis, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
         occurrenceStatus = "EXPIRED_MISSING_E";
