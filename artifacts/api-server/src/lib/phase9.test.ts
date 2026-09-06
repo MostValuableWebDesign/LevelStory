@@ -24,6 +24,13 @@ import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/con
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { RunBacktestBody } from "@workspace/api-zod";
 import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
+import { adaptiveExecutionManagement } from "./strategy/execution-management.js";
+
+test("adaptive MES management permits a governed forty-four-tick structural stop", () => {
+  const management = adaptiveExecutionManagement(47.76);
+  assert.equal(management.stopBufferTicks, 5);
+  assert.equal(management.maximumRiskTicks, 48);
+});
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
   const openTime = index * 300_000;

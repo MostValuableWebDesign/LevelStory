@@ -4047,25 +4047,8 @@ export function projectHistoricalTradeCandidates(
   const rejected: RejectedCandidateSignal[] = [];
   const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
   for (const occurrence of confirmed) {
-    const debugEarlyOrbCandidate = occurrence.tradingDate === "2026-02-26"
-      && occurrence.patienceTimestamp === "2026-02-26T15:05:00.000Z";
-    const debugEarlyOrb = (stage: string, details: Record<string, unknown> = {}) => {
-      if (debugEarlyOrbCandidate) {
-        console.error("[early-orb-debug]", stage, {
-          occurrenceId: occurrence.occurrenceId,
-          strategyCandidate: occurrence.strategyCandidate,
-          primaryEdge: occurrence.primaryEdge,
-          matchedEdges: occurrence.matchedEdges,
-          earlyOrbEvidence: occurrence.earlyOrbEvidence,
-          eligibilityArmId: occurrence.eligibilityArmId,
-          eligibilityProvenance: occurrence.eligibilityProvenance,
-          ...details,
-        });
-      }
-    };
     const lifecycleRejection = candidateLifecycleRejection(occurrence, executionContext?.lifecycle);
     if (lifecycleRejection) {
-      debugEarlyOrb("lifecycle-rejection", lifecycleRejection);
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: lifecycleRejection.reasonCodes,
@@ -4075,7 +4058,6 @@ export function projectHistoricalTradeCandidates(
     }
     const consolidationRejection = candidateConsolidationRejection(occurrence);
     if (consolidationRejection) {
-      debugEarlyOrb("consolidation-rejection", consolidationRejection);
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: consolidationRejection.reasonCodes,
@@ -4085,7 +4067,6 @@ export function projectHistoricalTradeCandidates(
     }
     const primaryLevelRejection = candidatePrimaryLevelRejection(occurrence);
     if (primaryLevelRejection) {
-      debugEarlyOrb("primary-level-rejection", primaryLevelRejection);
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: primaryLevelRejection.reasonCodes,
@@ -4095,7 +4076,6 @@ export function projectHistoricalTradeCandidates(
     }
     const identityViolations = candidateIdentityViolations(occurrence);
     if (identityViolations.length > 0) {
-      debugEarlyOrb("identity-rejection", { identityViolations });
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: ["INVALID_CAUSAL_IDENTITY"],
@@ -4107,12 +4087,6 @@ export function projectHistoricalTradeCandidates(
     const inWindow = candidateWindowEligible(occurrence);
     const identityValid = !(occurrence.identityInvariantViolations?.length);
     if (!ntz.eligible || !inWindow || !identityValid) {
-      debugEarlyOrb("eligibility-rejection", {
-        ntz,
-        inWindow,
-        identityValid,
-        identityInvariantViolations: occurrence.identityInvariantViolations,
-      });
       const patienceInsideZone = ntz.reason?.startsWith("REJECTED_PATIENCE_INSIDE_NTZ_ORB") === true;
       rejected.push({
         signalOccurrenceId: occurrence.occurrenceId,
@@ -4200,14 +4174,6 @@ export function projectHistoricalTradeCandidates(
     const firstTrade = linked[0];
     const entryDisposition = candidateEntryDisposition(occurrenceForExecution);
     const managementContext = freezeCandidateManagementContext(occurrenceForExecution, candidateId, firstTrade);
-    debugEarlyOrb("candidate-built", {
-      candidateId,
-      entryDisposition,
-      managementContext,
-      targetPlan: managementContext.targetPlan,
-      strategyStopPrice: candidate.strategyStopPrice,
-      executionStatus: candidate.executionStatus,
-    });
     candidateRecords.push({
       occurrence,
       occurrenceForExecution,

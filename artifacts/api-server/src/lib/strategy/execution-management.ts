@@ -6,7 +6,9 @@ export const MAX_TARGET_BUFFER_TICKS = 2;
 export const MIN_STOP_BUFFER_TICKS = 4;
 export const MAX_STOP_BUFFER_TICKS = 8;
 export const MIN_STRUCTURAL_RISK_TICKS = 20;
-export const MAX_STRUCTURAL_RISK_TICKS = 40;
+// Keep the adaptive MES risk ceiling above the widest governed P-extreme
+// stop while remaining a hard structural bound.
+export const MAX_STRUCTURAL_RISK_TICKS = 48;
 export const MIN_TARGET_R_ONE_CONTRACT = 0.75;
 export const MIN_TARGET_R_TWO_CONTRACTS = 0.5;
 export const MAX_KEY_LEVEL_TARGET_R = 1.5;
