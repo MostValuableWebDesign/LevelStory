@@ -60,3 +60,4 @@
 - [Adaptive execution management](adaptive-execution-management.md) — candidate-owned MES management freezes causal ATR buffers and fixed quantity; account risk must not alter structural R.
 - [Compact batch funnel](compact-batch-funnel.md) — use compact qualification batches for large historical blocker analysis; reconcile funnel counts with causal-ledger diagnostics.
 - [Strategy registration surfaces](strategy-registration-surfaces.md) — new strategy IDs must reach replay selection and dashboard performance allowlists, not just taxonomy and evaluators.
+- [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.

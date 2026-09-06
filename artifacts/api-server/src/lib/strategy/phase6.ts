@@ -238,6 +238,12 @@ function dynamiteInteractionMatchesSignal(
 }
 
 export function phase6Analysis(context: Phase6Context): Phase6Analysis {
+  const patienceForSetup = (setupType: SetupType | LegacySetupType): PatienceAnalysis | null =>
+    ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(setupType)
+      ? context.reversalPatience ?? null
+      : setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
+        ? context.earlyOrbMomentum ?? null
+        : context.patience;
   const evaluations = [
     evaluateOrbBreakPullbackContinuation(context),
     evaluateEarlyOrbMomentumContinuation(context),
@@ -246,11 +252,7 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluateEquivalentCandleReversal(context),
     evaluatePeakRetracementReversal(context),
   ].map((evaluation) => {
-    const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
-      ? context.reversalPatience
-      : evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
-        ? context.earlyOrbMomentum
-      : context.patience;
+    const signalPatience = patienceForSetup(evaluation.setupType);
     const signalDynamite = evaluation.decision === "SETUP QUALIFIED"
       ? context.dynamiteLevels?.filter((level) =>
         level.pullbackInteracted
@@ -284,7 +286,12 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     "PATIENCE_CANDLE_CONTINUATION",
   ];
   const qualified = attributionOrder
-    .map((setupType) => evaluations.find((evaluation) => evaluation.setupType === setupType && evaluation.decision === "SETUP QUALIFIED" && !evaluation.alertOnly))
+    .map((setupType) => evaluations.find((evaluation) =>
+      evaluation.setupType === setupType
+      && evaluation.decision === "SETUP QUALIFIED"
+      && !evaluation.alertOnly
+      && hasConfirmedPatienceEntry(patienceForSetup(setupType)),
+    ))
     .find((evaluation) => evaluation !== undefined);
   const possibleReversal = evaluations.find((evaluation) => evaluation.decision === "POSSIBLE REVERSAL");
   const ambiguous = evaluations.find((evaluation) => evaluation.decision === "AMBIGUOUS");
@@ -305,6 +312,21 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
     evaluations,
     explanation: hasContext ? "Setup conditions are incomplete; wait for every mandatory rule." : "No complete setup context is available.",
   };
+}
+
+export function hasConfirmedPatienceEntry(
+  patience: Pick<PatienceAnalysis, "state" | "patienceCandle" | "triggerCandle" | "entryBufferPrice" | "strategyStopPrice"> | null | undefined,
+): boolean {
+  const patienceCandle = patience?.patienceCandle;
+  const triggerCandle = patience?.triggerCandle;
+  return patience?.state === "ENTRY_TRIGGERED"
+    && patienceCandle?.isComplete === true
+    && triggerCandle?.isComplete === true
+    && triggerCandle.openTime === patienceCandle.closeTime
+    && typeof patience.entryBufferPrice === "number"
+    && Number.isFinite(patience.entryBufferPrice)
+    && typeof patience.strategyStopPrice === "number"
+    && Number.isFinite(patience.strategyStopPrice);
 }
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {

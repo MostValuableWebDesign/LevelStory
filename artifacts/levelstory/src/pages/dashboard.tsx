@@ -234,7 +234,7 @@ function RiskRail({ risk, isLoading, isError, onRetry }: {
 function ShadowExecutionPanel({ execution }: { execution: MarketSnapshot["shadowExecution"] }) {
   return <Panel className={execution ? "border-[hsl(var(--positive)/.3)]" : ""}>
     <PanelTitle eyebrow="Phase 8 / broker-free model" title="Shadow execution" right={<span className="text-[10px] font-bold uppercase text-muted-foreground">{execution ? "Simulated fills" : "No simulated fill"}</span>} />
-    {!execution ? <div className="border-t border-border p-5 text-xs leading-5 text-muted-foreground">A fill is only modeled after a setup qualifies and passes the risk gate. Rejected, expired, ambiguous, and blocked evaluations remain journal evidence without an order.</div> : <div className="border-t border-border">
+     {!execution ? <div className="border-t border-border p-5 text-xs leading-5 text-muted-foreground">A fill is only modeled after a setup qualifies, acknowledges a completed patience candle followed immediately by E, and passes the risk gate. Rejected, expired, ambiguous, and blocked evaluations remain journal evidence without an order.</div> : <div className="border-t border-border">
       <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">{[
         ["Entry", `${execution.entryReferencePrice.toFixed(2)} → ${execution.entryFillPrice.toFixed(2)} (${execution.entryQuoteSide})`],
         ["Exit", `${execution.exitReferencePrice?.toFixed(2) ?? "—"} → ${execution.exitFillPrice?.toFixed(2) ?? "—"} (${execution.exitQuoteSide ?? "—"})`],

@@ -1,6 +1,6 @@
 import type { FuturesContractSpecification } from "../futures/contracts.js";
 import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
-import type { Phase6Decision, SetupEvaluation } from "./phase6.js";
+import { hasConfirmedPatienceEntry, type Phase6Decision, type SetupEvaluation } from "./phase6.js";
 import type { NtzEvent, NtzRange, SessionLevels } from "./levels.js";
 import type { PatienceAnalysis } from "./phase5.js";
 import type { Phase7Accounting, Phase7RiskPlan, SlippageMode } from "./phase7.js";
@@ -400,7 +400,12 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
     event(events, context.patience.triggerCandle.closeTime, "Entry candle", context.patience.detail, context.patience.state === "ENTRY_TRIGGERED" ? "passed" : "warning");
   }
 
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && !context.evaluation.alertOnly && context.riskPlan.allowed && context.direction !== null
+  const patienceConfirmed = hasConfirmedPatienceEntry(context.patience);
+  const execution = context.evaluation.decision === "SETUP QUALIFIED"
+    && !context.evaluation.alertOnly
+    && patienceConfirmed
+    && context.riskPlan.allowed
+    && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: lastCandle ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
@@ -437,6 +442,8 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
   } else if (context.evaluation.decision !== "SETUP QUALIFIED") {
     const failed = context.evaluation.rules.filter((rule) => !rule.passed).map((rule) => rule.label);
     event(events, fallbackTime, "Failed setup", `${context.evaluation.decision}: ${failed.length ? failed.join(", ") : context.evaluation.explanation}. No shadow fill was created.`, context.evaluation.decision === "AMBIGUOUS" ? "warning" : "blocked");
+  } else if (!patienceConfirmed) {
+    event(events, fallbackTime, "Failed setup", "Setup qualified descriptively, but no complete patience candle followed by an immediately adjacent completed confirmation candle was acknowledged. No shadow fill was created.", "blocked");
   } else {
     event(events, fallbackTime, "Failed setup", "Setup qualified descriptively, but Phase 7 risk sizing or a safety gate prevented a simulated fill.", "blocked");
   }
@@ -448,7 +455,11 @@ export function buildPhase8Timeline(context: TimelineContext): Phase8TimelineEve
 
 export function buildPhase8EvaluationRecord(context: TimelineContext): Phase8EvaluationRecord {
   const timeline = buildPhase8Timeline(context);
-  const execution = context.evaluation.decision === "SETUP QUALIFIED" && !context.evaluation.alertOnly && context.riskPlan.allowed && context.direction !== null
+  const execution = context.evaluation.decision === "SETUP QUALIFIED"
+    && !context.evaluation.alertOnly
+    && hasConfirmedPatienceEntry(context.patience)
+    && context.riskPlan.allowed
+    && context.direction !== null
     ? simulatePhase8ShadowExecution({
         direction: context.direction,
         entryQuote: context.candles.at(-1) ?? { bid: context.riskPlan.entry ?? 0, ask: context.riskPlan.entry ?? 0 },
