@@ -1,0 +1,387 @@
+```text
+Inspect the current repository and existing profit-target implementation before editing.
+
+Update or complete my profit-taking strategy so it searches through multiple causal major levels and indicators instead of automatically using the nearest level.
+
+Purpose:
+
+- Take profit near a meaningful major level or indicator when it offers at least 1R.
+- Skip target levels that are too close to the entry.
+- Continue searching outward for the next eligible primary level.
+- Use only levels visible in the completed entry snapshot.
+- Keep the target within a realistically achievable range.
+- Fall back to exactly 1R when no eligible level exists.
+- Distinguish between a harmless nearby indicator and a major structural obstacle that makes 1R unrealistic.
+
+1. Freeze the target snapshot
+
+Create the target-level snapshot only after the immediately adjacent entry-confirmation candle E has completed.
+
+The snapshot must contain only information causally available at that time.
+
+Freeze:
+
+- Entry price
+- Strategy stop
+- Risk in points and ticks
+- Direction
+- ATR14
+- ORB/NTZ high and low
+- Premarket high and low
+- Previous-session high and low
+- Previous-session close
+- Two-sessions-ago high and low
+- Major support and resistance zones
+- VWAP
+- 200 MA
+- Other explicitly governed primary levels
+- Level source timestamp
+- Formula version and hash
+- Source fingerprint
+
+Do not use future indicator values, later-session levels, future pivots, or hindsight.
+
+2. Calculate 1R from the modeled entry and stop
+
+Use:
+
+`RiskPoints = abs(EntryPrice - StrategyStopPrice)`
+
+`OneRPriceLong = EntryPrice + RiskPoints`
+
+`OneRPriceShort = EntryPrice - RiskPoints`
+
+This is structural trade risk based on the modeled fill and authoritative stop. Do not base it on account balance.
+
+Reject invalid plans when:
+
+- Entry or stop is unavailable.
+- Risk is zero or negative.
+- Prices are non-finite.
+- The stop is on the wrong side of the entry.
+
+3. Build the directional target list
+
+For a long trade, include only levels above the entry.
+
+For a short trade, include only levels below the entry.
+
+Eligible target sources should include:
+
+Primary structural levels:
+
+- Major resistance for long trades
+- Major support for short trades
+- ORB/NTZ boundary
+- Premarket high or low
+- Previous-session high or low
+- Two-sessions-ago high or low
+- Other existing governed major price levels
+
+Eligible indicators:
+
+- VWAP
+- 200 MA
+- Other explicitly governed indicator levels already supported by the application
+
+Indicators must be frozen at the completed-E snapshot. They must not move afterward for target-selection purposes.
+
+Deduplicate overlapping levels. If several levels fall in the same small price cluster, represent them as one confluence target and preserve every contributing level in the audit evidence.
+
+4. Determine the executable price before evaluating R
+
+Continue using the existing adaptive target buffer:
+
+`TargetBufferTicks = clamp(ceil(ATR14Ticks × 0.05), 1, 2)`
+
+For long trades:
+
+- Use the near side of a resistance zone.
+- Place the executable target below that near side by the target buffer.
+
+For short trades:
+
+- Use the near side of a support zone.
+- Place the executable target above that near side by the target buffer.
+
+For single-price indicators, apply the target buffer before the indicator:
+
+Long:
+`ExecutableTarget = IndicatorPrice - TargetBuffer`
+
+Short:
+`ExecutableTarget = IndicatorPrice + TargetBuffer`
+
+Evaluate reward-to-risk using the executable buffered target—not the raw level.
+
+5. Skip targets that are too close
+
+A level is too close when its buffered executable target provides less than 1R:
+
+`TargetR = abs(ExecutableTarget - EntryPrice) / RiskPoints`
+
+If:
+
+`TargetR < 1.00`
+
+do not select that level as the profit target.
+
+Record:
+
+`TARGET_LEVEL_SKIPPED_BELOW_1R`
+
+Then continue searching outward in the trade direction for the next eligible primary level or indicator.
+
+Do not immediately fall back to 1R merely because the nearest level was too close. Search every eligible level in the frozen snapshot first.
+
+6. Define the achievable search range
+
+A level is within the achievable search range when its executable target is:
+
+- At least 1.00R from entry
+- No more than 1.50R from entry
+- No more than 20 MES ticks from entry
+
+Use:
+
+`MaximumTargetDistance = min(1.50 × RiskPoints, 20 × TickSize)`
+
+A level beyond that distance is not eligible for selection.
+
+Record:
+
+`TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE`
+
+The 20-tick level-search limit applies to selecting key levels. It does not shorten the 1R fallback target when the structural risk itself is wider than 20 ticks.
+
+7. Search order
+
+Sort eligible levels by directional distance from the entry, nearest to farthest.
+
+Evaluate each one in order:
+
+1. Confirm it is profitable and directionally valid.
+2. Calculate its buffered executable target.
+3. Calculate its TargetR.
+4. Skip it if it provides less than 1R.
+5. Skip it if it is beyond the achievable range.
+6. Select the first level that passes every rule.
+
+When multiple levels occupy the same confluence cluster, use this precedence for the representative target:
+
+1. Major support/resistance zone
+2. ORB/NTZ boundary
+3. Premarket high/low
+4. Previous-session high/low
+5. Two-sessions-ago high/low
+6. 200 MA
+7. VWAP
+8. Other eligible indicators
+
+Preserve the other clustered levels as supporting confluence.
+
+8. Handle obstructing levels sensibly
+
+Do not blindly target a farther level when a major structural barrier blocks the path to 1R.
+
+Differentiate between:
+
+A. Nearby diagnostic or soft indicator
+
+Examples:
+
+- VWAP
+- 200 MA
+- A nonstructural indicator level
+
+If it is below 1R, skip it and continue searching for the next eligible target.
+
+B. Hard structural obstacle
+
+Examples:
+
+- Confirmed major resistance directly above a long entry
+- Confirmed major support directly below a short entry
+- A governed major zone that price must cross before reaching 1R
+
+If a hard structural obstacle exists before 1R and the strategy does not permit targeting beyond it, reject the trade with:
+
+`INSUFFICIENT_REWARD_TO_RISK`
+
+Do not pretend a farther target is achievable through an obstructing major level.
+
+Record whether every skipped level was:
+
+- Too close
+- Beyond the achievable range
+- Wrong direction
+- Duplicate/confluence
+- Diagnostic only
+- A hard structural obstruction
+
+9. Target selection and fallback
+
+Use this decision order:
+
+A. Eligible key level found
+
+Select the first buffered target satisfying:
+
+`1.00R <= TargetR <= 1.50R`
+
+and within 20 MES ticks.
+
+B. No eligible key level found and no hard obstruction exists
+
+Use exactly 1R:
+
+Long:
+`Target = EntryPrice + RiskPoints`
+
+Short:
+`Target = EntryPrice - RiskPoints`
+
+Record:
+
+`ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL`
+
+C. Hard structural obstacle exists before 1R
+
+Reject with:
+
+`INSUFFICIENT_REWARD_TO_RISK`
+
+Do not enter the trade and do not include it in realized P/L.
+
+10. Contract management
+
+Preserve existing contract behavior.
+
+One contract:
+
+- Exit the entire position at the selected buffered key-level target or the 1R fallback.
+- No runner.
+
+Two contracts:
+
+- Exit one contract at the selected buffered key-level target or 1R fallback.
+- Manage the second contract using the existing runner rules.
+- Preserve runner breakeven timing.
+- Preserve confirmed-swing trailing.
+- Never widen an existing tighter stop.
+
+Do not change stop-loss, breakeven, recovery, runner, fee, or slippage formulas as part of this request.
+
+11. Audit evidence
+
+For every candidate, store and display:
+
+- Entry price
+- Stop price
+- Risk points and ticks
+- 1R price
+- Search-range boundary
+- Every available directional level
+- Level type and source
+- Raw level price or zone boundaries
+- Target buffer
+- Buffered executable target
+- Distance from entry
+- TargetR
+- Selected/skipped/rejected disposition
+- Skip or rejection reason
+- Selected target
+- Whether 1R fallback was used
+- Hard-obstruction determination
+- Confluence members
+- Snapshot timestamp
+- Formula version and hash
+- Source fingerprint
+
+The Visual Review target explanation should make the search understandable, for example:
+
+“The nearest level was skipped because its buffered target provided only 0.62R. The next eligible primary level provided 1.18R and was selected.”
+
+Or:
+
+“No eligible causal level provided between 1.00R and 1.50R, and no major structural obstacle blocked the trade. The strategy used the 1R fallback.”
+
+12. Visual Review and combined replay
+
+Use this target-search logic consistently in:
+
+- Generated trade candidates
+- Uploaded-chart candidates when supported by reliable structured evidence
+- Historical Phase 9 replay
+- Visual Review
+- Combined multi-date replay
+- Shadow Account Replay
+- One-contract replay
+- Two-contract replay
+- Aggregate P/L and statistics
+
+Do not allow different parts of the application to independently select different targets from the same frozen snapshot.
+
+Rejected candidates should remain visible with their diagnostics but must not contribute to entered-trade P/L.
+
+13. Versioning
+
+Bump all affected versions:
+
+- Formula version
+- Target-plan version
+- Strategy-engine version
+- Candidate-projection version
+- Snapshot-projection version
+- Visual Review cache version
+- Execution/audit version if applicable
+
+Previously generated target plans must be treated as stale when they used the old nearest-level-only behavior.
+
+14. Tests
+
+Add deterministic tests proving:
+
+- A level below 1R is skipped.
+- The next eligible level between 1R and 1.50R is selected.
+- Levels are evaluated using their buffered executable prices.
+- A raw level above 1R is skipped if its buffered target falls below 1R.
+- A level beyond 1.50R is skipped.
+- A level beyond 20 ticks is skipped.
+- Wrong-direction levels are skipped.
+- Overlapping levels are deduplicated into confluence.
+- Major structural levels receive cluster precedence.
+- A nearby indicator can be skipped without rejecting the trade.
+- A hard major obstacle before 1R produces `INSUFFICIENT_REWARD_TO_RISK`.
+- No eligible level and no obstruction produces exactly 1R.
+- Long and short behavior is symmetric.
+- One-contract management exits fully at the selected target.
+- Two-contract management takes one contract off and preserves the runner.
+- Starting balance does not affect target selection.
+- Historical replay and Visual Review select the same target.
+- Combined multi-date replay uses the frozen target exactly once.
+- Rejected candidates do not affect P/L or aggregate statistics.
+- No future levels or future indicator values are accessed.
+
+Run:
+
+- Target-plan tests
+- Execution-management tests
+- Phase 9 tests
+- Visual Review tests
+- Shadow Account Replay tests
+- Combined multi-date tests
+- API typecheck
+- Frontend typecheck
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Existing target behavior found
+- Formula changes made
+- Files changed
+- Versions bumped
+- Tests executed and pass/fail totals
+- Any remaining limitations
+```
