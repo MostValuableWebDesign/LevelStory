@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   buildVisualValidationSet,
+  buildHistoricalVisualValidationPartialSet,
   buildHistoricalVisualValidationSetFromReport,
   categoriesFor,
   createVisualValidationTeachingExample,
@@ -133,6 +134,7 @@ test("historical projection keeps contract-local candles and truthful category g
     source: "historical_databento_multicontract" as const,
     candles: [...fixture.dataset.candles, foreignContractCandle],
   };
+  let firstSnapshot: ReturnType<typeof buildHistoricalVisualValidationSetFromReport>["snapshots"][number] | undefined;
   const set = buildHistoricalVisualValidationSetFromReport(
     { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
     dataset,
@@ -142,6 +144,9 @@ test("historical projection keeps contract-local candles and truthful category g
       executionMode: "ohlcv_modeled",
       audit: [fixture.audit],
       trades: fixture.trade ? [fixture.trade] : [],
+    },
+    (snapshots) => {
+      firstSnapshot ??= snapshots[0];
     },
   );
   assert.equal(set.source, "historical_databento");
@@ -153,6 +158,15 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(set.categoryCoverage.find((item) => item.category === "strong_breakout")?.count, 1);
   assert.equal(set.snapshots[0]?.evaluationCursor.futureCandleAccess, false);
   assert.equal(set.snapshots[0]?.futureCandleAccess, false);
+  assert.ok(firstSnapshot);
+  const partial = buildHistoricalVisualValidationPartialSet(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    dataset,
+    [firstSnapshot!],
+  );
+  assert.equal(partial.snapshots.length, 1);
+  assert.equal(partial.snapshots[0]?.snapshotId, firstSnapshot!.snapshotId);
+  assert.equal(partial.accountReplayTrades.length, 0);
 });
 
 test("Visual Review preserves no-target stop outcomes without target-hit evidence", () => {

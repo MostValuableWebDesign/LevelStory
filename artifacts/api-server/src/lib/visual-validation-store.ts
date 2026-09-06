@@ -90,13 +90,14 @@ function currentVersionsMatch(set: Omit<VisualValidationSet, "reviewSetId" | "cr
 
 export function storeVisualValidationSet(
   set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">,
-  options: Partial<Pick<VisualValidationSet, "generationOrigin" | "cacheKey" | "cacheKeyVersion" | "strategyVersion" | "formulaHash" | "formulaVersion" | "candidateProjectionVersion" | "executionManagementVersion" | "snapshotProjectionVersion" | "chartProjectionVersion" | "sessionCalendarVersion">> = {},
+  options: Partial<Pick<VisualValidationSet, "generationOrigin" | "cacheKey" | "cacheKeyVersion" | "strategyVersion" | "formulaHash" | "formulaVersion" | "candidateProjectionVersion" | "executionManagementVersion" | "snapshotProjectionVersion" | "chartProjectionVersion" | "sessionCalendarVersion">> & { publishAsLatest?: boolean } = {},
 ): VisualValidationSet {
   prune();
+  const { publishAsLatest = true, ...metadataOptions } = options;
   const stored: StoredVisualValidationSet = {
     set: {
       ...set,
-       ...options,
+       ...metadataOptions,
       reviewSetId: randomUUID(),
       createdAt: new Date().toISOString(),
       currentBuildId: APPLICATION_BUILD_ID,
@@ -107,7 +108,7 @@ export function storeVisualValidationSet(
     lastAccessedAt: Date.now(),
   };
   sets.set(stored.set.reviewSetId, stored);
-  latestSetId = stored.set.reviewSetId;
+  if (publishAsLatest) latestSetId = stored.set.reviewSetId;
   return getVisualValidationSet(stored.set.reviewSetId)!;
 }
 

@@ -1,5 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
 import {
+  buildHistoricalVisualValidationPartialSet,
   buildHistoricalVisualValidationSetFromReport,
   type VisualValidationRequest,
 } from "./visual-validation.js";
@@ -79,6 +80,10 @@ try {
       totalSessions: total,
       message: `Replaying session ${Math.min(completed + 1, total)} of ${total}`,
     });
+  parentPort!.postMessage({
+    type: "partial",
+    set: buildHistoricalVisualValidationPartialSet(request, dataset, []),
+  });
   });
   emitProgress({
     phase: "building_ledger",
@@ -94,7 +99,19 @@ try {
     totalSessions,
     message: "Creating authoritative trade candidates",
   });
-  const set = buildHistoricalVisualValidationSetFromReport(request, dataset, report);
+  const set = buildHistoricalVisualValidationSetFromReport(
+    request,
+    dataset,
+    report,
+    (snapshots, totalSnapshots) => {
+      const snapshotCount = snapshots.length;
+      if (snapshotCount !== 1 && snapshotCount !== totalSnapshots && snapshotCount % 5 !== 0) return;
+      parentPort!.postMessage({
+        type: "partial",
+        set: buildHistoricalVisualValidationPartialSet(request, dataset, snapshots),
+      });
+    },
+  );
   emitProgress({
     phase: "building_snapshots",
     completedUnits: 99,

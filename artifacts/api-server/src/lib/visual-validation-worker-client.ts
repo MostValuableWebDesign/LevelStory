@@ -4,6 +4,7 @@ import type { CausalReplayProgress } from "./phase9.js";
 
 type WorkerMessage =
   | { type: "result"; set: Omit<VisualValidationSet, "reviewSetId" | "createdAt"> }
+  | { type: "partial"; set: Omit<VisualValidationSet, "reviewSetId" | "createdAt"> }
   | { type: "progress"; progress: VisualValidationWorkerProgress }
   | { type: "error"; message: string };
 
@@ -33,9 +34,12 @@ type WorkerLike = {
 const workerUrl = new URL("./lib/visual-validation-worker.mjs", import.meta.url);
 
 export class VisualValidationWorkerError extends Error {
-  constructor(detail?: string) {
+  readonly partialSet?: Omit<VisualValidationSet, "reviewSetId" | "createdAt">;
+
+  constructor(detail?: string, partialSet?: Omit<VisualValidationSet, "reviewSetId" | "createdAt">) {
     super(detail ? `VISUAL_VALIDATION_WORKER_FAILED: ${detail}` : "VISUAL_VALIDATION_WORKER_FAILED");
     this.name = "VisualValidationWorkerError";
+    this.partialSet = partialSet;
   }
 }
 
@@ -49,6 +53,7 @@ export function buildHistoricalVisualValidationSetInWorker(
     let timer: ReturnType<typeof setTimeout> | undefined;
     let worker: WorkerLike | undefined;
     let messageReceived = false;
+    let latestPartialSet: Omit<VisualValidationSet, "reviewSetId" | "createdAt"> | undefined;
 
     const cleanup = (): void => {
       if (timer) clearTimeout(timer);
@@ -72,7 +77,7 @@ export function buildHistoricalVisualValidationSetInWorker(
     };
 
     timer = setTimeout(() => {
-      void failAndTerminate(new VisualValidationWorkerError("Historical replay timed out."));
+      void failAndTerminate(new VisualValidationWorkerError("Historical replay timed out.", latestPartialSet));
     }, timeoutMs);
 
     try {
@@ -81,6 +86,8 @@ export function buildHistoricalVisualValidationSetInWorker(
         if (message.type === "result") {
           messageReceived = true;
           finish(() => resolve(message.set));
+        } else if (message.type === "partial" && !settled) {
+          latestPartialSet = message.set;
         } else if (message.type === "progress" && !settled) {
           onProgress?.(message.progress);
         } else if (message.type === "error") {

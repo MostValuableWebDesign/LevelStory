@@ -2555,6 +2555,7 @@ export function buildHistoricalVisualValidationSetFromReport(
   dataset: CausalReplayDataset,
   report: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode" | "audit" | "trades">
     & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates" | "rejectedCandidateSignals">>,
+  onSnapshot?: (snapshots: readonly VisualValidationSnapshot[], totalSnapshots: number) => void,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   request = withGovernedVisualValidationRequest(request);
   const effectiveStrategyConfig = strategyConfigForVisualReview(
@@ -2638,11 +2639,12 @@ export function buildHistoricalVisualValidationSetFromReport(
         undefined,
         visualIndex.completeCandlesByContract.get(candidate.audit.contractSymbol),
       ) !== null);
-  const snapshots = visibleCandidates.map((candidate, candidateIndex) => {
+  const snapshots: VisualValidationSnapshot[] = [];
+  for (const [candidateIndex, candidate] of visibleCandidates.entries()) {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
       ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
       : Date.parse(candidate.audit.evaluatedCandleOpenTime) + 5 * 60_000;
-    return buildMachineSnapshot(
+    snapshots.push(buildMachineSnapshot(
       fixtureReport,
       dataset,
       candidate.audit,
@@ -2656,8 +2658,9 @@ export function buildHistoricalVisualValidationSetFromReport(
       visualIndex,
       candidate.candidateRejection,
       effectiveStrategyConfig,
-    );
-  });
+    ));
+    onSnapshot?.(snapshots, visibleCandidates.length);
+  }
   const accountReplayTrades = buildAccountReplayTradesFromReport(report, snapshots);
   const snapshotCandidates = buildTradeCandidates(snapshots);
   const tradeCandidates = mergeVisualTradeCandidates([
@@ -2725,6 +2728,44 @@ export function buildHistoricalVisualValidationSetFromReport(
       available: snapshots.some((snapshot) => snapshot.category === category),
     })),
     ...(funnelDiagnostics ? { funnelDiagnostics } : {}),
+  };
+}
+
+export function buildHistoricalVisualValidationPartialSet(
+  request: VisualValidationRequest,
+  dataset: CausalReplayDataset,
+  snapshots: readonly VisualValidationSnapshot[],
+): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
+  request = withGovernedVisualValidationRequest(request);
+  const sourceFingerprint = datasetSourceFingerprint(dataset);
+  const cacheSourceFingerprint = dataset.contentFingerprint ?? sourceFingerprint;
+  return {
+    buildId: APPLICATION_BUILD_ID,
+    currentBuildId: APPLICATION_BUILD_ID,
+    stale: false,
+    sourceFingerprint,
+    generationOrigin: "fresh",
+    ...visualValidationCacheMetadata(
+      request,
+      cacheSourceFingerprint,
+      dataset.contractSchedule?.version,
+      processedDatesForDataset(dataset),
+    ),
+    source: "historical_databento",
+    symbol: request.symbol,
+    request: { ...request, source: "historical_databento" },
+    reviewPeriod: reviewPeriodForDataset(dataset, request.endDate),
+    processedDates: processedDatesForDataset(dataset),
+    snapshots: [...snapshots],
+    tradeCandidates: buildTradeCandidates([...snapshots]),
+    accountReplayTrades: [],
+    defaultSelectionReason: snapshots[0]?.selectionReason ?? "No retained occurrence is available yet.",
+    categoryCoverage: VISUAL_VALIDATION_CATEGORIES.map((category) => ({
+      category,
+      label: categoryLabels[category],
+      count: snapshots.filter((snapshot) => snapshot.category === category).length,
+      available: snapshots.some((snapshot) => snapshot.category === category),
+    })),
   };
 }
 

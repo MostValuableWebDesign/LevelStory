@@ -3,8 +3,8 @@ name: Visual replay timeout fallback
 description: Safe behavior when historical Visual Review generation exceeds the worker deadline.
 ---
 
-Historical Visual Review generation may publish a partial job only when a completed result for the exact same deterministic request is available. That result remains visible with a timeout warning; a timeout without a same-request result stays an explicit failure.
+Historical Visual Review generation may publish a partial job when the worker has emitted validated snapshots for the same deterministic request, or when a completed result for that exact request is available. The partial result remains visible with a timeout warning; a timeout without either safe source stays an explicit failure.
 
-**Why:** The worker currently emits one final set rather than a stream of candidate snapshots. Treating progress or unrelated cached data as a current partial result could expose incomplete or mismatched historical evidence.
+**Why:** Progress counters alone are not review evidence. Partial snapshots must come from the worker's causal replay and must not be replaced with unrelated cached data.
 
-**How to apply:** Keep the timeout state distinct from successful completion, preserve the prior result’s identity and cache metadata, and make the UI render the retained set with a clear warning. Add true current-run partial snapshots only with causal cursors and an explicit partial-result contract.
+**How to apply:** Keep timeout state distinct from successful completion, store worker-emitted partial sets privately rather than publishing them as the latest complete cache, preserve the review-set identity for review actions, and make the UI render the retained set with a clear warning.

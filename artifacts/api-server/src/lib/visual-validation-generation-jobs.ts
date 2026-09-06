@@ -8,6 +8,7 @@ import {
 } from "./visual-validation.js";
 import {
   buildHistoricalVisualValidationSetInWorker,
+  VisualValidationWorkerError,
   type VisualValidationWorkerProgress,
 } from "./visual-validation-worker-client.js";
 import { storeVisualValidationSet } from "./visual-validation-store.js";
@@ -254,17 +255,23 @@ async function runJob(job: JobRecord): Promise<void> {
   } catch (error) {
     job.completedAt = Date.now();
     const timedOut = error instanceof Error && /historical replay timed out/i.test(error.message);
-    if (timedOut && job.fallbackResult) {
-      job.result = job.fallbackResult;
-      job.reviewSetId = job.fallbackResult.reviewSetId;
-      job.origin = "cached";
-      job.generationOrigin = "cached";
+    const partialSet = error instanceof VisualValidationWorkerError ? error.partialSet : undefined;
+    if (timedOut && (partialSet || job.fallbackResult)) {
+      const stored = partialSet
+        ? storeVisualValidationSet(partialSet, { publishAsLatest: false })
+        : job.fallbackResult!;
+      job.result = stored;
+      job.reviewSetId = stored.reviewSetId;
+      job.origin = partialSet ? "fresh" : "cached";
+      job.generationOrigin = partialSet ? "fresh" : "cached";
       updateJob(job, {
         status: "partial",
         phase: "completed",
         completedUnits: job.completedUnits,
         completedSessions: job.completedSessions,
-        message: "Historical replay timed out; showing the last completed result.",
+        message: partialSet
+          ? "Historical replay timed out; showing the snapshots completed before the timeout."
+          : "Historical replay timed out; showing the last completed result.",
         error: error instanceof Error ? error.message : "Historical replay timed out.",
       });
       return;
