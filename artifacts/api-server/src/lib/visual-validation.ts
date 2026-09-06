@@ -1779,7 +1779,7 @@ function buildAnnotations(
   const targetPlan = trade?.targetPlan ?? occurrence?.management?.targetPlan ?? (
     trade?.candidateId ? undefined : audit.targetPlan
   );
-  if (targetPlan?.selectedTargetLevel) {
+   if (targetPlan?.selectedTargetLevel) {
     const selected = targetPlan.selectedTargetLevel;
     addLevel(
       "selected-target-level",
@@ -1793,35 +1793,45 @@ function buildAnnotations(
       selectedAnnotation.rangeLow = selected.rangeLow;
       selectedAnnotation.rangeHigh = selected.rangeHigh;
     }
-    for (const skipped of targetPlan.skippedLevels) {
-      addLevel(
-        `skipped-target-${skipped.id}`,
-        `Skipped: ${skipped.id}`,
-        skipped.price,
-        skipped.reason === "TARGET_NOT_PROFITABLE"
-          ? "Skipped: the governed near-side target would not remain profitable beyond entry."
-          : `Skipped: key level is more than ${targetPlan.bufferTicks} ticks from entry.`,
-        "muted",
-      );
-    }
   }
+   for (const skipped of targetPlan?.skippedLevels ?? []) {
+     addLevel(
+       `skipped-target-${skipped.id}`,
+       `Skipped: ${skipped.id}`,
+       skipped.price,
+       skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
+         ? "Skipped: the buffered executable target was below 1R."
+         : skipped.reason === "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
+           ? "Skipped: a major structural obstacle blocks the path to 1R."
+           : skipped.reason === "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"
+             ? "Skipped: the level is behind the directional entry."
+             : `Skipped: the level is outside the achievable search range.`,
+       "muted",
+     );
+   }
   const targetPrice = trade?.candidateId
     ? trade.targetPlan?.targetPrice ?? null
     : targetPlan?.targetPrice ?? null;
   addLevel(
     "target",
-    targetPrice === null && targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL"
-      ? "No eligible key-level target"
+     targetPlan?.fallbackUsed
+       ? "1R fallback target"
+       : targetPrice === null && targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL"
+         ? "No eligible key-level target"
       : "Target",
     targetPrice,
     targetPlan?.selectedTargetLevel
       ? targetPlan.placementMode === "EXACT_LEVEL"
           ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
         : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
-      : "No eligible key-level target; candidate remains open and unscored.",
+       : targetPlan?.fallbackUsed
+         ? "No eligible causal level passed the buffered 1R–1.5R search; the plan used exactly 1R."
+         : targetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK"
+           ? "A hard structural obstacle blocks 1R; the candidate is rejected."
+           : "No eligible key-level target.",
     "positive",
   );
-  const oneRTargetPrice = targetPrice === null && trade?.candidateId && typeof trade.audit?.oneRPrice === "number"
+   const oneRTargetPrice = targetPlan?.fallbackUsed ? null : targetPrice === null && trade?.candidateId && typeof trade.audit?.oneRPrice === "number"
     ? trade.audit.oneRPrice
     : null;
   if (oneRTargetPrice !== null) {

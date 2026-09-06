@@ -66,6 +66,7 @@ import {
 import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
+  KEY_LEVEL_TARGET_PLAN_VERSION,
   PROFIT_TARGET_BUFFER_TICKS,
   PROFIT_TARGET_PLACEMENT_TICKS,
   type KeyLevelTargetInput,
@@ -2251,7 +2252,9 @@ function targetLevelsForSnapshot(
     }
   }
   const add = (id: string, type: string, price: number | null | undefined) => {
-    if (typeof price === "number" && Number.isFinite(price)) levels.push({ id, type, price });
+    if (typeof price === "number" && Number.isFinite(price)) {
+      levels.push({ id, type, price, sourceTimestamp: snapshot.updatedAt });
+    }
   };
   add("premarket-high", "PREMARKET", snapshot.levels.premarketHigh);
   add("premarket-low", "PREMARKET", snapshot.levels.premarketLow);
@@ -2272,6 +2275,7 @@ function targetLevelsForSnapshot(
       price: level.price,
       rangeLow: level.zoneLow,
       rangeHigh: level.zoneHigh,
+      sourceTimestamp: snapshot.updatedAt,
     });
   }
   for (const level of snapshot.dynamiteLevels) {
@@ -2281,6 +2285,7 @@ function targetLevelsForSnapshot(
       price: level.representative,
       rangeLow: level.lower,
       rangeHigh: level.upper,
+      sourceTimestamp: snapshot.updatedAt,
     });
   }
   return filterEligibleKeyLevelInputs(levels);
@@ -2343,6 +2348,7 @@ function targetLevelSnapshotForOccurrence(
     sourceFingerprint: occurrence.sourceFingerprint,
     formulaHash: occurrence.formulaHash,
     configurationHash: activeShadowStrategySnapshot().formulaHash,
+    targetPlanVersion: KEY_LEVEL_TARGET_PLAN_VERSION,
     frozenLevelInputs: Object.freeze(frozenLevelInputs),
   });
 }
@@ -2364,7 +2370,7 @@ function targetLevelSnapshotForAudit(
     // A target becomes causal only when the canonical immediate E candle has
     // completed. Preserve the audit's actual observation cursor rather than
     // retimestamping an audit as if it were observed at E close.
-    frozenAt: record.evaluatedCandleOpenTime,
+    frozenAt: eCloseTimestamp,
     sourceAuditCursor: record.evaluatedCandleOpenTime,
     sourceAuditId: record.id,
     eOpenTimestamp,
@@ -2372,6 +2378,7 @@ function targetLevelSnapshotForAudit(
     sourceFingerprint,
     formulaHash,
     configurationHash: activeShadowStrategySnapshot().formulaHash,
+    targetPlanVersion: KEY_LEVEL_TARGET_PLAN_VERSION,
     frozenLevelInputs: Object.freeze(filterEligibleKeyLevelInputs(record.targetLevelInputs ?? []).map((level) => ({ ...level }))),
   });
 }
@@ -4640,7 +4647,8 @@ function candidateDrivenEntryTrade(
       contracts,
        targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
       target: targetPrice,
-      oneRProfitRule: targetPrice === null,
+       oneRProfitRule: targetPlan?.fallbackUsed === true,
+       targetIsOneR: targetPlan?.fallbackUsed === true,
        structureTrailing: true,
        trailingBufferTicks: management.runnerBufferTicks ?? 4,
        noLevelBreakevenActivationBars: 6,
@@ -5272,13 +5280,7 @@ export function runCausalBacktest(
         if (selectedAudit) {
           selectedAudit.targetPrice = target;
           selectedAudit.targetPlan = targetPlan;
-          selectedAudit.targetLevelInputs = targetPlan.availableLevels.map((level) => ({
-            id: level.id,
-            type: level.type,
-            price: level.price,
-            rangeLow: level.rangeLow,
-            rangeHigh: level.rangeHigh,
-          }));
+           selectedAudit.targetLevelInputs = targetPlan.availableLevels.map((level) => ({ ...level }));
         }
         if (targetPlan.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK") {
           if (selectedAudit) {
@@ -5411,6 +5413,7 @@ export function runCausalBacktest(
          matchedEdges,
          supportingConfluences,
          setupGrade,
+         targetPlan,
          patienceCandle: occurrenceCandle(patienceCandle),
          entryCandle: occurrenceCandle(trigger),
         audit: {

@@ -8,6 +8,7 @@
 import type { BacktestTradeAuditAttemptGrade } from './backtestTradeAuditAttemptGrade';
 import type { BacktestTradeAuditLegsItem } from './backtestTradeAuditLegsItem';
 import type { BacktestTradeAuditStopLevel } from './backtestTradeAuditStopLevel';
+import type { KeyLevelTargetPlan } from './keyLevelTargetPlan';
 
 export type BacktestTradeAudit = {
   /** @nullable */
@@ -18,6 +19,7 @@ export type BacktestTradeAudit = {
   stopPrice: number | null;
   /** @nullable */
   targetPrice: number | null;
+  targetPlan?: KeyLevelTargetPlan;
   /** @nullable */
   strategyStopPrice: number | null;
   /** @nullable */

@@ -9,6 +9,7 @@ import type {
 import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
 import {
   buildKeyLevelTargetPlan,
+  KEY_LEVEL_TARGET_PLAN_VERSION,
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
 } from "./strategy/key-level-targets.js";
@@ -241,6 +242,15 @@ function replayTradeWithFixedContracts(
     );
   }
   const frozenTargetPlan = trade.targetPlan ?? trade.audit?.targetPlan ?? null;
+  if (replayInput && frozenTargetPlan
+    && (frozenTargetPlan.targetPlanVersion !== KEY_LEVEL_TARGET_PLAN_VERSION
+      || (frozenTargetPlan.targetLevelSnapshot !== undefined
+        && frozenTargetPlan.targetLevelSnapshot !== null
+        && frozenTargetPlan.targetLevelSnapshot.targetPlanVersion !== KEY_LEVEL_TARGET_PLAN_VERSION))) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} contains an outdated target-search plan. Regenerate the review set.`,
+    );
+  }
   const targetLevelInputs: KeyLevelTargetInput[] | null = frozenTargetPlan
     ? frozenTargetPlan.targetLevelSnapshot?.frozenLevelInputs
       ? [...frozenTargetPlan.targetLevelSnapshot.frozenLevelInputs]
@@ -309,7 +319,8 @@ function replayTradeWithFixedContracts(
     targetQuantity: replayTargetPrice === null ? 0 : Math.min(1, contractsPerTrade),
     target: replayTargetPrice,
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
-    oneRProfitRule: useOneRProfitRule,
+    oneRProfitRule: rebuiltTargetPlan?.fallbackUsed === true || useOneRProfitRule,
+    targetIsOneR: rebuiltTargetPlan?.fallbackUsed === true,
     structureTrailing: true,
     trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,

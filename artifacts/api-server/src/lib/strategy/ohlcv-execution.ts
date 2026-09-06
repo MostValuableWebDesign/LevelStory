@@ -189,6 +189,8 @@ export type OhlcvExecutionInput = {
   primaryLossExitLevel?: PrimaryLossExitReference | null;
   /** Candidate-owned no-target management: take full 1R with one contract, or one contract at 1R before structure trailing. */
   oneRProfitRule?: boolean;
+  /** The supplied target is the planner's explicit exactly-1R fallback, not a causal key-level target. */
+  targetIsOneR?: boolean;
   /** Candidate-owned runner management: use confirmed five-minute swings. */
   structureTrailing?: boolean;
   trailingBufferTicks?: number;
@@ -230,8 +232,7 @@ function completedSwing(
 }
 
 function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
-  const noForwardLevelAtEntry = input.oneRProfitRule === true
-    && (input.targetPrice ?? input.target ?? null) === null;
+  const noForwardLevelAtEntry = input.oneRProfitRule === true;
   const breakevenActivationBars = BREAKEVEN_EVALUATION_BARS;
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
@@ -321,7 +322,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       ? entryReference + (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
   const target = convertedTarget == null ? null : tick(convertedTarget, size);
-  const oneRProfitRule = input.oneRProfitRule === true && target === null;
+  const oneRProfitRule = input.oneRProfitRule === true
+    && (target === null || input.targetIsOneR === true);
   const noForwardLevelAtEntry = oneRProfitRule;
   const breakevenActivationBars = BREAKEVEN_EVALUATION_BARS;
   if (breakevenActivationBars !== null
@@ -473,7 +475,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const originalStopHit = strategyHit || catastropheHit || trailingHit;
     const adverse = catastropheHit || breakevenHit || originalStopHit;
     const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
-    const targetReachedInCandle = !targetHit && favorable;
+    const targetReachedInCandle = !oneRProfitRule && !targetHit && favorable;
     const oneRReachedInCandle = oneRProfitRule
       && !oneRReached
       && oneRPrice !== null

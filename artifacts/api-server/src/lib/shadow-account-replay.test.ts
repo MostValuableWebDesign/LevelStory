@@ -292,12 +292,12 @@ test("fixed-size replay reruns frozen execution instead of scaling stored P/L", 
   assert.notEqual(two.ledger[0]?.netPnl, (one.ledger[0]?.netPnl ?? 0) * 2);
 });
 
-test("rebuilds a two-contract target plan and rejects an insufficient one-contract disposition", () => {
+test("rebuilds a target plan and uses the explicit 1R fallback for both contract modes", () => {
   const replayCandidate = candidate("target-disposition");
   const frozenTargetPlan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
-    levels: [{ id: "major-resistance", type: "major resistance", price: 100.75 }],
+    levels: [{ id: "near-vwap", type: "VWAP", price: 100.75 }],
     tickSize: 0.25,
     placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
     targetBufferTicks: 1,
@@ -346,11 +346,8 @@ test("rebuilds a two-contract target plan and rejects an insufficient one-contra
   assert.equal(two.rejectedCandidates.length, 0);
 
   const one = buildShadowAccountReplay(set, { contractsPerTrade: 1 });
-  assert.equal(one.enteredTrades, 0);
-  assert.equal(one.rejectedCandidates.length, 1);
-  assert.equal(one.rejectedCandidates[0]?.reason, "INSUFFICIENT_REWARD_TO_RISK");
-  assert.equal(one.rejectedCandidates[0]?.targetPlan.minimumTargetR, 0.75);
-  assert.equal(one.warnings[0], "Rejected candidate target-disposition: INSUFFICIENT_REWARD_TO_RISK.");
+  assert.equal(one.enteredTrades, 1);
+  assert.equal(one.rejectedCandidates.length, 0);
 });
 
 test("rejects a stale candidate whose long stop is above entry", () => {

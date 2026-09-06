@@ -213,7 +213,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7RunnerRetracementRatio: 0.4,
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
-  executionManagementVersion: "execution-management-v6-adaptive-target-runner-audit",
+  executionManagementVersion: "execution-management-v7-causal-target-search",
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,

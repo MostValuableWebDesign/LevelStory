@@ -2914,6 +2914,173 @@ export interface WalkForwardReport {
   sensitivity: WalkForwardSensitivityCase[];
 }
 
+export interface TargetLevelInput {
+  id: string;
+  type: string;
+  /** @nullable */
+  price?: number | null;
+  /** @nullable */
+  rangeLow?: number | null;
+  /** @nullable */
+  rangeHigh?: number | null;
+  /** @nullable */
+  sourceTimestamp?: string | null;
+}
+
+export interface FrozenTargetLevel {
+  id: string;
+  type: string;
+  price: number;
+  /** @nullable */
+  rangeLow: number | null;
+  /** @nullable */
+  rangeHigh: number | null;
+  distancePoints: number;
+  distanceTicks: number;
+  confluenceMembers?: TargetLevelInput[];
+}
+
+export type SkippedTargetLevelReason = typeof SkippedTargetLevelReason[keyof typeof SkippedTargetLevelReason];
+
+
+export const SkippedTargetLevelReason = {
+  TARGET_LEVEL_SKIPPED_BELOW_1R: 'TARGET_LEVEL_SKIPPED_BELOW_1R',
+  TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE: 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE',
+  TARGET_LEVEL_SKIPPED_WRONG_DIRECTION: 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION',
+  TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE: 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE',
+  TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY: 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY',
+  TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION: 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION',
+  OUTSIDE_20_TICKS: 'OUTSIDE_20_TICKS',
+  TARGET_NOT_PROFITABLE: 'TARGET_NOT_PROFITABLE',
+  OUTSIDE_MAX_TARGET_R: 'OUTSIDE_MAX_TARGET_R',
+  INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
+} as const;
+
+export type SkippedTargetLevel = FrozenTargetLevel & {
+  reason: SkippedTargetLevelReason;
+};
+
+export interface TargetLevelSnapshot {
+  frozenAt: string;
+  sourceAuditCursor?: string;
+  sourceAuditId: string;
+  /** @nullable */
+  eOpenTimestamp: string | null;
+  /** @nullable */
+  eCloseTimestamp: string | null;
+  sourceFingerprint: string;
+  formulaHash: string;
+  configurationHash: string;
+  targetPlanVersion: string;
+  frozenLevelInputs: TargetLevelInput[];
+}
+
+export interface PrimaryLossExitReference {
+  id: string;
+  type: string;
+  price: number;
+  /** @nullable */
+  rangeLow: number | null;
+  /** @nullable */
+  rangeHigh: number | null;
+  distancePoints: number;
+  distanceTicks: number;
+  stopPrice: number;
+}
+
+export type KeyLevelTargetPlanPlacementMode = typeof KeyLevelTargetPlanPlacementMode[keyof typeof KeyLevelTargetPlanPlacementMode];
+
+
+export const KeyLevelTargetPlanPlacementMode = {
+  NEAR_SIDE_8_TICKS: 'NEAR_SIDE_8_TICKS',
+  NEAR_SIDE_ADAPTIVE_TICKS: 'NEAR_SIDE_ADAPTIVE_TICKS',
+  EXACT_LEVEL: 'EXACT_LEVEL',
+} as const;
+
+export type KeyLevelTargetPlanDisposition = typeof KeyLevelTargetPlanDisposition[keyof typeof KeyLevelTargetPlanDisposition];
+
+
+export const KeyLevelTargetPlanDisposition = {
+  KEY_LEVEL_SELECTED: 'KEY_LEVEL_SELECTED',
+  NO_ELIGIBLE_KEY_LEVEL: 'NO_ELIGIBLE_KEY_LEVEL',
+} as const;
+
+export type KeyLevelTargetPlanDirection = typeof KeyLevelTargetPlanDirection[keyof typeof KeyLevelTargetPlanDirection];
+
+
+export const KeyLevelTargetPlanDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type KeyLevelTargetPlanBufferTicks = typeof KeyLevelTargetPlanBufferTicks[keyof typeof KeyLevelTargetPlanBufferTicks];
+
+
+export const KeyLevelTargetPlanBufferTicks = {
+  NUMBER_20: 20,
+} as const;
+
+/**
+ * @nullable
+ */
+export type KeyLevelTargetPlanRejectionReason = typeof KeyLevelTargetPlanRejectionReason[keyof typeof KeyLevelTargetPlanRejectionReason] | null;
+
+
+export const KeyLevelTargetPlanRejectionReason = {
+  INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
+} as const;
+
+/**
+ * @nullable
+ */
+export type KeyLevelTargetPlanFallbackReason = typeof KeyLevelTargetPlanFallbackReason[keyof typeof KeyLevelTargetPlanFallbackReason] | null;
+
+
+export const KeyLevelTargetPlanFallbackReason = {
+  ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL: 'ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL',
+} as const;
+
+export interface KeyLevelTargetPlan {
+  targetPlanVersion: string;
+  placementMode: KeyLevelTargetPlanPlacementMode;
+  disposition: KeyLevelTargetPlanDisposition;
+  entryPrice: number;
+  direction: KeyLevelTargetPlanDirection;
+  tickSize: number;
+  bufferTicks: KeyLevelTargetPlanBufferTicks;
+  bufferPoints: number;
+  placementTicks: number;
+  targetBufferTicks: number;
+  /** @nullable */
+  initialRiskPoints: number | null;
+  /** @nullable */
+  targetR: number | null;
+  /** @nullable */
+  minimumTargetR: number | null;
+  /** @nullable */
+  maximumTargetR: number | null;
+  /** @nullable */
+  obstructingLevel: FrozenTargetLevel | null;
+  /** @nullable */
+  rejectionReason: KeyLevelTargetPlanRejectionReason;
+  availableLevels: FrozenTargetLevel[];
+  skippedLevels: SkippedTargetLevel[];
+  /** @nullable */
+  selectedTargetLevel: FrozenTargetLevel | null;
+  subsequentTargetLevels: FrozenTargetLevel[];
+  /** @nullable */
+  targetPrice: number | null;
+  fallbackUsed: boolean;
+  /** @nullable */
+  fallbackReason: KeyLevelTargetPlanFallbackReason;
+  /** @nullable */
+  searchRangePoints: number | null;
+  /** @nullable */
+  searchRangeTicks: number | null;
+  /** @nullable */
+  targetLevelSnapshot?: TargetLevelSnapshot | null;
+}
+
 export type BacktestTradePeriod = typeof BacktestTradePeriod[keyof typeof BacktestTradePeriod];
 
 
@@ -3059,6 +3226,7 @@ export type BacktestTradeAudit = {
   stopPrice: number | null;
   /** @nullable */
   targetPrice: number | null;
+  targetPlan?: KeyLevelTargetPlan;
   /** @nullable */
   strategyStopPrice: number | null;
   /** @nullable */
@@ -3162,6 +3330,7 @@ export interface BacktestTrade {
   attemptOrdinal?: number;
   /** Effective quality grade after applying the controlled re-entry penalty. */
   attemptGrade?: BacktestTradeAttemptGrade;
+  targetPlan?: KeyLevelTargetPlan;
   /** @nullable */
   patienceCandle?: BacktestTradePatienceCandle;
   /** @nullable */

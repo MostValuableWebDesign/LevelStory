@@ -8,7 +8,10 @@ export type KeyLevelTargetInput = {
   price?: number | null;
   rangeLow?: number | null;
   rangeHigh?: number | null;
+  sourceTimestamp?: string | null;
 };
+
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v2-causal-buffered-range";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -20,6 +23,7 @@ export type TargetLevelSnapshot = {
   sourceFingerprint: string;
   formulaHash: string;
   configurationHash: string;
+  targetPlanVersion: string;
   frozenLevelInputs: readonly KeyLevelTargetInput[];
 };
 
@@ -31,10 +35,21 @@ export type FrozenTargetLevel = {
   rangeHigh: number | null;
   distancePoints: number;
   distanceTicks: number;
+  confluenceMembers?: readonly KeyLevelTargetInput[];
 };
 
 export type SkippedTargetLevel = FrozenTargetLevel & {
-  reason: "OUTSIDE_20_TICKS" | "TARGET_NOT_PROFITABLE" | "OUTSIDE_MAX_TARGET_R" | "INSUFFICIENT_REWARD_TO_RISK";
+  reason:
+    | "TARGET_LEVEL_SKIPPED_BELOW_1R"
+    | "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE"
+    | "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"
+    | "TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE"
+    | "TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY"
+    | "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
+    | "OUTSIDE_20_TICKS"
+    | "TARGET_NOT_PROFITABLE"
+    | "OUTSIDE_MAX_TARGET_R"
+    | "INSUFFICIENT_REWARD_TO_RISK";
 };
 
 export type PrimaryLossExitReference = {
@@ -49,6 +64,7 @@ export type PrimaryLossExitReference = {
 };
 
 export type KeyLevelTargetPlan = {
+  targetPlanVersion: typeof KEY_LEVEL_TARGET_PLAN_VERSION;
   placementMode: ProfitTargetPlacement;
   disposition: "KEY_LEVEL_SELECTED" | "NO_ELIGIBLE_KEY_LEVEL";
   entryPrice: number;
@@ -73,6 +89,10 @@ export type KeyLevelTargetPlan = {
   selectedTargetLevel: FrozenTargetLevel | null;
   subsequentTargetLevels: FrozenTargetLevel[];
   targetPrice: number | null;
+  fallbackUsed: boolean;
+  fallbackReason: "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL" | null;
+  searchRangePoints: number | null;
+  searchRangeTicks: number | null;
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
@@ -124,6 +144,7 @@ export function filterEligibleKeyLevelInputs(
       ...(typeof level.price === "number" ? { price: level.price } : {}),
       ...(typeof level.rangeLow === "number" ? { rangeLow: level.rangeLow } : {}),
       ...(typeof level.rangeHigh === "number" ? { rangeHigh: level.rangeHigh } : {}),
+      ...(typeof level.sourceTimestamp === "string" ? { sourceTimestamp: level.sourceTimestamp } : {}),
     }));
 }
 
@@ -155,6 +176,14 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
       rangeHigh: normalizedHigh,
       distancePoints: 0,
       distanceTicks: 0,
+      confluenceMembers: [{
+        id: level.id,
+        type: level.type,
+        ...(typeof level.price === "number" ? { price: level.price } : {}),
+        ...(typeof level.rangeLow === "number" ? { rangeLow: level.rangeLow } : {}),
+        ...(typeof level.rangeHigh === "number" ? { rangeHigh: level.rangeHigh } : {}),
+        ...(typeof level.sourceTimestamp === "string" ? { sourceTimestamp: level.sourceTimestamp } : {}),
+      }],
     } satisfies FrozenTargetLevel];
   }).sort((first, second) =>
     first.rangeLow! - second.rangeLow!
@@ -173,6 +202,10 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
         existing.rangeLow = normalizePrice(Math.min(existing.rangeLow!, level.rangeLow!), tickSize);
         existing.rangeHigh = normalizePrice(Math.max(existing.rangeHigh!, level.rangeHigh!), tickSize);
         existing.price = existing.rangeLow;
+        existing.confluenceMembers = [
+          ...(existing.confluenceMembers ?? []),
+          ...(level.confluenceMembers ?? []),
+        ];
         continue;
       }
     }
@@ -325,7 +358,7 @@ export function buildKeyLevelTargetPlan(input: {
     throw new Error("Adaptive target buffer must be a whole number between one and eight MES ticks.");
   }
   const bufferPoints = bufferTicks * tickSize;
-  const availableLevels = mergeLevels(input.levels, tickSize)
+  const directionalLevels = mergeLevels(input.levels, tickSize)
     .map((level) => {
       const encountered = input.direction === "long"
         ? level.rangeLow ?? level.price
@@ -340,8 +373,9 @@ export function buildKeyLevelTargetPlan(input: {
         distanceTicks: Math.round(distancePoints / tickSize),
       };
     })
-    .filter((level) => level.distancePoints > 0)
     .sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
+  const availableLevels = directionalLevels
+    .filter((level) => level.distancePoints > 0);
   const targetPriceForLevel = (level: FrozenTargetLevel): number => {
     const levelBoundary = rawNearBoundaryForLevel(level, input.levels, input.direction);
     return placementMode === "EXACT_LEVEL"
@@ -353,67 +387,98 @@ export function buildKeyLevelTargetPlan(input: {
         tickSize,
       );
   };
-  const withinDistance = availableLevels.filter((level) => level.distancePoints <= bufferPoints);
-  const maximumTargetR = input.maximumTargetR ?? Number.POSITIVE_INFINITY;
-  const minimumTargetR = input.contracts === 1 ? 0.75 : input.contracts === 2 ? 0.5 : null;
+  const riskPoints = input.initialRiskPoints ?? null;
+  const validRisk = riskPoints !== null && Number.isFinite(riskPoints) && riskPoints > 0;
+  const maximumTargetR = input.maximumTargetR ?? (validRisk ? 1.5 : Number.POSITIVE_INFINITY);
+  const minimumTargetR = validRisk ? 1 : input.contracts === 1 ? 0.75 : input.contracts === 2 ? 0.5 : null;
+  const oneRPrice = validRisk
+    ? normalizePrice(
+      input.direction === "long" ? input.entryPrice + riskPoints : input.entryPrice - riskPoints,
+      tickSize,
+    )
+    : null;
+  const maximumSearchDistancePoints = validRisk
+    ? Math.min(maximumTargetR * riskPoints, bufferPoints)
+    : bufferPoints;
   const targetRForLevel = (level: FrozenTargetLevel): number | null => {
-    if (input.initialRiskPoints === null || input.initialRiskPoints === undefined || input.initialRiskPoints <= 0) return null;
-    return Math.abs(targetPriceForLevel(level) - input.entryPrice) / input.initialRiskPoints;
+    if (!validRisk) return null;
+    return Math.abs(targetPriceForLevel(level) - input.entryPrice) / riskPoints;
   };
   const majorLevel = (level: FrozenTargetLevel): boolean => /\b(?:major|support|resistance)\b/i.test(`${level.id} ${level.type}`);
-  const isProfitableTarget = (level: FrozenTargetLevel): boolean => {
+  const skippedLevels: SkippedTargetLevel[] = [];
+  for (const level of directionalLevels) {
+    if (level.distancePoints <= 0) {
+      if (validRisk) skippedLevels.push({ ...level, reason: "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION" });
+      continue;
+    }
     const target = targetPriceForLevel(level);
+    const executableDistancePoints = Math.abs(target - input.entryPrice);
+    if (maximumSearchDistancePoints === null || executableDistancePoints > maximumSearchDistancePoints) {
+      skippedLevels.push({
+        ...level,
+        reason: !validRisk
+          ? "OUTSIDE_20_TICKS"
+          : executableDistancePoints > bufferPoints
+          ? "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE"
+          : "TARGET_LEVEL_SKIPPED_BELOW_1R",
+      });
+      continue;
+    }
     const targetR = targetRForLevel(level);
-    return (input.direction === "long"
-      ? target > input.entryPrice
-      : target < input.entryPrice)
-      && (targetR === null || targetR <= maximumTargetR);
-  };
-  const profitableWithinR = withinDistance.filter((level) => {
-    const target = targetPriceForLevel(level);
-    const targetR = targetRForLevel(level);
-    return (input.direction === "long" ? target > input.entryPrice : target < input.entryPrice)
-      && (targetR === null || targetR <= maximumTargetR);
-  });
-  const obstructingLevel = minimumTargetR === null || input.initialRiskPoints === null || input.initialRiskPoints === undefined
-    ? null
-    : availableLevels.find((level) => {
+    if (
+      (targetR === null && validRisk)
+      || (targetR !== null && targetR < (minimumTargetR ?? 0))
+      || (input.direction === "long" ? target <= input.entryPrice : target >= input.entryPrice)
+    ) {
+      skippedLevels.push({
+        ...level,
+        reason: !validRisk
+          ? "TARGET_NOT_PROFITABLE"
+          : majorLevel(level)
+          ? "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
+          : "TARGET_LEVEL_SKIPPED_BELOW_1R",
+      });
+      continue;
+    }
+    if (targetR === null) continue;
+    if (targetR > maximumTargetR) {
+      skippedLevels.push({ ...level, reason: "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" });
+    }
+  }
+  const obstructingLevel = validRisk
+    ? directionalLevels.find((level) => {
       const targetR = targetRForLevel(level);
-      return majorLevel(level)
+      return level.distancePoints > 0
+        && majorLevel(level)
         && targetR !== null
         && targetR > 0
-        && targetR < minimumTargetR;
-    }) ?? null;
-  const skippedLevels: SkippedTargetLevel[] = [
-    ...availableLevels
-      .filter((level) => level.distancePoints > bufferPoints)
-      .map((level) => ({ ...level, reason: "OUTSIDE_20_TICKS" as const })),
-    ...withinDistance
-      .filter((level) => !isProfitableTarget(level))
-      .map((level) => ({ ...level, reason: "TARGET_NOT_PROFITABLE" as const })),
-    ...profitableWithinR
-      .filter((level) => {
-        const targetR = targetRForLevel(level);
-        return targetR !== null && targetR < (minimumTargetR ?? 0);
-      })
-      .map((level) => ({ ...level, reason: "INSUFFICIENT_REWARD_TO_RISK" as const })),
-    ...availableLevels
-      .filter((level) => {
-        const targetR = targetRForLevel(level);
-        return targetR !== null && targetR > maximumTargetR;
-      })
-      .map((level) => ({ ...level, reason: "OUTSIDE_MAX_TARGET_R" as const })),
-  ].sort((a, b) => a.distancePoints - b.distancePoints || a.id.localeCompare(b.id));
-  const eligible = profitableWithinR.filter((level) => {
-    const targetR = targetRForLevel(level);
-    return targetR === null || minimumTargetR === null || targetR >= minimumTargetR;
-  });
+        && targetR < (minimumTargetR ?? 0);
+    }) ?? null
+    : null;
+  const eligible = validRisk
+    ? availableLevels.filter((level) => {
+      const targetR = targetRForLevel(level);
+      return maximumSearchDistancePoints !== null
+        && Math.abs(targetPriceForLevel(level) - input.entryPrice) <= maximumSearchDistancePoints
+        && targetR !== null
+        && targetR >= (minimumTargetR ?? 0)
+        && targetR <= maximumTargetR
+        && (input.direction === "long" ? targetPriceForLevel(level) > input.entryPrice : targetPriceForLevel(level) < input.entryPrice);
+    })
+    : availableLevels.filter((level) => {
+      const target = targetPriceForLevel(level);
+      return level.distancePoints <= bufferPoints
+        && (input.direction === "long" ? target > input.entryPrice : target < input.entryPrice);
+    });
   const selectedTargetLevel = eligible[0] ?? null;
   const subsequentTargetLevels = eligible.slice(1);
-  const targetPrice = selectedTargetLevel === null
+  const targetPrice = obstructingLevel !== null
     ? null
-    : targetPriceForLevel(selectedTargetLevel);
+    : selectedTargetLevel === null
+      ? oneRPrice
+      : targetPriceForLevel(selectedTargetLevel);
   return {
+    targetPlanVersion: KEY_LEVEL_TARGET_PLAN_VERSION,
     placementMode,
     disposition: selectedTargetLevel === null ? "NO_ELIGIBLE_KEY_LEVEL" : "KEY_LEVEL_SELECTED",
     entryPrice: normalizePrice(input.entryPrice, tickSize),
@@ -423,10 +488,10 @@ export function buildKeyLevelTargetPlan(input: {
     bufferPoints,
     placementTicks: targetBufferTicks,
     targetBufferTicks,
-    initialRiskPoints: input.initialRiskPoints ?? null,
-    targetR: targetPrice === null || input.initialRiskPoints === null || input.initialRiskPoints === undefined || input.initialRiskPoints <= 0
+    initialRiskPoints: riskPoints,
+    targetR: targetPrice === null || !validRisk
       ? null
-      : Math.abs(targetPrice - input.entryPrice) / input.initialRiskPoints,
+      : Math.abs(targetPrice - input.entryPrice) / riskPoints,
     minimumTargetR,
     maximumTargetR: Number.isFinite(maximumTargetR) ? maximumTargetR : null,
     obstructingLevel,
@@ -436,5 +501,11 @@ export function buildKeyLevelTargetPlan(input: {
     selectedTargetLevel,
     subsequentTargetLevels,
     targetPrice,
+    fallbackUsed: selectedTargetLevel === null && obstructingLevel === null && oneRPrice !== null,
+    fallbackReason: selectedTargetLevel === null && obstructingLevel === null && oneRPrice !== null
+      ? "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL"
+      : null,
+    searchRangePoints: maximumSearchDistancePoints,
+    searchRangeTicks: maximumSearchDistancePoints === null ? null : Math.floor(maximumSearchDistancePoints / tickSize),
   };
 }

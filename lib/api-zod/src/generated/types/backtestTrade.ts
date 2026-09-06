@@ -16,6 +16,7 @@ import type { BacktestTradePatienceCandle } from './backtestTradePatienceCandle'
 import type { BacktestTradePeriod } from './backtestTradePeriod';
 import type { BacktestTradeSetupGrade } from './backtestTradeSetupGrade';
 import type { BacktestTradeSource } from './backtestTradeSource';
+import type { KeyLevelTargetPlan } from './keyLevelTargetPlan';
 
 export interface BacktestTrade {
   id: string;
@@ -62,6 +63,7 @@ export interface BacktestTrade {
   attemptOrdinal?: number;
   /** Effective quality grade after applying the controlled re-entry penalty. */
   attemptGrade?: BacktestTradeAttemptGrade;
+  targetPlan?: KeyLevelTargetPlan;
   /** @nullable */
   patienceCandle?: BacktestTradePatienceCandle;
   /** @nullable */

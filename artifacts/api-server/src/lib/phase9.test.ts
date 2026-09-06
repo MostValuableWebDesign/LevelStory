@@ -1536,6 +1536,7 @@ test("6725.75 short E crossing creates exactly one candidate-owned threshold fil
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
+    patienceLow: 100,
     direction: "short",
     entryHigh: 6728,
     entryLow: 6713.25,
@@ -2110,6 +2111,7 @@ test("valid frozen geometry preserves deterministic target replay and starts aft
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
+    patienceLow: 100,
     management: {
       strategyStopPrice: 97,
       catastropheStopPrice: 96,
@@ -2172,13 +2174,14 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   const candidate = result.candidates[0]!;
   const trade = result.authoritativeTrades[0]!;
   assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(candidate.targetPlan?.targetPrice, null);
+  assert.equal(candidate.targetPlan?.targetPrice, 105.5);
+  assert.equal(candidate.targetPlan?.fallbackUsed, true);
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.missingEvidenceReasons.includes("NO_ELIGIBLE_KEY_LEVEL"), false);
   assert.equal(trade.outcome, "target");
   assert.notEqual(trade.exitPrice, null);
   assert.notEqual(trade.netPnl, 0);
-  assert.equal(trade.audit?.targetPrice, null);
+  assert.equal(trade.audit?.targetPrice, 105.5);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.oneRReached, true);
    assert.equal(trade.audit?.oneRPrice, 105.5);
@@ -2215,9 +2218,9 @@ test("candidate target planning never reuses L-time qualifying values as E-time 
     executionMode: "ohlcv_modeled",
   });
   assert.equal(result.candidates[0]?.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(result.candidates[0]?.targetPlan?.targetPrice, null);
+  assert.equal(result.candidates[0]?.targetPlan?.targetPrice, 105.5);
   assert.equal(result.authoritativeTrades[0]?.outcome, "target");
-  assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, null);
+  assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, 105.5);
   assert.equal(result.authoritativeTrades[0]?.audit?.oneRReached, true);
 });
 
@@ -2280,7 +2283,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   const trade = result.authoritativeTrades[0]!;
   assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(trade.outcome, "strategy stop");
-  assert.equal(trade.audit?.targetPrice, null);
+  assert.equal(trade.audit?.targetPrice, 105.5);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
   assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), false);
@@ -2316,7 +2319,7 @@ test("no target and no independent exit leaves the candidate open and unscored",
   const trade = result.authoritativeTrades[0]!;
   assert.equal(trade.outcome, "open");
   assert.equal(trade.exitPrice, null);
-  assert.equal(trade.audit?.targetPrice, null);
+  assert.equal(trade.audit?.targetPrice, 105.5);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 0);
 });
 
@@ -2434,7 +2437,7 @@ test("same-session confirmed occurrences freeze independent target plans", () =>
   });
   first.auditId = "first-audit";
   second.auditId = "second-audit";
-  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 105 }];
+  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 106.5 }];
   second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 106 }];
   const firstDataset = candidateProjectionDataset(first);
   const secondDataset = candidateProjectionDataset(second);

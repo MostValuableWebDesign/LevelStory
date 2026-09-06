@@ -240,3 +240,91 @@ test("a primary loss reference between 8 and 12 ticks now qualifies", () => {
   assert.equal(longReference?.distanceTicks, 10);
   assert.equal(shortReference?.distanceTicks, 10);
 });
+
+test("causal search skips a buffered level below 1R and selects the next eligible level", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 3,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [
+      { id: "near-indicator", type: "VWAP", price: 102 },
+      { id: "next-major", type: "major resistance", price: 104.25 },
+    ],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "next-major");
+  assert.equal(plan.targetPrice, 104);
+  assert.equal(plan.targetR, 1.3333333333333333);
+  assert.equal(plan.skippedLevels.find((level) => level.id === "near-indicator")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
+  assert.equal(plan.fallbackUsed, false);
+});
+
+test("causal search evaluates the buffered executable price, not the raw level", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 4,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 2,
+    levels: [
+      { id: "raw-above-one-r", type: "VWAP", price: 102.25 },
+      { id: "eligible", type: "previous-day-high", price: 104.5 },
+    ],
+  });
+  assert.equal(plan.skippedLevels.find((level) => level.id === "raw-above-one-r")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
+  assert.equal(plan.selectedTargetLevel?.id, "eligible");
+  assert.equal(plan.targetPrice, 104);
+});
+
+test("causal search falls back to exactly 1R when no level is eligible", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 2,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [{ id: "too-far", type: "previous-day-high", price: 106 }],
+  });
+  assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
+  assert.equal(plan.targetPrice, 102);
+  assert.equal(plan.targetR, 1);
+  assert.equal(plan.fallbackUsed, true);
+  assert.equal(plan.fallbackReason, "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL");
+});
+
+test("a hard major obstacle before 1R rejects instead of targeting through it", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 2,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [
+      { id: "hard-resistance", type: "major resistance", price: 101.5 },
+      { id: "farther-level", type: "previous-day-high", price: 103.75 },
+    ],
+  });
+  assert.equal(plan.rejectionReason, "INSUFFICIENT_REWARD_TO_RISK");
+  assert.equal(plan.obstructingLevel?.id, "hard-resistance");
+  assert.equal(plan.targetPrice, null);
+  assert.equal(plan.fallbackUsed, false);
+});
+
+test("short search is symmetric and retains wrong-direction diagnostics", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "short",
+    entryPrice: 100,
+    initialRiskPoints: 3,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [
+      { id: "behind", type: "VWAP", price: 101 },
+      { id: "near", type: "VWAP", price: 98 },
+      { id: "next", type: "major support", price: 95.5 },
+    ],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "next");
+  assert.equal(plan.targetPrice, 95.75);
+  assert.equal(plan.skippedLevels.find((level) => level.id === "behind")?.reason, "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION");
+});

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v14-four-tick-entry";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v15-causal-target-search";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -43,9 +43,13 @@ export function formulaConfiguration(
         fixedContracts: config.executionManagementFixedContracts,
       },
       keyLevelTarget: {
+        targetPlanVersion: "key-level-target-search-v2-causal-buffered-range",
         candidatePlacementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
         maximumTargetR: 1.5,
-        minimumTargetR: { oneContract: 0.75, twoContracts: 0.5 },
+        minimumTargetR: 1,
+        maximumSearchDistance: "min(1.50R,20 MES ticks)",
+        fallback: "exactly 1R when no eligible level and no hard obstruction",
+        hardObstacleDisposition: "INSUFFICIENT_REWARD_TO_RISK",
       },
       shadowContractsPerTrade: config.executionManagementFixedContracts,
       qualifyingKeyLevelInteraction: {

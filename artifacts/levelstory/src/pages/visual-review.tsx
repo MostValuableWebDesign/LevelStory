@@ -46,6 +46,7 @@ import type {
   VisualValidationSnapshot,
   ShadowAccountReplay,
   StrategyId,
+  KeyLevelTargetPlan,
 } from "@workspace/api-client-react";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -177,11 +178,7 @@ type TradeEvidenceView = {
   slippage?: number;
   netPnl?: number;
   outcome?: string;
-  targetPlan?: {
-    disposition?: string;
-    targetPrice?: number | null;
-    selectedTargetLevel?: { id: string; price: number } | null;
-  };
+  targetPlan?: KeyLevelTargetPlan;
   audit?: {
     oneRPrice?: number | null;
     oneRReached?: boolean;
@@ -198,6 +195,7 @@ type TradeEvidenceView = {
       qualificationTicks: number;
       bufferTicks: number;
     } | null;
+    targetPlan?: KeyLevelTargetPlan;
     legs?: TradeLegView[];
   };
 };
@@ -2500,14 +2498,22 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
   if (!trade) return null;
   const open = trade.outcome === "open" || trade.exitTime === null || trade.exitPrice == null;
   const legs = trade.audit?.legs ?? [];
-  const hasKeyLevelTarget = typeof trade.targetPlan?.targetPrice === "number";
-  const noEligibleKeyLevel = trade.targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" || !hasKeyLevelTarget;
+  const targetPlan = trade.targetPlan ?? trade.audit?.targetPlan;
+  const hasKeyLevelTarget = targetPlan?.selectedTargetLevel !== null
+    && targetPlan?.selectedTargetLevel !== undefined
+    && typeof targetPlan?.targetPrice === "number"
+    && targetPlan.fallbackUsed !== true;
+  const noEligibleKeyLevel = targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" || !hasKeyLevelTarget;
   const oneRPrice = typeof trade.audit?.oneRPrice === "number" ? trade.audit.oneRPrice : null;
   const targetBasis = hasKeyLevelTarget
-    ? `Key-level · ${formatTradePrice(trade.targetPlan?.targetPrice)}`
+    ? `Key-level · ${formatTradePrice(targetPlan?.targetPrice)}`
+    : targetPlan?.fallbackUsed
+      ? `1R fallback · ${formatTradePrice(targetPlan.targetPrice)}`
     : oneRPrice !== null
       ? "1R fallback · no eligible key level"
       : "No target evidence";
+  const targetLevels = targetPlan?.availableLevels ?? [];
+  const skippedLevels = targetPlan?.skippedLevels ?? [];
   return <section className="border-t border-border bg-card px-5 py-4 sm:px-6" data-testid="trade-inspector">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><div className="eyebrow text-muted-foreground">Authoritative trade inspector</div><div className="mt-1 text-sm font-bold">{open ? "Open / unscored" : "Completed trade"}</div></div>
@@ -2537,6 +2543,41 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
             : "—"],
       ].map(([label, value]) => <div key={label} className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
     </div>
+    {targetPlan && <details className="mt-3 border border-border bg-muted/10" data-testid="target-selection-evidence">
+      <summary className="cursor-pointer px-3 py-3 text-[10px] font-bold uppercase tracking-[.08em]">
+        Target selection evidence · {targetPlan.fallbackUsed ? "1R fallback" : targetPlan.rejectionReason ?? targetPlan.disposition}
+      </summary>
+      <div className="border-t border-border px-3 py-3 text-[10px]">
+        <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Entry / stop risk", `${formatTradePrice(targetPlan.entryPrice)} / ${formatTradePrice(targetPlan.initialRiskPoints)} pt`],
+            ["1R / selected target", `${formatTradePrice(targetPlan.initialRiskPoints === null ? null : targetPlan.direction === "long" ? targetPlan.entryPrice + targetPlan.initialRiskPoints : targetPlan.entryPrice - targetPlan.initialRiskPoints)} / ${formatTradePrice(targetPlan.targetPrice)}`],
+            ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
+            ["Buffer", `${targetPlan.targetBufferTicks} ticks · ${targetPlan.placementMode}`],
+          ].map(([label, value]) => <div key={label} className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div>
+            <div className="eyebrow text-muted-foreground">Directional levels evaluated</div>
+            <div className="mt-2 space-y-1">
+              {targetLevels.length === 0 ? <div className="text-muted-foreground">No eligible directional levels were available.</div> : targetLevels.map((level) => <div key={level.id} className="flex justify-between gap-3 border-b border-border/60 py-1"><span>{level.id} <span className="text-muted-foreground">({level.type})</span></span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks}t</span></div>)}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow text-muted-foreground">Skipped levels</div>
+            <div className="mt-2 space-y-1">
+              {skippedLevels.length === 0 ? <div className="text-muted-foreground">None.</div> : skippedLevels.map((level) => <div key={`${level.id}-${level.reason}`} className="border-b border-border/60 py-1"><div className="flex justify-between gap-3"><span>{level.id}</span><span className="mono">{level.distanceTicks}t</span></div><div className="text-muted-foreground">{level.reason}</div></div>)}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 border-t border-border pt-3 text-muted-foreground sm:grid-cols-2">
+          <div>Selected: <strong className="text-foreground">{targetPlan.selectedTargetLevel?.id ?? (targetPlan.fallbackUsed ? "exactly 1R" : "none")}</strong></div>
+          <div>Obstruction: <strong className="text-foreground">{targetPlan.obstructingLevel?.id ?? "none"}</strong></div>
+          <div>Snapshot frozen: <strong className="mono text-foreground">{targetPlan.targetLevelSnapshot?.frozenAt ?? "unavailable"}</strong></div>
+          <div>Plan version: <strong className="mono text-foreground">{targetPlan.targetPlanVersion}</strong></div>
+        </div>
+      </div>
+    </details>}
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-muted-foreground">
       <span>Entry observed at E-close: <strong className="mono text-foreground">{trade.entryTime ? formatReviewTime(trade.entryTime) : "—"}</strong></span>
       <span>Exit reason: <strong className="text-foreground">{open ? "Open / unscored" : safeValue(trade.audit?.exitReason ?? trade.outcome)}</strong></span>

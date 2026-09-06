@@ -3504,6 +3504,93 @@ components:
           required: [totalTrades, holdoutTrades, requiredTotalTrades, requiredHoldoutTrades, riskToleranceDollars]
         sensitivity: { type: array, items: { $ref: "#/components/schemas/WalkForwardSensitivityCase" } }
       required: [formulaHash, formulaVersion, foldCount, folds, metrics, inSample, outOfSample, segments, edgeStatus, minimumEvidence, sensitivity]
+    TargetLevelInput:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        price: { type: ["number", "null"] }
+        rangeLow: { type: ["number", "null"] }
+        rangeHigh: { type: ["number", "null"] }
+        sourceTimestamp: { type: ["string", "null"], format: date-time }
+      required: [id, type]
+    FrozenTargetLevel:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        price: { type: number }
+        rangeLow: { type: ["number", "null"] }
+        rangeHigh: { type: ["number", "null"] }
+        distancePoints: { type: number }
+        distanceTicks: { type: number }
+        confluenceMembers: { type: array, items: { $ref: "#/components/schemas/TargetLevelInput" } }
+      required: [id, type, price, rangeLow, rangeHigh, distancePoints, distanceTicks]
+    SkippedTargetLevel:
+      allOf:
+        - $ref: "#/components/schemas/FrozenTargetLevel"
+        - type: object
+          properties:
+            reason:
+              type: string
+              enum: [TARGET_LEVEL_SKIPPED_BELOW_1R, TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE, TARGET_LEVEL_SKIPPED_WRONG_DIRECTION, TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE, TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY, TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION, OUTSIDE_20_TICKS, TARGET_NOT_PROFITABLE, OUTSIDE_MAX_TARGET_R, INSUFFICIENT_REWARD_TO_RISK]
+          required: [reason]
+    TargetLevelSnapshot:
+      type: object
+      properties:
+        frozenAt: { type: string, format: date-time }
+        sourceAuditCursor: { type: string, format: date-time }
+        sourceAuditId: { type: string }
+        eOpenTimestamp: { type: ["string", "null"], format: date-time }
+        eCloseTimestamp: { type: ["string", "null"], format: date-time }
+        sourceFingerprint: { type: string }
+        formulaHash: { type: string }
+        configurationHash: { type: string }
+        targetPlanVersion: { type: string }
+        frozenLevelInputs: { type: array, items: { $ref: "#/components/schemas/TargetLevelInput" } }
+      required: [frozenAt, sourceAuditId, eOpenTimestamp, eCloseTimestamp, sourceFingerprint, formulaHash, configurationHash, targetPlanVersion, frozenLevelInputs]
+    PrimaryLossExitReference:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        price: { type: number }
+        rangeLow: { type: ["number", "null"] }
+        rangeHigh: { type: ["number", "null"] }
+        distancePoints: { type: number }
+        distanceTicks: { type: number }
+        stopPrice: { type: number }
+      required: [id, type, price, rangeLow, rangeHigh, distancePoints, distanceTicks, stopPrice]
+    KeyLevelTargetPlan:
+      type: object
+      properties:
+        targetPlanVersion: { type: string }
+        placementMode: { type: string, enum: [NEAR_SIDE_8_TICKS, NEAR_SIDE_ADAPTIVE_TICKS, EXACT_LEVEL] }
+        disposition: { type: string, enum: [KEY_LEVEL_SELECTED, NO_ELIGIBLE_KEY_LEVEL] }
+        entryPrice: { type: number }
+        direction: { type: string, enum: [long, short] }
+        tickSize: { type: number }
+        bufferTicks: { type: number, enum: [20] }
+        bufferPoints: { type: number }
+        placementTicks: { type: number }
+        targetBufferTicks: { type: number }
+        initialRiskPoints: { type: ["number", "null"] }
+        targetR: { type: ["number", "null"] }
+        minimumTargetR: { type: ["number", "null"] }
+        maximumTargetR: { type: ["number", "null"] }
+        obstructingLevel: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/FrozenTargetLevel" }] }
+        rejectionReason: { type: ["string", "null"], enum: [INSUFFICIENT_REWARD_TO_RISK, null] }
+        availableLevels: { type: array, items: { $ref: "#/components/schemas/FrozenTargetLevel" } }
+        skippedLevels: { type: array, items: { $ref: "#/components/schemas/SkippedTargetLevel" } }
+        selectedTargetLevel: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/FrozenTargetLevel" }] }
+        subsequentTargetLevels: { type: array, items: { $ref: "#/components/schemas/FrozenTargetLevel" } }
+        targetPrice: { type: ["number", "null"] }
+        fallbackUsed: { type: boolean }
+        fallbackReason: { type: ["string", "null"], enum: [ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL, null] }
+        searchRangePoints: { type: ["number", "null"] }
+        searchRangeTicks: { type: ["number", "null"] }
+        targetLevelSnapshot: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetLevelSnapshot" }] }
+      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks]
     BacktestTrade:
       type: object
       properties:
@@ -3536,6 +3623,7 @@ components:
         armAttemptId: { type: string, description: Stable identity for this independent entry attempt within a shared pullback arm. }
         attemptOrdinal: { type: number, minimum: 1, maximum: 2, description: One-based authoritative entry number for the shared pullback arm. }
         attemptGrade: { type: string, enum: [B, A, "A+", "A++"], description: Effective quality grade after applying the controlled re-entry penalty. }
+        targetPlan: { $ref: "#/components/schemas/KeyLevelTargetPlan" }
         patienceCandle: { type: ["object", "null"], additionalProperties: true }
         entryCandle: { type: ["object", "null"], additionalProperties: true }
         audit:
@@ -3545,6 +3633,7 @@ components:
             modeledFillPrice: { type: ["number", "null"] }
             stopPrice: { type: ["number", "null"] }
             targetPrice: { type: ["number", "null"] }
+            targetPlan: { $ref: "#/components/schemas/KeyLevelTargetPlan" }
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
             armAttemptId: { type: string, description: Stable identity for the independent attempt that produced this trade. }

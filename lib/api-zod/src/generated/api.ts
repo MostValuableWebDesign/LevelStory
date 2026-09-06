@@ -1154,6 +1154,134 @@ export const RunBacktestResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(runBacktestResponseTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -1161,6 +1289,134 @@ export const RunBacktestResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -1949,6 +2205,134 @@ export const StartBatchBacktestResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(startBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -1956,6 +2340,134 @@ export const StartBatchBacktestResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -3147,6 +3659,134 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(getBatchBacktestStatusResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -3154,6 +3794,134 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -4345,6 +5113,134 @@ export const CancelBatchBacktestResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(cancelBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -4352,6 +5248,134 @@ export const CancelBatchBacktestResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -6084,6 +7108,134 @@ export const GetVisualValidationSetResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(getVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -6091,6 +7243,134 @@ export const GetVisualValidationSetResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -6659,6 +7939,134 @@ export const CreateVisualValidationSetResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(createVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -6666,6 +8074,134 @@ export const CreateVisualValidationSetResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -7696,6 +9232,134 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -7703,6 +9367,134 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -8269,6 +10061,134 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -8276,6 +10196,134 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
@@ -8849,6 +10897,134 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
   "attemptOrdinal": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "patienceCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "entryCandle": zod.record(zod.string(), zod.unknown()).nullish(),
   "audit": zod.object({
@@ -8856,6 +11032,134 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "modeledFillPrice": zod.number().nullable(),
   "stopPrice": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.literal(20),
+  "bufferPoints": zod.number(),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable(),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional()
+})),
+  "targetPrice": zod.number().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+}).optional(),
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
