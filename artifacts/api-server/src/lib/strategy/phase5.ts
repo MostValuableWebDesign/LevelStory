@@ -916,7 +916,7 @@ function validateBuffers(tickSize: number, entryBufferTicks: number, stopBufferT
     && stopBufferTicks >= MIN_STOP_BUFFER_TICKS
     && stopBufferTicks <= MAX_STOP_BUFFER_TICKS;
   if (!isLegacyFixedBuffer && !isAdaptiveBuffer) {
-    throw new Error("Patience stop buffer must be the legacy twelve-tick value or an ATR-adaptive integer from four through eight MES ticks.");
+    throw new Error("Patience stop buffer must be eight ticks or an integer from four through eight MES ticks.");
   }
 }
 

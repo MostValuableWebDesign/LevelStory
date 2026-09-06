@@ -57,7 +57,7 @@
 - [Chart label contract](chart-label-contract.md) — off-screen primary references need edge labels; in-range chart labels stay limited to execution levels.
 - [Uploaded chart evidence safety](uploaded-chart-evidence-safety.md) — validate image bytes, freeze setup at entry cutoff, and keep pixel-derived exits unscored.
 - [Tolerant chart evidence parsing](tolerant-chart-evidence-parsing.md) — preserve unknown vision fields conservatively; never synthesize malformed candle or price evidence.
-- [Adaptive execution management](adaptive-execution-management.md) — candidate-owned MES management freezes causal ATR buffers and fixed quantity; account risk must not alter structural R.
+- [Execution management](adaptive-execution-management.md) — candidate-owned MES management uses a fixed eight-tick P-extreme stop; account risk does not reject wide structural stops.
 - [Compact batch funnel](compact-batch-funnel.md) — use compact qualification batches for large historical blocker analysis; reconcile funnel counts with causal-ledger diagnostics.
 - [Strategy registration surfaces](strategy-registration-surfaces.md) — new strategy IDs must reach replay selection and dashboard performance allowlists, not just taxonomy and evaluators.
 - [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.

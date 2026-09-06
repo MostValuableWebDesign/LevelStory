@@ -165,7 +165,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   noLevelBreakevenActivationBars: DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: 8,
-  patienceStopBufferTicks: 12,
+  patienceStopBufferTicks: 8,
   dojiBodyRatio: 0.1,
   equivalentBodyTolerance: 0.2,
   trendCandleCount: 8, // assumption: eight completed 15m candles

@@ -26,10 +26,9 @@ import { RunBacktestBody } from "@workspace/api-zod";
 import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
 import { adaptiveExecutionManagement } from "./strategy/execution-management.js";
 
-test("adaptive MES management permits a governed forty-four-tick structural stop", () => {
+test("adaptive MES management uses the fixed eight-tick patience-stop buffer", () => {
   const management = adaptiveExecutionManagement(47.76);
-  assert.equal(management.stopBufferTicks, 5);
-  assert.equal(management.maximumRiskTicks, 48);
+  assert.equal(management.stopBufferTicks, 8);
 });
 
 function candle(index: number, overrides: Partial<SimulatedFuturesCandle> = {}): SimulatedFuturesCandle {
@@ -2182,8 +2181,8 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   assert.equal(trade.audit?.targetPrice, null);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.oneRReached, true);
-   assert.equal(trade.audit?.oneRPrice, 104.5);
-   assert.equal(trade.audit?.profitCheckpointPrice, 104.5);
+   assert.equal(trade.audit?.oneRPrice, 105.5);
+   assert.equal(trade.audit?.profitCheckpointPrice, 105.5);
   assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1]]);
   assert.equal(trade.audit?.trailingStopActive, false);
 });
@@ -2249,7 +2248,7 @@ test("a valid strategy stop is sufficient without catastrophe-stop evidence", ()
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.catastropheStopPrice, null);
   assert.equal(trade.outcome, "strategy stop");
-  assert.equal(trade.audit?.strategyStopPrice, 98);
+   assert.equal(trade.audit?.strategyStopPrice, 97);
   assert.equal(trade.audit?.catastropheStopPrice, null);
   assert.equal(trade.audit?.stopLevel, "strategy");
 });
@@ -2285,7 +2284,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
   assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), false);
-  assert.equal(trade.audit?.stopPrice, 98);
+   assert.equal(trade.audit?.stopPrice, 97);
   assert.equal(trade.audit?.stopLevel, "strategy");
   assert.equal(trade.audit?.catastropheStopPrice, 100);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 1);
@@ -2810,7 +2809,7 @@ test("a stopped first attempt authorizes a short re-entry with P2-owned stop geo
 
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.direction), ["short", "short"]);
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [102, 101.5]);
+   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [103, 102.5]);
   assert.deepEqual(projection.candidates.map((candidate) => candidate.entryAttemptCount), [2, 2]);
   assert.equal(projection.candidates[0]?.secondCandidateId, projection.candidates[1]?.candidateId);
   assert.equal(projection.candidates[0]?.secondTradeId, projection.authoritativeTrades[1]?.id);

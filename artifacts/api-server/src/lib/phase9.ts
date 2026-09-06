@@ -799,7 +799,7 @@ export type CandidateManagementContext = {
   sourceAuditId: string;
   managementEvidenceStatus: "complete" | "missing" | "invalid";
   missingEvidenceReasons: string[];
-  managementRejectionReason?: "STOP_DISTANCE_TOO_WIDE" | "INSUFFICIENT_REWARD_TO_RISK" | null;
+  managementRejectionReason?: "INSUFFICIENT_REWARD_TO_RISK" | null;
 };
 
 function candidateManagementValidationReasons(
@@ -1103,9 +1103,8 @@ export type HistoricalOccurrence = {
     atrTicks?: number | null;
     targetBufferTicks?: number;
     stopBufferTicks?: number;
-    maximumRiskTicks?: number;
     initialRiskTicks?: number | null;
-    managementRejectionReason?: "STOP_DISTANCE_TOO_WIDE" | "INSUFFICIENT_REWARD_TO_RISK" | null;
+    managementRejectionReason?: "INSUFFICIENT_REWARD_TO_RISK" | null;
   };
   targetLevelSnapshot?: TargetLevelSnapshot;
   earlyOrbEvidence?: EarlyOrbMomentumEvidence;
@@ -3896,13 +3895,11 @@ function freezeCandidateManagementContext(
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
-  const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   const initialRiskTicks = strategyStopPrice === null
     ? null
     : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, 0.25);
-  const managementRejectionReason = initialRiskTicks !== null && initialRiskTicks > managementValues.maximumRiskTicks
-    ? "STOP_DISTANCE_TOO_WIDE" as const
-    : targetPlan?.rejectionReason ?? null;
+  const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
+  const managementRejectionReason = targetPlan?.rejectionReason ?? null;
   const primaryLossExitLevel = primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = targetPlan?.targetPrice ?? null;
@@ -3910,7 +3907,6 @@ function freezeCandidateManagementContext(
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
-    ...(managementRejectionReason ? [managementRejectionReason] : []),
     ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {

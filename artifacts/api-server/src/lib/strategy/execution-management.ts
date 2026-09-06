@@ -3,12 +3,11 @@ import type { Direction } from "./types.js";
 export const EXECUTION_MANAGEMENT_ATR_PERIOD = 14;
 export const MIN_TARGET_BUFFER_TICKS = 1;
 export const MAX_TARGET_BUFFER_TICKS = 2;
+// Phase 5 still accepts the historical signal-buffer range; candidate-owned
+// execution uses FIXED_STOP_BUFFER_TICKS below.
 export const MIN_STOP_BUFFER_TICKS = 4;
 export const MAX_STOP_BUFFER_TICKS = 8;
-export const MIN_STRUCTURAL_RISK_TICKS = 20;
-// Keep the adaptive MES risk ceiling above the widest governed P-extreme
-// stop while remaining a hard structural bound.
-export const MAX_STRUCTURAL_RISK_TICKS = 48;
+export const FIXED_STOP_BUFFER_TICKS = 8;
 export const MIN_TARGET_R_ONE_CONTRACT = 0.75;
 export const MIN_TARGET_R_TWO_CONTRACTS = 0.5;
 export const MAX_KEY_LEVEL_TARGET_R = 1.5;
@@ -30,7 +29,6 @@ export type AdaptiveExecutionManagement = {
   atrTicks: number;
   targetBufferTicks: number;
   stopBufferTicks: number;
-  maximumRiskTicks: number;
   runnerBufferTicks: number;
 };
 
@@ -72,8 +70,7 @@ export function adaptiveExecutionManagement(atrTicks: number | null): AdaptiveEx
   return {
     atrTicks: safeAtrTicks,
     targetBufferTicks: boundedCeil(safeAtrTicks * 0.05, MIN_TARGET_BUFFER_TICKS, MAX_TARGET_BUFFER_TICKS),
-    stopBufferTicks: boundedCeil(safeAtrTicks * 0.10, MIN_STOP_BUFFER_TICKS, MAX_STOP_BUFFER_TICKS),
-    maximumRiskTicks: boundedCeil(safeAtrTicks * 1.50, MIN_STRUCTURAL_RISK_TICKS, MAX_STRUCTURAL_RISK_TICKS),
+    stopBufferTicks: FIXED_STOP_BUFFER_TICKS,
     runnerBufferTicks: boundedCeil(safeAtrTicks * 0.10, RUNNER_BUFFER_MIN_TICKS, RUNNER_BUFFER_MAX_TICKS),
   };
 }
