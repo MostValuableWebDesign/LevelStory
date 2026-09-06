@@ -29,7 +29,6 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
-  useGetStrategyActive,
   useRecordVisualValidationReview,
   useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
@@ -236,12 +235,20 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   source: "historical_databento",
   reviewMode: "trades_only",
   earlyOrbMomentum: {
-    enabled: false,
+    enabled: true,
     eligibilityCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
     maxAttemptsPerDirection: 1,
   },
 };
+
+const EARLY_ORB_MOMENTUM_STORAGE_KEY = "levelstory.visualReview.earlyOrbMomentumEnabled";
+
+function storedEarlyOrbMomentumEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  const saved = window.localStorage.getItem(EARLY_ORB_MOMENTUM_STORAGE_KEY);
+  return saved === null ? true : saved === "true";
+}
 
 function storedReviewSource(): VisualValidationRequest["source"] {
   if (typeof window === "undefined") return "historical_databento";
@@ -427,6 +434,10 @@ export default function VisualReview() {
     ...INITIAL_REQUEST,
     source: storedReviewSource(),
     seed: storedReviewSource() === "simulated" ? 11 : undefined,
+    earlyOrbMomentum: {
+      ...INITIAL_REQUEST.earlyOrbMomentum!,
+      enabled: storedEarlyOrbMomentumEnabled(),
+    },
   }));
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
   const [reviewSetRequested, setReviewSetRequested] = useState(false);
@@ -455,26 +466,12 @@ export default function VisualReview() {
   };
 
   const startGeneration = useStartVisualValidationGenerationJob();
-  const activeStrategy = useGetStrategyActive();
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
     { query: { enabled: reviewSetRequested && !startGeneration.isPending && !Boolean(generationJobId) && (Boolean(pinnedReviewSetId) || loadLatestReviewSet), staleTime: 30_000, queryKey: ["visual-validation-set", pinnedReviewSetId || "latest"] } },
   );
 
-  useEffect(() => {
-    const config = activeStrategy.data?.config;
-    if (!config || reviewSetRequested) return;
-    setRequest((current) => ({
-      ...current,
-      earlyOrbMomentum: {
-        enabled: config.earlyOrbMomentumContinuationEnabled,
-        eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
-        minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
-        maxAttemptsPerDirection: 1,
-      },
-    }));
-  }, [activeStrategy.data, reviewSetRequested]);
   const generationQuery = useGetVisualValidationGenerationJob(
     generationJobId,
     {
@@ -950,9 +947,10 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
              <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-               <GenerationPanel request={request} governedConfig={activeStrategy.data?.config} setRequest={(next) => {
+               <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
+                 if (typeof window !== "undefined" && next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
                <CoverageRail
                  data={data}
@@ -1299,6 +1297,7 @@ function FunnelDiagnostics({ data }: { data: NonNullable<VisualValidationSet["fu
 
 function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   const abbreviatedKey = `${data.cacheKey.slice(0, 10)}…${data.cacheKey.slice(-8)}`;
+  const earlyOrbEnabled = data.request.earlyOrbMomentum?.enabled ?? true;
   return <Panel>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
       <div>
@@ -1310,15 +1309,16 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
         <div>Cache {abbreviatedKey}</div>
       </div>
     </div>
-    <div className="grid gap-px bg-border sm:grid-cols-3">
+    <div className="grid gap-px bg-border sm:grid-cols-4">
       <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Formula</div><div className="mono mt-1 text-[10px]">{data.formulaVersion}</div></div>
       <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Strategy engine</div><div className="mono mt-1 text-[10px]">{data.strategyVersion}</div></div>
       <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Snapshot projection</div><div className="mono mt-1 text-[10px]">{data.snapshotProjectionVersion}</div></div>
+      <div className="bg-card px-5 py-3"><div className="eyebrow text-muted-foreground">Early ORB</div><div className={`mt-1 text-[10px] font-bold ${earlyOrbEnabled ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{earlyOrbEnabled ? "Enabled" : "Disabled"} for this set</div></div>
     </div>
   </Panel>;
 }
 
-function GenerationPanel({ request, governedConfig, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; governedConfig?: { earlyOrbMomentumContinuationEnabled: boolean; earlyOrbMomentumEligibilityCutoffMinutes: number; earlyOrbMomentumMinimumCloseDistanceTicks: number; earlyOrbMomentumMaxAttemptsPerDirection: number }; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const updateSource = (source: VisualValidationRequest["source"]) => setRequest({
     ...request,
@@ -1327,9 +1327,9 @@ function GenerationPanel({ request, governedConfig, setRequest, onSubmit, onRege
   });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
-    enabled: governedConfig?.earlyOrbMomentumContinuationEnabled ?? false,
-    eligibilityCutoffMinutes: governedConfig?.earlyOrbMomentumEligibilityCutoffMinutes ?? 630,
-    minimumCloseDistanceTicks: governedConfig?.earlyOrbMomentumMinimumCloseDistanceTicks ?? 1,
+    enabled: true,
+    eligibilityCutoffMinutes: 630,
+    minimumCloseDistanceTicks: 1,
     maxAttemptsPerDirection: 1 as const,
   };
   return <Panel accent>
@@ -1364,16 +1364,28 @@ function GenerationPanel({ request, governedConfig, setRequest, onSubmit, onRege
         <input type="checkbox" className="mt-0.5 accent-[hsl(var(--accent))]" checked={request.premarketAvailable ?? true} onChange={(event) => update("premarketAvailable", event.target.checked)} />
         <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
       </label>
-      <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="early-orb-generation-settings">
-        <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Governed strategy settings</legend>
+       <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="early-orb-generation-settings">
+         <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-xs font-semibold">Early ORB Momentum Continuation</div>
-            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Disabled by default. When enabled, P is the first completed candle closing outside the finalized ORB; only the adjacent E candle can confirm.</p>
+             <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Review-only setting. When enabled, P is the first completed candle closing outside the finalized ORB; only the adjacent E candle can confirm.</p>
           </div>
-          <span className={`shrink-0 border px-2 py-1 text-[9px] font-bold uppercase ${earlyOrb.enabled ? "border-[hsl(var(--positive)/.35)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]" : "border-border bg-muted text-muted-foreground"}`}>
-            {earlyOrb.enabled ? "Enabled" : "Disabled"}
-          </span>
+           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[9px] font-bold uppercase">
+             <input
+               type="checkbox"
+               role="switch"
+               aria-checked={earlyOrb.enabled}
+               checked={earlyOrb.enabled}
+               onChange={(event) => setRequest({ ...request, earlyOrbMomentum: { ...earlyOrb, enabled: event.target.checked } })}
+               className="peer sr-only"
+               data-testid="switch-early-orb-momentum"
+             />
+             <span aria-hidden="true" className={`relative h-5 w-9 rounded-full border transition ${earlyOrb.enabled ? "border-[hsl(var(--positive)/.5)] bg-[hsl(var(--positive)/.2)]" : "border-border bg-muted"}`}>
+               <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition ${earlyOrb.enabled ? "left-[18px]" : "left-0.5"}`} />
+             </span>
+             <span className={earlyOrb.enabled ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}>{earlyOrb.enabled ? "On" : "Off"}</span>
+           </label>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="P-open cutoff · New York">
@@ -1387,7 +1399,7 @@ function GenerationPanel({ request, governedConfig, setRequest, onSubmit, onRege
           <span className="text-muted-foreground">Attempts per direction</span>
           <span className="mono font-bold">Exactly {earlyOrb.maxAttemptsPerDirection}</span>
         </div>
-        <p className="text-[10px] leading-4 text-muted-foreground">These values are read from the active governed Shadow strategy and are captured in the request fingerprint. Change them through strategy governance, not this review form.</p>
+        <p className="text-[10px] leading-4 text-muted-foreground">The cutoff, one-tick distance, and one-attempt limit are server-validated constants. The enabled choice applies only to Visual Review and its read-only Shadow Account Replay.</p>
       </fieldset>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <div className="grid gap-2 sm:grid-cols-2">

@@ -53,6 +53,24 @@ test("simulated visual-validation requests default their persisted source", () =
   assert.equal(set.request.source, "simulated");
 });
 
+test("Visual Review captures its Early ORB choice without changing the persistent strategy", () => {
+  const enabled = buildVisualValidationSet(request);
+  const disabled = buildVisualValidationSet({
+    ...request,
+    earlyOrbMomentum: {
+      enabled: false,
+      eligibilityCutoffMinutes: 630,
+      minimumCloseDistanceTicks: 1,
+      maxAttemptsPerDirection: 1,
+    },
+  });
+  assert.equal(enabled.request.earlyOrbMomentum?.enabled, true);
+  assert.equal(disabled.request.earlyOrbMomentum?.enabled, false);
+  assert.notEqual(enabled.formulaHash, disabled.formulaHash);
+  assert.notEqual(enabled.cacheKey, disabled.cacheKey);
+  assert.equal(DEFAULT_STRATEGY_CONFIG.earlyOrbMomentumContinuationEnabled, false);
+});
+
 test("visual review exposes only the frozen patience-wick stop", () => {
   const snapshot = buildVisualValidationSet(request).snapshots
     .find((item) => item.category === "stop_exit");

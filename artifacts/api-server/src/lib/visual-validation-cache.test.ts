@@ -27,4 +27,28 @@ test("visual review cache identity changes for output-affecting request or sourc
   assert.notEqual(base.cacheKey, visualValidationCacheMetadata({ ...request, reviewMode: "confirmed_signals" }, "source-a").cacheKey);
   assert.notEqual(base.cacheKey, visualValidationCacheMetadata(request, "source-b").cacheKey);
   assert.notEqual(base.cacheKey, visualValidationCacheMetadata(request, "source-a", "calendar-v2").cacheKey);
+  assert.notEqual(
+    base.cacheKey,
+    visualValidationCacheMetadata({
+      ...request,
+      earlyOrbMomentum: {
+        enabled: false,
+        eligibilityCutoffMinutes: 630,
+        minimumCloseDistanceTicks: 1,
+        maxAttemptsPerDirection: 1,
+      },
+    }, "source-a").cacheKey,
+  );
+  assert.equal(
+    base.cacheKey,
+    visualValidationCacheMetadata({
+      ...request,
+      earlyOrbMomentum: {
+        enabled: true,
+        eligibilityCutoffMinutes: 630,
+        minimumCloseDistanceTicks: 1,
+        maxAttemptsPerDirection: 1,
+      },
+    }, "source-a").cacheKey,
+  );
 });

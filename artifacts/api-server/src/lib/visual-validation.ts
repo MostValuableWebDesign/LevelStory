@@ -33,10 +33,15 @@ import {
 import { causalEmaSeries } from "./strategy/indicators.js";
 import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
-import { strategyConfig } from "./strategy/config.js";
+import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
+import {
+  normalizeVisualReviewEarlyOrbMomentum,
+  strategyConfigForVisualReview,
+  type VisualReviewEarlyOrbMomentumSettings,
+} from "./visual-validation-settings.js";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
   LEVEL_TOLERANCE_TICKS,
@@ -80,27 +85,15 @@ export type VisualValidationRequest = {
   premarketAvailable?: boolean;
   source?: "simulated" | "historical_databento";
   reviewMode?: VisualValidationReviewMode;
-  earlyOrbMomentum?: {
-    enabled: boolean;
-    eligibilityCutoffMinutes: number;
-    minimumCloseDistanceTicks: number;
-    maxAttemptsPerDirection: 1;
-  };
+  earlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
   regenerateFresh?: boolean;
 };
 
 export function withGovernedVisualValidationRequest(request: VisualValidationRequest): VisualValidationRequest {
-  const config = activeShadowStrategySnapshot().config;
-  const governed = {
-    enabled: config.earlyOrbMomentumContinuationEnabled,
-    eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
-    minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
-    maxAttemptsPerDirection: 1 as const,
+  return {
+    ...request,
+    earlyOrbMomentum: normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
   };
-  if (request.earlyOrbMomentum && JSON.stringify(request.earlyOrbMomentum) !== JSON.stringify(governed)) {
-    throw new Error("Early ORB Momentum settings must match the active governed Shadow strategy configuration.");
-  }
-  return { ...request, earlyOrbMomentum: governed };
 }
 
 export type VisualValidationCandle = {
@@ -2235,6 +2228,7 @@ function buildMachineSnapshot(
   selectionReason = "causal occurrence retained",
   index?: HistoricalVisualValidationIndex,
   candidateRejection?: RejectedCandidateSignal,
+  strategyConfigOverrides?: StrategyConfig,
 ): VisualValidationSnapshot {
   const calendar = sessionCalendarForContract(getFuturesContractSpecification(report.symbol));
   const auditEvaluationTime = Date.parse(audit.evaluatedCandleOpenTime);
@@ -2271,7 +2265,7 @@ function buildMachineSnapshot(
     ? premarketSourceCandles.filter((candle) => candle.closeTime <= reviewTime)
     : [];
   const analysisCandles = [...visiblePremarket, ...visibleEvaluation];
-  const snapshotCacheKey = `${report.symbol}|${audit.contractSymbol}|${audit.tradingDate}|${evaluationCloseTime}|${premarketAvailable}|${report.executionMode}`;
+  const snapshotCacheKey = `${report.symbol}|${audit.contractSymbol}|${audit.tradingDate}|${evaluationCloseTime}|${premarketAvailable}|${report.executionMode}|${report.formulaHash}`;
   let evaluationSnapshot = index?.marketSnapshots.get(snapshotCacheKey);
   if (!evaluationSnapshot) {
     evaluationSnapshot = createMarketSnapshot(
@@ -2291,7 +2285,7 @@ function buildMachineSnapshot(
         premarketAvailable,
         executionMode: report.executionMode,
         validateDashboardInvariants: false,
-        strategyConfigOverrides: activeShadowStrategySnapshot().config,
+        strategyConfigOverrides: strategyConfigOverrides ?? activeShadowStrategySnapshot().config,
       },
     );
     index?.marketSnapshots.set(snapshotCacheKey, evaluationSnapshot);
@@ -2437,7 +2431,11 @@ function buildMachineSnapshot(
 
 export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   request = withGovernedVisualValidationRequest(request);
-  const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config);
+  const effectiveStrategyConfig = strategyConfigForVisualReview(
+    activeShadowStrategySnapshot().config,
+    normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
+  );
+  const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, effectiveStrategyConfig);
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
     formulaHash,
@@ -2467,6 +2465,9 @@ export function buildVisualValidationSet(request: VisualValidationRequest): Omit
     request.premarketAvailable !== false,
     undefined,
     candidateSelectionReason({ audit: fixture.audit, trade: fixture.trade, category: fixture.category }),
+    undefined,
+    undefined,
+    effectiveStrategyConfig,
   ));
   const accountReplayTrades = buildAccountReplayTradesFromSnapshots(snapshots);
   const snapshotCandidates = buildTradeCandidates(snapshots);
@@ -2522,9 +2523,13 @@ export function buildHistoricalVisualValidationSetFromReport(
     & Partial<Pick<BacktestReport, "dataset" | "contract" | "occurrences" | "tradeCandidates" | "rejectedCandidateSignals">>,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   request = withGovernedVisualValidationRequest(request);
+  const effectiveStrategyConfig = strategyConfigForVisualReview(
+    activeShadowStrategySnapshot().config,
+    normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
+  );
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
-    formulaHash: formulaConfigurationHash({ symbol: request.symbol }, activeShadowStrategySnapshot().config),
+    formulaHash: formulaConfigurationHash({ symbol: request.symbol }, effectiveStrategyConfig),
     executionMode: "ohlcv_modeled",
   };
   const mode = visualValidationReviewMode(request);
@@ -2616,6 +2621,7 @@ export function buildHistoricalVisualValidationSetFromReport(
       candidateSelectionReason(candidate),
       visualIndex,
       candidate.candidateRejection,
+      effectiveStrategyConfig,
     );
   });
   const accountReplayTrades = buildAccountReplayTradesFromReport(report, snapshots);

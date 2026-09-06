@@ -3,6 +3,7 @@ import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 import type { VisualValidationRequest } from "./visual-validation.js";
+import { normalizeVisualReviewEarlyOrbMomentum, strategyConfigForVisualReview } from "./visual-validation-settings.js";
 
 export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v6-early-orb-evidence";
 export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v2-early-orb-evidence";
@@ -57,7 +58,9 @@ export function visualValidationCacheMetadata(
   processedDates: readonly string[] = [],
 ): VisualValidationCacheMetadata {
   const active = activeShadowStrategySnapshot();
-  const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, active.config);
+  const earlyOrbMomentum = normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum);
+  const effectiveConfig = strategyConfigForVisualReview(active.config, earlyOrbMomentum);
+  const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, effectiveConfig);
   const strategyVersion = active.versionId
     ? `${active.strategyKey}:${active.versionId}:${active.versionNumber ?? "unknown"}`
     : `baseline:${active.formulaVersion}:${active.formulaHash}`;
@@ -85,9 +88,9 @@ export function visualValidationCacheMetadata(
     displaySettings: {
       premarketAvailable: request.premarketAvailable !== false,
       reviewMode: request.reviewMode ?? "trades_only",
-      earlyOrbMomentum: request.earlyOrbMomentum,
+      earlyOrbMomentum,
     },
-    governedThresholds: active.config,
+    governedThresholds: effectiveConfig,
   };
   return {
     cacheKey: digest(cacheInput),

@@ -92,6 +92,18 @@ test("visual review presents the read-only Shadow Account Replay states and audi
   assert.match(page, /Direction breakdown/);
 });
 
+test("Visual Review keeps the Early ORB choice local, accessible, and captured per set", () => {
+  assert.match(page, /levelstory\.visualReview\.earlyOrbMomentumEnabled/);
+  assert.match(page, /enabled: true/);
+  assert.match(page, /role="switch"/);
+  assert.match(page, /aria-checked=\{earlyOrb\.enabled\}/);
+  assert.match(page, /data-testid="switch-early-orb-momentum"/);
+  assert.match(page, /setItem\(EARLY_ORB_MOMENTUM_STORAGE_KEY, String\(next\.earlyOrbMomentum\.enabled\)\)/);
+  assert.match(page, /Enabled.*Disabled.*for this set|earlyOrbEnabled/);
+  assert.doesNotMatch(page, /useGetStrategyActive/);
+  assert.doesNotMatch(page, /active governed Shadow strategy configuration/);
+});
+
 test("trade review panels collapse after generation and can be opened independently", () => {
   assert.match(page, /CLOSED_REVIEW_DISCLOSURES/);
   assert.match(page, /summary: false/);

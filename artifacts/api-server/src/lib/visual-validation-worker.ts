@@ -70,6 +70,7 @@ try {
     premarketAvailable: request.premarketAvailable,
     source: MULTI_CONTRACT_SOURCE,
     executionMode: "ohlcv_modeled",
+    visualReviewEarlyOrbMomentum: request.earlyOrbMomentum,
   }, undefined, dataset, ({ completedSessions: completed, totalSessions: total }) => {
     emitProgress({
       phase: "replaying_sessions",

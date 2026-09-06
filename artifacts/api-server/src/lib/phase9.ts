@@ -59,6 +59,11 @@ import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
 import {
+  normalizeVisualReviewEarlyOrbMomentum,
+  strategyConfigForVisualReview,
+  type VisualReviewEarlyOrbMomentumSettings,
+} from "./visual-validation-settings.js";
+import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
   PROFIT_TARGET_BUFFER_TICKS,
@@ -201,6 +206,8 @@ export type BacktestRequest = ReplayDatasetOptions & {
   ohlcvStopBufferTicks?: number;
   ohlcvSlippageTicks?: number;
   ohlcvCommissionPerContract?: number;
+  /** Visual Review-only formula override; never used by broker or live-order paths. */
+  visualReviewEarlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
 };
 
 export type CandidateCausalIdentity = {
@@ -4955,7 +4962,13 @@ export function runCausalBacktest(
 ): BacktestReport {
   const specification = getFuturesContractSpecification(request.symbol);
   const activeStrategy = activeShadowStrategySnapshot();
-  const governedConsolidation = consolidationThresholds(activeStrategy.config);
+  const replayStrategyConfig = request.visualReviewEarlyOrbMomentum
+    ? strategyConfigForVisualReview(
+      activeStrategy.config,
+      normalizeVisualReviewEarlyOrbMomentum(request.visualReviewEarlyOrbMomentum),
+    )
+    : activeStrategy.config;
+  const governedConsolidation = consolidationThresholds(replayStrategyConfig);
   const calendar = sessionCalendarForContract(specification);
   const dataset = providedDataset ?? buildReplayDataset(request.symbol, request);
   const executionMode = request.executionMode
@@ -5078,7 +5091,7 @@ export function runCausalBacktest(
         historicalFeed: visibleContractCandles,
         historicalHourly,
         allCandlesCompleted: true,
-        strategyConfigOverrides: activeStrategy.config,
+        strategyConfigOverrides: replayStrategyConfig,
         premarketAvailable: request.premarketAvailable !== false,
         executionMode,
         sourceFingerprint: replaySourceFingerprint,
@@ -5308,7 +5321,7 @@ export function runCausalBacktest(
          strategyStop,
           primaryLossExitLevel,
          catastropheStop: snapshot.riskPlan.catastropheStop,
-         noLevelBreakevenActivationBars: activeStrategy.config.noLevelBreakevenActivationBars,
+         noLevelBreakevenActivationBars: replayStrategyConfig.noLevelBreakevenActivationBars,
         sessionCloseCandle,
         tickSize: specification.tickSize,
         tickValue: specification.dollarValuePerTick,
@@ -5675,7 +5688,7 @@ export function runCausalBacktest(
   if (candles.length) {
     finalReplay = createCausalReplay(dataset, candles.at(-1)!.closeTime);
   }
-  const reportFormulaHash = formulaConfigurationHash(request, activeStrategy.config);
+  const reportFormulaHash = formulaConfigurationHash(request, replayStrategyConfig);
   const signalOccurrences = buildHistoricalOccurrenceLedger(dataset, audit, trades, reportFormulaHash);
   const lifecycle = reduceHistoricalPullbackLifecycles(audit, undefined, signalOccurrences);
   const reconciliation = projectHistoricalTradeCandidates(signalOccurrences, trades, {
