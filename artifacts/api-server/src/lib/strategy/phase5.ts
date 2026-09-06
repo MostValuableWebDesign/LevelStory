@@ -535,9 +535,10 @@ export function phase5PatienceAnalysis(
 }
 
 /**
- * Isolated early-ORB path. The first completed close one tick outside the
- * finalized ORB is P itself; no pullback, trend, candle-shape, or volume
- * evidence is consulted. Only the adjacent E candle can confirm it.
+ * Isolated early-ORB path. Any completed close one tick outside the finalized
+ * ORB can be P; no chronological-first requirement, pullback, trend,
+ * candle-shape, or volume evidence is consulted. Only the adjacent E candle
+ * can confirm a P.
  */
 export function earlyOrbMomentumPatienceAnalysis(
   candles: readonly Candle[],
@@ -583,12 +584,11 @@ export function earlyOrbMomentumPatienceAnalysis(
     return afterOrb
       .filter((candle) => direction === "long" ? candle.close >= boundary : candle.close <= boundary)
       .filter((candle) => wallClockMinutesForTimestamp(candle.openTime) < cutoff)
-      .slice(0, maxAttempts)
       .map((candle) => ({ candle, direction }));
   }).sort((a, b) => a.candle.closeTime - b.candle.closeTime || (a.direction === "long" ? -1 : 1));
   if (candidates.length === 0) {
     return {
-      ...waiting("WAITING_FOR_PATIENCE_CANDLE", `Waiting for the first completed close outside the finalized ORB with P opening before ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET.`, "neutral", entryBufferTicks, stopBufferTicks),
+      ...waiting("WAITING_FOR_PATIENCE_CANDLE", `Waiting for a completed close outside the finalized ORB with P opening before ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET.`, "neutral", entryBufferTicks, stopBufferTicks),
       direction: undefined,
       directionSource: "ORB_BREAKOUT",
     };
@@ -603,7 +603,7 @@ export function earlyOrbMomentumPatienceAnalysis(
     const event: PatienceEligibilityEvent = {
       time: candidate.candle.closeTime,
       reason: "early orb momentum",
-      detail: `First completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick; P opened before the configured ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET cutoff.`,
+      detail: `Completed ${candidate.direction} close cleared the finalized ORB by at least ${minimumDistance} MES tick; P opened before the configured ${Math.floor(cutoff / 60)}:${String(cutoff % 60).padStart(2, "0")} ET cutoff.`,
       eventId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
       armId: `early-orb|${candidate.direction}|${candidate.candle.openTime}`,
     };
@@ -691,7 +691,7 @@ export function earlyOrbMomentumPatienceAnalysis(
     let analysis: PatienceAnalysis;
     let occurrenceStatus: PatienceOccurrenceStatus = "CANDIDATE";
     if (!immediateNext) {
-      analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "The first qualifying ORB-outside close is frozen as P; only its immediate next candle may confirm.", triggerPrice: null };
+      analysis = { ...base, state: "PATIENCE_CANDLE_VALID", detail: "This qualifying ORB-outside close is P; only its immediate next candle may confirm.", triggerPrice: null };
       if (next) {
         analysis = { ...analysis, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
         occurrenceStatus = "EXPIRED_MISSING_E";
@@ -718,13 +718,27 @@ export function earlyOrbMomentumPatienceAnalysis(
     };
     return { candidate, analysis: { ...analysis, eligibilityArmId: event.armId, eligibilityArmState: "active" as const, eligibilityArmStateReason: occurrenceStatus === "CONFIRMED" ? "Early ORB arm confirmed on its immediate E candle." : "Early ORB arm remains a single-attempt historical occurrence.", eligibilityProvenance: provenance, earlyOrbEvidence: occurrenceBase.earlyOrbEvidence }, occurrence };
   });
-  const selected = attempts
+  // Inspect every eligible P. The one-attempt rule limits confirmed
+  // executions per direction; it must not prevent a later P from being
+  // evaluated when an earlier P's adjacent E failed to confirm.
+  const attemptsByDirection = (["long", "short"] as const).flatMap((direction) => {
+    let confirmedCount = 0;
+    return attempts
+      .filter((attempt) => attempt.candidate.direction === direction)
+      .filter((attempt) => {
+        if (attempt.analysis.state !== "ENTRY_TRIGGERED") return true;
+        if (confirmedCount >= maxAttempts) return false;
+        confirmedCount += 1;
+        return true;
+      });
+  });
+  const selected = attemptsByDirection
     .filter((attempt) => attempt.analysis.state === "ENTRY_TRIGGERED")
     .sort((a, b) => a.candidate.candle.closeTime - b.candidate.candle.closeTime || (a.candidate.direction === "long" ? -1 : 1))[0]
-    ?? attempts[0]!;
+    ?? attemptsByDirection[0]!;
   return {
     ...selected.analysis,
-    occurrences: attempts
+    occurrences: attemptsByDirection
       .sort((a, b) => a.candidate.candle.openTime - b.candidate.candle.openTime || (a.candidate.direction === "long" ? -1 : 1))
       .map((attempt) => attempt.occurrence),
   };

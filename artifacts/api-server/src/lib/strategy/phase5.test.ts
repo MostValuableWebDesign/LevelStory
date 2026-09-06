@@ -62,7 +62,7 @@ test("valid bullish patience candle triggers only on the immediate next candle",
   assert.equal(result.patienceCandle?.isComplete, true);
 });
 
-test("early ORB momentum uses the first outside close as P and the adjacent candle as the only E", () => {
+test("early ORB momentum uses a qualifying outside close as P and the adjacent candle as the only E", () => {
   const start = Date.parse("2026-06-01T13:30:00.000Z"); // 09:30 ET
   const candles = [
     datedCandle("2026-06-01T13:30:00.000Z", 100, 101, 99, 100),
@@ -92,6 +92,38 @@ test("early ORB momentum uses the first outside close as P and the adjacent cand
   assert.equal(result.state, "ENTRY_TRIGGERED");
   assert.equal(result.occurrences?.[0]?.eligibilityReason, "early orb momentum");
   assert.equal(result.occurrences?.[0]?.outcomeStatus, "CONFIRMED");
+});
+
+test("early ORB evaluates a later P after an earlier P fails its adjacent E", () => {
+  const result = earlyOrbMomentumPatienceAnalysis([
+    datedCandle("2026-06-01T13:30:00.000Z", 100, 101, 99, 100),
+    datedCandle("2026-06-01T13:35:00.000Z", 100, 101.25, 99.75, 100.5),
+    datedCandle("2026-06-01T13:40:00.000Z", 100.5, 101.25, 100, 101),
+    datedCandle("2026-06-01T13:45:00.000Z", 101, 101.5, 100.75, 101.25),
+    datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
+    datedCandle("2026-06-01T13:55:00.000Z", 103, 104, 102.75, 101.25),
+    datedCandle("2026-06-01T14:00:00.000Z", 103.5, 104.25, 103, 104),
+    datedCandle("2026-06-01T14:05:00.000Z", 104, 106.5, 103.75, 106),
+  ], {
+    high: 101.25,
+    low: 99.75,
+    complete: true,
+    completedAt: Date.parse("2026-06-01T13:45:00.000Z"),
+  }, {
+    enabled: true,
+    entryBufferTicks: 8,
+    stopBufferTicks: 4,
+    entryCutoffMinutes: 630,
+    minimumCloseDistanceTicks: 1,
+    maxAttemptsPerDirection: 1,
+  });
+
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(result.patienceCandle?.openTime, Date.parse("2026-06-01T14:00:00.000Z"));
+  assert.equal(result.triggerCandle?.openTime, Date.parse("2026-06-01T14:05:00.000Z"));
+  assert.equal(result.occurrences?.length, 3);
+  assert.equal(result.occurrences?.[0]?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
+  assert.equal(result.occurrences?.[1]?.outcomeStatus, "CONFIRMED");
 });
 
 test("disabled early ORB momentum does not create a patience occurrence", () => {
@@ -169,7 +201,7 @@ test("Early ORB keeps independent long and short attempts when the first directi
   });
   assert.equal(result.direction, "short");
   assert.equal(result.state, "ENTRY_TRIGGERED");
-  assert.equal(result.occurrences?.length, 2);
+  assert.equal(result.occurrences?.length, 4);
   assert.equal(result.occurrences?.find((occurrence) => occurrence.direction === "long")?.outcomeStatus, "EXPIRED_NO_IMMEDIATE_CONFIRMATION");
   assert.equal(result.occurrences?.find((occurrence) => occurrence.direction === "short")?.outcomeStatus, "CONFIRMED");
 });

@@ -324,13 +324,13 @@ export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): Se
 export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): SetupEvaluation {
   const patience = context.earlyOrbMomentum;
   const direction = patience?.direction ?? null;
-  const hasFirstClose = patience?.patienceCandle !== null
+  const hasCloseOutsideOrb = patience?.patienceCandle !== null
     && patience?.patienceCandle !== undefined
     && patience.eligibilityReason === "early orb momentum";
   const isolatedPathActive = patience?.eligibilityReason === "early orb momentum";
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "Finalized ORB/NTZ", context.levels.ntz?.complete === true, "The opening range must be finalized before an early momentum arm can open."),
-    rule("firstCloseOutsideOrb", "First completed close at least one MES tick outside ORB", hasFirstClose, hasFirstClose ? patience!.detail : "Waiting for the first qualifying completed close outside the finalized ORB."),
+    rule("closeOutsideOrb", "Completed close at least one MES tick outside ORB", hasCloseOutsideOrb, hasCloseOutsideOrb ? patience!.detail : "Waiting for a qualifying completed close outside the finalized ORB."),
     rule("noPullbackRequired", "Isolated momentum path does not require pullback interaction", isolatedPathActive, isolatedPathActive ? "This setup intentionally does not require a pullback, indicator interaction, trend, body, close-location, or volume gate." : "The isolated early ORB path is not active."),
     rule("immediateTrigger", "Immediately following candle reached the eight-tick confirmation buffer", patience?.state === "ENTRY_TRIGGERED", patience?.state === "ENTRY_TRIGGERED" ? patience.detail : `Early momentum state is ${patience?.state ?? "WAITING_FOR_VALID_CONTEXT"}; only ENTRY_TRIGGERED qualifies.`),
     rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized ORB", strictNtzEntry(context, patience ?? context.patience, direction), direction && patience ? "Completed E is strictly outside the finalized ORB/NTZ." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
