@@ -579,6 +579,28 @@ test("does not start no-level breakeven management when an eligible target exist
   assert.equal(result.audit.breakevenActivated, false);
 });
 
+test("does not arm breakeven while a key-level target remains active", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    stop: 98,
+    target: 104,
+    oneRProfitRule: false,
+    evaluateEntryCandleForExit: false,
+    subsequentCompletedCandles: [
+      ...Array.from({ length: 5 }, () => candle(100, 100.25, 99.5, 100.25)),
+      candle(100.25, 101, 100, 100.5),
+      candle(100.5, 100.75, 99.75, 100),
+    ],
+  });
+  assert.equal(result.audit.noForwardLevelAtEntry, false);
+  assert.equal(result.audit.targetHit, false);
+  assert.equal(result.audit.breakevenActivated, false);
+  assert.equal(result.audit.breakevenDisposition, "NOT_APPLICABLE");
+  assert.equal(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL), false);
+  assert.equal(result.exitReason, "manual");
+});
+
 test("preserves multi-contract quantity accounting when breakeven exits the runner", () => {
   const result = simulateOhlcvExecution({
     ...base,

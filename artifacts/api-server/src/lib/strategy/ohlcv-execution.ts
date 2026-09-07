@@ -397,7 +397,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   // This is an active stop level, not the planned no-target checkpoint price.
   // Keep it null until the sixth-candle confirmation actually arms breakeven.
   let breakevenPrice: number | null = null;
-  let breakevenDisposition: BreakevenDisposition = "PENDING";
+  let breakevenDisposition: BreakevenDisposition = noForwardLevelAtEntry ? "PENDING" : "NOT_APPLICABLE";
   let breakevenMfePrice: number | null = null;
   let breakevenMfePoints: number | null = null;
   let breakevenMfeTicks: number | null = null;
@@ -682,6 +682,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       runnerBreakevenPendingCandleIndex = null;
     }
     if (
+      noForwardLevelAtEntry
+      &&
       !breakevenEvaluated
       && !targetHit
       && !oneRReached
