@@ -26,10 +26,7 @@ export type BacktestTradeAudit = {
   catastropheStopPrice: number | null;
   /** Stable identity for the independent attempt that produced this trade. */
   armAttemptId?: string;
-  /**
-     * @minimum 1
-     * @maximum 2
-     */
+  /** @minimum 1 */
   attemptOrdinal?: number;
   attemptGrade?: BacktestTradeAuditAttemptGrade;
   /** @nullable */

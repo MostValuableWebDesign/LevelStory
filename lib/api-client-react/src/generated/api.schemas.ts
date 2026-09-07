@@ -3239,10 +3239,7 @@ export type BacktestTradeAudit = {
   catastropheStopPrice: number | null;
   /** Stable identity for the independent attempt that produced this trade. */
   armAttemptId?: string;
-  /**
-     * @minimum 1
-     * @maximum 2
-     */
+  /** @minimum 1 */
   attemptOrdinal?: number;
   attemptGrade?: BacktestTradeAuditAttemptGrade;
   /** @nullable */
@@ -3329,9 +3326,8 @@ export interface BacktestTrade {
   /** Stable identity for this independent entry attempt within a shared pullback arm. */
   armAttemptId?: string;
   /**
-     * One-based authoritative entry number for the shared pullback arm.
+     * One-based authoritative entry number for this independent occurrence within its shared pullback arm.
      * @minimum 1
-     * @maximum 2
      */
   attemptOrdinal?: number;
   /** Effective quality grade after applying the controlled re-entry penalty. */

@@ -833,9 +833,7 @@ export const RunBacktestBody = zod.object({
 })
 
 export const runBacktestResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
-export const runBacktestResponseTradesItemAttemptOrdinalMax = 2;
 
-export const runBacktestResponseTradesItemAuditAttemptOrdinalMax = 2;
 
 export const runBacktestResponseAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
@@ -1152,7 +1150,7 @@ export const RunBacktestResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(runBacktestResponseTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -1432,7 +1430,7 @@ export const RunBacktestResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(runBacktestResponseTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -1879,9 +1877,7 @@ export const StartBatchBacktestBody = zod.object({
 
 export const startBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const startBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
-export const startBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
 
-export const startBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
 
 export const startBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
@@ -2215,7 +2211,7 @@ export const StartBatchBacktestResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(startBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -2495,7 +2491,7 @@ export const StartBatchBacktestResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(startBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -3345,9 +3341,7 @@ export const GetBatchBacktestStatusQueryParams = zod.object({
 
 export const getBatchBacktestStatusResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getBatchBacktestStatusResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
-export const getBatchBacktestStatusResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
 
-export const getBatchBacktestStatusResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
 
 export const getBatchBacktestStatusResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
@@ -3681,7 +3675,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(getBatchBacktestStatusResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -3961,7 +3955,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(getBatchBacktestStatusResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -4811,9 +4805,7 @@ export const CancelBatchBacktestQueryParams = zod.object({
 
 export const cancelBatchBacktestResponseBatchIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const cancelBatchBacktestResponseReportOneOneFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
-export const cancelBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax = 2;
 
-export const cancelBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax = 2;
 
 export const cancelBatchBacktestResponseReportOneOneAuditItemConsolidationThresholdsMinCandlesMin = 3;
 
@@ -5147,7 +5139,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(cancelBatchBacktestResponseReportOneOneTradesItemAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -5427,7 +5419,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(cancelBatchBacktestResponseReportOneOneTradesItemAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -6778,9 +6770,7 @@ export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFing
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
-export const getVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
 
-export const getVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
 
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
@@ -7154,7 +7144,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(getVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -7434,7 +7424,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(getVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -7621,9 +7611,7 @@ export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceF
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
-export const createVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
 
-export const createVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
 
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
 
@@ -7997,7 +7985,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(createVisualValidationSetResponseAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -8277,7 +8265,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(createVisualValidationSetResponseAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -8911,9 +8899,7 @@ export const startVisualValidationGenerationJobResponseResultSnapshotsItemReview
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
-export const startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
 
-export const startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
 
 export const startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
@@ -9302,7 +9288,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -9582,7 +9568,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -9752,9 +9738,7 @@ export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemRe
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
-export const getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
 
-export const getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
 
 export const getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
@@ -10143,7 +10127,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -10423,7 +10407,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),
@@ -10600,9 +10584,7 @@ export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTe
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
-export const getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax = 2;
 
-export const getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax = 2;
 
 export const getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
 
@@ -10991,7 +10973,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "supportingConfluences": zod.array(zod.string()).optional(),
   "setupGrade": zod.enum(['A', 'A+', 'A++']).optional(),
   "armAttemptId": zod.string().optional().describe('Stable identity for this independent entry attempt within a shared pullback arm.'),
-  "attemptOrdinal": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAttemptOrdinalMax).optional().describe('One-based authoritative entry number for the shared pullback arm.'),
+  "attemptOrdinal": zod.number().min(1).optional().describe('One-based authoritative entry number for this independent occurrence within its shared pullback arm.'),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional().describe('Effective quality grade after applying the controlled re-entry penalty.'),
   "targetPlan": zod.object({
   "targetPlanVersion": zod.string(),
@@ -11271,7 +11253,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "strategyStopPrice": zod.number().nullable(),
   "catastropheStopPrice": zod.number().nullable(),
   "armAttemptId": zod.string().optional().describe('Stable identity for the independent attempt that produced this trade.'),
-  "attemptOrdinal": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemTradeAuditAttemptOrdinalMax).optional(),
+  "attemptOrdinal": zod.number().min(1).optional(),
   "attemptGrade": zod.enum(['B', 'A', 'A+', 'A++']).optional(),
   "stopLevel": zod.union([zod.literal('strategy'),zod.literal('catastrophe'),zod.literal('structure_trailing'),zod.literal('breakeven'),zod.literal(null)]).nullable(),
   "patienceCandleOpenTime": zod.string().nullable(),

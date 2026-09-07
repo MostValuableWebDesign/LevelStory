@@ -3623,7 +3623,7 @@ components:
         supportingConfluences: { type: array, items: { type: string } }
         setupGrade: { type: string, enum: [A, "A+", "A++"] }
         armAttemptId: { type: string, description: Stable identity for this independent entry attempt within a shared pullback arm. }
-        attemptOrdinal: { type: number, minimum: 1, maximum: 2, description: One-based authoritative entry number for the shared pullback arm. }
+        attemptOrdinal: { type: number, minimum: 1, description: One-based authoritative entry number for this independent occurrence within its shared pullback arm. }
         attemptGrade: { type: string, enum: [B, A, "A+", "A++"], description: Effective quality grade after applying the controlled re-entry penalty. }
         targetPlan: { $ref: "#/components/schemas/KeyLevelTargetPlan" }
         patienceCandle: { type: ["object", "null"], additionalProperties: true }
@@ -3639,7 +3639,7 @@ components:
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
             armAttemptId: { type: string, description: Stable identity for the independent attempt that produced this trade. }
-            attemptOrdinal: { type: number, minimum: 1, maximum: 2 }
+            attemptOrdinal: { type: number, minimum: 1 }
             attemptGrade: { type: string, enum: [B, A, "A+", "A++"] }
             stopLevel: { type: ["string", "null"], enum: [strategy, catastrophe, structure_trailing, breakeven, null] }
             patienceCandleOpenTime: { type: ["string", "null"] }
