@@ -7,4 +7,4 @@ Key-level profit targets must be selected from the causal snapshot available at 
 
 **Why:** A shared session target or a later chart level can make two same-session occurrences resolve differently from the evidence that was actually available when each entry became eligible.
 
-**How to apply:** Freeze the allowlisted inputs with source audit/cursor provenance, keep target-plan identity alongside candidate-owned management, and propagate it into modeled trade audit and Visual Review; never let legacy target fields replace an already-frozen candidate plan or bypass replay stale checks.
+**How to apply:** Freeze the allowlisted inputs with source audit/cursor provenance, keep target-plan identity alongside candidate-owned management, and propagate it into modeled trade audit and Visual Review; never let legacy target fields replace an already-frozen candidate plan or bypass replay stale checks. Historical audits may derive ATR14 from their causal completed-candle window when the pullback diagnostic is absent; if that window is genuinely insufficient, reject the candidate explicitly rather than aborting the worker or applying a legacy buffer.

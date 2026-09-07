@@ -2480,6 +2480,16 @@ function auditForEvaluation(
   causalContractSymbol?: string,
   visibleCausalCandles?: readonly SimulatedFuturesCandle[],
 ): BacktestAuditRecord {
+  const contractSpecification = getFuturesContractSpecification(
+    parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
+  );
+  const causalAtrTicksAtCursor = causalAtrTicks(
+    visibleCausalCandles ?? [],
+    contractSpecification.tickSize,
+  );
+  const causalAtr14 = Number.isFinite(causalAtrTicksAtCursor)
+    ? causalAtrTicksAtCursor! * contractSpecification.tickSize
+    : null;
   const signalPatience = ["EQUIVALENT_CANDLE_REVERSAL", "PEAK_RETRACEMENT_REVERSAL"].includes(evaluation.setupType)
     ? snapshot.reversalPatience ?? snapshot.patience
     : evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION"
@@ -2654,7 +2664,13 @@ function auditForEvaluation(
     consolidationGuard,
     pullbackOccurrences: snapshot.pullback.events.map((event) => ({ ...event })),
      patienceOccurrences: earlyEvidenceMissing ? [] : [...(effectiveSignalPatience.occurrences ?? [])],
-    atr14: snapshot.pullback.atr14,
+     // Phase 4 exposes ATR when its breakout-local window is complete. The
+     // execution planner needs the same completed-candle ATR even when that
+     // diagnostic field is unavailable, so use the causal replay window as
+     // the equivalent provenance source.
+     atr14: typeof snapshot.pullback.atr14 === "number" && Number.isFinite(snapshot.pullback.atr14)
+       ? snapshot.pullback.atr14
+       : causalAtr14,
   };
 }
 
@@ -3099,6 +3115,8 @@ export function buildHistoricalOccurrenceLedger(
     ])];
     const merged = {
       ...primaryByEvidence,
+      atrTicks: [primaryByEvidence.atrTicks, value.atrTicks, existing.atrTicks]
+        .find((atrTicks): atrTicks is number => Number.isFinite(atrTicks)),
       // Edge attribution is independent from confirmation-evidence selection.
       // A secondary audit may provide the better complete snapshot, but it
       // must not become the canonical edge solely because it was observed later.
@@ -4192,6 +4210,17 @@ export function projectHistoricalTradeCandidates(
   }
   const candidateRecords: CandidateProjectionRecord[] = [];
   for (const occurrence of signalByPhysicalIdentity.values()) {
+    if (!Number.isFinite(occurrence.atrTicks)) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: ["MISSING_ATR14_PROVENANCE"],
+        details: [
+          "Adaptive target planning requires a completed-candle ATR14 value at the occurrence cursor.",
+          "The candidate was rejected without applying a legacy target-buffer default.",
+        ],
+      });
+      continue;
+    }
     const candidateId = historicalCandidateId(occurrence);
     const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
       candle.contractSymbol === occurrence.contractSymbol
