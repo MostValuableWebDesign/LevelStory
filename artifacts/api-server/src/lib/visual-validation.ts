@@ -1799,8 +1799,10 @@ function buildAnnotations(
        `skipped-target-${skipped.id}`,
        `Skipped: ${skipped.id}`,
        skipped.price,
-       skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
-         ? "Skipped: the buffered executable target was below 1R."
+        skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
+          ? "Skipped: the buffered executable target was below 1R."
+          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_TICKS" || skipped.reason === "OUTSIDE_MAX_TARGET_R"
+            ? "Skipped: the buffered executable target is beyond the 1R–1.5R / 20-tick search range."
          : skipped.reason === "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
            ? "Skipped: a major structural obstacle blocks the path to 1R."
            : skipped.reason === "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"

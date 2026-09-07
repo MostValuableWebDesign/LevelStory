@@ -3524,8 +3524,9 @@ components:
         rangeHigh: { type: ["number", "null"] }
         distancePoints: { type: number }
         distanceTicks: { type: number }
+        sourceTimestamp: { type: ["string", "null"], format: date-time }
         confluenceMembers: { type: array, items: { $ref: "#/components/schemas/TargetLevelInput" } }
-      required: [id, type, price, rangeLow, rangeHigh, distancePoints, distanceTicks]
+      required: [id, type, price, rangeLow, rangeHigh, distancePoints, distanceTicks, sourceTimestamp]
     SkippedTargetLevel:
       allOf:
         - $ref: "#/components/schemas/FrozenTargetLevel"
@@ -3589,8 +3590,9 @@ components:
         fallbackReason: { type: ["string", "null"], enum: [ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL, null] }
         searchRangePoints: { type: ["number", "null"] }
         searchRangeTicks: { type: ["number", "null"] }
+        missingSourceTimestampLevelIds: { type: array, items: { type: string } }
         targetLevelSnapshot: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetLevelSnapshot" }] }
-      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks]
+      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
     BacktestTrade:
       type: object
       properties:

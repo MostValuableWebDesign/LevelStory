@@ -52,6 +52,7 @@ export interface KeyLevelTargetPlan {
   searchRangePoints: number | null;
   /** @nullable */
   searchRangeTicks: number | null;
+  missingSourceTimestampLevelIds: string[];
   /** @nullable */
   targetLevelSnapshot?: TargetLevelSnapshot | null;
 }

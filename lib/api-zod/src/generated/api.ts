@@ -1177,6 +1177,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1195,6 +1196,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1212,6 +1214,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1231,6 +1234,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1248,6 +1252,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1262,6 +1267,7 @@ export const RunBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -1312,6 +1318,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1330,6 +1337,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1347,6 +1355,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1366,6 +1375,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1383,6 +1393,7 @@ export const RunBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -1397,6 +1408,7 @@ export const RunBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -2228,6 +2240,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2246,6 +2259,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2263,6 +2277,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2282,6 +2297,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2299,6 +2315,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2313,6 +2330,7 @@ export const StartBatchBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -2363,6 +2381,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2381,6 +2400,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2398,6 +2418,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2417,6 +2438,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2434,6 +2456,7 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -2448,6 +2471,7 @@ export const StartBatchBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -3682,6 +3706,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3700,6 +3725,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3717,6 +3743,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3736,6 +3763,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3753,6 +3781,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3767,6 +3796,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -3817,6 +3847,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3835,6 +3866,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3852,6 +3884,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3871,6 +3904,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3888,6 +3922,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -3902,6 +3937,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -5136,6 +5172,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5154,6 +5191,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5171,6 +5209,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5190,6 +5229,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5207,6 +5247,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5221,6 +5262,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -5271,6 +5313,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5289,6 +5332,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5306,6 +5350,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5325,6 +5370,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5342,6 +5388,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -5356,6 +5403,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -7131,6 +7179,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7149,6 +7198,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7166,6 +7216,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7185,6 +7236,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7202,6 +7254,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7216,6 +7269,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -7266,6 +7320,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7284,6 +7339,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7301,6 +7357,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7320,6 +7377,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7337,6 +7395,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7351,6 +7410,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -7962,6 +8022,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7980,6 +8041,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -7997,6 +8059,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8016,6 +8079,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8033,6 +8097,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8047,6 +8112,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -8097,6 +8163,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8115,6 +8182,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8132,6 +8200,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8151,6 +8220,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8168,6 +8238,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -8182,6 +8253,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -9255,6 +9327,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9273,6 +9346,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9290,6 +9364,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9309,6 +9384,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9326,6 +9402,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9340,6 +9417,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -9390,6 +9468,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9408,6 +9487,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9425,6 +9505,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9444,6 +9525,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9461,6 +9543,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -9475,6 +9558,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -10084,6 +10168,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10102,6 +10187,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10119,6 +10205,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10138,6 +10225,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10155,6 +10243,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10169,6 +10258,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -10219,6 +10309,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10237,6 +10328,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10254,6 +10346,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10273,6 +10366,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10290,6 +10384,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10304,6 +10399,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -10920,6 +11016,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10938,6 +11035,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10955,6 +11053,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10974,6 +11073,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -10991,6 +11091,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11005,6 +11106,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),
@@ -11055,6 +11157,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11073,6 +11176,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11090,6 +11194,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11109,6 +11214,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11126,6 +11232,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeHigh": zod.number().nullable(),
   "distancePoints": zod.number(),
   "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
   "confluenceMembers": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.string(),
@@ -11140,6 +11247,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
   "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
   "targetLevelSnapshot": zod.object({
   "frozenAt": zod.coerce.date(),
   "sourceAuditCursor": zod.coerce.date().optional(),

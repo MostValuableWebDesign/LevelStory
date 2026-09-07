@@ -2213,27 +2213,27 @@ function targetLevelsForSnapshot(
   const levels: KeyLevelTargetInput[] = [];
   let vwap = snapshot.indicators.vwap;
   let ema200 = snapshot.indicators.ema200;
+  const sourceCandles = causalSourceCandles
+    ? (() => {
+      const sourceContractSymbol = causalContractSymbol
+        ?? causalSourceCandles.find((candle) => candle.openTime === causalEntryOpenTime)?.contractSymbol
+        ?? causalSourceCandles
+          .filter((candle) => candle.isComplete && (causalEntryOpenTime === undefined || candle.openTime <= causalEntryOpenTime))
+          .sort((first, second) => first.openTime - second.openTime)
+          .at(-1)
+          ?.contractSymbol
+        ?? causalContractSymbol
+        ?? snapshot.contract.fullContractSymbol;
+      const matching = causalSourceCandles.filter((candle) => candle.contractSymbol === sourceContractSymbol);
+      return matching.length ? [...matching] : [...causalSourceCandles];
+    })()
+    : snapshot.candles.map((candle) => ({
+      ...candle,
+      timestamp: Date.parse(candle.timestamp),
+      openTime: Date.parse(candle.openTime),
+      closeTime: Date.parse(candle.closeTime),
+    }));
   if (causalEntryOpenTime !== undefined) {
-    const sourceCandles = causalSourceCandles
-      ? (() => {
-        const sourceContractSymbol = causalContractSymbol
-          ?? causalSourceCandles.find((candle) => candle.openTime === causalEntryOpenTime)?.contractSymbol
-          ?? causalSourceCandles
-            .filter((candle) => candle.isComplete && candle.openTime <= causalEntryOpenTime)
-            .sort((first, second) => first.openTime - second.openTime)
-            .at(-1)
-            ?.contractSymbol
-          ?? causalContractSymbol
-          ?? snapshot.contract.fullContractSymbol;
-        const matching = causalSourceCandles.filter((candle) => candle.contractSymbol === sourceContractSymbol);
-        return matching.length ? [...matching] : [...causalSourceCandles];
-      })()
-      : snapshot.candles.map((candle) => ({
-        ...candle,
-        timestamp: Date.parse(candle.timestamp),
-        openTime: Date.parse(candle.openTime),
-        closeTime: Date.parse(candle.closeTime),
-      }));
     const entryCandle = sourceCandles.find((candle) => candle.openTime === causalEntryOpenTime)
       ?? sourceCandles
         .filter((candle) => candle.isComplete && candle.openTime <= causalEntryOpenTime)
@@ -2251,9 +2251,35 @@ function targetLevelsForSnapshot(
       ema200 = causalEma === null ? null : causalEma;
     }
   }
-  const add = (id: string, type: string, price: number | null | undefined) => {
+  const entryCandleForTimestamp = causalEntryOpenTime === undefined
+    ? undefined
+    : sourceCandles.find((candle) => candle.isComplete && candle.openTime === causalEntryOpenTime)
+      ?? sourceCandles
+        .filter((candle) => candle.isComplete && candle.openTime <= causalEntryOpenTime)
+        .sort((first, second) => first.openTime - second.openTime)
+        .at(-1);
+  const completedECloseTimestamp = entryCandleForTimestamp && Number.isFinite(entryCandleForTimestamp.closeTime)
+    ? new Date(entryCandleForTimestamp.closeTime).toISOString()
+    : null;
+  const completedECloseMillis = completedECloseTimestamp === null ? null : Date.parse(completedECloseTimestamp);
+  const causalTimestamp = (value: string | number | null | undefined): string | null => {
+    if (value === null || value === undefined) return null;
+    const parsed = typeof value === "number" ? value : Date.parse(value);
+    if (!Number.isFinite(parsed) || (completedECloseMillis !== null && parsed > completedECloseMillis)) return null;
+    return new Date(parsed).toISOString();
+  };
+  const ntzCompletionTimestamp = snapshot.ntz.events
+    .filter((event) => /complete|completed|final/i.test(`${event.type} ${event.detail}`))
+    .map((event) => causalTimestamp(event.time))
+    .find((timestamp): timestamp is string => timestamp !== null) ?? null;
+  const add = (
+    id: string,
+    type: string,
+    price: number | null | undefined,
+    sourceTimestamp: string | null = null,
+  ) => {
     if (typeof price === "number" && Number.isFinite(price)) {
-      levels.push({ id, type, price, sourceTimestamp: snapshot.updatedAt });
+      levels.push({ id, type, price, sourceTimestamp });
     }
   };
   add("premarket-high", "PREMARKET", snapshot.levels.premarketHigh);
@@ -2264,10 +2290,10 @@ function targetLevelsForSnapshot(
   add("two-days-ago-low", "TWO_DAYS_AGO", snapshot.levels.dayBeforeYesterdayLow);
   add("orb-high", "ORB", snapshot.levels.openingRangeHigh);
   add("orb-low", "ORB", snapshot.levels.openingRangeLow);
-  add("ntz-high", "NTZ", snapshot.levels.ntzHigh);
-  add("ntz-low", "NTZ", snapshot.levels.ntzLow);
-  add("vwap", "VWAP", vwap);
-  add("ema-200", "EMA200", ema200);
+  add("ntz-high", "NTZ", snapshot.levels.ntzHigh, ntzCompletionTimestamp);
+  add("ntz-low", "NTZ", snapshot.levels.ntzLow, ntzCompletionTimestamp);
+  add("vwap", "VWAP", vwap, completedECloseTimestamp);
+  add("ema-200", "EMA200", ema200, completedECloseTimestamp);
   for (const level of snapshot.majorLevels) {
     levels.push({
       id: `major-${level.name}`,
@@ -2275,7 +2301,7 @@ function targetLevelsForSnapshot(
       price: level.price,
       rangeLow: level.zoneLow,
       rangeHigh: level.zoneHigh,
-      sourceTimestamp: snapshot.updatedAt,
+      sourceTimestamp: null,
     });
   }
   for (const level of snapshot.dynamiteLevels) {
@@ -2285,7 +2311,7 @@ function targetLevelsForSnapshot(
       price: level.representative,
       rangeLow: level.lower,
       rangeHigh: level.upper,
-      sourceTimestamp: snapshot.updatedAt,
+      sourceTimestamp: causalTimestamp(level.observedAt),
     });
   }
   return filterEligibleKeyLevelInputs(levels);
@@ -2303,6 +2329,9 @@ function targetPlanForSnapshot(
   causalEntryOpenTime?: number,
   patienceOverride?: MarketSnapshot["patience"],
 ): KeyLevelTargetPlan {
+  if (!Number.isFinite(atrTicks)) {
+    throw new Error("Adaptive target planning requires a completed-candle ATR14 value.");
+  }
   const patience = patienceOverride
     ?? snapshot.reversalPatience
     ?? snapshot.patience;
@@ -3834,6 +3863,9 @@ function targetPlanForOccurrence(
   entryPrice: number | null,
 ): KeyLevelTargetPlan | null {
   if (entryPrice === null || !occurrence.direction) return null;
+  if (!Number.isFinite(occurrence.atrTicks)) {
+    throw new Error(`Adaptive target planning requires ATR14 provenance for occurrence ${occurrence.occurrenceId}.`);
+  }
   const snapshot = occurrence.targetLevelSnapshot ?? targetLevelSnapshotForOccurrence(occurrence, [
     ...(occurrence.targetLevelInputs ?? []),
     ...(typeof occurrence.finalizedNtzHigh === "number"

@@ -17,5 +17,7 @@ export interface FrozenTargetLevel {
   rangeHigh: number | null;
   distancePoints: number;
   distanceTicks: number;
+  /** @nullable */
+  sourceTimestamp: Date | null;
   confluenceMembers?: TargetLevelInput[];
 }

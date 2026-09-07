@@ -10,6 +10,7 @@ test("long key-level targets select the nearest forward level within 20 ticks", 
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
+    placementMode: "EXACT_LEVEL",
     levels: [
       { id: "behind", type: "ORB", price: 99 },
       { id: "exact-buffer", type: "VWAP", price: 103 },
@@ -29,6 +30,7 @@ test("short key-level targets select close levels and skip distant levels", () =
   const plan = buildKeyLevelTargetPlan({
     direction: "short",
     entryPrice: 100,
+    placementMode: "EXACT_LEVEL",
     levels: [
       { id: "behind", type: "ORB", price: 101 },
       { id: "exact-buffer", type: "VWAP", price: 97 },
@@ -79,6 +81,7 @@ test("overlapping and within-Dynamite-tolerance aliases become one physical targ
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
+    placementMode: "EXACT_LEVEL",
     levels: [
       { id: "major-resistance", type: "major resistance", rangeLow: 104, rangeHigh: 105 },
       { id: "vwap", type: "VWAP", price: 105.5 },
@@ -157,6 +160,7 @@ test("allowlist excludes Fibonacci, close, critical, and management artifacts", 
   assert.equal(buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
+    targetBufferTicks: 1,
     levels: [
       { id: "fib-618", type: "Fibonacci", price: 105 },
       { id: "major-resistance", type: "major resistance", price: 105 },
@@ -168,6 +172,7 @@ test("a plan with no eligible level is explicit and cannot create a target", () 
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
+    targetBufferTicks: 1,
     levels: [{ id: "previous-day-close", type: "PREVIOUS_DAY", price: 120 }],
   });
   assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
@@ -258,6 +263,60 @@ test("causal search skips a buffered level below 1R and selects the next eligibl
   assert.equal(plan.targetR, 1.3333333333333333);
   assert.equal(plan.skippedLevels.find((level) => level.id === "near-indicator")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
   assert.equal(plan.fallbackUsed, false);
+});
+
+test("causal search classifies a buffered level above 1.5R as beyond the achievable range", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 2,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [{ id: "too-far-for-r", type: "previous-day-high", price: 104.5 }],
+  });
+  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE");
+  assert.equal(plan.searchRangeTicks, 12);
+});
+
+test("causal search classifies a level beyond 20 MES ticks as beyond the achievable range", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 1,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 1,
+    levels: [{ id: "outside-twenty-ticks", type: "previous-day-high", price: 106 }],
+  });
+  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE");
+});
+
+test("adaptive planning defaults to the safe near-side mode and requires ATR inputs", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    atr14Ticks: 20,
+    levels: [{ id: "resistance", type: "major resistance", price: 103 }],
+  });
+  assert.equal(plan.placementMode, "NEAR_SIDE_ADAPTIVE_TICKS");
+  assert.equal(plan.targetBufferTicks, 1);
+  assert.throws(
+    () => buildKeyLevelTargetPlan({ direction: "long", entryPrice: 100, levels: [] }),
+    /requires completed-candle ATR14 ticks/,
+  );
+});
+
+test("frozen target inputs preserve timestamps and report missing provenance", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    targetBufferTicks: 1,
+    levels: [
+      { id: "vwap", type: "VWAP", price: 103, sourceTimestamp: "2026-08-25T13:35:00.000Z" },
+      { id: "premarket-high", type: "PREMARKET", price: 104, sourceTimestamp: null },
+    ],
+  });
+  assert.equal(plan.availableLevels[0]?.sourceTimestamp, "2026-08-25T13:35:00.000Z");
+  assert.deepEqual(plan.missingSourceTimestampLevelIds, ["premarket-high"]);
 });
 
 test("causal search evaluates the buffered executable price, not the raw level", () => {

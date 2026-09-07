@@ -327,6 +327,7 @@ function makeTrade(
   const targetPlan = buildKeyLevelTargetPlan({
     direction,
     entryPrice,
+    targetBufferTicks: 1,
     levels: [{
       id: "fixture-key-level",
       type: "fixture",

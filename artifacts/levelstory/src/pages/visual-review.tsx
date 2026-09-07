@@ -2554,13 +2554,16 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
             ["1R / selected target", `${formatTradePrice(targetPlan.initialRiskPoints === null ? null : targetPlan.direction === "long" ? targetPlan.entryPrice + targetPlan.initialRiskPoints : targetPlan.entryPrice - targetPlan.initialRiskPoints)} / ${formatTradePrice(targetPlan.targetPrice)}`],
             ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
             ["Buffer", `${targetPlan.targetBufferTicks} ticks · ${targetPlan.placementMode}`],
+             ["Source provenance", targetPlan.missingSourceTimestampLevelIds.length === 0
+               ? "Complete"
+               : `${targetPlan.missingSourceTimestampLevelIds.length} level${targetPlan.missingSourceTimestampLevelIds.length === 1 ? "" : "s"} missing timestamp`],
           ].map(([label, value]) => <div key={label} className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
         </div>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <div>
             <div className="eyebrow text-muted-foreground">Directional levels evaluated</div>
             <div className="mt-2 space-y-1">
-              {targetLevels.length === 0 ? <div className="text-muted-foreground">No eligible directional levels were available.</div> : targetLevels.map((level) => <div key={level.id} className="flex justify-between gap-3 border-b border-border/60 py-1"><span>{level.id} <span className="text-muted-foreground">({level.type})</span></span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks}t</span></div>)}
+               {targetLevels.length === 0 ? <div className="text-muted-foreground">No eligible directional levels were available.</div> : targetLevels.map((level) => <div key={level.id} className="flex justify-between gap-3 border-b border-border/60 py-1"><span>{level.id} <span className="text-muted-foreground">({level.type})</span><span className="block text-[9px] text-muted-foreground">{level.sourceTimestamp ? `Causal: ${formatReviewTime(level.sourceTimestamp)}` : "Causal timestamp unavailable"}</span></span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks}t</span></div>)}
             </div>
           </div>
           <div>
@@ -2574,6 +2577,7 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
           <div>Selected: <strong className="text-foreground">{targetPlan.selectedTargetLevel?.id ?? (targetPlan.fallbackUsed ? "exactly 1R" : "none")}</strong></div>
           <div>Obstruction: <strong className="text-foreground">{targetPlan.obstructingLevel?.id ?? "none"}</strong></div>
           <div>Snapshot frozen: <strong className="mono text-foreground">{targetPlan.targetLevelSnapshot?.frozenAt ?? "unavailable"}</strong></div>
+           <div>Missing provenance: <strong className="text-foreground">{targetPlan.missingSourceTimestampLevelIds.length === 0 ? "none" : targetPlan.missingSourceTimestampLevelIds.join(", ")}</strong></div>
           <div>Plan version: <strong className="mono text-foreground">{targetPlan.targetPlanVersion}</strong></div>
         </div>
       </div>

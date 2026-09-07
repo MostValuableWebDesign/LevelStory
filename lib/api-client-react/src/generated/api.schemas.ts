@@ -2937,6 +2937,8 @@ export interface FrozenTargetLevel {
   rangeHigh: number | null;
   distancePoints: number;
   distanceTicks: number;
+  /** @nullable */
+  sourceTimestamp: string | null;
   confluenceMembers?: TargetLevelInput[];
 }
 
@@ -3077,6 +3079,7 @@ export interface KeyLevelTargetPlan {
   searchRangePoints: number | null;
   /** @nullable */
   searchRangeTicks: number | null;
+  missingSourceTimestampLevelIds: string[];
   /** @nullable */
   targetLevelSnapshot?: TargetLevelSnapshot | null;
 }

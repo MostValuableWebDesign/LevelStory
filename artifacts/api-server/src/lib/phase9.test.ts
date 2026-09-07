@@ -1437,6 +1437,7 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     contractSymbol: "MESU26",
     contractMonth: "U26",
     direction: "long",
+     atrTicks: 20,
     lTimestamp: "2026-08-25T13:50:00.000Z",
     lEventId: "l-candidate-driven",
     lInteractionType: "proximity",

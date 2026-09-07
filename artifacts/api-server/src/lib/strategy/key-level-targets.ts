@@ -35,6 +35,7 @@ export type FrozenTargetLevel = {
   rangeHigh: number | null;
   distancePoints: number;
   distanceTicks: number;
+  sourceTimestamp: string | null;
   confluenceMembers?: readonly KeyLevelTargetInput[];
 };
 
@@ -93,11 +94,14 @@ export type KeyLevelTargetPlan = {
   fallbackReason: "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL" | null;
   searchRangePoints: number | null;
   searchRangeTicks: number | null;
+  missingSourceTimestampLevelIds: string[];
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
 export const PROFIT_TARGET_BUFFER_TICKS = 20;
 export const PROFIT_TARGET_PLACEMENT_TICKS = 8;
+const MIN_ADAPTIVE_TARGET_BUFFER_TICKS = 1;
+const MAX_ADAPTIVE_TARGET_BUFFER_TICKS = 2;
 
 const DYNAMITE_MERGE_TOLERANCE_TICKS = 8;
 const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
@@ -144,7 +148,7 @@ export function filterEligibleKeyLevelInputs(
       ...(typeof level.price === "number" ? { price: level.price } : {}),
       ...(typeof level.rangeLow === "number" ? { rangeLow: level.rangeLow } : {}),
       ...(typeof level.rangeHigh === "number" ? { rangeHigh: level.rangeHigh } : {}),
-      ...(typeof level.sourceTimestamp === "string" ? { sourceTimestamp: level.sourceTimestamp } : {}),
+      sourceTimestamp: level.sourceTimestamp ?? null,
     }));
 }
 
@@ -174,6 +178,7 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
       price: normalizePrice(price, tickSize),
       rangeLow: normalizedLow,
       rangeHigh: normalizedHigh,
+      sourceTimestamp: level.sourceTimestamp ?? null,
       distancePoints: 0,
       distanceTicks: 0,
       confluenceMembers: [{
@@ -182,7 +187,7 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
         ...(typeof level.price === "number" ? { price: level.price } : {}),
         ...(typeof level.rangeLow === "number" ? { rangeLow: level.rangeLow } : {}),
         ...(typeof level.rangeHigh === "number" ? { rangeHigh: level.rangeHigh } : {}),
-        ...(typeof level.sourceTimestamp === "string" ? { sourceTimestamp: level.sourceTimestamp } : {}),
+        sourceTimestamp: level.sourceTimestamp ?? null,
       }],
     } satisfies FrozenTargetLevel];
   }).sort((first, second) =>
@@ -202,6 +207,9 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
         existing.rangeLow = normalizePrice(Math.min(existing.rangeLow!, level.rangeLow!), tickSize);
         existing.rangeHigh = normalizePrice(Math.max(existing.rangeHigh!, level.rangeHigh!), tickSize);
         existing.price = existing.rangeLow;
+        existing.sourceTimestamp = existing.sourceTimestamp
+          ?? level.sourceTimestamp
+          ?? null;
         existing.confluenceMembers = [
           ...(existing.confluenceMembers ?? []),
           ...(level.confluenceMembers ?? []),
@@ -344,6 +352,7 @@ export function buildKeyLevelTargetPlan(input: {
   bufferTicks?: 20;
   placementMode?: ProfitTargetPlacement;
   targetBufferTicks?: number;
+  atr14Ticks?: number | null;
   initialRiskPoints?: number | null;
   contracts?: number;
   maximumTargetR?: number;
@@ -352,10 +361,28 @@ export function buildKeyLevelTargetPlan(input: {
   const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
   if (bufferTicks !== 20) throw new Error("Key-level target distance must be exactly 20 MES ticks.");
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
-  const placementMode = input.placementMode ?? "EXACT_LEVEL";
-  const targetBufferTicks = input.targetBufferTicks ?? PROFIT_TARGET_PLACEMENT_TICKS;
-  if (!Number.isInteger(targetBufferTicks) || targetBufferTicks < 1 || targetBufferTicks > 8) {
-    throw new Error("Adaptive target buffer must be a whole number between one and eight MES ticks.");
+  const placementMode = input.placementMode ?? "NEAR_SIDE_ADAPTIVE_TICKS";
+  const targetBufferTicks = input.targetBufferTicks
+    ?? (placementMode === "NEAR_SIDE_ADAPTIVE_TICKS"
+      ? (
+        Number.isFinite(input.atr14Ticks)
+          ? Math.min(
+            MAX_ADAPTIVE_TARGET_BUFFER_TICKS,
+            Math.max(MIN_ADAPTIVE_TARGET_BUFFER_TICKS, Math.ceil(Math.max(0, input.atr14Ticks!) * 0.05)),
+          )
+          : (() => {
+            throw new Error("Adaptive target planning requires completed-candle ATR14 ticks or an explicit adaptive target buffer.");
+          })()
+      )
+      : placementMode === "NEAR_SIDE_8_TICKS" ? PROFIT_TARGET_PLACEMENT_TICKS : PROFIT_TARGET_PLACEMENT_TICKS);
+  if (!Number.isInteger(targetBufferTicks)
+    || targetBufferTicks < 1
+    || targetBufferTicks > (placementMode === "NEAR_SIDE_ADAPTIVE_TICKS" ? MAX_ADAPTIVE_TARGET_BUFFER_TICKS : 8)) {
+    throw new Error(
+      placementMode === "NEAR_SIDE_ADAPTIVE_TICKS"
+        ? "Adaptive target buffer must be a whole number between one and two MES ticks."
+        : "Target buffer must be a whole number between one and eight MES ticks.",
+    );
   }
   const bufferPoints = bufferTicks * tickSize;
   const directionalLevels = mergeLevels(input.levels, tickSize)
@@ -418,9 +445,7 @@ export function buildKeyLevelTargetPlan(input: {
         ...level,
         reason: !validRisk
           ? "OUTSIDE_20_TICKS"
-          : executableDistancePoints > bufferPoints
-          ? "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE"
-          : "TARGET_LEVEL_SKIPPED_BELOW_1R",
+          : "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE",
       });
       continue;
     }
@@ -507,5 +532,9 @@ export function buildKeyLevelTargetPlan(input: {
       : null,
     searchRangePoints: maximumSearchDistancePoints,
     searchRangeTicks: maximumSearchDistancePoints === null ? null : Math.floor(maximumSearchDistancePoints / tickSize),
+    missingSourceTimestampLevelIds: filterEligibleKeyLevelInputs(input.levels)
+      .filter((level) => !level.sourceTimestamp)
+      .map((level) => level.id)
+      .sort(),
   };
 }

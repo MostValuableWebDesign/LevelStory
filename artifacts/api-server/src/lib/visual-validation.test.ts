@@ -176,6 +176,7 @@ test("Visual Review preserves no-target stop outcomes without target-hit evidenc
   const noTargetPlan = buildKeyLevelTargetPlan({
     direction: fixture.audit.direction!,
     entryPrice: fixture.trade.entryPrice,
+    targetBufferTicks: 1,
     levels: [],
   });
   const trade: BacktestTrade = {
@@ -473,6 +474,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
   const candidateTargetPlan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: confirmed.confirmationThreshold!,
+    targetBufferTicks: 1,
     levels: [{ id: "candidate-resistance", type: "major resistance", price: confirmed.confirmationThreshold! + 4 }],
   });
   const linkedTrade: BacktestTrade = {
