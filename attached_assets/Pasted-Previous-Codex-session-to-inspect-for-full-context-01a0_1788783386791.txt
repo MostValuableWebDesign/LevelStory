@@ -1,0 +1,98 @@
+Previous Codex session to inspect for full context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+LevelStory-main 31
+
+Read the previous session and inspect the current repository before making changes. Preserve the existing profit-target behavior that searches multiple causal levels and selects the nearest eligible level. Do not introduce level-type priority or change which eligible level wins.
+
+Fix only these three issues:
+
+1. Correct target skip reasons
+
+In the causal target planner, a target whose buffered executable price exceeds the maximum achievable range—such as being above 1.5R while still within 20 MES ticks—must be classified as:
+
+TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE
+
+Do not classify it as TARGET_LEVEL_SKIPPED_BELOW_1R.
+
+Keep these classifications distinct:
+
+- Buffered target below 1R:
+  TARGET_LEVEL_SKIPPED_BELOW_1R
+- Buffered target above 1.5R or otherwise beyond the achievable search range:
+  TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE
+- Level more than 20 MES ticks from entry:
+  TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE
+- Wrong directional side of entry:
+  TARGET_LEVEL_SKIPPED_WRONG_DIRECTION
+- Major structural obstacle before 1R:
+  TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION and candidate rejection with INSUFFICIENT_REWARD_TO_RISK
+
+Ensure the Visual Review displays an accurate human-readable explanation for each reason.
+
+2. Remove unsafe legacy target-planner defaults
+
+Make the current authoritative candidate behavior the safe default:
+
+- Default placement mode: NEAR_SIDE_ADAPTIVE_TICKS
+- Adaptive target buffer: ceil(ATR14Ticks × 0.05), clamped to 1–2 MES ticks
+- Minimum executable target: 1R
+- Maximum executable target: 1.5R
+- Maximum causal search distance: 20 MES ticks
+- No eligible level and no hard obstruction: exactly 1R fallback
+
+Do not allow production callers to silently fall back to EXACT_LEVEL or the legacy fixed 8-tick target buffer.
+
+Legacy persisted plans using EXACT_LEVEL must remain stale and regeneration-required. If the planner cannot derive or receive the required adaptive buffer, fail explicitly instead of silently using eight ticks.
+
+Update fixtures and tests so they explicitly request legacy comparison behavior only when a test is intentionally testing legacy behavior.
+
+3. Preserve accurate causal source timestamps
+
+Do not assign snapshot.updatedAt as the source timestamp for every target level.
+
+Each frozen target input must retain the timestamp representing when that particular level or indicator became causally available:
+
+- VWAP and EMA 200: timestamp of the completed E candle through which they were calculated.
+- ORB/NTZ: finalized opening-range timestamp.
+- Premarket high/low: premarket-session completion or authoritative source timestamp.
+- Previous-day high/low: prior session’s completion timestamp.
+- Two-days-ago high/low: that historical session’s completion timestamp.
+- Major and Dynamite levels: their actual causal calculation or confirmation timestamp.
+
+Never use information formed after the completed E candle. If an exact timestamp is unavailable, represent it honestly as null and add a missing-provenance diagnostic; do not fabricate a timestamp.
+
+Propagate the timestamps through:
+
+- Frozen target-level snapshots
+- Generated trade candidates
+- Candidate execution
+- Shadow Account Replay
+- API/OpenAPI response models
+- Visual Review target-selection evidence
+
+Add regression coverage for:
+
+- A level above 1.5R but within 20 ticks receiving the correct beyond-range reason.
+- A level beyond 20 ticks receiving the correct reason.
+- A below-1R level retaining the below-1R reason.
+- Production target planning never defaulting to EXACT_LEVEL or eight ticks.
+- Missing adaptive inputs failing explicitly.
+- Different level families retaining their correct causal source timestamps.
+- No target input using a timestamp later than completed E.
+- Shadow replay preserving the same frozen target inputs, timestamps, target decision, and fallback behavior.
+- Existing long/short symmetry and one-/two-contract behavior.
+
+Bump all formula, cache, candidate-projection, target-plan, execution-management, and snapshot-projection versions affected by these semantic changes. Mark older generated review sets as stale and regeneration-required.
+
+Run the focused target-planner, Phase 9, Shadow Account Replay, Visual Review/API contract, typecheck, and frontend build tests. Report:
+
+- Files changed
+- Exact behavioral corrections
+- Version bumps
+- Tests run and results
+- Any remaining validation limitations
+
+
+8:15 AM
