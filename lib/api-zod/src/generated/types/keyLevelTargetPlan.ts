@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FrozenTargetLevel } from './frozenTargetLevel';
-import type { KeyLevelTargetPlanBufferTicks } from './keyLevelTargetPlanBufferTicks';
+import type { KeyLevelTargetPlanBufferPoints } from './keyLevelTargetPlanBufferPoints';
 import type { KeyLevelTargetPlanDirection } from './keyLevelTargetPlanDirection';
 import type { KeyLevelTargetPlanDisposition } from './keyLevelTargetPlanDisposition';
 import type { KeyLevelTargetPlanFallbackReason } from './keyLevelTargetPlanFallbackReason';
@@ -22,8 +22,9 @@ export interface KeyLevelTargetPlan {
   entryPrice: number;
   direction: KeyLevelTargetPlanDirection;
   tickSize: number;
-  bufferTicks: KeyLevelTargetPlanBufferTicks;
-  bufferPoints: number;
+  /** Derived MES tick distance for the 20-point search range. */
+  bufferTicks: number;
+  bufferPoints: KeyLevelTargetPlanBufferPoints;
   placementTicks: number;
   targetBufferTicks: number;
   /** @nullable */

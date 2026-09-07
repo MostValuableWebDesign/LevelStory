@@ -67,7 +67,7 @@ import {
   buildKeyLevelTargetPlan,
   filterEligibleKeyLevelInputs,
   KEY_LEVEL_TARGET_PLAN_VERSION,
-  PROFIT_TARGET_BUFFER_TICKS,
+  PROFIT_TARGET_BUFFER_POINTS,
   PROFIT_TARGET_PLACEMENT_TICKS,
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
@@ -4822,7 +4822,7 @@ function candidateDrivenEntryTrade(
       assumptions: [
         "Candidate-driven Shadow Mode entry uses the OHLCV confirmation threshold; no bid/ask quote is fabricated.",
         targetPlan
-          ? `Target plan selects ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} only when it is within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} MES ticks of entry; the target is placed ${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} MES ticks before the level.`
+          ? `Target plan selects ${targetPlan.selectedTargetLevel?.id ?? "no eligible key level"} only when it is within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry; the target is placed ${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} MES ticks before the level.`
            : "No eligible key-level target plan was available; one contract exits fully at its actual initial-stop 1R distance, while multi-contract positions take one contract at 1R before structure trailing.",
        ...(primaryLossExitLevel
            ? [`Nearby ${primaryLossExitLevel.id} level retained as diagnostic evidence only; the frozen patience opposite-wick strategy stop remains authoritative.`]

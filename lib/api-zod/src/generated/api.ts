@@ -1161,8 +1161,8 @@ export const RunBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -1224,7 +1224,7 @@ export const RunBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -1302,8 +1302,8 @@ export const RunBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -1365,7 +1365,7 @@ export const RunBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -2224,8 +2224,8 @@ export const StartBatchBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -2287,7 +2287,7 @@ export const StartBatchBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -2365,8 +2365,8 @@ export const StartBatchBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -2428,7 +2428,7 @@ export const StartBatchBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -3690,8 +3690,8 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -3753,7 +3753,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -3831,8 +3831,8 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -3894,7 +3894,7 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -5156,8 +5156,8 @@ export const CancelBatchBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -5219,7 +5219,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -5297,8 +5297,8 @@ export const CancelBatchBacktestResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -5360,7 +5360,7 @@ export const CancelBatchBacktestResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -7163,8 +7163,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -7226,7 +7226,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -7304,8 +7304,8 @@ export const GetVisualValidationSetResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -7367,7 +7367,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -8006,8 +8006,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -8069,7 +8069,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -8147,8 +8147,8 @@ export const CreateVisualValidationSetResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -8210,7 +8210,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -9311,8 +9311,8 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -9374,7 +9374,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -9452,8 +9452,8 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -9515,7 +9515,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -10152,8 +10152,8 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -10215,7 +10215,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -10293,8 +10293,8 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -10356,7 +10356,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -11000,8 +11000,8 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -11063,7 +11063,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),
@@ -11141,8 +11141,8 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "entryPrice": zod.number(),
   "direction": zod.enum(['long', 'short']),
   "tickSize": zod.number(),
-  "bufferTicks": zod.literal(20),
-  "bufferPoints": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
   "placementTicks": zod.number(),
   "targetBufferTicks": zod.number(),
   "initialRiskPoints": zod.number().nullable(),
@@ -11204,7 +11204,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "sourceTimestamp": zod.coerce.date().nullish()
 })).optional()
 }).and(zod.object({
-  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_TICKS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'OUTSIDE_MAX_TARGET_R', 'INSUFFICIENT_REWARD_TO_RISK'])
 }))),
   "selectedTargetLevel": zod.object({
   "id": zod.string(),

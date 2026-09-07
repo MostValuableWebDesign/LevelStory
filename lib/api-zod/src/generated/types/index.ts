@@ -219,7 +219,7 @@ export * from './journalEntryTrend';
 export * from './journalEvidence';
 export * from './journalRule';
 export * from './keyLevelTargetPlan';
-export * from './keyLevelTargetPlanBufferTicks';
+export * from './keyLevelTargetPlanBufferPoints';
 export * from './keyLevelTargetPlanDirection';
 export * from './keyLevelTargetPlanDisposition';
 export * from './keyLevelTargetPlanFallbackReason';

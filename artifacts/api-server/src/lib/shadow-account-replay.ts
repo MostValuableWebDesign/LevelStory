@@ -278,7 +278,7 @@ function replayTradeWithFixedContracts(
       entryPrice: replayInput.entryPrice,
       levels: targetLevelInputs,
       tickSize: frozenTargetPlan.tickSize,
-      bufferTicks: frozenTargetPlan.bufferTicks,
+      bufferPoints: frozenTargetPlan.bufferPoints,
       placementMode: frozenTargetPlan.placementMode,
       targetBufferTicks: frozenTargetPlan.targetBufferTicks,
       initialRiskPoints: frozenTargetPlan.initialRiskPoints

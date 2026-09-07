@@ -11,7 +11,7 @@ export type KeyLevelTargetInput = {
   sourceTimestamp?: string | null;
 };
 
-export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v2-causal-buffered-range";
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v3-causal-buffered-range";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -47,7 +47,7 @@ export type SkippedTargetLevel = FrozenTargetLevel & {
     | "TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE"
     | "TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY"
     | "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
-    | "OUTSIDE_20_TICKS"
+    | "OUTSIDE_20_POINTS"
     | "TARGET_NOT_PROFITABLE"
     | "OUTSIDE_MAX_TARGET_R"
     | "INSUFFICIENT_REWARD_TO_RISK";
@@ -72,8 +72,8 @@ export type KeyLevelTargetPlan = {
   direction: Direction;
   tickSize: number;
   /** Maximum forward distance from entry for a key level to qualify as a target. */
-  bufferTicks: 20;
-  bufferPoints: number;
+  bufferTicks: number;
+  bufferPoints: 20;
   /** Distance from the key level at which the executable target is placed. */
   placementTicks: number;
   /** Frozen adaptive near-side buffer used for this candidate. */
@@ -98,7 +98,7 @@ export type KeyLevelTargetPlan = {
   targetLevelSnapshot?: TargetLevelSnapshot;
 };
 
-export const PROFIT_TARGET_BUFFER_TICKS = 20;
+export const PROFIT_TARGET_BUFFER_POINTS = 20;
 export const PROFIT_TARGET_PLACEMENT_TICKS = 8;
 const MIN_ADAPTIVE_TARGET_BUFFER_TICKS = 1;
 const MAX_ADAPTIVE_TARGET_BUFFER_TICKS = 2;
@@ -349,7 +349,7 @@ export function buildKeyLevelTargetPlan(input: {
   entryPrice: number;
   levels: readonly KeyLevelTargetInput[];
   tickSize?: number;
-  bufferTicks?: 20;
+  bufferPoints?: 20;
   placementMode?: ProfitTargetPlacement;
   targetBufferTicks?: number;
   atr14Ticks?: number | null;
@@ -358,8 +358,9 @@ export function buildKeyLevelTargetPlan(input: {
   maximumTargetR?: number;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
-  const bufferTicks = input.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS;
-  if (bufferTicks !== 20) throw new Error("Key-level target distance must be exactly 20 MES ticks.");
+  const bufferPoints = input.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS;
+  if (bufferPoints !== PROFIT_TARGET_BUFFER_POINTS) throw new Error("Key-level target distance must be exactly 20 MES points.");
+  const bufferTicks = bufferPoints / tickSize;
   if (!Number.isFinite(input.entryPrice) || tickSize <= 0) throw new Error("Key-level target entry and tick size must be finite.");
   const placementMode = input.placementMode ?? "NEAR_SIDE_ADAPTIVE_TICKS";
   const targetBufferTicks = input.targetBufferTicks
@@ -384,7 +385,6 @@ export function buildKeyLevelTargetPlan(input: {
         : "Target buffer must be a whole number between one and eight MES ticks.",
     );
   }
-  const bufferPoints = bufferTicks * tickSize;
   const directionalLevels = mergeLevels(input.levels, tickSize)
     .map((level) => {
       const encountered = input.direction === "long"
@@ -444,7 +444,7 @@ export function buildKeyLevelTargetPlan(input: {
       skippedLevels.push({
         ...level,
         reason: !validRisk
-          ? "OUTSIDE_20_TICKS"
+          ? "OUTSIDE_20_POINTS"
           : "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE",
       });
       continue;
@@ -509,7 +509,7 @@ export function buildKeyLevelTargetPlan(input: {
     entryPrice: normalizePrice(input.entryPrice, tickSize),
     direction: input.direction,
     tickSize,
-    bufferTicks: 20,
+    bufferTicks,
     bufferPoints,
     placementTicks: targetBufferTicks,
     targetBufferTicks,

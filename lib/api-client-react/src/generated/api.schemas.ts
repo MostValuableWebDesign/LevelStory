@@ -2952,7 +2952,7 @@ export const SkippedTargetLevelReason = {
   TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE: 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE',
   TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY: 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY',
   TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION: 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION',
-  OUTSIDE_20_TICKS: 'OUTSIDE_20_TICKS',
+  OUTSIDE_20_POINTS: 'OUTSIDE_20_POINTS',
   TARGET_NOT_PROFITABLE: 'TARGET_NOT_PROFITABLE',
   OUTSIDE_MAX_TARGET_R: 'OUTSIDE_MAX_TARGET_R',
   INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
@@ -3015,10 +3015,10 @@ export const KeyLevelTargetPlanDirection = {
   short: 'short',
 } as const;
 
-export type KeyLevelTargetPlanBufferTicks = typeof KeyLevelTargetPlanBufferTicks[keyof typeof KeyLevelTargetPlanBufferTicks];
+export type KeyLevelTargetPlanBufferPoints = typeof KeyLevelTargetPlanBufferPoints[keyof typeof KeyLevelTargetPlanBufferPoints];
 
 
-export const KeyLevelTargetPlanBufferTicks = {
+export const KeyLevelTargetPlanBufferPoints = {
   NUMBER_20: 20,
 } as const;
 
@@ -3049,8 +3049,9 @@ export interface KeyLevelTargetPlan {
   entryPrice: number;
   direction: KeyLevelTargetPlanDirection;
   tickSize: number;
-  bufferTicks: KeyLevelTargetPlanBufferTicks;
-  bufferPoints: number;
+  /** Derived MES tick distance for the 20-point search range. */
+  bufferTicks: number;
+  bufferPoints: KeyLevelTargetPlanBufferPoints;
   placementTicks: number;
   targetBufferTicks: number;
   /** @nullable */

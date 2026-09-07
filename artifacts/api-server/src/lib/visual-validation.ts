@@ -49,7 +49,7 @@ import {
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
 import {
-  PROFIT_TARGET_BUFFER_TICKS,
+  PROFIT_TARGET_BUFFER_POINTS,
   PROFIT_TARGET_PLACEMENT_TICKS,
 } from "./strategy/key-level-targets.js";
 
@@ -1801,8 +1801,8 @@ function buildAnnotations(
        skipped.price,
         skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
           ? "Skipped: the buffered executable target was below 1R."
-          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_TICKS" || skipped.reason === "OUTSIDE_MAX_TARGET_R"
-            ? "Skipped: the buffered executable target is beyond the 1R–1.5R / 20-tick search range."
+          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_POINTS" || skipped.reason === "OUTSIDE_MAX_TARGET_R"
+             ? "Skipped: the buffered executable target is beyond the 1R–1.5R / 20-point search range."
          : skipped.reason === "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
            ? "Skipped: a major structural obstacle blocks the path to 1R."
            : skipped.reason === "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"
@@ -1824,8 +1824,8 @@ function buildAnnotations(
     targetPrice,
     targetPlan?.selectedTargetLevel
       ? targetPlan.placementMode === "EXACT_LEVEL"
-          ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
-        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferTicks ?? PROFIT_TARGET_BUFFER_TICKS} ticks of entry qualify.`
+         ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
+        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
        : targetPlan?.fallbackUsed
          ? "No eligible causal level passed the buffered 1R–1.5R search; the plan used exactly 1R."
          : targetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK"

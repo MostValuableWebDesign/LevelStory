@@ -6,7 +6,7 @@ import {
   primaryLossExitReferenceForPatience,
 } from "./key-level-targets.js";
 
-test("long key-level targets select the nearest forward level within 20 ticks", () => {
+test("long key-level targets select the nearest forward level within 20 points", () => {
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
@@ -15,15 +15,16 @@ test("long key-level targets select the nearest forward level within 20 ticks", 
       { id: "behind", type: "ORB", price: 99 },
       { id: "exact-buffer", type: "VWAP", price: 103 },
       { id: "near", type: "EMA200", price: 102.75 },
-      { id: "next", type: "prior-high", price: 108 },
+       { id: "next", type: "prior-high", price: 121 },
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "exact-buffer|near");
   assert.equal(plan.targetPrice, 102.75);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["next"]);
   assert.ok(plan.availableLevels.every((level) => level.id !== "behind"));
-  assert.equal(plan.skippedLevels[0]?.reason, "OUTSIDE_20_TICKS");
-  assert.equal(plan.bufferTicks, 20);
+  assert.equal(plan.skippedLevels[0]?.reason, "OUTSIDE_20_POINTS");
+  assert.equal(plan.bufferPoints, 20);
+  assert.equal(plan.bufferTicks, 80);
 });
 
 test("short key-level targets select close levels and skip distant levels", () => {
@@ -34,7 +35,7 @@ test("short key-level targets select close levels and skip distant levels", () =
     levels: [
       { id: "behind", type: "ORB", price: 101 },
       { id: "exact-buffer", type: "VWAP", price: 97 },
-      { id: "next", type: "major-resistance", rangeLow: 90, rangeHigh: 92 },
+       { id: "next", type: "major-resistance", rangeLow: 77, rangeHigh: 79 },
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "exact-buffer");
@@ -51,7 +52,7 @@ test("only levels within the maximum entry distance can become targets", () => {
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
       { id: "ema-200", type: "EMA200", price: 7525.5 },
-      { id: "vwap", type: "VWAP", price: 7519.5 },
+       { id: "vwap", type: "VWAP", price: 7499.5 },
     ],
   });
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["vwap"]);
@@ -67,7 +68,7 @@ test("dynamite or duplicate prices become one frozen close target level", () => 
     levels: [
       { id: "dynamite-vwap", type: "DYNAMITE", rangeLow: 104, rangeHigh: 105, price: 104.5 },
       { id: "dynamite-ema", type: "DYNAMITE", rangeLow: 104, rangeHigh: 105, price: 104.5 },
-      { id: "farther", type: "prior-high", price: 115 },
+       { id: "farther", type: "prior-high", price: 125 },
     ],
   });
   assert.equal(plan.availableLevels.length, 2);
@@ -86,7 +87,7 @@ test("overlapping and within-Dynamite-tolerance aliases become one physical targ
       { id: "major-resistance", type: "major resistance", rangeLow: 104, rangeHigh: 105 },
       { id: "vwap", type: "VWAP", price: 105.5 },
       { id: "ema-200", type: "EMA200", price: 106 },
-      { id: "separate-prior-high", type: "previous-day-high", price: 107 },
+       { id: "separate-prior-high", type: "previous-day-high", price: 121 },
     ],
   });
   assert.equal(plan.availableLevels.length, 2);
@@ -106,8 +107,8 @@ test("exact-level placement is an explicit comparison mode", () => {
     levels: [{ id: "prior-high", type: "previous-day-high", price: 105 }],
   });
   assert.equal(plan.targetPrice, 105);
-  assert.equal(plan.bufferTicks, 20);
-  assert.equal(plan.bufferPoints, 5);
+  assert.equal(plan.bufferTicks, 80);
+  assert.equal(plan.bufferPoints, 20);
   assert.equal(plan.placementTicks, 8);
 });
 
@@ -185,7 +186,7 @@ test("a distant valid key level forces the 1R fallback", () => {
     direction: "long",
     entryPrice: 7474.5,
     placementMode: "NEAR_SIDE_8_TICKS",
-    levels: [{ id: "two-sessions-high", type: "two days ago high", price: 7496.5 }],
+     levels: [{ id: "two-sessions-high", type: "two days ago high", price: 7497.5 }],
   });
   assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(plan.selectedTargetLevel, null);
@@ -278,14 +279,14 @@ test("causal search classifies a buffered level above 1.5R as beyond the achieva
   assert.equal(plan.searchRangeTicks, 12);
 });
 
-test("causal search classifies a level beyond 20 MES ticks as beyond the achievable range", () => {
+test("causal search classifies a level beyond 20 MES points as beyond the achievable range", () => {
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
-    initialRiskPoints: 1,
+     initialRiskPoints: 30,
     placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
     targetBufferTicks: 1,
-    levels: [{ id: "outside-twenty-ticks", type: "previous-day-high", price: 106 }],
+     levels: [{ id: "outside-twenty-points", type: "previous-day-high", price: 121 }],
   });
   assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE");
 });
