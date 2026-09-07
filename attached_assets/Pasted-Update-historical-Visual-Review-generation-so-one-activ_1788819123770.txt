@@ -1,0 +1,139 @@
+Update historical Visual Review generation so one active eligibility arm can produce multiple independent confirmed trade occurrences.
+
+Required behavior
+
+Do not collapse, replace, merge, or canonicalize separate confirmed P→E occurrences merely because they:
+
+- Belong to the same eligibility arm
+- Reference the same setup or strategy
+- Interact with the same level
+- Have the same direction
+- Occur during the same session
+
+Each unique confirmed P→E occurrence must become its own trade candidate and modeled trade.
+
+Occurrence identity
+
+Identify each occurrence using its complete causal identity:
+
+- Data-source fingerprint
+- Formula/configuration version
+- Contract
+- Trading date
+- Direction
+- Eligibility-arm ID
+- Patience-candle open and close timestamps
+- Immediate confirmation-candle open and close timestamps
+
+The eligibility-arm ID is provenance, not the deduplication identity by itself.
+
+Expected example
+
+If the same active eligibility arm produces:
+
+1. A confirmed P→E sequence at 11:05–11:15
+2. Another confirmed P→E sequence at 12:05–12:15
+
+Generation must create:
+
+- Two confirmed occurrences
+- Two independently identified candidates
+- Two independently simulated trades
+- Two Visual Review qualified-trade records
+- Two Shadow Account Replay ledger rows
+
+The later occurrence must never replace or inherit the earlier occurrence’s candidate.
+
+Independent evidence
+
+Each occurrence must independently freeze and retain:
+
+- Eligibility-arm provenance
+- Strategy/setup attribution
+- Patience candle
+- Immediate confirmation candle
+- Modeled entry and fill
+- Initial stop
+- Causal target-level snapshot
+- Selected target or 1R fallback
+- Contract-management plan
+- Post-entry candles
+- Exit legs
+- Outcome and P/L
+- Audit and rejection evidence
+
+Never attach one occurrence’s entry, target, stop, exit, or P/L to another occurrence.
+
+Trade treatment
+
+Every confirmed occurrence that passes candidate eligibility must be treated as a trade for historical analysis.
+
+- Generate its candidate even if another occurrence from the same arm already generated one.
+- Run its execution simulation independently.
+- Include every finalized trade in combined P/L and performance metrics.
+- Keep open, ambiguous, rejected, and unscored candidates visible but separate from realized metrics.
+- Do not discard a candidate solely because another candidate from the same arm exists.
+
+If account replay has a separate overlapping-position restriction, preserve both candidate trades in Visual Review and report the account-level exclusion independently. Do not erase the underlying trade candidate. Clearly distinguish:
+
+- Strategy-qualified candidate count
+- Independently modeled trade count
+- Account-replay-entered trade count
+- Account-replay exclusions and their exact reasons
+
+Visual Review
+
+Display every occurrence separately and show:
+
+- Occurrence number
+- P and E timestamps
+- Eligibility-arm ID
+- Candidate ID
+- Trade ID
+- Entry, stop, target, and exit
+- Outcome and net P/L
+- Whether it was included in account replay
+- Any account-level exclusion reason
+
+Combined performance must include all independently entered and finalized trades across the selected dates.
+
+Deduplication boundaries
+
+Deduplicate only when two records represent the exact same P→E occurrence identity. Do not deduplicate by:
+
+- Arm ID alone
+- Audit ID alone
+- Strategy key alone
+- Trading date and direction
+- Selected level
+- “Canonical” occurrence selection
+
+Regression tests
+
+Add tests proving:
+
+1. Two confirmed P→E occurrences from one active arm create two candidates and two modeled trades.
+2. The later occurrence does not replace the earlier occurrence.
+3. Both appear as separate qualified trades in Visual Review.
+4. Both retain independent frozen entry, stop, target, management, and outcome evidence.
+5. Both finalized trades contribute to combined P/L and statistics.
+6. One rejected occurrence does not suppress another confirmed occurrence from the same arm.
+7. Exact duplicate records for the same P→E identity are still deduplicated.
+8. Same-arm long and short handling remains deterministic.
+9. Account-level overlap exclusions do not delete the underlying candidate or its evidence.
+10. Cached and regenerated review sets produce the same occurrence and candidate identities.
+
+Versioning and verification
+
+Bump the affected occurrence-ledger, candidate-projection, snapshot-projection, cache, formula, and execution versions. Mark older review sets as stale and regeneration-required.
+
+Run the focused occurrence-ledger, Phase 9, candidate-projection, Visual Review, Shadow Account Replay, combined-performance, API contract, typecheck, and frontend build tests.
+
+Report:
+
+- Root cause of the collapsing behavior
+- Files changed
+- Identity and deduplication changes
+- Number of candidates and trades before and after the fix
+- Tests run and results
+- Remaining validation limitations
