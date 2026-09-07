@@ -62,7 +62,6 @@ type JobRecord = CandidateGenerationJob & {
   generationOrigin: "cached" | "fresh";
   startedAt: number | null;
   completedAt: number | null;
-  fallbackResult?: VisualValidationSet;
 };
 
 const JOB_TTL_MS = 30 * 60_000;
@@ -256,22 +255,18 @@ async function runJob(job: JobRecord): Promise<void> {
     job.completedAt = Date.now();
     const timedOut = error instanceof Error && /historical replay timed out/i.test(error.message);
     const partialSet = error instanceof VisualValidationWorkerError ? error.partialSet : undefined;
-    if (timedOut && (partialSet || job.fallbackResult)) {
-      const stored = partialSet
-        ? storeVisualValidationSet(partialSet, { publishAsLatest: false })
-        : job.fallbackResult!;
+    if (timedOut && partialSet) {
+      const stored = storeVisualValidationSet(partialSet, { publishAsLatest: false });
       job.result = stored;
       job.reviewSetId = stored.reviewSetId;
-      job.origin = partialSet ? "fresh" : "cached";
-      job.generationOrigin = partialSet ? "fresh" : "cached";
+      job.origin = "fresh";
+      job.generationOrigin = "fresh";
       updateJob(job, {
         status: "partial",
         phase: "completed",
         completedUnits: job.completedUnits,
         completedSessions: job.completedSessions,
-        message: partialSet
-          ? "Historical replay timed out; showing the snapshots completed before the timeout."
-          : "Historical replay timed out; showing the last completed result.",
+        message: "Historical replay timed out; showing the snapshots completed before the timeout.",
         error: error instanceof Error ? error.message : "Historical replay timed out.",
       });
       return;
@@ -334,7 +329,6 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       estimatedRemainingMs: null,
       startedAt: null,
       completedAt: null,
-      fallbackResult: completedJobId ? jobs.get(completedJobId)?.result : undefined,
     };
     jobs.set(job.jobId, job);
     activeByRequest.set(key, job.jobId);

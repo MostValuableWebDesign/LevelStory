@@ -440,6 +440,7 @@ export default function VisualReview() {
   const [reviewSetRequested, setReviewSetRequested] = useState(false);
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
   const [loadLatestReviewSet, setLoadLatestReviewSet] = useState(false);
+  const [freshGenerationRequested, setFreshGenerationRequested] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<VisualValidationCategory | null>(requestedReviewCategory);
   const [selectedStrategyKey, setSelectedStrategyKey] = useState<StrategyId | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
@@ -574,7 +575,9 @@ export default function VisualReview() {
   }, [generationJob, request.endDate, request.source]);
 
   const currentSet = setQuery.data?.stale ? null : setQuery.data;
-  const data = generationActive ? null : localSet ?? currentSet;
+  const data = generationActive
+    ? null
+    : localSet ?? (freshGenerationRequested ? null : currentSet);
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
   const strategySnapshots = useMemo(
@@ -726,6 +729,7 @@ export default function VisualReview() {
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setActiveVisualReviewTab("generate");
     setReviewSetRequested(true);
+    setFreshGenerationRequested(regenerateFresh);
     setGenerationJobId("");
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
     setMessage("");
@@ -764,7 +768,7 @@ export default function VisualReview() {
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
     setGenerationJobId("");
     startGeneration.reset();
-    generateReviewSet();
+    startReviewSetGeneration(freshGenerationRequested);
   };
 
   const generationBusy = startGeneration.isPending || generationActive;
