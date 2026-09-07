@@ -285,7 +285,6 @@ function replayTradeWithFixedContracts(
         ?? trade.audit?.initialRiskPoints
         ?? null,
       contracts: contractsPerTrade,
-      maximumTargetR: frozenTargetPlan.maximumTargetR ?? 1.5,
     })
     : frozenTargetPlan;
   if (rebuiltTargetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK") {

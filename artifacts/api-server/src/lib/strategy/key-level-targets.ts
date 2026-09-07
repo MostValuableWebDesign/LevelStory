@@ -11,7 +11,7 @@ export type KeyLevelTargetInput = {
   sourceTimestamp?: string | null;
 };
 
-export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v3-causal-buffered-range";
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v4-causal-unbounded-r";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -49,7 +49,6 @@ export type SkippedTargetLevel = FrozenTargetLevel & {
     | "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
     | "OUTSIDE_20_POINTS"
     | "TARGET_NOT_PROFITABLE"
-    | "OUTSIDE_MAX_TARGET_R"
     | "INSUFFICIENT_REWARD_TO_RISK";
 };
 
@@ -78,10 +77,11 @@ export type KeyLevelTargetPlan = {
   placementTicks: number;
   /** Frozen adaptive near-side buffer used for this candidate. */
   targetBufferTicks: number;
-  /** Frozen structural R used to constrain candidate target selection. */
+  /** Minimum structural R required for candidate target selection. */
   initialRiskPoints?: number | null;
   targetR?: number | null;
   minimumTargetR?: number | null;
+  /** Null means there is no maximum-R target cap; the 20-point distance cap remains authoritative. */
   maximumTargetR?: number | null;
   obstructingLevel?: FrozenTargetLevel | null;
   rejectionReason?: "INSUFFICIENT_REWARD_TO_RISK" | null;
@@ -355,7 +355,6 @@ export function buildKeyLevelTargetPlan(input: {
   atr14Ticks?: number | null;
   initialRiskPoints?: number | null;
   contracts?: number;
-  maximumTargetR?: number;
 }): KeyLevelTargetPlan {
   const tickSize = input.tickSize ?? 0.25;
   const bufferPoints = input.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS;
@@ -416,7 +415,6 @@ export function buildKeyLevelTargetPlan(input: {
   };
   const riskPoints = input.initialRiskPoints ?? null;
   const validRisk = riskPoints !== null && Number.isFinite(riskPoints) && riskPoints > 0;
-  const maximumTargetR = input.maximumTargetR ?? (validRisk ? 1.5 : Number.POSITIVE_INFINITY);
   const minimumTargetR = validRisk ? 1 : input.contracts === 1 ? 0.75 : input.contracts === 2 ? 0.5 : null;
   const oneRPrice = validRisk
     ? normalizePrice(
@@ -424,9 +422,7 @@ export function buildKeyLevelTargetPlan(input: {
       tickSize,
     )
     : null;
-  const maximumSearchDistancePoints = validRisk
-    ? Math.min(maximumTargetR * riskPoints, bufferPoints)
-    : bufferPoints;
+  const maximumSearchDistancePoints = bufferPoints;
   const targetRForLevel = (level: FrozenTargetLevel): number | null => {
     if (!validRisk) return null;
     return Math.abs(targetPriceForLevel(level) - input.entryPrice) / riskPoints;
@@ -465,10 +461,6 @@ export function buildKeyLevelTargetPlan(input: {
       });
       continue;
     }
-    if (targetR === null) continue;
-    if (targetR > maximumTargetR) {
-      skippedLevels.push({ ...level, reason: "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" });
-    }
   }
   const obstructingLevel = validRisk
     ? directionalLevels.find((level) => {
@@ -487,7 +479,6 @@ export function buildKeyLevelTargetPlan(input: {
         && Math.abs(targetPriceForLevel(level) - input.entryPrice) <= maximumSearchDistancePoints
         && targetR !== null
         && targetR >= (minimumTargetR ?? 0)
-        && targetR <= maximumTargetR
         && (input.direction === "long" ? targetPriceForLevel(level) > input.entryPrice : targetPriceForLevel(level) < input.entryPrice);
     })
     : availableLevels.filter((level) => {
@@ -518,7 +509,7 @@ export function buildKeyLevelTargetPlan(input: {
       ? null
       : Math.abs(targetPrice - input.entryPrice) / riskPoints,
     minimumTargetR,
-    maximumTargetR: Number.isFinite(maximumTargetR) ? maximumTargetR : null,
+    maximumTargetR: null,
     obstructingLevel,
     rejectionReason: obstructingLevel !== null ? "INSUFFICIENT_REWARD_TO_RISK" : null,
     availableLevels,

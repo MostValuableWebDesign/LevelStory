@@ -2351,7 +2351,6 @@ function targetPlanForSnapshot(
     targetBufferTicks: adaptiveExecutionManagement(atrTicks).targetBufferTicks,
     initialRiskPoints,
     contracts,
-    maximumTargetR: 1.5,
   });
 }
 
@@ -3908,7 +3907,6 @@ function targetPlanForOccurrence(
     targetBufferTicks: management.targetBufferTicks,
     initialRiskPoints,
     contracts,
-    maximumTargetR: 1.5,
   });
   return {
     ...plan,

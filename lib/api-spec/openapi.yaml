@@ -3534,7 +3534,7 @@ components:
           properties:
             reason:
               type: string
-              enum: [TARGET_LEVEL_SKIPPED_BELOW_1R, TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE, TARGET_LEVEL_SKIPPED_WRONG_DIRECTION, TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE, TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY, TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION, OUTSIDE_20_POINTS, TARGET_NOT_PROFITABLE, OUTSIDE_MAX_TARGET_R, INSUFFICIENT_REWARD_TO_RISK]
+              enum: [TARGET_LEVEL_SKIPPED_BELOW_1R, TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE, TARGET_LEVEL_SKIPPED_WRONG_DIRECTION, TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE, TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY, TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION, OUTSIDE_20_POINTS, TARGET_NOT_PROFITABLE, INSUFFICIENT_REWARD_TO_RISK]
           required: [reason]
     TargetLevelSnapshot:
       type: object
@@ -3578,7 +3578,7 @@ components:
         initialRiskPoints: { type: ["number", "null"] }
         targetR: { type: ["number", "null"] }
         minimumTargetR: { type: ["number", "null"] }
-        maximumTargetR: { type: ["number", "null"] }
+        maximumTargetR: { type: ["number", "null"], description: Null because no maximum-R cap is applied; the 20-point search range remains authoritative. }
         obstructingLevel: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/FrozenTargetLevel" }] }
         rejectionReason: { type: ["string", "null"], enum: [INSUFFICIENT_REWARD_TO_RISK, null] }
         availableLevels: { type: array, items: { $ref: "#/components/schemas/FrozenTargetLevel" } }

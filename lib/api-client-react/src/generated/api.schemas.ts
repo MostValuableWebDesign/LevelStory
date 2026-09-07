@@ -2954,7 +2954,6 @@ export const SkippedTargetLevelReason = {
   TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION: 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION',
   OUTSIDE_20_POINTS: 'OUTSIDE_20_POINTS',
   TARGET_NOT_PROFITABLE: 'TARGET_NOT_PROFITABLE',
-  OUTSIDE_MAX_TARGET_R: 'OUTSIDE_MAX_TARGET_R',
   INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
 } as const;
 
@@ -3060,7 +3059,10 @@ export interface KeyLevelTargetPlan {
   targetR: number | null;
   /** @nullable */
   minimumTargetR: number | null;
-  /** @nullable */
+  /**
+     * Null because no maximum-R cap is applied; the 20-point search range remains authoritative.
+     * @nullable
+     */
   maximumTargetR: number | null;
   /** @nullable */
   obstructingLevel: FrozenTargetLevel | null;

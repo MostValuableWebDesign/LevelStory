@@ -1801,8 +1801,8 @@ function buildAnnotations(
        skipped.price,
         skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
           ? "Skipped: the buffered executable target was below 1R."
-          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_POINTS" || skipped.reason === "OUTSIDE_MAX_TARGET_R"
-             ? "Skipped: the buffered executable target is beyond the 1R–1.5R / 20-point search range."
+          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_POINTS"
+             ? "Skipped: the buffered executable target is beyond the 20-point search range."
          : skipped.reason === "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
            ? "Skipped: a major structural obstacle blocks the path to 1R."
            : skipped.reason === "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"
@@ -1827,7 +1827,7 @@ function buildAnnotations(
          ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
         : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
        : targetPlan?.fallbackUsed
-         ? "No eligible causal level passed the buffered 1R–1.5R search; the plan used exactly 1R."
+         ? "No eligible causal level passed the buffered 20-point search; the plan used exactly 1R."
          : targetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK"
            ? "A hard structural obstacle blocks 1R; the candidate is rejected."
            : "No eligible key-level target.",

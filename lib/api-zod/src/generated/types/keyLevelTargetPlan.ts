@@ -33,7 +33,10 @@ export interface KeyLevelTargetPlan {
   targetR: number | null;
   /** @nullable */
   minimumTargetR: number | null;
-  /** @nullable */
+  /**
+     * Null because no maximum-R cap is applied; the 20-point search range remains authoritative.
+     * @nullable
+     */
   maximumTargetR: number | null;
   /** @nullable */
   obstructingLevel: FrozenTargetLevel | null;

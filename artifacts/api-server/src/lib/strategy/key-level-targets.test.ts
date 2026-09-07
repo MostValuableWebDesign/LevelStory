@@ -266,7 +266,7 @@ test("causal search skips a buffered level below 1R and selects the next eligibl
   assert.equal(plan.fallbackUsed, false);
 });
 
-test("causal search classifies a buffered level above 1.5R as beyond the achievable range", () => {
+test("causal search allows a buffered level above 1.5R when it is within 20 points", () => {
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
@@ -275,8 +275,11 @@ test("causal search classifies a buffered level above 1.5R as beyond the achieva
     targetBufferTicks: 1,
     levels: [{ id: "too-far-for-r", type: "previous-day-high", price: 104.5 }],
   });
-  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE");
-  assert.equal(plan.searchRangeTicks, 12);
+   assert.equal(plan.selectedTargetLevel?.id, "too-far-for-r");
+   assert.equal(plan.targetPrice, 104.25);
+   assert.equal(plan.targetR, 2.125);
+   assert.equal(plan.maximumTargetR, null);
+   assert.equal(plan.searchRangeTicks, 80);
 });
 
 test("causal search classifies a level beyond 20 MES points as beyond the achievable range", () => {
@@ -337,14 +340,14 @@ test("causal search evaluates the buffered executable price, not the raw level",
   assert.equal(plan.targetPrice, 104);
 });
 
-test("causal search falls back to exactly 1R when no level is eligible", () => {
+test("causal search falls back to exactly 1R when no level is within 20 points", () => {
   const plan = buildKeyLevelTargetPlan({
     direction: "long",
     entryPrice: 100,
     initialRiskPoints: 2,
     placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
     targetBufferTicks: 1,
-    levels: [{ id: "too-far", type: "previous-day-high", price: 106 }],
+     levels: [{ id: "too-far", type: "previous-day-high", price: 121 }],
   });
   assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(plan.targetPrice, 102);

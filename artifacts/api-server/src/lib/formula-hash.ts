@@ -43,11 +43,10 @@ export function formulaConfiguration(
         fixedContracts: config.executionManagementFixedContracts,
       },
       keyLevelTarget: {
-        targetPlanVersion: "key-level-target-search-v3-causal-buffered-range",
+        targetPlanVersion: "key-level-target-search-v4-causal-unbounded-r",
         candidatePlacementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
-        maximumTargetR: 1.5,
         minimumTargetR: 1,
-        maximumSearchDistance: "min(1.50R,20 MES points)",
+        maximumSearchDistance: "20 MES points",
         fallback: "exactly 1R when no eligible level and no hard obstruction",
         hardObstacleDisposition: "INSUFFICIENT_REWARD_TO_RISK",
       },
