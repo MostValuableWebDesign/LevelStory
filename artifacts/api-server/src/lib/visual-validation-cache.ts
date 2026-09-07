@@ -5,7 +5,7 @@ import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js"
 import type { VisualValidationRequest } from "./visual-validation.js";
 import { normalizeVisualReviewEarlyOrbMomentum, strategyConfigForVisualReview } from "./visual-validation-settings.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v8-causal-target-search";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v9-zone-aware-target-search";
 export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v4-causal-target-search";
 export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v8-causal-target-search";
 export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v8-causal-target-search";

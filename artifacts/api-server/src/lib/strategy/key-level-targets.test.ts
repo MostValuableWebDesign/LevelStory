@@ -44,6 +44,28 @@ test("short key-level targets select close levels and skip distant levels", () =
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["next"]);
 });
 
+test("short entries inside a support zone target the zone's lower boundary", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "short",
+    entryPrice: 6786.5,
+    initialRiskPoints: 6.75,
+    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+    targetBufferTicks: 2,
+    levels: [{
+      id: "major-support",
+      type: "support",
+      price: 6783.06,
+      rangeLow: 6772.87,
+      rangeHigh: 6793.26,
+    }],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "major-support");
+  assert.equal(plan.selectedTargetLevel?.price, 6772.75);
+  assert.equal(plan.targetPrice, 6773.25);
+  assert.equal(plan.fallbackUsed, false);
+  assert.ok(Math.abs((plan.targetR ?? 0) - (13.25 / 6.75)) < 1e-12);
+});
+
 test("only levels within the maximum entry distance can become targets", () => {
   const entryPrice = 7527.75;
   const plan = buildKeyLevelTargetPlan({

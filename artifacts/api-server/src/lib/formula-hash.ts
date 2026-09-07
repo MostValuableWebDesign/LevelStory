@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v15-causal-target-search";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v16-zone-aware-target-search";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -43,7 +43,7 @@ export function formulaConfiguration(
         fixedContracts: config.executionManagementFixedContracts,
       },
       keyLevelTarget: {
-        targetPlanVersion: "key-level-target-search-v4-causal-unbounded-r",
+        targetPlanVersion: "key-level-target-search-v5-zone-aware-boundary",
         candidatePlacementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
         minimumTargetR: 1,
         maximumSearchDistance: "20 MES points",

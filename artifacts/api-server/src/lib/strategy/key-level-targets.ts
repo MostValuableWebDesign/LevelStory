@@ -11,7 +11,7 @@ export type KeyLevelTargetInput = {
   sourceTimestamp?: string | null;
 };
 
-export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v4-causal-unbounded-r";
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v5-zone-aware-boundary";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -231,26 +231,18 @@ function mergeLevels(levels: readonly KeyLevelTargetInput[], tickSize: number): 
   });
 }
 
-function rawNearBoundaryForLevel(
+function targetBoundaryForLevel(
   selected: FrozenTargetLevel,
-  levels: readonly KeyLevelTargetInput[],
   direction: Direction,
+  entryPrice: number,
 ): number {
-  const matchingInputs = filterEligibleKeyLevelInputs(levels).filter((level) =>
-    selected.id === level.id || selected.id.includes(level.id),
-  );
-  const boundaries = matchingInputs.flatMap((level) => {
-    const low = typeof level.rangeLow === "number" ? Math.min(level.rangeLow, level.rangeHigh ?? level.rangeLow) : null;
-    const high = typeof level.rangeHigh === "number" ? Math.max(level.rangeHigh, level.rangeLow ?? level.rangeHigh) : null;
-    if (direction === "long") return [low ?? level.price].filter((price): price is number => typeof price === "number");
-    return [high ?? level.price].filter((price): price is number => typeof price === "number");
-  });
-  if (!boundaries.length) {
-    return direction === "long"
-      ? selected.rangeLow ?? selected.price
-      : selected.rangeHigh ?? selected.price;
-  }
-  return direction === "long" ? Math.min(...boundaries) : Math.max(...boundaries);
+  const low = selected.rangeLow ?? selected.price;
+  const high = selected.rangeHigh ?? selected.price;
+  // When entry is already inside a level zone, the forward target boundary
+  // is the far side of the zone. When entry is outside the zone, use the
+  // near side so the executable target is reached before entering it.
+  if (direction === "long") return low > entryPrice ? low : high;
+  return high < entryPrice ? high : low;
 }
 
 function nearSideTargetPrice(
@@ -386,9 +378,7 @@ export function buildKeyLevelTargetPlan(input: {
   }
   const directionalLevels = mergeLevels(input.levels, tickSize)
     .map((level) => {
-      const encountered = input.direction === "long"
-        ? level.rangeLow ?? level.price
-        : level.rangeHigh ?? level.price;
+      const encountered = targetBoundaryForLevel(level, input.direction, input.entryPrice);
       const distancePoints = input.direction === "long"
         ? encountered - input.entryPrice
         : input.entryPrice - encountered;
@@ -403,7 +393,7 @@ export function buildKeyLevelTargetPlan(input: {
   const availableLevels = directionalLevels
     .filter((level) => level.distancePoints > 0);
   const targetPriceForLevel = (level: FrozenTargetLevel): number => {
-    const levelBoundary = rawNearBoundaryForLevel(level, input.levels, input.direction);
+    const levelBoundary = targetBoundaryForLevel(level, input.direction, input.entryPrice);
     return placementMode === "EXACT_LEVEL"
       ? levelBoundary
       : nearSideTargetPrice(
