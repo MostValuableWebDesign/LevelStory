@@ -1149,32 +1149,6 @@ function historicalArmAttemptId(occurrence: HistoricalOccurrence): string {
   ].join("|"));
 }
 
-function qualifyingLevelRelationshipFingerprint(occurrence: HistoricalOccurrence): string {
-  return [...occurrence.levelIdentifiers]
-    .sort()
-    .map((level) => `${level}:${occurrence.levelValues[level] ?? "null"}`)
-    .join("|");
-}
-
-function confluenceScoreForCandidate(candidate: HistoricalTradeCandidate): number {
-  return candidate.matchedEdges.length
-    + candidate.supportingConfluences.length
-    + candidate.qualifyingLevelIdentifiers.length;
-}
-
-function attemptGradeForCandidate(
-  candidate: HistoricalTradeCandidate,
-  attemptOrdinal: number,
-  runtime: ArmAttemptRuntime,
-): CandidateAttemptGrade {
-  if (attemptOrdinal === 1 || confluenceScoreForCandidate(candidate) > runtime.firstConfluenceScore) {
-    return candidate.grade;
-  }
-  if (candidate.grade === "A++") return "A+";
-  if (candidate.grade === "A+") return "A";
-  return "B";
-}
-
 export const QUALIFICATION_FUNNEL_STAGES = [
   "session_loaded",
   "ntz_orb_completed",
@@ -2790,15 +2764,18 @@ function occurrenceId(seed: string): string {
 function governedOccurrenceId(value: HistoricalOccurrence): string {
   if (value.kind === "patience") {
     return occurrenceId([
-      "historical-patience-occurrence-v3",
+      "historical-patience-occurrence-v4-complete-p-e-identity",
       value.sourceFingerprint,
       value.formulaHash,
       value.formulaVersion,
       value.contractSymbol,
       value.tradingDate,
       value.direction,
+      value.eligibilityArmId,
       value.patienceTimestamp,
+      value.patienceCandle?.closeTime,
       value.eOpenTimestamp,
+      value.entryObservationTimestamp,
     ].map((part) => part ?? "absent").join("|"));
   }
   const actualObservedE = value.nextObservedCandle && typeof value.nextObservedCandle.openTime === "number"
@@ -3436,8 +3413,15 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
-         pOpenTimestamp ?? "invalid",
-         eOpenTimestamp ?? "invalid",
+        patience.eligibilityArmId ?? "no-arm",
+        pOpenTimestamp ?? "invalid",
+        Number.isFinite(patience.patienceCandle.closeTime)
+          ? new Date(patience.patienceCandle.closeTime).toISOString()
+          : "invalid-p-close",
+        eOpenTimestamp ?? "invalid",
+        confirmedEntry && Number.isFinite(confirmedEntry.closeTime)
+          ? new Date(confirmedEntry.closeTime).toISOString()
+          : "invalid-e-close",
       ].join("|");
       const id = occurrenceId(identity);
       upsert(identity, {
@@ -4015,65 +3999,6 @@ type CandidateProjectionRecord = {
   candidate: HistoricalTradeCandidate;
 };
 
-type ArmAttemptRuntime = {
-  attemptCount: number;
-  firstCandidateId: string;
-  firstTradeId: string | null;
-  firstExitTimestamp: string | null;
-  firstExitReason: string | null;
-  contractSymbol: string;
-  tradingDate: string;
-  direction: "long" | "short" | null;
-  primaryEdge: string;
-  qualifyingLevelRelationship: string;
-  firstConfluenceScore: number;
-  reentryEligible: boolean;
-  reentryEligibilityReason: string;
-};
-
-function isLossStopOutcome(outcome: BacktestTrade["outcome"] | undefined): boolean {
-  return outcome === "strategy stop" || outcome === "catastrophe stop";
-}
-
-function annotateCandidateAttempt(
-  candidate: HistoricalTradeCandidate,
-  attemptId: string,
-  attemptOrdinal: number,
-  attemptState: CandidateAttemptState,
-  runtime: ArmAttemptRuntime,
-  armRetirementReason: string | null = null,
-  secondCandidateId?: string,
-  secondTradeId?: string,
-): HistoricalTradeCandidate {
-  const causalIdentity = candidate.causalIdentity;
-  return {
-    ...candidate,
-    causalIdentity,
-    armAttemptId: attemptId,
-    attemptOrdinal,
-    entryAttemptCount: runtime.attemptCount,
-    attemptGrade: attemptGradeForCandidate(candidate, attemptOrdinal, runtime),
-    attemptState,
-    firstCandidateId: runtime.firstCandidateId,
-    firstTradeId: runtime.firstTradeId ?? undefined,
-    secondCandidateId,
-    secondTradeId,
-    firstExitTimestamp: runtime.firstExitTimestamp,
-    firstExitReason: runtime.firstExitReason,
-    reentryEligible: runtime.reentryEligible,
-    reentryEligibilityReason: runtime.reentryEligibilityReason,
-    armRetirementReason,
-    managementContext: candidate.managementContext
-      ? {
-        ...candidate.managementContext,
-        causalIdentity,
-        armAttemptId: attemptId,
-        attemptOrdinal,
-      }
-      : candidate.managementContext,
-  };
-}
-
 export function projectHistoricalTradeCandidates(
   occurrences: readonly HistoricalOccurrence[],
   rawTrades: readonly BacktestTrade[],
@@ -4164,8 +4089,11 @@ export function projectHistoricalTradeCandidates(
       occurrence.contractSymbol,
       occurrence.tradingDate,
       occurrence.direction,
+      occurrence.eligibilityArmId ?? "no-arm",
       occurrence.pOpenTimestamp,
+      occurrence.patienceCandle?.closeTime ?? "no-p-close",
       occurrence.eOpenTimestamp,
+      occurrence.entryObservationTimestamp,
     ].join("|");
     const existing = signalByPhysicalIdentity.get(physicalIdentity);
     if (!existing) {
@@ -4286,223 +4214,92 @@ export function projectHistoricalTradeCandidates(
     - Date.parse(right.occurrence.entryObservationTimestamp ?? right.occurrence.eOpenTimestamp ?? "")
     || left.occurrence.occurrenceId.localeCompare(right.occurrence.occurrenceId),
   );
-  const attemptByArm = new Map<string, ArmAttemptRuntime>();
+  const attemptOrdinalByArm = new Map<string, number>();
   const authoritativeTrades: BacktestTrade[] = [];
   const orphans: OrphanModeledTrade[] = [];
   for (const record of orderedCandidateRecords) {
     const { occurrence, occurrenceForExecution, candidate } = record;
     const armId = occurrence.eligibilityArmId;
     const attemptId = historicalArmAttemptId(occurrence);
+    const attemptOrdinal = armId
+      ? (attemptOrdinalByArm.get(armId) ?? 0) + 1
+      : 1;
+    if (armId) attemptOrdinalByArm.set(armId, attemptOrdinal);
+    const candidateWithOccurrenceIdentity: HistoricalTradeCandidate = {
+      ...candidate,
+      armAttemptId: attemptId,
+      attemptOrdinal,
+      entryAttemptCount: attemptOrdinal,
+      attemptGrade: candidate.grade,
+      managementContext: candidate.managementContext
+        ? {
+          ...candidate.managementContext,
+          armAttemptId: attemptId,
+          attemptOrdinal,
+        }
+        : candidate.managementContext,
+    };
     const canSimulate = Boolean(
       executionContext
       && candidate.executionStatus === "MODELED_TRADE_CREATED",
     );
-    const runtime = armId ? attemptByArm.get(armId) : undefined;
-    if (!canSimulate || !executionContext || !armId || !isValidCandidateManagementContext(candidate)) {
-      candidates.push(candidate);
+    if (!canSimulate || !executionContext || !isValidCandidateManagementContext(candidateWithOccurrenceIdentity)) {
+      candidates.push(candidateWithOccurrenceIdentity);
       if (canSimulate && executionContext) {
         const candidateTrade = candidateDrivenEntryTrade(
           occurrenceForExecution,
-          candidate.candidateId,
-          candidate,
+          candidateWithOccurrenceIdentity.candidateId,
+          candidateWithOccurrenceIdentity,
           executionContext,
         );
-        if (candidateTrade) authoritativeTrades.push(candidateTrade);
+        if (candidateTrade) {
+          authoritativeTrades.push({
+            ...candidateTrade,
+            armAttemptId: attemptId,
+            attemptOrdinal,
+            attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
+            causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
+            audit: candidateTrade.audit
+              ? {
+                ...candidateTrade.audit,
+                armAttemptId: attemptId,
+                attemptOrdinal,
+                attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
+                causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
+              }
+              : candidateTrade.audit,
+          });
+        }
       }
       continue;
     }
-
-    if (runtime && !runtime.reentryEligible) {
-      rejected.push({
-        signalOccurrenceId: occurrence.occurrenceId,
-        armAttemptId: attemptId,
-        attemptOrdinal: runtime.attemptCount + 1,
-        eligibilityArmId: armId,
-        reasonCodes: [
-          runtime.attemptCount >= 2
-            ? "REJECTED_PULLBACK_ARM_ATTEMPT_LIMIT"
-            : "REJECTED_PULLBACK_ARM_REENTRY_INELIGIBLE",
-        ],
-        details: [
-          runtime.attemptCount >= 2
-            ? `Causal arm ${armId} already used its maximum of two authoritative entries.`
-            : runtime.reentryEligibilityReason,
-        ],
-      });
-      continue;
-    }
-
-    const attemptOrdinal = runtime ? 2 : 1;
-    if (runtime) {
-      const contextChanged = occurrence.contractSymbol !== runtime.contractSymbol
-        || occurrence.tradingDate !== runtime.tradingDate
-        || occurrence.direction !== runtime.direction
-        || (occurrence.primaryEdge ?? occurrence.strategyCandidate) !== runtime.primaryEdge
-        || qualifyingLevelRelationshipFingerprint(occurrence) !== runtime.qualifyingLevelRelationship;
-      if (contextChanged) {
-        rejected.push({
-          signalOccurrenceId: occurrence.occurrenceId,
-          armAttemptId: attemptId,
-          attemptOrdinal,
-          eligibilityArmId: armId,
-          reasonCodes: ["REJECTED_PULLBACK_ARM_CONTEXT_CHANGED"],
-          details: [
-            `Causal arm ${armId} cannot re-enter after its contract, date, direction, breakout structure, or qualifying level relationship changed.`,
-          ],
-        });
-        continue;
-      }
-      const currentObservation = Date.parse(
-        occurrence.entryObservationTimestamp ?? occurrence.eOpenTimestamp ?? "",
-      );
-      const firstExit = runtime.firstExitTimestamp ? Date.parse(runtime.firstExitTimestamp) : Number.NaN;
-      if (!Number.isFinite(firstExit) || !Number.isFinite(currentObservation) || currentObservation <= firstExit) {
-        rejected.push({
-          signalOccurrenceId: occurrence.occurrenceId,
-          armAttemptId: attemptId,
-          attemptOrdinal,
-          eligibilityArmId: armId,
-          reasonCodes: ["REJECTED_PULLBACK_ARM_FIRST_TRADE_ACTIVE"],
-          details: [
-            `Causal arm ${armId} cannot re-enter before the first stop has completed; first exit is ${runtime.firstExitTimestamp ?? "unavailable"}.`,
-          ],
-        });
-        continue;
-      }
-    }
-
-    const tentative = annotateCandidateAttempt(
-      candidate,
-      attemptId,
-      attemptOrdinal,
-      attemptOrdinal === 1 ? "FIRST_ENTRY_CONFIRMED" : "SECOND_ENTRY_CONFIRMED",
-      runtime ?? {
-        attemptCount: 0,
-        firstCandidateId: candidate.candidateId,
-        firstTradeId: null,
-        firstExitTimestamp: null,
-        firstExitReason: null,
-        contractSymbol: occurrence.contractSymbol,
-        tradingDate: occurrence.tradingDate,
-        direction: occurrence.direction,
-        primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate,
-        qualifyingLevelRelationship: qualifyingLevelRelationshipFingerprint(occurrence),
-        firstConfluenceScore: confluenceScoreForCandidate(candidate),
-        reentryEligible: false,
-        reentryEligibilityReason: "The first managed attempt has not yet been evaluated.",
-      },
-    );
     const candidateTrade = candidateDrivenEntryTrade(
       occurrenceForExecution,
-      candidate.candidateId,
-      tentative,
+      candidateWithOccurrenceIdentity.candidateId,
+      candidateWithOccurrenceIdentity,
       executionContext,
     );
     if (!candidateTrade) {
-      candidates.push(candidate);
+      candidates.push(candidateWithOccurrenceIdentity);
       continue;
     }
-
-    if (!runtime) {
-      const stopped = isLossStopOutcome(candidateTrade.outcome);
-      const nextRuntime: ArmAttemptRuntime = {
-        attemptCount: 1,
-        firstCandidateId: candidate.candidateId,
-        firstTradeId: candidateTrade.id,
-        firstExitTimestamp: candidateTrade.exitTime,
-        firstExitReason: candidateTrade.outcome,
-        contractSymbol: occurrence.contractSymbol,
-        tradingDate: occurrence.tradingDate,
-        direction: occurrence.direction,
-        primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate,
-        qualifyingLevelRelationship: qualifyingLevelRelationshipFingerprint(occurrence),
-        firstConfluenceScore: confluenceScoreForCandidate(candidate),
-        reentryEligible: stopped,
-        reentryEligibilityReason: stopped
-          ? "The first authoritative attempt stopped while the breakout/pullback arm remains structurally valid; a new P→E may authorize one re-entry."
-          : `The first authoritative attempt ended as ${candidateTrade.outcome}; a second entry requires a new stop-out.`,
-      };
-      const finalCandidate = annotateCandidateAttempt(
-        candidate,
-        attemptId,
-        1,
-        stopped ? "REENTRY_ELIGIBLE" : candidateTrade.outcome === "open" ? "FIRST_TRADE_ACTIVE" : "ARM_RETIRED_AFTER_ATTEMPT_LIMIT",
-        nextRuntime,
-        stopped ? null : `The arm is not re-entry eligible after the first ${candidateTrade.outcome} attempt.`,
-      );
-      candidates.push(finalCandidate);
-      authoritativeTrades.push({
-        ...candidateTrade,
-        armAttemptId: attemptId,
-        attemptOrdinal: 1,
-        attemptGrade: finalCandidate.attemptGrade,
-        causalIdentity: finalCandidate.causalIdentity,
-        audit: candidateTrade.audit
-          ? {
-            ...candidateTrade.audit,
-            armAttemptId: attemptId,
-            attemptOrdinal: 1,
-            attemptGrade: finalCandidate.attemptGrade,
-            causalIdentity: finalCandidate.causalIdentity,
-          }
-          : candidateTrade.audit,
-      });
-      attemptByArm.set(armId, nextRuntime);
-      continue;
-    }
-
-    const secondStopped = isLossStopOutcome(candidateTrade.outcome);
-    const secondRuntime: ArmAttemptRuntime = {
-      ...runtime,
-      attemptCount: 2,
-      reentryEligible: false,
-      reentryEligibilityReason: secondStopped
-        ? "Two authoritative attempts from this arm have stopped; the arm is retired."
-        : `The second authoritative attempt ended as ${candidateTrade.outcome}; the two-entry arm limit is reached.`,
-    };
-    const finalCandidate = annotateCandidateAttempt(
-      candidate,
-      attemptId,
-      2,
-      secondStopped
-        ? "ARM_RETIRED_AFTER_TWO_LOSSES"
-        : candidateTrade.outcome === "open" ? "SECOND_TRADE_ACTIVE" : "ARM_RETIRED_AFTER_ATTEMPT_LIMIT",
-      secondRuntime,
-      secondStopped
-        ? "The arm was retired after two stopped authoritative attempts."
-        : "The arm reached the maximum of two authoritative entries.",
-      candidate.candidateId,
-      candidateTrade.id,
-    );
-    const firstCandidateIndex = candidates.findIndex((item) => item.candidateId === runtime.firstCandidateId);
-    if (firstCandidateIndex >= 0) {
-      const firstCandidate = candidates[firstCandidateIndex]!;
-      candidates[firstCandidateIndex] = {
-        ...firstCandidate,
-        entryAttemptCount: 2,
-        secondCandidateId: candidate.candidateId,
-        secondTradeId: candidateTrade.id,
-        armRetirementReason: finalCandidate.armRetirementReason,
-      };
-    }
-    candidates.push(finalCandidate);
     authoritativeTrades.push({
       ...candidateTrade,
       armAttemptId: attemptId,
-      attemptOrdinal: 2,
-      attemptGrade: finalCandidate.attemptGrade,
-      causalIdentity: finalCandidate.causalIdentity,
+      attemptOrdinal,
+      attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
+      causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
       audit: candidateTrade.audit
         ? {
           ...candidateTrade.audit,
           armAttemptId: attemptId,
-          attemptOrdinal: 2,
-          attemptGrade: finalCandidate.attemptGrade,
-          causalIdentity: finalCandidate.causalIdentity,
+          attemptOrdinal,
+          attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
+          causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
         }
         : candidateTrade.audit,
     });
-    attemptByArm.set(armId, secondRuntime);
+    candidates.push(candidateWithOccurrenceIdentity);
   }
   const rejectionBySignalId = new Map(rejected.map((rejection) => [rejection.signalOccurrenceId, rejection]));
   for (const trade of rawTrades) {
@@ -4603,6 +4400,11 @@ function candidateLifecycleRejection(
       ],
     };
   }
+  // CONSUMED means the pullback arm's confirmation portion was used, not that
+  // every later valid P→E occurrence from that arm is invalid. Multiple
+  // confirmed occurrences remain independent strategy candidates; account
+  // overlap policy is evaluated downstream.
+  if (record.state === "CONSUMED") return null;
   if (!isTerminalPullbackArmState(record.state)) return null;
   const terminalTransition = record.transitions
     .find((transition) => isTerminalPullbackArmState(transition.to));

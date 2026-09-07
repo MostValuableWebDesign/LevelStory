@@ -2744,7 +2744,7 @@ test("an unrelated consolidation guard cannot block an ORB candidate", () => {
   assert.equal(projected.candidates.length, 1);
 });
 
-test("a stopped first attempt authorizes exactly one independent long re-entry", () => {
+test("every confirmed same-arm occurrence creates an independent long candidate and trade", () => {
   const first = managedAttemptOccurrence({
     armId: "reentry-long-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -2773,22 +2773,21 @@ test("a stopped first attempt authorizes exactly one independent long re-entry",
   assert.deepEqual(projection.candidates.map((candidate) => candidate.signalOccurrenceId), [
     first.occurrenceId,
     second.occurrenceId,
+    third.occurrenceId,
   ]);
-  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptOrdinal), [1, 2]);
-  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptGrade), ["A", "B"]);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["strategy stop", "strategy stop"]);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
-  assert.notEqual(projection.authoritativeTrades[0]?.armAttemptId, projection.authoritativeTrades[1]?.armAttemptId);
-  assert.equal(projection.candidates[0]?.attemptState, "REENTRY_ELIGIBLE");
-  assert.equal(projection.candidates[1]?.attemptState, "ARM_RETIRED_AFTER_TWO_LOSSES");
-  assert.equal(projection.candidates[1]?.firstCandidateId, projection.candidates[0]?.candidateId);
-  assert.equal(projection.candidates[1]?.firstTradeId, projection.authoritativeTrades[0]?.id);
-  assert.deepEqual(projection.rejected.at(-1)?.reasonCodes, ["REJECTED_PULLBACK_ARM_ATTEMPT_LIMIT"]);
-  assert.equal(calculateBacktestMetrics(projection.authoritativeTrades).tradeCount, 2);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptOrdinal), [1, 2, 3]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["strategy stop", "strategy stop", "strategy stop"]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2, 3]);
+  assert.equal(new Set(projection.candidates.map((candidate) => candidate.candidateId)).size, 3);
+  assert.equal(new Set(projection.authoritativeTrades.map((trade) => trade.id)).size, 3);
+  assert.equal(projection.candidates.every((candidate) => candidate.firstCandidateId === undefined
+    && candidate.secondCandidateId === undefined), true);
+  assert.equal(projection.rejected.length, 0);
+  assert.equal(calculateBacktestMetrics(projection.authoritativeTrades).tradeCount, 3);
   assert.equal(calculateBacktestMetrics(projection.authoritativeTrades).netPnl < 0, true);
 });
 
-test("a stopped first attempt authorizes a short re-entry with P2-owned stop geometry", () => {
+test("same-arm short occurrences retain independent P-owned stop geometry", () => {
   const first = managedAttemptOccurrence({
     armId: "reentry-short-stop-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -2814,12 +2813,15 @@ test("a stopped first attempt authorizes a short re-entry with P2-owned stop geo
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.direction), ["short", "short"]);
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2]);
    assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.audit?.strategyStopPrice), [103, 102.5]);
-  assert.deepEqual(projection.candidates.map((candidate) => candidate.entryAttemptCount), [2, 2]);
-  assert.equal(projection.candidates[0]?.secondCandidateId, projection.candidates[1]?.candidateId);
-  assert.equal(projection.candidates[0]?.secondTradeId, projection.authoritativeTrades[1]?.id);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.entryAttemptCount), [1, 2]);
+  assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptOrdinal), [1, 2]);
+  assert.equal(projection.candidates[0]?.secondCandidateId, undefined);
+  assert.equal(projection.candidates[0]?.managementContext?.patienceCandleOpenTime, first.patienceTimestamp);
+  assert.equal(projection.candidates[1]?.managementContext?.patienceCandleOpenTime, second.patienceTimestamp);
+  assert.equal(projection.rejected.length, 0);
 });
 
-test("a non-stop first outcome does not authorize re-entry while the arm is still valid", () => {
+test("a non-stop first outcome does not suppress a later confirmed occurrence", () => {
   const first = managedAttemptOccurrence({
     armId: "reentry-short-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -2841,14 +2843,13 @@ test("a non-stop first outcome does not authorize re-entry while the arm is stil
     lifecycle: lifecycleForArm("reentry-short-arm", "CONSUMED", first),
   });
 
-  assert.equal(projection.candidates.length, 1);
-  assert.equal(projection.authoritativeTrades.length, 1);
-  assert.equal(projection.authoritativeTrades[0]?.outcome, "session close");
-  assert.deepEqual(projection.rejected.at(-1)?.reasonCodes, ["REJECTED_PULLBACK_ARM_REENTRY_INELIGIBLE"]);
-  assert.equal(projection.rejected.at(-1)?.attemptOrdinal, 2);
+  assert.equal(projection.candidates.length, 2);
+  assert.equal(projection.authoritativeTrades.length, 2);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["session close", "session close"]);
+  assert.equal(projection.rejected.length, 0);
 });
 
-test("a failed P1 confirmation is not reused and a later P2 becomes attempt one", () => {
+test("a failed P1 remains visible without suppressing a later confirmed P2", () => {
   const first = managedAttemptOccurrence({
     armId: "reentry-failed-p1-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -2871,9 +2872,9 @@ test("a failed P1 confirmation is not reused and a later P2 becomes attempt one"
 
   assert.equal(projection.candidates.length, 2);
   assert.equal(projection.candidates[0]?.executionStatus, "ENTRY_NOT_REACHED");
-  assert.equal(projection.candidates[0]?.attemptOrdinal, undefined);
+  assert.equal(projection.candidates[0]?.attemptOrdinal, 1);
   assert.equal(projection.authoritativeTrades.length, 1);
   assert.equal(projection.authoritativeTrades[0]?.signalOccurrenceId, second.occurrenceId);
-  assert.equal(projection.authoritativeTrades[0]?.attemptOrdinal, 1);
+  assert.equal(projection.authoritativeTrades[0]?.attemptOrdinal, 2);
   assert.equal(projection.rejected.length, 0);
 });

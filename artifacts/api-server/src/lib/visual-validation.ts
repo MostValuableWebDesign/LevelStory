@@ -365,7 +365,8 @@ function buildTradeCandidates(snapshots: VisualValidationSnapshot[]): VisualVali
     const signalOccurrenceId = trade.signalOccurrenceId;
     const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? snapshot.categoryAnchor.openTime;
     const entryCloseTime = trade?.audit?.triggerCandleCloseTime ?? snapshot.categoryAnchor.closeTime;
-    const candidateId = `${snapshot.contractSymbol}|${snapshot.tradingDate}|${entryOpenTime}|${snapshot.categoryAnchor.direction}`;
+    const candidateId = trade.candidateId
+      ?? `${snapshot.contractSymbol}|${snapshot.tradingDate}|${entryOpenTime}|${snapshot.categoryAnchor.direction}`;
     if (trade.candidateId !== candidateId) {
       snapshot.machineEvidence.trade = {
         ...trade,

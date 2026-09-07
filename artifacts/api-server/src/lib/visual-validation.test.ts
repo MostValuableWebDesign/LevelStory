@@ -88,10 +88,10 @@ test("trade candidates are entry-centered, canonical, and deduplicated", () => {
   const candidates = set.tradeCandidates;
   assert.ok(candidates.length > 0);
   assert.equal(new Set(candidates.map((candidate) => candidate.candidateId)).size, candidates.length);
-  assert.ok(candidates.every((candidate) => candidate.candidateId.includes(candidate.contractSymbol)
-    && candidate.candidateId.includes(candidate.tradingDate)
-    && candidate.candidateId.includes(candidate.entryCandleOpenTime)
-    && candidate.candidateId.endsWith(candidate.direction)));
+  assert.ok(candidates.every((candidate) => candidate.candidateId.length > 0
+    && candidate.signalOccurrenceId.length > 0
+    && candidate.entryCandleOpenTime.length > 0
+    && candidate.entryCandleCloseTime.length > 0));
   assert.ok(candidates.every((candidate) => [
     "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
     "PATIENCE_CANDLE_CONTINUATION",
