@@ -148,6 +148,7 @@ const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: st
   { id: "account-impact", label: "Account impact", detail: "read-only" },
 ];
 type CandidateTradeView = {
+  entryTime?: string | null;
   entryPrice?: number;
   exitPrice?: number | null;
   exitTime?: string | null;
@@ -1481,7 +1482,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
             <div className="flex items-start justify-between gap-3"><div><div className={`eyebrow ${blocked ? "text-accent" : "text-muted-foreground"}`}>{blocked ? "Blocked candidate" : "Trade candidate"}</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${blocked ? "border-accent/50 bg-accent/10" : "border-accent/40 bg-accent/10"}`}>{blocked ? "Account blocked" : direction}</span></div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div><span className="text-muted-foreground">Entry price</span><div className="mono mt-1">{formatTradePrice(candidate.entryTriggerPrice ?? audit.entryTriggerPrice)}</div></div><div><span className="text-muted-foreground">Exit price</span><div className="mono mt-1">{formatTradePrice(trade?.exitPrice)}</div></div><div><span className="text-muted-foreground">Grade</span><div className="mono mt-1">{candidate.setupGrade}</div></div><div><span className="text-muted-foreground">Primary edge</span><div className="mt-1 font-semibold">{edgeDisplayLabel(candidate.primaryEdge)}</div></div><div><span className="text-muted-foreground">Matched edges</span><div className="mt-1">{candidate.matchedEdges.length} · {candidate.supportingConfluences.length} confluences</div></div></div>
             {blocked && candidate.accountEntryBlock && <div className="mt-3 border border-accent/25 bg-accent/5 px-2.5 py-2 text-[10px] text-muted-foreground"><span className="font-bold text-foreground">ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION</span><div className="mt-1 mono">Blocked by {candidate.accountEntryBlock.blockingCandidateId} · {candidate.accountEntryBlock.blockingStatus}{candidate.accountEntryBlock.blockingRunnerActive ? " · runner active" : ""}</div></div>}
-            <div className="mt-3 mono text-[10px] text-muted-foreground">{candidate.period === "in_sample" ? "In-sample" : "Holdout"} · Entry {formatReviewTime(candidate.entryCandleOpenTime)} · Exit {formatReviewTime(trade?.exitTime ?? "")}</div>
+             <div className="mt-3 mono text-[10px] text-muted-foreground">{candidate.period === "in_sample" ? "In-sample" : "Holdout"} · Entry {formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)} · Exit {formatReviewTime(trade?.exitTime ?? "")}</div>
          </button>;
        })}
     </div>
