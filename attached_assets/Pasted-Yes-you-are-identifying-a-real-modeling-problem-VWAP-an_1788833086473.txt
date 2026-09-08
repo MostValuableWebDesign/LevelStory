@@ -1,0 +1,188 @@
+Yes—you are identifying a real modeling problem. VWAP and EMA 200 should not behave like frozen horizontal levels after entry.
+
+However, the target should not freely chase an indicator when it moves farther away. A safer rule is a causal, profit-protective dynamic target:
+
+- Recalculate VWAP/EMA 200 after every completed post-entry candle.
+- Place the target eight ticks before the newest indicator value.
+- Make that updated target effective starting with the following candle.
+- Allow the target to move closer to price.
+- Never allow it to move farther away and increase the required profit distance.
+- Static structural levels such as ORB, premarket, and previous-day levels remain frozen.
+
+Use this prompt:
+
+```text
+Update LevelStory’s profit management for VWAP and EMA 200 targets.
+
+Problem
+
+VWAP and EMA 200 are dynamic indicator curves, but the current execution model freezes their entry-time values and treats them as static horizontal profit targets.
+
+This produces inaccurate target placement because the indicator may move during the trade. The executable target should react causally to the indicator’s completed-candle value.
+
+Dynamic indicator-target rule
+
+When the selected profit-target source is VWAP or EMA 200:
+
+1. Freeze the selected indicator identity at entry:
+   - VWAP remains VWAP.
+   - EMA 200 remains EMA 200.
+   - Do not switch automatically between indicators after entry.
+
+2. After each completed post-entry candle, recalculate the selected indicator using only candles completed through that candle.
+
+3. Calculate the proposed executable target eight MES ticks before the updated indicator:
+
+   Long:
+   ProposedTarget = CurrentIndicatorValue − 8 MES ticks
+
+   Short:
+   ProposedTarget = CurrentIndicatorValue + 8 MES ticks
+
+4. The newly calculated target becomes effective only from the next candle.
+
+Do not use the completed candle’s final indicator value to determine whether that same candle hit the newly calculated target. That would introduce future-data leakage.
+
+Profit-protective ratchet
+
+The dynamic target may move closer to the market but must never move farther away from the existing target.
+
+For a long trade:
+
+EffectiveTarget = min(PreviousTarget, ProposedTarget)
+
+For a short trade:
+
+EffectiveTarget = max(PreviousTarget, ProposedTarget)
+
+This means:
+
+- A falling VWAP or EMA target for a long trade can lower the profit target.
+- A rising VWAP or EMA target for a long trade cannot move the target farther away.
+- A rising VWAP or EMA target for a short trade can raise the profit target closer.
+- A falling VWAP or EMA target for a short trade cannot move the target farther away.
+
+Never loosen or chase a moving indicator target.
+
+Eight-tick placement
+
+Continue applying the universal eight-tick near-side rule:
+
+- Long: indicator value minus eight ticks.
+- Short: indicator value plus eight ticks.
+- Never target the exact indicator value.
+- Never place the target beyond the indicator.
+
+Target-hit sequencing
+
+For every post-entry candle:
+
+1. Evaluate the candle against the target that was effective at the candle’s open.
+2. Process any target or stop hit using the existing deterministic intrabar rules.
+3. If the position remains open, calculate VWAP or EMA 200 through that completed candle.
+4. Calculate the new proposed eight-tick-buffered target.
+5. Apply the profit-protective ratchet.
+6. Make the resulting target effective on the next candle.
+
+Static target sources
+
+Do not dynamically move targets based on static structural levels:
+
+- Major support or resistance
+- Dynamite/confluence levels
+- ORB or NTZ
+- Premarket high or low
+- Previous-day high or low
+- Two-days-ago high or low
+
+These levels and their eight-tick-buffered executable targets remain frozen from the completed E-candle snapshot.
+
+Target validity after entry
+
+The initial selected target must still satisfy the existing 1R–1.5R eligibility rules.
+
+After entry, a causally updated VWAP or EMA target may move closer than its original R multiple. Do not cancel the target solely because the moving indicator later falls below 1R.
+
+However:
+
+- Never move the target to the losing side of the modeled entry.
+- Never move it through already observed market prices retroactively.
+- Never convert an unfilled historical target into a fill using a value calculated at that candle’s close.
+- Preserve the active stop, breakeven, recovery, and runner rules.
+
+One- and two-contract behavior
+
+One contract:
+
+- Exit the complete position when price reaches the currently effective dynamic indicator target.
+
+Two contracts:
+
+- Exit one contract at the currently effective dynamic indicator target.
+- Manage the remaining contract using the existing runner rules.
+- Do not continue moving the first target after its target leg has exited.
+
+Audit evidence
+
+Record an immutable target-update ledger containing:
+
+- Candle open and close time
+- Indicator type
+- Previous indicator value
+- Recalculated indicator value
+- Proposed eight-tick-buffered target
+- Previous effective target
+- Resulting effective target
+- Effective-from timestamp
+- Whether the target tightened
+- Whether a farther-away update was ignored
+- Exact reason for accepting or ignoring the update
+- Indicator calculation version
+- Candle-source fingerprint
+
+Visual Review
+
+For dynamic targets:
+
+- Draw the VWAP or EMA 200 curve.
+- Draw the effective target as a step line that changes only after completed candles.
+- Do not draw one static target line across the entire trade.
+- Show each target adjustment in the trade inspector.
+- Clearly distinguish:
+  - Raw indicator curve
+  - Proposed buffered target
+  - Effective ratcheted target
+  - Actual target-fill price
+
+Shadow Account Replay and historical execution must reproduce the exact same target-update sequence.
+
+Regression tests
+
+Add tests proving:
+
+1. A falling EMA 200 tightens a long target.
+2. A rising EMA 200 does not move a long target farther away.
+3. A rising VWAP tightens a short target.
+4. A falling VWAP does not move a short target farther away.
+5. Every target remains eight ticks on the entry-facing side of the indicator.
+6. An update calculated at candle close is not effective during that same candle.
+7. A same-candle price crossing cannot use the candle’s closing indicator value retroactively.
+8. Static structural targets remain frozen.
+9. The target never moves to the losing side of entry.
+10. One- and two-contract behavior remains correct.
+11. Visual Review and Shadow Account Replay reproduce identical target steps and fills.
+12. No future candle is used in an indicator or target calculation.
+
+Bump all affected formula, target-management, execution, candidate-projection, replay, cache, snapshot, and chart-projection versions. Mark older generated review sets as stale and regeneration-required.
+
+Run the focused indicator, target-management, OHLCV execution, Phase 9, Shadow Account Replay, Visual Review, API contract, typecheck, and frontend build tests.
+
+Report:
+
+- Root cause
+- Files changed
+- Target-update sequencing
+- Version bumps
+- Tests run and results
+- Remaining validation limitations
+```
