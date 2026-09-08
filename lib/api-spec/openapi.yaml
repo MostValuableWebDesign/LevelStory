@@ -4493,6 +4493,7 @@ components:
         realizedNetPnl: { type: number }
         percentReturn: { type: number }
         candidateTrades: { type: number, minimum: 0 }
+        nonEnteredCandidates: { type: number, minimum: 0 }
         enteredTrades: { type: number, minimum: 0 }
         closedTrades: { type: number, minimum: 0 }
         openTrades: { type: number, minimum: 0 }
@@ -4549,10 +4550,13 @@ components:
         blockedCandidates:
           type: array
           items: { $ref: "#/components/schemas/ShadowAccountReplayBlockedCandidate" }
+        rejectedCandidates:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayRejectedCandidate" }
         warnings:
           type: array
           items: { type: string }
-      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, processedDates, datesWithTrades, datesWithoutTrades, byDate, byPrimaryEdge, byDirection, bestTrade, worstTrade, bestTradingDay, worstTradingDay, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, accountPositionStateVersion, blockedCandidates, warnings]
+      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, nonEnteredCandidates, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, processedDates, datesWithTrades, datesWithoutTrades, byDate, byPrimaryEdge, byDirection, bestTrade, worstTrade, bestTradingDay, worstTradingDay, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, accountPositionStateVersion, blockedCandidates, rejectedCandidates, warnings]
     ShadowAccountReplayBlockedCandidate:
       type: object
       properties:
@@ -4576,6 +4580,15 @@ components:
         blockingRemainingContracts: { type: number, minimum: 0 }
         blockingRunnerActive: { type: boolean }
       required: [candidateId, signalOccurrenceId, tradingDate, entryTime, contractSymbol, direction, primaryEdge, period, reason, blockedAt, blockingTradeId, blockingCandidateId, blockingSignalOccurrenceId, blockingEntryTime, blockingFullExitTime, blockingStatus, blockingContracts, blockingRemainingContracts, blockingRunnerActive]
+    ShadowAccountReplayRejectedCandidate:
+      type: object
+      properties:
+        candidateId: { type: string }
+        signalOccurrenceId: { type: string }
+        tradingDate: { type: string }
+        reason: { type: string, enum: [INSUFFICIENT_REWARD_TO_RISK] }
+        targetPlan: { $ref: "#/components/schemas/KeyLevelTargetPlan" }
+      required: [candidateId, signalOccurrenceId, tradingDate, reason, targetPlan]
     ShadowAccountReplayBreakdown:
       type: object
       properties:

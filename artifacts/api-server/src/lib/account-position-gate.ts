@@ -1,4 +1,4 @@
-export const ACCOUNT_POSITION_STATE_VERSION = "account-position-state-v1-single-active-trade";
+export const ACCOUNT_POSITION_STATE_VERSION = "account-position-state-v2-authoritative-ambiguous-exits";
 
 export type AccountPositionStatus = "closed" | "open" | "unscored";
 
@@ -27,6 +27,36 @@ export type AccountEntryBlock = {
   blockingRemainingContracts: number;
   blockingRunnerActive: boolean;
 };
+
+type ExitLegEvidence = {
+  kind?: "target" | "runner" | "full";
+  quantity?: number;
+  exitCandleCloseTime?: string;
+};
+
+function validTimestamp(value: string | null | undefined): boolean {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+export function authoritativeFullExitTime(input: {
+  status: AccountPositionStatus;
+  exitTime: string | null;
+  exitCandleCloseTime?: string | null;
+  remainingContracts: number;
+  exitLegs?: readonly ExitLegEvidence[];
+}): string | null {
+  if (!validTimestamp(input.exitTime) || input.remainingContracts > 0) return null;
+  if (input.status === "closed") return input.exitTime;
+  if (input.status !== "unscored") return null;
+
+  const hasExitCandle = validTimestamp(input.exitCandleCloseTime);
+  const hasExitLeg = (input.exitLegs ?? []).some((leg) =>
+    Number.isFinite(leg.quantity)
+    && (leg.quantity ?? 0) > 0
+    && validTimestamp(leg.exitCandleCloseTime),
+  );
+  return hasExitCandle && hasExitLeg ? input.exitTime : null;
+}
 
 export function activeAccountPositionAt(
   position: ActiveAccountPosition,
@@ -71,16 +101,25 @@ export function activeAccountPositionFromTrade(input: {
   contracts: number;
   remainingContracts: number;
   runnerActive: boolean;
+  exitCandleCloseTime?: string | null;
+  exitLegs?: readonly ExitLegEvidence[];
 }): ActiveAccountPosition {
+  const remainingContracts = Math.max(0, input.remainingContracts);
   return {
     tradeId: input.tradeId,
     candidateId: input.candidateId,
     signalOccurrenceId: input.signalOccurrenceId,
     entryTime: input.entryTime,
-    fullExitTime: input.exitTime,
+    fullExitTime: authoritativeFullExitTime({
+      status: input.status,
+      exitTime: input.exitTime,
+      exitCandleCloseTime: input.exitCandleCloseTime,
+      remainingContracts,
+      exitLegs: input.exitLegs,
+    }),
     status: input.status,
     contracts: input.contracts,
-    remainingContracts: Math.max(0, input.remainingContracts),
+    remainingContracts,
     runnerActive: input.runnerActive || input.remainingContracts > 0 && input.contracts > 1,
   };
 }

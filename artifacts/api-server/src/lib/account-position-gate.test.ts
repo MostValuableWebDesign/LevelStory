@@ -46,6 +46,24 @@ test("an invalid exit timestamp blocks conservatively", () => {
   assert.equal(accountEntryBlockFor(position({ exitTime: "not-a-date" }), entry)?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
 });
 
+test("an ambiguous but fully evidenced zero-quantity exit releases the gate", () => {
+  const exitTime = "2026-08-25T14:20:00.000Z";
+  const flatAmbiguous = position({
+    status: "unscored",
+    exitTime,
+    exitCandleCloseTime: exitTime,
+    exitLegs: [{ kind: "full", quantity: 1, exitCandleCloseTime: exitTime }],
+    remainingContracts: 0,
+  });
+  assert.equal(accountEntryBlockFor(flatAmbiguous, "2026-08-25T14:20:00.000Z"), null);
+  assert.equal(accountEntryBlockFor(flatAmbiguous, "2026-08-25T14:21:00.000Z"), null);
+});
+
+test("an ambiguous trade without authoritative full-exit evidence remains active", () => {
+  const unresolved = position({ status: "unscored", exitTime: "2026-08-25T14:20:00.000Z", remainingContracts: 0 });
+  assert.equal(accountEntryBlockFor(unresolved, "2026-08-25T14:21:00.000Z")?.blockingStatus, "unscored");
+});
+
 test("one-contract state reports no runner", () => {
   assert.equal(position({ contracts: 1, remainingContracts: 0 }).runnerActive, false);
 });

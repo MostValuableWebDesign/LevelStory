@@ -643,7 +643,10 @@ export type BacktestMetrics = {
 };
 
 export type BacktestExecutionSummary = {
+  detectedCandidateCount?: number;
   eligibleCandidateCount: number;
+  rejectedCandidateCount?: number;
+  nonEnteredCandidateCount?: number;
   accountEntryBlockedCandidateCount: number;
   accountPositionStateVersion: string;
   enteredTradeCount: number;
@@ -708,6 +711,8 @@ export type BacktestReport = {
   outOfSample: BacktestMetrics;
   segments: BacktestSegment[];
   trades: BacktestTrade[];
+  /** Candidate-owned hypothetical executions, including account-blocked candidates. */
+  candidateExecutionEvidence?: BacktestTrade[];
   tradeCandidates: HistoricalTradeCandidate[];
   rejectedCandidateSignals: RejectedCandidateSignal[];
   orphanModeledTrades: OrphanModeledTrade[];
@@ -4024,11 +4029,13 @@ function accountPositionForHistoricalTrade(trade: BacktestTrade, candidate: Hist
     candidateId: candidate.candidateId,
     signalOccurrenceId: candidate.signalOccurrenceId,
     entryTime: trade.entryTime,
-    exitTime: closed ? trade.exitTime : null,
+    exitTime: trade.exitTime,
     status: ambiguous ? "unscored" : closed ? "closed" : "open",
     contracts: trade.contracts,
     remainingContracts,
     runnerActive: trade.audit?.runnerActivated === true && trade.audit.runnerExited !== true,
+    exitCandleCloseTime: trade.audit?.exitCandleCloseTime,
+    exitLegs: trade.audit?.legs,
   });
 }
 
@@ -4100,6 +4107,7 @@ export function projectHistoricalTradeCandidates(
   candidates: HistoricalTradeCandidate[];
   rejected: RejectedCandidateSignal[];
   authoritativeTrades: BacktestTrade[];
+  candidateExecutionEvidence: BacktestTrade[];
   orphans: OrphanModeledTrade[];
 } {
   const confirmed = occurrences.filter((occurrence) =>
@@ -4293,6 +4301,7 @@ export function projectHistoricalTradeCandidates(
   );
   const attemptOrdinalByArm = new Map<string, number>();
   const authoritativeTrades: BacktestTrade[] = [];
+  const candidateExecutionEvidence: BacktestTrade[] = [];
   const orphans: OrphanModeledTrade[] = [];
   for (const record of orderedCandidateRecords) {
     const { occurrence, occurrenceForExecution, candidate } = record;
@@ -4330,7 +4339,7 @@ export function projectHistoricalTradeCandidates(
           executionContext,
         );
         if (candidateTrade) {
-          authoritativeTrades.push({
+          const projectedTrade = {
             ...candidateTrade,
             armAttemptId: attemptId,
             attemptOrdinal,
@@ -4345,7 +4354,9 @@ export function projectHistoricalTradeCandidates(
                 causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
               }
               : candidateTrade.audit,
-          });
+          };
+          candidateExecutionEvidence.push(projectedTrade);
+          authoritativeTrades.push(projectedTrade);
         }
       }
       continue;
@@ -4360,7 +4371,7 @@ export function projectHistoricalTradeCandidates(
       candidates.push(candidateWithOccurrenceIdentity);
       continue;
     }
-    authoritativeTrades.push({
+    const projectedTrade = {
       ...candidateTrade,
       armAttemptId: attemptId,
       attemptOrdinal,
@@ -4375,7 +4386,9 @@ export function projectHistoricalTradeCandidates(
           causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
         }
         : candidateTrade.audit,
-    });
+    };
+    candidateExecutionEvidence.push(projectedTrade);
+    authoritativeTrades.push(projectedTrade);
     candidates.push(candidateWithOccurrenceIdentity);
   }
   const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades);
@@ -4434,7 +4447,7 @@ export function projectHistoricalTradeCandidates(
       && existing.signalOccurrenceId !== matchingCandidate.signalOccurrenceId)) {
     }
   }
-  return { candidates, rejected, authoritativeTrades, orphans };
+  return { candidates, rejected, authoritativeTrades, candidateExecutionEvidence, orphans };
 }
 
 function candidateLifecycleRejection(
@@ -5714,7 +5727,9 @@ export function runCausalBacktest(
     reconciliation.orphans,
   );
   const executionSummary: BacktestExecutionSummary = {
+    detectedCandidateCount: reconciliation.candidates.length + reconciliation.rejected.length,
     eligibleCandidateCount: reconciliation.candidates.length,
+    rejectedCandidateCount: reconciliation.rejected.length,
     accountEntryBlockedCandidateCount: reconciliation.candidates.filter(
       (candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION",
     ).length,
@@ -5726,6 +5741,12 @@ export function runCausalBacktest(
     unresolvedAmbiguousTradeCount: authoritativeTrades.filter((trade) => trade.ambiguityLabel !== null).length,
     conservativelyResolvedTradeCount: authoritativeTrades.filter((trade) => trade.ambiguityLabel !== null && trade.outcome !== "open").length,
     unscoredTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
+    nonEnteredCandidateCount: Math.max(
+      0,
+      reconciliation.candidates.length
+        - authoritativeTrades.length
+        - reconciliation.candidates.filter((candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION").length,
+    ),
   };
   return {
     mode: "SHADOW MODE — NO LIVE ORDERS",
@@ -5767,6 +5788,7 @@ export function runCausalBacktest(
     outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejectedByPeriod.out_of_sample, audit.filter((record) => record.period === "out_of_sample")),
     segments: buildSegments(authoritativeTrades, allMetrics.rejectedSetupCount),
     trades: authoritativeTrades,
+    candidateExecutionEvidence: reconciliation.candidateExecutionEvidence,
     tradeCandidates: reconciliation.candidates,
     rejectedCandidateSignals: reconciliation.rejected,
     orphanModeledTrades: reconciliation.orphans,

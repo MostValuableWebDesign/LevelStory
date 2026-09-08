@@ -1136,6 +1136,7 @@ function ShadowReplayResults({ replay, metric }: { replay: ShadowAccountReplay; 
     </div>
     <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
        {metric("Candidate trades", formatAccountNumber(replay.candidateTrades, 0), "Retained in the selected set")}
+       {metric("Not entered", formatAccountNumber(replay.nonEnteredCandidates, 0), "Ineligible, non-triggered, or otherwise not entered")}
        {metric("Blocked by active position", formatAccountNumber(replay.blockedCandidates.length, 0), "Qualified, not entered, excluded from P/L", replay.blockedCandidates.length ? "status-negative" : undefined)}
       {metric("Entered trades", formatAccountNumber(replay.enteredTrades, 0), `${replay.closedTrades} closed · ${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}
       {metric("Wins / losses", `${replay.wins} / ${replay.losses}`, `${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}

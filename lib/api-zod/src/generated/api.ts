@@ -9517,6 +9517,8 @@ export const GetShadowAccountReplayQueryParams = zod.object({
 export const getShadowAccountReplayResponseReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getShadowAccountReplayResponseCandidateTradesMin = 0;
 
+export const getShadowAccountReplayResponseNonEnteredCandidatesMin = 0;
+
 export const getShadowAccountReplayResponseEnteredTradesMin = 0;
 
 export const getShadowAccountReplayResponseClosedTradesMin = 0;
@@ -9714,6 +9716,7 @@ export const GetShadowAccountReplayResponse = zod.object({
   "realizedNetPnl": zod.number(),
   "percentReturn": zod.number(),
   "candidateTrades": zod.number().min(getShadowAccountReplayResponseCandidateTradesMin),
+  "nonEnteredCandidates": zod.number().min(getShadowAccountReplayResponseNonEnteredCandidatesMin),
   "enteredTrades": zod.number().min(getShadowAccountReplayResponseEnteredTradesMin),
   "closedTrades": zod.number().min(getShadowAccountReplayResponseClosedTradesMin),
   "openTrades": zod.number().min(getShadowAccountReplayResponseOpenTradesMin),
@@ -9947,6 +9950,219 @@ export const GetShadowAccountReplayResponse = zod.object({
   "blockingContracts": zod.number().min(1),
   "blockingRemainingContracts": zod.number().min(getShadowAccountReplayResponseBlockedCandidatesItemBlockingRemainingContractsMin),
   "blockingRunnerActive": zod.boolean()
+})),
+  "rejectedCandidates": zod.array(zod.object({
+  "candidateId": zod.string(),
+  "signalOccurrenceId": zod.string(),
+  "tradingDate": zod.string(),
+  "reason": zod.enum(['INSUFFICIENT_REWARD_TO_RISK']),
+  "targetPlan": zod.object({
+  "targetPlanVersion": zod.string(),
+  "placementMode": zod.enum(['NEAR_SIDE_8_TICKS', 'NEAR_SIDE_ADAPTIVE_TICKS', 'EXACT_LEVEL']),
+  "disposition": zod.enum(['KEY_LEVEL_SELECTED', 'NO_ELIGIBLE_KEY_LEVEL']),
+  "entryPrice": zod.number(),
+  "direction": zod.enum(['long', 'short']),
+  "tickSize": zod.number(),
+  "bufferTicks": zod.number().describe('Derived MES tick distance for the 20-point search range.'),
+  "bufferPoints": zod.literal(20),
+  "placementTicks": zod.number(),
+  "targetBufferTicks": zod.number(),
+  "targetBufferPoints": zod.literal(2),
+  "initialRiskPoints": zod.number().nullable(),
+  "targetR": zod.number().nullable(),
+  "minimumTargetR": zod.number().nullable(),
+  "maximumTargetR": zod.number().nullable().describe('Null because no maximum-R cap is applied; the 20-point search range remains authoritative.'),
+  "obstructingLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
+}).nullable(),
+  "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
+  "availableLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
+})),
+  "skippedLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
+}).and(zod.object({
+  "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
+  "executableTargetPrice": zod.number().nullish(),
+  "executableDistanceTicks": zod.number().nullish(),
+  "executableTargetR": zod.number().nullish()
+}))),
+  "selectedTargetLevel": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
+}).nullable(),
+  "subsequentTargetLevels": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number(),
+  "rangeLow": zod.number().nullable(),
+  "rangeHigh": zod.number().nullable(),
+  "distancePoints": zod.number(),
+  "distanceTicks": zod.number(),
+  "sourceTimestamp": zod.coerce.date().nullable(),
+  "confluenceMembers": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
+})),
+  "selectedLevelPrice": zod.number().nullable(),
+  "targetDistanceTicks": zod.number().nullable(),
+  "targetPrice": zod.number().nullable(),
+  "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
+  "fallbackUsed": zod.boolean(),
+  "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
+  "searchRangePoints": zod.number().nullable(),
+  "searchRangeTicks": zod.number().nullable(),
+  "missingSourceTimestampLevelIds": zod.array(zod.string()),
+  "targetLevelSnapshot": zod.object({
+  "frozenAt": zod.coerce.date(),
+  "sourceAuditCursor": zod.coerce.date().optional(),
+  "sourceAuditId": zod.string(),
+  "eOpenTimestamp": zod.coerce.date().nullable(),
+  "eCloseTimestamp": zod.coerce.date().nullable(),
+  "sourceFingerprint": zod.string(),
+  "formulaHash": zod.string(),
+  "configurationHash": zod.string(),
+  "targetPlanVersion": zod.string(),
+  "frozenLevelInputs": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "price": zod.number().nullish(),
+  "rangeLow": zod.number().nullish(),
+  "rangeHigh": zod.number().nullish(),
+  "sourceTimestamp": zod.coerce.date().nullish()
+}))
+}).nullish()
+})
 })),
   "warnings": zod.array(zod.string())
 })

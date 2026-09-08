@@ -1164,7 +1164,15 @@ function reconcileReportItem(
     outOfSample: calculateBacktestMetrics(outOfSampleTrades, rejected.length, item.report.audit),
     executionSummary: {
       ...item.report.executionSummary,
+      detectedCandidateCount: projection.candidates.length + projection.rejected.length,
       eligibleCandidateCount: projection.candidates.length,
+      rejectedCandidateCount: projection.rejected.length,
+      nonEnteredCandidateCount: Math.max(
+        0,
+        projection.candidates.length
+          - trades.length
+          - projection.candidates.filter((candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION").length,
+      ),
       enteredTradeCount: trades.length,
       finalizedTradeCount: trades.filter((trade) => trade.outcome !== "open").length,
       openTradeCount: trades.filter((trade) => trade.outcome === "open").length,
@@ -1174,6 +1182,7 @@ function reconcileReportItem(
       unscoredTradeCount: trades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
     },
     trades,
+    candidateExecutionEvidence: projection.candidateExecutionEvidence,
     tradeCandidates: projection.candidates,
     rejectedCandidateSignals: rejected,
     orphanModeledTrades: projection.orphans,
@@ -1789,7 +1798,9 @@ export async function runPhase3EdgePilot(
   const occurrences = reportList.flatMap((report) => report.occurrences);
   const gate = gateReports(reportList, deduped.candidates, reconciled.reconciliation);
   if (!gate.passed) throw new Error(`Phase 3 prerequisite gate failed: ${gate.violations.join(", ")}`);
-  const allTrades = reportList.flatMap((report) => report.trades);
+  const allTrades = reportList.flatMap((report) =>
+    report.candidateExecutionEvidence ?? report.trades,
+  );
   const aggregateTrades = [...new Map(
     allTrades
       .map((trade) => [trade.id, trade] as const),

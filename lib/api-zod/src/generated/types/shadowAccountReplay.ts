@@ -8,6 +8,7 @@
 import type { ShadowAccountReplayBlockedCandidate } from './shadowAccountReplayBlockedCandidate';
 import type { ShadowAccountReplayBreakdown } from './shadowAccountReplayBreakdown';
 import type { ShadowAccountReplayEquityCurveItem } from './shadowAccountReplayEquityCurveItem';
+import type { ShadowAccountReplayRejectedCandidate } from './shadowAccountReplayRejectedCandidate';
 import type { ShadowAccountReplaySegment } from './shadowAccountReplaySegment';
 import type { ShadowAccountReplayTrade } from './shadowAccountReplayTrade';
 
@@ -20,6 +21,8 @@ export interface ShadowAccountReplay {
   percentReturn: number;
   /** @minimum 0 */
   candidateTrades: number;
+  /** @minimum 0 */
+  nonEnteredCandidates: number;
   /** @minimum 0 */
   enteredTrades: number;
   /** @minimum 0 */
@@ -83,5 +86,6 @@ export interface ShadowAccountReplay {
   /** @minLength 1 */
   accountPositionStateVersion: string;
   blockedCandidates: ShadowAccountReplayBlockedCandidate[];
+  rejectedCandidates: ShadowAccountReplayRejectedCandidate[];
   warnings: string[];
 }

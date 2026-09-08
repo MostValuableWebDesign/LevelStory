@@ -553,16 +553,17 @@ function replayInputForSnapshot(
 }
 
 function buildAccountReplayTradesFromReport(
-  report: Pick<BacktestReport, "trades"> & Partial<Pick<BacktestReport, "tradeCandidates">>,
+  report: Pick<BacktestReport, "trades"> & Partial<Pick<BacktestReport, "tradeCandidates" | "candidateExecutionEvidence">>,
   snapshots: readonly VisualValidationSnapshot[],
 ): VisualValidationAccountReplayTrade[] {
   const snapshotsByCandidateId = new Map(
     buildTradeCandidates([...snapshots]).map((candidate) => [candidate.candidateId, candidate.snapshotId]),
   );
+  const executionEvidence = report.candidateExecutionEvidence ?? report.trades;
   const entries: VisualValidationAccountReplayTrade[] = [];
   for (const candidate of report.tradeCandidates ?? []) {
     if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
-    const trades = report.trades
+    const trades = executionEvidence
       .filter((trade) =>
         trade.candidateId === candidate.candidateId
         && trade.signalOccurrenceId === candidate.signalOccurrenceId,

@@ -80,6 +80,7 @@ export type ShadowAccountReplay = {
   realizedNetPnl: number;
   percentReturn: number;
   candidateTrades: number;
+  nonEnteredCandidates: number;
   enteredTrades: number;
   closedTrades: number;
   openTrades: number;
@@ -510,6 +511,7 @@ export function buildShadowAccountReplay(
   }
   const contractsPerTrade = requestedContracts as 1 | 2;
   const candidatesById = new Map(set.tradeCandidates.map((candidate) => [candidate.candidateId, candidate]));
+  const detectedCandidateCount = candidatesById.size;
   const matchingTrades: MatchedTrade[] = [];
   const seenTradeIds = new Set<string>();
   const warnings: string[] = [];
@@ -582,16 +584,19 @@ export function buildShadowAccountReplay(
     const trade = replayResult;
     const unscored = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
     const closed = !unscored && trade.exitTime !== null && trade.outcome !== "open";
+    const remainingContracts = trade.audit?.remainingQuantity ?? (closed ? 0 : contractsPerTrade);
     const accountPosition = activeAccountPositionFromTrade({
       tradeId: trade.id,
       candidateId: candidate.candidateId,
       signalOccurrenceId: candidate.signalOccurrenceId,
       entryTime: trade.entryTime,
-      exitTime: closed ? trade.exitTime : null,
+      exitTime: trade.exitTime,
       status: unscored ? "unscored" : closed ? "closed" : "open",
       contracts: contractsPerTrade,
-      remainingContracts: trade.audit?.remainingQuantity ?? (closed ? 0 : contractsPerTrade),
+      remainingContracts,
       runnerActive: trade.audit?.runnerActivated === true && trade.audit.runnerExited !== true,
+      exitCandleCloseTime: trade.audit?.exitCandleCloseTime,
+      exitLegs: trade.audit?.legs,
     });
     const accountBlock = activePositions
       .map((position) => accountEntryBlockFor(position, trade.entryTime))
@@ -613,6 +618,7 @@ export function buildShadowAccountReplay(
     }
     activePositions.push(accountPosition);
     const status = unscored ? "unscored" as const : closed ? "closed" as const : "open" as const;
+    const lifecycleExitTime = accountPosition.fullExitTime;
     const netPnl = closed ? roundMoney(trade.netPnl) : null;
     if (netPnl !== null) runningBalance = roundMoney(runningBalance + netPnl);
     const ledgerTrade: ShadowAccountReplayTrade = {
@@ -622,7 +628,7 @@ export function buildShadowAccountReplay(
       snapshotId: candidate.snapshotId,
       tradingDate: trade.tradingDate,
       entryTime: trade.entryTime,
-      exitTime: closed ? trade.exitTime : null,
+      exitTime: lifecycleExitTime,
       contractSymbol: candidate.contractSymbol,
       primaryEdge: candidate.primaryEdge,
       direction: candidate.direction,
@@ -688,7 +694,11 @@ export function buildShadowAccountReplay(
     endingRealizedBalance: roundMoney(startingBalance + realizedNetPnl),
     realizedNetPnl,
     percentReturn: roundMoney((realizedNetPnl / startingBalance) * 100),
-    candidateTrades: set.tradeCandidates.length,
+    candidateTrades: detectedCandidateCount,
+    nonEnteredCandidates: Math.max(
+      0,
+      detectedCandidateCount - ledger.length - blockedCandidates.length - rejectedCandidates.length,
+    ),
     enteredTrades: ledger.length,
     closedTrades: summary.closedTrades,
     openTrades: summary.openTrades,

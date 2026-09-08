@@ -156,6 +156,47 @@ test("ambiguous outcomes remain visible as unscored without changing realized ba
   assert.equal(result.ledger[0]?.netPnl, null);
 });
 
+test("an ambiguous adverse-first full exit releases the account while remaining unscored", () => {
+  const exitTime = "2026-08-25T14:00:00.000Z";
+  const ambiguous = trade("ambiguous-flat-trade", -40, "ambiguous-flat", {
+    ambiguityLabel: "AMBIGUOUS_STOP_FIRST",
+    outcome: "strategy stop",
+    exitTime,
+    exitPrice: 99,
+    audit: {
+      remainingQuantity: 0,
+      exitCandleCloseTime: exitTime,
+      ambiguityLabels: ["AMBIGUOUS_STOP_FIRST"],
+      legs: [{
+        kind: "full",
+        quantity: 1,
+        referencePrice: 99,
+        fillPrice: 99,
+        grossPnl: -40,
+        slippage: 0,
+        fees: 0,
+        netPnl: -40,
+        exitReason: "stop",
+        exitCandleCloseTime: exitTime,
+      }],
+    } as NonNullable<BacktestTrade["audit"]>,
+  });
+  const later = trade("after-ambiguous-flat", 75, "after-ambiguous-flat", {
+    entryTime: "2026-08-25T14:35:00.000Z",
+  });
+  const result = buildShadowAccountReplay(replaySet(
+    [candidate("ambiguous-flat"), candidate("after-ambiguous-flat")],
+    [snapshot(ambiguous), snapshot(later)],
+  ));
+
+  assert.equal(result.enteredTrades, 2);
+  assert.equal(result.blockedCandidates.length, 0);
+  assert.equal(result.unscoredTrades, 1);
+  assert.equal(result.closedTrades, 1);
+  assert.equal(result.realizedNetPnl, 75);
+  assert.equal(result.ledger[0]?.exitTime, exitTime);
+});
+
 test("candidates without modeled trades do not affect the account", () => {
   const result = buildShadowAccountReplay(replaySet(
     [candidate("modeled"), candidate("missing")],
@@ -163,6 +204,7 @@ test("candidates without modeled trades do not affect the account", () => {
   ));
 
   assert.equal(result.candidateTrades, 2);
+  assert.equal(result.nonEnteredCandidates, 1);
   assert.equal(result.enteredTrades, 1);
   assert.equal(result.realizedNetPnl, 75);
 });

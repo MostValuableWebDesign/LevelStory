@@ -4982,6 +4982,21 @@ export interface ShadowAccountReplayBlockedCandidate {
   blockingRunnerActive: boolean;
 }
 
+export type ShadowAccountReplayRejectedCandidateReason = typeof ShadowAccountReplayRejectedCandidateReason[keyof typeof ShadowAccountReplayRejectedCandidateReason];
+
+
+export const ShadowAccountReplayRejectedCandidateReason = {
+  INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
+} as const;
+
+export interface ShadowAccountReplayRejectedCandidate {
+  candidateId: string;
+  signalOccurrenceId: string;
+  tradingDate: string;
+  reason: ShadowAccountReplayRejectedCandidateReason;
+  targetPlan: KeyLevelTargetPlan;
+}
+
 export interface ShadowAccountReplay {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
@@ -4991,6 +5006,8 @@ export interface ShadowAccountReplay {
   percentReturn: number;
   /** @minimum 0 */
   candidateTrades: number;
+  /** @minimum 0 */
+  nonEnteredCandidates: number;
   /** @minimum 0 */
   enteredTrades: number;
   /** @minimum 0 */
@@ -5054,6 +5071,7 @@ export interface ShadowAccountReplay {
   /** @minLength 1 */
   accountPositionStateVersion: string;
   blockedCandidates: ShadowAccountReplayBlockedCandidate[];
+  rejectedCandidates: ShadowAccountReplayRejectedCandidate[];
   warnings: string[];
 }
 

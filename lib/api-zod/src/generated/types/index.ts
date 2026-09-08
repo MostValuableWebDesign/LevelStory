@@ -339,6 +339,8 @@ export * from './shadowAccountReplayBlockedCandidateReason';
 export * from './shadowAccountReplayBreakdown';
 export * from './shadowAccountReplayEquityCurveItem';
 export * from './shadowAccountReplayEquityCurveItemStatus';
+export * from './shadowAccountReplayRejectedCandidate';
+export * from './shadowAccountReplayRejectedCandidateReason';
 export * from './shadowAccountReplaySegment';
 export * from './shadowAccountReplayTrade';
 export * from './shadowAccountReplayTradeDirection';
