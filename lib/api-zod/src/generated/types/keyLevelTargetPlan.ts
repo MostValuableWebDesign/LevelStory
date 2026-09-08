@@ -12,6 +12,7 @@ import type { KeyLevelTargetPlanDisposition } from './keyLevelTargetPlanDisposit
 import type { KeyLevelTargetPlanFallbackReason } from './keyLevelTargetPlanFallbackReason';
 import type { KeyLevelTargetPlanPlacementMode } from './keyLevelTargetPlanPlacementMode';
 import type { KeyLevelTargetPlanRejectionReason } from './keyLevelTargetPlanRejectionReason';
+import type { KeyLevelTargetPlanTargetBufferPoints } from './keyLevelTargetPlanTargetBufferPoints';
 import type { SkippedTargetLevel } from './skippedTargetLevel';
 import type { TargetLevelSnapshot } from './targetLevelSnapshot';
 
@@ -27,6 +28,7 @@ export interface KeyLevelTargetPlan {
   bufferPoints: KeyLevelTargetPlanBufferPoints;
   placementTicks: number;
   targetBufferTicks: number;
+  targetBufferPoints: KeyLevelTargetPlanTargetBufferPoints;
   /** @nullable */
   initialRiskPoints: number | null;
   /** @nullable */
@@ -47,6 +49,10 @@ export interface KeyLevelTargetPlan {
   /** @nullable */
   selectedTargetLevel: FrozenTargetLevel | null;
   subsequentTargetLevels: FrozenTargetLevel[];
+  /** @nullable */
+  selectedLevelPrice: number | null;
+  /** @nullable */
+  targetDistanceTicks: number | null;
   /** @nullable */
   targetPrice: number | null;
   fallbackUsed: boolean;

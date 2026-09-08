@@ -91,7 +91,7 @@ test("off-screen primary snapshot levels receive edge labels with their location
   assert.deepEqual(indicators.map(({ annotation, edge }) => [annotation.id, edge]), requiredIds.map((id) => [id, "top"]));
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "entry-buffer")!), "CONFIRMATION BUFFER");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "strategy-stop")!), "STOP");
-  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "target")!), "TARGET");
+  assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "target")!), "TAKE PROFIT — 8 TICKS BEFORE LEVEL");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "one-r-target")!), "1R TARGET");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "runner-threshold")!), "RUNNER");
   assert.equal(chartLevelLabel(annotations.find((annotation) => annotation.id === "orb-high")!), "orb-high");

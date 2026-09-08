@@ -8,6 +8,12 @@
 import type { FrozenTargetLevel } from './frozenTargetLevel';
 import type { SkippedTargetLevelReason } from './skippedTargetLevelReason';
 
-export type SkippedTargetLevel = FrozenTargetLevel & {
+export type SkippedTargetLevel = FrozenTargetLevel & ({
   reason: SkippedTargetLevelReason;
-};
+  /** @nullable */
+  executableTargetPrice?: number | null;
+  /** @nullable */
+  executableDistanceTicks?: number | null;
+  /** @nullable */
+  executableTargetR?: number | null;
+});

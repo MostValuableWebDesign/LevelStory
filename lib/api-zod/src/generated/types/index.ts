@@ -225,6 +225,7 @@ export * from './keyLevelTargetPlanDisposition';
 export * from './keyLevelTargetPlanFallbackReason';
 export * from './keyLevelTargetPlanPlacementMode';
 export * from './keyLevelTargetPlanRejectionReason';
+export * from './keyLevelTargetPlanTargetBufferPoints';
 export * from './levelStoryEvent';
 export * from './levelStoryEventStatus';
 export * from './listJournalEntriesDirection';

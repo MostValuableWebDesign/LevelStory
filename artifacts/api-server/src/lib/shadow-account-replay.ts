@@ -244,6 +244,8 @@ function replayTradeWithFixedContracts(
   const frozenTargetPlan = trade.targetPlan ?? trade.audit?.targetPlan ?? null;
   if (replayInput && frozenTargetPlan
     && (frozenTargetPlan.targetPlanVersion !== KEY_LEVEL_TARGET_PLAN_VERSION
+      || frozenTargetPlan.placementMode !== "NEAR_SIDE_8_TICKS"
+      || frozenTargetPlan.targetBufferTicks !== 8
       || (frozenTargetPlan.targetLevelSnapshot !== undefined
         && frozenTargetPlan.targetLevelSnapshot !== null
         && frozenTargetPlan.targetLevelSnapshot.targetPlanVersion !== KEY_LEVEL_TARGET_PLAN_VERSION))) {
@@ -267,9 +269,11 @@ function replayTradeWithFixedContracts(
       `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen target evidence. Regenerate the review set.`,
     );
   }
-  if (replayInput && frozenTargetPlan?.placementMode === "EXACT_LEVEL") {
+  if (replayInput && frozenTargetPlan
+    && (frozenTargetPlan.placementMode !== "NEAR_SIDE_8_TICKS"
+      || frozenTargetPlan.targetBufferTicks !== 8)) {
     throw new Error(
-      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} contains a legacy exact-level executable target. Regenerate the review set.`,
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} contains a legacy executable target buffer. Regenerate the review set.`,
     );
   }
   const rebuiltTargetPlan = frozenTargetPlan && targetLevelInputs
@@ -279,8 +283,8 @@ function replayTradeWithFixedContracts(
       levels: targetLevelInputs,
       tickSize: frozenTargetPlan.tickSize,
       bufferPoints: frozenTargetPlan.bufferPoints,
-      placementMode: frozenTargetPlan.placementMode,
-      targetBufferTicks: frozenTargetPlan.targetBufferTicks,
+       placementMode: "NEAR_SIDE_8_TICKS",
+       targetBufferTicks: 8,
       initialRiskPoints: frozenTargetPlan.initialRiskPoints
         ?? trade.audit?.initialRiskPoints
         ?? null,

@@ -2438,8 +2438,8 @@ test("same-session confirmed occurrences freeze independent target plans", () =>
   });
   first.auditId = "first-audit";
   second.auditId = "second-audit";
-  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 106.5 }];
-  second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 106 }];
+  first.targetLevelInputs = [{ id: "first-resistance", type: "major resistance", price: 110 }];
+  second.targetLevelInputs = [{ id: "second-resistance", type: "major resistance", price: 109.5 }];
   const firstDataset = candidateProjectionDataset(first);
   const secondDataset = candidateProjectionDataset(second);
   const result = projectHistoricalTradeCandidates([first, second], [], {

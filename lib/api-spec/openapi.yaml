@@ -3535,6 +3535,9 @@ components:
             reason:
               type: string
               enum: [TARGET_LEVEL_SKIPPED_BELOW_1R, TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE, TARGET_LEVEL_SKIPPED_WRONG_DIRECTION, TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE, TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY, TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION, OUTSIDE_20_POINTS, TARGET_NOT_PROFITABLE, INSUFFICIENT_REWARD_TO_RISK]
+            executableTargetPrice: { type: ["number", "null"] }
+            executableDistanceTicks: { type: ["number", "null"] }
+            executableTargetR: { type: ["number", "null"] }
           required: [reason]
     TargetLevelSnapshot:
       type: object
@@ -3575,6 +3578,7 @@ components:
         bufferPoints: { type: number, enum: [20] }
         placementTicks: { type: number }
         targetBufferTicks: { type: number }
+        targetBufferPoints: { type: number, enum: [2] }
         initialRiskPoints: { type: ["number", "null"] }
         targetR: { type: ["number", "null"] }
         minimumTargetR: { type: ["number", "null"] }
@@ -3585,6 +3589,8 @@ components:
         skippedLevels: { type: array, items: { $ref: "#/components/schemas/SkippedTargetLevel" } }
         selectedTargetLevel: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/FrozenTargetLevel" }] }
         subsequentTargetLevels: { type: array, items: { $ref: "#/components/schemas/FrozenTargetLevel" } }
+        selectedLevelPrice: { type: ["number", "null"] }
+        targetDistanceTicks: { type: ["number", "null"] }
         targetPrice: { type: ["number", "null"] }
         fallbackUsed: { type: boolean }
         fallbackReason: { type: ["string", "null"], enum: [ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL, null] }
@@ -3592,7 +3598,7 @@ components:
         searchRangeTicks: { type: ["number", "null"] }
         missingSourceTimestampLevelIds: { type: array, items: { type: string } }
         targetLevelSnapshot: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetLevelSnapshot" }] }
-      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
+      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, targetBufferPoints, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, selectedLevelPrice, targetDistanceTicks, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
     BacktestTrade:
       type: object
       properties:

@@ -2557,7 +2557,8 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
             ["Entry / stop risk", `${formatTradePrice(targetPlan.entryPrice)} / ${formatTradePrice(targetPlan.initialRiskPoints)} pt`],
             ["1R / selected target", `${formatTradePrice(targetPlan.initialRiskPoints === null ? null : targetPlan.direction === "long" ? targetPlan.entryPrice + targetPlan.initialRiskPoints : targetPlan.entryPrice - targetPlan.initialRiskPoints)} / ${formatTradePrice(targetPlan.targetPrice)}`],
             ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
-            ["Buffer", `${targetPlan.targetBufferTicks} ticks · ${targetPlan.placementMode}`],
+             ["Target buffer", `${targetPlan.targetBufferTicks} ticks · ${formatTradePrice(targetPlan.targetBufferPoints)} points · near side`],
+             ["Raw level / executable", `${formatTradePrice(targetPlan.selectedLevelPrice)} / ${formatTradePrice(targetPlan.targetPrice)} · ${targetPlan.targetDistanceTicks ?? "—"} ticks from entry`],
              ["Source provenance", targetPlan.missingSourceTimestampLevelIds.length === 0
                ? "Complete"
                : `${targetPlan.missingSourceTimestampLevelIds.length} level${targetPlan.missingSourceTimestampLevelIds.length === 1 ? "" : "s"} missing timestamp`],
@@ -2573,7 +2574,7 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
           <div>
             <div className="eyebrow text-muted-foreground">Skipped levels</div>
             <div className="mt-2 space-y-1">
-              {skippedLevels.length === 0 ? <div className="text-muted-foreground">None.</div> : skippedLevels.map((level) => <div key={`${level.id}-${level.reason}`} className="border-b border-border/60 py-1"><div className="flex justify-between gap-3"><span>{level.id}</span><span className="mono">{level.distanceTicks}t</span></div><div className="text-muted-foreground">{level.reason}</div></div>)}
+               {skippedLevels.length === 0 ? <div className="text-muted-foreground">None.</div> : skippedLevels.map((level) => <div key={`${level.id}-${level.reason}`} className="border-b border-border/60 py-1"><div className="flex justify-between gap-3"><span>{level.id}</span><span className="mono">{level.executableDistanceTicks ?? level.distanceTicks}t</span></div><div className="text-muted-foreground">{level.reason}</div><div className="mono text-[9px] text-muted-foreground">Raw {formatTradePrice(level.price)} → executable {formatTradePrice(level.executableTargetPrice)}{level.executableTargetR == null ? "" : ` · ${level.executableTargetR.toFixed(2)}R`}</div></div>)}
             </div>
           </div>
         </div>

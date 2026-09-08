@@ -2303,9 +2303,6 @@ function targetPlanForSnapshot(
   causalEntryOpenTime?: number,
   patienceOverride?: MarketSnapshot["patience"],
 ): KeyLevelTargetPlan {
-  if (!Number.isFinite(atrTicks)) {
-    throw new Error("Adaptive target planning requires a completed-candle ATR14 value.");
-  }
   const patience = patienceOverride
     ?? snapshot.reversalPatience
     ?? snapshot.patience;
@@ -2321,8 +2318,8 @@ function targetPlanForSnapshot(
       causalSourceCandles,
       causalContractSymbol,
     ),
-    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
-    targetBufferTicks: adaptiveExecutionManagement(atrTicks).targetBufferTicks,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    targetBufferTicks: 8,
     initialRiskPoints,
     contracts,
   });
@@ -3864,9 +3861,6 @@ function targetPlanForOccurrence(
   entryPrice: number | null,
 ): KeyLevelTargetPlan | null {
   if (entryPrice === null || !occurrence.direction) return null;
-  if (!Number.isFinite(occurrence.atrTicks)) {
-    throw new Error(`Adaptive target planning requires ATR14 provenance for occurrence ${occurrence.occurrenceId}.`);
-  }
   const snapshot = occurrence.targetLevelSnapshot ?? targetLevelSnapshotForOccurrence(occurrence, [
     ...(occurrence.targetLevelInputs ?? []),
     ...(typeof occurrence.finalizedNtzHigh === "number"
@@ -3882,13 +3876,12 @@ function targetPlanForOccurrence(
   const contracts = config.executionManagementFixedContracts;
   const stopPrice = strategyStopPriceForOccurrence(occurrence);
   const initialRiskPoints = stopPrice === null ? null : Math.abs(entryPrice - stopPrice);
-  const management = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   const plan = buildKeyLevelTargetPlan({
     direction: occurrence.direction,
     entryPrice,
     levels: snapshot.frozenLevelInputs,
-    placementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
-    targetBufferTicks: management.targetBufferTicks,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    targetBufferTicks: 8,
     initialRiskPoints,
     contracts,
   });
@@ -4136,17 +4129,6 @@ export function projectHistoricalTradeCandidates(
   }
   const candidateRecords: CandidateProjectionRecord[] = [];
   for (const occurrence of signalByPhysicalIdentity.values()) {
-    if (!Number.isFinite(occurrence.atrTicks)) {
-      rejected.push({
-        signalOccurrenceId: occurrence.occurrenceId,
-        reasonCodes: ["MISSING_ATR14_PROVENANCE"],
-        details: [
-          "Adaptive target planning requires a completed-candle ATR14 value at the occurrence cursor.",
-          "The candidate was rejected without applying a legacy target-buffer default.",
-        ],
-      });
-      continue;
-    }
     const candidateId = historicalCandidateId(occurrence);
     const datasetEntryCandle = executionContext?.dataset.candles.find((candle) =>
       candle.contractSymbol === occurrence.contractSymbol

@@ -2957,9 +2957,15 @@ export const SkippedTargetLevelReason = {
   INSUFFICIENT_REWARD_TO_RISK: 'INSUFFICIENT_REWARD_TO_RISK',
 } as const;
 
-export type SkippedTargetLevel = FrozenTargetLevel & {
+export type SkippedTargetLevel = FrozenTargetLevel & ({
   reason: SkippedTargetLevelReason;
-};
+  /** @nullable */
+  executableTargetPrice?: number | null;
+  /** @nullable */
+  executableDistanceTicks?: number | null;
+  /** @nullable */
+  executableTargetR?: number | null;
+});
 
 export interface TargetLevelSnapshot {
   frozenAt: string;
@@ -3021,6 +3027,13 @@ export const KeyLevelTargetPlanBufferPoints = {
   NUMBER_20: 20,
 } as const;
 
+export type KeyLevelTargetPlanTargetBufferPoints = typeof KeyLevelTargetPlanTargetBufferPoints[keyof typeof KeyLevelTargetPlanTargetBufferPoints];
+
+
+export const KeyLevelTargetPlanTargetBufferPoints = {
+  NUMBER_2: 2,
+} as const;
+
 /**
  * @nullable
  */
@@ -3053,6 +3066,7 @@ export interface KeyLevelTargetPlan {
   bufferPoints: KeyLevelTargetPlanBufferPoints;
   placementTicks: number;
   targetBufferTicks: number;
+  targetBufferPoints: KeyLevelTargetPlanTargetBufferPoints;
   /** @nullable */
   initialRiskPoints: number | null;
   /** @nullable */
@@ -3073,6 +3087,10 @@ export interface KeyLevelTargetPlan {
   /** @nullable */
   selectedTargetLevel: FrozenTargetLevel | null;
   subsequentTargetLevels: FrozenTargetLevel[];
+  /** @nullable */
+  selectedLevelPrice: number | null;
+  /** @nullable */
+  targetDistanceTicks: number | null;
   /** @nullable */
   targetPrice: number | null;
   fallbackUsed: boolean;

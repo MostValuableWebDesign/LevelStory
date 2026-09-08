@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v16-zone-aware-target-search";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v17-fixed-eight-tick-targets";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -34,7 +34,7 @@ export function formulaConfiguration(
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
       adaptiveManagement: {
         atrPeriod: config.executionManagementAtrPeriod,
-        targetBuffer: "clamp(ceil(atrTicks*0.05),1,2)",
+         targetBuffer: "fixed 8 MES ticks (2.00 points), near side",
         stopBuffer: "clamp(ceil(atrTicks*0.10),4,8)",
         maximumRisk: "clamp(ceil(atrTicks*1.50),20,40)",
         breakevenBars: 6,
@@ -43,12 +43,12 @@ export function formulaConfiguration(
         fixedContracts: config.executionManagementFixedContracts,
       },
       keyLevelTarget: {
-        targetPlanVersion: "key-level-target-search-v5-zone-aware-boundary",
-        candidatePlacementMode: "NEAR_SIDE_ADAPTIVE_TICKS",
+         targetPlanVersion: "key-level-target-search-v6-fixed-eight-tick-near-side",
+         candidatePlacementMode: "NEAR_SIDE_8_TICKS",
+         executableTargetBuffer: "8 MES ticks (2.00 points), entry-facing side",
         minimumTargetR: 1,
         maximumSearchDistance: "20 MES points",
-        fallback: "exactly 1R when no eligible level and no hard obstruction",
-        hardObstacleDisposition: "INSUFFICIENT_REWARD_TO_RISK",
+         fallback: "exactly 1R when no eligible level",
       },
       shadowContractsPerTrade: config.executionManagementFixedContracts,
       qualifyingKeyLevelInteraction: {

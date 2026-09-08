@@ -209,11 +209,11 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7NormalSlippageTicks: 1,
   phase7FastSlippageTicks: 2,
   phase7DefaultTargetDollars: 75,
-  profitTargetPlacement: "NEAR_SIDE_ADAPTIVE_TICKS",
+  profitTargetPlacement: "NEAR_SIDE_8_TICKS",
   phase7RunnerRetracementRatio: 0.4,
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
-  executionManagementVersion: "execution-management-v7-causal-target-search",
+  executionManagementVersion: "execution-management-v8-fixed-eight-tick-targets",
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,
@@ -367,12 +367,8 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");
   }
-  if (
-    config.profitTargetPlacement !== "NEAR_SIDE_ADAPTIVE_TICKS"
-    && config.profitTargetPlacement !== "NEAR_SIDE_8_TICKS"
-    && config.profitTargetPlacement !== "EXACT_LEVEL"
-  ) {
-    throw new Error("Invalid strategy configuration: profitTargetPlacement must use an adaptive near-side mode.");
+  if (config.profitTargetPlacement !== "NEAR_SIDE_8_TICKS") {
+    throw new Error("Invalid strategy configuration: profitTargetPlacement must use the fixed eight-tick near-side mode.");
   }
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");

@@ -1786,7 +1786,7 @@ function buildAnnotations(
       "selected-target-level",
       `Selected target level · ${selected.id}`,
       selected.price,
-      `${selected.type} · ${targetPlan.direction === "long" ? "lower boundary first" : "upper boundary first"}.`,
+       `${selected.type} · raw level evidence; the executable target is placed eight MES ticks (${targetPlan.targetBufferPoints ?? 2.00} points) on the entry-facing side.`,
       "blue",
     );
     const selectedAnnotation = lines.at(-1);
@@ -1823,10 +1823,8 @@ function buildAnnotations(
          ? "No eligible key-level target"
       : "Target",
     targetPrice,
-    targetPlan?.selectedTargetLevel
-      ? targetPlan.placementMode === "EXACT_LEVEL"
-         ? `Exact ${targetPlan.selectedTargetLevel.id} level; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
-        : `${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} ticks before ${targetPlan.selectedTargetLevel.id}; only levels within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points of entry qualify.`
+      targetPlan?.selectedTargetLevel
+       ? `TAKE PROFIT — ${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} TICKS BEFORE ${targetPlan.selectedTargetLevel.id}; raw level ${targetPlan.selectedLevelPrice ?? targetPlan.selectedTargetLevel.price}. Executable target is ${targetPlan.targetBufferPoints ?? 2.00} points near side; levels qualify by the buffered price within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points.`
        : targetPlan?.fallbackUsed
          ? "No eligible causal level passed the buffered 20-point search; the plan used exactly 1R."
          : targetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK"

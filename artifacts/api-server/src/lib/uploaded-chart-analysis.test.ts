@@ -75,11 +75,17 @@ test("private object paths are constrained to generated chart paths", () => {
 });
 
 test("a calibrated causal sequence reuses the Phase 5 patience predicate", () => {
-  const result = evaluateUploadedChart(extraction(), metadata, imageChecksum(Buffer.from("chart")));
+  const result = evaluateUploadedChart(extraction({
+    levels: [{ id: "visible-resistance", label: "Major resistance", kind: "major_resistance", price: 117, confidence: 0.96 }],
+  }), metadata, imageChecksum(Buffer.from("chart")));
   assert.equal(result.status, "Qualified setup—entry activated, outcome open");
   assert.equal(result.candidate?.source, "uploaded_chart");
-  assert.equal(result.candidate?.entryTriggerPrice, 104);
-  assert.equal(result.candidate?.stopPrice, 94);
+  assert.equal(result.candidate?.entryTriggerPrice, 103);
+  assert.equal(result.candidate?.stopPrice, 95);
+  assert.equal(result.candidate?.targetPrice, 115);
+  assert.equal(result.candidate?.targetPlan.selectedLevelPrice, 117);
+  assert.equal(result.candidate?.targetPlan.targetBufferTicks, 8);
+  assert.equal(result.candidate?.targetPlan.targetBufferPoints, 2);
   assert.equal(result.candidate?.pnl, null);
 });
 
@@ -113,7 +119,7 @@ test("duplicate detection compares causal identity instead of image filename", (
       contractSymbol: metadata.symbol,
       direction: "long",
       entryCandleOpenTime: "2026-09-04T13:40:00.000Z",
-      entryTriggerPrice: 104,
+       entryTriggerPrice: 103,
       primaryEdge: "PATIENCE_CANDLE_CONTINUATION",
     },
   }, result.candidate);

@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { patienceCandleEngine } from "./strategy/phase5.js";
 import type { Candle, Direction, TrendDirection } from "./strategy/types.js";
+import {
+  buildKeyLevelTargetPlan,
+  filterEligibleKeyLevelInputs,
+  type KeyLevelTargetPlan,
+} from "./strategy/key-level-targets.js";
 
 export const uploadedChartMetadataSchema = z.object({
   tradingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -107,6 +112,8 @@ export type UploadedChartCandidate = {
   entryTriggerPrice: number;
   stopPrice: number;
   targetPrice: number | null;
+  targetPlan: KeyLevelTargetPlan;
+  targetProvenance: "uploaded_chart_visible_levels";
   contracts: 2;
   riskDollars: number;
   evaluationCutoff: string;
@@ -139,7 +146,7 @@ export type UploadedChartEvaluation = {
 };
 
 const MODEL_VERSION = "gpt-5.4-mini";
-const FORMULA_VERSION = "phase5-uploaded-chart-v1";
+const FORMULA_VERSION = "phase5-uploaded-chart-v2-fixed-eight-tick-target";
 
 export function imageChecksum(bytes: Buffer): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");
@@ -276,9 +283,27 @@ export function evaluateUploadedChart(
   if (!extraction.entryActivated) {
     return { status: "Qualified setup—entry not activated", candidate: null, missingEvidence: ["Entry activation is not visible"], causalCutoff: cutoff, strategyDetail: engine.detail, riskApproved: false };
   }
-  const targetPrice = extraction.levels.find((level) => level.kind === "target" && level.price !== null)?.price ?? null;
   const riskPoints = Math.abs(engine.triggerPrice - engine.strategyStopPrice);
   const riskDollars = Number((riskPoints * 5 * 2).toFixed(2));
+  const visibleTargetLevels = filterEligibleKeyLevelInputs(
+    extraction.levels
+      .filter((level) => level.price !== null)
+      .map((level) => ({
+        id: `uploaded:${level.id}`,
+        type: `${level.kind} ${level.label}`,
+        price: level.price,
+        sourceTimestamp: null,
+      })),
+  );
+  const targetPlan = buildKeyLevelTargetPlan({
+    direction,
+    entryPrice: engine.triggerPrice,
+    levels: visibleTargetLevels,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    targetBufferTicks: 8,
+    initialRiskPoints: riskPoints,
+    contracts: 2,
+  });
   const candidate: UploadedChartCandidate = {
     candidateId: `uploaded:${checksum.slice(0, 20)}:${entry.openTime}`,
     source: "uploaded_chart",
@@ -291,7 +316,9 @@ export function evaluateUploadedChart(
     entryDecisionCandle: { openTime: new Date(entry.openTime).toISOString(), closeTime: new Date(entry.closeTime).toISOString() },
     entryTriggerPrice: engine.triggerPrice,
     stopPrice: engine.strategyStopPrice,
-    targetPrice: targetPrice ?? null,
+    targetPrice: targetPlan.targetPrice,
+    targetPlan,
+    targetProvenance: "uploaded_chart_visible_levels",
     contracts: 2,
     riskDollars,
     evaluationCutoff: cutoff,
@@ -306,7 +333,11 @@ export function evaluateUploadedChart(
   return {
     status: candidate.outcome === "closed_modeled" ? "Qualified setup—closed modeled Shadow trade" : "Qualified setup—entry activated, outcome open",
     candidate,
-    missingEvidence: candidate.targetPrice === null ? ["Authoritative target level"] : [],
+    missingEvidence: candidate.targetPrice === null
+      ? ["Authoritative visible key level or usable 1R fallback"]
+      : targetPlan.fallbackUsed
+        ? ["No visible key level met the buffered distance/R rules; using the exact 1R fallback."]
+        : [],
     causalCutoff: cutoff,
     strategyDetail: engine.detail,
     riskApproved: riskDollars > 0 && riskDollars <= 500,

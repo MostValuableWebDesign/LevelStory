@@ -1,8 +1,8 @@
 import type { Direction } from "./types.js";
 
 export const EXECUTION_MANAGEMENT_ATR_PERIOD = 14;
-export const MIN_TARGET_BUFFER_TICKS = 1;
-export const MAX_TARGET_BUFFER_TICKS = 2;
+export const MIN_TARGET_BUFFER_TICKS = 8;
+export const MAX_TARGET_BUFFER_TICKS = 8;
 // Phase 5 still accepts the historical signal-buffer range; candidate-owned
 // execution uses FIXED_STOP_BUFFER_TICKS below.
 export const MIN_STOP_BUFFER_TICKS = 4;
@@ -69,7 +69,7 @@ export function adaptiveExecutionManagement(atrTicks: number | null): AdaptiveEx
   const safeAtrTicks = Number.isFinite(atrTicks) ? Math.max(0, atrTicks!) : 0;
   return {
     atrTicks: safeAtrTicks,
-    targetBufferTicks: boundedCeil(safeAtrTicks * 0.05, MIN_TARGET_BUFFER_TICKS, MAX_TARGET_BUFFER_TICKS),
+    targetBufferTicks: MIN_TARGET_BUFFER_TICKS,
     stopBufferTicks: FIXED_STOP_BUFFER_TICKS,
     runnerBufferTicks: boundedCeil(safeAtrTicks * 0.10, RUNNER_BUFFER_MIN_TICKS, RUNNER_BUFFER_MAX_TICKS),
   };

@@ -64,3 +64,4 @@
 - [Unlimited confirmed entries](unlimited-confirmed-entries.md) — evaluate every eligible Early ORB P→E sequence; do not cap confirmed entries per direction.
 - [Early ORB provenance](early-orb-provenance.md) — identify merged Early ORB occurrences from arm/provenance metadata, not only optional evidence or canonical strategy labels.
 - [Visual replay timeout fallback](visual-replay-timeout-fallback.md) — stream validated snapshots; on timeout expose only same-request or worker-emitted partial evidence, never unrelated data.
+- [Uploaded chart target authority](uploaded-chart-target-authority.md) — visible chart targets must pass through the shared key-level planner; never trust a model-emitted executable target directly.

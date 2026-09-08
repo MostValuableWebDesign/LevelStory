@@ -431,7 +431,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
-            cacheVersion: "qualification-batch-v5-adaptive-target-runner-audit",
+            cacheVersion: "qualification-batch-v6-fixed-eight-tick-target-runner-audit",
           formulaHash: formulaConfigurationHash(request, activeShadowStrategySnapshot().config),
           request,
           risk,
@@ -901,7 +901,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       const preparationMs = Date.now() - preparationStartedAt;
       const cacheLookupStartedAt = Date.now();
       const cacheKey = buildBacktestCacheKey({
-        cacheVersion: "causal-backtest-v6-adaptive-target-runner-audit",
+        cacheVersion: "causal-backtest-v7-fixed-eight-tick-target-runner-audit",
         formulaHash: formulaConfigurationHash(parsed.data, activeShadowStrategySnapshot().config),
         request: parsed.data,
         risk,
