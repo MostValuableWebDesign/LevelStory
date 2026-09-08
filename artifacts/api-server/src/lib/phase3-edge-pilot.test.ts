@@ -274,7 +274,7 @@ function reconcileSyntheticFixture(input: Parameters<typeof reconcileFixture>[0]
 test("Phase 3 manifest is immutable and stable across creation timestamps", () => {
   const first = buildPhase3PilotManifest({ dataset: dataset(), request, createdAt: "2026-08-30T12:00:00.000Z" });
   const second = buildPhase3PilotManifest({ dataset: dataset(), request, createdAt: "2026-08-30T12:01:00.000Z" });
-  assert.equal(first.manifestVersion, "phase3-edge-validation-v1");
+  assert.equal(first.manifestVersion, "phase3-edge-validation-v2-account-single-active-trade");
   assert.equal(first.manifestHash, second.manifestHash);
   assert.equal(first.source.selectedDates.length, 30);
   assert.equal(first.source.inSampleDates.length, 20);

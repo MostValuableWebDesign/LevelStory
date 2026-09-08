@@ -4691,6 +4691,14 @@ export const VisualValidationTradeCandidatePeriod = {
   out_of_sample: 'out_of_sample',
 } as const;
 
+export type VisualValidationTradeCandidateAccountEntryStatus = typeof VisualValidationTradeCandidateAccountEntryStatus[keyof typeof VisualValidationTradeCandidateAccountEntryStatus];
+
+
+export const VisualValidationTradeCandidateAccountEntryStatus = {
+  ENTERED: 'ENTERED',
+  BLOCKED_ACTIVE_POSITION: 'BLOCKED_ACTIVE_POSITION',
+} as const;
+
 export type VisualValidationTradeCandidateCausalEvidenceItemKind = typeof VisualValidationTradeCandidateCausalEvidenceItemKind[keyof typeof VisualValidationTradeCandidateCausalEvidenceItemKind];
 
 
@@ -4705,6 +4713,39 @@ export type VisualValidationTradeCandidateCausalEvidenceItem = {
   timestamp: string;
   detail: string;
 };
+
+export type AccountEntryBlockReason = typeof AccountEntryBlockReason[keyof typeof AccountEntryBlockReason];
+
+
+export const AccountEntryBlockReason = {
+  ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION: 'ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION',
+} as const;
+
+export type AccountEntryBlockBlockingStatus = typeof AccountEntryBlockBlockingStatus[keyof typeof AccountEntryBlockBlockingStatus];
+
+
+export const AccountEntryBlockBlockingStatus = {
+  closed: 'closed',
+  open: 'open',
+  unscored: 'unscored',
+} as const;
+
+export interface AccountEntryBlock {
+  reason: AccountEntryBlockReason;
+  blockedAt: string;
+  blockingTradeId: string;
+  blockingCandidateId: string;
+  blockingSignalOccurrenceId: string;
+  blockingEntryTime: string;
+  /** @nullable */
+  blockingFullExitTime: string | null;
+  blockingStatus: AccountEntryBlockBlockingStatus;
+  /** @minimum 1 */
+  blockingContracts: number;
+  /** @minimum 0 */
+  blockingRemainingContracts: number;
+  blockingRunnerActive: boolean;
+}
 
 export interface VisualValidationTradeCandidate {
   /** Canonical identity: contract, New York trading date, entry candle, and direction. */
@@ -4725,6 +4766,8 @@ export interface VisualValidationTradeCandidate {
   setupGrade: VisualValidationTradeCandidateSetupGrade;
   period: VisualValidationTradeCandidatePeriod;
   outcome: string;
+  accountEntryStatus?: VisualValidationTradeCandidateAccountEntryStatus;
+  accountEntryBlock?: AccountEntryBlock;
   causalEvidence: VisualValidationTradeCandidateCausalEvidenceItem[];
 }
 
@@ -4882,6 +4925,63 @@ export interface ShadowAccountReplayBreakdown {
   expectancyPerTrade: number;
 }
 
+export type ShadowAccountReplayBlockedCandidateDirection = typeof ShadowAccountReplayBlockedCandidateDirection[keyof typeof ShadowAccountReplayBlockedCandidateDirection];
+
+
+export const ShadowAccountReplayBlockedCandidateDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type ShadowAccountReplayBlockedCandidatePeriod = typeof ShadowAccountReplayBlockedCandidatePeriod[keyof typeof ShadowAccountReplayBlockedCandidatePeriod];
+
+
+export const ShadowAccountReplayBlockedCandidatePeriod = {
+  in_sample: 'in_sample',
+  out_of_sample: 'out_of_sample',
+} as const;
+
+export type ShadowAccountReplayBlockedCandidateReason = typeof ShadowAccountReplayBlockedCandidateReason[keyof typeof ShadowAccountReplayBlockedCandidateReason];
+
+
+export const ShadowAccountReplayBlockedCandidateReason = {
+  ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION: 'ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION',
+} as const;
+
+export type ShadowAccountReplayBlockedCandidateBlockingStatus = typeof ShadowAccountReplayBlockedCandidateBlockingStatus[keyof typeof ShadowAccountReplayBlockedCandidateBlockingStatus];
+
+
+export const ShadowAccountReplayBlockedCandidateBlockingStatus = {
+  closed: 'closed',
+  open: 'open',
+  unscored: 'unscored',
+} as const;
+
+export interface ShadowAccountReplayBlockedCandidate {
+  candidateId: string;
+  signalOccurrenceId: string;
+  tradingDate: string;
+  entryTime: string;
+  contractSymbol: string;
+  direction: ShadowAccountReplayBlockedCandidateDirection;
+  primaryEdge: string;
+  period: ShadowAccountReplayBlockedCandidatePeriod;
+  reason: ShadowAccountReplayBlockedCandidateReason;
+  blockedAt: string;
+  blockingTradeId: string;
+  blockingCandidateId: string;
+  blockingSignalOccurrenceId: string;
+  blockingEntryTime: string;
+  /** @nullable */
+  blockingFullExitTime: string | null;
+  blockingStatus: ShadowAccountReplayBlockedCandidateBlockingStatus;
+  /** @minimum 1 */
+  blockingContracts: number;
+  /** @minimum 0 */
+  blockingRemainingContracts: number;
+  blockingRunnerActive: boolean;
+}
+
 export interface ShadowAccountReplay {
   /** @pattern ^[0-9a-fA-F-]{36}$ */
   reviewSetId: string;
@@ -4951,6 +5051,9 @@ export interface ShadowAccountReplay {
   candidateProjectionVersion: string;
   /** @minLength 1 */
   executionManagementVersion: string;
+  /** @minLength 1 */
+  accountPositionStateVersion: string;
+  blockedCandidates: ShadowAccountReplayBlockedCandidate[];
   warnings: string[];
 }
 
@@ -5041,6 +5144,7 @@ export interface VisualValidationSet {
   strategyVersion: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  accountPositionStateVersion: string;
   snapshotProjectionVersion: string;
   chartProjectionVersion: string;
   sessionCalendarVersion: string;

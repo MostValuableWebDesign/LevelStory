@@ -2821,7 +2821,7 @@ test("same-arm short occurrences retain independent P-owned stop geometry", () =
   assert.equal(projection.rejected.length, 0);
 });
 
-test("a non-stop first outcome does not suppress a later confirmed occurrence", () => {
+test("an active first position blocks a later confirmed occurrence without hiding it", () => {
   const first = managedAttemptOccurrence({
     armId: "reentry-short-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
@@ -2844,8 +2844,11 @@ test("a non-stop first outcome does not suppress a later confirmed occurrence", 
   });
 
   assert.equal(projection.candidates.length, 2);
-  assert.equal(projection.authoritativeTrades.length, 2);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["session close", "session close"]);
+  assert.equal(projection.authoritativeTrades.length, 1);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["session close"]);
+  assert.equal(projection.candidates[1]?.accountEntryStatus, "BLOCKED_ACTIVE_POSITION");
+  assert.equal(projection.candidates[1]?.accountEntryBlock?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
+  assert.equal(projection.candidates[1]?.accountEntryBlock?.blockingCandidateId, projection.candidates[0]?.candidateId);
   assert.equal(projection.rejected.length, 0);
 });
 

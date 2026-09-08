@@ -4405,6 +4405,8 @@ components:
         setupGrade: { type: string, enum: [A, A+, A++] }
         period: { type: string, enum: [in_sample, out_of_sample] }
         outcome: { type: string }
+        accountEntryStatus: { type: string, enum: [ENTERED, BLOCKED_ACTIVE_POSITION] }
+        accountEntryBlock: { $ref: "#/components/schemas/AccountEntryBlock" }
         causalEvidence:
           type: array
           items:
@@ -4415,6 +4417,21 @@ components:
               detail: { type: string }
             required: [kind, timestamp, detail]
       required: [candidateId, snapshotId, signalOccurrenceId, contractSymbol, tradingDate, entryCandleOpenTime, entryCandleCloseTime, direction, entryTriggerPrice, primaryEdge, matchedEdges, supportingConfluences, setupGrade, period, outcome, causalEvidence]
+    AccountEntryBlock:
+      type: object
+      properties:
+        reason: { type: string, enum: [ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION] }
+        blockedAt: { type: string, format: date-time }
+        blockingTradeId: { type: string }
+        blockingCandidateId: { type: string }
+        blockingSignalOccurrenceId: { type: string }
+        blockingEntryTime: { type: string, format: date-time }
+        blockingFullExitTime: { type: ["string", "null"], format: date-time }
+        blockingStatus: { type: string, enum: [closed, open, unscored] }
+        blockingContracts: { type: number, minimum: 1 }
+        blockingRemainingContracts: { type: number, minimum: 0 }
+        blockingRunnerActive: { type: boolean }
+      required: [reason, blockedAt, blockingTradeId, blockingCandidateId, blockingSignalOccurrenceId, blockingEntryTime, blockingFullExitTime, blockingStatus, blockingContracts, blockingRemainingContracts, blockingRunnerActive]
     VisualValidationAccountReplayTrade:
       type: object
       properties:
@@ -4528,10 +4545,37 @@ components:
         sourceFingerprint: { type: string, minLength: 1 }
         candidateProjectionVersion: { type: string, minLength: 1 }
         executionManagementVersion: { type: string, minLength: 1 }
+        accountPositionStateVersion: { type: string, minLength: 1 }
+        blockedCandidates:
+          type: array
+          items: { $ref: "#/components/schemas/ShadowAccountReplayBlockedCandidate" }
         warnings:
           type: array
           items: { type: string }
-      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, processedDates, datesWithTrades, datesWithoutTrades, byDate, byPrimaryEdge, byDirection, bestTrade, worstTrade, bestTradingDay, worstTradingDay, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, warnings]
+      required: [reviewSetId, startingBalance, endingRealizedBalance, realizedNetPnl, percentReturn, candidateTrades, enteredTrades, closedTrades, openTrades, unscoredTrades, wins, losses, winRate, averageWin, averageLoss, profitFactor, maxDrawdown, maxConsecutiveWins, maxConsecutiveLosses, expectancyPerTrade, processedDates, datesWithTrades, datesWithoutTrades, byDate, byPrimaryEdge, byDirection, bestTrade, worstTrade, bestTradingDay, worstTradingDay, inSample, outOfSample, equityCurve, ledger, stale, cacheKey, formulaHash, sourceFingerprint, candidateProjectionVersion, executionManagementVersion, accountPositionStateVersion, blockedCandidates, warnings]
+    ShadowAccountReplayBlockedCandidate:
+      type: object
+      properties:
+        candidateId: { type: string }
+        signalOccurrenceId: { type: string }
+        tradingDate: { type: string }
+        entryTime: { type: string, format: date-time }
+        contractSymbol: { type: string }
+        direction: { type: string, enum: [long, short] }
+        primaryEdge: { type: string }
+        period: { type: string, enum: [in_sample, out_of_sample] }
+        reason: { type: string, enum: [ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION] }
+        blockedAt: { type: string, format: date-time }
+        blockingTradeId: { type: string }
+        blockingCandidateId: { type: string }
+        blockingSignalOccurrenceId: { type: string }
+        blockingEntryTime: { type: string, format: date-time }
+        blockingFullExitTime: { type: ["string", "null"], format: date-time }
+        blockingStatus: { type: string, enum: [closed, open, unscored] }
+        blockingContracts: { type: number, minimum: 1 }
+        blockingRemainingContracts: { type: number, minimum: 0 }
+        blockingRunnerActive: { type: boolean }
+      required: [candidateId, signalOccurrenceId, tradingDate, entryTime, contractSymbol, direction, primaryEdge, period, reason, blockedAt, blockingTradeId, blockingCandidateId, blockingSignalOccurrenceId, blockingEntryTime, blockingFullExitTime, blockingStatus, blockingContracts, blockingRemainingContracts, blockingRunnerActive]
     ShadowAccountReplayBreakdown:
       type: object
       properties:
@@ -4573,6 +4617,7 @@ components:
         strategyVersion: { type: string }
         candidateProjectionVersion: { type: string }
         executionManagementVersion: { type: string }
+        accountPositionStateVersion: { type: string }
         snapshotProjectionVersion: { type: string }
         chartProjectionVersion: { type: string }
         sessionCalendarVersion: { type: string }
@@ -4624,7 +4669,7 @@ components:
                 outsidePrimaryWindowOccurrences: { type: number, minimum: 0 }
               required: [breakoutOccurrences, qualifyingPullbacks, patienceCandidates, expiredPatienceCandidates, confirmedPairs, riskApprovedEntries, primaryWindowOccurrences, outsidePrimaryWindowOccurrences]
           required: [sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, window]
-      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, generationOrigin, cacheKey, cacheKeyVersion, strategyVersion, candidateProjectionVersion, executionManagementVersion, snapshotProjectionVersion, chartProjectionVersion, sessionCalendarVersion, source, symbol, request, reviewPeriod, processedDates, snapshots, tradeCandidates, accountReplayTrades, categoryCoverage, defaultSelectionReason]
+      required: [reviewSetId, createdAt, buildId, currentBuildId, stale, formulaHash, formulaVersion, sourceFingerprint, generationOrigin, cacheKey, cacheKeyVersion, strategyVersion, candidateProjectionVersion, executionManagementVersion, accountPositionStateVersion, snapshotProjectionVersion, chartProjectionVersion, sessionCalendarVersion, source, symbol, request, reviewPeriod, processedDates, snapshots, tradeCandidates, accountReplayTrades, categoryCoverage, defaultSelectionReason]
     VisualValidationGenerationPhase:
       type: string
       enum: [preparing, loading_sessions, replaying_sessions, building_ledger, projecting_candidates, building_snapshots, completed]

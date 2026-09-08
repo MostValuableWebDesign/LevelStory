@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AccountEntryBlock } from './accountEntryBlock';
+import type { VisualValidationTradeCandidateAccountEntryStatus } from './visualValidationTradeCandidateAccountEntryStatus';
 import type { VisualValidationTradeCandidateCausalEvidenceItem } from './visualValidationTradeCandidateCausalEvidenceItem';
 import type { VisualValidationTradeCandidateDirection } from './visualValidationTradeCandidateDirection';
 import type { VisualValidationTradeCandidatePeriod } from './visualValidationTradeCandidatePeriod';
@@ -30,5 +32,7 @@ export interface VisualValidationTradeCandidate {
   setupGrade: VisualValidationTradeCandidateSetupGrade;
   period: VisualValidationTradeCandidatePeriod;
   outcome: string;
+  accountEntryStatus?: VisualValidationTradeCandidateAccountEntryStatus;
+  accountEntryBlock?: AccountEntryBlock;
   causalEvidence: VisualValidationTradeCandidateCausalEvidenceItem[];
 }

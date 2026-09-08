@@ -130,10 +130,13 @@ test("open trades are listed but excluded from realized account metrics", () => 
     [snapshot(open), snapshot(trade("closed", 100, "closed", { entryTime: "2026-08-25T14:35:00.000Z" }))],
   ));
 
-  assert.equal(result.enteredTrades, 2);
+  assert.equal(result.enteredTrades, 1);
   assert.equal(result.openTrades, 1);
-  assert.equal(result.closedTrades, 1);
-  assert.equal(result.realizedNetPnl, 100);
+  assert.equal(result.closedTrades, 0);
+  assert.equal(result.blockedCandidates.length, 1);
+  assert.equal(result.blockedCandidates[0]?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
+  assert.equal(result.blockedCandidates[0]?.blockingCandidateId, "open");
+  assert.equal(result.realizedNetPnl, 0);
   assert.equal(result.ledger[0]?.netPnl, null);
   assert.equal(result.equityCurve[0]?.status, "start");
   assert.equal(result.equityCurve[1]?.status, "open");

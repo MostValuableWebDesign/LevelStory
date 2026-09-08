@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './accountEntryBlock';
+export * from './accountEntryBlockBlockingStatus';
+export * from './accountEntryBlockReason';
 export * from './activeShadowStrategy';
 export * from './activeShadowStrategyConfig';
 export * from './activeShadowStrategySource';
@@ -328,6 +331,11 @@ export * from './setupEvaluationSetupType';
 export * from './setupPerformance';
 export * from './setupRule';
 export * from './shadowAccountReplay';
+export * from './shadowAccountReplayBlockedCandidate';
+export * from './shadowAccountReplayBlockedCandidateBlockingStatus';
+export * from './shadowAccountReplayBlockedCandidateDirection';
+export * from './shadowAccountReplayBlockedCandidatePeriod';
+export * from './shadowAccountReplayBlockedCandidateReason';
 export * from './shadowAccountReplayBreakdown';
 export * from './shadowAccountReplayEquityCurveItem';
 export * from './shadowAccountReplayEquityCurveItemStatus';
@@ -457,6 +465,7 @@ export * from './visualValidationTeachingSetup';
 export * from './visualValidationTeachingValidation';
 export * from './visualValidationTeachingValidationLevelInteractionsItem';
 export * from './visualValidationTradeCandidate';
+export * from './visualValidationTradeCandidateAccountEntryStatus';
 export * from './visualValidationTradeCandidateCausalEvidenceItem';
 export * from './visualValidationTradeCandidateCausalEvidenceItemKind';
 export * from './visualValidationTradeCandidateDirection';

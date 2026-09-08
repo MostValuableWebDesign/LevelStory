@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v19-causal-replay-context-driving-member-pending";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v20-account-single-active-trade";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;

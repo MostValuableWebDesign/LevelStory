@@ -42,6 +42,7 @@ export interface VisualValidationSet {
   strategyVersion: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  accountPositionStateVersion: string;
   snapshotProjectionVersion: string;
   chartProjectionVersion: string;
   sessionCalendarVersion: string;

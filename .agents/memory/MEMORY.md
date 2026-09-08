@@ -67,3 +67,4 @@
 - [Uploaded chart target authority](uploaded-chart-target-authority.md) — visible chart targets must pass through the shared key-level planner; never trust a model-emitted executable target directly.
 - [Causal dynamic target ratchet](causal-dynamic-target-ratchet.md) — evaluate indicator proposals after candle exits and apply only monotonic, non-crossing results from the next candle.
 - [Replay cursor identity](replay-cursor-identity.md) — merge partial and completed snapshots by the expected E boundary, not observed completion evidence.
+- [Account-wide position arbitration](account-position-arbitration.md) — historical and Shadow Replay share one chronological active-position gate; blocked candidates remain evidence, never P/L.

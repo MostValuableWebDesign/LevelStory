@@ -7490,6 +7490,12 @@ export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSourceFing
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
+export const getVisualValidationSetResponseTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin = 0;
+
+
+
+export const getVisualValidationSetResponseAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin = 0;
+
 
 
 export const getVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
@@ -7538,6 +7544,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "strategyVersion": zod.string(),
   "candidateProjectionVersion": zod.string(),
   "executionManagementVersion": zod.string(),
+  "accountPositionStateVersion": zod.string(),
   "snapshotProjectionVersion": zod.string(),
   "chartProjectionVersion": zod.string(),
   "sessionCalendarVersion": zod.string(),
@@ -7793,6 +7800,20 @@ export const GetVisualValidationSetResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getVisualValidationSetResponseTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -7816,6 +7837,20 @@ export const GetVisualValidationSetResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getVisualValidationSetResponseAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -8511,6 +8546,12 @@ export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSourceF
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
+export const createVisualValidationSetResponseTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin = 0;
+
+
+
+export const createVisualValidationSetResponseAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin = 0;
+
 
 
 export const createVisualValidationSetResponseCategoryCoverageItemCountMin = 0;
@@ -8559,6 +8600,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "strategyVersion": zod.string(),
   "candidateProjectionVersion": zod.string(),
   "executionManagementVersion": zod.string(),
+  "accountPositionStateVersion": zod.string(),
   "snapshotProjectionVersion": zod.string(),
   "chartProjectionVersion": zod.string(),
   "sessionCalendarVersion": zod.string(),
@@ -8814,6 +8856,20 @@ export const CreateVisualValidationSetResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(createVisualValidationSetResponseTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -8837,6 +8893,20 @@ export const CreateVisualValidationSetResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(createVisualValidationSetResponseAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -9633,6 +9703,10 @@ export const getShadowAccountReplayResponseEquityCurveItemTradeNumberMin = 0;
 
 
 
+export const getShadowAccountReplayResponseBlockedCandidatesItemBlockingRemainingContractsMin = 0;
+
+
+
 export const GetShadowAccountReplayResponse = zod.object({
   "reviewSetId": zod.string().regex(getShadowAccountReplayResponseReviewSetIdRegExp),
   "startingBalance": zod.number(),
@@ -9852,6 +9926,28 @@ export const GetShadowAccountReplayResponse = zod.object({
   "sourceFingerprint": zod.string().min(1),
   "candidateProjectionVersion": zod.string().min(1),
   "executionManagementVersion": zod.string().min(1),
+  "accountPositionStateVersion": zod.string().min(1),
+  "blockedCandidates": zod.array(zod.object({
+  "candidateId": zod.string(),
+  "signalOccurrenceId": zod.string(),
+  "tradingDate": zod.string(),
+  "entryTime": zod.coerce.date(),
+  "contractSymbol": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "primaryEdge": zod.string(),
+  "period": zod.enum(['in_sample', 'out_of_sample']),
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getShadowAccountReplayResponseBlockedCandidatesItemBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+})),
   "warnings": zod.array(zod.string())
 })
 
@@ -9979,6 +10075,12 @@ export const startVisualValidationGenerationJobResponseResultSnapshotsItemReview
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
+export const startVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin = 0;
+
+
+
+export const startVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin = 0;
+
 
 
 export const startVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
@@ -10042,6 +10144,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "strategyVersion": zod.string(),
   "candidateProjectionVersion": zod.string(),
   "executionManagementVersion": zod.string(),
+  "accountPositionStateVersion": zod.string(),
   "snapshotProjectionVersion": zod.string(),
   "chartProjectionVersion": zod.string(),
   "sessionCalendarVersion": zod.string(),
@@ -10297,6 +10400,20 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(startVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -10320,6 +10437,20 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(startVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -10998,6 +11129,12 @@ export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemRe
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
+export const getLatestVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin = 0;
+
+
+
+export const getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin = 0;
+
 
 
 export const getLatestVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
@@ -11061,6 +11198,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "strategyVersion": zod.string(),
   "candidateProjectionVersion": zod.string(),
   "executionManagementVersion": zod.string(),
+  "accountPositionStateVersion": zod.string(),
   "snapshotProjectionVersion": zod.string(),
   "chartProjectionVersion": zod.string(),
   "sessionCalendarVersion": zod.string(),
@@ -11316,6 +11454,20 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getLatestVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -11339,6 +11491,20 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getLatestVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -12024,6 +12190,12 @@ export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTe
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingSupersedesReviewIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
+export const getVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin = 0;
+
+
+
+export const getVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin = 0;
+
 
 
 export const getVisualValidationGenerationJobResponseResultCategoryCoverageItemCountMin = 0;
@@ -12087,6 +12259,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "strategyVersion": zod.string(),
   "candidateProjectionVersion": zod.string(),
   "executionManagementVersion": zod.string(),
+  "accountPositionStateVersion": zod.string(),
   "snapshotProjectionVersion": zod.string(),
   "chartProjectionVersion": zod.string(),
   "sessionCalendarVersion": zod.string(),
@@ -12342,6 +12515,20 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getVisualValidationGenerationJobResponseResultTradeCandidatesItemAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),
@@ -12365,6 +12552,20 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "setupGrade": zod.enum(['A', 'A+', 'A++']),
   "period": zod.enum(['in_sample', 'out_of_sample']),
   "outcome": zod.string(),
+  "accountEntryStatus": zod.enum(['ENTERED', 'BLOCKED_ACTIVE_POSITION']).optional(),
+  "accountEntryBlock": zod.object({
+  "reason": zod.enum(['ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION']),
+  "blockedAt": zod.coerce.date(),
+  "blockingTradeId": zod.string(),
+  "blockingCandidateId": zod.string(),
+  "blockingSignalOccurrenceId": zod.string(),
+  "blockingEntryTime": zod.coerce.date(),
+  "blockingFullExitTime": zod.coerce.date().nullable(),
+  "blockingStatus": zod.enum(['closed', 'open', 'unscored']),
+  "blockingContracts": zod.number().min(1),
+  "blockingRemainingContracts": zod.number().min(getVisualValidationGenerationJobResponseResultAccountReplayTradesItemCandidateAccountEntryBlockBlockingRemainingContractsMin),
+  "blockingRunnerActive": zod.boolean()
+}).optional(),
   "causalEvidence": zod.array(zod.object({
   "kind": zod.enum(['level', 'patience', 'entry']),
   "timestamp": zod.coerce.date(),

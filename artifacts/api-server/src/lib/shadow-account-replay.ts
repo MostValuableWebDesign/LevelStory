@@ -1,4 +1,10 @@
 import type { BacktestTrade } from "./phase9.js";
+import {
+  ACCOUNT_POSITION_STATE_VERSION,
+  accountEntryBlockFor,
+  activeAccountPositionFromTrade,
+  type AccountEntryBlock,
+} from "./account-position-gate.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { simulateOhlcvExecution, validateIndicatorReplayContext, type OhlcvCandle } from "./strategy/ohlcv-execution.js";
 import type {
@@ -114,6 +120,8 @@ export type ShadowAccountReplay = {
   sourceFingerprint: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  accountPositionStateVersion: string;
+  blockedCandidates: ShadowAccountReplayBlockedCandidate[];
   rejectedCandidates: ShadowAccountReplayRejectedCandidate[];
   warnings: string[];
 };
@@ -124,6 +132,17 @@ export type ShadowAccountReplayRejectedCandidate = {
   tradingDate: string;
   reason: "INSUFFICIENT_REWARD_TO_RISK";
   targetPlan: KeyLevelTargetPlan;
+};
+
+export type ShadowAccountReplayBlockedCandidate = AccountEntryBlock & {
+  candidateId: string;
+  signalOccurrenceId: string;
+  tradingDate: string;
+  entryTime: string;
+  contractSymbol: string;
+  direction: VisualValidationTradeCandidate["direction"];
+  primaryEdge: string;
+  period: VisualValidationTradeCandidate["period"];
 };
 
 type ReplayTradeResult = BacktestTrade | ShadowAccountReplayRejectedCandidate;
@@ -539,7 +558,9 @@ export function buildShadowAccountReplay(
   ])].sort();
   let runningBalance = startingBalance;
   const ledger: ShadowAccountReplayTrade[] = [];
+  const blockedCandidates: ShadowAccountReplayBlockedCandidate[] = [];
   const rejectedCandidates: ShadowAccountReplayRejectedCandidate[] = [];
+  const activePositions: ReturnType<typeof activeAccountPositionFromTrade>[] = [];
   const equityCurve: ShadowAccountReplay["equityCurve"] = [];
   equityCurve.push({
     tradeNumber: 0,
@@ -561,6 +582,36 @@ export function buildShadowAccountReplay(
     const trade = replayResult;
     const unscored = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
     const closed = !unscored && trade.exitTime !== null && trade.outcome !== "open";
+    const accountPosition = activeAccountPositionFromTrade({
+      tradeId: trade.id,
+      candidateId: candidate.candidateId,
+      signalOccurrenceId: candidate.signalOccurrenceId,
+      entryTime: trade.entryTime,
+      exitTime: closed ? trade.exitTime : null,
+      status: unscored ? "unscored" : closed ? "closed" : "open",
+      contracts: contractsPerTrade,
+      remainingContracts: trade.audit?.remainingQuantity ?? (closed ? 0 : contractsPerTrade),
+      runnerActive: trade.audit?.runnerActivated === true && trade.audit.runnerExited !== true,
+    });
+    const accountBlock = activePositions
+      .map((position) => accountEntryBlockFor(position, trade.entryTime))
+      .find((block): block is AccountEntryBlock => block !== null);
+    if (accountBlock) {
+      blockedCandidates.push({
+        ...accountBlock,
+        candidateId: candidate.candidateId,
+        signalOccurrenceId: candidate.signalOccurrenceId,
+        tradingDate: candidate.tradingDate,
+        entryTime: trade.entryTime,
+        contractSymbol: candidate.contractSymbol,
+        direction: candidate.direction,
+        primaryEdge: candidate.primaryEdge,
+        period: candidate.period,
+      });
+      warnings.push(`Blocked candidate ${candidate.candidateId}: ${accountBlock.reason} by ${accountBlock.blockingCandidateId}.`);
+      continue;
+    }
+    activePositions.push(accountPosition);
     const status = unscored ? "unscored" as const : closed ? "closed" as const : "open" as const;
     const netPnl = closed ? roundMoney(trade.netPnl) : null;
     if (netPnl !== null) runningBalance = roundMoney(runningBalance + netPnl);
@@ -672,6 +723,8 @@ export function buildShadowAccountReplay(
     sourceFingerprint: set.sourceFingerprint,
     candidateProjectionVersion: set.candidateProjectionVersion,
     executionManagementVersion: set.executionManagementVersion,
+    accountPositionStateVersion: ACCOUNT_POSITION_STATE_VERSION,
+    blockedCandidates,
     rejectedCandidates,
     warnings: [...new Set(warnings)],
   };

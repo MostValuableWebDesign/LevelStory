@@ -8,6 +8,7 @@ import {
   buildHistoricalOccurrenceLedger,
   calculateBacktestMetrics,
   historicalReplayDiagnostics,
+  applyHistoricalAccountPositionGate,
   projectHistoricalTradeCandidates,
   reduceHistoricalPullbackLifecycles,
   type BacktestMetrics,
@@ -38,7 +39,7 @@ import {
   validateMultiContractContentFingerprint,
 } from "./futures/multi-contract-replay.js";
 
-export const PHASE3_PILOT_VERSION = "phase3-edge-validation-v1" as const;
+export const PHASE3_PILOT_VERSION = "phase3-edge-validation-v2-account-single-active-trade" as const;
 export const PHASE3_IN_SAMPLE_DAYS = 20;
 export const PHASE3_OUT_OF_SAMPLE_DAYS = 10;
 export const PHASE3_TOTAL_DAYS = PHASE3_IN_SAMPLE_DAYS + PHASE3_OUT_OF_SAMPLE_DAYS;
@@ -131,6 +132,7 @@ export type Phase3PilotCandidateEvidence = {
 export type Phase3PilotMetrics = {
   candidateCount: number;
   enteredCount: number;
+  activePositionBlockedCount: number;
   finalizedCount: number;
   openCount: number;
   ambiguousCount: number;
@@ -171,6 +173,7 @@ export type Phase3PilotReport = {
   diagnostics: {
     candidateCount: number;
     tradeCount: number;
+    activePositionBlockedCount: number;
     occurrenceCount: number;
     auditCount: number;
     duplicateCandidateCount: number;
@@ -1083,6 +1086,8 @@ function reconcileReportItem(
       outOfSample: empty,
       executionSummary: {
         eligibleCandidateCount: 0,
+        accountEntryBlockedCandidateCount: 0,
+        accountPositionStateVersion: "account-position-state-v1-single-active-trade",
         enteredTradeCount: 0,
         finalizedTradeCount: 0,
         openTradeCount: 0,
@@ -1432,6 +1437,7 @@ function emptyMetrics(): Phase3PilotMetrics {
   return {
     candidateCount: 0,
     enteredCount: 0,
+    activePositionBlockedCount: 0,
     finalizedCount: 0,
     openCount: 0,
     ambiguousCount: 0,
@@ -1460,11 +1466,18 @@ function summarizeEvidence(
   candidates: readonly HistoricalTradeCandidate[],
   reports: readonly { report: BacktestReport; period: "in_sample" | "out_of_sample" }[],
   occurrences: readonly HistoricalOccurrence[],
+  authoritativeTrades?: readonly BacktestTrade[],
 ): Phase3PilotCandidateEvidence[] {
   const tradeByCandidate = new Map<string, BacktestTrade>();
-  for (const item of reports) {
-    for (const trade of item.report.trades) {
+  if (authoritativeTrades) {
+    for (const trade of authoritativeTrades) {
       if (trade.candidateId && !tradeByCandidate.has(trade.candidateId)) tradeByCandidate.set(trade.candidateId, trade);
+    }
+  } else {
+    for (const item of reports) {
+      for (const trade of item.report.trades) {
+        if (trade.candidateId && !tradeByCandidate.has(trade.candidateId)) tradeByCandidate.set(trade.candidateId, trade);
+      }
     }
   }
   const occurrenceBySignal = new Map<string, HistoricalOccurrence[]>();
@@ -1483,6 +1496,9 @@ function summarizeEvidence(
     } else if (candidate.executionStatus === "INSUFFICIENT_CANDLE_DATA") {
       disposition = "unscored";
       exclusionReason = "INSUFFICIENT_CANDLE_DATA";
+    } else if (candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION") {
+      disposition = "not_entered";
+      exclusionReason = "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION";
     } else if (candidate.executionStatus === "MODELED_TRADE_CREATED") {
       if (!isValidCandidateManagementContext(candidate)) {
         const status = candidate.managementContext?.managementEvidenceStatus;
@@ -1526,6 +1542,9 @@ function metricsForEvidence(evidence: readonly Phase3PilotCandidateEvidence[]): 
     if (bucket) result.entryTimeBuckets[bucket] += 1;
     if (item.disposition === "not_entered") {
       result.excludedCount += 1;
+      if (item.exclusionReason === "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION") {
+        result.activePositionBlockedCount += 1;
+      }
       if (item.exclusionReason) addReason(result, item.exclusionReason);
       continue;
     }
@@ -1660,9 +1679,10 @@ function buildMetrics(
   reports: readonly { report: BacktestReport; period: "in_sample" | "out_of_sample" }[],
   occurrences: readonly HistoricalOccurrence[],
   edge: Phase3Edge | null,
+  authoritativeTrades?: readonly BacktestTrade[],
 ): { all: Phase3PilotMetrics; inSample: Phase3PilotMetrics; outOfSample: Phase3PilotMetrics; candidates: Phase3PilotCandidateEvidence[] } {
   const filtered = edge ? candidates.filter((candidate) => matchesEdge(candidate, edge)) : candidates;
-  const evidence = summarizeEvidence(filtered, reports, occurrences);
+  const evidence = summarizeEvidence(filtered, reports, occurrences, authoritativeTrades);
   const inSampleIds = new Set(reports.filter((item) => item.period === "in_sample").flatMap((item) => item.report.tradeCandidates.map((candidate) => candidate.candidateId)));
   const inSample = evidence.filter((item) => inSampleIds.has(item.candidate.candidateId));
   return {
@@ -1769,15 +1789,22 @@ export async function runPhase3EdgePilot(
   const occurrences = reportList.flatMap((report) => report.occurrences);
   const gate = gateReports(reportList, deduped.candidates, reconciled.reconciliation);
   if (!gate.passed) throw new Error(`Phase 3 prerequisite gate failed: ${gate.violations.join(", ")}`);
-  const overall = buildMetrics(deduped.candidates, reports, occurrences, null);
+  const allTrades = reportList.flatMap((report) => report.trades);
+  const aggregateTrades = [...new Map(
+    allTrades
+      .map((trade) => [trade.id, trade] as const),
+  ).values()];
+  const accountGate = applyHistoricalAccountPositionGate(deduped.candidates, aggregateTrades);
+  const gatedCandidates = accountGate.candidates;
+  const gatedTrades = accountGate.authoritativeTrades;
+  const overall = buildMetrics(gatedCandidates, reports, occurrences, null, gatedTrades);
   const edgeResults = PHASE3_EDGES.map((edge) => {
-    const result = buildMetrics(deduped.candidates, reports, occurrences, edge);
+    const result = buildMetrics(gatedCandidates, reports, occurrences, edge, gatedTrades);
     return { edge, ...result };
   });
   const duplicateTradeIds = new Set<string>();
-  const trades = reportList.flatMap((report) => report.trades);
   const uniqueTradeKeys = new Set<string>();
-  for (const trade of trades) {
+  for (const trade of allTrades) {
     const key = trade.candidateId ?? trade.signalOccurrenceId ?? trade.id;
     if (uniqueTradeKeys.has(key)) duplicateTradeIds.add(key);
     uniqueTradeKeys.add(key);
@@ -1800,8 +1827,9 @@ export async function runPhase3EdgePilot(
     overall,
     reconciliation: reconciled.reconciliation,
     diagnostics: {
-      candidateCount: deduped.candidates.length,
-      tradeCount: uniqueTradeKeys.size,
+      candidateCount: gatedCandidates.length,
+      tradeCount: gatedTrades.length,
+      activePositionBlockedCount: accountGate.blockedCandidateCount,
       occurrenceCount: occurrences.length,
       auditCount: reportList.reduce((sum, report) => sum + report.audit.length, 0),
       duplicateCandidateCount: deduped.duplicateCount,

@@ -36,6 +36,7 @@ import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/ph
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
+import type { AccountEntryBlock } from "./account-position-gate.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
 import {
@@ -278,7 +279,9 @@ export type VisualValidationTradeCandidate = {
   supportingConfluences: string[];
   setupGrade: "A" | "A+" | "A++";
   period: "in_sample" | "out_of_sample";
-  outcome: BacktestTrade["outcome"] | "open";
+  outcome: BacktestTrade["outcome"] | "open" | "blocked_active_position";
+  accountEntryStatus?: "ENTERED" | "BLOCKED_ACTIVE_POSITION";
+  accountEntryBlock?: AccountEntryBlock;
   causalEvidence: Array<{ kind: "level" | "patience" | "entry"; timestamp: string; detail: string }>;
 };
 
@@ -323,6 +326,7 @@ export type VisualValidationSet = {
   strategyVersion: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  accountPositionStateVersion: string;
   snapshotProjectionVersion: string;
   chartProjectionVersion: string;
   sessionCalendarVersion: string;
@@ -459,11 +463,12 @@ function canonicalVisualEdgeId(edge: string): string {
 
 function replayCandidateFromHistorical(
   candidate: HistoricalTradeCandidate,
-  trade: BacktestTrade,
+  trade: BacktestTrade | null,
   snapshotId: string | null,
+  period?: VisualValidationTradeCandidate["period"],
 ): VisualValidationTradeCandidate {
-  const entryOpenTime = trade.audit?.triggerCandleOpenTime ?? candidate.eOpenTimestamp;
-  const entryCloseTime = trade.audit?.triggerCandleCloseTime
+  const entryOpenTime = trade?.audit?.triggerCandleOpenTime ?? candidate.eOpenTimestamp;
+  const entryCloseTime = trade?.audit?.triggerCandleCloseTime
     ?? new Date(Date.parse(entryOpenTime) + 5 * 60_000).toISOString();
   return {
     candidateId: candidate.candidateId,
@@ -477,10 +482,12 @@ function replayCandidateFromHistorical(
     entryTriggerPrice: candidate.confirmationPrice,
     primaryEdge: canonicalVisualEdgeId(candidate.primaryEdge),
     matchedEdges: [...new Set([candidate.primaryEdge, ...candidate.matchedEdges].map(canonicalVisualEdgeId))],
-    supportingConfluences: [...new Set([...candidate.supportingConfluences, ...(trade.supportingConfluences ?? [])])],
-    setupGrade: trade.setupGrade ?? candidate.grade,
-    period: candidatePeriod(candidate, trade),
-    outcome: trade.outcome,
+    supportingConfluences: [...new Set([...candidate.supportingConfluences, ...(trade?.supportingConfluences ?? [])])],
+    setupGrade: trade?.setupGrade ?? candidate.grade,
+    period: trade ? candidatePeriod(candidate, trade) : period ?? "in_sample",
+    outcome: trade?.outcome ?? "blocked_active_position",
+    ...(candidate.accountEntryStatus ? { accountEntryStatus: candidate.accountEntryStatus } : {}),
+    ...(candidate.accountEntryBlock ? { accountEntryBlock: candidate.accountEntryBlock } : {}),
     causalEvidence: [
       { kind: "level", timestamp: candidate.pOpenTimestamp, detail: "P candle / causal level context" },
       { kind: "patience", timestamp: candidate.patienceTimestamp, detail: "Confirmed patience candle" },
@@ -2215,6 +2222,7 @@ type ReviewCandidate = {
   trade: BacktestTrade | null;
   category: VisualValidationCategory;
   occurrence?: HistoricalOccurrence;
+  candidate?: HistoricalTradeCandidate;
   candidateRejection?: RejectedCandidateSignal;
 };
 
@@ -2632,7 +2640,7 @@ export function buildHistoricalVisualValidationSetFromReport(
         : occurrence.canonicalTrade
           ? matchingTradeForOccurrence(occurrence, audit, [], report.trades) ?? matchingTrade(audit, report.trades)
           : null;
-    const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence, candidateRejection }];
+    const candidates: ReviewCandidate[] = [{ audit, trade, category, occurrence, candidate, candidateRejection }];
     if (occurrence.kind === "patience" && occurrence.status === "SIGNAL_CONFIRMED") {
       if (candidate && authoritativeTrade) {
         candidates.push({ audit, trade: authoritativeTrade, category: "qualified_trade", occurrence });
@@ -2661,11 +2669,14 @@ export function buildHistoricalVisualValidationSetFromReport(
   ];
   const visibleCandidates = sortReviewCandidates(candidates)
       .filter((candidate) => mode === "trades_and_diagnostics"
-        || (mode === "trades_only" && candidate.trade !== null)
+        || (mode === "trades_only"
+          && (candidate.trade !== null || candidate.candidate?.accountEntryStatus === "BLOCKED_ACTIVE_POSITION"))
         || (mode === "confirmed_signals"
           && candidate.occurrence !== undefined
           && hasConfirmedTradeOccurrence(candidate.occurrence)
-          && (candidate.category !== "qualified_trade" || candidate.trade !== null)))
+          && (candidate.category !== "qualified_trade"
+            || candidate.trade !== null
+            || candidate.candidate?.accountEntryStatus === "BLOCKED_ACTIVE_POSITION")))
       .filter((candidate) => buildCategoryAnchor(
         candidate.category,
         candidate.audit,
@@ -2676,6 +2687,7 @@ export function buildHistoricalVisualValidationSetFromReport(
         visualIndex.completeCandlesByContract.get(candidate.audit.contractSymbol),
       ) !== null);
   const snapshots: VisualValidationSnapshot[] = [];
+  const snapshotIdByOccurrenceId = new Map<string, string>();
   for (const [candidateIndex, candidate] of visibleCandidates.entries()) {
     const reviewCloseTime = candidate.trade?.audit?.exitCandleCloseTime
       ? Date.parse(candidate.trade.audit.exitCandleCloseTime)
@@ -2695,13 +2707,25 @@ export function buildHistoricalVisualValidationSetFromReport(
       candidate.candidateRejection,
       effectiveStrategyConfig,
     ));
+    if (candidate.occurrence) {
+      snapshotIdByOccurrenceId.set(candidate.occurrence.occurrenceId, snapshots.at(-1)!.snapshotId);
+    }
     onSnapshot?.(snapshots, visibleCandidates.length);
   }
   const accountReplayTrades = buildAccountReplayTradesFromReport(report, snapshots);
   const snapshotCandidates = buildTradeCandidates(snapshots);
+  const blockedHistoricalCandidates = (report.tradeCandidates ?? [])
+    .filter((candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION")
+    .map((candidate) => replayCandidateFromHistorical(
+      candidate,
+      null,
+      snapshotIdByOccurrenceId.get(candidate.signalOccurrenceId) ?? null,
+      dataset.outOfSampleDates.includes(candidate.tradingDate) ? "out_of_sample" : "in_sample",
+    ));
   const tradeCandidates = mergeVisualTradeCandidates([
     ...snapshotCandidates,
     ...accountReplayTrades.map((entry) => entry.candidate),
+    ...blockedHistoricalCandidates,
   ]);
   const funnelDiagnostics = report.dataset && report.contract
     ? (() => {

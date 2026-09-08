@@ -6,13 +6,14 @@ import type { VisualValidationRequest } from "./visual-validation.js";
 import { normalizeVisualReviewEarlyOrbMomentum, strategyConfigForVisualReview } from "./visual-validation-settings.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
+import { ACCOUNT_POSITION_STATE_VERSION } from "./account-position-gate.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v14-causal-replay-context-driving-member-pending";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v9-causal-replay-context-driving-member-pending";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v13-causal-replay-context-driving-member-pending";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v12-causal-replay-context-driving-member-pending";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v11-causal-replay-context-driving-member-pending";
-export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v5-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v15-account-single-active-trade";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v10-account-single-active-trade";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v14-account-single-active-trade";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v13-account-single-active-trade";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v12-account-single-active-trade";
+export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v6-account-single-active-trade";
 
 export type VisualValidationCacheMetadata = {
   cacheKey: string;
@@ -22,6 +23,7 @@ export type VisualValidationCacheMetadata = {
   formulaVersion: string;
   candidateProjectionVersion: string;
   executionManagementVersion: string;
+  accountPositionStateVersion: string;
   snapshotProjectionVersion: string;
   chartProjectionVersion: string;
   sessionCalendarVersion: string;
@@ -78,6 +80,7 @@ export function visualValidationCacheMetadata(
     strategyVersion,
     candidateProjectionVersion: VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION,
     executionManagementVersion: VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION,
+    accountPositionStateVersion: ACCOUNT_POSITION_STATE_VERSION,
     snapshotProjectionVersion: VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION,
     chartProjectionVersion: VISUAL_VALIDATION_CHART_PROJECTION_VERSION,
     sessionCalendarVersion,
@@ -104,6 +107,7 @@ export function visualValidationCacheMetadata(
     formulaVersion: active.formulaVersion || FIXED_FORMULA_VERSION,
     candidateProjectionVersion: VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION,
     executionManagementVersion: VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION,
+    accountPositionStateVersion: ACCOUNT_POSITION_STATE_VERSION,
     snapshotProjectionVersion: VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION,
     chartProjectionVersion: VISUAL_VALIDATION_CHART_PROJECTION_VERSION,
     sessionCalendarVersion,

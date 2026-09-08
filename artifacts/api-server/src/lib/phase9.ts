@@ -65,6 +65,12 @@ import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
 import {
+  activeAccountPositionFromTrade,
+  accountEntryBlockFor,
+  ACCOUNT_POSITION_STATE_VERSION,
+  type AccountEntryBlock,
+} from "./account-position-gate.js";
+import {
   normalizeVisualReviewEarlyOrbMomentum,
   strategyConfigForVisualReview,
   type VisualReviewEarlyOrbMomentumSettings,
@@ -638,6 +644,8 @@ export type BacktestMetrics = {
 
 export type BacktestExecutionSummary = {
   eligibleCandidateCount: number;
+  accountEntryBlockedCandidateCount: number;
+  accountPositionStateVersion: string;
   enteredTradeCount: number;
   finalizedTradeCount: number;
   openTradeCount: number;
@@ -771,6 +779,8 @@ export type HistoricalTradeCandidate = {
   armRetirementReason?: string | null;
   eligible: true;
   executionStatus: "MODELED_TRADE_CREATED" | "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "INSUFFICIENT_CANDLE_DATA" | "REJECTED_RISK_MANAGEMENT";
+  accountEntryStatus?: "ENTERED" | "BLOCKED_ACTIVE_POSITION";
+  accountEntryBlock?: AccountEntryBlock;
   fillModelType: "OHLCV_CONFIRMATION_THRESHOLD";
   patienceHigh: number | null;
   patienceLow: number | null;
@@ -1817,14 +1827,15 @@ export function historicalReplayDiagnostics(
         `${candidate.signalOccurrenceId}: entryReachedThreshold=${String(candidate.entryReachedThreshold)} does not match executionStatus=${candidate.executionStatus}.`,
       );
     }
-    if (triggered && exactLinkedTrades.length !== 1) {
+    const accountBlocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
+    if (triggered && !accountBlocked && exactLinkedTrades.length !== 1) {
       violations.push(
         `${candidate.signalOccurrenceId}: triggered candidate ${candidate.candidateId} has ${exactLinkedTrades.length} authoritative trades linked by candidateId and signalOccurrenceId; expected exactly one.`,
       );
     }
-    if (!triggered && candidateTrades.length > 0) {
+    if ((!triggered || accountBlocked) && candidateTrades.length > 0) {
       violations.push(
-        `${candidate.signalOccurrenceId}: non-triggered candidate ${candidate.candidateId} has ${candidateTrades.length} authoritative modeled trades; expected none.`,
+        `${candidate.signalOccurrenceId}: ${accountBlocked ? "account-blocked" : "non-triggered"} candidate ${candidate.candidateId} has ${candidateTrades.length} authoritative modeled trades; expected none.`,
       );
     }
     for (const trade of candidateTrades) {
@@ -4004,6 +4015,78 @@ type CandidateProjectionRecord = {
   candidate: HistoricalTradeCandidate;
 };
 
+function accountPositionForHistoricalTrade(trade: BacktestTrade, candidate: HistoricalTradeCandidate) {
+  const ambiguous = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
+  const closed = !ambiguous && trade.exitTime !== null && trade.outcome !== "open";
+  const remainingContracts = trade.audit?.remainingQuantity ?? (closed ? 0 : trade.contracts);
+  return activeAccountPositionFromTrade({
+    tradeId: trade.id,
+    candidateId: candidate.candidateId,
+    signalOccurrenceId: candidate.signalOccurrenceId,
+    entryTime: trade.entryTime,
+    exitTime: closed ? trade.exitTime : null,
+    status: ambiguous ? "unscored" : closed ? "closed" : "open",
+    contracts: trade.contracts,
+    remainingContracts,
+    runnerActive: trade.audit?.runnerActivated === true && trade.audit.runnerExited !== true,
+  });
+}
+
+export function applyHistoricalAccountPositionGate(
+  candidates: readonly HistoricalTradeCandidate[],
+  authoritativeTrades: readonly BacktestTrade[],
+): {
+  candidates: HistoricalTradeCandidate[];
+  authoritativeTrades: BacktestTrade[];
+  blockedCandidateCount: number;
+} {
+  const tradeByCandidateId = new Map(
+    authoritativeTrades
+      .filter((trade): trade is BacktestTrade & { candidateId: string; signalOccurrenceId: string } =>
+        Boolean(trade.candidateId && trade.signalOccurrenceId))
+      .map((trade) => [trade.candidateId, trade]),
+  );
+  const orderedCandidates = [...candidates].sort((left, right) =>
+    Date.parse(left.entryObservationTimestamp) - Date.parse(right.entryObservationTimestamp)
+    || left.candidateId.localeCompare(right.candidateId),
+  );
+  const updatedById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const acceptedTradeIds = new Set<string>();
+  const activePositions: ReturnType<typeof accountPositionForHistoricalTrade>[] = [];
+  let blockedCandidateCount = 0;
+
+  for (const candidate of orderedCandidates) {
+    if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
+    const trade = tradeByCandidateId.get(candidate.candidateId);
+    if (!trade) continue;
+    const entryTime = candidate.entryObservationTimestamp;
+    const blockingPosition = activePositions.find((position) => accountEntryBlockFor(position, entryTime) !== null);
+    if (blockingPosition) {
+      const block = accountEntryBlockFor(blockingPosition, entryTime)!;
+      updatedById.set(candidate.candidateId, {
+        ...candidate,
+        accountEntryStatus: "BLOCKED_ACTIVE_POSITION",
+        accountEntryBlock: block,
+      });
+      blockedCandidateCount += 1;
+      continue;
+    }
+    updatedById.set(candidate.candidateId, {
+      ...candidate,
+      accountEntryStatus: "ENTERED",
+      accountEntryBlock: undefined,
+    });
+    acceptedTradeIds.add(trade.id);
+    activePositions.push(accountPositionForHistoricalTrade(trade, candidate));
+  }
+
+  return {
+    candidates: candidates.map((candidate) => updatedById.get(candidate.candidateId) ?? candidate),
+    authoritativeTrades: authoritativeTrades.filter((trade) => acceptedTradeIds.has(trade.id)),
+    blockedCandidateCount,
+  };
+}
+
 export function projectHistoricalTradeCandidates(
   occurrences: readonly HistoricalOccurrence[],
   rawTrades: readonly BacktestTrade[],
@@ -4295,6 +4378,9 @@ export function projectHistoricalTradeCandidates(
     });
     candidates.push(candidateWithOccurrenceIdentity);
   }
+  const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades);
+  candidates.splice(0, candidates.length, ...accountGate.candidates);
+  authoritativeTrades.splice(0, authoritativeTrades.length, ...accountGate.authoritativeTrades);
   const rejectionBySignalId = new Map(rejected.map((rejection) => [rejection.signalOccurrenceId, rejection]));
   for (const trade of rawTrades) {
     const matchingCandidate = candidates.find((candidate) =>
@@ -5629,6 +5715,10 @@ export function runCausalBacktest(
   );
   const executionSummary: BacktestExecutionSummary = {
     eligibleCandidateCount: reconciliation.candidates.length,
+    accountEntryBlockedCandidateCount: reconciliation.candidates.filter(
+      (candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION",
+    ).length,
+    accountPositionStateVersion: ACCOUNT_POSITION_STATE_VERSION,
     enteredTradeCount: authoritativeTrades.length,
     finalizedTradeCount: authoritativeTrades.filter((trade) => trade.outcome !== "open").length,
     openTradeCount: authoritativeTrades.filter((trade) => trade.outcome === "open").length,

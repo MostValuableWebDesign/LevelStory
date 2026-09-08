@@ -1066,7 +1066,7 @@ function ShadowAccountReplayPanel({
     if (query.isLoading || query.isFetching && !replay) return <QuerySkeleton rows={3} />;
     if (query.isError) return <QueryError onRetry={() => query.refetch()} message="The shadow replay could not be loaded." />;
     if (!replay) return <div className="border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground" data-testid="shadow-replay-empty">No replay has been computed for this review set yet.</div>;
-    if (replay.enteredTrades === 0) {
+    if (replay.enteredTrades === 0 && replay.blockedCandidates.length === 0) {
        return <div className="border border-dashed border-border bg-muted/20 px-4 py-5" data-testid="shadow-replay-zero-trades">
          <div className="flex items-center gap-2 text-sm font-bold"><Info size={15} className="text-accent" />No entered trades in the processed date set.</div>
          <p className="mt-1 text-xs leading-5 text-muted-foreground">The complete {replay.processedDates.length}-date replay scope contains no risk-approved entries. The date coverage remains available below so zero-trade sessions are not hidden.</p>
@@ -1135,7 +1135,8 @@ function ShadowReplayResults({ replay, metric }: { replay: ShadowAccountReplay; 
       {metric("Max drawdown", formatAccountMoney(replay.maxDrawdown), "Realized balance peak to trough", replay.maxDrawdown > 0 ? "status-negative" : undefined)}
     </div>
     <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-      {metric("Candidate trades", formatAccountNumber(replay.candidateTrades, 0), "Retained in the selected set")}
+       {metric("Candidate trades", formatAccountNumber(replay.candidateTrades, 0), "Retained in the selected set")}
+       {metric("Blocked by active position", formatAccountNumber(replay.blockedCandidates.length, 0), "Qualified, not entered, excluded from P/L", replay.blockedCandidates.length ? "status-negative" : undefined)}
       {metric("Entered trades", formatAccountNumber(replay.enteredTrades, 0), `${replay.closedTrades} closed · ${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}
       {metric("Wins / losses", `${replay.wins} / ${replay.losses}`, `${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}
       {metric("Win rate", `${replay.winRate.toFixed(2)}%`, "Closed trade basis")}
@@ -1158,7 +1159,34 @@ function ShadowReplayResults({ replay, metric }: { replay: ShadowAccountReplay; 
       <ShadowBreakdownTable title="Direction breakdown" rows={replay.byDirection} valueLabel="Direction" />
     </div>
     <ShadowLedger replay={replay} />
+     <ShadowBlockedCandidates replay={replay} />
   </div>;
+}
+
+function ShadowBlockedCandidates({ replay }: { replay: ShadowAccountReplay }) {
+  if (!replay.blockedCandidates.length) return null;
+  return <section className="border border-accent/35 bg-accent/5" data-testid="shadow-replay-blocked-candidates">
+    <div className="border-b border-accent/25 px-4 py-3">
+      <div className="eyebrow text-accent">Account gate</div>
+      <div className="mt-1 text-xs font-bold">Qualified candidates blocked by an active position</div>
+      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">These occurrences remain in the candidate audit, but do not contribute to entered trades, realized P/L, or performance statistics.</p>
+    </div>
+    <div className="divide-y divide-border/70">
+      {replay.blockedCandidates.map((candidate) => (
+        <div key={`${candidate.candidateId}|${candidate.entryTime}`} className="grid gap-2 px-4 py-3 text-[10px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+          <div>
+            <div className="font-bold">{candidate.tradingDate} · {candidate.contractSymbol} · {candidate.direction === "long" ? "Long" : "Short"}</div>
+            <div className="mono mt-1 text-muted-foreground">Candidate {candidate.candidateId} · Entry {formatReviewTime(candidate.entryTime)}</div>
+          </div>
+          <div className="text-muted-foreground">
+            <span className="font-bold text-foreground">ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION</span>
+            <div className="mt-1 mono">Blocking trade {candidate.blockingTradeId} · candidate {candidate.blockingCandidateId} · {candidate.blockingStatus} · {candidate.blockingContracts} contract{candidate.blockingContracts === 1 ? "" : "s"}{candidate.blockingRunnerActive ? " · runner active" : ""}</div>
+            <div className="mt-1 mono">Blocking entry {formatReviewTime(candidate.blockingEntryTime)} · full exit {candidate.blockingFullExitTime ? formatReviewTime(candidate.blockingFullExitTime) : "not observed"}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>;
 }
 
 function ShadowBreakdownTable({
@@ -1445,9 +1473,11 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
          const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
          const audit = snapshot.machineEvidence.audit as CandidateAuditView;
          const direction = candidate.direction === "short" ? "Short" : "Long";
-         return <button type="button" key={candidate.candidateId} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`bg-card p-4 text-left transition hover:bg-muted/55 ${selectedSnapshot?.snapshotId === candidate.snapshotId ? "ring-1 ring-inset ring-accent" : ""}`} data-testid="button-trade-candidate">
-           <div className="flex items-start justify-between gap-3"><div><div className="eyebrow text-muted-foreground">Trade candidate</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className="border border-accent/40 bg-accent/10 px-2 py-1 text-[10px] font-bold">{direction}</span></div>
+          const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
+          return <button type="button" key={candidate.candidateId} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`bg-card p-4 text-left transition hover:bg-muted/55 ${selectedSnapshot?.snapshotId === candidate.snapshotId ? "ring-1 ring-inset ring-accent" : ""}`} data-testid="button-trade-candidate">
+            <div className="flex items-start justify-between gap-3"><div><div className={`eyebrow ${blocked ? "text-accent" : "text-muted-foreground"}`}>{blocked ? "Blocked candidate" : "Trade candidate"}</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${blocked ? "border-accent/50 bg-accent/10" : "border-accent/40 bg-accent/10"}`}>{blocked ? "Account blocked" : direction}</span></div>
            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div><span className="text-muted-foreground">Entry</span><div className="mono mt-1">{safeValue(candidate.entryTriggerPrice ?? audit.entryTriggerPrice)}</div></div><div><span className="text-muted-foreground">Grade</span><div className="mono mt-1">{candidate.setupGrade}</div></div><div><span className="text-muted-foreground">Primary edge</span><div className="mt-1 font-semibold">{edgeDisplayLabel(candidate.primaryEdge)}</div></div><div><span className="text-muted-foreground">Matched edges</span><div className="mt-1">{candidate.matchedEdges.length} · {candidate.supportingConfluences.length} confluences</div></div></div>
+            {blocked && candidate.accountEntryBlock && <div className="mt-3 border border-accent/25 bg-accent/5 px-2.5 py-2 text-[10px] text-muted-foreground"><span className="font-bold text-foreground">ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION</span><div className="mt-1 mono">Blocked by {candidate.accountEntryBlock.blockingCandidateId} · {candidate.accountEntryBlock.blockingStatus}{candidate.accountEntryBlock.blockingRunnerActive ? " · runner active" : ""}</div></div>}
            <div className="mt-3 mono text-[10px] text-muted-foreground">{candidate.period === "in_sample" ? "In-sample" : "Holdout"} · Entry {formatReviewTime(candidate.entryCandleOpenTime)}</div>
          </button>;
        })}

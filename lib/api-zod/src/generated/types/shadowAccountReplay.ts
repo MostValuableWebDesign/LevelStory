@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ShadowAccountReplayBlockedCandidate } from './shadowAccountReplayBlockedCandidate';
 import type { ShadowAccountReplayBreakdown } from './shadowAccountReplayBreakdown';
 import type { ShadowAccountReplayEquityCurveItem } from './shadowAccountReplayEquityCurveItem';
 import type { ShadowAccountReplaySegment } from './shadowAccountReplaySegment';
@@ -79,5 +80,8 @@ export interface ShadowAccountReplay {
   candidateProjectionVersion: string;
   /** @minLength 1 */
   executionManagementVersion: string;
+  /** @minLength 1 */
+  accountPositionStateVersion: string;
+  blockedCandidates: ShadowAccountReplayBlockedCandidate[];
   warnings: string[];
 }
