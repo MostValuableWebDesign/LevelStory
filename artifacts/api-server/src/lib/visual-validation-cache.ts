@@ -5,11 +5,11 @@ import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js"
 import type { VisualValidationRequest } from "./visual-validation.js";
 import { normalizeVisualReviewEarlyOrbMomentum, strategyConfigForVisualReview } from "./visual-validation-settings.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v10-independent-p-e-occurrences";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v5-independent-p-e-occurrences";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v9-independent-p-e-occurrences";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v11-global-consolidation-entry-guard";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v6-global-consolidation-entry-guard";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v10-global-consolidation-entry-guard";
 export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v9-independent-p-e-occurrences";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v7-independent-p-e-occurrences";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v8-global-consolidation-entry-guard";
 export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v2-legend-visibility";
 
 export type VisualValidationCacheMetadata = {

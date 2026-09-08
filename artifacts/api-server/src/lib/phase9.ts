@@ -2500,28 +2500,30 @@ function auditForEvaluation(
     && typeof snapshot.ntz.low === "number"
     ? { high: snapshot.ntz.high, low: snapshot.ntz.low, complete: true }
     : null;
-  const consolidationGuard = evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-    ? serializeConsolidationGuard(evaluateConsolidationEntryGuard({
-      candles: visibleCausalCandles ?? [],
-      levels: { ntz: finalizedNtz },
-      patience: guardPatience,
-      direction: guardDirection,
-      breakout: {
-        detected: snapshot.breakout.detected,
-        direction: snapshot.breakout.direction,
-        candleOpenTime: snapshot.breakout.candleOpenTime ? Date.parse(snapshot.breakout.candleOpenTime) : null,
-        continuationConfirmed: snapshot.breakout.continuationConfirmed,
-        failed: snapshot.breakout.failed,
-      },
-      config: activeShadowStrategySnapshot().config,
-      consolidationEvaluation: consolidationEdgeEvaluation,
-      qualifyingPullback: snapshot.pullback.events.some((event) =>
-        event.qualifies === true
-        && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
-        && !event.level.trim().toLowerCase().startsWith("fib"),
-      ),
-    }))
-    : null;
+  // Consolidation is an entry exclusion regardless of which edge produced the
+  // candidate. The consolidation edge still supplies the only path that can
+  // authorize a breakout out of the frozen zone, but ORB/reversal candidates
+  // must also be rejected when their causal P/E sequence remains inside it.
+  const consolidationGuard = serializeConsolidationGuard(evaluateConsolidationEntryGuard({
+    candles: visibleCausalCandles ?? [],
+    levels: { ntz: finalizedNtz },
+    patience: guardPatience,
+    direction: guardDirection,
+    breakout: {
+      detected: snapshot.breakout.detected,
+      direction: snapshot.breakout.direction,
+      candleOpenTime: snapshot.breakout.candleOpenTime ? Date.parse(snapshot.breakout.candleOpenTime) : null,
+      continuationConfirmed: snapshot.breakout.continuationConfirmed,
+      failed: snapshot.breakout.failed,
+    },
+    config: activeShadowStrategySnapshot().config,
+    consolidationEvaluation: consolidationEdgeEvaluation,
+    qualifyingPullback: snapshot.pullback.events.some((event) =>
+      event.qualifies === true
+      && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
+      && !event.level.trim().toLowerCase().startsWith("fib"),
+    ),
+  }));
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -3734,8 +3736,6 @@ function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { rea
 function candidateConsolidationRejection(
   occurrence: HistoricalOccurrence,
 ): { reasonCodes: string[]; details: string[] } | null {
-  const primaryEdge = canonicalStrategyId(occurrence.primaryEdge ?? occurrence.strategyCandidate);
-  if (primaryEdge !== "CONSOLIDATION_BREAKOUT_CONTINUATION") return null;
   const guard = occurrence.consolidationGuard;
   if (!consolidationGuardMatchesOccurrence(guard, occurrence.patienceTimestamp, occurrence.eOpenTimestamp)) return null;
   if (!guard || (!guard.activeZone && !guard.breakoutPullback)) return null;

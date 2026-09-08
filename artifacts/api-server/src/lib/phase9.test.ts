@@ -2721,7 +2721,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
   assert.equal(accepted.authoritativeTrades[0]?.entryPrice, 101.25);
 });
 
-test("an unrelated consolidation guard cannot block an ORB candidate", () => {
+test("a causal consolidation guard blocks an ORB candidate inside the zone", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T14:15:00.000Z",
     eOpen: "2026-08-25T14:20:00.000Z",
@@ -2740,8 +2740,8 @@ test("an unrelated consolidation guard cannot block an ORB candidate", () => {
       executionMode: "ohlcv_modeled",
     },
   );
-  assert.equal(projected.rejected.some((item) => item.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD")), false);
-  assert.equal(projected.candidates.length, 1);
+  assert.equal(projected.rejected.some((item) => item.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD")), true);
+  assert.equal(projected.candidates.length, 0);
 });
 
 test("every confirmed same-arm occurrence creates an independent long candidate and trade", () => {
