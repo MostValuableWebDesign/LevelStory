@@ -1,0 +1,118 @@
+```text
+Update profit-target placement across every LevelStory strategy.
+
+Universal eight-tick near-side target rule
+
+Whenever any strategy selects a level or indicator as a profit target, never place the executable target exactly on that level or indicator.
+
+Always place the profit order eight MES ticks—2.00 points—before price reaches the selected target:
+
+- Long trade:
+  ExecutableTarget = SelectedLevelPrice − 8 MES ticks
+- Short trade:
+  ExecutableTarget = SelectedLevelPrice + 8 MES ticks
+
+“Eight ticks away” always means on the entry-facing or near side of the target. Never place the target eight ticks beyond the level.
+
+Apply this rule universally to:
+
+- Major support and resistance
+- Dynamite/confluence levels
+- ORB high and low
+- NTZ high and low
+- Premarket high and low
+- Previous-day high and low
+- Two-days-ago high and low
+- VWAP
+- EMA 200
+- Every strategy arm, including Early ORB Momentum Continuation
+- Historical candidate generation
+- Uploaded-chart analysis
+- Visual Review
+- Shadow Account Replay
+- One- and two-contract execution
+
+Replace conflicting behavior
+
+Remove the adaptive 1–2-tick profit-target buffer from executable target placement. Eight MES ticks must be the single authoritative buffer for every level- or indicator-based profit target.
+
+Legacy EXACT_LEVEL and adaptive-buffer target plans must be treated as stale and regeneration-required.
+
+Eligibility must use the executable target
+
+Apply reward and range rules to the eight-tick-buffered executable price—not the raw level price.
+
+
+Do not apply the eight-tick adjustment to the 1R fallback. The fallback must remain exactly 1R.
+
+Multiple-level search
+
+Do not stop merely because the nearest raw level is too close. Skip it and inspect subsequent directional levels and indicators until an eligible eight-tick-buffered target is found.
+
+Contract behavior
+
+One contract:
+
+- Exit the entire position at the selected eight-tick-buffered target.
+- If no eligible level exists, exit the entire position at exactly 1R.
+- No runner.
+
+Two contracts:
+
+- Exit one contract at the selected eight-tick-buffered target.
+- If no eligible level exists, exit one contract at exactly 1R.
+- Manage the second contract as the existing runner.
+- Do not alter the existing runner, trailing-stop, breakeven, or recovery rules.
+
+Evidence and display
+
+Store and display:
+
+- Raw selected level price
+- Level type and identifier
+- Trade direction
+- Eight-tick buffer
+- Buffer size in points: 2.00
+- Executable target price
+- Distance from entry in ticks
+- Target R multiple
+- Every skipped level and exact skip reason
+- Selected level
+- 1R fallback status
+- Causal source timestamp
+- Target-plan version
+
+The chart must draw the raw level and executable target as separate lines. Label the executable line clearly, for example:
+
+“TAKE PROFIT — 8 TICKS BEFORE PREVIOUS-DAY HIGH”
+
+Regression tests
+
+Add tests proving:
+
+- Long target equals raw level minus eight ticks.
+- Short target equals raw level plus eight ticks.
+- No strategy creates an exact-level executable target.
+- No strategy uses the former adaptive 1–2-tick buffer.
+- A too-close level is skipped after applying the eight-tick buffer.
+- The next eligible level can be selected.
+- Eligibility uses the buffered target rather than the raw level.
+- Exactly 1R fallback is not moved by eight ticks.
+- One-contract positions exit completely at the buffered target.
+- Two-contract positions take one contract at the buffered target and preserve the runner.
+- Historical generation, uploaded-chart analysis, Visual Review, and Shadow Account Replay produce the same target decision.
+- Long and short calculations remain symmetric.
+- Existing review sets with EXACT_LEVEL or adaptive target plans are regeneration-required.
+
+Bump every affected formula, target-plan, cache, candidate-projection, snapshot-projection, chart-projection, and execution-management version.
+
+Run the focused target-planner, strategy, Phase 9, execution, Shadow Account Replay, Visual Review, API contract, typecheck, and frontend build tests.
+
+Report:
+
+- Files changed
+- Conflicting target logic removed
+- Version bumps
+- Tests run and results
+- Any remaining validation limitations
+```
