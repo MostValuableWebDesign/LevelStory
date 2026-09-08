@@ -15,7 +15,7 @@ test("long key-level targets select the nearest forward level within 20 points",
       { id: "behind", type: "ORB", price: 99 },
       { id: "exact-buffer", type: "VWAP", price: 103 },
       { id: "near", type: "EMA200", price: 102.75 },
-       { id: "next", type: "prior-high", price: 121 },
+        { id: "next", type: "prior-high", price: 119 },
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "exact-buffer|near");
@@ -348,8 +348,9 @@ test("causal search allows a buffered level above 1.5R when it is within 20 poin
    levels: [{ id: "too-far-for-r", type: "previous-day-high", price: 106.5 }],
   });
    assert.equal(plan.selectedTargetLevel?.id, "too-far-for-r");
-   assert.equal(plan.targetPrice, 104.5);
-   assert.equal(plan.targetR, 2.25);
+   assert.equal(plan.targetPrice, 106.5);
+   assert.equal(plan.targetR, 3.25);
+   assert.equal(plan.placementTicks, 0);
    assert.equal(plan.maximumTargetR, null);
    assert.equal(plan.searchRangeTicks, 80);
 });
@@ -407,7 +408,7 @@ test("causal search evaluates the buffered executable price, not the raw level",
   });
   assert.equal(plan.skippedLevels.find((level) => level.id === "raw-above-one-r")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
   assert.equal(plan.selectedTargetLevel?.id, "eligible");
-   assert.equal(plan.targetPrice, 106);
+   assert.equal(plan.targetPrice, 108);
 });
 
 test("causal search falls back to exactly 1R when no level is within 20 points", () => {
@@ -441,8 +442,24 @@ test("a too-close major level is skipped and the next eligible level is selected
   assert.equal(plan.rejectionReason, null);
   assert.equal(plan.obstructingLevel, null);
   assert.equal(plan.selectedTargetLevel?.id, "farther-level");
-  assert.equal(plan.targetPrice, 102.75);
+  assert.equal(plan.targetPrice, 104.75);
   assert.equal(plan.fallbackUsed, false);
+});
+
+test("a major level exactly at 1R falls back to the full 1R price", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 2,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    targetBufferTicks: 8,
+    levels: [{ id: "one-r-resistance", type: "major resistance", price: 102 }],
+  });
+  assert.equal(plan.selectedTargetLevel, null);
+  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
+  assert.equal(plan.fallbackUsed, true);
+  assert.equal(plan.targetPrice, 102);
+  assert.equal(plan.targetR, 1);
 });
 
 test("short search is symmetric and retains wrong-direction diagnostics", () => {

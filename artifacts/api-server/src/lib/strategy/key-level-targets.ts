@@ -17,7 +17,7 @@ export type KeyLevelTargetInput = {
   sourceTimestamp?: string | null;
 };
 
-export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v7-causal-dynamic-indicator-ratchet";
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v8-major-indicator-buffer-causal-dynamic-ratchet";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -95,11 +95,11 @@ export type KeyLevelTargetPlan = {
   /** Maximum forward distance from entry for a key level to qualify as a target. */
   bufferTicks: number;
   bufferPoints: 20;
-  /** Distance from the key level at which the executable target is placed. */
+  /** Actual distance from the selected key level at which the executable target is placed. */
   placementTicks: number;
-  /** Fixed near-side MES buffer used for this candidate. Always eight ticks. */
+  /** Governed near-side MES buffer available to major/indicator targets. */
   targetBufferTicks: number;
-  /** Fixed near-side buffer in index points. Always 2.00 MES points. */
+  /** Governed near-side buffer for major/indicator targets in index points. */
   targetBufferPoints: 2;
   /** Minimum structural R required for candidate target selection. */
   initialRiskPoints?: number | null;
@@ -310,6 +310,22 @@ function nearSideTargetPrice(
   return Number((roundedIndex * tickSize).toFixed(10));
 }
 
+function usesEightTickNearSideBuffer(level: Pick<FrozenTargetLevel, "id" | "type" | "confluenceMembers">): boolean {
+  const members = level.confluenceMembers?.length
+    ? level.confluenceMembers
+    : [{ id: level.id, type: level.type }];
+  const text = normalizedLevelText([
+    level.id,
+    level.type,
+    ...members.flatMap((member) => [member.id, member.type]),
+  ].join(" "));
+  return /\b(?:major|support|resistance|vwap|ema ?200|200 ema)\b/.test(text);
+}
+
+function placementTicksForLevel(level: FrozenTargetLevel): number {
+  return usesEightTickNearSideBuffer(level) ? PROFIT_TARGET_PLACEMENT_TICKS : 0;
+}
+
 function distanceToRange(price: number, rangeLow: number, rangeHigh: number): number {
   if (price < rangeLow) return rangeLow - price;
   if (price > rangeHigh) return price - rangeHigh;
@@ -426,10 +442,11 @@ export function buildKeyLevelTargetPlan(input: {
     .filter((level) => level.distancePoints > 0);
   const targetPriceForLevel = (level: FrozenTargetLevel): number => {
     const levelBoundary = targetBoundaryForLevel(level, input.direction, input.entryPrice);
+    const placementTicks = placementTicksForLevel(level);
     return nearSideTargetPrice(
       input.direction,
       levelBoundary,
-      targetBufferTicks * tickSize,
+      placementTicks * tickSize,
       tickSize,
     );
   };
@@ -533,7 +550,7 @@ export function buildKeyLevelTargetPlan(input: {
         const executableTargetPrice = nearSideTargetPrice(
           input.direction,
           rawPrice,
-          targetBufferTicks * tickSize,
+          placementTicksForLevel(level) * tickSize,
           tickSize,
         );
         const executableDistancePoints = Math.abs(executableTargetPrice - input.entryPrice);
@@ -576,6 +593,9 @@ export function buildKeyLevelTargetPlan(input: {
   const targetPrice = selectedTargetLevel === null
     ? oneRPrice
     : selectedDrivingMember?.executableTargetPrice ?? targetPriceForLevel(selectedTargetLevel);
+  const selectedPlacementTicks = selectedTargetLevel === null
+    ? 0
+    : placementTicksForLevel(selectedTargetLevel);
   const dynamicTargetSource = dynamicTargetSourceForTargetLevel(selectedTargetLevel);
   const selectedLevelPrice = selectedDrivingMember?.rawPrice ?? selectedTargetLevel?.price ?? null;
   const targetDistanceTicks = targetPrice === null
@@ -590,7 +610,7 @@ export function buildKeyLevelTargetPlan(input: {
     tickSize,
     bufferTicks,
     bufferPoints,
-    placementTicks: targetBufferTicks,
+    placementTicks: selectedPlacementTicks,
     targetBufferTicks,
     targetBufferPoints: PROFIT_TARGET_PLACEMENT_POINTS,
     initialRiskPoints: riskPoints,

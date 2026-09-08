@@ -2587,7 +2587,9 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
             ["Entry / stop risk", `${formatTradePrice(targetPlan.entryPrice)} / ${formatTradePrice(targetPlan.initialRiskPoints)} pt`],
             ["1R / selected target", `${formatTradePrice(targetPlan.initialRiskPoints === null ? null : targetPlan.direction === "long" ? targetPlan.entryPrice + targetPlan.initialRiskPoints : targetPlan.entryPrice - targetPlan.initialRiskPoints)} / ${formatTradePrice(targetPlan.targetPrice)}`],
             ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
-             ["Target buffer", `${targetPlan.targetBufferTicks} ticks · ${formatTradePrice(targetPlan.targetBufferPoints)} points · near side`],
+              ["Target placement", targetPlan.fallbackUsed
+                ? "Exactly 1R · no level offset"
+                : `${targetPlan.placementTicks} ticks · ${formatTradePrice(targetPlan.placementTicks * targetPlan.tickSize)} points · ${targetPlan.placementTicks > 0 ? "near side" : "raw level boundary"}`],
              ["Raw level / executable", `${formatTradePrice(targetPlan.selectedLevelPrice)} / ${formatTradePrice(targetPlan.targetPrice)} · ${targetPlan.targetDistanceTicks ?? "—"} ticks from entry`],
               ["Target driver", targetPlan.targetDrivingMember
                 ? `${targetPlan.targetDrivingMember.id} · ${targetPlan.targetDrivingMember.dynamicSource ?? "structural"}`

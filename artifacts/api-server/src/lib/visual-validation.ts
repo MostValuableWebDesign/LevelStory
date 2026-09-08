@@ -1796,13 +1796,20 @@ function buildAnnotations(
   const targetPlan = trade?.targetPlan ?? occurrence?.management?.targetPlan ?? (
     trade?.candidateId ? undefined : audit.targetPlan
   );
+  const targetPlacementTicks = targetPlan?.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS;
+  const targetPlacementPoints = targetPlan
+    ? targetPlacementTicks * targetPlan.tickSize
+    : PROFIT_TARGET_PLACEMENT_TICKS * 0.25;
+  const targetPlacementDescription = targetPlacementTicks > 0
+    ? `the executable target is placed ${targetPlacementTicks} MES ticks (${targetPlacementPoints.toFixed(2)} points) on the entry-facing side`
+    : "the executable target uses the raw directional level boundary with no near-side offset";
    if (targetPlan?.selectedTargetLevel) {
     const selected = targetPlan.selectedTargetLevel;
     addLevel(
       "selected-target-level",
       `Selected target level · ${selected.id}`,
       selected.price,
-       `${selected.type} · raw level evidence; the executable target is placed eight MES ticks (${targetPlan.targetBufferPoints ?? 2.00} points) on the entry-facing side.`,
+        `${selected.type} · raw level evidence; ${targetPlacementDescription}.`,
       "blue",
     );
     const selectedAnnotation = lines.at(-1);
@@ -1840,7 +1847,9 @@ function buildAnnotations(
       : "Target",
     targetPrice,
       targetPlan?.selectedTargetLevel
-       ? `TAKE PROFIT — ${targetPlan.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS} TICKS BEFORE ${targetPlan.selectedTargetLevel.id}; raw level ${targetPlan.selectedLevelPrice ?? targetPlan.selectedTargetLevel.price}. Executable target is ${targetPlan.targetBufferPoints ?? 2.00} points near side; levels qualify by the buffered price within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points.`
+       ? targetPlacementTicks > 0
+         ? `TAKE PROFIT — ${targetPlacementTicks} TICKS BEFORE ${targetPlan.selectedTargetLevel.id}; raw level ${targetPlan.selectedLevelPrice ?? targetPlan.selectedTargetLevel.price}. Executable target is ${targetPlacementPoints.toFixed(2)} points near side; levels qualify by the buffered price within ${targetPlan.bufferPoints ?? PROFIT_TARGET_BUFFER_POINTS} MES points.`
+         : `TAKE PROFIT — RAW LEVEL BOUNDARY ${targetPlan.selectedTargetLevel.id}; raw level ${targetPlan.selectedLevelPrice ?? targetPlan.selectedTargetLevel.price}. No near-side offset is applied to this non-major/non-indicator level.`
        : targetPlan?.fallbackUsed
          ? "No eligible causal level passed the buffered 20-point search; the plan used exactly 1R."
          : targetPlan?.rejectionReason === "INSUFFICIENT_REWARD_TO_RISK"

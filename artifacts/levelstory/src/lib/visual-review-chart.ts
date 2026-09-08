@@ -1261,7 +1261,7 @@ export function chartLevelLabel(annotation: Pick<VisualValidationAnnotation, "id
   if (annotation.id === "entry-buffer") return "CONFIRMATION BUFFER";
   if (annotation.id === "strategy-stop") return "STOP";
   if (annotation.id === "one-r-target") return "1R TARGET";
-  if (annotation.id === "target") return "TAKE PROFIT — 8 TICKS BEFORE LEVEL";
+  if (annotation.id === "target") return "TAKE PROFIT";
   if (annotation.id === "runner-threshold") return "RUNNER";
   return annotation.label;
 }
