@@ -1,0 +1,238 @@
+Previous Codex session to inspect for full context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Repository:
+LevelStory-main 32
+
+Read the previous session and inspect the current repository before making changes.
+
+Fix only findings 1, 2, 4, and 5 from the dynamic VWAP/EMA 200 target review.
+
+Do not change the current profit-target distance or R eligibility rules as part of this task. Preserve the current 20-point search range and current maximum-R behavior.
+
+1. Preserve sufficient indicator history for Shadow Replay
+
+Problem
+
+Original historical execution receives the complete contract candle history, but Visual Review and Shadow Account Replay reconstruct indicator history from the limited candles displayed in the snapshot.
+
+That displayed window may not contain the 200 completed closes needed to seed EMA 200. This can cause:
+
+- Original execution to adjust an EMA target
+- Shadow Replay to leave the same target frozen
+- Different target prices, fills, exits, and P/L for the same candidate
+
+Required behavior
+
+Persist a separate immutable indicator replay context for every dynamic VWAP or EMA 200 target.
+
+Do not rely on the visible chart candles as indicator warmup history.
+
+EMA 200 context must contain either:
+
+- At least the complete 200-candle causal SMA-seeding history plus every subsequent completed candle needed to reproduce the trade, or
+- A formally versioned and frozen EMA state containing the authoritative EMA value, seed-completion evidence, last processed candle timestamp, period, and recursive update state
+
+VWAP context must contain:
+
+- All completed regular-session candles beginning at 9:30 ET for the candidate’s trading date
+- Every completed post-entry candle needed to reproduce the target updates
+- Volume and session-calendar evidence
+- The exact VWAP reset date
+
+The context must include:
+
+- Indicator source
+- Calculation version
+- Period
+- Trading date
+- Session-calendar version
+- Source start and end timestamps
+- Warmup count
+- Whether initialization completed
+- Source-data fingerprint
+- Candidate/occurrence identity
+
+Causal restrictions
+
+When recalculating at candle C:
+
+- Use only candles whose close time is at or before C’s close.
+- Never use future candles.
+- Never rebuild EMA 200 from only P, E, and post-entry candles.
+- Never silently fall back to an incomplete indicator history.
+- If required replay context is unavailable, mark the review set stale and regeneration-required.
+
+Shadow Account Replay must reproduce the original candidate’s complete dynamic-target update ledger, target fills, exit legs, outcome, and P/L exactly.
+
+2. Give confluence targets an explicit target-driving member
+
+Problem
+
+A merged confluence containing a static level and VWAP can currently be labeled as a dynamic VWAP target merely because VWAP is one cluster member. Its initial target may be derived from the structural boundary and then move with VWAP.
+
+A cluster containing both VWAP and EMA 200 can receive no dynamic source and remain frozen.
+
+Required behavior
+
+Every selected confluence target must identify one explicit target-driving member.
+
+Determine the driving member by evaluating each confluence member independently:
+
+1. Calculate its directional raw level price.
+2. Calculate its eight-tick near-side executable target.
+3. Apply the existing profitability and eligibility rules.
+4. Sort qualifying members by executable distance from entry.
+5. Select the first encountered qualifying member.
+6. Break exact ties deterministically using stable member ID.
+
+Persist:
+
+- Target-driving member ID
+- Target-driving member type
+- Raw initial member price
+- Initial executable target
+- Whether it is static or dynamic
+- Confluence members retained as supporting evidence
+- Selection explanation
+
+Dynamic classification
+
+- If the driving member is VWAP, freeze the source identity as VWAP and dynamically recalculate only VWAP.
+- If the driving member is EMA 200, freeze the source identity as EMA200 and dynamically recalculate only EMA 200.
+- If the driving member is structural, keep the target static even if VWAP or EMA 200 is another confluence member.
+- If both VWAP and EMA 200 are present, dynamically manage only the member that actually drove the initial target.
+- Never switch the driving source after entry.
+- Never use the merged cluster boundary as the initial indicator value unless it exactly represents the selected dynamic member.
+
+Keep all other cluster members as confluence evidence, but do not let them silently change the selected target’s movement behavior.
+
+3. Do not activate a target update without a following candle
+
+Problem
+
+The execution engine can calculate an update on the final available candle, assign `effectiveFromTimestamp = null`, and still change `effectiveTargetPrice`.
+
+That target never became active because no following candle existed.
+
+Required behavior
+
+A target update calculated at candle close becomes active only when a valid immediately subsequent candle exists.
+
+When no following candle is available:
+
+- Record the proposed update as pending.
+- Do not change the current effective target.
+- Do not label the update as tightened.
+- Do not add the dynamic-target-tightened execution event.
+- Set `effectiveFromTimestamp` to null.
+- Use a reason such as:
+  PENDING_NO_NEXT_CANDLE
+- Preserve the proposed indicator and target values as audit evidence.
+
+Add explicit ledger state:
+
+- proposedTarget
+- previousEffectiveTarget
+- resultingEffectiveTarget, which remains unchanged
+- pending: true
+- effectiveFromTimestamp: null
+- reason: PENDING_NO_NEXT_CANDLE
+
+If another completed candle later becomes available, process the update causally at that next candle’s open. Do not apply it retroactively.
+
+The final reported `effectiveTargetPrice` must always mean the target that actually became active, not a merely proposed target.
+
+4. Correct target-plan and formula version identity
+
+Problem
+
+The authoritative target planner uses:
+
+key-level-target-search-v7-causal-dynamic-indicator-ratchet
+
+But formula configuration still records:
+
+key-level-target-search-v6-fixed-eight-tick-near-side
+
+Required behavior
+
+Remove duplicated hardcoded target-plan version strings.
+
+Import and use the authoritative `KEY_LEVEL_TARGET_PLAN_VERSION` constant anywhere formula configuration, cache identity, replay compatibility, API metadata, or audit output references the planner version.
+
+Also include the dynamic-target calculation version in formula and cache identity.
+
+Ensure these identities agree across:
+
+- Target plans
+- Formula configuration and hash
+- Active governed strategy
+- Candidate projection
+- Historical execution
+- Visual Review sets
+- Shadow Account Replay
+- API/OpenAPI responses
+- Cache compatibility checks
+
+Older review sets with mismatched target-plan or dynamic-target versions must be stale and regeneration-required.
+
+Version bumps
+
+Bump every affected:
+
+- Formula version
+- Target-plan version if its serialized evidence changes
+- Dynamic-target calculation version
+- Cache-key version
+- Candidate-projection version
+- Execution-management version
+- Snapshot-projection version
+- Chart-projection version
+- API schema version where applicable
+
+Regression tests
+
+Add tests proving:
+
+1. EMA 200 replay receives sufficient causal warmup state or history.
+2. Replay fails explicitly when EMA warmup context is missing.
+3. VWAP replay begins at the correct 9:30 ET session reset.
+4. Original execution and Shadow Replay generate identical target-update ledgers.
+5. Original execution and replay produce identical fills, legs, outcome, and P/L.
+6. A static-level-plus-VWAP confluence remains static when the structural member drives the target.
+7. The same confluence is dynamic only when VWAP actually drives the target.
+8. A VWAP-plus-EMA confluence selects one deterministic driving member.
+9. The dynamic source never switches after entry.
+10. Initial indicator value equals the driving indicator member—not the merged cluster boundary.
+11. A last-candle proposal remains pending when no following candle exists.
+12. A pending update does not change `effectiveTargetPrice`.
+13. A pending update becomes effective only when the next candle is available.
+14. No target update is applied retroactively.
+15. Formula, target-plan, execution, replay, and cache metadata use the same authoritative version constants.
+16. Older incompatible review sets require regeneration.
+17. Existing long/short and one-/two-contract dynamic-target behavior remains unchanged.
+
+Run the focused tests for:
+
+- Key-level target planning
+- Indicator calculations
+- OHLCV execution
+- Phase 9 candidate execution
+- Visual Review generation
+- Shadow Account Replay
+- Dynamic-target chart projection
+- API/OpenAPI contracts
+- Backend and frontend typechecks
+- Frontend production build
+
+Report:
+
+- Root causes
+- Files changed
+- Indicator replay-context design
+- Confluence driving-member selection
+- Pending-update behavior
+- Version bumps
+- Tests run and results
+- Remaining validation limitations
