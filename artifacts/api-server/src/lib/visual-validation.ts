@@ -1766,8 +1766,11 @@ function buildAnnotations(
   lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.", entryOpen, entryClose));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
-  const entryBuffer = snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
-  addLevel("entry-buffer", "Entry buffer", entryBuffer, `${snapshot.patience.entryBufferTicks}-tick confirmation buffer.`, "accent");
+  const entryBuffer = occurrence
+    ? audit.entryTriggerPrice ?? occurrence.confirmationThreshold ?? entryPrice
+    : snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
+  const entryBufferTicks = audit.confirmationBufferTicks ?? snapshot.patience.entryBufferTicks;
+  addLevel("entry-buffer", "Entry buffer", entryBuffer, `${entryBufferTicks}-tick confirmation buffer at the causal P→E occurrence.`, "accent");
   const candidateStrategyStopPrice = trade?.candidateId
     ? trade.audit?.strategyStopPrice ?? null
     : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;

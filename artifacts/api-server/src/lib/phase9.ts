@@ -2517,6 +2517,7 @@ function auditForEvaluation(
     levels: { ntz: finalizedNtz },
     patience: guardPatience,
     direction: guardDirection,
+    strategyType: evaluation.setupType,
     breakout: {
       detected: snapshot.breakout.detected,
       direction: snapshot.breakout.direction,

@@ -624,6 +624,7 @@ export function evaluateConsolidationEntryGuard(input: {
   levels: Pick<Phase6Context["levels"], "ntz">;
   patience: Pick<PatienceAnalysis, "patienceCandle" | "triggerCandle" | "entryBufferTicks" | "entryBufferPrice"> | null;
   direction: Direction | null;
+  strategyType?: SetupType | LegacySetupType | null;
   breakout?: Pick<BreakoutEvent, "detected" | "direction" | "candleOpenTime" | "continuationConfirmed" | "failed"> | null;
   config: StrategyConfig;
   consolidationEvaluation?: Pick<SetupEvaluation, "setupType" | "decision"> | null;
@@ -639,7 +640,11 @@ export function evaluateConsolidationEntryGuard(input: {
     && patienceCandle !== null
     && patienceCandle !== undefined
     && breakoutCandle.closeTime <= patienceCandle.openTime;
-  const detectionCandles = breakoutIsBeforePatience
+  const orbPullbackUsesEntryWindow = input.strategyType === "ORB_PULLBACK_CONTINUATION";
+  const entryWindowClose = input.patience?.triggerCandle?.closeTime ?? patienceCandle?.closeTime ?? null;
+  const detectionCandles = orbPullbackUsesEntryWindow && entryWindowClose !== null
+    ? completed.filter((candle) => candle.closeTime <= entryWindowClose)
+    : breakoutIsBeforePatience
     ? completed.filter((candle) => candle.closeTime <= breakoutCandle!.openTime)
     : completed.filter((candle) => patienceCandle
       ? candle.closeTime <= patienceCandle.openTime
@@ -789,7 +794,17 @@ export function evaluateConsolidationEntryGuard(input: {
       "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION",
     );
   }
-  const executionEligible = !pInside
+  const orbPullbackOutsideZone = orbPullbackUsesEntryWindow
+    && entryIsImmediate
+    && entry?.isComplete === true
+    && entryReachedConfirmation === true
+    && entryCloseOutsideZone === true
+    && entryOutsideFinalizedNtz === true
+    && entryFillOutsideZone === true
+    && entryBeforeCutoff === true;
+  const executionEligible = orbPullbackUsesEntryWindow
+    ? !pInside || orbPullbackOutsideZone
+    : !pInside
     ? (!breakoutPullback || breakoutPullbackConfirmed)
     : directBreakoutConfirmed;
   const entryWickedOutsideButClosedInside = direction && entry

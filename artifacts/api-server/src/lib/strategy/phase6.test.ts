@@ -721,6 +721,34 @@ test("Fill exactly on the boundary is rejected", () => {
   assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE");
 });
 
+test("ORB pullback applies the consolidation guard to its causal P to E window", () => {
+  const base = Date.parse("2026-08-25T13:45:00.000Z");
+  const baselineCandles = Array.from({ length: 12 }, (_, index) =>
+    candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
+  );
+  const consolidationSeed = candle(base, 100, 100.5, 99.9, 100.1);
+  const p = candle(base + 300_000, 100, 100.5, 99.9, 100.1);
+  const e = candle(base + 600_000, 100.1, 100.4, 99.9, 100.25);
+  const result = evaluateConsolidationEntryGuard({
+    candles: [...baselineCandles, consolidationSeed, p, e],
+    levels: { ntz: { high: 99, low: 98, complete: true } },
+    patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 100.25 },
+    direction: "long",
+    strategyType: "ORB_PULLBACK_CONTINUATION",
+    config,
+    consolidationEvaluation: {
+      setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      decision: "SETUP FORMING",
+    },
+  });
+  assert.ok(result);
+  assert.equal(result.activeZone, true);
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.entryClosedOutsideZone, false);
+  assert.equal(result.rejectionReason, "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED");
+  assert.equal(result.lifecycleState, "PATIENCE_EXPIRED_INSIDE_CONSOLIDATION");
+});
+
 test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {
   assert.equal(isDoji(candle(0, 10, 10.1, 9.9, 10.02), 0.1), true);
   assert.equal(isDoji(candle(0, 10, 10.1, 9.9, 10.03), 0.1), false);
