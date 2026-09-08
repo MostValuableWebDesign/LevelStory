@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.js";
 import type { BacktestRequest } from "./phase9.js";
+import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
+import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v18-causal-dynamic-indicator-ratchet";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v19-causal-replay-context-driving-member-pending";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -43,7 +45,8 @@ export function formulaConfiguration(
         fixedContracts: config.executionManagementFixedContracts,
       },
       keyLevelTarget: {
-         targetPlanVersion: "key-level-target-search-v6-fixed-eight-tick-near-side",
+          targetPlanVersion: KEY_LEVEL_TARGET_PLAN_VERSION,
+          dynamicTargetCalculationVersion: DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION,
          candidatePlacementMode: "NEAR_SIDE_8_TICKS",
          executableTargetBuffer: "8 MES ticks (2.00 points), entry-facing side",
         minimumTargetR: 1,

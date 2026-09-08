@@ -123,6 +123,55 @@ test("overlapping and within-Dynamite-tolerance aliases become one physical targ
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["separate-prior-high"]);
 });
 
+test("a structural confluence member remains the target driver over indicator evidence", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    levels: [
+      { id: "major-resistance", type: "major resistance", rangeLow: 104, rangeHigh: 105 },
+      { id: "vwap", type: "VWAP", price: 105.5 },
+    ],
+  });
+  assert.equal(plan.dynamicTargetSource, null);
+  assert.equal(plan.targetDrivingMember?.id, "major-resistance");
+  assert.equal(plan.targetDrivingMember?.dynamicSource, null);
+  assert.equal(plan.selectedLevelPrice, 104);
+  assert.equal(plan.targetPrice, 102);
+});
+
+test("an indicator-only confluence selects the independently qualifying VWAP driver", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    levels: [
+      { id: "vwap", type: "VWAP", price: 105 },
+      { id: "vwap-alias", type: "VWAP", price: 105.5 },
+    ],
+  });
+  assert.equal(plan.targetDrivingMember?.dynamicSource, "VWAP");
+  assert.equal(plan.dynamicTargetSource, "VWAP");
+  assert.equal(plan.targetDrivingMember?.rawPrice, 105);
+  assert.equal(plan.targetPrice, 103);
+});
+
+test("VWAP and EMA200 choose one deterministic driver by executable distance then identity", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    levels: [
+      { id: "z-ema", type: "EMA200", price: 105 },
+      { id: "a-vwap", type: "VWAP", price: 105 },
+    ],
+  });
+  assert.equal(plan.targetDrivingMember?.id, "a-vwap");
+  assert.equal(plan.targetDrivingMember?.dynamicSource, "VWAP");
+  assert.equal(plan.targetPrice, 103);
+  assert.equal(plan.selectedTargetLevel?.targetDrivingMember?.id, "a-vwap");
+});
+
 test("legacy exact-level placement is rejected as stale", () => {
   assert.throws(
     () => buildKeyLevelTargetPlan({

@@ -2,6 +2,7 @@ import type { Direction } from "./types.js";
 import type { PrimaryLossExitReference } from "./key-level-targets.js";
 import { causalEmaSeries, regularSessionVwap, vwap } from "./indicators.js";
 import type { Candle } from "./types.js";
+import { createHash } from "node:crypto";
 import {
   BREAKEVEN_EVALUATION_BARS,
   BREAKEVEN_FAVORABLE_EXCURSION_R,
@@ -26,9 +27,24 @@ export const ONE_R_REACHED_BEFORE_BREAKEVEN_LABEL = "ONE_R_REACHED_BEFORE_BREAKE
 export const ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN_LABEL = "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN";
 export const DYNAMIC_TARGET_TIGHTENED_LABEL = "DYNAMIC_TARGET_TIGHTENED";
 export const DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED_LABEL = "DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED";
-export const DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION = "causal-dynamic-target-v1-completed-close-next-candle";
+export const DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION = "causal-dynamic-target-v2-replay-context-pending-next-candle";
 
 export type DynamicTargetSource = "VWAP" | "EMA200";
+
+export type IndicatorReplayContext = {
+  source: DynamicTargetSource;
+  calculationVersion: typeof DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION;
+  period: number | null;
+  tradingDate: string | null;
+  sessionCalendarVersion: string | null;
+  sourceStartTime: number | null;
+  sourceEndTime: number | null;
+  warmupCount: number;
+  initialized: boolean;
+  sourceFingerprint: string;
+  candidateIdentity: string | null;
+  candles: readonly OhlcvCandle[];
+};
 
 export type DynamicTargetUpdate = {
   candleOpenTime: number | null;
@@ -40,10 +56,12 @@ export type DynamicTargetUpdate = {
   previousEffectiveTarget: number;
   resultingEffectiveTarget: number;
   effectiveFromTimestamp: number | null;
+  pending: boolean;
   tightened: boolean;
   fartherAwayIgnored: boolean;
   reason:
     | "TIGHTENED"
+    | "PENDING_NO_NEXT_CANDLE"
     | "NO_CHANGE"
     | "IGNORED_FARTHER_AWAY"
     | "IGNORED_WOULD_CROSS_ENTRY";
@@ -81,6 +99,81 @@ export type OhlcvCandle = {
   volume?: number;
   isComplete?: boolean;
 };
+
+export function buildIndicatorReplayContext(input: {
+  source: DynamicTargetSource;
+  candles: readonly OhlcvCandle[];
+  tradingDate?: string | null;
+  emaPeriod?: number;
+  sessionCalendarVersion?: string | null;
+  candidateIdentity?: string | null;
+}): IndicatorReplayContext {
+  const ordered = input.candles
+    .filter((candle) =>
+      candle.isComplete !== false
+      && Number.isFinite(candle.openTime)
+      && Number.isFinite(candle.closeTime)
+      && Number.isFinite(candle.volume ?? 0)
+      && [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite),
+    )
+    .map((candle) => ({ ...candle }))
+    .sort((first, second) => first.closeTime! - second.closeTime! || first.openTime! - second.openTime!);
+  const unique = [...new Map(ordered.map((candle) => [
+    `${candle.openTime}:${candle.closeTime}`,
+    candle,
+  ])).values()];
+  const indicatorCandles = unique.map(toIndicatorCandle).filter((item): item is Candle => item !== null);
+  const period = input.source === "EMA200" ? input.emaPeriod ?? 200 : null;
+  const emaSeries = period === null ? null : causalEmaSeries(indicatorCandles, period);
+  const initialized = period === null
+    ? Number.isFinite(regularSessionVwap(indicatorCandles, undefined, input.tradingDate ?? undefined))
+    : emaSeries?.initialized === true;
+  const warmupCount = period === null ? indicatorCandles.length : emaSeries?.warmupCount ?? 0;
+  const sourceFingerprint = createHash("sha256").update(JSON.stringify(unique.map((candle) => [
+    candle.openTime,
+    candle.closeTime,
+    candle.open,
+    candle.high,
+    candle.low,
+    candle.close,
+    candle.volume ?? 0,
+    candle.isComplete !== false,
+  ]))).digest("hex");
+  return {
+    source: input.source,
+    calculationVersion: DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION,
+    period,
+    tradingDate: input.tradingDate ?? null,
+    sessionCalendarVersion: input.sessionCalendarVersion ?? null,
+    sourceStartTime: unique[0]?.openTime ?? null,
+    sourceEndTime: unique.at(-1)?.closeTime ?? null,
+    warmupCount,
+    initialized,
+    sourceFingerprint,
+    candidateIdentity: input.candidateIdentity ?? null,
+    candles: unique,
+  };
+}
+
+export function validateIndicatorReplayContext(
+  context: IndicatorReplayContext,
+  source: DynamicTargetSource,
+  emaPeriod = 200,
+): void {
+  if (
+    context.source !== source
+    || context.calculationVersion !== DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION
+    || !context.sourceFingerprint
+    || !context.candles.length
+    || !context.initialized
+    || (source === "EMA200" && (
+      context.period !== emaPeriod
+      || context.warmupCount < emaPeriod
+    ))
+  ) {
+    throw new Error("Dynamic target indicator replay context is stale or missing required causal warmup.");
+  }
+}
 
 export type OhlcvFeeComponents = {
   commission?: number;
@@ -164,6 +257,7 @@ export type OhlcvExecutionAudit = {
   runnerBreakevenIgnoredForTighterStop: boolean;
   originalStopStillActive: boolean;
   dynamicTargetSource: DynamicTargetSource | null;
+  dynamicTargetReplayContext: IndicatorReplayContext | null;
   initialTargetPrice: number | null;
   effectiveTargetPrice: number | null;
   targetUpdateLedger: DynamicTargetUpdate[];
@@ -241,6 +335,7 @@ export type OhlcvExecutionInput = {
     emaPeriod?: number;
     initialIndicatorValue?: number | null;
     sourceFingerprint?: string | null;
+     replayContext?: IndicatorReplayContext;
   };
 };
 
@@ -280,7 +375,9 @@ function dynamicIndicatorValueAt(
   dynamicTarget: NonNullable<OhlcvExecutionInput["dynamicTarget"]>,
   candle: OhlcvCandle,
 ): number | null {
-  const indicatorCandles = dynamicTarget.indicatorCandles
+  const replayContext = dynamicTarget.replayContext;
+  if (replayContext) validateIndicatorReplayContext(replayContext, dynamicTarget.source, dynamicTarget.emaPeriod ?? 200);
+  const indicatorCandles = (replayContext?.candles ?? dynamicTarget.indicatorCandles)
     .filter((item) =>
       item.isComplete !== false
       && Number.isFinite(item.closeTime)
@@ -365,6 +462,7 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       runnerBreakevenIgnoredForTighterStop: false,
       originalStopStillActive: false,
       dynamicTargetSource: input.dynamicTarget?.source ?? null,
+       dynamicTargetReplayContext: input.dynamicTarget?.replayContext ?? null,
       initialTargetPrice,
       effectiveTargetPrice: initialTargetPrice,
       targetUpdateLedger: [],
@@ -845,10 +943,12 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           size,
         );
         const previousEffectiveTarget = effectiveTarget;
-        const effectiveFromTimestamp = candles[candleIndex + 1]
-          && typeof candles[candleIndex + 1].openTime === "number"
-          && Number.isFinite(candles[candleIndex + 1].openTime)
-          ? candles[candleIndex + 1].openTime!
+        const nextCandle = candles[candleIndex + 1];
+        const hasFollowingCandle = nextCandle !== undefined
+          && typeof nextCandle.openTime === "number"
+          && Number.isFinite(nextCandle.openTime);
+        const effectiveFromTimestamp = hasFollowingCandle
+          ? nextCandle.openTime!
           : null;
         const crossesEntry = input.direction === "long"
           ? proposedTarget <= modeledFill
@@ -856,11 +956,15 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         const fartherAway = input.direction === "long"
           ? proposedTarget > previousEffectiveTarget
           : proposedTarget < previousEffectiveTarget;
-        const tightened = !crossesEntry && !fartherAway && proposedTarget !== previousEffectiveTarget;
+        const canTighten = !crossesEntry && !fartherAway && proposedTarget !== previousEffectiveTarget;
+        const pending = canTighten && !hasFollowingCandle;
+        const tightened = canTighten && hasFollowingCandle;
         const reason: DynamicTargetUpdate["reason"] = crossesEntry
           ? "IGNORED_WOULD_CROSS_ENTRY"
           : fartherAway
             ? "IGNORED_FARTHER_AWAY"
+            : pending
+              ? "PENDING_NO_NEXT_CANDLE"
             : tightened
               ? "TIGHTENED"
               : "NO_CHANGE";
@@ -875,6 +979,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           previousEffectiveTarget,
           resultingEffectiveTarget,
           effectiveFromTimestamp,
+          pending,
           tightened,
           fartherAwayIgnored: fartherAway,
           reason,
@@ -960,6 +1065,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         runnerBreakevenIgnoredForTighterStop,
        originalStopStillActive,
         dynamicTargetSource: input.dynamicTarget?.source ?? null,
+         dynamicTargetReplayContext: input.dynamicTarget?.replayContext ?? null,
         initialTargetPrice: initialTarget,
         effectiveTargetPrice: effectiveTarget,
         targetUpdateLedger,

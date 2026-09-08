@@ -1184,7 +1184,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -1203,7 +1214,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -1221,7 +1243,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -1244,7 +1277,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -1262,12 +1306,34 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -1332,7 +1398,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -1351,7 +1428,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -1369,7 +1457,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -1392,7 +1491,18 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -1410,12 +1520,34 @@ export const RunBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -1444,6 +1576,20 @@ export const RunBacktestResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -1454,9 +1600,10 @@ export const RunBacktestResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -2278,7 +2425,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -2297,7 +2455,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -2315,7 +2484,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -2338,7 +2518,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -2356,12 +2547,34 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -2426,7 +2639,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -2445,7 +2669,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -2463,7 +2698,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -2486,7 +2732,18 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -2504,12 +2761,34 @@ export const StartBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -2538,6 +2817,20 @@ export const StartBatchBacktestResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -2548,9 +2841,10 @@ export const StartBatchBacktestResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -3775,7 +4069,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -3794,7 +4099,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -3812,7 +4128,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -3835,7 +4162,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -3853,12 +4191,34 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -3923,7 +4283,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -3942,7 +4313,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -3960,7 +4342,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -3983,7 +4376,18 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -4001,12 +4405,34 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -4035,6 +4461,20 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -4045,9 +4485,10 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -5272,7 +5713,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -5291,7 +5743,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -5309,7 +5772,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -5332,7 +5806,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -5350,12 +5835,34 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -5420,7 +5927,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -5439,7 +5957,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -5457,7 +5986,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -5480,7 +6020,18 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -5498,12 +6049,34 @@ export const CancelBatchBacktestResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -5532,6 +6105,20 @@ export const CancelBatchBacktestResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -5542,9 +6129,10 @@ export const CancelBatchBacktestResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -7310,7 +7898,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -7329,7 +7928,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -7347,7 +7957,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -7370,7 +7991,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -7388,12 +8020,34 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -7458,7 +8112,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -7477,7 +8142,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -7495,7 +8171,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -7518,7 +8205,18 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -7536,12 +8234,34 @@ export const GetVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -7570,6 +8290,20 @@ export const GetVisualValidationSetResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -7580,9 +8314,10 @@ export const GetVisualValidationSetResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -8184,7 +8919,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -8203,7 +8949,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -8221,7 +8978,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -8244,7 +9012,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -8262,12 +9041,34 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -8332,7 +9133,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -8351,7 +9163,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -8369,7 +9192,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -8392,7 +9226,18 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -8410,12 +9255,34 @@ export const CreateVisualValidationSetResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -8444,6 +9311,20 @@ export const CreateVisualValidationSetResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -8454,9 +9335,10 @@ export const CreateVisualValidationSetResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -9520,7 +10402,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -9539,7 +10432,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -9557,7 +10461,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -9580,7 +10495,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -9598,12 +10524,34 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -9668,7 +10616,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -9687,7 +10646,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -9705,7 +10675,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -9728,7 +10709,18 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -9746,12 +10738,34 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -9780,6 +10794,20 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -9790,9 +10818,10 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -10392,7 +11421,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -10411,7 +11451,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -10429,7 +11480,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -10452,7 +11514,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -10470,12 +11543,34 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -10540,7 +11635,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -10559,7 +11665,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -10577,7 +11694,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -10600,7 +11728,18 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -10618,12 +11757,34 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -10652,6 +11813,20 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -10662,9 +11837,10 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),
@@ -11271,7 +12447,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -11290,7 +12477,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -11308,7 +12506,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -11331,7 +12540,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -11349,12 +12569,34 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -11419,7 +12661,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "rejectionReason": zod.union([zod.literal('INSUFFICIENT_REWARD_TO_RISK'),zod.literal(null)]).nullable(),
   "availableLevels": zod.array(zod.object({
@@ -11438,7 +12691,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "skippedLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -11456,7 +12720,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).and(zod.object({
   "reason": zod.enum(['TARGET_LEVEL_SKIPPED_BELOW_1R', 'TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE', 'TARGET_LEVEL_SKIPPED_WRONG_DIRECTION', 'TARGET_LEVEL_SKIPPED_DUPLICATE_CONFLUENCE', 'TARGET_LEVEL_SKIPPED_DIAGNOSTIC_ONLY', 'TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION', 'OUTSIDE_20_POINTS', 'TARGET_NOT_PROFITABLE', 'INSUFFICIENT_REWARD_TO_RISK']),
   "executableTargetPrice": zod.number().nullish(),
@@ -11479,7 +12754,18 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 }).nullable(),
   "subsequentTargetLevels": zod.array(zod.object({
   "id": zod.string(),
@@ -11497,12 +12783,34 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "rangeLow": zod.number().nullish(),
   "rangeHigh": zod.number().nullish(),
   "sourceTimestamp": zod.coerce.date().nullish()
-})).optional()
+})).optional(),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish()
 })),
   "selectedLevelPrice": zod.number().nullable(),
   "targetDistanceTicks": zod.number().nullable(),
   "targetPrice": zod.number().nullable(),
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable().describe('Identity-frozen dynamic indicator source; null for structural or fallback targets.'),
+  "targetDrivingMember": zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "rawPrice": zod.number(),
+  "executableTargetPrice": zod.number(),
+  "executableDistancePoints": zod.number(),
+  "executableDistanceTicks": zod.number(),
+  "executableTargetR": zod.number().nullable(),
+  "dynamicSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullable(),
+  "selectionExplanation": zod.string()
+}).nullish(),
   "fallbackUsed": zod.boolean(),
   "fallbackReason": zod.union([zod.literal('ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL'),zod.literal(null)]).nullable(),
   "searchRangePoints": zod.number().nullable(),
@@ -11531,6 +12839,20 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "dynamicTargetSource": zod.union([zod.literal('VWAP'),zod.literal('EMA200'),zod.literal(null)]).nullish(),
   "initialTargetPrice": zod.number().nullish(),
   "effectiveTargetPrice": zod.number().nullish(),
+  "dynamicTargetReplayContext": zod.object({
+  "source": zod.enum(['VWAP', 'EMA200']),
+  "calculationVersion": zod.string(),
+  "period": zod.number().nullable(),
+  "tradingDate": zod.string().nullable(),
+  "sessionCalendarVersion": zod.string().nullable(),
+  "sourceStartTime": zod.number().nullable(),
+  "sourceEndTime": zod.number().nullable(),
+  "warmupCount": zod.number(),
+  "initialized": zod.boolean(),
+  "sourceFingerprint": zod.string(),
+  "candidateIdentity": zod.string().nullable(),
+  "candles": zod.array(zod.record(zod.string(), zod.unknown()))
+}).nullish(),
   "targetUpdateLedger": zod.array(zod.object({
   "candleOpenTime": zod.number().nullable(),
   "candleCloseTime": zod.number().nullable(),
@@ -11541,9 +12863,10 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "previousEffectiveTarget": zod.number(),
   "resultingEffectiveTarget": zod.number(),
   "effectiveFromTimestamp": zod.number().nullable(),
+  "pending": zod.boolean(),
   "tightened": zod.boolean(),
   "fartherAwayIgnored": zod.boolean(),
-  "reason": zod.enum(['TIGHTENED', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
+  "reason": zod.enum(['TIGHTENED', 'PENDING_NO_NEXT_CANDLE', 'NO_CHANGE', 'IGNORED_FARTHER_AWAY', 'IGNORED_WOULD_CROSS_ENTRY']),
   "calculationVersion": zod.string(),
   "sourceFingerprint": zod.string().nullable()
 })).optional(),

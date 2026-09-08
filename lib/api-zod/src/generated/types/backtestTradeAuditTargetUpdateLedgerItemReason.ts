@@ -11,6 +11,7 @@ export type BacktestTradeAuditTargetUpdateLedgerItemReason = typeof BacktestTrad
 
 export const BacktestTradeAuditTargetUpdateLedgerItemReason = {
   TIGHTENED: 'TIGHTENED',
+  PENDING_NO_NEXT_CANDLE: 'PENDING_NO_NEXT_CANDLE',
   NO_CHANGE: 'NO_CHANGE',
   IGNORED_FARTHER_AWAY: 'IGNORED_FARTHER_AWAY',
   IGNORED_WOULD_CROSS_ENTRY: 'IGNORED_WOULD_CROSS_ENTRY',

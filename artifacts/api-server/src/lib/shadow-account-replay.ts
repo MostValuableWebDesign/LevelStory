@@ -1,6 +1,6 @@
 import type { BacktestTrade } from "./phase9.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
-import { simulateOhlcvExecution, type OhlcvCandle } from "./strategy/ohlcv-execution.js";
+import { simulateOhlcvExecution, validateIndicatorReplayContext, type OhlcvCandle } from "./strategy/ohlcv-execution.js";
 import type {
   VisualValidationReplayExecutionInput,
   VisualValidationSet,
@@ -310,6 +310,23 @@ function replayTradeWithFixedContracts(
   const useOneRProfitRule = rebuiltTargetPlan !== null
     && rebuiltTargetPlan?.rejectionReason == null
     && rebuiltTargetPlan.targetPrice === null;
+  if (rebuiltTargetPlan?.dynamicTargetSource && !replayInput.indicatorReplayContext) {
+    throw new Error(
+      `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks immutable ${rebuiltTargetPlan.dynamicTargetSource} replay context. Regenerate the review set.`,
+    );
+  }
+  if (rebuiltTargetPlan?.dynamicTargetSource && replayInput.indicatorReplayContext) {
+    try {
+      validateIndicatorReplayContext(
+        replayInput.indicatorReplayContext,
+        rebuiltTargetPlan.dynamicTargetSource,
+      );
+    } catch {
+      throw new Error(
+        `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} has invalid immutable ${rebuiltTargetPlan.dynamicTargetSource} replay context. Regenerate the review set.`,
+      );
+    }
+  }
   const specification = getFuturesContractSpecification("MES");
   const execution = simulateOhlcvExecution({
     direction: trade.direction,
@@ -325,11 +342,9 @@ function replayTradeWithFixedContracts(
     dynamicTarget: rebuiltTargetPlan?.dynamicTargetSource
       ? {
         source: rebuiltTargetPlan.dynamicTargetSource,
-        indicatorCandles: (replayInput.indicatorHistoryCandles ?? [
-          replayInput.patienceCandle,
-          replayInput.immediateTriggerCandle,
-          ...replayInput.subsequentCompletedCandles,
-        ]).map(asOhlcvCandle),
+        indicatorCandles: replayInput.indicatorReplayContext?.candles
+          ?? [],
+        replayContext: replayInput.indicatorReplayContext,
         tradingDate: trade.tradingDate,
         initialIndicatorValue: rebuiltTargetPlan.selectedLevelPrice,
         sourceFingerprint: rebuiltTargetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,

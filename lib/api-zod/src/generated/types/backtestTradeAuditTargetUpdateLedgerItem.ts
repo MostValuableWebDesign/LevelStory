@@ -22,6 +22,7 @@ export type BacktestTradeAuditTargetUpdateLedgerItem = {
   resultingEffectiveTarget: number;
   /** @nullable */
   effectiveFromTimestamp: number | null;
+  pending: boolean;
   tightened: boolean;
   fartherAwayIgnored: boolean;
   reason: BacktestTradeAuditTargetUpdateLedgerItemReason;

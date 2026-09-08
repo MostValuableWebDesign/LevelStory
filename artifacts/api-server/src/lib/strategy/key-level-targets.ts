@@ -43,6 +43,19 @@ export type FrozenTargetLevel = {
   distanceTicks: number;
   sourceTimestamp: string | null;
   confluenceMembers?: readonly KeyLevelTargetInput[];
+  targetDrivingMember?: TargetDrivingMember | null;
+};
+
+export type TargetDrivingMember = {
+  id: string;
+  type: string;
+  rawPrice: number;
+  executableTargetPrice: number;
+  executableDistancePoints: number;
+  executableDistanceTicks: number;
+  executableTargetR: number | null;
+  dynamicSource: DynamicTargetSource | null;
+  selectionExplanation: string;
 };
 
 export type SkippedTargetLevel = FrozenTargetLevel & {
@@ -107,6 +120,7 @@ export type KeyLevelTargetPlan = {
   targetPrice: number | null;
   /** Identity-frozen dynamic indicator source, when the selected level is VWAP or EMA 200. */
   dynamicTargetSource?: DynamicTargetSource | null;
+  targetDrivingMember?: TargetDrivingMember | null;
   fallbackUsed: boolean;
   fallbackReason: "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL" | null;
   searchRangePoints: number | null;
@@ -127,9 +141,10 @@ function normalizedLevelText(value: string): string {
 }
 
 export function dynamicTargetSourceForTargetLevel(
-  level: Pick<FrozenTargetLevel, "id" | "type" | "confluenceMembers"> | null | undefined,
+  level: Pick<FrozenTargetLevel, "id" | "type" | "confluenceMembers" | "targetDrivingMember"> | null | undefined,
 ): DynamicTargetSource | null {
   if (!level) return null;
+  if (level.targetDrivingMember) return level.targetDrivingMember.dynamicSource;
   const members = level.confluenceMembers?.length
     ? level.confluenceMembers
     : [{ id: level.id, type: level.type }];
@@ -491,13 +506,78 @@ export function buildKeyLevelTargetPlan(input: {
       return Math.abs(target - input.entryPrice) <= bufferPoints
         && (input.direction === "long" ? target > input.entryPrice : target < input.entryPrice);
     });
-  const selectedTargetLevel = eligible[0] ?? null;
+  const targetDrivingMemberForLevel = (level: FrozenTargetLevel): TargetDrivingMember | null => {
+    const members = level.confluenceMembers?.length
+      ? level.confluenceMembers
+      : [{
+        id: level.id,
+        type: level.type,
+        price: level.price,
+        rangeLow: level.rangeLow,
+        rangeHigh: level.rangeHigh,
+        sourceTimestamp: level.sourceTimestamp,
+      }];
+    return members
+      .flatMap((member) => {
+        const memberLevel = {
+          id: member.id,
+          type: member.type,
+          price: member.price ?? member.rangeLow ?? member.rangeHigh ?? level.price,
+          rangeLow: member.rangeLow ?? null,
+          rangeHigh: member.rangeHigh ?? null,
+          sourceTimestamp: member.sourceTimestamp ?? null,
+          distancePoints: 0,
+          distanceTicks: 0,
+        } satisfies FrozenTargetLevel;
+        const rawPrice = targetBoundaryForLevel(memberLevel, input.direction, input.entryPrice);
+        const executableTargetPrice = nearSideTargetPrice(
+          input.direction,
+          rawPrice,
+          targetBufferTicks * tickSize,
+          tickSize,
+        );
+        const executableDistancePoints = Math.abs(executableTargetPrice - input.entryPrice);
+        const executableTargetR = validRisk ? executableDistancePoints / riskPoints : null;
+        const qualifies = executableDistancePoints <= maximumSearchDistancePoints
+          && (input.direction === "long"
+            ? executableTargetPrice > input.entryPrice
+            : executableTargetPrice < input.entryPrice)
+          && (!validRisk || (executableTargetR !== null && executableTargetR >= (minimumTargetR ?? 0)));
+        if (!qualifies) return [];
+        const dynamicSource = dynamicTargetSourceForTargetLevel(memberLevel);
+        return [{
+          id: member.id,
+          type: member.type,
+          rawPrice: Number(rawPrice.toFixed(10)),
+          executableTargetPrice,
+          executableDistancePoints: Number(executableDistancePoints.toFixed(10)),
+          executableDistanceTicks: Math.round(executableDistancePoints / tickSize),
+          executableTargetR,
+          dynamicSource,
+          selectionExplanation: dynamicSource
+            ? `${dynamicSource} independently qualifies at the nearest executable distance.`
+            : "Structural member independently qualifies at the nearest executable distance.",
+        } satisfies TargetDrivingMember];
+      })
+      .sort((first, second) =>
+        first.executableDistancePoints - second.executableDistancePoints
+        || first.id.localeCompare(second.id)
+        || first.type.localeCompare(second.type),
+      )[0] ?? null;
+  };
+  const selectedBaseLevel = eligible[0] ?? null;
+  const selectedDrivingMember = selectedBaseLevel === null
+    ? null
+    : targetDrivingMemberForLevel(selectedBaseLevel);
+  const selectedTargetLevel = selectedBaseLevel === null
+    ? null
+    : { ...selectedBaseLevel, targetDrivingMember: selectedDrivingMember };
   const subsequentTargetLevels = eligible.slice(1);
   const targetPrice = selectedTargetLevel === null
     ? oneRPrice
-    : targetPriceForLevel(selectedTargetLevel);
+    : selectedDrivingMember?.executableTargetPrice ?? targetPriceForLevel(selectedTargetLevel);
   const dynamicTargetSource = dynamicTargetSourceForTargetLevel(selectedTargetLevel);
-  const selectedLevelPrice = selectedTargetLevel?.price ?? null;
+  const selectedLevelPrice = selectedDrivingMember?.rawPrice ?? selectedTargetLevel?.price ?? null;
   const targetDistanceTicks = targetPrice === null
     ? null
     : Math.round(Math.abs(targetPrice - input.entryPrice) / tickSize);
@@ -529,6 +609,7 @@ export function buildKeyLevelTargetPlan(input: {
     targetDistanceTicks,
     targetPrice,
     dynamicTargetSource,
+    targetDrivingMember: selectedDrivingMember,
     fallbackUsed: selectedTargetLevel === null && oneRPrice !== null,
     fallbackReason: selectedTargetLevel === null && oneRPrice !== null
       ? "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL"

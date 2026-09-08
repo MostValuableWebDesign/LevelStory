@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TargetDrivingMember } from './targetDrivingMember';
 import type { TargetLevelInput } from './targetLevelInput';
 
 export interface FrozenTargetLevel {
@@ -20,4 +21,6 @@ export interface FrozenTargetLevel {
   /** @nullable */
   sourceTimestamp: Date | null;
   confluenceMembers?: TargetLevelInput[];
+  /** @nullable */
+  targetDrivingMember?: TargetDrivingMember | null;
 }

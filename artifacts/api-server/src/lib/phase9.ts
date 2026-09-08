@@ -26,10 +26,12 @@ import {
   MODELED_OHLCV_FILL_LABEL,
   PRIMARY_LEVEL_EXIT_ARMED_LABEL,
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
+  buildIndicatorReplayContext,
   simulateOhlcvExecution,
 } from "./strategy/ohlcv-execution.js";
 import type {
   DynamicTargetUpdate,
+  IndicatorReplayContext,
   ModeledExecutionLeg,
   DynamicTargetSource,
 } from "./strategy/ohlcv-execution.js";
@@ -335,6 +337,7 @@ export type BacktestTrade = {
       runnerBreakevenTightened?: boolean;
       runnerBreakevenIgnoredForTighterStop?: boolean;
       dynamicTargetSource?: DynamicTargetSource | null;
+       dynamicTargetReplayContext?: IndicatorReplayContext | null;
       initialTargetPrice?: number | null;
       effectiveTargetPrice?: number | null;
       targetUpdateLedger?: DynamicTargetUpdate[];
@@ -3426,8 +3429,8 @@ export function buildHistoricalOccurrenceLedger(
           ? new Date(patience.patienceCandle.closeTime).toISOString()
           : "invalid-p-close",
         eOpenTimestamp ?? "invalid",
-        confirmedEntry && Number.isFinite(confirmedEntry.closeTime)
-          ? new Date(confirmedEntry.closeTime).toISOString()
+        Number.isFinite(expectedEntryCandleOpenTime)
+          ? new Date(expectedEntryCandleOpenTime + 5 * 60_000).toISOString()
           : "invalid-e-close",
       ].join("|");
       const id = occurrenceId(identity);
@@ -4505,6 +4508,13 @@ function candidateDrivenEntryTrade(
            tradingDate,
            initialIndicatorValue: targetPlan.selectedLevelPrice,
            sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+            replayContext: buildIndicatorReplayContext({
+              source: targetPlan.dynamicTargetSource,
+              candles: contractCandles,
+              tradingDate,
+              sessionCalendarVersion: sessionCalendarForContract(context.specification).calendarVersion,
+              candidateIdentity: `${candidateId}|${occurrence.occurrenceId}`,
+            }),
          }
          : undefined,
        oneRProfitRule: targetPlan?.fallbackUsed === true,
@@ -4650,6 +4660,7 @@ function candidateDrivenEntryTrade(
        trailingStopActive: modeled?.audit.trailingStopActive ?? false,
        trailingStopSource: modeled?.audit.trailingStopSource ?? null,
        dynamicTargetSource: modeled?.audit.dynamicTargetSource ?? targetPlan?.dynamicTargetSource ?? null,
+        dynamicTargetReplayContext: modeled?.audit.dynamicTargetReplayContext ?? null,
        initialTargetPrice: modeled?.audit.initialTargetPrice ?? targetPrice,
        effectiveTargetPrice: modeled?.audit.effectiveTargetPrice ?? modeled?.targetPrice ?? targetPrice,
        targetUpdateLedger: modeled?.audit.targetUpdateLedger ?? [],
@@ -5208,6 +5219,13 @@ export function runCausalBacktest(
               tradingDate,
               initialIndicatorValue: targetPlan.selectedLevelPrice,
               sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+               replayContext: buildIndicatorReplayContext({
+                 source: targetPlan.dynamicTargetSource,
+                 candles: contractCandles,
+                 tradingDate,
+                 sessionCalendarVersion: sessionCalendarForContract(specification).calendarVersion,
+                 candidateIdentity: `${currentContractSymbol}|${tradingDate}|${trigger.openTime}`,
+               }),
             }
             : undefined,
          strategyStop,
@@ -5299,6 +5317,7 @@ export function runCausalBacktest(
            primaryLossExitLevel: modeled.audit.primaryLossExitLevel,
           targetPrice: modeled.targetPrice,
            dynamicTargetSource: modeled.audit.dynamicTargetSource ?? targetPlan.dynamicTargetSource ?? null,
+            dynamicTargetReplayContext: modeled.audit.dynamicTargetReplayContext ?? null,
            initialTargetPrice: modeled.audit.initialTargetPrice,
            effectiveTargetPrice: modeled.audit.effectiveTargetPrice,
            targetUpdateLedger: modeled.audit.targetUpdateLedger,

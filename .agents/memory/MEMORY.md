@@ -66,3 +66,4 @@
 - [Visual replay timeout fallback](visual-replay-timeout-fallback.md) — stream validated snapshots; on timeout expose only same-request or worker-emitted partial evidence, never unrelated data.
 - [Uploaded chart target authority](uploaded-chart-target-authority.md) — visible chart targets must pass through the shared key-level planner; never trust a model-emitted executable target directly.
 - [Causal dynamic target ratchet](causal-dynamic-target-ratchet.md) — evaluate indicator proposals after candle exits and apply only monotonic, non-crossing results from the next candle.
+- [Replay cursor identity](replay-cursor-identity.md) — merge partial and completed snapshots by the expected E boundary, not observed completion evidence.

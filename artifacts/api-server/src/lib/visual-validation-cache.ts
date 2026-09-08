@@ -4,13 +4,15 @@ import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 import type { VisualValidationRequest } from "./visual-validation.js";
 import { normalizeVisualReviewEarlyOrbMomentum, strategyConfigForVisualReview } from "./visual-validation-settings.js";
+import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
+import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v13-causal-dynamic-indicator-ratchet";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v8-causal-dynamic-indicator-ratchet";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v12-causal-dynamic-indicator-ratchet";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v11-causal-dynamic-indicator-ratchet";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v10-causal-dynamic-indicator-ratchet";
-export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v4-causal-dynamic-indicator-ratchet";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v14-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v9-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v13-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v12-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v11-causal-replay-context-driving-member-pending";
+export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v5-causal-replay-context-driving-member-pending";
 
 export type VisualValidationCacheMetadata = {
   cacheKey: string;
@@ -70,6 +72,8 @@ export function visualValidationCacheMetadata(
     sourceFingerprint,
     formulaHash,
     formulaVersion: active.formulaVersion || FIXED_FORMULA_VERSION,
+    targetPlanVersion: KEY_LEVEL_TARGET_PLAN_VERSION,
+    dynamicTargetCalculationVersion: DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION,
     strategyEngineVersion: VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION,
     strategyVersion,
     candidateProjectionVersion: VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION,

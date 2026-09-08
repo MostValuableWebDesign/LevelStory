@@ -31,6 +31,7 @@ import {
   wallClockMinutesForTimestamp,
 } from "./futures/session-calendar.js";
 import { causalEmaSeries } from "./strategy/indicators.js";
+import { validateIndicatorReplayContext, type IndicatorReplayContext } from "./strategy/ohlcv-execution.js";
 import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
@@ -286,6 +287,7 @@ export type VisualValidationReplayExecutionInput = {
   patienceCandle: VisualValidationCandle;
   immediateTriggerCandle: VisualValidationCandle;
   indicatorHistoryCandles?: VisualValidationCandle[];
+  indicatorReplayContext?: IndicatorReplayContext;
   subsequentCompletedCandles: VisualValidationCandle[];
   sessionCloseCandle: VisualValidationCandle | null;
   strategyStopPrice: number | null;
@@ -510,6 +512,14 @@ function replayInputForSnapshot(
     && candle.closeTime === audit.triggerCandleCloseTime,
   );
   if (!patienceCandle || !immediateTriggerCandle || audit.strategyStopPrice == null) return undefined;
+  if (audit.dynamicTargetSource) {
+    if (!audit.dynamicTargetReplayContext) return undefined;
+    try {
+      validateIndicatorReplayContext(audit.dynamicTargetReplayContext, audit.dynamicTargetSource);
+    } catch {
+      return undefined;
+    }
+  }
   if (
     (trade.direction === "long" && audit.strategyStopPrice >= trade.entryPrice)
     || (trade.direction === "short" && audit.strategyStopPrice <= trade.entryPrice)
@@ -525,6 +535,7 @@ function replayInputForSnapshot(
     patienceCandle,
     immediateTriggerCandle,
     indicatorHistoryCandles: uniqueCandles,
+    indicatorReplayContext: audit.dynamicTargetReplayContext ?? undefined,
     subsequentCompletedCandles,
     sessionCloseCandle: subsequentCompletedCandles.at(-1) ?? null,
     strategyStopPrice: audit.strategyStopPrice,

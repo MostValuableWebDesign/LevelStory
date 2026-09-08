@@ -9,7 +9,9 @@ import {
   NO_FORWARD_LEVEL_1R_PLAN_LABEL,
   NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL,
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
+  buildIndicatorReplayContext,
   simulateOhlcvExecution,
+  validateIndicatorReplayContext,
 } from "./ohlcv-execution.js";
 
 const candle = (open: number, high: number, low: number, close: number) => ({ open, high, low, close });
@@ -75,6 +77,65 @@ test("ratchets a long EMA target lower only for the next candle", () => {
   assert.equal(result.audit.effectiveTargetPrice, 103.25);
   assert.equal(result.exitReason, "target");
   assert.equal(result.legs[0]?.exitCandleOpenTime, new Date(start + 600_000 - 300_000).toISOString());
+});
+
+test("keeps a final-candle EMA proposal pending without changing the effective target", () => {
+  const start = 1_500_000;
+  const finalCandle = timedCandle(100, 104.5, 99.5, 104.5, start + 300_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    evaluateEntryCandleForExit: false,
+    target: 105,
+    stop: 98,
+    subsequentCompletedCandles: [finalCandle],
+    dynamicTarget: {
+      source: "EMA200",
+      emaPeriod: 2,
+      indicatorCandles: [
+        { ...timedCandle(107, 107, 107, 107, start - 600_000), volume: 100 },
+        { ...timedCandle(107, 107, 107, 107, start - 300_000), volume: 100 },
+        { ...finalCandle, volume: 100 },
+      ],
+    },
+  });
+  const update = result.audit.targetUpdateLedger[0];
+  assert.equal(update?.pending, true);
+  assert.equal(update?.tightened, false);
+  assert.equal(update?.reason, "PENDING_NO_NEXT_CANDLE");
+  assert.equal(update?.effectiveFromTimestamp, null);
+  assert.equal(update?.proposedTarget, 103.25);
+  assert.equal(update?.resultingEffectiveTarget, 105);
+  assert.equal(result.targetPrice, 105);
+  assert.equal(result.audit.effectiveTargetPrice, 105);
+});
+
+test("rejects an EMA replay context without complete warmup", () => {
+  const start = 1_700_000;
+  const context = buildIndicatorReplayContext({
+    source: "EMA200",
+    emaPeriod: 2,
+    candles: [{ ...timedCandle(100, 100, 100, 100, start), volume: 100 }],
+  });
+  assert.throws(
+    () => validateIndicatorReplayContext(context, "EMA200", 2),
+    /stale or missing required causal warmup/i,
+  );
+});
+
+test("rejects a replay context from a different dynamic-target calculation version", () => {
+  const start = 1_800_000;
+  const context = buildIndicatorReplayContext({
+    source: "VWAP",
+    candles: [{ ...timedCandle(100, 100, 100, 100, start), volume: 100 }],
+  });
+  assert.throws(
+    () => validateIndicatorReplayContext(
+      { ...context, calculationVersion: "stale-version" } as unknown as typeof context,
+      "VWAP",
+    ),
+    /stale or missing required causal warmup/i,
+  );
 });
 
 test("ignores a long EMA update that would move the target farther away", () => {
@@ -145,6 +206,33 @@ test("ratchets a short VWAP target higher and keeps a falling VWAP update", () =
   });
   assert.equal(fallingResult.audit.targetUpdateLedger[0]?.reason, "IGNORED_FARTHER_AWAY");
   assert.equal(fallingResult.audit.effectiveTargetPrice, 95);
+});
+
+test("keeps a final-candle VWAP proposal pending for shorts", () => {
+  const start = 3_500_000;
+  const finalCandle = timedCandle(99.5, 100, 96, 98, start + 300_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.5, 99.5, start),
+    evaluateEntryCandleForExit: false,
+    target: 95,
+    stop: 102,
+    subsequentCompletedCandles: [finalCandle],
+    dynamicTarget: {
+      source: "VWAP",
+      indicatorCandles: [
+        { ...timedCandle(94, 95, 93, 94, start - 300_000), volume: 100 },
+        { ...finalCandle, volume: 100 },
+      ],
+    },
+  });
+  const update = result.audit.targetUpdateLedger[0];
+  assert.equal(update?.pending, true);
+  assert.equal(update?.tightened, false);
+  assert.equal(update?.reason, "PENDING_NO_NEXT_CANDLE");
+  assert.equal(update?.resultingEffectiveTarget, 95);
+  assert.equal(result.audit.effectiveTargetPrice, 95);
 });
 
 test("keeps dynamic target management consistent across a target leg and runner", () => {

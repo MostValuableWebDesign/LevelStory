@@ -2589,6 +2589,9 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
             ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
              ["Target buffer", `${targetPlan.targetBufferTicks} ticks · ${formatTradePrice(targetPlan.targetBufferPoints)} points · near side`],
              ["Raw level / executable", `${formatTradePrice(targetPlan.selectedLevelPrice)} / ${formatTradePrice(targetPlan.targetPrice)} · ${targetPlan.targetDistanceTicks ?? "—"} ticks from entry`],
+              ["Target driver", targetPlan.targetDrivingMember
+                ? `${targetPlan.targetDrivingMember.id} · ${targetPlan.targetDrivingMember.dynamicSource ?? "structural"}`
+                : "—"],
              ["Source provenance", targetPlan.missingSourceTimestampLevelIds.length === 0
                ? "Complete"
                : `${targetPlan.missingSourceTimestampLevelIds.length} level${targetPlan.missingSourceTimestampLevelIds.length === 1 ? "" : "s"} missing timestamp`],
@@ -2634,14 +2637,14 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
           : <div className="mt-3 space-y-2">
             {targetUpdates.map((update, index) => <div key={`${update.candleOpenTime ?? "update"}-${index}`} className="border border-border bg-card px-3 py-2" data-testid={`target-adjustment-${index}`}>
               <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
-                <span>{update.indicator} · effective from {formatTargetUpdateTime(update.effectiveFromTimestamp)}</span>
+                <span>{update.indicator} · {update.pending ? "pending — no next candle" : `effective from ${formatTargetUpdateTime(update.effectiveFromTimestamp)}`}</span>
                 <span className={update.tightened ? "text-positive" : "text-muted-foreground"}>{update.reason}</span>
               </div>
               <div className="mt-1 grid gap-x-3 gap-y-1 text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
                 <span>Indicator <strong className="mono text-foreground">{formatTradePrice(update.recalculatedIndicatorValue)}</strong></span>
                 <span>Proposed <strong className="mono text-foreground">{formatTradePrice(update.proposedTarget)}</strong></span>
                 <span>Effective <strong className="mono text-foreground">{formatTradePrice(update.previousEffectiveTarget)} → {formatTradePrice(update.resultingEffectiveTarget)}</strong></span>
-                <span>{update.fartherAwayIgnored ? "Ignored as farther away" : update.tightened ? "Accepted tightening" : "No effective change"}</span>
+                <span>{update.pending ? "Pending; effective target unchanged" : update.fartherAwayIgnored ? "Ignored as farther away" : update.tightened ? "Accepted tightening" : "No effective change"}</span>
               </div>
               <div className="mt-1 mono text-[9px] text-muted-foreground">Calculated on {formatTargetUpdateTime(update.candleCloseTime)} · {update.calculationVersion}</div>
             </div>)}

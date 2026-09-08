@@ -3526,7 +3526,21 @@ components:
         distanceTicks: { type: number }
         sourceTimestamp: { type: ["string", "null"], format: date-time }
         confluenceMembers: { type: array, items: { $ref: "#/components/schemas/TargetLevelInput" } }
+        targetDrivingMember: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetDrivingMember" }] }
       required: [id, type, price, rangeLow, rangeHigh, distancePoints, distanceTicks, sourceTimestamp]
+    TargetDrivingMember:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        rawPrice: { type: number }
+        executableTargetPrice: { type: number }
+        executableDistancePoints: { type: number }
+        executableDistanceTicks: { type: number }
+        executableTargetR: { type: ["number", "null"] }
+        dynamicSource: { type: ["string", "null"], enum: [VWAP, EMA200, null] }
+        selectionExplanation: { type: string }
+      required: [id, type, rawPrice, executableTargetPrice, executableDistancePoints, executableDistanceTicks, executableTargetR, dynamicSource, selectionExplanation]
     SkippedTargetLevel:
       allOf:
         - $ref: "#/components/schemas/FrozenTargetLevel"
@@ -3593,6 +3607,7 @@ components:
         targetDistanceTicks: { type: ["number", "null"] }
         targetPrice: { type: ["number", "null"] }
         dynamicTargetSource: { type: ["string", "null"], enum: [VWAP, EMA200, null], description: Identity-frozen dynamic indicator source; null for structural or fallback targets. }
+        targetDrivingMember: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetDrivingMember" }] }
         fallbackUsed: { type: boolean }
         fallbackReason: { type: ["string", "null"], enum: [ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL, null] }
         searchRangePoints: { type: ["number", "null"] }
@@ -3600,6 +3615,22 @@ components:
         missingSourceTimestampLevelIds: { type: array, items: { type: string } }
         targetLevelSnapshot: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetLevelSnapshot" }] }
       required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, targetBufferPoints, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, selectedLevelPrice, targetDistanceTicks, targetPrice, dynamicTargetSource, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
+    IndicatorReplayContext:
+      type: object
+      properties:
+        source: { type: string, enum: [VWAP, EMA200] }
+        calculationVersion: { type: string }
+        period: { type: ["number", "null"] }
+        tradingDate: { type: ["string", "null"] }
+        sessionCalendarVersion: { type: ["string", "null"] }
+        sourceStartTime: { type: ["number", "null"] }
+        sourceEndTime: { type: ["number", "null"] }
+        warmupCount: { type: number }
+        initialized: { type: boolean }
+        sourceFingerprint: { type: string }
+        candidateIdentity: { type: ["string", "null"] }
+        candles: { type: array, items: { type: object, additionalProperties: true } }
+      required: [source, calculationVersion, period, tradingDate, sessionCalendarVersion, sourceStartTime, sourceEndTime, warmupCount, initialized, sourceFingerprint, candidateIdentity, candles]
     BacktestTrade:
       type: object
       properties:
@@ -3646,6 +3677,7 @@ components:
             dynamicTargetSource: { type: ["string", "null"], enum: [VWAP, EMA200, null] }
             initialTargetPrice: { type: ["number", "null"] }
             effectiveTargetPrice: { type: ["number", "null"] }
+            dynamicTargetReplayContext: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/IndicatorReplayContext" }] }
             targetUpdateLedger:
               type: array
               items:
@@ -3660,12 +3692,13 @@ components:
                   previousEffectiveTarget: { type: number }
                   resultingEffectiveTarget: { type: number }
                   effectiveFromTimestamp: { type: ["number", "null"] }
+                  pending: { type: boolean }
                   tightened: { type: boolean }
                   fartherAwayIgnored: { type: boolean }
-                  reason: { type: string, enum: [TIGHTENED, NO_CHANGE, IGNORED_FARTHER_AWAY, IGNORED_WOULD_CROSS_ENTRY] }
+                  reason: { type: string, enum: [TIGHTENED, PENDING_NO_NEXT_CANDLE, NO_CHANGE, IGNORED_FARTHER_AWAY, IGNORED_WOULD_CROSS_ENTRY] }
                   calculationVersion: { type: string }
                   sourceFingerprint: { type: ["string", "null"] }
-                required: [candleOpenTime, candleCloseTime, indicator, previousIndicatorValue, recalculatedIndicatorValue, proposedTarget, previousEffectiveTarget, resultingEffectiveTarget, effectiveFromTimestamp, tightened, fartherAwayIgnored, reason, calculationVersion, sourceFingerprint]
+                required: [candleOpenTime, candleCloseTime, indicator, previousIndicatorValue, recalculatedIndicatorValue, proposedTarget, previousEffectiveTarget, resultingEffectiveTarget, effectiveFromTimestamp, pending, tightened, fartherAwayIgnored, reason, calculationVersion, sourceFingerprint]
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
             armAttemptId: { type: string, description: Stable identity for the independent attempt that produced this trade. }

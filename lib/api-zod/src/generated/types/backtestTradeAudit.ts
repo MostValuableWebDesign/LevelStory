@@ -10,6 +10,7 @@ import type { BacktestTradeAuditDynamicTargetSource } from './backtestTradeAudit
 import type { BacktestTradeAuditLegsItem } from './backtestTradeAuditLegsItem';
 import type { BacktestTradeAuditStopLevel } from './backtestTradeAuditStopLevel';
 import type { BacktestTradeAuditTargetUpdateLedgerItem } from './backtestTradeAuditTargetUpdateLedgerItem';
+import type { IndicatorReplayContext } from './indicatorReplayContext';
 import type { KeyLevelTargetPlan } from './keyLevelTargetPlan';
 
 export type BacktestTradeAudit = {
@@ -28,6 +29,8 @@ export type BacktestTradeAudit = {
   initialTargetPrice?: number | null;
   /** @nullable */
   effectiveTargetPrice?: number | null;
+  /** @nullable */
+  dynamicTargetReplayContext?: IndicatorReplayContext | null;
   targetUpdateLedger?: BacktestTradeAuditTargetUpdateLedgerItem[];
   /** @nullable */
   strategyStopPrice: number | null;

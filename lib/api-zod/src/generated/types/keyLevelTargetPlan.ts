@@ -15,6 +15,7 @@ import type { KeyLevelTargetPlanPlacementMode } from './keyLevelTargetPlanPlacem
 import type { KeyLevelTargetPlanRejectionReason } from './keyLevelTargetPlanRejectionReason';
 import type { KeyLevelTargetPlanTargetBufferPoints } from './keyLevelTargetPlanTargetBufferPoints';
 import type { SkippedTargetLevel } from './skippedTargetLevel';
+import type { TargetDrivingMember } from './targetDrivingMember';
 import type { TargetLevelSnapshot } from './targetLevelSnapshot';
 
 export interface KeyLevelTargetPlan {
@@ -61,6 +62,8 @@ export interface KeyLevelTargetPlan {
      * @nullable
      */
   dynamicTargetSource: KeyLevelTargetPlanDynamicTargetSource;
+  /** @nullable */
+  targetDrivingMember?: TargetDrivingMember | null;
   fallbackUsed: boolean;
   /** @nullable */
   fallbackReason: KeyLevelTargetPlanFallbackReason;

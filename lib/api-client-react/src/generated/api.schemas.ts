@@ -2927,6 +2927,31 @@ export interface TargetLevelInput {
   sourceTimestamp?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type TargetDrivingMemberDynamicSource = typeof TargetDrivingMemberDynamicSource[keyof typeof TargetDrivingMemberDynamicSource] | null;
+
+
+export const TargetDrivingMemberDynamicSource = {
+  VWAP: 'VWAP',
+  EMA200: 'EMA200',
+} as const;
+
+export interface TargetDrivingMember {
+  id: string;
+  type: string;
+  rawPrice: number;
+  executableTargetPrice: number;
+  executableDistancePoints: number;
+  executableDistanceTicks: number;
+  /** @nullable */
+  executableTargetR: number | null;
+  /** @nullable */
+  dynamicSource: TargetDrivingMemberDynamicSource;
+  selectionExplanation: string;
+}
+
 export interface FrozenTargetLevel {
   id: string;
   type: string;
@@ -2940,6 +2965,8 @@ export interface FrozenTargetLevel {
   /** @nullable */
   sourceTimestamp: string | null;
   confluenceMembers?: TargetLevelInput[];
+  /** @nullable */
+  targetDrivingMember?: TargetDrivingMember | null;
 }
 
 export type SkippedTargetLevelReason = typeof SkippedTargetLevelReason[keyof typeof SkippedTargetLevelReason];
@@ -3110,6 +3137,8 @@ export interface KeyLevelTargetPlan {
      * @nullable
      */
   dynamicTargetSource: KeyLevelTargetPlanDynamicTargetSource;
+  /** @nullable */
+  targetDrivingMember?: TargetDrivingMember | null;
   fallbackUsed: boolean;
   /** @nullable */
   fallbackReason: KeyLevelTargetPlanFallbackReason;
@@ -3120,6 +3149,37 @@ export interface KeyLevelTargetPlan {
   missingSourceTimestampLevelIds: string[];
   /** @nullable */
   targetLevelSnapshot?: TargetLevelSnapshot | null;
+}
+
+export type IndicatorReplayContextSource = typeof IndicatorReplayContextSource[keyof typeof IndicatorReplayContextSource];
+
+
+export const IndicatorReplayContextSource = {
+  VWAP: 'VWAP',
+  EMA200: 'EMA200',
+} as const;
+
+export type IndicatorReplayContextCandlesItem = { [key: string]: unknown };
+
+export interface IndicatorReplayContext {
+  source: IndicatorReplayContextSource;
+  calculationVersion: string;
+  /** @nullable */
+  period: number | null;
+  /** @nullable */
+  tradingDate: string | null;
+  /** @nullable */
+  sessionCalendarVersion: string | null;
+  /** @nullable */
+  sourceStartTime: number | null;
+  /** @nullable */
+  sourceEndTime: number | null;
+  warmupCount: number;
+  initialized: boolean;
+  sourceFingerprint: string;
+  /** @nullable */
+  candidateIdentity: string | null;
+  candles: IndicatorReplayContextCandlesItem[];
 }
 
 export type BacktestTradePeriod = typeof BacktestTradePeriod[keyof typeof BacktestTradePeriod];
@@ -3225,6 +3285,7 @@ export type BacktestTradeAuditTargetUpdateLedgerItemReason = typeof BacktestTrad
 
 export const BacktestTradeAuditTargetUpdateLedgerItemReason = {
   TIGHTENED: 'TIGHTENED',
+  PENDING_NO_NEXT_CANDLE: 'PENDING_NO_NEXT_CANDLE',
   NO_CHANGE: 'NO_CHANGE',
   IGNORED_FARTHER_AWAY: 'IGNORED_FARTHER_AWAY',
   IGNORED_WOULD_CROSS_ENTRY: 'IGNORED_WOULD_CROSS_ENTRY',
@@ -3244,6 +3305,7 @@ export type BacktestTradeAuditTargetUpdateLedgerItem = {
   resultingEffectiveTarget: number;
   /** @nullable */
   effectiveFromTimestamp: number | null;
+  pending: boolean;
   tightened: boolean;
   fartherAwayIgnored: boolean;
   reason: BacktestTradeAuditTargetUpdateLedgerItemReason;
@@ -3325,6 +3387,8 @@ export type BacktestTradeAudit = {
   initialTargetPrice?: number | null;
   /** @nullable */
   effectiveTargetPrice?: number | null;
+  /** @nullable */
+  dynamicTargetReplayContext?: IndicatorReplayContext | null;
   targetUpdateLedger?: BacktestTradeAuditTargetUpdateLedgerItem[];
   /** @nullable */
   strategyStopPrice: number | null;
