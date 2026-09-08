@@ -1,0 +1,102 @@
+Fix the remaining single-active-trade issues across LevelStory’s historical candidate generation, Visual Review, and Shadow Account Replay.
+
+First inspect the current implementation and tests. Preserve existing strategy behavior, fixed-size one-/two-contract management, candidate detection, dynamic targets, stop rules, breakeven/recovery behavior, and P/L formulas. Do not add account-balance-based risk sizing.
+
+1. Separate scoring ambiguity from position lifecycle
+
+Currently, a trade with an ambiguous OHLCV outcome is classified as unscored and automatically treated as still open, even when the conservative adverse-first execution policy:
+
+- Selects the stop as the modeled exit.
+- Records a valid exit timestamp.
+- Produces an exit leg.
+- Sets remaining quantity to zero.
+
+This can incorrectly keep the account locked indefinitely and block every later candidate.
+
+Change the position-state logic so that:
+
+- `unscored` describes whether the result contributes to performance statistics.
+- `open` or `closed` describes whether contracts remain active.
+- An ambiguous/unscored trade with a valid modeled full-exit timestamp and zero remaining contracts is considered flat from that timestamp.
+- Its P/L remains excluded from scored performance metrics if that is the existing ambiguity policy.
+- A genuinely unresolved trade with no authoritative full exit or remaining contracts greater than zero remains active and blocks later entries.
+- A two-contract trade remains active after its first target while the runner remains open.
+- The account becomes flat only when every contract has exited.
+- Never infer a full exit merely from a non-null exit price; require consistent execution evidence such as the full-exit timestamp, exit legs, and zero remaining quantity.
+
+Apply this correction to both Phase 9 historical gating and Shadow Account Replay through one shared position-lifecycle helper so the two paths cannot disagree.
+
+2. Preserve blocked candidates for Shadow Replay
+
+Phase 9 currently removes blocked candidates’ modeled trades from authoritative P/L, which is correct, but Shadow Replay consequently lacks the execution evidence needed to report or recompute those blocked occurrences.
+
+Preserve two distinct concepts:
+
+- Authoritative entered trades: only trades that passed the account gate; these affect P/L.
+- Candidate-owned hypothetical execution evidence: immutable execution inputs/evidence retained for every otherwise eligible candidate, including candidates blocked by an active position; this evidence must never directly affect P/L.
+
+Shadow Account Replay must process all eligible candidate occurrences chronologically across every selected date and strategy:
+
+1. Rebuild and validate the candidate’s target/management plan for the selected fixed contract quantity.
+2. If it is not trade-eligible at that quantity, retain it as rejected using the existing rejection reason.
+3. If it is eligible, evaluate the account gate at its modeled entry timestamp.
+4. If another position is active, record `ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION`.
+5. Do not enter, add P/L, alter balance, or replace the existing position for a blocked candidate.
+6. If the account is flat, simulate/commit the trade and use its complete lifecycle to determine when the account becomes flat again.
+
+Do not simply copy Phase 9’s blocked result when replaying with a different contract quantity. One- versus two-contract execution can change the full-exit time because a two-contract runner can remain active. Shadow Replay must deterministically recompute the chronological gate for the selected quantity using frozen causal execution evidence.
+
+3. Reporting requirements
+
+Ensure Visual Review and Shadow Account Replay consistently report:
+
+- Total detected candidates.
+- Entered trades.
+- Candidates blocked by an active position.
+- Rejected or otherwise ineligible candidates.
+- Open positions.
+- Unscored-but-fully-closed trades.
+- Blocking trade ID.
+- Blocking candidate and signal-occurrence IDs.
+- Blocking entry timestamp.
+- Full-exit timestamp, when known.
+- Contract quantity and remaining quantity.
+- Whether a runner was active.
+
+The following identity must be explainable by the displayed categories:
+
+Detected candidates = entered + account-blocked + rejected/ineligible/non-entered categories
+
+Do not count an account-blocked candidate as an entered trade, and do not include it in realized P/L, win rate, expectancy, drawdown, profit factor, or streak calculations.
+
+4. Required regression tests
+
+Add deterministic tests covering:
+
+- An ambiguous adverse-first stop with zero remaining contracts releases the gate at its modeled full-exit timestamp but remains unscored.
+- A truly unresolved ambiguous trade without a full exit continues blocking later candidates.
+- A later candidate is permitted after a winning full exit.
+- A later candidate is permitted after a losing full exit.
+- A later candidate is blocked while a one-contract trade remains open.
+- A two-contract trade still blocks after the first target while its runner remains active.
+- Entry becomes permitted after that runner fully exits.
+- Same-direction and opposite-direction candidates are both blocked while any position is active.
+- A position can block a candidate on a later selected date when it genuinely remains open.
+- Session-close liquidation releases the gate.
+- A full exit effective at the candidate timestamp permits entry only when the exit is authoritative; unresolved ordering remains conservatively blocked.
+- Previously Phase-9-blocked candidates remain visible in Shadow Replay’s blocked count and audit list.
+- Shadow Replay recomputes different blocking results when changing from one to two contracts if the runner changes the full-exit time.
+- Blocked candidates never affect the ledger balance or performance metrics.
+- No duplicate blocked records are produced.
+- Cache/version fingerprints change so stale Visual Review sets cannot reuse the old position-state behavior.
+
+Run API typechecking, the focused position-gate, Phase 9, Visual Validation, Shadow Replay, and route tests, frontend typechecking/build, and `git diff --check`.
+
+In the final response, report:
+
+- Root causes fixed.
+- Files changed.
+- Position-lifecycle rules now used.
+- How blocked candidates are preserved without affecting P/L.
+- Tests and exact results.
+- Any remaining validation limitations.
