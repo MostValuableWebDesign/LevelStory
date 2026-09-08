@@ -190,6 +190,7 @@ function asOhlcvCandle(candle: VisualValidationReplayExecutionInput["patienceCan
     high: candle.high,
     low: candle.low,
     close: candle.close,
+    volume: candle.volume,
     openTime: Date.parse(candle.openTime),
     closeTime: Date.parse(candle.closeTime),
     isComplete: candle.isComplete,
@@ -321,6 +322,19 @@ function replayTradeWithFixedContracts(
     contracts: contractsPerTrade,
     targetQuantity: replayTargetPrice === null ? 0 : Math.min(1, contractsPerTrade),
     target: replayTargetPrice,
+    dynamicTarget: rebuiltTargetPlan?.dynamicTargetSource
+      ? {
+        source: rebuiltTargetPlan.dynamicTargetSource,
+        indicatorCandles: (replayInput.indicatorHistoryCandles ?? [
+          replayInput.patienceCandle,
+          replayInput.immediateTriggerCandle,
+          ...replayInput.subsequentCompletedCandles,
+        ]).map(asOhlcvCandle),
+        tradingDate: trade.tradingDate,
+        initialIndicatorValue: rebuiltTargetPlan.selectedLevelPrice,
+        sourceFingerprint: rebuiltTargetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+      }
+      : undefined,
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
     oneRProfitRule: rebuiltTargetPlan?.fallbackUsed === true || useOneRProfitRule,
     targetIsOneR: rebuiltTargetPlan?.fallbackUsed === true,

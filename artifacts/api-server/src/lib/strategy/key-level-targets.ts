@@ -6,6 +6,7 @@ import type { Direction } from "./types.js";
  * with the fixed near-side eight-tick rule.
  */
 export type ProfitTargetPlacement = "NEAR_SIDE_8_TICKS" | "NEAR_SIDE_ADAPTIVE_TICKS" | "EXACT_LEVEL";
+export type DynamicTargetSource = "VWAP" | "EMA200";
 
 export type KeyLevelTargetInput = {
   id: string;
@@ -16,7 +17,7 @@ export type KeyLevelTargetInput = {
   sourceTimestamp?: string | null;
 };
 
-export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v6-fixed-eight-tick-near-side";
+export const KEY_LEVEL_TARGET_PLAN_VERSION = "key-level-target-search-v7-causal-dynamic-indicator-ratchet";
 
 export type TargetLevelSnapshot = {
   frozenAt: string;
@@ -104,6 +105,8 @@ export type KeyLevelTargetPlan = {
   /** Distance from entry to the executable target in MES ticks. */
   targetDistanceTicks: number | null;
   targetPrice: number | null;
+  /** Identity-frozen dynamic indicator source, when the selected level is VWAP or EMA 200. */
+  dynamicTargetSource?: DynamicTargetSource | null;
   fallbackUsed: boolean;
   fallbackReason: "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL" | null;
   searchRangePoints: number | null;
@@ -121,6 +124,22 @@ const PRIMARY_LOSS_EXIT_STOP_BUFFER_TICKS = 8;
 
 function normalizedLevelText(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+}
+
+export function dynamicTargetSourceForTargetLevel(
+  level: Pick<FrozenTargetLevel, "id" | "type" | "confluenceMembers"> | null | undefined,
+): DynamicTargetSource | null {
+  if (!level) return null;
+  const members = level.confluenceMembers?.length
+    ? level.confluenceMembers
+    : [{ id: level.id, type: level.type }];
+  const sources = new Set<DynamicTargetSource>();
+  for (const member of members) {
+    const text = normalizedLevelText(`${member.id} ${member.type}`);
+    if (/\bvwap\b/.test(text)) sources.add("VWAP");
+    if (/\bema ?200\b|\b200 ema\b/.test(text)) sources.add("EMA200");
+  }
+  return sources.size === 1 ? [...sources][0]! : null;
 }
 
 /**
@@ -477,6 +496,7 @@ export function buildKeyLevelTargetPlan(input: {
   const targetPrice = selectedTargetLevel === null
     ? oneRPrice
     : targetPriceForLevel(selectedTargetLevel);
+  const dynamicTargetSource = dynamicTargetSourceForTargetLevel(selectedTargetLevel);
   const selectedLevelPrice = selectedTargetLevel?.price ?? null;
   const targetDistanceTicks = targetPrice === null
     ? null
@@ -508,6 +528,7 @@ export function buildKeyLevelTargetPlan(input: {
     selectedLevelPrice,
     targetDistanceTicks,
     targetPrice,
+    dynamicTargetSource,
     fallbackUsed: selectedTargetLevel === null && oneRPrice !== null,
     fallbackReason: selectedTargetLevel === null && oneRPrice !== null
       ? "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL"

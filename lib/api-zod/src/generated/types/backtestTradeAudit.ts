@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestTradeAuditAttemptGrade } from './backtestTradeAuditAttemptGrade';
+import type { BacktestTradeAuditDynamicTargetSource } from './backtestTradeAuditDynamicTargetSource';
 import type { BacktestTradeAuditLegsItem } from './backtestTradeAuditLegsItem';
 import type { BacktestTradeAuditStopLevel } from './backtestTradeAuditStopLevel';
+import type { BacktestTradeAuditTargetUpdateLedgerItem } from './backtestTradeAuditTargetUpdateLedgerItem';
 import type { KeyLevelTargetPlan } from './keyLevelTargetPlan';
 
 export type BacktestTradeAudit = {
@@ -20,6 +22,13 @@ export type BacktestTradeAudit = {
   /** @nullable */
   targetPrice: number | null;
   targetPlan?: KeyLevelTargetPlan;
+  /** @nullable */
+  dynamicTargetSource?: BacktestTradeAuditDynamicTargetSource;
+  /** @nullable */
+  initialTargetPrice?: number | null;
+  /** @nullable */
+  effectiveTargetPrice?: number | null;
+  targetUpdateLedger?: BacktestTradeAuditTargetUpdateLedgerItem[];
   /** @nullable */
   strategyStopPrice: number | null;
   /** @nullable */

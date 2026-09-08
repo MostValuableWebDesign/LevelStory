@@ -45,6 +45,139 @@ test("candidate entry observation does not evaluate exits inside the entry candl
   assert.equal(result.audit.exitCandle, null);
 });
 
+test("ratchets a long EMA target lower only for the next candle", () => {
+  const start = 1_000_000;
+  const firstPostEntry = timedCandle(100, 104.5, 99.5, 104.5, start + 300_000);
+  const secondPostEntry = timedCandle(103, 103.75, 102.5, 103.5, start + 600_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    evaluateEntryCandleForExit: false,
+    target: 105,
+    stop: 98,
+    subsequentCompletedCandles: [firstPostEntry, secondPostEntry],
+    dynamicTarget: {
+      source: "EMA200",
+      emaPeriod: 2,
+      indicatorCandles: [
+        { ...timedCandle(107, 107, 107, 107, start - 600_000), volume: 100 },
+        { ...timedCandle(107, 107, 107, 107, start - 300_000), volume: 100 },
+        { ...firstPostEntry, volume: 100 },
+        { ...secondPostEntry, volume: 100 },
+      ],
+    },
+  });
+  assert.equal(result.audit.dynamicTargetSource, "EMA200");
+  assert.equal(result.audit.targetUpdateLedger[0]?.tightened, true);
+  assert.equal(result.audit.targetUpdateLedger[0]?.proposedTarget, 103.25);
+  assert.equal(result.audit.targetUpdateLedger[0]?.effectiveFromTimestamp, start + 300_000);
+  assert.equal(result.audit.initialTargetPrice, 105);
+  assert.equal(result.audit.effectiveTargetPrice, 103.25);
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.legs[0]?.exitCandleOpenTime, new Date(start + 600_000 - 300_000).toISOString());
+});
+
+test("ignores a long EMA update that would move the target farther away", () => {
+  const start = 2_000_000;
+  const firstPostEntry = timedCandle(100, 109, 99.5, 109, start + 300_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    evaluateEntryCandleForExit: false,
+    target: 110,
+    stop: 98,
+    subsequentCompletedCandles: [firstPostEntry],
+    dynamicTarget: {
+      source: "EMA200",
+      emaPeriod: 2,
+      indicatorCandles: [
+        { ...timedCandle(120, 120, 120, 120, start - 600_000), volume: 100 },
+        { ...timedCandle(120, 120, 120, 120, start - 300_000), volume: 100 },
+        { ...firstPostEntry, volume: 100 },
+      ],
+    },
+  });
+  assert.equal(result.audit.targetUpdateLedger[0]?.reason, "IGNORED_FARTHER_AWAY");
+  assert.equal(result.audit.targetUpdateLedger[0]?.fartherAwayIgnored, true);
+  assert.equal(result.audit.effectiveTargetPrice, 110);
+});
+
+test("ratchets a short VWAP target higher and keeps a falling VWAP update", () => {
+  const start = 3_000_000;
+  const risingCandle = timedCandle(99.5, 100, 96, 98, start + 300_000);
+  const risingResult = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.5, 99.5, start),
+    evaluateEntryCandleForExit: false,
+    target: 95,
+    stop: 102,
+    subsequentCompletedCandles: [risingCandle, timedCandle(98, 98.25, 97.75, 98, start + 600_000)],
+    dynamicTarget: {
+      source: "VWAP",
+      indicatorCandles: [
+        { ...timedCandle(94, 95, 93, 94, start - 300_000), volume: 100 },
+        { ...risingCandle, volume: 100 },
+      ],
+    },
+  });
+  assert.equal(risingResult.audit.targetUpdateLedger[0]?.tightened, true);
+  assert.equal(risingResult.audit.targetUpdateLedger[0]?.proposedTarget, 98);
+  assert.equal(risingResult.audit.effectiveTargetPrice, 98);
+  assert.equal(risingResult.exitReason, "target");
+
+  const fallingCandle = timedCandle(99.5, 100, 96, 92, start + 300_000);
+  const fallingResult = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.5, 99.5, start),
+    evaluateEntryCandleForExit: false,
+    target: 95,
+    stop: 102,
+    subsequentCompletedCandles: [fallingCandle],
+    dynamicTarget: {
+      source: "VWAP",
+      indicatorCandles: [
+        { ...timedCandle(90, 90, 90, 90, start - 300_000), volume: 10_000 },
+        { ...fallingCandle, volume: 100 },
+      ],
+    },
+  });
+  assert.equal(fallingResult.audit.targetUpdateLedger[0]?.reason, "IGNORED_FARTHER_AWAY");
+  assert.equal(fallingResult.audit.effectiveTargetPrice, 95);
+});
+
+test("keeps dynamic target management consistent across a target leg and runner", () => {
+  const start = 4_000_000;
+  const firstPostEntry = timedCandle(100, 104.5, 99.5, 104.5, start + 300_000);
+  const secondPostEntry = timedCandle(103, 103.75, 102.5, 103.5, start + 600_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    contracts: 2,
+    targetQuantity: 1,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    evaluateEntryCandleForExit: false,
+    target: 105,
+    stop: 98,
+    subsequentCompletedCandles: [firstPostEntry, secondPostEntry],
+    sessionCloseCandle: timedCandle(103.5, 103.5, 103.5, 103.5, start + 900_000),
+    dynamicTarget: {
+      source: "EMA200",
+      emaPeriod: 2,
+      indicatorCandles: [
+        { ...timedCandle(107, 107, 107, 107, start - 600_000), volume: 100 },
+        { ...timedCandle(107, 107, 107, 107, start - 300_000), volume: 100 },
+        { ...firstPostEntry, volume: 100 },
+        { ...secondPostEntry, volume: 100 },
+      ],
+    },
+  });
+  assert.deepEqual(result.legs.map((leg) => leg.kind), ["target", "runner"]);
+  assert.equal(result.legs[0]?.quantity, 1);
+  assert.equal(result.audit.targetUpdateLedger.filter((update) => update.tightened).length, 1);
+  assert.equal(result.audit.runnerExited, true);
+});
+
 test("models bearish entry and stop-first ambiguity", () => {
   const result = simulateOhlcvExecution({ ...base, direction: "short", immediateTriggerCandle: candle(99, 101.5, 98, 99), target: 98, stop: 101, exitSlippageTicks: 1 });
   assert.equal(result.modeledFill, 99);

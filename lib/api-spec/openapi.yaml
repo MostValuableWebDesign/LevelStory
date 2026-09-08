@@ -3592,13 +3592,14 @@ components:
         selectedLevelPrice: { type: ["number", "null"] }
         targetDistanceTicks: { type: ["number", "null"] }
         targetPrice: { type: ["number", "null"] }
+        dynamicTargetSource: { type: ["string", "null"], enum: [VWAP, EMA200, null], description: Identity-frozen dynamic indicator source; null for structural or fallback targets. }
         fallbackUsed: { type: boolean }
         fallbackReason: { type: ["string", "null"], enum: [ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL, null] }
         searchRangePoints: { type: ["number", "null"] }
         searchRangeTicks: { type: ["number", "null"] }
         missingSourceTimestampLevelIds: { type: array, items: { type: string } }
         targetLevelSnapshot: { type: ["object", "null"], allOf: [{ $ref: "#/components/schemas/TargetLevelSnapshot" }] }
-      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, targetBufferPoints, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, selectedLevelPrice, targetDistanceTicks, targetPrice, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
+      required: [targetPlanVersion, placementMode, disposition, entryPrice, direction, tickSize, bufferTicks, bufferPoints, placementTicks, targetBufferTicks, targetBufferPoints, initialRiskPoints, targetR, minimumTargetR, maximumTargetR, obstructingLevel, rejectionReason, availableLevels, skippedLevels, selectedTargetLevel, subsequentTargetLevels, selectedLevelPrice, targetDistanceTicks, targetPrice, dynamicTargetSource, fallbackUsed, fallbackReason, searchRangePoints, searchRangeTicks, missingSourceTimestampLevelIds]
     BacktestTrade:
       type: object
       properties:
@@ -3642,6 +3643,29 @@ components:
             stopPrice: { type: ["number", "null"] }
             targetPrice: { type: ["number", "null"] }
             targetPlan: { $ref: "#/components/schemas/KeyLevelTargetPlan" }
+            dynamicTargetSource: { type: ["string", "null"], enum: [VWAP, EMA200, null] }
+            initialTargetPrice: { type: ["number", "null"] }
+            effectiveTargetPrice: { type: ["number", "null"] }
+            targetUpdateLedger:
+              type: array
+              items:
+                type: object
+                properties:
+                  candleOpenTime: { type: ["number", "null"] }
+                  candleCloseTime: { type: ["number", "null"] }
+                  indicator: { type: string, enum: [VWAP, EMA200] }
+                  previousIndicatorValue: { type: ["number", "null"] }
+                  recalculatedIndicatorValue: { type: number }
+                  proposedTarget: { type: number }
+                  previousEffectiveTarget: { type: number }
+                  resultingEffectiveTarget: { type: number }
+                  effectiveFromTimestamp: { type: ["number", "null"] }
+                  tightened: { type: boolean }
+                  fartherAwayIgnored: { type: boolean }
+                  reason: { type: string, enum: [TIGHTENED, NO_CHANGE, IGNORED_FARTHER_AWAY, IGNORED_WOULD_CROSS_ENTRY] }
+                  calculationVersion: { type: string }
+                  sourceFingerprint: { type: ["string", "null"] }
+                required: [candleOpenTime, candleCloseTime, indicator, previousIndicatorValue, recalculatedIndicatorValue, proposedTarget, previousEffectiveTarget, resultingEffectiveTarget, effectiveFromTimestamp, tightened, fartherAwayIgnored, reason, calculationVersion, sourceFingerprint]
             strategyStopPrice: { type: ["number", "null"] }
             catastropheStopPrice: { type: ["number", "null"] }
             armAttemptId: { type: string, description: Stable identity for the independent attempt that produced this trade. }

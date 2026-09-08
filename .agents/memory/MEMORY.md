@@ -65,3 +65,4 @@
 - [Early ORB provenance](early-orb-provenance.md) — identify merged Early ORB occurrences from arm/provenance metadata, not only optional evidence or canonical strategy labels.
 - [Visual replay timeout fallback](visual-replay-timeout-fallback.md) — stream validated snapshots; on timeout expose only same-request or worker-emitted partial evidence, never unrelated data.
 - [Uploaded chart target authority](uploaded-chart-target-authority.md) — visible chart targets must pass through the shared key-level planner; never trust a model-emitted executable target directly.
+- [Causal dynamic target ratchet](causal-dynamic-target-ratchet.md) — evaluate indicator proposals after candle exits and apply only monotonic, non-crossing results from the next candle.

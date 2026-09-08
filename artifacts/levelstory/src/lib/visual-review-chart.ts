@@ -1,4 +1,5 @@
 import type {
+  BacktestTradeAuditTargetUpdateLedgerItem,
   VisualValidationAnnotation,
   VisualValidationCandle,
   VisualValidationCategoryAnchor,
@@ -575,6 +576,71 @@ export function getCandleSlotIndex(
     return Math.floor((minutes - PREMARKET_START_MINUTES) / 5);
   }
   return (showPremarket ? PREMARKET_SLOT_COUNT : 0) + Math.floor((minutes - PRIMARY_SESSION_START_MINUTES) / 5);
+}
+
+export type DynamicTargetStepPathOptions = {
+  ledger: readonly BacktestTradeAuditTargetUpdateLedgerItem[];
+  initialTargetPrice: number | null | undefined;
+  entryTime: string | null | undefined;
+  exitTime?: string | null;
+  candles: readonly VisualValidationCandle[];
+  sessionView: SessionView;
+  left: number;
+  step: number;
+  y: (price: number) => number;
+  showPremarket?: boolean;
+};
+
+function numericTimestamp(value: string | number | null | undefined): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
+  return value ? Date.parse(value) : Number.NaN;
+}
+
+/**
+ * Builds the executable dynamic-target overlay, not the raw indicator curve.
+ * Each accepted result becomes effective at the next candle's open, so the
+ * orthogonal step cannot retroactively change the candle that proposed it.
+ */
+export function buildDynamicTargetStepPath(options: DynamicTargetStepPathOptions): string {
+  const initial = options.initialTargetPrice;
+  if (typeof initial !== "number" || !Number.isFinite(initial) || !options.candles.length) return "";
+  const entryTimestamp = numericTimestamp(options.entryTime);
+  const exitTimestamp = numericTimestamp(options.exitTime);
+  const firstCandle = options.candles.find((candle) => {
+    const open = numericTimestamp(candle.openTime);
+    return Number.isFinite(open) && (!Number.isFinite(entryTimestamp) || open >= entryTimestamp);
+  });
+  if (!firstCandle) return "";
+  const lastCandle = [...options.candles].reverse().find((candle) => {
+    const open = numericTimestamp(candle.openTime);
+    return Number.isFinite(open) && (!Number.isFinite(exitTimestamp) || open <= exitTimestamp);
+  }) ?? firstCandle;
+  const firstSlot = getCandleSlotIndex(firstCandle, options.sessionView, options.showPremarket);
+  const lastSlot = Math.max(firstSlot, getCandleSlotIndex(lastCandle, options.sessionView, options.showPremarket));
+  const xForSlot = (slot: number) => options.left + slot * options.step + options.step / 2;
+  const segments = [{
+    slot: firstSlot,
+    price: initial,
+  }];
+  const seenSlots = new Set<number>();
+  for (const update of options.ledger) {
+    if (!Number.isFinite(update.resultingEffectiveTarget)) continue;
+    const effectiveTimestamp = numericTimestamp(update.effectiveFromTimestamp);
+    if (!Number.isFinite(effectiveTimestamp) || effectiveTimestamp <= entryTimestamp || effectiveTimestamp > exitTimestamp) continue;
+    const effectiveCandle = options.candles.find((candle) => numericTimestamp(candle.openTime) >= effectiveTimestamp);
+    if (!effectiveCandle) continue;
+    const slot = getCandleSlotIndex(effectiveCandle, options.sessionView, options.showPremarket);
+    if (slot <= firstSlot || slot > lastSlot || seenSlots.has(slot)) continue;
+    seenSlots.add(slot);
+    segments.push({ slot, price: update.resultingEffectiveTarget });
+  }
+  const last = segments.at(-1)!;
+  const commands = [`M ${xForSlot(firstSlot).toFixed(2)} ${options.y(initial).toFixed(2)}`];
+  for (const segment of segments.slice(1)) {
+    commands.push(`H ${xForSlot(segment.slot).toFixed(2)}`, `V ${options.y(segment.price).toFixed(2)}`);
+  }
+  commands.push(`H ${xForSlot(lastSlot).toFixed(2)}`);
+  return commands.join(" ");
 }
 
 function formatWallClockMinute(minutes: number): string {

@@ -28,7 +28,11 @@ import {
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
   simulateOhlcvExecution,
 } from "./strategy/ohlcv-execution.js";
-import type { ModeledExecutionLeg } from "./strategy/ohlcv-execution.js";
+import type {
+  DynamicTargetUpdate,
+  ModeledExecutionLeg,
+  DynamicTargetSource,
+} from "./strategy/ohlcv-execution.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
   isTerminalPullbackArmState,
@@ -330,6 +334,10 @@ export type BacktestTrade = {
       runnerBreakevenStopPrice?: number | null;
       runnerBreakevenTightened?: boolean;
       runnerBreakevenIgnoredForTighterStop?: boolean;
+      dynamicTargetSource?: DynamicTargetSource | null;
+      initialTargetPrice?: number | null;
+      effectiveTargetPrice?: number | null;
+      targetUpdateLedger?: DynamicTargetUpdate[];
      originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -4490,6 +4498,15 @@ function candidateDrivenEntryTrade(
       contracts,
        targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
       target: targetPrice,
+       dynamicTarget: targetPlan?.dynamicTargetSource
+         ? {
+           source: targetPlan.dynamicTargetSource,
+           indicatorCandles: contractCandles,
+           tradingDate,
+           initialIndicatorValue: targetPlan.selectedLevelPrice,
+           sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+         }
+         : undefined,
        oneRProfitRule: targetPlan?.fallbackUsed === true,
        targetIsOneR: targetPlan?.fallbackUsed === true,
        structureTrailing: true,
@@ -4632,6 +4649,10 @@ function candidateDrivenEntryTrade(
        trailingStopPrice: modeled?.audit.trailingStopPrice ?? null,
        trailingStopActive: modeled?.audit.trailingStopActive ?? false,
        trailingStopSource: modeled?.audit.trailingStopSource ?? null,
+       dynamicTargetSource: modeled?.audit.dynamicTargetSource ?? targetPlan?.dynamicTargetSource ?? null,
+       initialTargetPrice: modeled?.audit.initialTargetPrice ?? targetPrice,
+       effectiveTargetPrice: modeled?.audit.effectiveTargetPrice ?? modeled?.targetPrice ?? targetPrice,
+       targetUpdateLedger: modeled?.audit.targetUpdateLedger ?? [],
        noForwardLevelAtEntry: modeled?.audit.noForwardLevelAtEntry ?? false,
        postEntryCompletedBars: modeled?.audit.postEntryCompletedBars ?? 0,
        breakevenActivationBars: modeled?.audit.breakevenActivationBars ?? null,
@@ -5180,6 +5201,15 @@ export function runCausalBacktest(
          contracts,
          targetQuantity: 1,
          target,
+          dynamicTarget: targetPlan.dynamicTargetSource
+            ? {
+              source: targetPlan.dynamicTargetSource,
+              indicatorCandles: contractCandles,
+              tradingDate,
+              initialIndicatorValue: targetPlan.selectedLevelPrice,
+              sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+            }
+            : undefined,
          strategyStop,
           primaryLossExitLevel,
          catastropheStop: snapshot.riskPlan.catastropheStop,
@@ -5268,6 +5298,10 @@ export function runCausalBacktest(
           stopLevel: modeled.audit.stopLevel,
            primaryLossExitLevel: modeled.audit.primaryLossExitLevel,
           targetPrice: modeled.targetPrice,
+           dynamicTargetSource: modeled.audit.dynamicTargetSource ?? targetPlan.dynamicTargetSource ?? null,
+           initialTargetPrice: modeled.audit.initialTargetPrice,
+           effectiveTargetPrice: modeled.audit.effectiveTargetPrice,
+           targetUpdateLedger: modeled.audit.targetUpdateLedger,
            patienceCandleOpenTime: patienceCandle.openTime === undefined ? null : new Date(patienceCandle.openTime).toISOString(),
            patienceCandleCloseTime: patienceCandle.closeTime === undefined ? null : new Date(patienceCandle.closeTime).toISOString(),
            triggerCandleOpenTime: trigger.openTime === undefined ? null : new Date(trigger.openTime).toISOString(),

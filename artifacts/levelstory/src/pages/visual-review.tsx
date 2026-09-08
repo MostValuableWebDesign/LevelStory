@@ -47,6 +47,7 @@ import type {
   ShadowAccountReplay,
   StrategyId,
   KeyLevelTargetPlan,
+  BacktestTradeAuditTargetUpdateLedgerItem,
 } from "@workspace/api-client-react";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -85,6 +86,7 @@ import {
   getDateLabel,
   getCandleDomain,
   getCandleSlotIndex,
+  buildDynamicTargetStepPath,
   getCandleGeometry,
    findConsolidationZones,
   getEdgeIndicators,
@@ -196,6 +198,10 @@ type TradeEvidenceView = {
       bufferTicks: number;
     } | null;
     targetPlan?: KeyLevelTargetPlan;
+    dynamicTargetSource?: "VWAP" | "EMA200" | null;
+    initialTargetPrice?: number | null;
+    effectiveTargetPrice?: number | null;
+    targetUpdateLedger?: BacktestTradeAuditTargetUpdateLedgerItem[];
     legs?: TradeLegView[];
   };
 };
@@ -2016,6 +2022,20 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        x: legExitIndex >= 0 ? left + getCandleSlotIndex(candles[legExitIndex]!, sessionView) * step + step / 2 : exitX,
      };
    });
+    const dynamicTargetSource = trade?.audit?.dynamicTargetSource ?? trade?.targetPlan?.dynamicTargetSource ?? null;
+    const dynamicTargetStepPath = dynamicTargetSource
+      ? buildDynamicTargetStepPath({
+        ledger: trade?.audit?.targetUpdateLedger ?? [],
+        initialTargetPrice: trade?.audit?.initialTargetPrice ?? trade?.targetPlan?.targetPrice,
+        entryTime: entryOpenTime,
+        exitTime,
+        candles,
+        sessionView,
+        left,
+        step,
+        y,
+      })
+      : "";
   const resolvePointer = (clientX: number, clientY: number) => resolveChartPointerFromClientPoint(
     clientX,
     clientY,
@@ -2291,6 +2311,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           {indicatorPath("vwap", "human_only") && <path className={activeIndicatorId === "vwap" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("vwap", "human_only")} fill="none" stroke="hsl(5 58% 46%)" strokeDasharray="7 4" {...indicatorStyle("vwap")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "vwap" ? .8 : .15} data-testid="indicator-curve-vwap-human-only" />}
           {indicatorPath("ema200", "machine") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "machine")} fill="none" stroke="hsl(145 45% 42%)" {...indicatorStyle("ema-200")} data-testid="indicator-curve-ema200" />}
           {indicatorPath("ema200", "human_only") && <path className={activeIndicatorId === "ema-200" ? "levelstory-selected-pulse" : undefined} pointerEvents="none" d={indicatorPath("ema200", "human_only")} fill="none" stroke="hsl(145 45% 42%)" strokeDasharray="7 4" {...indicatorStyle("ema-200")} opacity={activeIndicatorId === null ? .55 : activeIndicatorId === "ema-200" ? .8 : .15} data-testid="indicator-curve-ema200-human-only" />}
+           {dynamicTargetStepPath && <path pointerEvents="none" d={dynamicTargetStepPath} fill="none" stroke="hsl(270 55% 48%)" strokeWidth="2.4" strokeDasharray="8 4" data-testid="dynamic-target-step-line">
+             <title>{`${dynamicTargetSource} effective target · initial ${formatTradePrice(trade?.audit?.initialTargetPrice ?? trade?.targetPlan?.targetPrice)} · current ${formatTradePrice(trade?.audit?.effectiveTargetPrice ?? trade?.targetPlan?.targetPrice)}`}</title>
+           </path>}
            {snapshot.tradeEvents.length === 0 && <g data-testid="no-entry-marker"><rect x={left + 8} y={top + 30} width="132" height="24" rx="2" fill="hsl(var(--negative) / .12)" stroke="hsl(var(--negative) / .55)" /><text x={left + 74} y={top + 46} textAnchor="middle" fill="hsl(var(--negative))" fontSize="10" fontWeight="700" fontFamily="DM Mono">NO ENTRY</text></g>}
        {primaryLevels.map((annotation) => {
         if (annotation.price == null || annotation.price < domain.min || annotation.price > domain.max) return null;
@@ -2498,6 +2521,12 @@ function formatTradeMoney(value: number | null | undefined, open: boolean): stri
   return open || typeof value !== "number" || !Number.isFinite(value) ? "—" : `$${value.toFixed(2)}`;
 }
 
+function formatTargetUpdateTime(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatReviewTime(new Date(value).toISOString())
+    : "—";
+}
+
 function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
   if (!trade) return null;
   const open = trade.outcome === "open" || trade.exitTime === null || trade.exitPrice == null;
@@ -2518,6 +2547,7 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
       : "No target evidence";
   const targetLevels = targetPlan?.availableLevels ?? [];
   const skippedLevels = targetPlan?.skippedLevels ?? [];
+  const targetUpdates = trade.audit?.targetUpdateLedger ?? [];
   return <section className="border-t border-border bg-card px-5 py-4 sm:px-6" data-testid="trade-inspector">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><div className="eyebrow text-muted-foreground">Authoritative trade inspector</div><div className="mt-1 text-sm font-bold">{open ? "Open / unscored" : "Completed trade"}</div></div>
@@ -2585,6 +2615,37 @@ function TradeInspector({ trade }: { trade: TradeEvidenceView | null }) {
            <div>Missing provenance: <strong className="text-foreground">{targetPlan.missingSourceTimestampLevelIds.length === 0 ? "none" : targetPlan.missingSourceTimestampLevelIds.join(", ")}</strong></div>
           <div>Plan version: <strong className="mono text-foreground">{targetPlan.targetPlanVersion}</strong></div>
         </div>
+      </div>
+    </details>}
+    {(trade.audit?.dynamicTargetSource || targetUpdates.length > 0) && <details className="mt-3 border border-border bg-muted/10" data-testid="target-adjustment-ledger">
+      <summary className="cursor-pointer px-3 py-3 text-[10px] font-bold uppercase tracking-[.08em]">
+        Dynamic target ledger · {trade.audit?.dynamicTargetSource ?? "indicator source unavailable"} · {targetUpdates.length} update{targetUpdates.length === 1 ? "" : "s"}
+      </summary>
+      <div className="border-t border-border px-3 py-3 text-[10px]">
+        <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+          {[
+            ["Source", trade.audit?.dynamicTargetSource ?? "—"],
+            ["Initial effective target", formatTradePrice(trade.audit?.initialTargetPrice)],
+            ["Current effective target", formatTradePrice(trade.audit?.effectiveTargetPrice)],
+          ].map(([label, value]) => <div key={label} className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">{label}</div><div className="mono mt-1 font-bold">{value}</div></div>)}
+        </div>
+        {targetUpdates.length === 0
+          ? <div className="mt-3 text-muted-foreground">No completed post-entry candle produced an indicator update.</div>
+          : <div className="mt-3 space-y-2">
+            {targetUpdates.map((update, index) => <div key={`${update.candleOpenTime ?? "update"}-${index}`} className="border border-border bg-card px-3 py-2" data-testid={`target-adjustment-${index}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
+                <span>{update.indicator} · effective from {formatTargetUpdateTime(update.effectiveFromTimestamp)}</span>
+                <span className={update.tightened ? "text-positive" : "text-muted-foreground"}>{update.reason}</span>
+              </div>
+              <div className="mt-1 grid gap-x-3 gap-y-1 text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                <span>Indicator <strong className="mono text-foreground">{formatTradePrice(update.recalculatedIndicatorValue)}</strong></span>
+                <span>Proposed <strong className="mono text-foreground">{formatTradePrice(update.proposedTarget)}</strong></span>
+                <span>Effective <strong className="mono text-foreground">{formatTradePrice(update.previousEffectiveTarget)} → {formatTradePrice(update.resultingEffectiveTarget)}</strong></span>
+                <span>{update.fartherAwayIgnored ? "Ignored as farther away" : update.tightened ? "Accepted tightening" : "No effective change"}</span>
+              </div>
+              <div className="mt-1 mono text-[9px] text-muted-foreground">Calculated on {formatTargetUpdateTime(update.candleCloseTime)} · {update.calculationVersion}</div>
+            </div>)}
+          </div>}
       </div>
     </details>}
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-muted-foreground">

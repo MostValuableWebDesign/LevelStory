@@ -3045,6 +3045,18 @@ export const KeyLevelTargetPlanRejectionReason = {
 } as const;
 
 /**
+ * Identity-frozen dynamic indicator source; null for structural or fallback targets.
+ * @nullable
+ */
+export type KeyLevelTargetPlanDynamicTargetSource = typeof KeyLevelTargetPlanDynamicTargetSource[keyof typeof KeyLevelTargetPlanDynamicTargetSource] | null;
+
+
+export const KeyLevelTargetPlanDynamicTargetSource = {
+  VWAP: 'VWAP',
+  EMA200: 'EMA200',
+} as const;
+
+/**
  * @nullable
  */
 export type KeyLevelTargetPlanFallbackReason = typeof KeyLevelTargetPlanFallbackReason[keyof typeof KeyLevelTargetPlanFallbackReason] | null;
@@ -3093,6 +3105,11 @@ export interface KeyLevelTargetPlan {
   targetDistanceTicks: number | null;
   /** @nullable */
   targetPrice: number | null;
+  /**
+     * Identity-frozen dynamic indicator source; null for structural or fallback targets.
+     * @nullable
+     */
+  dynamicTargetSource: KeyLevelTargetPlanDynamicTargetSource;
   fallbackUsed: boolean;
   /** @nullable */
   fallbackReason: KeyLevelTargetPlanFallbackReason;
@@ -3184,6 +3201,57 @@ export type BacktestTradePatienceCandle = { [key: string]: unknown } | null;
  */
 export type BacktestTradeEntryCandle = { [key: string]: unknown } | null;
 
+/**
+ * @nullable
+ */
+export type BacktestTradeAuditDynamicTargetSource = typeof BacktestTradeAuditDynamicTargetSource[keyof typeof BacktestTradeAuditDynamicTargetSource] | null;
+
+
+export const BacktestTradeAuditDynamicTargetSource = {
+  VWAP: 'VWAP',
+  EMA200: 'EMA200',
+} as const;
+
+export type BacktestTradeAuditTargetUpdateLedgerItemIndicator = typeof BacktestTradeAuditTargetUpdateLedgerItemIndicator[keyof typeof BacktestTradeAuditTargetUpdateLedgerItemIndicator];
+
+
+export const BacktestTradeAuditTargetUpdateLedgerItemIndicator = {
+  VWAP: 'VWAP',
+  EMA200: 'EMA200',
+} as const;
+
+export type BacktestTradeAuditTargetUpdateLedgerItemReason = typeof BacktestTradeAuditTargetUpdateLedgerItemReason[keyof typeof BacktestTradeAuditTargetUpdateLedgerItemReason];
+
+
+export const BacktestTradeAuditTargetUpdateLedgerItemReason = {
+  TIGHTENED: 'TIGHTENED',
+  NO_CHANGE: 'NO_CHANGE',
+  IGNORED_FARTHER_AWAY: 'IGNORED_FARTHER_AWAY',
+  IGNORED_WOULD_CROSS_ENTRY: 'IGNORED_WOULD_CROSS_ENTRY',
+} as const;
+
+export type BacktestTradeAuditTargetUpdateLedgerItem = {
+  /** @nullable */
+  candleOpenTime: number | null;
+  /** @nullable */
+  candleCloseTime: number | null;
+  indicator: BacktestTradeAuditTargetUpdateLedgerItemIndicator;
+  /** @nullable */
+  previousIndicatorValue: number | null;
+  recalculatedIndicatorValue: number;
+  proposedTarget: number;
+  previousEffectiveTarget: number;
+  resultingEffectiveTarget: number;
+  /** @nullable */
+  effectiveFromTimestamp: number | null;
+  tightened: boolean;
+  fartherAwayIgnored: boolean;
+  reason: BacktestTradeAuditTargetUpdateLedgerItemReason;
+  calculationVersion: string;
+  /** @nullable */
+  sourceFingerprint: string | null;
+};
+
 export type BacktestTradeAuditAttemptGrade = typeof BacktestTradeAuditAttemptGrade[keyof typeof BacktestTradeAuditAttemptGrade];
 
 
@@ -3251,6 +3319,13 @@ export type BacktestTradeAudit = {
   /** @nullable */
   targetPrice: number | null;
   targetPlan?: KeyLevelTargetPlan;
+  /** @nullable */
+  dynamicTargetSource?: BacktestTradeAuditDynamicTargetSource;
+  /** @nullable */
+  initialTargetPrice?: number | null;
+  /** @nullable */
+  effectiveTargetPrice?: number | null;
+  targetUpdateLedger?: BacktestTradeAuditTargetUpdateLedgerItem[];
   /** @nullable */
   strategyStopPrice: number | null;
   /** @nullable */

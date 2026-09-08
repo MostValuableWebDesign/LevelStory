@@ -1,5 +1,7 @@
 import type { Direction } from "./types.js";
 import type { PrimaryLossExitReference } from "./key-level-targets.js";
+import { causalEmaSeries, regularSessionVwap, vwap } from "./indicators.js";
+import type { Candle } from "./types.js";
 import {
   BREAKEVEN_EVALUATION_BARS,
   BREAKEVEN_FAVORABLE_EXCURSION_R,
@@ -22,6 +24,32 @@ export const BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL = "BREAKEVEN_RECOVERY_EXIT_RE
 export const ENTRY_PRICE_RECOVERY_EXIT_LABEL = "ENTRY_PRICE_RECOVERY_EXIT";
 export const ONE_R_REACHED_BEFORE_BREAKEVEN_LABEL = "ONE_R_REACHED_BEFORE_BREAKEVEN";
 export const ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN_LABEL = "ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN";
+export const DYNAMIC_TARGET_TIGHTENED_LABEL = "DYNAMIC_TARGET_TIGHTENED";
+export const DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED_LABEL = "DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED";
+export const DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION = "causal-dynamic-target-v1-completed-close-next-candle";
+
+export type DynamicTargetSource = "VWAP" | "EMA200";
+
+export type DynamicTargetUpdate = {
+  candleOpenTime: number | null;
+  candleCloseTime: number | null;
+  indicator: DynamicTargetSource;
+  previousIndicatorValue: number | null;
+  recalculatedIndicatorValue: number;
+  proposedTarget: number;
+  previousEffectiveTarget: number;
+  resultingEffectiveTarget: number;
+  effectiveFromTimestamp: number | null;
+  tightened: boolean;
+  fartherAwayIgnored: boolean;
+  reason:
+    | "TIGHTENED"
+    | "NO_CHANGE"
+    | "IGNORED_FARTHER_AWAY"
+    | "IGNORED_WOULD_CROSS_ENTRY";
+  calculationVersion: string;
+  sourceFingerprint: string | null;
+};
 
 export type BreakevenDisposition =
   | "NOT_APPLICABLE"
@@ -50,6 +78,7 @@ export type OhlcvCandle = {
   close: number;
   openTime?: number;
   closeTime?: number;
+  volume?: number;
   isComplete?: boolean;
 };
 
@@ -134,6 +163,10 @@ export type OhlcvExecutionAudit = {
   runnerBreakevenTightened: boolean;
   runnerBreakevenIgnoredForTighterStop: boolean;
   originalStopStillActive: boolean;
+  dynamicTargetSource: DynamicTargetSource | null;
+  initialTargetPrice: number | null;
+  effectiveTargetPrice: number | null;
+  targetUpdateLedger: DynamicTargetUpdate[];
 };
 
 export type ModeledOhlcvExecution = {
@@ -196,6 +229,19 @@ export type OhlcvExecutionInput = {
   trailingBufferTicks?: number;
   /** Governed post-entry completed-bar delay before no-target breakeven management. */
   noLevelBreakevenActivationBars?: number;
+  /**
+   * A selected VWAP/EMA 200 target remains identity-frozen, but its
+   * executable price may ratchet closer after completed candles. The history
+   * must include all causal indicator candles through each post-entry candle.
+   */
+  dynamicTarget?: {
+    source: DynamicTargetSource;
+    indicatorCandles: readonly OhlcvCandle[];
+    tradingDate?: string;
+    emaPeriod?: number;
+    initialIndicatorValue?: number | null;
+    sourceFingerprint?: string | null;
+  };
 };
 
 function money(value: number): number {
@@ -210,6 +256,48 @@ function validCandle(candle: OhlcvCandle): void {
   if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
     throw new Error("OHLCV candles must contain finite OHLC prices.");
   }
+}
+
+function toIndicatorCandle(candle: OhlcvCandle): Candle | null {
+  if (
+    !Number.isFinite(candle.openTime)
+    || !Number.isFinite(candle.closeTime)
+    || !Number.isFinite(candle.volume ?? 0)
+  ) return null;
+  return {
+    openTime: candle.openTime!,
+    closeTime: candle.closeTime!,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume ?? 0,
+    isComplete: candle.isComplete !== false,
+  };
+}
+
+function dynamicIndicatorValueAt(
+  dynamicTarget: NonNullable<OhlcvExecutionInput["dynamicTarget"]>,
+  candle: OhlcvCandle,
+): number | null {
+  const indicatorCandles = dynamicTarget.indicatorCandles
+    .filter((item) =>
+      item.isComplete !== false
+      && Number.isFinite(item.closeTime)
+      && item.closeTime! <= (candle.closeTime ?? Number.POSITIVE_INFINITY),
+    )
+    .map(toIndicatorCandle)
+    .filter((item): item is Candle => item !== null)
+    .sort((first, second) => first.closeTime - second.closeTime || first.openTime - second.openTime);
+  if (!indicatorCandles.length) return null;
+  if (dynamicTarget.source === "EMA200") {
+    const series = causalEmaSeries(indicatorCandles, dynamicTarget.emaPeriod ?? 200);
+    return series.points.at(-1)?.value ?? null;
+  }
+  const calculated = dynamicTarget.tradingDate
+    ? regularSessionVwap(indicatorCandles, undefined, dynamicTarget.tradingDate)
+    : vwap(indicatorCandles);
+  return Number.isFinite(calculated) ? calculated : null;
 }
 
 function completedSwing(
@@ -234,13 +322,14 @@ function completedSwing(
 function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
   const noForwardLevelAtEntry = input.oneRProfitRule === true;
   const breakevenActivationBars = BREAKEVEN_EVALUATION_BARS;
+  const initialTargetPrice = input.targetPrice ?? input.target ?? null;
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
   ];
   return {
     entryTrigger: null, modeledFill: null, stopPrice: input.stopPrice ?? input.stop ?? null,
-    targetPrice: input.targetPrice ?? input.target ?? null, exitPrice: null, exitReason: "not filled",
+    targetPrice: initialTargetPrice, exitPrice: null, exitReason: "not filled",
     legs: [], accounting: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
     audit: {
       eventLabels: labels, labels, ambiguityLabels: [], assumptions, entryCandle: null, exitCandle: null, targetHit: false,
@@ -275,6 +364,10 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       runnerBreakevenTightened: false,
       runnerBreakevenIgnoredForTighterStop: false,
       originalStopStillActive: false,
+      dynamicTargetSource: input.dynamicTarget?.source ?? null,
+      initialTargetPrice,
+      effectiveTargetPrice: initialTargetPrice,
+      targetUpdateLedger: [],
     },
     ambiguityLabels: [], eventLabels: labels, assumptions,
   };
@@ -321,9 +414,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     : (input.direction === "long"
       ? entryReference + (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
-  const target = convertedTarget == null ? null : tick(convertedTarget, size);
+  const initialTarget = convertedTarget == null ? null : tick(convertedTarget, size);
+  let effectiveTarget = initialTarget;
   const oneRProfitRule = input.oneRProfitRule === true
-    && (target === null || input.targetIsOneR === true);
+    && (initialTarget === null || input.targetIsOneR === true);
   const noForwardLevelAtEntry = oneRProfitRule;
   const breakevenActivationBars = BREAKEVEN_EVALUATION_BARS;
   if (breakevenActivationBars !== null
@@ -354,7 +448,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     && (input.direction === "long" ? trigger.high >= entryReference : trigger.low <= entryReference);
   if (!trigger || !entryTouched || quantity === 0) {
     return emptyResult(
-      { ...input, targetPrice: target, stopPrice },
+      { ...input, targetPrice: initialTarget, stopPrice },
       noForwardLevelAtEntry ? [NO_FORWARD_LEVEL_1R_PLAN_LABEL] : [],
     );
   }
@@ -417,6 +511,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let runnerBreakevenTightened = false;
   let runnerBreakevenIgnoredForTighterStop = false;
   let originalStopStillActive = initialStop !== null;
+  const targetUpdateLedger: DynamicTargetUpdate[] = [];
+  let previousIndicatorValue = input.dynamicTarget?.initialIndicatorValue ?? null;
   if (noForwardLevelAtEntry) eventLabels.push(NO_FORWARD_LEVEL_1R_PLAN_LABEL);
   const legs: ModeledExecutionLeg[] = [];
   let resolvedStopLevel: "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null = null;
@@ -474,7 +570,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       && (input.direction === "long" ? candle.low <= modeledFill : candle.high >= modeledFill);
     const originalStopHit = strategyHit || catastropheHit || trailingHit;
     const adverse = catastropheHit || breakevenHit || originalStopHit;
-    const favorable = target !== null && (input.direction === "long" ? candle.high >= target : candle.low <= target);
+    const favorable = effectiveTarget !== null
+      && (input.direction === "long" ? candle.high >= effectiveTarget : candle.low <= effectiveTarget);
     const targetReachedInCandle = !oneRProfitRule && !targetHit && favorable;
     const oneRReachedInCandle = oneRProfitRule
       && !oneRReached
@@ -556,11 +653,11 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       targetHit = true; targetCandle = candle;
       eventLabels.push("TARGET_REACHED");
       if (checkpointQuantity > 0) {
-        const fill = tick(input.direction === "long" ? target! - (input.exitSlippageTicks ?? 0) * size : target! + (input.exitSlippageTicks ?? 0) * size, size);
-         legs.push(makeLeg("target", checkpointQuantity, target!, fill, "target", candle));
+         const fill = tick(input.direction === "long" ? effectiveTarget! - (input.exitSlippageTicks ?? 0) * size : effectiveTarget! + (input.exitSlippageTicks ?? 0) * size, size);
+          legs.push(makeLeg("target", checkpointQuantity, effectiveTarget!, fill, "target", candle));
         remaining -= checkpointQuantity; exitPrice = fill; exitCandle = candle; exitReason = "target";
       }
-      runnerBest = target!;
+       runnerBest = effectiveTarget!;
       trailingStopActive = structureTrailing && runnerQuantity > 0;
       if (trailingStopActive) {
         trailingStopPrice = initialStop === null ? null : tick(initialStop, size);
@@ -732,6 +829,67 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         eventLabels.push(BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL);
       }
     }
+    if (
+      input.dynamicTarget
+      && !targetHit
+      && !oneRReached
+      && remaining > 0
+      && effectiveTarget !== null
+    ) {
+      const recalculatedIndicatorValue = dynamicIndicatorValueAt(input.dynamicTarget, candle);
+      if (recalculatedIndicatorValue !== null) {
+        const proposedTarget = tick(
+          input.direction === "long"
+            ? recalculatedIndicatorValue - 8 * size
+            : recalculatedIndicatorValue + 8 * size,
+          size,
+        );
+        const previousEffectiveTarget = effectiveTarget;
+        const effectiveFromTimestamp = candles[candleIndex + 1]
+          && typeof candles[candleIndex + 1].openTime === "number"
+          && Number.isFinite(candles[candleIndex + 1].openTime)
+          ? candles[candleIndex + 1].openTime!
+          : null;
+        const crossesEntry = input.direction === "long"
+          ? proposedTarget <= modeledFill
+          : proposedTarget >= modeledFill;
+        const fartherAway = input.direction === "long"
+          ? proposedTarget > previousEffectiveTarget
+          : proposedTarget < previousEffectiveTarget;
+        const tightened = !crossesEntry && !fartherAway && proposedTarget !== previousEffectiveTarget;
+        const reason: DynamicTargetUpdate["reason"] = crossesEntry
+          ? "IGNORED_WOULD_CROSS_ENTRY"
+          : fartherAway
+            ? "IGNORED_FARTHER_AWAY"
+            : tightened
+              ? "TIGHTENED"
+              : "NO_CHANGE";
+        const resultingEffectiveTarget = tightened ? proposedTarget : previousEffectiveTarget;
+        targetUpdateLedger.push({
+          candleOpenTime: typeof candle.openTime === "number" ? candle.openTime : null,
+          candleCloseTime: typeof candle.closeTime === "number" ? candle.closeTime : null,
+          indicator: input.dynamicTarget.source,
+          previousIndicatorValue,
+          recalculatedIndicatorValue,
+          proposedTarget,
+          previousEffectiveTarget,
+          resultingEffectiveTarget,
+          effectiveFromTimestamp,
+          tightened,
+          fartherAwayIgnored: fartherAway,
+          reason,
+          calculationVersion: DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION,
+          sourceFingerprint: input.dynamicTarget.sourceFingerprint ?? null,
+        });
+        previousIndicatorValue = recalculatedIndicatorValue;
+        if (tightened) {
+          effectiveTarget = resultingEffectiveTarget;
+          eventLabels.push(DYNAMIC_TARGET_TIGHTENED_LABEL);
+        } else if (fartherAway) {
+          eventLabels.push(DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED_LABEL);
+        }
+      }
+    }
   }
   if (remaining > 0 && input.sessionCloseCandle) {
     const closeCandle = input.sessionCloseCandle;
@@ -759,7 +917,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     fees: money(a.fees + leg.fees), netPnl: money(a.netPnl + leg.netPnl),
   }), { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 });
   return {
-    entryTrigger: entryReference, modeledFill, stopPrice: resolvedStopPrice, targetPrice: target, exitPrice, exitReason, legs, accounting,
+     entryTrigger: entryReference, modeledFill, stopPrice: resolvedStopPrice, targetPrice: effectiveTarget, exitPrice, exitReason, legs, accounting,
     audit: {
       eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, targetHit,
        runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
@@ -770,11 +928,11 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        initialRiskPoints,
        oneRPrice,
        oneRReached,
-       profitCheckpointPrice: profitCheckpointPrice ?? (targetHit ? target : null),
+        profitCheckpointPrice: profitCheckpointPrice ?? (targetHit ? effectiveTarget : null),
        trailingStopPrice,
        trailingStopActive,
        trailingStopSource,
-       runnerReferencePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? (targetHit ? target : oneRPrice) : null,
+        runnerReferencePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? (targetHit ? effectiveTarget : oneRPrice) : null,
        runnerImpulse: (targetHit || oneRReached) && runnerQuantity > 0 ? Math.abs(runnerBest - modeledFill) : null,
        runnerMostFavorablePrice: (targetHit || oneRReached) && runnerQuantity > 0 ? runnerBest : null,
       remainingQuantity: remaining,
@@ -801,6 +959,10 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         runnerBreakevenTightened,
         runnerBreakevenIgnoredForTighterStop,
        originalStopStillActive,
+        dynamicTargetSource: input.dynamicTarget?.source ?? null,
+        initialTargetPrice: initialTarget,
+        effectiveTargetPrice: effectiveTarget,
+        targetUpdateLedger,
     },
      ambiguityLabels, eventLabels, assumptions,
   };

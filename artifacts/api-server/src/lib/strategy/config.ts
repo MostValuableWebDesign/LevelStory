@@ -213,7 +213,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7RunnerRetracementRatio: 0.4,
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
-  executionManagementVersion: "execution-management-v8-fixed-eight-tick-targets",
+  executionManagementVersion: "execution-management-v9-causal-dynamic-indicator-ratchet",
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,

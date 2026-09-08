@@ -9,6 +9,7 @@ import type { FrozenTargetLevel } from './frozenTargetLevel';
 import type { KeyLevelTargetPlanBufferPoints } from './keyLevelTargetPlanBufferPoints';
 import type { KeyLevelTargetPlanDirection } from './keyLevelTargetPlanDirection';
 import type { KeyLevelTargetPlanDisposition } from './keyLevelTargetPlanDisposition';
+import type { KeyLevelTargetPlanDynamicTargetSource } from './keyLevelTargetPlanDynamicTargetSource';
 import type { KeyLevelTargetPlanFallbackReason } from './keyLevelTargetPlanFallbackReason';
 import type { KeyLevelTargetPlanPlacementMode } from './keyLevelTargetPlanPlacementMode';
 import type { KeyLevelTargetPlanRejectionReason } from './keyLevelTargetPlanRejectionReason';
@@ -55,6 +56,11 @@ export interface KeyLevelTargetPlan {
   targetDistanceTicks: number | null;
   /** @nullable */
   targetPrice: number | null;
+  /**
+     * Identity-frozen dynamic indicator source; null for structural or fallback targets.
+     * @nullable
+     */
+  dynamicTargetSource: KeyLevelTargetPlanDynamicTargetSource;
   fallbackUsed: boolean;
   /** @nullable */
   fallbackReason: KeyLevelTargetPlanFallbackReason;

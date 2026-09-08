@@ -14,6 +14,7 @@ import {
   DOJI_BODY_HEIGHT,
   MES_TICK_SIZE,
   layoutEventRail,
+  buildDynamicTargetStepPath,
   getCandleSlotIndex,
   formatAxisDate,
   formatInterval,
@@ -56,6 +57,46 @@ import {
 } from "../src/lib/visual-review-chart.ts";
 
 const baseTime = Date.parse("2026-08-26T13:30:00.000Z");
+
+test("dynamic target step paths change only from the next candle", () => {
+  const candles = [0, 1, 2].map((index) => ({
+    openTime: new Date(baseTime + index * 300_000).toISOString(),
+    closeTime: new Date(baseTime + (index + 1) * 300_000).toISOString(),
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+    volume: 100,
+    machineVisible: true,
+  }));
+  const path = buildDynamicTargetStepPath({
+    ledger: [{
+      candleOpenTime: baseTime,
+      candleCloseTime: baseTime + 300_000,
+      indicator: "EMA200",
+      previousIndicatorValue: 107,
+      recalculatedIndicatorValue: 105.25,
+      proposedTarget: 103.25,
+      previousEffectiveTarget: 105,
+      resultingEffectiveTarget: 103.25,
+      effectiveFromTimestamp: baseTime + 300_000,
+      tightened: true,
+      fartherAwayIgnored: false,
+      reason: "TIGHTENED",
+      calculationVersion: "test",
+      sourceFingerprint: null,
+    }],
+    initialTargetPrice: 105,
+    entryTime: candles[0]!.openTime,
+    exitTime: candles[2]!.closeTime,
+    candles,
+    sessionView: "primary",
+    left: 0,
+    step: 10,
+    y: (price) => price,
+  });
+  assert.match(path, /M 5\.00 105\.00 H 15\.00 V 103\.25 H 25\.00/);
+});
 
 test("intraday reference chart labels and colors are exact", () => {
   assert.deepEqual(INTRADAY_REFERENCE_PRESENTATION, {

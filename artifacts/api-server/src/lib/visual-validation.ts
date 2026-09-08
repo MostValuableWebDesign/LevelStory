@@ -285,6 +285,7 @@ export type VisualValidationReplayExecutionInput = {
   entryPrice: number;
   patienceCandle: VisualValidationCandle;
   immediateTriggerCandle: VisualValidationCandle;
+  indicatorHistoryCandles?: VisualValidationCandle[];
   subsequentCompletedCandles: VisualValidationCandle[];
   sessionCloseCandle: VisualValidationCandle | null;
   strategyStopPrice: number | null;
@@ -523,6 +524,7 @@ function replayInputForSnapshot(
     entryPrice: trade.entryPrice,
     patienceCandle,
     immediateTriggerCandle,
+    indicatorHistoryCandles: uniqueCandles,
     subsequentCompletedCandles,
     sessionCloseCandle: subsequentCompletedCandles.at(-1) ?? null,
     strategyStopPrice: audit.strategyStopPrice,
