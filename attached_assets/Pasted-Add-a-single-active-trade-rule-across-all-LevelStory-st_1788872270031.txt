@@ -1,0 +1,175 @@
+Add a single-active-trade rule across all LevelStory strategies and Shadow Account Replay.
+
+Core rule
+
+Never enter another trade while any previously entered trade is still active.
+
+This applies regardless of whether the open trade is currently:
+
+- Profitable
+- Losing
+- At breakeven
+- Waiting for its target
+- Waiting for its stop
+- In recovery mode
+- Managing a runner
+
+A new trade may enter only after the existing position is completely closed.
+
+A position is completely closed only when:
+
+- Every contract reaches its profit exit
+- Every remaining contract is stopped out
+- A breakeven or recovery exit closes the entire position
+- A runner exits
+- The complete position closes at the session boundary
+
+Two-contract behavior
+
+Taking profit on the first contract does not make the account flat.
+
+If the runner remains open:
+
+- The trade remains active.
+- Block every new entry.
+- Continue managing the runner normally.
+- Permit another entry only after the runner closes.
+
+Multiple-occurrence behavior
+
+Continue detecting and recording every qualifying strategy occurrence.
+
+Do not merge, delete, or hide a confirmed occurrence because another trade is open. Each occurrence must retain:
+
+- Occurrence identity
+- P and E candles
+- Strategy attribution
+- Entry trigger
+- Stop and target plan
+- Qualification evidence
+
+However, distinguish between:
+
+- Qualified strategy candidate
+- Account-entered trade
+- Candidate blocked by an existing active position
+
+A qualified candidate occurring while another trade is active must not become an entered trade or contribute P/L. Record it with:
+
+ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION
+
+The explanation must identify:
+
+- Blocking trade ID
+- Blocking candidate ID
+- Blocking trade entry time
+- Blocking trade expected/current status
+- New candidate ID
+- New candidate entry time
+- Whether the blocking position had one contract or a remaining runner
+
+Chronological processing
+
+Process all candidates across all strategies and selected dates in strict chronological order.
+
+For every candidate:
+
+1. Determine its modeled entry timestamp.
+2. Check the account position state at that timestamp.
+3. If the account is flat, enter the candidate.
+4. If a position remains active, block the candidate.
+5. Continue managing the active position candle by candle.
+6. Return the account to flat only after all contracts close.
+7. Permit the next chronologically eligible candidate after that closure.
+
+Do not inspect a future exit to retroactively approve an earlier candidate.
+
+Same-timestamp handling
+
+If an existing position and a new candidate share the same timestamp:
+
+- Permit the new trade only when the prior trade has an authoritative full-exit event effective at or before that timestamp.
+- If event ordering cannot be determined from OHLCV data, apply the conservative rule and block the new entry.
+- Record the ambiguity reason.
+
+Scope
+
+Apply the single-position restriction account-wide across:
+
+- Every strategy
+- Long and short trades
+- Early ORB Momentum Continuation
+- Pullback and consolidation strategies
+- Uploaded-chart candidates
+- Historical Visual Review
+- Combined multi-date replay
+- One- and two-contract modes
+
+Do not allow a new opposite-direction trade to reverse the position automatically.
+
+Visual Review and reporting
+
+Display all qualified candidates, including blocked candidates.
+
+For each candidate show:
+
+- Qualified: yes/no
+- Account entry: entered/blocked
+- Blocking reason
+- Blocking trade
+- Position state at candidate time
+- Full-exit timestamp that returned the account to flat
+
+Performance metrics must distinguish:
+
+- Qualified candidates
+- Entered trades
+- Active-position-blocked candidates
+- Finalized trades
+- Open trades
+- Wins and losses
+- Realized P/L
+
+Blocked candidates must not affect:
+
+- Realized P/L
+- Win rate
+- Average win/loss
+- Profit factor
+- Expectancy
+- Drawdown
+
+Regression tests
+
+Add tests proving:
+
+1. A second candidate is blocked while the first trade is losing but open.
+2. A second candidate is blocked while the first trade is profitable but has not exited.
+3. A second candidate is blocked while a two-contract runner remains active.
+4. A second candidate may enter after the first trade closes at its target.
+5. A second candidate may enter after the first trade stops out.
+6. A second candidate may enter after a runner fully exits.
+7. Opposite-direction candidates cannot reverse an active position.
+8. Every blocked occurrence remains visible as a qualified candidate.
+9. Blocked candidates do not contribute P/L or performance statistics.
+10. Combined multi-date replay carries the position state chronologically.
+11. Position state resets correctly after session-close liquidation.
+12. Same-timestamp ambiguity applies the conservative blocking rule.
+13. Cached and regenerated review sets produce identical position decisions.
+14. One- and two-contract accounting remains correct.
+15. No strategy can bypass the shared account-position gate.
+
+Use one authoritative account-position gate rather than implementing separate versions inside individual strategies.
+
+Bump all affected formula, replay, account-state, candidate-projection, execution-management, cache, and snapshot-projection versions. Mark older review sets as stale and regeneration-required.
+
+Run the focused candidate-generation, execution, Shadow Account Replay, combined multi-date, Visual Review, API contract, typecheck, and frontend build tests.
+
+Report:
+
+- Files changed
+- Position-state design
+- Entry-blocking behavior
+- Version bumps
+- Tests run and results
+- Remaining validation limitations
