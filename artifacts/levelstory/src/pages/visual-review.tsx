@@ -943,8 +943,14 @@ export default function VisualReview() {
                            explanation: current?.explanation ?? "",
                          }));
                        }} />
-                     </Panel>
-                     <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
+                      </Panel>
+                      <TradeNavigation
+                        index={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)}
+                        total={reviewQueue.length}
+                        onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
+                        onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
+                      />
+                      <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                    </div>
                  </div>
@@ -1585,6 +1591,34 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
     </div>
   </div>;
+}
+
+function TradeNavigation({ index, total, onPrevious, onNext }: { index: number; total: number; onPrevious: () => void; onNext: () => void }) {
+  const hasPrevious = index > 0;
+  const hasNext = index >= 0 && index < total - 1;
+  return <nav className="flex flex-col gap-3 border border-border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Trade navigation" data-testid="chart-trade-navigation">
+    <button
+      type="button"
+      onClick={onPrevious}
+      disabled={!hasPrevious}
+      className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-35"
+      data-testid="button-previous-trade"
+    >
+      <ChevronLeft size={15} /> Previous trade
+    </button>
+    <span className="order-first text-center mono text-[10px] text-muted-foreground sm:order-none">
+      Trade {index >= 0 ? index + 1 : "—"} of {total}
+    </span>
+    <button
+      type="button"
+      onClick={onNext}
+      disabled={!hasNext}
+      className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-35"
+      data-testid="button-next-trade"
+    >
+      Next trade <ChevronRight size={15} />
+    </button>
+  </nav>;
 }
 
 function CausalTag() {
