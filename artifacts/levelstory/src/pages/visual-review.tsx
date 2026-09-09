@@ -2041,7 +2041,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
    const additionalLevels = fixedLevels.filter((annotation) => !primaryLevels.some((primary) => primary.id === annotation.id));
   const edgeIndicators = getEdgeIndicators(primaryLevels, domain);
    const levelLegend = [...allLevels]
-      .filter((annotation) => isDynamicIndicatorAnnotation(annotation) || (annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max))
+       .filter((annotation) => !annotation.id.startsWith("skipped-target-"))
+       .filter((annotation) => isDynamicIndicatorAnnotation(annotation) || (annotation.price != null && annotation.price >= domain.min && annotation.price <= domain.max))
      .sort((first, second) =>
        chartLevelOrder(first) - chartLevelOrder(second)
        || (first.price ?? 0) - (second.price ?? 0)
