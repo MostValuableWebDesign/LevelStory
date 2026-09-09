@@ -770,6 +770,56 @@
   animation: levelstory-selected-pulse .9s ease-in-out infinite;
 }
 
+@keyframes levelstory-trade-marker-pulse {
+  0%, 100% {
+    opacity: .82;
+    transform: scale(.94);
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+}
+
+@keyframes levelstory-trade-marker-halo-pulse {
+  0%, 100% {
+    opacity: .28;
+    transform: scale(.84);
+  }
+  50% {
+    opacity: .08;
+    transform: scale(1.42);
+  }
+}
+
+.levelstory-trade-marker,
+.levelstory-trade-marker-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.levelstory-trade-marker {
+  animation: levelstory-trade-marker-pulse 1.2s ease-in-out infinite;
+}
+
+.levelstory-trade-marker-halo {
+  animation: levelstory-trade-marker-halo-pulse 1.2s ease-in-out infinite;
+}
+
+.levelstory-trade-marker-entry {
+  color: hsl(210 85% 48%);
+}
+
+.levelstory-trade-marker-profit {
+  color: hsl(var(--positive));
+}
+
+.levelstory-trade-marker-stop {
+  color: hsl(var(--negative));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .levelstory-selected-pulse {
     animation: none;

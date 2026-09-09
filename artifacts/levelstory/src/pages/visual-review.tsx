@@ -2082,6 +2082,13 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
    const lifetimeEndX = exitX ?? plotRight;
    const entryPrice = trade?.entryPrice ?? snapshot.tradeEvents.find((event) => event.event === "entry_fill" || event.event === "fill")?.modeledPrice ?? null;
    const exitPrice = trade?.exitPrice ?? null;
+    const exitMarkerIsProfit = trade?.outcome === "target"
+      || trade?.outcome === "runner"
+      || trade?.audit?.exitReason === "target"
+      || trade?.audit?.exitReason === "runner";
+    const exitMarkerClass = exitMarkerIsProfit
+      ? "levelstory-trade-marker-profit"
+      : "levelstory-trade-marker-stop";
    const tradeLegs = trade?.audit?.legs ?? [];
    const legOverlays = tradeLegs.map((leg, index) => {
      const legExitTime = leg.exitCandleCloseTime ?? leg.exitCandleOpenTime ?? exitTime;
@@ -2356,13 +2363,15 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
              {zone.width >= 42 && <text x={zone.x + 5} y={zone.y + 13} fill="#dc2626" fontSize="8.5" fontWeight="800" fontFamily="DM Mono">CONSOLIDATION</text>}
            </g>)}
          </g>}
-          {trade && entryX !== null && entryPrice !== null && <g pointerEvents="none" data-testid="trade-lifetime-overlay">
+           {trade && entryX !== null && entryPrice !== null && <g pointerEvents="none" data-testid="trade-lifetime-overlay">
             <line x1={entryX} x2={lifetimeEndX} y1={y(entryPrice)} y2={y(entryPrice)} stroke="hsl(var(--accent))" strokeWidth="2" strokeDasharray="5 3" />
-            <circle cx={entryX} cy={y(entryPrice)} r="6" fill="hsl(var(--accent))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-entry-marker" />
+             <circle className="levelstory-trade-marker-halo levelstory-trade-marker-entry" cx={entryX} cy={y(entryPrice)} r="13" fill="none" stroke="currentColor" strokeWidth="3" data-testid="trade-entry-marker-halo" />
+             <circle className="levelstory-trade-marker levelstory-trade-marker-entry" cx={entryX} cy={y(entryPrice)} r="8" fill="currentColor" stroke="hsl(var(--card))" strokeWidth="2.5" data-testid="trade-entry-marker" />
             <text x={entryX} y={y(entryPrice) - 10} textAnchor="middle" fill="hsl(var(--accent))" fontSize="9" fontWeight="800" fontFamily="DM Mono">E · {formatPriceAxisValue(entryPrice)}</text>
             {exitX !== null && exitPrice !== null && <g data-testid="trade-exit-overlay">
-              <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke="hsl(var(--negative))" strokeWidth="2" strokeDasharray="2 3" />
-              <circle cx={exitX} cy={y(exitPrice)} r="6" fill="hsl(var(--negative))" stroke="hsl(var(--card))" strokeWidth="2" data-testid="trade-exit-marker" />
+               <line x1={entryX} x2={exitX} y1={y(exitPrice)} y2={y(exitPrice)} stroke={exitMarkerIsProfit ? "hsl(var(--positive))" : "hsl(var(--negative))"} strokeWidth="2" strokeDasharray="2 3" />
+               <circle className={`levelstory-trade-marker-halo ${exitMarkerClass}`} cx={exitX} cy={y(exitPrice)} r="13" fill="none" stroke="currentColor" strokeWidth="3" data-testid="trade-exit-marker-halo" />
+               <circle className={`levelstory-trade-marker ${exitMarkerClass}`} cx={exitX} cy={y(exitPrice)} r="8" fill="currentColor" stroke="hsl(var(--card))" strokeWidth="2.5" data-testid="trade-exit-marker" />
             </g>}
             {legOverlays.map(({ leg, index, x }) => x !== null && <g className={focusedTradeExitKind === leg.kind ? "levelstory-selected-pulse" : undefined} key={`trade-leg-overlay-${index}`} data-testid={`trade-leg-${leg.kind ?? "unknown"}-${index}`}>
                {(() => {
