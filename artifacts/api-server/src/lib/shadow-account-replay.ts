@@ -12,7 +12,8 @@ import type {
   VisualValidationSet,
   VisualValidationTradeCandidate,
 } from "./visual-validation.js";
-import { SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
+import { DEFAULT_STRATEGY_CONFIG, SHADOW_CONTRACTS_PER_TRADE } from "./strategy/config.js";
+import { canonicalStrategyId } from "./strategy/taxonomy.js";
 import {
   buildKeyLevelTargetPlan,
   KEY_LEVEL_TARGET_PLAN_VERSION,
@@ -373,6 +374,9 @@ function replayTradeWithFixedContracts(
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
     oneRProfitRule: rebuiltTargetPlan?.fallbackUsed === true || useOneRProfitRule,
     targetIsOneR: rebuiltTargetPlan?.fallbackUsed === true,
+    breakevenTriggerTicks: canonicalStrategyId(trade.setupType) === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      ? DEFAULT_STRATEGY_CONFIG.strongBreakoutBreakevenTriggerTicks
+       : null,
     structureTrailing: true,
     trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,

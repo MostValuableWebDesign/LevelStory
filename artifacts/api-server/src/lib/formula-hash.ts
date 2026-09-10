@@ -41,6 +41,7 @@ export function formulaConfiguration(
         maximumRisk: "clamp(ceil(atrTicks*1.50),20,40)",
         breakevenBars: 6,
         breakevenExcursionR: 0.5,
+        strongBreakoutBreakevenTriggerTicks: config.strongBreakoutBreakevenTriggerTicks,
         runnerBuffer: "clamp(ceil(atrTicks*0.10),4,8)",
         fixedContracts: config.executionManagementFixedContracts,
       },

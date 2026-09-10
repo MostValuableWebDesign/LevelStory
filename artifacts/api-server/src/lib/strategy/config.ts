@@ -37,6 +37,7 @@ export type StrategyConfig = {
   stopBuffer: number;
   runnerTriggerR: number;
   noLevelBreakevenActivationBars: number;
+  strongBreakoutBreakevenTriggerTicks: number;
   levelTolerance: number;
   patienceEntryBufferTicks: typeof PATIENCE_ENTRY_BUFFER_TICKS;
   patienceStopBufferTicks: number;
@@ -164,6 +165,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   stopBuffer: 0.03,
   runnerTriggerR: 1.5,
   noLevelBreakevenActivationBars: DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS,
+  strongBreakoutBreakevenTriggerTicks: 9,
   levelTolerance: DEFAULT_LEVEL_TOLERANCE_POINTS,
   patienceEntryBufferTicks: PATIENCE_ENTRY_BUFFER_TICKS,
   patienceStopBufferTicks: 8,
@@ -213,7 +215,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase7RunnerRetracementRatio: 0.4,
   executionManagementAtrPeriod: 14,
   executionManagementFixedContracts: 1,
-  executionManagementVersion: "execution-management-v9-causal-dynamic-indicator-ratchet",
+  executionManagementVersion: "execution-management-v10-causal-dynamic-indicator-ratchet-strong-breakout-breakeven",
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,
@@ -264,6 +266,7 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     ["maxRiskTrades", config.maxRiskTrades],
     ["runnerTriggerR", config.runnerTriggerR],
     ["noLevelBreakevenActivationBars", config.noLevelBreakevenActivationBars],
+    ["strongBreakoutBreakevenTriggerTicks", config.strongBreakoutBreakevenTriggerTicks],
     ["patienceStopBufferTicks", config.patienceStopBufferTicks],
     ["trendCandleCount", config.trendCandleCount],
     ["historicalLookbackTradingDays", config.historicalLookbackTradingDays],

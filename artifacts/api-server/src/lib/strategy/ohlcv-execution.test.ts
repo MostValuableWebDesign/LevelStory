@@ -9,6 +9,7 @@ import {
   NO_FORWARD_LEVEL_1R_PLAN_LABEL,
   NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL,
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
+  STRONG_BREAKOUT_BREAKEVEN_TRIGGER_REACHED_LABEL,
   buildIndicatorReplayContext,
   simulateOhlcvExecution,
   validateIndicatorReplayContext,
@@ -686,6 +687,34 @@ test("arms long breakeven after six completed post-entry candles and exits on ca
   assert.equal(result.exitReason, "breakeven");
   assert.equal(result.exitPrice, 100);
   assert.ok(result.audit.eventLabels.includes(NO_FORWARD_LEVEL_1R_PLAN_LABEL));
+  assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
+});
+
+test("arms Strong Breakout breakeven after nine favorable ticks on the following candle", () => {
+  const start = 2_000_000;
+  const trigger = timedCandle(100, 100.5, 99.5, 100, start);
+  const favorable = timedCandle(100, 102.25, 99.75, 101, start + 300_000);
+  const retrace = timedCandle(101, 101.25, 99.75, 100.25, start + 600_000);
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: trigger,
+    stop: 98,
+    target: 110,
+    evaluateEntryCandleForExit: false,
+    breakevenTriggerTicks: 9,
+    subsequentCompletedCandles: [favorable, retrace],
+  });
+
+  assert.equal(result.audit.noForwardLevelAtEntry, false);
+  assert.equal(result.audit.breakevenActivationBars, null);
+  assert.equal(result.audit.breakevenActivated, true);
+  assert.equal(result.audit.breakevenActivationTimestamp, favorable.closeTime);
+  assert.equal(result.audit.breakevenEffectiveFromTimestamp, retrace.openTime);
+  assert.equal(result.audit.breakevenPrice, 100);
+  assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_EXIT_REACHED");
+  assert.equal(result.exitReason, "breakeven");
+  assert.equal(result.exitPrice, 100);
+  assert.ok(result.audit.eventLabels.includes(STRONG_BREAKOUT_BREAKEVEN_TRIGGER_REACHED_LABEL));
   assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
 });
 
