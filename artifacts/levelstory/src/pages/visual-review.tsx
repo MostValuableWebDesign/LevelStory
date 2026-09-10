@@ -1500,14 +1500,6 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
                    <span className={enabled ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}>{enabled ? "On" : "Off"}</span>
                  </label>
                </div>
-               {strategy.id === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3">
-                 <Field label="P-open cutoff · New York">
-                   <input className="field mono" type="text" value={`${Math.floor(earlyOrb.eligibilityCutoffMinutes / 60)}:${String(earlyOrb.eligibilityCutoffMinutes % 60).padStart(2, "0")} ET`} readOnly aria-label="Early ORB P-open cutoff" />
-                 </Field>
-                 <Field label="Minimum ORB distance">
-                   <input className="field mono" type="text" value={`${earlyOrb.minimumCloseDistanceTicks} MES tick${earlyOrb.minimumCloseDistanceTicks === 1 ? "" : "s"}`} readOnly aria-label="Early ORB minimum distance" />
-                 </Field>
-               </div>}
              </div>;
            })}
          </div>
