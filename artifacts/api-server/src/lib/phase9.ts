@@ -4649,8 +4649,8 @@ function candidateDrivenEntryTrade(
          : undefined,
        oneRProfitRule: targetPlan?.fallbackUsed === true,
        targetIsOneR: targetPlan?.fallbackUsed === true,
-       breakevenTriggerTicks: occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-         ? config.strongBreakoutBreakevenTriggerTicks
+       breakevenTriggerTicks: targetPrice !== null
+         ? config.targetBreakevenTriggerTicks
          : null,
        structureTrailing: true,
        trailingBufferTicks: management.runnerBufferTicks ?? 4,
@@ -5368,8 +5368,8 @@ export function runCausalBacktest(
                }),
             }
             : undefined,
-          breakevenTriggerTicks: canonicalStrategyId(selected.setupType) === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-            ? replayStrategyConfig.strongBreakoutBreakevenTriggerTicks
+           breakevenTriggerTicks: target !== null
+             ? replayStrategyConfig.targetBreakevenTriggerTicks
             : null,
          strategyStop,
           primaryLossExitLevel,

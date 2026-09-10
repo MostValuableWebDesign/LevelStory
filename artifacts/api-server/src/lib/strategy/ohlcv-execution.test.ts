@@ -9,7 +9,7 @@ import {
   NO_FORWARD_LEVEL_1R_PLAN_LABEL,
   NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL,
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
-  STRONG_BREAKOUT_BREAKEVEN_TRIGGER_REACHED_LABEL,
+  TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL,
   buildIndicatorReplayContext,
   simulateOhlcvExecution,
   validateIndicatorReplayContext,
@@ -690,7 +690,7 @@ test("arms long breakeven after six completed post-entry candles and exits on ca
   assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
 });
 
-test("arms Strong Breakout breakeven after nine favorable ticks on the following candle", () => {
+test("arms target breakeven after nine favorable ticks on the following candle", () => {
   const start = 2_000_000;
   const trigger = timedCandle(100, 100.5, 99.5, 100, start);
   const favorable = timedCandle(100, 102.25, 99.75, 101, start + 300_000);
@@ -714,7 +714,7 @@ test("arms Strong Breakout breakeven after nine favorable ticks on the following
   assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_EXIT_REACHED");
   assert.equal(result.exitReason, "breakeven");
   assert.equal(result.exitPrice, 100);
-  assert.ok(result.audit.eventLabels.includes(STRONG_BREAKOUT_BREAKEVEN_TRIGGER_REACHED_LABEL));
+   assert.ok(result.audit.eventLabels.includes(TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL));
   assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
 });
 
@@ -829,26 +829,33 @@ test("does not start no-level breakeven management when an eligible target exist
   assert.equal(result.audit.breakevenActivated, false);
 });
 
-test("does not arm breakeven while a key-level target remains active", () => {
+test("arms universal target breakeven after nine favorable ticks while the key-level target remains active", () => {
+  const start = 3_000_000;
   const result = simulateOhlcvExecution({
     ...base,
-    immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
+    immediateTriggerCandle: timedCandle(100, 100.5, 99.5, 100, start),
     stop: 98,
     target: 104,
     oneRProfitRule: false,
     evaluateEntryCandleForExit: false,
     subsequentCompletedCandles: [
-      ...Array.from({ length: 5 }, () => candle(100, 100.25, 99.5, 100.25)),
-      candle(100.25, 101, 100, 100.5),
-      candle(100.5, 100.75, 99.75, 100),
+      timedCandle(100, 102.25, 99.75, 101, start + 300_000),
+      timedCandle(101, 101.25, 99.75, 100.25, start + 600_000),
     ],
+    breakevenTriggerTicks: 9,
   });
   assert.equal(result.audit.noForwardLevelAtEntry, false);
   assert.equal(result.audit.targetHit, false);
-  assert.equal(result.audit.breakevenActivated, false);
-  assert.equal(result.audit.breakevenDisposition, "NOT_APPLICABLE");
-  assert.equal(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL), false);
-  assert.equal(result.exitReason, "manual");
+  assert.equal(result.audit.breakevenActivationBars, null);
+  assert.equal(result.audit.breakevenActivated, true);
+  assert.equal(result.audit.breakevenActivationTimestamp, start + 300_000);
+  assert.equal(result.audit.breakevenEffectiveFromTimestamp, start + 300_000);
+  assert.equal(result.audit.breakevenMfeTicks, 9);
+  assert.equal(result.audit.breakevenDisposition, "BREAKEVEN_EXIT_REACHED");
+  assert.equal(result.exitReason, "breakeven");
+  assert.equal(result.exitPrice, 100);
+  assert.ok(result.audit.eventLabels.includes(TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL));
+  assert.ok(result.audit.eventLabels.includes(BREAKEVEN_STOP_ARMED_LABEL));
 });
 
 test("preserves multi-contract quantity accounting when breakeven exits the runner", () => {
@@ -908,7 +915,7 @@ test("honors a positive governed activation-bar override and remains determinist
   const first = simulateOhlcvExecution(input);
   const second = simulateOhlcvExecution(input);
   assert.deepEqual(first, second);
-  assert.equal(first.audit.breakevenActivationBars, 6);
+   assert.equal(first.audit.breakevenActivationBars, 2);
   assert.equal(first.audit.breakevenActivated, false);
   assert.equal(first.exitReason, "manual");
 });
