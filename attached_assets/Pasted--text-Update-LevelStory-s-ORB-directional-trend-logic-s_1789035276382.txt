@@ -1,0 +1,138 @@
+```text
+Update LevelStory’s ORB directional-trend logic so the trend can reverse when price later breaks the opposite side of the finalized ORB.
+
+Implement this as a causal state machine used by every strategy that depends on ORB trend direction.
+
+ORB trend states
+
+- NEUTRAL
+- BULLISH_ORB_TREND
+- BEARISH_ORB_TREND
+
+Initial trend establishment
+
+After the ORB is finalized:
+
+- A completed candle closing above the finalized ORB high by the governed confirmation buffer changes the state to BULLISH_ORB_TREND.
+- A completed candle closing below the finalized ORB low by the governed confirmation buffer changes the state to BEARISH_ORB_TREND.
+- An intrabar wick outside the ORB does not establish a trend.
+- A candle closing inside the ORB does not establish a trend.
+- Use the existing ORB breakout confirmation buffer unless the app already has a dedicated governed setting.
+- Do not require a minimum candle-body percentage.
+- Do not require the close to be within a particular percentage of the candle range.
+- Do not require the candle to close above or below VWAP or EMA 200.
+
+Trend reversal
+
+The first ORB break must not permanently lock the directional trend.
+
+While BULLISH_ORB_TREND is active:
+
+- A completed candle closing below the finalized ORB low by the confirmation buffer invalidates the bullish trend.
+- At that candle’s close, change the state to BEARISH_ORB_TREND.
+
+While BEARISH_ORB_TREND is active:
+
+- A completed candle closing above the finalized ORB high by the confirmation buffer invalidates the bearish trend.
+- At that candle’s close, change the state to BULLISH_ORB_TREND.
+
+A close back inside the ORB does not reverse the trend by itself. The opposite ORB boundary must be broken by a completed candle close.
+
+Causal timing
+
+- A trend transition becomes known only when the confirming candle completes.
+- The new trend state becomes effective for strategy evaluation beginning with the following candle.
+- Never use the confirming candle’s future high, low, close, indicator values, or subsequent price action before it completes.
+- Preserve the finalized ORB high and low for the entire session.
+- Do not reconstruct or move the ORB boundaries after a trend reversal.
+
+Strategy-arm behavior
+
+When the ORB trend reverses:
+
+- Expire all unfilled eligibility arms, pending patience sequences, and pending entry confirmations belonging to the previous direction.
+- Record their expiration reason as `ORB_TREND_REVERSED`.
+- Create a new directional trend epoch for the opposite direction.
+- Allow the existing strategy engines to search for new qualifying pullbacks, patience candles, continuation entries, and Early ORB Momentum Continuation setups in the new direction.
+- A trend reversal is not automatically an entry.
+- The new direction must still satisfy the applicable strategy’s normal entry requirements.
+- Do not reuse a patience candle or E candle from the previous trend epoch.
+- Do not collapse occurrences from different trend epochs into one canonical candidate.
+- Permit multiple reversals during a session when each reversal is independently confirmed.
+
+Active-position behavior
+
+- A trend reversal does not automatically close an existing position unless an existing stop, target, breakeven, recovery, early-failure, or session-close rule requires the exit.
+- Continue managing the existing position under its frozen management plan.
+- The account-wide single-active-position rule must prevent entry in the new direction while the previous position remains active.
+- The app may detect and display the new opposite-direction setup while blocked, but it must not enter it or include it in P/L.
+- Once the existing position fully exits, later eligible occurrences from the current trend epoch may enter normally.
+
+Configuration
+
+Add governed settings if equivalent settings do not already exist:
+
+- `orbTrendReversalEnabled: true`
+- `orbTrendConfirmationCloses: 1`
+- `orbTrendConfirmationBufferTicks`: reuse the existing ORB breakout buffer
+- `orbTrendEffectiveTiming: NEXT_CANDLE`
+- `orbTrendInsideCloseBehavior: PRESERVE_CURRENT_TREND`
+- `orbTrendWickOnlyBehavior: NO_STATE_CHANGE`
+
+Include these settings in formula hashing, governed strategy snapshots, cache keys, candidate projection versions, and audit metadata.
+
+Audit requirements
+
+Record every state transition with:
+
+- Previous trend state
+- New trend state
+- Trend epoch ID
+- Finalized ORB high and low
+- Confirmation buffer
+- Confirming candle open and close timestamps
+- Confirming candle OHLC
+- Boundary crossed
+- Effective-from timestamp
+- Expired arm and candidate IDs
+- Expiration reason
+- Whether an active position prevented a new entry
+- Formula and strategy versions
+
+Visual Review
+
+Display:
+
+- Initial ORB trend establishment
+- Every later ORB trend reversal
+- The active trend direction at each candidate’s evaluation timestamp
+- The candle that confirmed the transition
+- When the new trend became effective
+- Previous-direction candidates invalidated by the transition
+- Opposite-direction candidates detected but blocked by an active position
+
+Required tests
+
+Add deterministic tests covering:
+
+- Upside break establishes a bullish trend.
+- Downside break establishes a bearish trend.
+- Bullish trend later reverses after a completed close below the ORB low.
+- Bearish trend later reverses after a completed close above the ORB high.
+- A wick outside the opposite boundary does not reverse the trend.
+- A close inside the ORB does not reverse the trend.
+- The reversal is unavailable until the confirming candle completes.
+- The new state is effective beginning with the following candle.
+- Previous-direction pending arms expire on reversal.
+- New opposite-direction arms use unique epoch and occurrence identities.
+- Multiple confirmed reversals remain independently auditable.
+- Same-direction continuation does not create unnecessary new epochs.
+- An existing open position continues to be managed after a trend reversal.
+- The single-active-position gate blocks an opposite-direction entry until the existing position fully exits.
+- Blocked opposite-direction candidates remain visible but are excluded from P/L.
+- Historical execution and Shadow Account Replay produce identical transition ordering.
+- No future candle data is used.
+- Cache and projection versions invalidate stale results.
+
+Run API typechecking, focused ORB state-machine and strategy tests, Phase 9 tests, Visual Review and Shadow Replay tests, frontend typechecking/build, and `git diff --check`. Report exact results and any remaining validation limitations.
+```
