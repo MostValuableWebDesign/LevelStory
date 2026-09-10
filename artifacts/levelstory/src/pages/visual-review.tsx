@@ -150,6 +150,9 @@ const STRATEGY_SETTING_DETAILS: Record<StrategyId, string> = {
   EQUIVALENT_CANDLE_REVERSAL: "Equivalent opposing candles at a major level followed by a buffered reversal continuation.",
   PEAK_RETRACEMENT_REVERSAL: "Greater-than-50% causal impulse retracement followed by a reversal patience candle and confirmation.",
 };
+const VISIBLE_STRATEGY_SETTINGS = STRATEGY_TABS.filter(
+  (strategy) => strategy.id !== "PATIENCE_CANDLE_CONTINUATION",
+);
 type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
 const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: string }> = [
   { id: "generate", label: "Generate", detail: "deterministic replay" },
@@ -1476,7 +1479,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
          <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-           {STRATEGY_TABS.map((strategy) => {
+           {VISIBLE_STRATEGY_SETTINGS.map((strategy) => {
              const enabled = enabledStrategies[strategy.id] !== false;
              return <div key={strategy.id} className="border border-border bg-muted/20 p-3" data-testid={`strategy-setting-${strategy.id}`}>
                <div className="flex items-start justify-between gap-3">
