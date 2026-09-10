@@ -91,6 +91,12 @@ export type StrategyConfig = {
   earlyOrbMomentumContinuationEnabled: boolean;
   earlyOrbMomentumEligibilityCutoffMinutes: number;
   earlyOrbMomentumMinimumCloseDistanceTicks: number;
+  orbTrendReversalEnabled: boolean;
+  orbTrendConfirmationCloses: 1;
+  orbTrendConfirmationBufferTicks: number;
+  orbTrendEffectiveTiming: "NEXT_CANDLE";
+  orbTrendInsideCloseBehavior: "PRESERVE_CURRENT_TREND";
+  orbTrendWickOnlyBehavior: "NO_STATE_CHANGE";
 };
 
 export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
@@ -219,6 +225,12 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   earlyOrbMomentumContinuationEnabled: false,
   earlyOrbMomentumEligibilityCutoffMinutes: 630,
   earlyOrbMomentumMinimumCloseDistanceTicks: 1,
+  orbTrendReversalEnabled: true,
+  orbTrendConfirmationCloses: 1,
+  orbTrendConfirmationBufferTicks: 2,
+  orbTrendEffectiveTiming: "NEXT_CANDLE",
+  orbTrendInsideCloseBehavior: "PRESERVE_CURRENT_TREND",
+  orbTrendWickOnlyBehavior: "NO_STATE_CHANGE",
 };
 
 export function strategyConfig(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -366,6 +378,16 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
     || config.earlyOrbMomentumMinimumCloseDistanceTicks < 1
   ) {
     throw new Error("Invalid strategy configuration: Early ORB Momentum uses a wall-clock cutoff and a positive tick distance.");
+  }
+  if (
+    config.orbTrendConfirmationCloses !== 1
+    || !Number.isInteger(config.orbTrendConfirmationBufferTicks)
+    || config.orbTrendConfirmationBufferTicks < 1
+    || !config.orbTrendEffectiveTiming
+    || !config.orbTrendInsideCloseBehavior
+    || !config.orbTrendWickOnlyBehavior
+  ) {
+    throw new Error("Invalid strategy configuration: ORB trend reversal uses one completed close, a positive confirmation buffer, and next-candle effectiveness.");
   }
   if (config.phase7DefaultTargetDollars < 50 || config.phase7DefaultTargetDollars > 100) {
     throw new Error("Invalid strategy configuration: Phase 7 target must be between $50 and $100.");

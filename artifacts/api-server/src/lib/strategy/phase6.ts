@@ -14,6 +14,7 @@ import {
   type PatienceAnalysis,
 } from "./phase5.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
+import type { OrbTrendAnalysis } from "./orb-trend.js";
 
 export type SetupType =
   | "ORB_PULLBACK_CONTINUATION"
@@ -200,6 +201,7 @@ export type Phase6Context = {
   riskApproved: boolean;
   config: StrategyConfig;
   dynamiteLevels?: readonly DynamiteLevel[];
+  orbTrend?: OrbTrendAnalysis;
 };
 
 function dynamiteInteractionMatchesSignal(
@@ -330,11 +332,15 @@ export function hasConfirmedPatienceEntry(
 }
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
-  const direction = context.breakout.direction;
+  const direction = context.orbTrend?.direction ?? context.breakout.direction;
+  const breakoutDirectionMatchesTrend = context.orbTrend?.direction === null
+    || context.orbTrend?.direction === undefined
+    || context.breakout.direction === null
+    || context.orbTrend.direction === context.breakout.direction;
   const levelInteraction = hasQualifyingPullback(context.pullback);
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
-    rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected, context.breakout.detected ? context.breakout.detail : "Waiting for a completed close outside the finalized NTZ."),
+    rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected && breakoutDirectionMatchesTrend, context.breakout.detected && breakoutDirectionMatchesTrend ? context.breakout.detail : "The ORB breakout direction is stale after a causal trend reversal."),
     rule("levelContext", "Pullback candle reached a governed level or indicator zone", levelInteraction, levelInteraction ? "A completed pullback candle interacted with a governed level or indicator within the configured tolerance." : "A completed pullback candle must reach a governed level or indicator zone within the configured tolerance."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
@@ -362,11 +368,15 @@ export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): Se
 }
 
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
-  const direction = directionFromTrend(context.trend.direction);
+  const direction = context.patience.directionSource === "ORB_TREND"
+    ? context.patience.direction ?? null
+    : directionFromTrend(context.trend.direction);
   const valid = context.patience.eligible && context.patience.patienceCandle !== null;
-  const confirmedTrend = hasConfirmedTrend(context, direction);
+  const confirmedTrend = context.patience.directionSource === "ORB_TREND"
+    ? direction !== null
+    : hasConfirmedTrend(context, direction);
   const rules = [
-    rule("confirmedTrend", "Confirmed causal 15-minute directional trend", confirmedTrend, confirmedTrend ? "Confirmed causal trend evidence is available." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
+    rule("confirmedTrend", context.patience.directionSource === "ORB_TREND" ? "Confirmed causal ORB directional trend" : "Confirmed causal 15-minute directional trend", confirmedTrend, confirmedTrend ? "Confirmed causal trend evidence is available." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
     rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
@@ -389,11 +399,15 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     context.config.phase6ConsolidationMinRejectionCount,
     context.config.phase6ConsolidationMaxDirectionalSequence,
   );
-  const direction = context.breakout.direction ?? directionFromTrend(context.trend.direction);
+  const direction = context.breakout.direction ?? context.orbTrend?.direction ?? directionFromTrend(context.trend.direction);
+  const breakoutDirectionMatchesTrend = context.orbTrend?.direction === null
+    || context.orbTrend?.direction === undefined
+    || context.breakout.direction === null
+    || context.orbTrend.direction === context.breakout.direction;
   const breakoutCandle = completedCandles(context.candles).find((candle) => candle.openTime === context.breakout.candleOpenTime);
   const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
     && (direction === "long" ? breakoutCandle.close > consolidation.frozenHigh! : breakoutCandle.close < consolidation.frozenLow!);
-  const breakoutConfirmed = context.breakout.detected && !context.breakout.failed && context.breakout.continuationConfirmed && breakoutOutsideFrozenRange;
+  const breakoutConfirmed = context.breakout.detected && breakoutDirectionMatchesTrend && !context.breakout.failed && context.breakout.continuationConfirmed && breakoutOutsideFrozenRange;
   const postBreakoutContext = hasQualifyingPullback(context.pullback)
     || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
   const patienceNearLevel = context.patience.patienceCandle !== null

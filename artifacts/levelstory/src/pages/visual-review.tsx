@@ -2609,6 +2609,8 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
   const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
+  const orbTrend = typeof market.orbTrend === "object" && market.orbTrend ? market.orbTrend as Record<string, unknown> : null;
+  const orbTransitions = orbTrend && Array.isArray(orbTrend.transitions) ? orbTrend.transitions as Array<Record<string, unknown>> : [];
   const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
   const earlyOrb = typeof market.earlyOrbMomentum === "object" && market.earlyOrbMomentum
     ? market.earlyOrbMomentum as Record<string, unknown>
@@ -2640,6 +2642,26 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
        <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
      </div>
+      {orbTrend && <div className="border-t border-border bg-card px-4 py-4 sm:px-6" data-testid="orb-trend-causal-evidence">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div><div className="eyebrow text-muted-foreground">Causal ORB directional trend</div><div className="mt-1 text-sm font-bold">{safeValue(orbTrend.state)}{orbTrend.direction ? ` · ${safeValue(orbTrend.direction)}` : ""}</div></div>
+          <div className="mono text-[10px] text-muted-foreground">Epoch {safeValue(orbTrend.epochId)}</div>
+        </div>
+        <div className="mt-3 grid gap-px border border-border bg-border sm:grid-cols-3">
+          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1 text-xs">{safeValue(orbTrend.finalizedOrbLow)} – {safeValue(orbTrend.finalizedOrbHigh)}</div></div>
+          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Confirmation buffer</div><div className="mono mt-1 text-xs">{safeValue(orbTrend.confirmationBufferTicks)} ticks</div><div className="mt-1 text-[10px] text-muted-foreground">Effective on the following candle</div></div>
+          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Transitions</div><div className="mono mt-1 text-xs">{orbTransitions.length}</div><div className="mt-1 text-[10px] text-muted-foreground">{orbTransitions.length ? `${safeValue(orbTransitions.at(-1)?.expirationReason ?? "initial establishment")}` : "No completed boundary close"}</div></div>
+        </div>
+        {orbTransitions.length > 0 && <div className="mt-3 space-y-1.5">
+          {orbTransitions.map((transition, index) => <div key={`${safeValue(transition.epochId)}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-l-2 border-accent/50 pl-3 text-[10px] text-muted-foreground">
+            <span className="font-bold text-foreground">{safeValue(transition.previousState)} → {safeValue(transition.newState)}</span>
+            <span>confirmed {formatReviewTime(safeValue(transition.confirmingCandle && typeof transition.confirmingCandle === "object" ? (transition.confirmingCandle as Record<string, unknown>).closeTime : ""))}</span>
+            <span>effective {formatReviewTime(safeValue(transition.effectiveFromTimestamp))}</span>
+            {typeof transition.expirationReason === "string" && <span className="text-amber-600">{transition.expirationReason}</span>}
+            {transition.activePositionBlocked === true && <span className="text-amber-600">entry blocked by active position</span>}
+          </div>)}
+        </div>}
+      </div>}
       {earlyOrb && earlyOrb.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="early-orb-causal-evidence">
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Early ORB P/E</div><div className="mt-1 text-xs font-semibold">{safeValue(earlyOrb.direction)} · {earlyOrb.eImmediatelyAdjacent === true ? "adjacent E" : "missing adjacent E"}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{formatReviewTime(typeof earlyOrb.pOpenTime === "number" ? new Date(earlyOrb.pOpenTime).toISOString() : "")} → {formatReviewTime(typeof earlyOrb.eOpenTime === "number" ? new Date(earlyOrb.eOpenTime).toISOString() : "")}</div></div>
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.orbLow)} – {safeValue(earlyOrb.orbHigh)}</div><div className="mt-1 text-[10px] text-muted-foreground">Finalized {formatReviewTime(typeof earlyOrb.orbFinalizedAt === "number" ? new Date(earlyOrb.orbFinalizedAt).toISOString() : "")}</div></div>

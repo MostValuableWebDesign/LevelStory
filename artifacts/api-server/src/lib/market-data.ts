@@ -29,6 +29,8 @@ import {
   type OrbBreakoutState,
   type PullbackArmState,
   type BreakoutContinuationCondition,
+  evaluateOrbTrend,
+  type OrbTrendAnalysis,
   buildPhase7RiskPlan,
   type Phase7RiskConfig,
   type Phase7RiskPlan,
@@ -167,6 +169,43 @@ export type MarketSnapshot = {
     continuationCondition: BreakoutContinuationCondition | null;
     failed: boolean;
     detail: string;
+  };
+  orbTrend: {
+    state: OrbTrendAnalysis["state"];
+    direction: Direction | null;
+    epochId: string | null;
+    finalizedOrbHigh: number | null;
+    finalizedOrbLow: number | null;
+    finalizedAt: string | null;
+    confirmationBufferTicks: number;
+    confirmationBufferPoints: number;
+    transitions: Array<{
+      previousState: OrbTrendAnalysis["transitions"][number]["previousState"];
+      newState: OrbTrendAnalysis["transitions"][number]["newState"];
+      direction: Direction;
+      epochId: string;
+      finalizedOrbHigh: number;
+      finalizedOrbLow: number;
+      confirmationBufferTicks: number;
+      confirmationBufferPoints: number;
+      confirmingCandle: {
+        openTime: number;
+        closeTime: number;
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        volume: number;
+      };
+      boundaryCrossed: "ORB_HIGH" | "ORB_LOW";
+      effectiveFromTimestamp: string;
+      expiredArmIds: string[];
+      expiredCandidateIds: string[];
+      expirationReason: "ORB_TREND_REVERSED" | null;
+      activePositionBlocked: boolean;
+      formulaVersion: string;
+      strategyVersion: string;
+    }>;
   };
   pullback: {
     status: "pending" | "observed" | "expired";
@@ -529,6 +568,14 @@ export function createMarketSnapshot(
     ...detectLongTermZones(historicalHourly, { cursor: currentCursor, lookback: "one-year", tickSize: specification.tickSize, widthTicks: 12, seriesIdentity: `${symbol}|${historicalHourly.length}` }),
   ];
   const breakout = detectInitialBreakout(regular, levels.ntz, config, specification);
+  const orbTrend = evaluateOrbTrend(regular, levels.ntz, config, {
+    contractSymbol: specification.fullContractSymbol,
+    tradingDate,
+    calendar,
+    tickSize: specification.tickSize,
+    formulaVersion: activeShadowStrategySnapshot().formulaVersion,
+    strategyVersion: activeShadowStrategySnapshot().versionId ?? "baseline",
+  });
   const qualifyingLevels = [
     ...levels.levels,
     { name: "VWAP", price: levels.vwap, kind: "indicator" },
@@ -609,7 +656,13 @@ export function createMarketSnapshot(
   // direction into Phase 5. The independent 15-minute trend may still be
   // displayed and evaluated through its own continuation path.
   const breakoutDirection = breakout.detected && !breakout.failed ? breakout.direction : null;
-  const patienceDirection = breakoutDirection ?? trendDirection;
+  const orbTrendDirection = orbTrend.direction;
+  const patienceDirection = orbTrendDirection ?? breakoutDirection ?? trendDirection;
+  const patienceDirectionSource = orbTrendDirection
+    ? "ORB_TREND" as const
+    : breakoutDirection
+      ? "ORB_BREAKOUT" as const
+      : "CONFIRMED_15M_TREND" as const;
   const patience = phase5PatienceAnalysis(
     regular,
     patienceDirection,
@@ -622,7 +675,8 @@ export function createMarketSnapshot(
     config.patienceEntryBufferTicks,
     config.patienceStopBufferTicks,
     false,
-    breakoutDirection ? "ORB_BREAKOUT" : "CONFIRMED_15M_TREND",
+    patienceDirectionSource,
+    orbTrendDirection ? orbTrend : undefined,
   );
   const earlyOrbMomentum = earlyOrbMomentumPatienceAnalysis(regular, levels.ntz, {
     enabled: config.earlyOrbMomentumContinuationEnabled,
@@ -645,6 +699,7 @@ export function createMarketSnapshot(
     trend,
     riskApproved: true,
     config,
+    orbTrend,
   };
   const preliminaryReversalEvidence = detectReversalEvidence(baseSetupContext);
   const reversalDirection: Direction | null = preliminaryReversalEvidence.directionalConfirmation
@@ -695,6 +750,7 @@ export function createMarketSnapshot(
     riskApproved: plan.allowed,
     config,
     dynamiteLevels: dynamite,
+    orbTrend,
   });
   const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
     ?? setupAnalysis.evaluations[0];
@@ -840,6 +896,20 @@ export function createMarketSnapshot(
         failed: evaluatedBreakout.failed,
         detail: evaluatedBreakout.detail,
      },
+      orbTrend: {
+        state: orbTrend.state,
+        direction: orbTrend.direction,
+        epochId: orbTrend.epochId,
+        finalizedOrbHigh: orbTrend.finalizedOrbHigh,
+        finalizedOrbLow: orbTrend.finalizedOrbLow,
+        finalizedAt: orbTrend.finalizedAt === null ? null : new Date(orbTrend.finalizedAt).toISOString(),
+        confirmationBufferTicks: orbTrend.confirmationBufferTicks,
+        confirmationBufferPoints: orbTrend.confirmationBufferPoints,
+        transitions: orbTrend.transitions.map((transition) => ({
+          ...transition,
+          effectiveFromTimestamp: new Date(transition.effectiveFromTimestamp).toISOString(),
+        })),
+      },
      pullback: {
        status: pullback.status,
         armId: pullback.armId,

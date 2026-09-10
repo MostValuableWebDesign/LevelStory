@@ -246,6 +246,7 @@ export type VisualValidationSnapshot = {
     market: {
       levels: MarketSnapshot["levels"];
       breakout: MarketSnapshot["breakout"];
+      orbTrend: MarketSnapshot["orbTrend"];
       pullback: MarketSnapshot["pullback"];
       patience: MarketSnapshot["patience"];
       earlyOrbMomentum: MarketSnapshot["earlyOrbMomentum"];
@@ -1726,6 +1727,24 @@ function buildAnnotations(
   addIndicator("vwap", "VWAP", patienceIndicator?.vwap ?? snapshot.indicators.vwap, "Causal regular-session volume-weighted average price at the patience-candle timestamp.", "negative");
   lines.push(annotation("orb-high", "ORB high", "price", snapshot.levels.openingRangeHigh, "accent", "Opening range upper boundary."));
   lines.push(annotation("orb-low", "ORB low", "price", snapshot.levels.openingRangeLow, "accent", "Opening range lower boundary."));
+  for (const transition of snapshot.orbTrend.transitions) {
+    const confirming = transition.confirmingCandle;
+    const boundaryPrice = transition.boundaryCrossed === "ORB_HIGH"
+      ? transition.finalizedOrbHigh
+      : transition.finalizedOrbLow;
+    lines.push(annotation(
+      `orb-trend-${transition.epochId}`,
+      `${transition.previousState === "NEUTRAL" ? "ORB trend established" : "ORB trend reversal"} · ${transition.newState}`,
+      "price",
+      boundaryPrice,
+      transition.direction === "long" ? "positive" : "negative",
+      `${transition.direction === "long" ? "Completed close above" : "Completed close below"} the finalized ${transition.boundaryCrossed === "ORB_HIGH" ? "ORB high" : "ORB low"} by ${transition.confirmationBufferTicks} MES ticks. The ${transition.newState} epoch is effective from the following candle.`
+        + (transition.activePositionBlocked ? " Opposite-direction execution was blocked by the active account position." : ""),
+      confirming.openTime,
+      confirming.closeTime,
+      eventVisibility(confirming.closeTime),
+    ));
+  }
   for (const level of snapshot.levels.critical) {
     const normalizedName = level.name.toLowerCase().replace(/[-_]+/g, " ");
     if (/(?:prior|previous|two days? ago|day before yesterday)/.test(normalizedName)) continue;
@@ -2500,6 +2519,7 @@ function buildMachineSnapshot(
       market: {
         levels: evaluationSnapshot.levels,
         breakout: evaluationSnapshot.breakout,
+        orbTrend: evaluationSnapshot.orbTrend,
         pullback: evaluationSnapshot.pullback,
         patience: evaluationSnapshot.patience,
         earlyOrbMomentum: evaluationSnapshot.earlyOrbMomentum,

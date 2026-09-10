@@ -9,6 +9,7 @@ import type { Candle, Direction, TrendDirection } from "./types.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 import { DEFAULT_STRATEGY_CONFIG, PATIENCE_ENTRY_BUFFER_TICKS } from "./config.js";
 import { MAX_STOP_BUFFER_TICKS, MIN_STOP_BUFFER_TICKS } from "./execution-management.js";
+import type { OrbTrendAnalysis } from "./orb-trend.js";
 
 export type PatienceState =
   | "WAITING_FOR_VALID_CONTEXT"
@@ -100,6 +101,7 @@ export type PatienceOccurrenceStatus =
 
 export type PatienceDirectionSource =
   | "ORB_BREAKOUT"
+  | "ORB_TREND"
   | "CONSOLIDATION_BREAKOUT"
   | "EQUIVALENT_REVERSAL"
   | "CONFIRMED_15M_TREND";
@@ -114,6 +116,7 @@ export type PatienceOccurrence = {
   occurrenceId: string;
   direction: Direction;
   directionSource?: PatienceDirectionSource;
+  orbTrendEpochId?: string | null;
   entryBufferTicks: number;
   stopBufferTicks: number;
   patienceCandleExtreme?: number;
@@ -233,6 +236,7 @@ export type PatienceEngineOptions = {
   validContext?: boolean;
   allowOpposingTrend?: boolean;
   directionSource?: PatienceDirectionSource;
+  orbTrend?: OrbTrendAnalysis;
   finalizedNtz?: NtzRange | null;
   requireFinalizedNtz?: boolean;
   entryCutoffMinutes?: number;
@@ -300,6 +304,7 @@ export function patienceCandleEngine(
       event !== undefined
       && index > 0
       && (options.maxCandidateCloseTime === undefined || candle.closeTime < options.maxCandidateCloseTime)
+      && (options.orbTrend === undefined || options.orbTrend.trendDirectionAt(candle.openTime) === direction)
       && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(
     candidateIndexes,
@@ -307,6 +312,7 @@ export function patienceCandleEngine(
     sorted,
     direction,
     directionSource,
+    options.orbTrend,
     trend,
     tickSize,
     entryBufferTicks,
@@ -417,7 +423,7 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, tickSize, entryBufferTicks, stopBufferTicks, options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
+      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, options.orbTrend, tickSize, entryBufferTicks, stopBufferTicks, options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
   }
 
   const forming = sorted.at(-1);
@@ -458,6 +464,7 @@ export function phase5PatienceAnalysis(
   stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
   allowOpposingTrend = false,
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
+  orbTrend?: OrbTrendAnalysis,
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const terminalTransition = pullback.armTransitions
@@ -527,6 +534,7 @@ export function phase5PatienceAnalysis(
     validContext: pullback.status === "observed" || (ntz?.complete === true),
     allowOpposingTrend,
     directionSource,
+    orbTrend,
     finalizedNtz: ntz,
     requireFinalizedNtz: true,
     entryCutoffMinutes: 780,
@@ -703,7 +711,7 @@ export function earlyOrbMomentumPatienceAnalysis(
       analysis = { ...base, state: "PATIENCE_CANDLE_EXPIRED", detail: "The immediate next candle is missing; later candles cannot confirm this early ORB arm.", triggerPrice: null };
       occurrenceStatus = "EXPIRED_MISSING_E";
     } else {
-      analysis = evaluateTrigger(candidate.candle, previous, immediateNext, candidate.direction, event, "neutral", "ORB_BREAKOUT", tickSize, entryBufferTicks, stopBufferTicks, ntz, true, undefined, true);
+      analysis = evaluateTrigger(candidate.candle, previous, immediateNext, candidate.direction, event, "neutral", "ORB_BREAKOUT", undefined, tickSize, entryBufferTicks, stopBufferTicks, ntz, true, undefined, true);
       occurrenceStatus = analysis.state === "ENTRY_TRIGGERED"
         ? "CONFIRMED"
         : analysis.state === "OPPOSITE_SIDE_INVALIDATION" ? "EXPIRED_WRONG_DIRECTION"
@@ -748,6 +756,7 @@ function evaluateTrigger(
   eligibility: PatienceEligibilityEvent,
   trend: TrendDirection,
   directionSource: PatienceDirectionSource,
+  orbTrend: OrbTrendAnalysis | undefined,
   tickSize: number,
   entryBufferTicks: number,
   stopBufferTicks: number,
@@ -957,6 +966,7 @@ function buildPatienceOccurrences(
   sorted: readonly Candle[],
   direction: Direction,
   directionSource: PatienceDirectionSource,
+  orbTrend: OrbTrendAnalysis | undefined,
   trend: TrendDirection,
   tickSize: number,
   entryBufferTicks: number,
@@ -1013,9 +1023,10 @@ function buildPatienceOccurrences(
       const previous = completed[candidate.index - 1];
       const inactiveDetail = `Eligibility arm ${arm.state}: ${arm.reason}`;
       return {
-        occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
+        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
+        orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
         entryBufferTicks,
         stopBufferTicks,
         patienceCandleExtreme,
@@ -1045,9 +1056,10 @@ function buildPatienceOccurrences(
     }
     if (!isPatienceCandleOutsideNtz(candidate.candle, direction, finalizedNtz, requireFinalizedNtz)) {
       return {
-        occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
+        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
+        orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
         entryBufferTicks,
         stopBufferTicks,
         patienceCandleExtreme,
@@ -1135,6 +1147,7 @@ function buildPatienceOccurrences(
         event,
         trend,
         directionSource,
+        orbTrend,
         tickSize,
         entryBufferTicks,
         stopBufferTicks,
@@ -1176,9 +1189,10 @@ function buildPatienceOccurrences(
     const armTransitionTime = undefined;
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
-      occurrenceId: `patience|${direction}|${candidate.candle.openTime}|${trigger?.openTime ?? "none"}`,
+      occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
       direction,
       directionSource,
+      orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
       entryBufferTicks,
       stopBufferTicks,
       patienceCandleExtreme,
@@ -1209,6 +1223,23 @@ function buildPatienceOccurrences(
     };
   });
   return occurrences.map((occurrence): PatienceOccurrence => {
+    const reversal = orbTrend?.transitions.find((transition) =>
+      transition.direction !== occurrence.direction
+      && transition.effectiveFromTimestamp >= occurrence.patienceCandle.closeTime
+      && occurrence.outcomeStatus !== "CONFIRMED"
+      && (occurrence.triggerCandle === null || occurrence.triggerCandle.closeTime >= transition.effectiveFromTimestamp),
+    );
+    if (reversal) {
+      return {
+        ...occurrence,
+        outcomeStatus: "INVALIDATED",
+        qualificationStatus: "STRUCTURALLY_INVALIDATED",
+        eligibilityArmState: "invalidated",
+        eligibilityArmStateReason: "ORB_TREND_REVERSED",
+        eligibilityArmTransitionTime: reversal.effectiveFromTimestamp,
+        reasonCode: `ORB_TREND_REVERSED: pending ${occurrence.direction} patience was invalidated before it could confirm.`,
+      };
+    }
     if (occurrence.eligibilityArmState !== "active") return occurrence;
     const currentArm = occurrence.eligibilityArmId ? armStates.get(occurrence.eligibilityArmId) : undefined;
     if (currentArm && currentArm.state !== "active") return occurrence;
@@ -1226,6 +1257,21 @@ function buildPatienceOccurrences(
       reasonCode: `Eligibility arm superseded by ${supersedingCandidate.armId ?? "a newer causal event"}.`,
     };
   });
+}
+
+function patienceOccurrenceId(
+  direction: Direction,
+  patienceOpenTime: number,
+  triggerOpenTime: number | undefined,
+  epochId: string | null | undefined,
+): string {
+  return [
+    "patience",
+    epochId ?? "no-orb-epoch",
+    direction,
+    patienceOpenTime,
+    triggerOpenTime ?? "none",
+  ].join("|");
 }
 
 function baseAnalysis(

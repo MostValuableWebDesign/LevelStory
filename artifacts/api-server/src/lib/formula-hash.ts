@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v20-account-single-active-trade";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v21-orb-trend-epochs-account-single-active-trade";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -72,6 +72,16 @@ export function formulaConfiguration(
         enabled: config.earlyOrbMomentumContinuationEnabled,
         eligibilityCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
         minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
+      },
+      orbTrendStateMachine: {
+        version: "orb-trend-state-machine-v1",
+        enabled: config.orbTrendReversalEnabled,
+        confirmationCloses: config.orbTrendConfirmationCloses,
+        confirmationBufferTicks: config.orbTrendConfirmationBufferTicks,
+        effectiveTiming: config.orbTrendEffectiveTiming,
+        insideCloseBehavior: config.orbTrendInsideCloseBehavior,
+        wickOnlyBehavior: config.orbTrendWickOnlyBehavior,
+        reversalExpirationReason: "ORB_TREND_REVERSED",
       },
     },
   };

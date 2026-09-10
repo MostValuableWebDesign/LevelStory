@@ -8,12 +8,12 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { ACCOUNT_POSITION_STATE_VERSION } from "./account-position-gate.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v15-account-single-active-trade";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v10-account-single-active-trade";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v14-account-single-active-trade";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v16-orb-trend-epochs-account-single-active-trade";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v11-orb-trend-epochs-account-single-active-trade";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v15-orb-trend-epochs-account-single-active-trade";
 export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v13-account-single-active-trade";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v12-account-single-active-trade";
-export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v6-account-single-active-trade";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v13-orb-trend-epochs-account-single-active-trade";
+export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v7-orb-trend-epochs-account-single-active-trade";
 
 export type VisualValidationCacheMetadata = {
   cacheKey: string;

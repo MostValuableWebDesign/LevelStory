@@ -382,6 +382,7 @@ export type BacktestConsolidationGuardEvidence = {
   diagnosticRangeCapExceeded: boolean;
   qualificationReason: string | null;
   direction: Direction | null;
+  orbTrendEpochId?: string | null;
   patienceOpenTime: string | null;
   patienceCloseTime: string | null;
   entryOpenTime: string | null;
@@ -491,6 +492,10 @@ export type BacktestAuditRecord = {
   pullbackEvidence: string;
   criticalLevelEvidence: string;
   trendEvidence: string;
+  orbTrendState?: MarketSnapshot["orbTrend"]["state"];
+  orbTrendDirection?: Direction | null;
+  orbTrendEpochId?: string | null;
+  orbTrendTransitions?: MarketSnapshot["orbTrend"]["transitions"];
   patienceState: string;
   patienceCandle: Record<string, number | boolean> | null;
   triggerCandle: Record<string, number | boolean> | null;
@@ -1056,6 +1061,7 @@ export type HistoricalOccurrence = {
   contractSymbol: string;
   contractMonth: string;
   direction: Direction | null;
+  orbTrendEpochId?: string | null;
   lTimestamp: string | null;
   lEventId: string | null;
   lInteractionType: string | null;
@@ -2586,6 +2592,10 @@ function auditForEvaluation(
       : snapshot.pullback.detail,
     criticalLevelEvidence: snapshot.levels.critical.map((level) => `${level.name} ${level.price}`).join("; ") || "No critical level evidence.",
     trendEvidence: `${snapshot.trend.direction}: ${snapshot.trend.evidence.join("; ")}`,
+    orbTrendState: snapshot.orbTrend.state,
+    orbTrendDirection: snapshot.orbTrend.direction,
+    orbTrendEpochId: snapshot.orbTrend.epochId,
+    orbTrendTransitions: snapshot.orbTrend.transitions,
     patienceState: effectiveSignalPatience.state,
     patienceCandle: evidenceCandle(effectiveSignalPatience.patienceCandle as SimulatedFuturesCandle | null),
     triggerCandle: evidenceCandle(effectiveSignalPatience.triggerCandle as SimulatedFuturesCandle | null),
@@ -3459,6 +3469,7 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
+         patience.orbTrendEpochId ?? record.orbTrendEpochId ?? "no-orb-epoch",
         patience.eligibilityArmId ?? "no-arm",
         pOpenTimestamp ?? "invalid",
         Number.isFinite(patience.patienceCandle.closeTime)
@@ -3484,6 +3495,7 @@ export function buildHistoricalOccurrenceLedger(
         contractSymbol: record.contractSymbol,
         contractMonth: record.contractMonth,
         direction: patience.direction,
+         orbTrendEpochId: patience.orbTrendEpochId ?? record.orbTrendEpochId ?? null,
          directionSource: patience.directionSource,
          directionSources: patience.directionSource ? [patience.directionSource] : [],
         lTimestamp: linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : null,

@@ -4,6 +4,7 @@ export * from "./indicators.js";
 export * from "./levels.js";
 export * from "./major-levels.js";
 export * from "./phase4.js";
+export * from "./orb-trend.js";
 export * from "./phase5.js";
 export * from "./phase6.js";
 export { trendEvidence, hasConfirmedDirectionalTrend } from "./rules.js";

@@ -7,4 +7,4 @@ Causal ORB, consolidation-breakout, and equivalent-reversal directions are autho
 
 **Why:** A universal trend gate prevented causal ORB/reversal evidence from producing patience shapes and made the historical funnel appear empty even when level interactions and immediate P→E sequences existed.
 
-**How to apply:** Carry an explicit direction source through patience analysis and audit evidence. Scan and retain patience shape evidence before trend qualification, and do not reintroduce elapsed-time arm expiry for causal replay.
+**How to apply:** Carry an explicit direction source and ORB trend epoch through patience analysis and audit evidence. A completed buffered close establishes or reverses the epoch, but the new direction is eligible only from the following candle; invalidate only pending old-direction arms, not already confirmed positions.
