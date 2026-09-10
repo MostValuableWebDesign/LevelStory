@@ -1049,6 +1049,8 @@ export type HistoricalOccurrence = {
   auditId: string;
   kind: "pullback" | "patience" | "risk" | "trade";
   strategyCandidate: string;
+  /** True only when the occurrence has at least one qualified strategy edge. */
+  edgeQualified?: boolean;
   secondaryStrategyMatches: string[];
   tradingDate: string;
   contractSymbol: string;
@@ -3083,9 +3085,13 @@ export function buildHistoricalOccurrenceLedger(
       "PATIENCE_CANDLE_CONTINUATION",
       "PEAK_RETRACEMENT_REVERSAL",
     ].indexOf(canonicalStrategyId(setupType) ?? setupType);
-    const primaryByEdge = edgePrecedence(value.strategyCandidate) < edgePrecedence(existing.strategyCandidate)
+    const primaryByEdge = value.edgeQualified === true && existing.edgeQualified !== true
       ? value
-      : existing;
+      : existing.edgeQualified === true && value.edgeQualified !== true
+        ? existing
+        : edgePrecedence(value.strategyCandidate) < edgePrecedence(existing.strategyCandidate)
+          ? value
+          : existing;
     const evidenceRank = (occurrence: HistoricalOccurrence): number[] => [
       occurrence.kind === "patience" ? patienceStatusRank(occurrence.status) : 0,
       occurrence.entryObservationTimestamp ? 1 : 0,
@@ -3115,13 +3121,16 @@ export function buildHistoricalOccurrenceLedger(
       primaryByEvidence,
     );
     const matches = [...new Set([
-      existing.strategyCandidate,
-      value.strategyCandidate,
-      ...existing.secondaryStrategyMatches,
-      ...value.secondaryStrategyMatches,
+      ...(existing.edgeQualified === true
+        ? [existing.strategyCandidate, ...existing.secondaryStrategyMatches]
+        : []),
+      ...(value.edgeQualified === true
+        ? [value.strategyCandidate, ...value.secondaryStrategyMatches]
+        : []),
     ])];
     const merged = {
       ...primaryByEvidence,
+      edgeQualified: existing.edgeQualified === true || value.edgeQualified === true,
       atrTicks: [primaryByEvidence.atrTicks, value.atrTicks, existing.atrTicks]
         .find((atrTicks): atrTicks is number => Number.isFinite(atrTicks)),
       // Edge attribution is independent from confirmation-evidence selection.
@@ -3227,6 +3236,7 @@ export function buildHistoricalOccurrenceLedger(
         auditId: record.id,
         kind: "pullback",
         strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+         edgeQualified: record.decision === "SETUP QUALIFIED",
         secondaryStrategyMatches: secondary,
         tradingDate: record.tradingDate,
         contractSymbol: record.contractSymbol,
@@ -3271,6 +3281,11 @@ export function buildHistoricalOccurrenceLedger(
       });
     }
     for (const patience of record.patienceOccurrences ?? []) {
+       const recordEdge = canonicalStrategyId(record.setupType) ?? record.setupType;
+       const qualifiedEdges = record.decision === "SETUP QUALIFIED"
+         ? [recordEdge, ...secondary]
+         : secondary;
+       const primaryEdge = qualifiedEdges[0] ?? recordEdge;
       const linkedEvents = linkedPullbackEvents(record, patience);
       const linkedPullback = linkedEvents[0];
       const linkedEvidence = levelEvidence(linkedEvents);
@@ -3459,11 +3474,12 @@ export function buildHistoricalOccurrenceLedger(
         occurrenceId: id,
         auditId: record.id,
         kind: "patience",
-         canonicalOccurrence: true,
-        strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
-         primaryEdge: canonicalStrategyId(record.setupType) ?? record.setupType,
-         matchedEdges: [canonicalStrategyId(record.setupType) ?? record.setupType, ...secondary],
-        secondaryStrategyMatches: secondary,
+          canonicalOccurrence: true,
+         strategyCandidate: primaryEdge,
+         edgeQualified: qualifiedEdges.length > 0,
+          primaryEdge,
+          matchedEdges: [...new Set(qualifiedEdges)],
+         secondaryStrategyMatches: [...new Set(qualifiedEdges.slice(1))],
         tradingDate: record.tradingDate,
         contractSymbol: record.contractSymbol,
         contractMonth: record.contractMonth,
@@ -4123,6 +4139,16 @@ export function projectHistoricalTradeCandidates(
   const rejected: RejectedCandidateSignal[] = [];
   const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
   for (const occurrence of confirmed) {
+    if (occurrence.edgeQualified === false) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: ["REJECTED_NO_QUALIFIED_STRATEGY_EDGE"],
+        details: [
+          "The physical P→E sequence was confirmed, but no evaluated strategy edge qualified it for execution.",
+        ],
+      });
+      continue;
+    }
     const lifecycleRejection = candidateLifecycleRejection(occurrence, executionContext?.lifecycle);
     if (lifecycleRejection) {
       rejected.push({

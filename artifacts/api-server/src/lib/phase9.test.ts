@@ -946,6 +946,45 @@ test("ledger merges the same causal occurrence and preserves canonical plus seco
   assert.equal(new Set(occurrences.map((occurrence) => occurrence.occurrenceId)).size, occurrences.length);
 });
 
+test("a failed edge cannot become the canonical strategy for a confirmed P to E sequence", () => {
+  const failedStrongBreakout = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    decision: "WAITING",
+    rejectionCategory: "WAITING",
+    rejectionReason: "RULES_NOT_QUALIFIED:CONSOLIDATION_BREAKOUT_CONTINUATION",
+  });
+  const qualifiedPatience = occurrenceAudit("PATIENCE_CANDLE_CONTINUATION", {
+    id: "qualified-patience-audit",
+  });
+  const patience = buildHistoricalOccurrenceLedger(
+    occurrenceDataset(),
+    [failedStrongBreakout, qualifiedPatience],
+    [],
+  ).find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.equal(patience.edgeQualified, true);
+  assert.equal(patience.strategyCandidate, "PATIENCE_CANDLE_CONTINUATION");
+  assert.deepEqual(patience.matchedEdges, ["PATIENCE_CANDLE_CONTINUATION"]);
+});
+
+test("a confirmed sequence from only a failed edge is not projected as a trade candidate", () => {
+  const failedStrongBreakout = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    decision: "WAITING",
+    rejectionCategory: "WAITING",
+    rejectionReason: "RULES_NOT_QUALIFIED:CONSOLIDATION_BREAKOUT_CONTINUATION",
+  });
+  const patience = buildHistoricalOccurrenceLedger(
+    occurrenceDataset(),
+    [failedStrongBreakout],
+    [],
+  ).find((occurrence) => occurrence.kind === "patience");
+  assert.ok(patience);
+  assert.equal(patience.edgeQualified, false);
+  assert.equal(patience.canonicalOccurrence, true);
+  const projected = projectHistoricalTradeCandidates([patience], []);
+  assert.equal(projected.candidates.length, 0);
+  assert.deepEqual(projected.rejected[0]?.reasonCodes, ["REJECTED_NO_QUALIFIED_STRATEGY_EDGE"]);
+});
+
 test("ledger promotes the complete immediate-E snapshot over an earlier partial replay cursor", () => {
   const source = occurrenceAudit("ORB_PULLBACK_CONTINUATION");
   const base = source.patienceOccurrences![0]!;
