@@ -84,6 +84,7 @@ function requestKey(request: VisualValidationRequest): string {
     source: request.source ?? "historical_databento",
     reviewMode: request.reviewMode ?? "trades_only",
     earlyOrbMomentum: request.earlyOrbMomentum,
+    enabledStrategies: request.enabledStrategies,
   });
 }
 

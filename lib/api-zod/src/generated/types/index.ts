@@ -433,6 +433,7 @@ export * from './visualValidationRelatedCandleRole';
 export * from './visualValidationRelatedCandleVisibility';
 export * from './visualValidationRequest';
 export * from './visualValidationRequestEarlyOrbMomentum';
+export * from './visualValidationRequestEnabledStrategies';
 export * from './visualValidationRequestReviewMode';
 export * from './visualValidationRequestSource';
 export * from './visualValidationRequestSymbol';

@@ -70,6 +70,7 @@ function historicalGenerationKey(request: VisualValidationRequest): string {
     premarketAvailable: request.premarketAvailable !== false,
     reviewMode: request.reviewMode ?? "trades_only",
     earlyOrbMomentum: request.earlyOrbMomentum,
+    enabledStrategies: request.enabledStrategies,
   });
 }
 

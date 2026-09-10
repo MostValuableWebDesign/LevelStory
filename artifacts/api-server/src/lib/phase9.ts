@@ -72,8 +72,10 @@ import {
 } from "./account-position-gate.js";
 import {
   normalizeVisualReviewEarlyOrbMomentum,
+  normalizeVisualReviewStrategyToggles,
   strategyConfigForVisualReview,
   type VisualReviewEarlyOrbMomentumSettings,
+  type VisualReviewStrategyToggles,
 } from "./visual-validation-settings.js";
 import {
   buildKeyLevelTargetPlan,
@@ -221,6 +223,8 @@ export type BacktestRequest = ReplayDatasetOptions & {
   ohlcvCommissionPerContract?: number;
   /** Visual Review-only formula override; never used by broker or live-order paths. */
   visualReviewEarlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
+  /** Visual Review-only strategy switches; disabled strategies cannot create candidates or positions. */
+  visualReviewEnabledStrategies?: Partial<VisualReviewStrategyToggles>;
 };
 
 export type CandidateCausalIdentity = {
@@ -4968,6 +4972,9 @@ export function runCausalBacktest(
       normalizeVisualReviewEarlyOrbMomentum(request.visualReviewEarlyOrbMomentum),
     )
     : activeStrategy.config;
+  const enabledStrategies = request.visualReviewEnabledStrategies
+    ? normalizeVisualReviewStrategyToggles(request.visualReviewEnabledStrategies, request.visualReviewEarlyOrbMomentum)
+    : null;
   const governedConsolidation = consolidationThresholds(replayStrategyConfig);
   const calendar = sessionCalendarForContract(specification);
   const dataset = providedDataset ?? buildReplayDataset(request.symbol, request);
@@ -5099,7 +5106,11 @@ export function runCausalBacktest(
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
       },
     );
-    const evaluations = snapshot.setupAnalysis.evaluations;
+    const evaluations = snapshot.setupAnalysis.evaluations.filter((evaluation) => {
+      if (!enabledStrategies) return true;
+      const strategyId = canonicalStrategyId(evaluation.setupType);
+      return strategyId === null || enabledStrategies[strategyId] !== false;
+    });
     const evaluationAudits = evaluations.map((evaluation) => {
       const record = auditForEvaluation(
         evaluation,

@@ -1,4 +1,5 @@
 import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
+import { STRATEGY_IDS, type StrategyId } from "./strategy/taxonomy.js";
 
 export type VisualReviewEarlyOrbMomentumSettings = {
   enabled: boolean;
@@ -11,6 +12,31 @@ export const DEFAULT_VISUAL_REVIEW_EARLY_ORB_MOMENTUM: VisualReviewEarlyOrbMomen
   eligibilityCutoffMinutes: 630,
   minimumCloseDistanceTicks: 1,
 };
+
+export type VisualReviewStrategyToggles = Record<StrategyId, boolean>;
+
+export const DEFAULT_VISUAL_REVIEW_STRATEGY_TOGGLES: VisualReviewStrategyToggles = Object.fromEntries(
+  STRATEGY_IDS.map((strategyId) => [strategyId, true]),
+) as VisualReviewStrategyToggles;
+
+export function normalizeVisualReviewStrategyToggles(
+  input?: Partial<VisualReviewStrategyToggles> | null,
+  earlyOrbMomentum?: Partial<VisualReviewEarlyOrbMomentumSettings> | null,
+): VisualReviewStrategyToggles {
+  const settings = {
+    ...DEFAULT_VISUAL_REVIEW_STRATEGY_TOGGLES,
+    ...(input ?? {}),
+  } as VisualReviewStrategyToggles;
+  if (earlyOrbMomentum?.enabled !== undefined) {
+    settings.EARLY_ORB_MOMENTUM_CONTINUATION = earlyOrbMomentum.enabled;
+  }
+  for (const strategyId of STRATEGY_IDS) {
+    if (typeof settings[strategyId] !== "boolean") {
+      throw new Error(`Visual Review ${strategyId} enabled must be boolean.`);
+    }
+  }
+  return settings;
+}
 
 export function normalizeVisualReviewEarlyOrbMomentum(
   input?: Partial<VisualReviewEarlyOrbMomentumSettings> | null,

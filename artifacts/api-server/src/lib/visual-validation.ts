@@ -41,8 +41,10 @@ import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
 import {
   normalizeVisualReviewEarlyOrbMomentum,
+  normalizeVisualReviewStrategyToggles,
   strategyConfigForVisualReview,
   type VisualReviewEarlyOrbMomentumSettings,
+  type VisualReviewStrategyToggles,
 } from "./visual-validation-settings.js";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -88,13 +90,16 @@ export type VisualValidationRequest = {
   source?: "simulated" | "historical_databento";
   reviewMode?: VisualValidationReviewMode;
   earlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
+  enabledStrategies?: Partial<VisualReviewStrategyToggles>;
   regenerateFresh?: boolean;
 };
 
 export function withGovernedVisualValidationRequest(request: VisualValidationRequest): VisualValidationRequest {
+  const earlyOrbMomentum = normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum);
   return {
     ...request,
-    earlyOrbMomentum: normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
+    earlyOrbMomentum,
+    enabledStrategies: normalizeVisualReviewStrategyToggles(request.enabledStrategies, earlyOrbMomentum),
   };
 }
 

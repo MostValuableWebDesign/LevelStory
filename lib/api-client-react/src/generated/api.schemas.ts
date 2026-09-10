@@ -4095,6 +4095,18 @@ export type VisualValidationRequestEarlyOrbMomentum = {
   minimumCloseDistanceTicks: number;
 };
 
+/**
+ * Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.
+ */
+export type VisualValidationRequestEnabledStrategies = {
+  ORB_PULLBACK_CONTINUATION?: boolean;
+  EARLY_ORB_MOMENTUM_CONTINUATION?: boolean;
+  CONSOLIDATION_BREAKOUT_CONTINUATION?: boolean;
+  PATIENCE_CANDLE_CONTINUATION?: boolean;
+  EQUIVALENT_CANDLE_REVERSAL?: boolean;
+  PEAK_RETRACEMENT_REVERSAL?: boolean;
+};
+
 export interface VisualValidationRequest {
   symbol: VisualValidationRequestSymbol;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
@@ -4121,6 +4133,8 @@ export interface VisualValidationRequest {
   reviewMode?: VisualValidationRequestReviewMode;
   /** Server-validated governed Early ORB Momentum settings captured with the deterministic review request. */
   earlyOrbMomentum?: VisualValidationRequestEarlyOrbMomentum;
+  /** Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions. */
+  enabledStrategies?: VisualValidationRequestEnabledStrategies;
   /** Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. */
   regenerateFresh?: boolean;
 }

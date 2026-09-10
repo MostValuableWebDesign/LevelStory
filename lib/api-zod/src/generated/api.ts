@@ -7455,6 +7455,12 @@ export const getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCut
 
 export const getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const getVisualValidationSetResponseRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const getVisualValidationSetResponseRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const getVisualValidationSetResponseRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const getVisualValidationSetResponseRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const getVisualValidationSetResponseRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const getVisualValidationSetResponseRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const getVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const getVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -7564,6 +7570,14 @@ export const GetVisualValidationSetResponse = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(getVisualValidationSetResponseRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -8463,6 +8477,12 @@ export const createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinut
 
 export const createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const createVisualValidationSetBodyEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const createVisualValidationSetBodyEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const createVisualValidationSetBodyEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const createVisualValidationSetBodyEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const createVisualValidationSetBodyEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const createVisualValidationSetBodyEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const createVisualValidationSetBodyRegenerateFreshDefault = false;
 
 export const CreateVisualValidationSetBody = zod.object({
@@ -8479,6 +8499,14 @@ export const CreateVisualValidationSetBody = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(createVisualValidationSetBodyEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
@@ -8511,6 +8539,12 @@ export const createVisualValidationSetResponseRequestEarlyOrbMomentumEligibility
 
 export const createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const createVisualValidationSetResponseRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const createVisualValidationSetResponseRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const createVisualValidationSetResponseRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const createVisualValidationSetResponseRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const createVisualValidationSetResponseRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const createVisualValidationSetResponseRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const createVisualValidationSetResponseRequestRegenerateFreshDefault = false;
 export const createVisualValidationSetResponseReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createVisualValidationSetResponseReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -8620,6 +8654,14 @@ export const CreateVisualValidationSetResponse = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(createVisualValidationSetResponseRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(createVisualValidationSetResponseRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(createVisualValidationSetResponseRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(createVisualValidationSetResponseRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -10192,6 +10234,12 @@ export const startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCu
 
 export const startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const startVisualValidationGenerationJobBodyEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobBodyEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobBodyEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobBodyEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobBodyEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const startVisualValidationGenerationJobBodyEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const startVisualValidationGenerationJobBodyRegenerateFreshDefault = false;
 
 export const StartVisualValidationGenerationJobBody = zod.object({
@@ -10208,6 +10256,14 @@ export const StartVisualValidationGenerationJobBody = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobBodyEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(startVisualValidationGenerationJobBodyEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobBodyRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 })
 
@@ -10256,6 +10312,12 @@ export const startVisualValidationGenerationJobResponseResultRequestEarlyOrbMome
 
 export const startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const startVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const startVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -10380,6 +10442,14 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -11310,6 +11380,12 @@ export const getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrb
 
 export const getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getLatestVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -11434,6 +11510,14 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({
@@ -12371,6 +12455,12 @@ export const getVisualValidationGenerationJobResponseResultRequestEarlyOrbMoment
 
 export const getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax = 32;
 
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault = true;
+export const getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault = true;
 export const getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault = false;
 export const getVisualValidationGenerationJobResponseResultReviewPeriodStartDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getVisualValidationGenerationJobResponseResultReviewPeriodEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
@@ -12495,6 +12585,14 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "eligibilityCutoffMinutes": zod.number().min(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMin).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumEligibilityCutoffMinutesMax),
   "minimumCloseDistanceTicks": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestEarlyOrbMomentumMinimumCloseDistanceTicksMax)
 }).optional().describe('Server-validated governed Early ORB Momentum settings captured with the deterministic review request.'),
+  "enabledStrategies": zod.object({
+  "ORB_PULLBACK_CONTINUATION": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesORBPULLBACKCONTINUATIONDefault),
+  "EARLY_ORB_MOMENTUM_CONTINUATION": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEARLYORBMOMENTUMCONTINUATIONDefault),
+  "CONSOLIDATION_BREAKOUT_CONTINUATION": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesCONSOLIDATIONBREAKOUTCONTINUATIONDefault),
+  "PATIENCE_CANDLE_CONTINUATION": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPATIENCECANDLECONTINUATIONDefault),
+  "EQUIVALENT_CANDLE_REVERSAL": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesEQUIVALENTCANDLEREVERSALDefault),
+  "PEAK_RETRACEMENT_REVERSAL": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestEnabledStrategiesPEAKRETRACEMENTREVERSALDefault)
+}).optional().describe('Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.'),
   "regenerateFresh": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestRegenerateFreshDefault).describe('Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews.')
 }),
   "reviewPeriod": zod.object({

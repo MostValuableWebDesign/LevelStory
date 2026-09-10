@@ -72,6 +72,7 @@ try {
     source: MULTI_CONTRACT_SOURCE,
     executionMode: "ohlcv_modeled",
     visualReviewEarlyOrbMomentum: request.earlyOrbMomentum,
+    visualReviewEnabledStrategies: request.enabledStrategies,
   }, undefined, dataset, ({ completedSessions: completed, totalSessions: total }) => {
     emitProgress({
       phase: "replaying_sessions",

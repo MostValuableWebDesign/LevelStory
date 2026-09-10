@@ -4099,6 +4099,16 @@ components:
             eligibilityCutoffMinutes: { type: number, minimum: 0, maximum: 1439 }
             minimumCloseDistanceTicks: { type: number, minimum: 1, maximum: 32 }
           required: [enabled, eligibilityCutoffMinutes, minimumCloseDistanceTicks]
+        enabledStrategies:
+          type: object
+          description: Strategy switches captured with the deterministic review request. Disabled strategies do not create authoritative candidates or account-replay positions.
+          properties:
+            ORB_PULLBACK_CONTINUATION: { type: boolean, default: true }
+            EARLY_ORB_MOMENTUM_CONTINUATION: { type: boolean, default: true }
+            CONSOLIDATION_BREAKOUT_CONTINUATION: { type: boolean, default: true }
+            PATIENCE_CANDLE_CONTINUATION: { type: boolean, default: true }
+            EQUIVALENT_CANDLE_REVERSAL: { type: boolean, default: true }
+            PEAK_RETRACEMENT_REVERSAL: { type: boolean, default: true }
         regenerateFresh: { type: boolean, default: false, description: Bypass only the matching derived review-set cache entry and recompute candidates and snapshots. Does not rebuild the historical index or delete reviews. }
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
     VisualValidationReviewStatus:

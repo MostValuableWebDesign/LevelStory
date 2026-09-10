@@ -140,7 +140,16 @@ const STRATEGY_TABS: Array<{ id: StrategyId; label: string }> = [
   { id: "PATIENCE_CANDLE_CONTINUATION", label: "Patience Candle Continuation" },
   { id: "CONSOLIDATION_BREAKOUT_CONTINUATION", label: "Strong Breakout After Consolidation" },
   { id: "EQUIVALENT_CANDLE_REVERSAL", label: "Equivalent-Candle Reversal" },
+  { id: "PEAK_RETRACEMENT_REVERSAL", label: "Peak Retracement Reversal" },
 ];
+const STRATEGY_SETTING_DETAILS: Record<StrategyId, string> = {
+  ORB_PULLBACK_CONTINUATION: "ORB break, qualifying pullback interaction, patience candle, and immediate buffered continuation.",
+  EARLY_ORB_MOMENTUM_CONTINUATION: "First completed candle outside the finalized ORB, followed only by its adjacent confirmation candle.",
+  PATIENCE_CANDLE_CONTINUATION: "Trend-aligned patience candle with a qualifying level interaction and immediate confirmation.",
+  CONSOLIDATION_BREAKOUT_CONTINUATION: "Bounded consolidation followed by a strong directional breakout and immediate confirmation.",
+  EQUIVALENT_CANDLE_REVERSAL: "Equivalent opposing candles at a major level followed by a buffered reversal continuation.",
+  PEAK_RETRACEMENT_REVERSAL: "Greater-than-50% causal impulse retracement followed by a reversal patience candle and confirmation.",
+};
 type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
 const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: string }> = [
   { id: "generate", label: "Generate", detail: "deterministic replay" },
@@ -247,14 +256,38 @@ const INITIAL_REQUEST: VisualValidationRequest = {
     eligibilityCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
   },
+  enabledStrategies: {
+    ORB_PULLBACK_CONTINUATION: true,
+    EARLY_ORB_MOMENTUM_CONTINUATION: true,
+    CONSOLIDATION_BREAKOUT_CONTINUATION: true,
+    PATIENCE_CANDLE_CONTINUATION: true,
+    EQUIVALENT_CANDLE_REVERSAL: true,
+    PEAK_RETRACEMENT_REVERSAL: true,
+  },
 };
 
 const EARLY_ORB_MOMENTUM_STORAGE_KEY = "levelstory.visualReview.earlyOrbMomentumEnabled";
+const ENABLED_STRATEGIES_STORAGE_KEY = "levelstory.visualReview.enabledStrategies";
 
 function storedEarlyOrbMomentumEnabled(): boolean {
   if (typeof window === "undefined") return true;
   const saved = window.localStorage.getItem(EARLY_ORB_MOMENTUM_STORAGE_KEY);
   return saved === null ? true : saved === "true";
+}
+
+function storedEnabledStrategies(): NonNullable<VisualValidationRequest["enabledStrategies"]> {
+  if (typeof window === "undefined") return { ...INITIAL_REQUEST.enabledStrategies! };
+  const saved = window.localStorage.getItem(ENABLED_STRATEGIES_STORAGE_KEY);
+  if (!saved) return { ...INITIAL_REQUEST.enabledStrategies! };
+  try {
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    return {
+      ...INITIAL_REQUEST.enabledStrategies!,
+      ...Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "boolean")),
+    };
+  } catch {
+    return { ...INITIAL_REQUEST.enabledStrategies! };
+  }
 }
 
 function storedReviewSource(): VisualValidationRequest["source"] {
@@ -444,6 +477,10 @@ export default function VisualReview() {
     earlyOrbMomentum: {
       ...INITIAL_REQUEST.earlyOrbMomentum!,
       enabled: storedEarlyOrbMomentumEnabled(),
+    },
+    enabledStrategies: {
+      ...storedEnabledStrategies(),
+      EARLY_ORB_MOMENTUM_CONTINUATION: storedEarlyOrbMomentumEnabled(),
     },
   }));
   const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
@@ -969,7 +1006,10 @@ export default function VisualReview() {
                <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
-                 if (typeof window !== "undefined" && next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
+                 if (typeof window !== "undefined") {
+                   if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
+                   if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
+                 }
                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
                <CoverageRail
                  data={data}
@@ -1379,6 +1419,27 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
     eligibilityCutoffMinutes: 630,
     minimumCloseDistanceTicks: 1,
   };
+  const enabledStrategies = {
+    ...INITIAL_REQUEST.enabledStrategies!,
+    ...(request.enabledStrategies ?? {}),
+    EARLY_ORB_MOMENTUM_CONTINUATION: request.enabledStrategies?.EARLY_ORB_MOMENTUM_CONTINUATION ?? earlyOrb.enabled,
+  };
+  const updateStrategyEnabled = (strategyId: StrategyId, enabled: boolean) => {
+    const nextEnabledStrategies = { ...enabledStrategies, [strategyId]: enabled };
+    setRequest({
+      ...request,
+      enabledStrategies: nextEnabledStrategies,
+      ...(strategyId === "EARLY_ORB_MOMENTUM_CONTINUATION"
+        ? { earlyOrbMomentum: { ...earlyOrb, enabled } }
+        : {}),
+    });
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(nextEnabledStrategies));
+      if (strategyId === "EARLY_ORB_MOMENTUM_CONTINUATION") {
+        window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(enabled));
+      }
+    }
+  };
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
@@ -1411,39 +1472,47 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <input type="checkbox" className="mt-0.5 accent-[hsl(var(--accent))]" checked={request.premarketAvailable ?? true} onChange={(event) => update("premarketAvailable", event.target.checked)} />
         <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
       </label>
-       <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="early-orb-generation-settings">
+       <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold">Early ORB Momentum Continuation</div>
-             <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Review-only setting. When enabled, P is the first completed candle closing outside the finalized ORB; only the adjacent E candle can confirm.</p>
-          </div>
-           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[9px] font-bold uppercase">
-             <input
-               type="checkbox"
-               role="switch"
-               aria-checked={earlyOrb.enabled}
-               checked={earlyOrb.enabled}
-               onChange={(event) => setRequest({ ...request, earlyOrbMomentum: { ...earlyOrb, enabled: event.target.checked } })}
-               className="peer sr-only"
-               data-testid="switch-early-orb-momentum"
-             />
-             <span aria-hidden="true" className={`relative h-5 w-9 rounded-full border transition ${earlyOrb.enabled ? "border-[hsl(var(--positive)/.5)] bg-[hsl(var(--positive)/.2)]" : "border-border bg-muted"}`}>
-               <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition ${earlyOrb.enabled ? "left-[18px]" : "left-0.5"}`} />
-             </span>
-             <span className={earlyOrb.enabled ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}>{earlyOrb.enabled ? "On" : "Off"}</span>
-           </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="P-open cutoff · New York">
-            <input className="field mono" type="text" value={`${Math.floor(earlyOrb.eligibilityCutoffMinutes / 60)}:${String(earlyOrb.eligibilityCutoffMinutes % 60).padStart(2, "0")} ET`} readOnly aria-label="Early ORB P-open cutoff" />
-          </Field>
-          <Field label="Minimum ORB distance">
-            <input className="field mono" type="text" value={`${earlyOrb.minimumCloseDistanceTicks} MES tick${earlyOrb.minimumCloseDistanceTicks === 1 ? "" : "s"}`} readOnly aria-label="Early ORB minimum distance" />
-          </Field>
-        </div>
-         <p className="border-t border-border pt-3 text-[10px] leading-4 text-muted-foreground">The cutoff and one-tick distance are server-validated constants. Every eligible patience sequence is evaluated independently. The enabled choice applies only to Visual Review and its read-only Shadow Account Replay.</p>
-      </fieldset>
+         <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
+         <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+           {STRATEGY_TABS.map((strategy) => {
+             const enabled = enabledStrategies[strategy.id] !== false;
+             return <div key={strategy.id} className="border border-border bg-muted/20 p-3" data-testid={`strategy-setting-${strategy.id}`}>
+               <div className="flex items-start justify-between gap-3">
+                 <div className="min-w-0">
+                   <div className="text-xs font-semibold">{strategy.label}</div>
+                   <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{STRATEGY_SETTING_DETAILS[strategy.id]}</p>
+                 </div>
+                 <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[9px] font-bold uppercase">
+                   <input
+                     type="checkbox"
+                     role="switch"
+                     aria-checked={enabled}
+                     checked={enabled}
+                     onChange={(event) => updateStrategyEnabled(strategy.id, event.target.checked)}
+                     className="peer sr-only"
+                     data-testid={`switch-strategy-${strategy.id}`}
+                   />
+                   <span aria-hidden="true" className={`relative h-5 w-9 rounded-full border transition ${enabled ? "border-[hsl(var(--positive)/.5)] bg-[hsl(var(--positive)/.2)]" : "border-border bg-muted"}`}>
+                     <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition ${enabled ? "left-[18px]" : "left-0.5"}`} />
+                   </span>
+                   <span className={enabled ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}>{enabled ? "On" : "Off"}</span>
+                 </label>
+               </div>
+               {strategy.id === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3">
+                 <Field label="P-open cutoff · New York">
+                   <input className="field mono" type="text" value={`${Math.floor(earlyOrb.eligibilityCutoffMinutes / 60)}:${String(earlyOrb.eligibilityCutoffMinutes % 60).padStart(2, "0")} ET`} readOnly aria-label="Early ORB P-open cutoff" />
+                 </Field>
+                 <Field label="Minimum ORB distance">
+                   <input className="field mono" type="text" value={`${earlyOrb.minimumCloseDistanceTicks} MES tick${earlyOrb.minimumCloseDistanceTicks === 1 ? "" : "s"}`} readOnly aria-label="Early ORB minimum distance" />
+                 </Field>
+               </div>}
+             </div>;
+           })}
+         </div>
+         <p className="border-t border-border pt-3 text-[10px] leading-4 text-muted-foreground">The Early ORB cutoff and one-tick distance are server-validated constants. Every enabled strategy is evaluated independently; these switches apply only to Visual Review and its read-only Shadow Account Replay.</p>
+       </fieldset>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <div className="grid gap-2 sm:grid-cols-2">
        <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-wait disabled:opacity-55" data-testid="button-generate-visual-set">
