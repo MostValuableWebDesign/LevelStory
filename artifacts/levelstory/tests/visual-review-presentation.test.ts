@@ -230,6 +230,14 @@ test("visual review never keeps a stale or expired pinned review set", () => {
   assert.match(page, /pinnedReviewSetId \? \{ reviewSetId: pinnedReviewSetId \} : undefined/);
 });
 
+test("visual review clears an expired generation job and returns to generation controls", () => {
+  assert.match(page, /apiErrorStatus\(generationQuery\.error\) === 404/);
+  assert.match(page, /startGeneration\.reset\(\)/);
+  assert.match(page, /setReviewSetRequested\(false\)/);
+  assert.match(page, /setLoadLatestReviewSet\(false\)/);
+  assert.match(page, /The previous visual-validation generation was interrupted or expired/);
+});
+
 test("visual review waits for an explicit generation action before loading saved trade data", () => {
   assert.match(page, /const \[reviewSetRequested, setReviewSetRequested\] = useState\(false\)/);
   assert.match(page, /enabled: reviewSetRequested && !startGeneration\.isPending && !Boolean\(generationJobId\)/);

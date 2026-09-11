@@ -578,9 +578,19 @@ export default function VisualReview() {
     if (generationQuery.isError && generationJobId) {
       if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
       setGenerationJobId("");
-      setMessage(apiErrorMessage(generationQuery.error) ?? "The saved generation job is no longer available. Start a new generation.");
+      if (apiErrorStatus(generationQuery.error) === 404) {
+        startGeneration.reset();
+        setReviewSetRequested(false);
+        setLoadLatestReviewSet(false);
+        setReviewSetId("");
+        setLocalSet(null);
+        setFreshGenerationRequested(false);
+        setMessage("The previous visual-validation generation was interrupted or expired. Start a new generation.");
+      } else {
+        setMessage(apiErrorMessage(generationQuery.error) ?? "The saved generation job is no longer available. Start a new generation.");
+      }
     }
-  }, [generationJobId, generationQuery.error, generationQuery.isError]);
+  }, [generationJobId, generationQuery.error, generationQuery.isError, startGeneration]);
 
   useEffect(() => {
     if (localSet || generationActive) return;
