@@ -19,6 +19,11 @@ import type { OrbTrendAnalysis } from "./orb-trend.js";
 const FIVE_MINUTES = 5 * 60_000;
 
 function candle(index: number, open: number, high: number, low: number, close: number, isComplete = true): Candle {
+  assert.ok(low <= open, `Invalid OHLC: low ${low} is above open ${open}.`);
+  assert.ok(low <= close, `Invalid OHLC: low ${low} is above close ${close}.`);
+  assert.ok(high >= open, `Invalid OHLC: high ${high} is below open ${open}.`);
+  assert.ok(high >= close, `Invalid OHLC: high ${high} is below close ${close}.`);
+  assert.ok(high >= low, `Invalid OHLC: high ${high} is below low ${low}.`);
   const openTime = index * FIVE_MINUTES;
   return { openTime, closeTime: openTime + FIVE_MINUTES, open, high, low, close, volume: 100, isComplete };
 }
@@ -53,7 +58,7 @@ function reversalOrbTrend(confirmingCandle: Candle): OrbTrendAnalysis {
 function reversalPatienceFixture(trigger: Candle): Candle[] {
   return [
     candle(0, 10, 12, 8, 10.5),
-    candle(1, 10.5, 10, 9.5, 10.8),
+    candle(1, 10.5, 10.8, 9.5, 10.8),
     trigger,
   ];
 }
@@ -71,7 +76,7 @@ function reversalPatienceOptions(trigger: Candle, orbTrend: OrbTrendAnalysis) {
 }
 
 test("a prior-direction threshold reached at the reversal candle open remains confirmed", () => {
-  const trigger = candle(2, 11, 11.25, 7, 1);
+  const trigger = candle(2, 11.8, 12.05, 1, 1);
   const orbTrend = reversalOrbTrend(trigger);
   const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
   const occurrence = result.occurrences?.[0];
@@ -84,7 +89,7 @@ test("a prior-direction threshold reached at the reversal candle open remains co
 });
 
 test("a reversal-candle threshold reached only intrabar is ambiguous, not confirmed", () => {
-  const trigger = candle(2, 10.5, 11.25, 7, 1);
+  const trigger = candle(2, 11.5, 12.05, 1, 1);
   const orbTrend = reversalOrbTrend(trigger);
   const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
   const occurrence = result.occurrences?.[0];
@@ -97,7 +102,7 @@ test("a reversal-candle threshold reached only intrabar is ambiguous, not confir
 });
 
 test("a reversal candle that never reaches the prior threshold expires the pending occurrence at reversal", () => {
-  const trigger = candle(2, 10.5, 10.75, 7, 1);
+  const trigger = candle(2, 11.5, 11.75, 1, 1);
   const orbTrend = reversalOrbTrend(trigger);
   const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
   const occurrence = result.occurrences?.[0];
@@ -122,7 +127,7 @@ test("attempt-level structural invalidation does not terminalize an active pullb
 
 function setup(direction: "long" | "short", trigger: Candle): Candle[] {
   const previous = direction === "long" ? candle(0, 10, 12, 8, 10.5) : candle(0, 10, 12, 8, 9.5);
-  const patience = direction === "long" ? candle(1, 10.5, 10, 7, 10.8) : candle(1, 9.5, 13, 10, 9.2);
+  const patience = direction === "long" ? candle(1, 10.5, 10.8, 7, 10.8) : candle(1, 9.5, 13, 9.2, 9.2);
   return [previous, patience, trigger];
 }
 
@@ -385,7 +390,7 @@ test("patience candles may match the previous candle high or low exactly", () =>
   const bearish = patienceCandleEngine([
     candle(0, 10, 12, 8, 9.5),
     candle(1, 9.5, 13, 8, 8.5),
-    candle(2, 8.5, 8, 6, 6),
+    candle(2, 8.5, 8.5, 6, 6),
   ], "short", { eligibilityEvents: eligibility(), tickSize: 0.25 });
 
   assert.equal(bullish.state, "ENTRY_TRIGGERED");
@@ -666,7 +671,7 @@ test("one pullback arm allows later successful P→E sequences", () => {
     candle(1, 10.5, 11, 7, 10.8),
      candle(2, 10.8, 13, 10.2, 12.8),
     candle(3, 12.8, 14, 11, 13.5),
-    candle(4, 13.5, 13, 10, 12),
+    candle(4, 13.5, 13.5, 10, 12),
     candle(5, 12, 15, 10.1, 14.8),
   ];
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: eligibility(), tickSize: 0.25 });
@@ -770,8 +775,8 @@ test("gaps through the intended side trigger at the opening print", () => {
 });
 
 test("raw patience breaks wait for the full confirmation buffer", () => {
-  const bullish = patienceCandleEngine(setup("long", candle(2, 10.8, 10.75, 10.1, 10.75, false)), "long", { eligibilityEvents: eligibility() });
-  const bearish = patienceCandleEngine(setup("short", candle(2, 9.2, 12, 9.25, 9.25, false)), "short", { eligibilityEvents: eligibility() });
+  const bullish = patienceCandleEngine(setup("long", candle(2, 10.8, 10.8, 10.1, 10.75, false)), "long", { eligibilityEvents: eligibility() });
+  const bearish = patienceCandleEngine(setup("short", candle(2, 9.2, 12, 9.2, 9.25, false)), "short", { eligibilityEvents: eligibility() });
   assert.equal(bullish.state, "BREAK_DETECTED_WAITING_FOR_BUFFER");
    assert.equal(bullish.entryBufferPrice, 11);
   assert.equal(bearish.state, "BREAK_DETECTED_WAITING_FOR_BUFFER");

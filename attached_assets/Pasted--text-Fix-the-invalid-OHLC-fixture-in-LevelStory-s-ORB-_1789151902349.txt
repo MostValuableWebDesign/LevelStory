@@ -1,0 +1,44 @@
+```text
+Fix the invalid OHLC fixture in LevelStory’s ORB directional-trend tests.
+
+Project:
+LevelStory-main 42
+
+File:
+artifacts/api-server/src/lib/strategy/phase5.test.ts
+
+Problem:
+`reversalPatienceFixture()` creates an impossible candle with open 10.50, high 10.00, low 9.50, and close 10.80. A candle’s high cannot be below its open or close. This makes the regression coverage unrealistic and could hide incorrect behavior.
+
+Requirements:
+
+1. Replace the invalid candle with valid OHLCV data satisfying:
+   - low <= open
+   - low <= close
+   - high >= open
+   - high >= close
+   - high >= low
+
+2. Preserve the intended bullish patience-candle structure and causal ordering of the fixture.
+
+3. Recalculate the trigger prices or confirmation threshold if necessary so the tests still independently verify:
+   - A prior-direction entry threshold already reached at the reversal-confirming candle’s open remains confirmed.
+   - A threshold reached only intrabar on the reversal-confirming candle produces `AMBIGUOUS_EVENT_ORDER`.
+   - A threshold never reached before the reversal becomes effective expires with the correct ORB-trend reversal reason.
+
+4. Do not weaken assertions merely to make the tests pass.
+
+5. Search the surrounding ORB directional-trend test suite for any other invalid OHLC fixtures and correct them using the same invariants.
+
+6. Add a small reusable OHLC-validity assertion or fixture guard if an appropriate test helper already exists or can be introduced without affecting production behavior.
+
+7. Do not change production strategy behavior unless the corrected, realistic fixture reveals a genuine production defect. If it does, explain the defect before making broader changes.
+
+Verification:
+
+- Run the focused Phase 5 ORB directional-trend tests.
+- Run Phase 4, Phase 5, Phase 9 integration, and account-position-gate tests.
+- Run the API typecheck.
+- Run `git diff --check`.
+- Report the exact files changed, test results, and whether any production behavior changed.
+```
