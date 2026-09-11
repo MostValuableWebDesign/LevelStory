@@ -333,14 +333,19 @@ export function hasConfirmedPatienceEntry(
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.orbTrend?.direction ?? context.breakout.direction;
-  const breakoutDirectionMatchesTrend = context.orbTrend?.direction === null
+  const causalOrbEpochActive = context.orbTrend?.direction !== null
+    && context.orbTrend?.direction !== undefined
+    && context.orbTrend?.epochId !== null
+    && context.orbTrend?.epochId !== undefined;
+  const breakoutDirectionMatchesTrend = causalOrbEpochActive || context.orbTrend?.direction === null
     || context.orbTrend?.direction === undefined
     || context.breakout.direction === null
     || context.orbTrend.direction === context.breakout.direction;
+  const breakoutEvidenceAvailable = causalOrbEpochActive || context.breakout.detected;
   const levelInteraction = hasQualifyingPullback(context.pullback);
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
-    rule("closeOutsideNtz", "Completed candle closed outside NTZ", context.breakout.detected && breakoutDirectionMatchesTrend, context.breakout.detected && breakoutDirectionMatchesTrend ? context.breakout.detail : "The ORB breakout direction is stale after a causal trend reversal."),
+    rule("closeOutsideNtz", "Completed candle closed outside NTZ", breakoutEvidenceAvailable && breakoutDirectionMatchesTrend, breakoutEvidenceAvailable && breakoutDirectionMatchesTrend ? context.breakout.detail : "No current ORB epoch or compatible breakout evidence is available."),
     rule("levelContext", "Pullback candle reached a governed level or indicator zone", levelInteraction, levelInteraction ? "A completed pullback candle interacted with a governed level or indicator within the configured tolerance." : "A completed pullback candle must reach a governed level or indicator zone within the configured tolerance."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),

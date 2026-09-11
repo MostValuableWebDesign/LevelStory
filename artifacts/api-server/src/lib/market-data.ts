@@ -5,6 +5,7 @@ import {
   analyzePullback,
   advanceOrbBreakoutState,
   detectInitialBreakout,
+  breakoutFromOrbTrendTransition,
   fibonacciAnalysis,
   phase4Volume,
   phase5PatienceAnalysis,
@@ -453,6 +454,7 @@ export type ReplaySnapshotOptions = {
   allCandlesCompleted?: boolean;
   validateDashboardInvariants?: boolean;
   sourceFingerprint?: string;
+  activePositionAt?: (timestamp: number) => boolean;
 };
 
 function feedSourceFingerprint(feed: readonly SimulatedFuturesCandle[]): string {
@@ -575,7 +577,17 @@ export function createMarketSnapshot(
     tickSize: specification.tickSize,
     formulaVersion: activeShadowStrategySnapshot().formulaVersion,
     strategyVersion: activeShadowStrategySnapshot().versionId ?? "baseline",
+    activePositionAt: replayOptions?.activePositionAt,
   });
+  const activeEpochTransition = orbTrend.epochId === null
+    ? null
+    : orbTrend.transitions.find((transition) => transition.epochId === orbTrend.epochId) ?? null;
+  // The original breakout remains diagnostic evidence. Once an ORB epoch is
+  // active, executable pullback/candidate generation starts from that epoch's
+  // own confirming candle and direction.
+  const executableBreakout = activeEpochTransition
+    ? breakoutFromOrbTrendTransition(activeEpochTransition)
+    : breakout;
   const qualifyingLevels = [
     ...levels.levels,
     { name: "VWAP", price: levels.vwap, kind: "indicator" },
@@ -585,7 +597,7 @@ export function createMarketSnapshot(
       .filter((level) => level.confluence !== "normal")
       .map((level) => ({ name: `Confluence · ${level.name}`, price: level.price, kind: "confluence" })),
   ];
-  let pullback = analyzePullback(regular, breakout, qualifyingLevels, specification, config, {
+  let pullback = analyzePullback(regular, executableBreakout, qualifyingLevels, specification, config, {
     causalCandles: historicalFeed,
     calendar,
     finalizedNtz: levels.ntz,
@@ -602,7 +614,7 @@ export function createMarketSnapshot(
   });
   // Fibonacci remains diagnostic context only. It must never be appended to
   // the executable pullback-level set or authorize a trade.
-  const fibonacci = fibonacciAnalysis(regular, breakout, manualFibAnchors, pullback);
+  const fibonacci = fibonacciAnalysis(regular, executableBreakout, manualFibAnchors, pullback);
   const dynamiteInteractions = pullback.events
     .filter((event) =>
       event.qualifies
@@ -642,7 +654,7 @@ export function createMarketSnapshot(
     contractSymbol: specification.fullContractSymbol,
     tradingDate,
   });
-  const volumeAnalysis = phase4Volume(regular, breakout, config);
+  const volumeAnalysis = phase4Volume(regular, executableBreakout, config);
   const current = regular.at(-1) ?? premarket.at(-1) ?? visible.at(-1);
   const price = current?.close ?? 0;
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
@@ -655,7 +667,7 @@ export function createMarketSnapshot(
   // A failed ORB reclaim must not continue to project the stale breakout
   // direction into Phase 5. The independent 15-minute trend may still be
   // displayed and evaluated through its own continuation path.
-  const breakoutDirection = breakout.detected && !breakout.failed ? breakout.direction : null;
+  const breakoutDirection = executableBreakout.detected && !executableBreakout.failed ? executableBreakout.direction : null;
   const orbTrendDirection = orbTrend.direction;
   const patienceDirection = orbTrendDirection ?? breakoutDirection ?? trendDirection;
   const patienceDirectionSource = orbTrendDirection
@@ -669,7 +681,7 @@ export function createMarketSnapshot(
     pullback,
     levels.ntz,
     levels.ntzEvents,
-    breakout.detected ? breakout.time : Number.POSITIVE_INFINITY,
+    executableBreakout.detected ? executableBreakout.time : Number.POSITIVE_INFINITY,
     trend.direction,
     specification.tickSize,
     config.patienceEntryBufferTicks,
@@ -677,7 +689,62 @@ export function createMarketSnapshot(
     false,
     patienceDirectionSource,
     orbTrendDirection ? orbTrend : undefined,
+    orbTrendDirection ? orbTrend.epochId : undefined,
   );
+  const epochOccurrences: PatienceOccurrence[] = [...(patience.occurrences ?? [])];
+  if (orbTrend.transitions.length > 1) {
+    for (const transition of orbTrend.transitions) {
+      if (transition.epochId === orbTrend.epochId) continue;
+      const epochBreakout = breakoutFromOrbTrendTransition(transition);
+      const epochPullback = analyzePullback(regular, epochBreakout, qualifyingLevels, specification, config, {
+        causalCandles: historicalFeed,
+        calendar,
+        finalizedNtz: levels.ntz,
+        armIdentity: {
+          sourceFingerprint,
+          formulaHash,
+          contractSymbol: specification.fullContractSymbol,
+          tradingDate,
+          finalizedNtzIdentity: levels.ntz
+            ? `${levels.ntz.high}|${levels.ntz.low}|${levels.ntz.completedAt ?? "unknown"}`
+            : "ntz-incomplete",
+          configurationHash: activeShadowStrategySnapshot().formulaHash,
+        },
+      });
+      const epochPatience = phase5PatienceAnalysis(
+        regular,
+        transition.direction,
+        epochPullback,
+        levels.ntz,
+        levels.ntzEvents,
+        epochBreakout.time,
+        trend.direction,
+        specification.tickSize,
+        config.patienceEntryBufferTicks,
+        config.patienceStopBufferTicks,
+        false,
+        "ORB_TREND",
+        orbTrend,
+        transition.epochId,
+      );
+      epochOccurrences.push(...(epochPatience.occurrences ?? []));
+    }
+  }
+  // Phase 5 owns the causal arm/occurrence identities. Attach the actual
+  // pending identities to the reversal transition after those occurrences
+  // have been evaluated instead of emitting empty diagnostic placeholders.
+  for (const [transitionIndex, transition] of orbTrend.transitions.entries()) {
+    if (transition.previousState === "NEUTRAL") continue;
+    const priorEpochId = orbTrend.transitions[transitionIndex - 1]?.epochId;
+    if (!priorEpochId) continue;
+    const expired = epochOccurrences.filter((occurrence) =>
+      occurrence.orbTrendEpochId === priorEpochId
+      && occurrence.outcomeStatus !== "CONFIRMED"
+      && occurrence.reasonCode.includes("ORB_TREND_REVERSED"),
+    );
+    transition.expiredArmIds = [...new Set(expired.map((occurrence) => occurrence.eligibilityArmId).filter((id): id is string => Boolean(id)))];
+    transition.expiredCandidateIds = [...new Set(expired.map((occurrence) => occurrence.occurrenceId))];
+  }
   const earlyOrbMomentum = earlyOrbMomentumPatienceAnalysis(regular, levels.ntz, {
     enabled: config.earlyOrbMomentumContinuationEnabled,
     tickSize: specification.tickSize,
@@ -686,7 +753,7 @@ export function createMarketSnapshot(
     entryCutoffMinutes: config.earlyOrbMomentumEligibilityCutoffMinutes,
     minimumCloseDistanceTicks: config.earlyOrbMomentumMinimumCloseDistanceTicks,
   });
-  const evaluatedBreakout = advanceOrbBreakoutState(breakout, pullback, patience.state);
+  const evaluatedBreakout = advanceOrbBreakoutState(executableBreakout, pullback, patience.state);
   const baseSetupContext = {
     candles: regular,
     levels,

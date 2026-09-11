@@ -237,6 +237,7 @@ export type PatienceEngineOptions = {
   allowOpposingTrend?: boolean;
   directionSource?: PatienceDirectionSource;
   orbTrend?: OrbTrendAnalysis;
+  orbTrendEpochId?: string | null;
   finalizedNtz?: NtzRange | null;
   requireFinalizedNtz?: boolean;
   entryCutoffMinutes?: number;
@@ -304,7 +305,12 @@ export function patienceCandleEngine(
       event !== undefined
       && index > 0
       && (options.maxCandidateCloseTime === undefined || candle.closeTime < options.maxCandidateCloseTime)
-      && (options.orbTrend === undefined || options.orbTrend.trendDirectionAt(candle.openTime) === direction)
+      && (options.orbTrend === undefined
+        || (
+          options.orbTrend.trendDirectionAt(candle.openTime) === direction
+          && (options.orbTrendEpochId === undefined
+            || options.orbTrend.epochIdAt(candle.openTime) === options.orbTrendEpochId)
+        ))
       && patienceShape(candle, completed[index - 1], direction));
   const occurrences = buildPatienceOccurrences(
     candidateIndexes,
@@ -465,6 +471,7 @@ export function phase5PatienceAnalysis(
   allowOpposingTrend = false,
   directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
   orbTrend?: OrbTrendAnalysis,
+  orbTrendEpochId?: string | null,
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const terminalTransition = pullback.armTransitions
@@ -535,6 +542,7 @@ export function phase5PatienceAnalysis(
     allowOpposingTrend,
     directionSource,
     orbTrend,
+    orbTrendEpochId,
     finalizedNtz: ntz,
     requireFinalizedNtz: true,
     entryCutoffMinutes: 780,

@@ -2659,6 +2659,8 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
             <span>effective {formatReviewTime(safeValue(transition.effectiveFromTimestamp))}</span>
             {typeof transition.expirationReason === "string" && <span className="text-amber-600">{transition.expirationReason}</span>}
             {transition.activePositionBlocked === true && <span className="text-amber-600">entry blocked by active position</span>}
+             <span>expired arms {Array.isArray(transition.expiredArmIds) && transition.expiredArmIds.length ? transition.expiredArmIds.join(", ") : "None"}</span>
+             <span>expired candidates {Array.isArray(transition.expiredCandidateIds) && transition.expiredCandidateIds.length ? transition.expiredCandidateIds.join(", ") : "None"}</span>
           </div>)}
         </div>}
       </div>}

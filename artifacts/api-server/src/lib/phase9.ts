@@ -5080,6 +5080,7 @@ export function runCausalBacktest(
     ? { ...specification, fullContractSymbol: dataset.contractSymbol }
     : specification;
   let lastExitIndex = -1;
+  let activeEntryIndex = -1;
   const executedEntryKeys = new Set<string>();
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
   let previousContractSymbol: string | null = null;
@@ -5097,6 +5098,7 @@ export function runCausalBacktest(
       // Never carry a position, indicators, or execution state through a
       // scheduled contract boundary.
       lastExitIndex = index - 1;
+      activeEntryIndex = -1;
     }
     previousContractSymbol = currentContractSymbol;
     const contractCandles = dataset.contractSchedule
@@ -5145,6 +5147,13 @@ export function runCausalBacktest(
         sourceFingerprint: replaySourceFingerprint,
         // The active Shadow configuration is authoritative for ordinary backtests.
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
+         activePositionAt: (timestamp) => {
+           const transitionIndex = visibleContractCandles.findIndex((candidate) => candidate.closeTime === timestamp);
+           return transitionIndex >= 0
+             && activeEntryIndex >= 0
+             && activeEntryIndex <= transitionIndex
+             && lastExitIndex >= transitionIndex;
+         },
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations.filter((evaluation) => {
@@ -5595,6 +5604,7 @@ export function runCausalBacktest(
            selectedAudit.runnerBreakevenIgnoredForTighterStop = modeled.audit.runnerBreakevenIgnoredForTighterStop;
          selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
+       activeEntryIndex = index;
        lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);
       continue;
     }
@@ -5752,7 +5762,8 @@ export function runCausalBacktest(
          legs: [],
        },
     });
-    lastExitIndex = Math.min(exitIndex, candles.length - 1);
+     activeEntryIndex = index;
+     lastExitIndex = Math.min(exitIndex, candles.length - 1);
   }
   markCompletedSessionBeforeIndex(candles.length);
 

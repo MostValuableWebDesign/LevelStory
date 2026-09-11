@@ -2,6 +2,7 @@ import type { FuturesContractSpecification } from "../futures/contracts.js";
 import type { StrategyConfig } from "./config.js";
 import type { SessionLevels } from "./levels.js";
 import type { Candle, Direction, Level } from "./types.js";
+import type { OrbTrendTransition } from "./orb-trend.js";
 import { causalEmaValueAt, regularSessionVwap } from "./indicators.js";
 import {
   DEFAULT_LEVEL_TOLERANCE_POINTS,
@@ -516,6 +517,42 @@ export function detectInitialBreakout(
   if (!ntz?.complete) return pendingBreakout("ORB_FORMING: waiting for the finalized NTZ/ORB range.");
   if (completed.length < 4) return pendingBreakout("ORB_FORMING: waiting for a completed candle after NTZ/ORB completion.");
   return evaluateOrbBreakoutQuality(completed, ntz, config, specification);
+}
+
+/**
+ * Build a fresh executable breakout context from a causal ORB trend epoch.
+ * The legacy breakout detector remains available for diagnostics, but it must
+ * not block a later opposite-direction epoch from opening its own pullback arm.
+ */
+export function breakoutFromOrbTrendTransition(
+  transition: OrbTrendTransition,
+): BreakoutEvent {
+  const candle = transition.confirmingCandle;
+  const distanceOutside = transition.direction === "long"
+    ? candle.close - transition.finalizedOrbHigh
+    : transition.finalizedOrbLow - candle.close;
+  return {
+    detected: true,
+    direction: transition.direction,
+    time: candle.closeTime,
+    candleOpenTime: candle.openTime,
+    state: "QUALIFIED_BREAKOUT",
+    candidateTime: candle.closeTime,
+    candidateCandleOpenTime: candle.openTime,
+    distanceOutside: Number(Math.max(0, distanceOutside).toFixed(2)),
+    meaningfulDistance: Number(Math.max(0, distanceOutside).toFixed(2)),
+    breakoutVolume: candle.volume,
+    baselineVolume: null,
+    volumeRatio: null,
+    volumeSupported: false,
+    bodyRatio: null,
+    closeLocationRatio: null,
+    candleStructureSupported: false,
+    continuationConfirmed: true,
+    continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION",
+    failed: false,
+    detail: `CAUSAL_ORB_TREND_EPOCH: ${transition.newState} established by a completed close at ${new Date(candle.closeTime).toISOString()}; this epoch is effective from the following candle.`,
+  };
 }
 
 export function evaluateOrbBreakoutQuality(

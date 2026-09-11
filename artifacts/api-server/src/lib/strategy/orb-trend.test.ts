@@ -92,3 +92,39 @@ test("ORB reversal becomes effective on the candle after the confirming close", 
   assert.equal(transition.effectiveFromTimestamp, following.closeTime);
   assert.equal(transition.expirationReason, "ORB_TREND_REVERSED");
 });
+
+test("neutral bearish establishment and exact confirmation-buffer boundaries are causal", () => {
+  const result = evaluateOrbTrend([
+    candle(0, 95, 100, 90),
+    candle(1, 95, 99, 91),
+    candle(2, 95, 98, 92),
+    candle(3, 89.5, 95, 88),
+  ], ntz, config, { contractSymbol: "MES", tradingDate: "2026-08-25", tickSize: specification.tickSize });
+
+  assert.equal(result.transitions.length, 1);
+  assert.equal(result.transitions[0]?.previousState, "NEUTRAL");
+  assert.equal(result.transitions[0]?.newState, "BEARISH_ORB_TREND");
+  assert.equal(result.transitions[0]?.boundaryCrossed, "ORB_LOW");
+  assert.equal(result.transitions[0]?.confirmationBufferPoints, 0.5);
+});
+
+test("ORB transition evidence reports active-position blocking without changing trend state", () => {
+  const result = evaluateOrbTrend([
+    candle(0, 95, 100, 90),
+    candle(1, 95, 99, 91),
+    candle(2, 95, 98, 92),
+    candle(3, 101, 102, 94),
+    candle(4, 89, 95, 88),
+  ], ntz, config, {
+    contractSymbol: "MES",
+    tradingDate: "2026-08-25",
+    tickSize: specification.tickSize,
+    activePositionAt: () => true,
+  });
+
+  assert.equal(result.transitions.length, 2);
+  assert.equal(result.transitions[1]?.activePositionBlocked, true);
+  assert.equal(result.transitions[1]?.newState, "BEARISH_ORB_TREND");
+  assert.deepEqual(result.transitions[1]?.expiredArmIds, []);
+  assert.deepEqual(result.transitions[1]?.expiredCandidateIds, []);
+});
