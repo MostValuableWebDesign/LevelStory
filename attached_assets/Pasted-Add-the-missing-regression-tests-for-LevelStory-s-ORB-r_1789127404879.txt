@@ -1,0 +1,218 @@
+Add the missing regression tests for LevelStory’s ORB reversal-confirming-candle ordering.
+
+The implementation in LevelStory-main 41 appears functionally complete. Do not rewrite the ORB strategy or change production behavior unless a new test exposes a genuine defect.
+
+Objective
+
+Lock down the causal ordering between:
+
+- A prior-direction patience entry
+- The reversal-confirming candle
+- Pending-candidate expiration
+- Activation of the new ORB epoch
+
+Primary locations
+
+Start with:
+
+- `artifacts/api-server/src/lib/strategy/phase4.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase5.test.ts`
+- `artifacts/api-server/src/lib/strategy/orb-trend.test.ts`
+- `artifacts/api-server/src/lib/phase9.test.ts`
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+
+Production code to understand before writing fixtures:
+
+- `artifacts/api-server/src/lib/market-data.ts`
+  - Epoch candle partitioning
+  - `preReversalCandles`
+  - `preReversalCCausalCandles`
+  - Reversal expiration evidence
+- `artifacts/api-server/src/lib/strategy/phase4.ts`
+  - `analyzePullback()`
+  - `findPullbackTerminal()`
+  - `deferTerminalAtCandleOpenTime`
+- `artifacts/api-server/src/lib/strategy/phase5.ts`
+  - `phase5PatienceC()`
+  - `buildPatienceOccurrences()`
+  - Reversal-confirming-candle handling
+  - `AMBIGUOUS_EVENT_ORDER`
+  - `ORB_TREND_REVERSED`
+- `artifacts/api-server/src/lib/strategy/orb-trend.ts`
+  - Confirmation and effective timestamps
+
+These are starting points, not strict limits.
+
+Required causal policy
+
+Tests must enforce this ordering:
+
+1. The prior ORB direction remains active throughout the reversal-confirming candle.
+2. The reversal is confirmed only when that candle completes completes.
+3. A prior-direction threshold entry reached threshold reached at the confirming candle’s open has known ordering and may confirm.
+4. A prior-direction threshold reached only intrabar on that candle, when ordering cannot be determined from five-minute OHLC, becomes `AMBIGUOUS_EVENT_ORDER`.
+5. A pending prior-direction occurrence that never reaches its threshold is expired with `ORB_TREND_REVERSED`.
+6. The new ORB direction becomes active only on the immediately following candle.
+7. One occurrence can never be both confirmed and expired.
+
+1. Phase 4 tests
+
+Add direct tests for `deferTerminalAtCandleOpenTime`.
+
+Test A — defer reversal terminal on the confirming candle:
+
+- Begin with an active bullish pullback arm.
+- Supply a completed candle closing beyond the bearish ORB reversal boundary.
+- Pass that candle’s open time as `deferTerminalAtCandleOpenTime`.
+- Assert that Phase 4 does not terminate the prior arm from that candle before Phase 5 evaluates it.
+- Assert the candle remains present in the prior epoch’s evaluated window.
+
+Test B — normal behavior without deferral:
+
+- Use the same fixture without `deferTerminalAtCandleOpenTime`.
+- Assert the arm terminates with the expected opposite-breakout or ORB-reentry state.
+
+Test C — deferral is candle-specific:
+
+- Add a later independent terminal candle.
+- Assert only the designated confirming candle is deferred.
+- Assert the later candle can still terminate the arm normally.
+
+Test D — independent earlier expiration remains authoritative:
+
+- Expire the arm through a session boundary, contract boundary, data gap, or entry cutoff before the reversal.
+- Assert the reversal deferral does not revive the arm.
+
+2. Phase 5 tests
+
+Create a deterministic prior-direction P→E fixture where E is also the completed candle that confirms the opposite ORB direction.
+
+Test A — threshold reached at E open:
+
+For a prior bullish direction:
+
+- P creates a long confirmation threshold.
+- E opens at or above that threshold.
+- E later closes below the bearish ORB reversal boundary.
+- Assert entry ordering is known at E open.
+- Assert the occurrence is `CONFIRMED`.
+- Assert its qualification is `SIGNAL_CONFIRMED`.
+- Assert it is not changed to `INVALIDATED`.
+- Assert its ID does not appear in reversal-expired candidates.
+
+Add the mirrored bearish case if practical.
+
+Test B — threshold reached only intrabar:
+
+- E opens below the prior bullish threshold.
+- E’s high reaches the threshold.
+- E later closes below the bearish reversal boundary.
+- With only five-minute OHLC, the entry-versus-reversal sequence is unknown.
+- Assert state is `AMBIGUOUS_EVENT_ORDER`.
+- Assert qualification is `STRUCTURALLY_INVALIDATED`.
+- Assert no confirmed trade is produced.
+- Assert the occurrence is not also labeled as an ordinary pending reversal expiration.
+- Assert the ambiguity explanation mentions same-candle ordering.
+
+Test C — threshold never reached:
+
+- E never reaches the prior-direction threshold.
+- E closes beyond the opposite ORB boundary.
+- Assert the occurrence remains pending through E processing.
+- Assert it becomes `INVALIDATED` at `effectiveFromTimestamp`.
+- Assert the reason is `ORB_TREND_REVERSED`.
+
+Test D — no reversal:
+
+- Use a normal immediate E that reaches the threshold without confirming an ORB reversal.
+- Assert existing entry behavior remains unchanged.
+
+3. ORB state-machine timing test
+
+Add or strengthen a test proving:
+
+- On the reversal-confirming candle’s open, `trendDirectionAt()` returns the prior direction.
+- At the confirming candle’s close/effective timestamp, the transition becomes effective.
+- At the immediately following candle’s open, `trendDirectionAt()` returns the new direction.
+- The confirming candle cannot act as the first P or E candle of the new epoch.
+
+4. Phase 9 integration tests
+
+Add an end-to-end fixture that passes through market snapshot creation and historical candidate projection.
+
+Scenario A — confirmed prior entry:
+
+- Establish the initial ORB direction.
+- Create a valid prior-direction pullback and patience candle.
+- Make the immediate E open beyond the entry threshold.
+- Make that same E close beyond the opposite ORB reversal boundary.
+- Assert exactly one confirmed prior-epoch candidate.
+- Assert the candidate retains the prior epoch ID.
+- Assert it does not appear in `expiredCandidateIds`.
+- Assert the ORB reversal is still recorded.
+- Assert the new epoch is effective for the following candle.
+- Assert the active position is managed normally and is not reversed automatically.
+
+Scenario B — ambiguous prior entry:
+
+- Use an E candle that reaches both relevant prices intrabar but does not establish their order.
+- Assert no modeled trade is created.
+- Assert the candidate is marked ambiguous.
+- Assert the ambiguity is preserved in audit and projection evidence.
+
+Scenario C — pending expiration:
+
+- E confirms the reversal without reaching the prior entry threshold.
+- Assert the pending candidate ID appears exactly once in `expiredCandidateIds`.
+- Assert its arm ID appears exactly once in `expiredArmIds`.
+- Assert no trade is created from that candidate.
+
+5. Invariant assertions
+
+For every fixture, assert:
+
+- No candidate has both `SIGNAL_CONFIRMED` and `ORB_TREND_REVERSED`.
+- No candidate has both `CONFIRMED` and `INVALIDATED`.
+- No duplicate candidate IDs.
+- No duplicate expired IDs.
+- Candidate epoch ID matches the direction active at its candle open.
+- The new epoch produces no evidence before its effective timestamp.
+- Only completed candles visible at the evaluation cursor are used.
+- Changing a candle after the evaluation cursor does not alter the result.
+
+6. Avoid brittle tests
+
+- Use deterministic candle fixtures.
+- Prefer explicit timestamps and prices.
+- Do not depend on random simulated-feed seeds for the core ordering cases.
+- Do not assert entire large objects when focused field assertions are clearer.
+- Keep identifiers stable through the actual production identity functions.
+- Do not loosen production rules merely to make fixtures qualify.
+
+7. Register and run tests
+
+Ensure every added test file is included in the standard API test workflow.
+
+Run:
+
+- API typecheck
+- `orb-trend.test.ts`
+- `phase4.test.ts`
+- `phase5.test.ts`
+- `phase6.test.ts`
+- `phase9.test.ts`
+- `phase9.integration.test.ts`
+- Account-position-gate tests
+- Shadow Account Replay tests
+- Full API suite when practical
+- `git diff --check`
+
+Report:
+
+- Tests added
+- Causal scenarios covered
+- Test results
+- Whether any test exposed a production defect
+- Any remaining validation limitations
+
+Do not change production behavior simply because a fixture is difficult to construct. If a test exposes a real defect, explain the defect before making the smallest necessary production fix.
