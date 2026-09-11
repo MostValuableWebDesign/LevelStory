@@ -1,0 +1,405 @@
+```text
+Redesign and reorganize LevelStory’s Trade Analytics / Authoritative Trade Inspector so users can understand the result quickly without being overwhelmed by machine evidence.
+
+The current page contains too much equally weighted information, long technical explanations, raw identifiers, repeated values, and large tables. Use progressive disclosure: show the decision and most useful trading information first, while keeping detailed audit evidence available when requested.
+
+Do not change any trading formulas, strategy qualification, execution modeling, P/L calculations, target selection, ORB logic, replay behavior, or stored evidence. This is an information architecture and presentation change only.
+
+Primary location to inspect
+
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- Components rendering:
+  - Plain-language summary
+  - ORB directional-trend evidence
+  - Authoritative Trade Inspector
+  - Target-selection evidence
+  - Skipped levels
+  - Exit legs
+  - Technical details
+
+Trace related components, API types, utilities, and frontend tests. These locations are starting points, not strict limits.
+
+1. Create a clear information hierarchy
+
+Organize the analytics into these levels:
+
+Level 1 — Trade at a glance  
+Level 2 — Why this trade was taken and how it ended  
+Level 3 — Strategy and execution details  
+Level 4 — Full technical/audit evidence
+
+A user should understand the result without expanding Levels 3 or 4.
+
+2. Add a compact “Trade at a glance” summary
+
+Place one concise summary card at the top containing:
+
+- Result: Win, Loss, Breakeven, Open, Blocked, Rejected, or Ambiguous
+- Net P/L
+- Direction
+- Quantity
+- Entry price
+- Exit price, when available
+- Entry time
+- Exit time or current status
+- Strategy name in human-readable form
+- Exit reason
+- Target
+- Stop
+- R result, when available
+
+Example:
+
+`BREAKEVEN · LONG 1 MES · Net −$1.60`
+
+Then show:
+
+`Entered 7537.25 · Exited 7537.25 · Fees $1.60`  
+`Strategy: Consolidation Breakout Continuation`  
+`Exit: Breakeven recovery`
+
+Use restrained status colors:
+
+- Green: profitable
+- Red: loss
+- Neutral blue/gray: breakeven or open
+- Amber: blocked, rejected, or ambiguous
+
+Do not use color as the only indicator.
+
+3. Replace the current plain-language summary
+
+Replace the three large equal-width text panels with a short decision summary:
+
+- What happened?
+- Why did it qualify?
+- How did it end?
+
+Each answer should normally be one or two sentences.
+
+Example:
+
+What happened?  
+“A bullish consolidation breakout qualified and triggered a long entry at 7537.25.”
+
+Why did it qualify?  
+“Price confirmed above the ORB and the immediate next candle reached the four-tick entry threshold.”
+
+How did it end?  
+“The position exited at breakeven. Gross P/L was $0.00 and fees produced a net result of −$1.60.”
+
+Do not display raw rule keys such as `extendedConsolidation`, `CAUSAL_ORB_TREND_EPOCH`, or `breakoutVolume` in the primary summary.
+
+Resolve contradictory presentation. If the selected trade qualified, do not place unrelated failed rules in the main “What the app decided” section. Failed rules belonging to other evaluated strategies should be shown separately under “Other strategies considered.”
+
+4. Add a compact execution timeline
+
+Display a simple horizontal or vertical sequence:
+
+`Setup → Entry → Management → Exit`
+
+For each step, show only its important value and timestamp:
+
+- Setup confirmed
+- Entry filled
+- Target or stop selected
+- Breakeven activated, if applicable
+- Partial profit, if applicable
+- Runner management, if applicable
+- Final exit
+
+Use New York time in the primary interface.
+
+Example:
+
+`10:15 ET — Setup confirmed`  
+`10:20 ET — Long entry at 7537.25`  
+`10:45 ET — Breakeven activated`  
+`11:05 ET — Exited at 7537.25`
+
+Raw ISO/UTC timestamps should remain available only in technical details.
+
+5. Organize details into collapsible sections
+
+Under the top summary, use clearly labeled accordions:
+
+- Why this qualified
+- Entry, stop, and target
+- Position management
+- ORB and trend context
+- Other strategies considered
+- Skipped target levels
+- Full audit details
+
+Default state:
+
+Expanded:
+
+- Trade at a glance
+- Why this qualified
+- Entry, stop, and target
+
+Collapsed:
+
+- ORB and trend context
+- Other strategies considered
+- Skipped target levels
+- Full audit details
+
+Remember the user’s expanded/collapsed state during the current page session when practical.
+
+6. Simplify “Why this qualified”
+
+Show mandatory rules as a compact checklist:
+
+- Passed rules use a check icon and a short human-readable label.
+- Failed mandatory rules use an X and a concise explanation.
+- Optional evidence should be labeled “Supporting evidence.”
+- Do not print internal property names in the main view.
+- Do not repeat evidence already shown in the summary.
+
+Example:
+
+- ✓ Bullish ORB direction was active
+- ✓ Consolidation completed
+- ✓ Breakout closed beyond the required boundary
+- ✓ Entry candle reached the four-tick confirmation price
+- ✓ Entry remained outside the finalized ORB
+
+If another strategy failed, do not mix those failures into the selected strategy’s checklist.
+
+7. Simplify entry, stop, and target information
+
+Use one compact three-column section:
+
+Entry
+
+- Price
+- Time
+- Confirmation buffer
+- Patience candle reference
+
+Stop
+
+- Initial stop price
+- Distance in points and ticks
+- Stop source
+- Whether it moved
+
+Target
+
+- Selected target
+- Target type
+- Distance in points, ticks, and R
+- Why it was selected
+
+Avoid repeating the same entry, target, or 1R price across several grids.
+
+Clearly distinguish:
+
+- Raw level
+- Executable price
+- 1R checkpoint
+- Final target
+
+Only show fields that are applicable.
+
+8. Redesign target-selection evidence
+
+The primary target section should answer:
+
+- What target was selected?
+- Why was it selected?
+- Was it a key level, dynamic indicator, or 1R fallback?
+- What alternatives were skipped?
+
+Example:
+
+`Selected: 7545.50 · 1R fallback`
+
+“Level-based targets were unavailable because the eligible directional levels lacked causal timestamps.”
+
+Move detailed level evaluation into the collapsed “Skipped target levels” section.
+
+9. Make skipped levels useful
+
+Do not show a long unstructured list by default.
+
+Show a compact summary grouped by rejection reason:
+
+- Wrong direction — 8 levels
+- Too close to entry — 2 levels
+- Outside achievable range — 3 levels
+- Missing causal timestamp — 8 levels
+- Obstructed — 1 level
+
+Allow each group to expand.
+
+Inside a group:
+
+- Sort by distance from entry, nearest first.
+- Show human-readable level names.
+- Show raw price, executable price, distance, and R only when expanded.
+- Translate internal codes such as `TARGET_LEVEL_SKIPPED_WRONG_DIRECTION` into “Wrong direction.”
+- Keep the original machine code available in technical details.
+
+Add a “Show all evaluated levels” control for users who need the full audit.
+
+10. Simplify ORB trend evidence
+
+The default ORB section should show only:
+
+- Current ORB trend
+- ORB high and low
+- Confirmation buffer
+- Most recent transition
+- Whether entry was blocked by an active position
+
+Example:
+
+`Bullish ORB trend · Effective 9:55 ET`  
+`ORB 7495.75–7510.50 · 2-tick confirmation`
+
+Place epoch IDs, formula versions, strategy versions, full confirming-candle OHLCV, expired IDs, and earlier transitions inside an expanded “ORB audit history” subsection.
+
+Do not show long epoch identifiers prominently.
+
+11. Simplify position management
+
+Show only management events that actually occurred.
+
+For one contract:
+
+- Initial target
+- Stop
+- Breakeven activation
+- Final exit
+
+For two contracts:
+
+- First-contract exit
+- Runner activation
+- Runner stop adjustments
+- Final runner exit
+
+Do not show empty runner fields for a one-contract position.
+
+Display exit legs as a compact table:
+
+| Leg | Quantity | Entry | Exit | Reason | Net P/L |
+
+Hide columns that have no value.
+
+12. Separate selected-strategy evidence from alternatives
+
+Create an “Other strategies considered” collapsed section.
+
+For every non-selected strategy show:
+
+- Strategy name
+- Status: Not qualified, Forming, Expired, Blocked, or Ambiguous
+- One primary reason
+
+Do not put every failed rule in the main trade summary. Detailed rule evidence can expand per strategy.
+
+13. Improve terminology
+
+Translate internal values into trader-readable labels:
+
+- `CONSOLIDATION_BREAKOUT_CONTINUATION` → “Consolidation Breakout Continuation”
+- `BULLISH_ORB_TREND` → “Bullish ORB trend”
+- `TARGET_LEVEL_SKIPPED_WRONG_DIRECTION` → “Wrong direction”
+- `CAUSAL_ORB_TREND_EPOCH` → “ORB direction established”
+- `1R fallback` may remain “1R fallback”
+
+Use sentence case instead of long uppercase or underscore-separated labels.
+
+Keep exact internal values in technical details for auditing.
+
+14. Format values consistently
+
+- Prices: two decimal places for MES
+- Money: currency format with signs
+- Ticks: whole numbers when applicable
+- Points and R: two decimal places
+- Times: New York time in the primary UI
+- Dates: readable local format
+- Raw UTC/ISO values: technical details only
+- Do not display timestamps as raw milliseconds
+
+Use em dashes only for truly unavailable values. Hide irrelevant empty fields when possible.
+
+15. Improve layout and responsiveness
+
+- Limit the readable text width.
+- Avoid giant full-width paragraphs.
+- Avoid large empty cells.
+- Use consistent spacing and card heights.
+- Use two or three columns only when the content naturally compares.
+- Stack sections cleanly on mobile.
+- Ensure long IDs cannot stretch the layout horizontally.
+- Keep the most important result visible without excessive scrolling.
+- Consider a sticky compact trade summary while scrolling through details.
+
+16. Preserve full auditability
+
+No evidence may be deleted from the data model.
+
+All current evidence must remain available through:
+
+- Collapsible detail sections
+- Tooltips where appropriate
+- “Show full audit”
+- Existing technical JSON
+
+The redesign should change presentation and grouping, not remove stored evidence.
+
+17. Accessibility
+
+- All accordions and controls must be keyboard accessible.
+- Use semantic buttons and headings.
+- Include visible focus states.
+- Provide text labels for status icons.
+- Maintain sufficient color contrast.
+- Use `aria-expanded` and `aria-controls` correctly.
+- Do not rely on hover-only interactions.
+
+18. Tests
+
+Add or update frontend tests covering:
+
+- Trade-at-a-glance values
+- Win, loss, breakeven, open, rejected, blocked, and ambiguous states
+- Selected strategy separated from alternative strategies
+- Correct accordion defaults
+- Accordion keyboard behavior
+- Human-readable label translations
+- New York timestamp formatting
+- Grouped skipped-level reasons
+- Applicable fields only for one-contract management
+- Two-contract partial and runner presentation
+- Empty and missing evidence
+- Long epoch IDs not breaking layout
+- Mobile and desktop layouts
+- Full technical evidence remains accessible
+
+19. Verification
+
+Run:
+
+- Frontend typecheck
+- Relevant frontend tests
+- Frontend production build
+- API typecheck if shared types change
+- `git diff --check`
+
+Report:
+
+- Components changed
+- New information hierarchy
+- Fields moved behind progressive disclosure
+- Tests added and results
+- Screenshots of the redesigned desktop and mobile states, if the environment supports them
+
+Do not change trading logic or calculated values. Do not solve the clutter by deleting audit evidence. The goal is to make the outcome understandable in approximately five seconds while preserving deeper evidence for users who choose to inspect it.
+```
