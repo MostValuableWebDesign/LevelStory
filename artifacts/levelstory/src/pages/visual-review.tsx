@@ -2853,7 +2853,7 @@ function DecisionSummary({
   const ended = trade
     ? result === "Open"
       ? "The position remains open and has not been scored as a completed outcome."
-      : `The position ended as ${result.toLowerCase()} at ${formatTradePrice(trade.exitPrice)}. Gross P/L was ${formatSignedMoney(trade.grossPnl)} and fees produced a net result of ${formatSignedMoney(trade.netPnl)}.`
+      : `The position ended as ${result.toLowerCase()} at ${formatTradePrice(trade.exitPrice)} because ${tradeExitExplanation(trade, false).toLowerCase()} Gross P/L was ${formatSignedMoney(trade.grossPnl)} and fees produced a net result of ${formatSignedMoney(trade.netPnl)}.`
     : qualification;
   return <section className="mt-4 border border-border bg-card" data-testid="decision-summary">
     <div className="border-b border-border px-4 py-3 sm:px-5"><div className="eyebrow text-muted-foreground">Decision summary</div><h2 className="mt-1 text-sm font-bold">The result in three sentences</h2></div>

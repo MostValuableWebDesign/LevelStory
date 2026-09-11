@@ -334,6 +334,7 @@ test("authoritative trade analytics leads with a glance card and decision hierar
   assert.match(page, /What happened\?/);
   assert.match(page, /Why did it qualify\?/);
   assert.match(page, /How did it end\?/);
+  assert.match(page, /because \$\{tradeExitExplanation\(trade, false\)\.toLowerCase\(\)\}/);
   assert.doesNotMatch(page, /data-testid="execution-timeline"/);
   assert.doesNotMatch(page, /Execution timeline/);
   assert.doesNotMatch(page, /Evaluation boundary/);
