@@ -2816,40 +2816,11 @@ function DecisionSummary({
   </section>;
 }
 
-function ExecutionTimeline({ snapshot, trade, audit }: { snapshot: VisualValidationSnapshot; trade: TradeEvidenceView | null; audit: Record<string, unknown> }) {
-  const legs = trade?.audit?.legs ?? [];
-  const management = trade?.audit?.oneRReached === true
-    ? "Breakeven / 1R checkpoint reached"
-    : legs.length > 1
-      ? "Partial profit and runner management"
-      : null;
-  const events = [
-    { label: "Setup confirmed", time: typeof audit.evaluatedCandleOpenTime === "string" ? audit.evaluatedCandleOpenTime : null, value: traderLabel(audit.setupType) },
-    { label: "Entry filled", time: trade?.entryTime ?? null, value: trade ? `${traderLabel(trade.direction)} at ${formatTradePrice(trade.entryPrice)}` : "No entry" },
-    ...(management ? [{ label: "Management", time: trade?.audit?.exitCandleOpenTime ?? null, value: management }] : []),
-    ...(trade?.exitTime ? [{ label: "Final exit", time: trade.exitTime, value: `${formatTradePrice(trade.exitPrice)} · ${traderLabel(trade.audit?.exitReason ?? trade.outcome)}` }] : []),
-  ];
-  return <section className="mt-4 border border-border bg-card px-4 py-4 sm:px-5" data-testid="execution-timeline">
-    <div className="flex flex-wrap items-baseline justify-between gap-2"><div><div className="eyebrow text-muted-foreground">Execution timeline</div><h2 className="mt-1 text-sm font-bold">Setup <span className="text-muted-foreground">→</span> Entry <span className="text-muted-foreground">→</span> Management <span className="text-muted-foreground">→</span> Exit</h2></div><span className="mono text-[9px] text-muted-foreground">New York time</span></div>
-    <div className="mt-4 grid gap-3 md:grid-cols-4">
-      {events.map((event, index) => <div key={`${event.label}-${index}`} className="relative border-l-2 border-accent/55 pl-3" data-testid={`timeline-step-${event.label.toLowerCase().replaceAll(" ", "-")}`}>
-        <div className="eyebrow text-muted-foreground">{event.label}</div>
-        <div className="mt-1 text-[11px] font-bold">{event.value}</div>
-        <div className="mono mt-1 text-[9px] text-muted-foreground">{formatTradeTime(event.time)}</div>
-      </div>)}
-    </div>
-    {!events.length && <div className="mt-3 text-[10px] text-muted-foreground">No causal event timestamps are available in this snapshot.</div>}
-  </section>;
-}
-
 function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValidationSnapshot; open: boolean; onToggleOpen: () => void }) {
   const evidence = snapshot.machineEvidence;
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
   const breakout = typeof market.breakout === "object" && market.breakout ? (market.breakout as Record<string, unknown>).detail : null;
-  const orbTrend = typeof market.orbTrend === "object" && market.orbTrend ? market.orbTrend as Record<string, unknown> : null;
-  const orbTransitions = orbTrend && Array.isArray(orbTrend.transitions) ? orbTrend.transitions as Array<Record<string, unknown>> : [];
-  const patience = typeof market.patience === "object" && market.patience ? (market.patience as Record<string, unknown>).detail : null;
   const earlyOrb = typeof market.earlyOrbMomentum === "object" && market.earlyOrbMomentum
     ? market.earlyOrbMomentum as Record<string, unknown>
     : null;
@@ -2874,55 +2845,6 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
       <TradeAtAGlance trade={trade} audit={audit} strategyName={strategyName} />
       {open && <div id="plain-language-summary-content">
       <DecisionSummary snapshot={snapshot} trade={trade} audit={audit} strategyName={strategyName} behavior={behavior} qualification={qualification} />
-      <ExecutionTimeline snapshot={snapshot} trade={trade} audit={audit} />
-     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
-       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Evaluation boundary</div><div className="mono mt-2 break-words text-[11px]">{safeValue(audit.evaluatedCandleOpenTime)} · {snapshot.evaluationCursor.visibleCandleCount} candles visible</div></div>
-       <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mt-2 text-[11px]">{safeValue(patience ?? audit.patienceState)}</div></div>
-     </div>
-      {orbTrend && <div className="border-t border-border bg-card px-4 py-4 sm:px-6" data-testid="orb-trend-causal-evidence">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div><div className="eyebrow text-muted-foreground">Causal ORB directional trend</div><div className="mt-1 text-sm font-bold">{traderLabel(orbTrend.state)}{orbTrend.direction ? ` · ${traderLabel(orbTrend.direction)}` : ""}</div></div>
-          <div className="text-[10px] text-muted-foreground">Direction established</div>
-        </div>
-        <div className="mt-3 grid gap-px border border-border bg-border sm:grid-cols-3">
-          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1 text-xs">{safeValue(orbTrend.finalizedOrbLow)} – {safeValue(orbTrend.finalizedOrbHigh)}</div></div>
-          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Confirmation buffer</div><div className="mono mt-1 text-xs">{safeValue(orbTrend.confirmationBufferTicks)} ticks</div><div className="mt-1 text-[10px] text-muted-foreground">Effective on the following candle</div></div>
-          <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Transitions</div><div className="mono mt-1 text-xs">{orbTransitions.length}</div><div className="mt-1 text-[10px] text-muted-foreground">{orbTransitions.length ? `${safeValue(orbTransitions.at(-1)?.expirationReason ?? "initial establishment")}` : "No completed boundary close"}</div></div>
-        </div>
-        {orbTransitions.length > 0 && <div className="mt-3 space-y-1.5">
-           {orbTransitions.map((transition, index) => {
-             const confirming = transition.confirmingCandle && typeof transition.confirmingCandle === "object"
-               ? transition.confirmingCandle as Record<string, unknown>
-               : {};
-             const expiredArms = Array.isArray(transition.expiredArmIds) && transition.expiredArmIds.length
-               ? transition.expiredArmIds.join(", ")
-               : "None";
-             const expiredCandidates = Array.isArray(transition.expiredCandidateIds) && transition.expiredCandidateIds.length
-               ? transition.expiredCandidateIds.join(", ")
-               : "None";
-             return <div key={`${safeValue(transition.epochId)}-${index}`} className="border-l-2 border-accent/50 pl-3 text-[10px] text-muted-foreground">
-               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                 <span className="font-bold text-foreground">{safeValue(transition.previousState)} → {safeValue(transition.newState)}</span>
-                 <span>{safeValue(transition.direction)}</span>
-                 <span>epoch {safeValue(transition.epochId)}</span>
-                 <span>boundary {safeValue(transition.boundaryCrossed)}</span>
-                 {typeof transition.expirationReason === "string" && <span className="text-amber-600">{transition.expirationReason}</span>}
-                 {transition.activePositionBlocked === true && <span className="text-amber-600">entry blocked by active position</span>}
-               </div>
-               <div className="mt-2 grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Confirming candle OHLCV</div><div className="mono mt-1">{safeValue(confirming.open)} / {safeValue(confirming.high)} / {safeValue(confirming.low)} / {safeValue(confirming.close)} · {safeValue(confirming.volume)}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Confirmation / effective</div><div className="mono mt-1">{formatReviewTime(safeValue(confirming.closeTime))} → {formatReviewTime(safeValue(transition.effectiveFromTimestamp))}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1">{safeValue(transition.finalizedOrbLow)} – {safeValue(transition.finalizedOrbHigh)}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Buffer</div><div className="mono mt-1">{safeValue(transition.confirmationBufferTicks)} ticks · {safeValue(transition.confirmationBufferPoints)} pt</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Expired arms</div><div className="mono mt-1 break-words">{expiredArms}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Expired candidates</div><div className="mono mt-1 break-words">{expiredCandidates}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Formula version</div><div className="mono mt-1 break-words">{safeValue(transition.formulaVersion)}</div></div>
-                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Strategy version</div><div className="mono mt-1 break-words">{safeValue(transition.strategyVersion)}</div></div>
-               </div>
-             </div>;
-           })}
-        </div>}
-      </div>}
       {earlyOrb && earlyOrb.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="early-orb-causal-evidence">
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Early ORB P/E</div><div className="mt-1 text-xs font-semibold">{safeValue(earlyOrb.direction)} · {earlyOrb.eImmediatelyAdjacent === true ? "adjacent E" : "missing adjacent E"}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{formatReviewTime(typeof earlyOrb.pOpenTime === "number" ? new Date(earlyOrb.pOpenTime).toISOString() : "")} → {formatReviewTime(typeof earlyOrb.eOpenTime === "number" ? new Date(earlyOrb.eOpenTime).toISOString() : "")}</div></div>
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.orbLow)} – {safeValue(earlyOrb.orbHigh)}</div><div className="mt-1 text-[10px] text-muted-foreground">Finalized {formatReviewTime(typeof earlyOrb.orbFinalizedAt === "number" ? new Date(earlyOrb.orbFinalizedAt).toISOString() : "")}</div></div>
@@ -2964,9 +2886,6 @@ function TradeInspector({
 }) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     whyQualified: false,
-    entryStopTarget: false,
-    positionManagement: false,
-    orbTrendContext: false,
     otherStrategies: false,
     skippedTargetLevels: false,
     fullAudit: false,
@@ -2985,59 +2904,16 @@ function TradeInspector({
   const rawAlternatives = [audit.otherStrategies, audit.strategyEvaluations, audit.alternativeStrategies]
     .find((value): value is unknown[] => Array.isArray(value)) ?? [];
   const alternatives = rawAlternatives.filter((value): value is Record<string, unknown> => typeof value === "object" && value !== null);
-  const legs = trade?.audit?.legs ?? [];
-  const hasRunner = legs.some((leg) => String(leg.kind ?? "").toLowerCase().includes("runner"));
-  const isTwoContract = trade?.contracts === 2 || legs.reduce((sum, leg) => sum + (leg.quantity ?? 0), 0) === 2;
-  const whyEvidence = [audit.trendEvidence, audit.pullbackEvidence, audit.volumeEvidence]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .slice(0, 3);
-  const targetPrice = targetPlan?.targetPrice ?? trade?.audit?.effectiveTargetPrice ?? trade?.audit?.oneRPrice;
-  const stopPrice = trade?.audit?.primaryLossExitLevel?.stopPrice;
   return <section className="mt-4 border border-border bg-card" data-testid="trade-inspector">
     <div className="border-b border-border px-4 py-3 sm:px-5">
       <div className="eyebrow text-muted-foreground">Strategy and execution details</div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Authoritative trade inspector</h2><span className={`border px-2 py-1 text-[9px] font-bold uppercase ${resultTone(result)}`}>{result}</span></div>
     </div>
+    <InspectorAccordion id="full-audit" title="Full audit details" detail="Exact machine evidence" open={openSections.fullAudit} onToggle={() => toggle("fullAudit")}>
+      <TechnicalTradeInspector trade={trade} />
+    </InspectorAccordion>
     <InspectorAccordion id="why-qualified" title="Why this qualified" detail={strategyName} open={openSections.whyQualified} onToggle={() => toggle("whyQualified")}>
-      <p>{trade ? (whyEvidence.length ? whyEvidence.join(" ") : "The selected strategy passed the recorded qualification and risk gates.") : (typeof audit.rejectionSummary === "string" ? audit.rejectionSummary : "No modeled entry was authorized.")}</p>
-      {typeof audit.direction === "string" && <div className="mt-2 text-muted-foreground">Direction: <strong className="text-foreground">{traderLabel(audit.direction)}</strong></div>}
-    </InspectorAccordion>
-    <InspectorAccordion id="entry-stop-target" title="Entry, stop and target" detail={trade ? `${formatTradePrice(trade.entryPrice)} → ${formatTradePrice(targetPrice)}` : "Not applicable"} open={openSections.entryStopTarget} onToggle={() => toggle("entryStopTarget")}>
-      {trade ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div><div className="eyebrow text-muted-foreground">Entry</div><div className="mono mt-1 font-bold">{formatTradePrice(trade.entryPrice)}</div></div>
-        <div><div className="eyebrow text-muted-foreground">Stop</div><div className="mono mt-1 font-bold">{formatTradePrice(stopPrice)}</div></div>
-        <div><div className="eyebrow text-muted-foreground">Target</div><div className="mono mt-1 font-bold">{formatTradePrice(targetPrice)}</div></div>
-        <div><div className="eyebrow text-muted-foreground">1R checkpoint</div><div className="mono mt-1 font-bold">{formatTradePrice(trade.audit?.oneRPrice)}</div></div>
-      </div> : <p>No entry, stop, or target was modeled for this snapshot.</p>}
-      {targetPlan?.fallbackUsed === true && <p className="mt-3 text-muted-foreground">Target basis: <strong className="text-foreground">1R fallback</strong>.</p>}
-    </InspectorAccordion>
-    <InspectorAccordion id="position-management" title="Position management" detail={trade ? `${trade.contracts ?? "—"} contract${trade.contracts === 1 ? "" : "s"}` : "No position"} open={openSections.positionManagement} onToggle={() => toggle("positionManagement")}>
-      {trade && legs.length > 0 ? <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-left" data-testid="exit-legs-table">
-          <thead><tr className="border-b border-border text-[9px] uppercase tracking-[.08em] text-muted-foreground"><th className="px-2 py-2">Leg</th><th className="px-2 py-2">Quantity</th><th className="px-2 py-2">Entry</th><th className="px-2 py-2">Exit</th><th className="px-2 py-2">Reason</th><th className="px-2 py-2">Net P/L</th></tr></thead>
-          <tbody>{legs.map((leg, index) => <tr key={`${leg.kind}-${index}`} className="border-b border-border/70" data-testid={`exit-leg-row-${index}`}>
-            <td className="px-2 py-2 font-semibold">{traderLabel(leg.kind)}</td>
-            <td className="mono px-2 py-2">{leg.quantity ?? "—"}</td>
-            <td className="mono px-2 py-2">{formatTradePrice(leg.fillPrice ?? leg.referencePrice)}</td>
-            <td className="mono px-2 py-2">{formatTradePrice(leg.fillPrice)}</td>
-            <td className="px-2 py-2">{traderLabel(leg.exitReason)}</td>
-            <td className="mono px-2 py-2">{formatSignedMoney(leg.netPnl)}</td>
-          </tr>)}</tbody>
-        </table>
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-          <span>{isTwoContract ? "Two-contract management" : "One-contract management"}</span>
-          {isTwoContract && <span>{hasRunner ? "Runner leg recorded" : "No runner leg recorded"}</span>}
-          {trade.audit?.oneRReached === true && <span>1R checkpoint reached</span>}
-        </div>
-      </div> : <p>No exit legs are recorded for this position. Runner fields remain hidden when they do not apply.</p>}
-    </InspectorAccordion>
-    <InspectorAccordion id="orb-trend-context" title="ORB / trend context" detail={traderLabel(audit.direction)} open={openSections.orbTrendContext} onToggle={() => toggle("orbTrendContext")}>
-      <div className="space-y-2">
-        {typeof audit.trendEvidence === "string" && <p>{audit.trendEvidence}</p>}
-        {typeof audit.orbTrend === "object" && audit.orbTrend !== null
-          ? <pre className="overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[9px]">{JSON.stringify(audit.orbTrend, null, 2)}</pre>
-          : <p className="text-muted-foreground">No separate ORB transition evidence is recorded on this snapshot.</p>}
-      </div>
+      <p>{trade ? "This setup qualified for execution." : "This setup did not qualify for execution."}</p>
     </InspectorAccordion>
     {alternatives.length > 0 && <InspectorAccordion id="other-strategies" title="Other strategies considered" detail={`${alternatives.length} recorded`} open={openSections.otherStrategies} onToggle={() => toggle("otherStrategies")}>
       <div className="space-y-2">{alternatives.map((alternative, index) => <div key={index} className="border border-border bg-card px-3 py-2">
@@ -3051,9 +2927,6 @@ function TradeInspector({
         <div className="mt-1 space-y-1">{levels.map((level) => <div key={`${level.id}-${level.reason}`} className="flex flex-wrap justify-between gap-2 border-b border-border/70 py-1 text-muted-foreground"><span>{traderLabel(level.id)}</span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks ?? "—"} ticks</span></div>)}</div>
       </div>)}</div>
     </InspectorAccordion>}
-    <InspectorAccordion id="full-audit" title="Full audit details" detail="Exact machine evidence" open={openSections.fullAudit} onToggle={() => toggle("fullAudit")}>
-      <TechnicalTradeInspector trade={trade} />
-    </InspectorAccordion>
   </section>;
 }
 

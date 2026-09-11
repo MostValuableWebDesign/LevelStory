@@ -335,9 +335,9 @@ test("authoritative trade analytics leads with a glance card and decision hierar
   assert.match(page, /What happened\?/);
   assert.match(page, /Why did it qualify\?/);
   assert.match(page, /How did it end\?/);
-  assert.match(page, /data-testid="execution-timeline"/);
-  assert.match(page, /Setup <span[^>]*>→<\/span> Entry/);
-  assert.match(page, /New York time/);
+  assert.doesNotMatch(page, /data-testid="execution-timeline"/);
+  assert.doesNotMatch(page, /Execution timeline/);
+  assert.doesNotMatch(page, /Evaluation boundary/);
 });
 
 test("trade presentation translates statuses and machine labels without changing technical evidence", () => {
@@ -350,13 +350,19 @@ test("trade presentation translates statuses and machine labels without changing
   assert.match(page, /CAUSAL_ORB_TREND_EPOCH: "ORB direction established"/);
   assert.match(page, /JSON\.stringify\(evidence, null, 2\)/);
   assert.match(page, /break-words/);
+  assert.doesNotMatch(page, /Causal ORB directional trend/);
+  assert.doesNotMatch(page, /data-testid="orb-trend-causal-evidence"/);
 });
 
 test("trade details use keyboard-accessible, session-local progressive disclosure", () => {
   assert.match(page, /const \[openSections, setOpenSections\] = useState<Record<string, boolean>>/);
-  for (const section of ["whyQualified", "entryStopTarget", "positionManagement", "orbTrendContext", "otherStrategies", "skippedTargetLevels", "fullAudit"]) {
+  for (const section of ["fullAudit", "whyQualified", "otherStrategies", "skippedTargetLevels"]) {
     assert.match(page, new RegExp(section));
   }
+  assert.ok(page.indexOf('title="Full audit details"') < page.indexOf('title="Why this qualified"'));
+  assert.doesNotMatch(page, /title="Entry, stop and target"/);
+  assert.doesNotMatch(page, /title="Position management"/);
+  assert.doesNotMatch(page, /title="ORB \/ trend context"/);
   assert.match(page, /aria-expanded=\{open\}/);
   assert.match(page, /aria-controls=\{`\$\{id\}-content`\}/);
   assert.match(page, /event\.key === "Enter" \|\| event\.key === " "/);
@@ -364,13 +370,12 @@ test("trade details use keyboard-accessible, session-local progressive disclosur
   assert.match(page, /data-testid="grouped-skipped-levels"/);
   assert.match(page, /Other strategies considered/);
   assert.match(page, /Full audit details/);
+  assert.match(page, /This setup qualified for execution\./);
+  assert.doesNotMatch(page, /whyEvidence/);
 });
 
-test("one- and two-contract management only expose applicable runner information", () => {
-  assert.match(page, /Two-contract management/);
-  assert.match(page, /One-contract management/);
-  assert.match(page, /Runner leg recorded/);
-  assert.match(page, /Runner fields remain hidden when they do not apply/);
-  assert.match(page, /data-testid="exit-legs-table"/);
-  assert.match(page, /data-testid=\{`exit-leg-row-\$\{index\}`\}/);
+test("removed position-management details are not rendered in the inspector", () => {
+  assert.doesNotMatch(page, /Two-contract management/);
+  assert.doesNotMatch(page, /One-contract management/);
+  assert.doesNotMatch(page, /data-testid="exit-legs-table"/);
 });
