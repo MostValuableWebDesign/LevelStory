@@ -319,3 +319,50 @@ test("frontend dynamic-level interaction matches the configured L-range rule", (
   assert.equal(evaluateDynamicLevelInteraction(6851.508, 6851, 6850, 4).value, 6851.508);
   assert.equal(evaluateDynamicLevelInteraction(6851.492, 6851, 6850, 4).value, 6851.492);
 });
+
+test("authoritative trade analytics leads with a glance card and decision hierarchy", () => {
+  assert.match(page, /data-testid="trade-at-a-glance"/);
+  assert.match(page, /Trade at a glance/);
+  assert.match(page, /data-testid="decision-summary"/);
+  assert.match(page, /What happened\?/);
+  assert.match(page, /Why did it qualify\?/);
+  assert.match(page, /How did it end\?/);
+  assert.match(page, /data-testid="execution-timeline"/);
+  assert.match(page, /Setup <span[^>]*>→<\/span> Entry/);
+  assert.match(page, /New York time/);
+});
+
+test("trade presentation translates statuses and machine labels without changing technical evidence", () => {
+  for (const label of ["Win", "Loss", "Breakeven", "Open", "Blocked", "Rejected", "Ambiguous"]) {
+    assert.ok(page.includes(`"${label}"`) || page.includes(`>${label}<`) || page.includes(`>${label}`), `missing ${label} status`);
+  }
+  assert.match(page, /CONSOLIDATION_BREAKOUT_CONTINUATION: "Consolidation Breakout Continuation"/);
+  assert.match(page, /BULLISH_ORB_TREND: "Bullish ORB trend"/);
+  assert.match(page, /TARGET_LEVEL_SKIPPED_WRONG_DIRECTION: "Wrong direction"/);
+  assert.match(page, /CAUSAL_ORB_TREND_EPOCH: "ORB direction established"/);
+  assert.match(page, /JSON\.stringify\(evidence, null, 2\)/);
+  assert.match(page, /break-words/);
+});
+
+test("trade details use keyboard-accessible, session-local progressive disclosure", () => {
+  assert.match(page, /const \[openSections, setOpenSections\] = useState<Record<string, boolean>>/);
+  for (const section of ["whyQualified", "entryStopTarget", "positionManagement", "orbTrendContext", "otherStrategies", "skippedTargetLevels", "fullAudit"]) {
+    assert.match(page, new RegExp(section));
+  }
+  assert.match(page, /aria-expanded=\{open\}/);
+  assert.match(page, /aria-controls=\{`\$\{id\}-content`\}/);
+  assert.match(page, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(page, /data-testid=\{`accordion-\$\{id\}`\}/);
+  assert.match(page, /data-testid="grouped-skipped-levels"/);
+  assert.match(page, /Other strategies considered/);
+  assert.match(page, /Full audit details/);
+});
+
+test("one- and two-contract management only expose applicable runner information", () => {
+  assert.match(page, /Two-contract management/);
+  assert.match(page, /One-contract management/);
+  assert.match(page, /Runner leg recorded/);
+  assert.match(page, /Runner fields remain hidden when they do not apply/);
+  assert.match(page, /data-testid="exit-legs-table"/);
+  assert.match(page, /data-testid=\{`exit-leg-row-\$\{index\}`\}/);
+});
