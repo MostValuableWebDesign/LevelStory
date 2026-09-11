@@ -11,6 +11,12 @@ For confirmed patience signals, the physical identity is exactly source/configur
 
 **How to apply:** Use one canonical signal and merge qualifying levels, arm IDs, direction sources, matched edges, confluences, and audit IDs deterministically.
 
+Pending patience occurrence IDs must remain stable when a later replay cursor reveals the immediate E candle; the E timestamp is evidence on the occurrence, not a reason to mint a second occurrence.
+
+**Why:** Reversal expiration and cursor reconciliation need to refer to the same causal P→E sequence before and after E becomes visible, otherwise one physical candidate can appear both pending and expired.
+
+**How to apply:** Base the patience occurrence key on the causal P, direction, epoch, and stable source identity. Attach the observed E separately and preserve confirmed/ambiguous/expired disposition transitions on that same ID.
+
 **Why:** Strategy taxonomy attribution is layered: ORB, consolidation, reversal, and generic patience candidates can observe the same underlying evidence. Setup-based keys duplicate that evidence and lose canonical/secondary ownership.
 
 **How to apply:** Deduplicate by causal identity, choose the authoritative strategy using the fixed precedence order, and preserve every other matching strategy as a secondary match. Keep the evaluation cursor and exact L/P/E snapshots on the merged row.

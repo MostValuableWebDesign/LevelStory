@@ -442,6 +442,13 @@ export type PullbackAnalysisOptions = {
     finalizedNtzIdentity?: string;
     configurationHash?: string;
   };
+  /**
+   * A reversal-confirming candle belongs to the prior epoch, but its opposite
+   * breakout/re-entry must be resolved by the ORB transition event ordering.
+   * Defer terminalizing this candle so Phase 5 can process its P/E evidence
+   * before the transition expires any remaining arm.
+   */
+  deferTerminalAtCandleOpenTime?: number;
 };
 
 export type PullbackStructure = {
@@ -952,7 +959,17 @@ export function analyzePullback(
   // pullback. Causal lifecycle boundaries are the session/date/contract
   // boundary and the exclusive primary entry cutoff.
   const afterBreakout = completed.slice(breakoutIndex + 1);
-  const terminal = findPullbackTerminal(afterBreakout, breakoutCandle, breakout, finalizedNtz, completed, config, specification, calendar);
+  const terminal = findPullbackTerminal(
+    afterBreakout,
+    breakoutCandle,
+    breakout,
+    finalizedNtz,
+    completed,
+    config,
+    specification,
+    calendar,
+    options.deferTerminalAtCandleOpenTime,
+  );
   const postBreakout = afterBreakout.slice(0, terminal?.index ?? afterBreakout.length);
   const structure = detectPullbackStructure(postBreakout, breakoutCandle, breakout.direction);
   const atr14 = averageTrueRange(completed.slice(0, breakoutIndex + 1), config.phase4AtrPeriod);
@@ -1236,6 +1253,7 @@ function findPullbackTerminal(
   config: StrategyConfig,
   specification: FuturesContractSpecification,
   calendar: FuturesSessionCalendar,
+  deferTerminalAtCandleOpenTime?: number,
 ): PullbackTerminal | null {
   const breakoutDirection = breakout.direction;
   if (breakoutDirection === null) return null;
@@ -1294,6 +1312,7 @@ function findPullbackTerminal(
       }
     }
     if (!finalizedNtz?.complete) continue;
+    if (candle.openTime === deferTerminalAtCandleOpenTime) continue;
     const direction = directionForAttempt(candle, finalizedNtz);
     if (direction && closesOutside(candle, finalizedNtz, direction)) {
       const quality = breakoutQuality(candle, direction, completed, finalizedNtz, config, tickSize);

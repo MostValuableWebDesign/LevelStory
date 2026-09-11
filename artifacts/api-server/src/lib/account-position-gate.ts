@@ -34,6 +34,15 @@ type ExitLegEvidence = {
   exitCandleCloseTime?: string;
 };
 
+export class InvalidAccountPositionEvidenceError extends Error {
+  readonly code = "INVALID_ACCOUNT_POSITION_TIMESTAMP";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidAccountPositionEvidenceError";
+  }
+}
+
 function validTimestamp(value: string | null | undefined): boolean {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
@@ -60,15 +69,25 @@ export function authoritativeFullExitTime(input: {
 
 export function activeAccountPositionAt(
   position: ActiveAccountPosition,
-  entryTime: string,
+  queryTime: string,
 ): boolean {
-  const entryTimestamp = Date.parse(entryTime);
-  if (!Number.isFinite(entryTimestamp)) return true;
+  const positionEntryTimestamp = Date.parse(position.entryTime);
+  if (!Number.isFinite(positionEntryTimestamp)) {
+    throw new InvalidAccountPositionEvidenceError(
+      `Invalid account position entry timestamp for ${position.tradeId}.`,
+    );
+  }
+  const queryTimestamp = Date.parse(queryTime);
+  if (!Number.isFinite(queryTimestamp)) {
+    throw new InvalidAccountPositionEvidenceError(
+      `Invalid account position query timestamp for ${position.tradeId}.`,
+    );
+  }
   const exitTimestamp = position.fullExitTime === null ? Number.NaN : Date.parse(position.fullExitTime);
   if (!Number.isFinite(exitTimestamp)) return true;
   // A completed full exit is effective at its completed timestamp. If the
   // timestamps are ambiguous or the exit is later, remain conservative.
-  return exitTimestamp > entryTimestamp;
+  return positionEntryTimestamp <= queryTimestamp && queryTimestamp < exitTimestamp;
 }
 
 export function accountEntryBlockFor(

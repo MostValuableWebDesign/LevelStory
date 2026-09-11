@@ -1031,7 +1031,7 @@ function buildPatienceOccurrences(
       const previous = completed[candidate.index - 1];
       const inactiveDetail = `Eligibility arm ${arm.state}: ${arm.reason}`;
       return {
-        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
         orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
@@ -1064,7 +1064,7 @@ function buildPatienceOccurrences(
     }
     if (!isPatienceCandleOutsideNtz(candidate.candle, direction, finalizedNtz, requireFinalizedNtz)) {
       return {
-        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
         orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
@@ -1164,7 +1164,33 @@ function buildPatienceOccurrences(
         entryCutoffMinutes,
       );
     }
-    const outcomeStatus: PatienceOccurrenceStatus = !nextObserved
+    const reversalConfirmingCandle = trigger
+      && orbTrend?.transitions.some((transition) =>
+        transition.previousState !== "NEUTRAL"
+        && transition.direction !== direction
+        && transition.confirmingCandle.openTime === trigger.openTime,
+      );
+    const entryReachedAtOpen = trigger
+      ? direction === "long"
+        ? trigger.open >= confirmationThreshold
+        : trigger.open <= confirmationThreshold
+      : false;
+    if (reversalConfirmingCandle && analysis.state === "ENTRY_TRIGGERED" && !entryReachedAtOpen) {
+      analysis = {
+        ...analysis,
+        state: "AMBIGUOUS_EVENT_ORDER",
+        triggerPrice: null,
+        detail: "The prior-direction entry threshold and the completed ORB reversal occurred in the same candle; five-minute OHLC cannot prove their intrabar order.",
+      };
+    }
+    const pendingAtReversalBoundary = Boolean(
+      reversalConfirmingCandle
+      && analysis.state !== "ENTRY_TRIGGERED"
+      && analysis.state !== "AMBIGUOUS_EVENT_ORDER",
+    );
+    const outcomeStatus: PatienceOccurrenceStatus = pendingAtReversalBoundary
+      ? "CANDIDATE"
+      : !nextObserved
       ? "CANDIDATE"
       : nextObserved.openTime !== candidate.candle.closeTime
         ? "EXPIRED_MISSING_E"
@@ -1197,7 +1223,7 @@ function buildPatienceOccurrences(
     const armTransitionTime = undefined;
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
-      occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, trigger?.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+      occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
       direction,
       directionSource,
       orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
@@ -1270,7 +1296,6 @@ function buildPatienceOccurrences(
 function patienceOccurrenceId(
   direction: Direction,
   patienceOpenTime: number,
-  triggerOpenTime: number | undefined,
   epochId: string | null | undefined,
 ): string {
   return [
@@ -1278,7 +1303,6 @@ function patienceOccurrenceId(
     epochId ?? "no-orb-epoch",
     direction,
     patienceOpenTime,
-    triggerOpenTime ?? "none",
   ].join("|");
 }
 

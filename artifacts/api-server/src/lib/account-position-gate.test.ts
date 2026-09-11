@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountEntryBlockFor,
   activeAccountPositionFromTrade,
+  InvalidAccountPositionEvidenceError,
 } from "./account-position-gate.js";
 
 const entry = "2026-08-25T14:00:00.000Z";
@@ -108,4 +109,28 @@ test("a position on a prior trading date still blocks when it has not fully exit
     exitTime: "2026-08-26T14:30:00.000Z",
   }), "2026-08-26T14:00:00.000Z");
   assert.equal(block?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
+});
+
+test("a position entered after the query does not block earlier history", () => {
+  const block = accountEntryBlockFor(position({
+    entryTime: "2026-08-25T14:05:00.000Z",
+    exitTime: "2026-08-25T14:30:00.000Z",
+  }), "2026-08-25T14:00:00.000Z");
+  assert.equal(block, null);
+});
+
+test("a position entered exactly at the query timestamp is active", () => {
+  const block = accountEntryBlockFor(position({
+    entryTime: entry,
+    exitTime: "2026-08-25T14:30:00.000Z",
+  }), entry);
+  assert.equal(block?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
+});
+
+test("invalid position entry evidence is rejected explicitly", () => {
+  assert.throws(
+    () => accountEntryBlockFor(position({ entryTime: "not-a-date" }), entry),
+    (error: unknown) => error instanceof InvalidAccountPositionEvidenceError
+      && error.code === "INVALID_ACCOUNT_POSITION_TIMESTAMP",
+  );
 });

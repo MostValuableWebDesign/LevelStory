@@ -709,18 +709,19 @@ export function createMarketSnapshot(
     for (const [transitionIndex, transition] of orbTrend.transitions.entries()) {
       if (transition.epochId === orbTrend.epochId) continue;
       const nextTransition = orbTrend.transitions[transitionIndex + 1];
-      const nextEpochOpenTime = nextTransition?.confirmingCandle.openTime;
-      const epochCandles = nextEpochOpenTime === undefined
+      const nextEpochEffectiveFrom = nextTransition?.effectiveFromTimestamp;
+      const epochCandles = nextEpochEffectiveFrom === undefined
         ? regular
-        : regular.filter((candle) => candle.openTime < nextEpochOpenTime);
-      const epochCausalCandles = nextEpochOpenTime === undefined
+        : regular.filter((candle) => candle.openTime < nextEpochEffectiveFrom);
+      const epochCausalCandles = nextEpochEffectiveFrom === undefined
         ? historicalFeed
-        : historicalFeed.filter((candle) => candle.openTime < nextEpochOpenTime);
+        : historicalFeed.filter((candle) => candle.openTime < nextEpochEffectiveFrom);
       const epochBreakout = breakoutFromOrbTrendTransition(transition, regular, config, specification);
       const epochPullback = analyzePullback(epochCandles, epochBreakout, qualifyingLevels, specification, config, {
         causalCandles: epochCausalCandles,
         calendar,
         finalizedNtz: levels.ntz,
+        deferTerminalAtCandleOpenTime: nextTransition?.confirmingCandle.openTime,
         armIdentity: {
           sourceFingerprint,
           formulaHash,
@@ -765,10 +766,10 @@ export function createMarketSnapshot(
     if (!priorEpochId) continue;
     const priorTransition = orbTrend.transitions[transitionIndex - 1];
     const preReversalCandles = regular.filter((candle) =>
-      candle.openTime < transition.confirmingCandle.openTime,
+      candle.openTime < transition.effectiveFromTimestamp,
     );
     const preReversalCausalCandles = historicalFeed.filter((candle) =>
-      candle.openTime < transition.confirmingCandle.openTime,
+      candle.openTime < transition.effectiveFromTimestamp,
     );
     const preReversalBreakout = breakoutFromOrbTrendTransition(
       priorTransition,
@@ -786,6 +787,7 @@ export function createMarketSnapshot(
         causalCandles: preReversalCausalCandles,
         calendar,
         finalizedNtz: levels.ntz,
+        deferTerminalAtCandleOpenTime: transition.confirmingCandle.openTime,
         armIdentity: {
           sourceFingerprint,
           formulaHash,
@@ -818,9 +820,9 @@ export function createMarketSnapshot(
       occurrence.orbTrendEpochId === priorEpochId
       && occurrence.outcomeStatus === "INVALIDATED"
       && occurrence.reasonCode.includes("ORB_TREND_REVERSED")
-      && occurrence.patienceCandle.closeTime <= transition.confirmingCandle.openTime
+      && occurrence.patienceCandle.closeTime <= transition.effectiveFromTimestamp
       && (occurrence.triggerCandle === null
-        || occurrence.triggerCandle.openTime >= transition.confirmingCandle.openTime),
+        || occurrence.triggerCandle.closeTime >= transition.effectiveFromTimestamp),
     );
     const pendingPullbackArmId = preReversalPullback.armId
       && !isTerminalPullbackArmState(preReversalPullback.armState)

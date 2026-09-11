@@ -4107,7 +4107,10 @@ export function reconcileOrbTrendTransitionPositionEvidence(
 export function applyHistoricalAccountPositionGate(
   candidates: readonly HistoricalTradeCandidate[],
   authoritativeTrades: readonly BacktestTrade[],
-  options: { resetAtContractBoundary?: boolean } = {},
+  options: {
+    resetAtContractBoundary?: boolean;
+    contractBoundaries?: readonly { effectiveDate: string; toContractSymbol: string }[];
+  } = {},
 ): {
   candidates: HistoricalTradeCandidate[];
   authoritativeTrades: BacktestTrade[];
@@ -4128,16 +4131,25 @@ export function applyHistoricalAccountPositionGate(
   const activePositions: ReturnType<typeof accountPositionForHistoricalTrade>[] = [];
   let blockedCandidateCount = 0;
   let previousContractSymbol: string | null = null;
+  let previousTradingDate: string | null = null;
 
   for (const candidate of orderedCandidates) {
+    const scheduledBoundary = options.contractBoundaries?.some((boundary) =>
+      boundary.toContractSymbol === candidate.contractSymbol
+      && previousTradingDate !== null
+      && previousTradingDate < boundary.effectiveDate
+      && candidate.tradingDate >= boundary.effectiveDate,
+    ) ?? false;
     if (
-      options.resetAtContractBoundary
+      (options.resetAtContractBoundary || options.contractBoundaries)
       && previousContractSymbol !== null
       && previousContractSymbol !== candidate.contractSymbol
+      && (scheduledBoundary || !options.contractBoundaries)
     ) {
       activePositions.length = 0;
     }
     previousContractSymbol = candidate.contractSymbol;
+    previousTradingDate = candidate.tradingDate;
     if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
     const trade = tradeByCandidateId.get(candidate.candidateId);
     if (!trade) continue;
@@ -4478,6 +4490,7 @@ export function projectHistoricalTradeCandidates(
   }
   const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades, {
     resetAtContractBoundary: Boolean(executionContext?.dataset.contractSchedule),
+    contractBoundaries: executionContext?.dataset.contractSchedule?.boundaries,
   });
   candidates.splice(0, candidates.length, ...accountGate.candidates);
   authoritativeTrades.splice(0, authoritativeTrades.length, ...accountGate.authoritativeTrades);

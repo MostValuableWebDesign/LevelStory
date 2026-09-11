@@ -52,6 +52,13 @@ test("ORB trend establishes, reverses, and creates a unique epoch per direction"
   assert.equal(new Set(result.transitions.map((transition) => transition.epochId)).size, 3);
   assert.equal(result.state, "BEARISH_ORB_TREND");
   assert.equal(result.direction, "short");
+  const firstEpoch = result.transitions[0]!;
+  const reversal = result.transitions[1]!;
+  const reversalFollowing = candle(6, 92, 95, 90);
+  assert.equal(result.trendDirectionAt(reversal.confirmingCandle.openTime), "long");
+  assert.equal(result.trendDirectionAt(reversalFollowing.openTime), "short");
+  assert.equal(result.epochIdAt(reversal.confirmingCandle.openTime), firstEpoch.epochId);
+  assert.equal(result.epochIdAt(reversalFollowing.openTime), reversal.epochId);
 });
 
 test("wick-only breaks and inside closes preserve the active ORB trend", () => {
