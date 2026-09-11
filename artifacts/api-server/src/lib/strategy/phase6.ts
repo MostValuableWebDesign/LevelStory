@@ -404,7 +404,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     context.config.phase6ConsolidationMinRejectionCount,
     context.config.phase6ConsolidationMaxDirectionalSequence,
   );
-  const direction = context.breakout.direction ?? context.orbTrend?.direction ?? directionFromTrend(context.trend.direction);
+  const direction = context.orbTrend?.direction ?? context.breakout.direction ?? directionFromTrend(context.trend.direction);
   const breakoutDirectionMatchesTrend = context.orbTrend?.direction === null
     || context.orbTrend?.direction === undefined
     || context.breakout.direction === null
@@ -413,6 +413,9 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
   const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
     && (direction === "long" ? breakoutCandle.close > consolidation.frozenHigh! : breakoutCandle.close < consolidation.frozenLow!);
   const breakoutConfirmed = context.breakout.detected && breakoutDirectionMatchesTrend && !context.breakout.failed && context.breakout.continuationConfirmed && breakoutOutsideFrozenRange;
+  const directionalCloseLocationRatio = direction === "short"
+    ? 1 - (context.breakout.closeLocationRatio ?? 0.5)
+    : context.breakout.closeLocationRatio ?? 0.5;
   const postBreakoutContext = hasQualifyingPullback(context.pullback)
     || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
   const patienceNearLevel = context.patience.patienceCandle !== null
@@ -421,7 +424,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
   const rules: SetupRuleEvidence[] = [
     rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
-    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && (context.breakout.closeLocationRatio ?? 0) >= context.config.phase4StrongCloseLocationRatio, "Strong breakout evidence must close outside the frozen consolidation range."),
+    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio, "Strong breakout evidence must close outside the frozen consolidation range."),
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
     rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),

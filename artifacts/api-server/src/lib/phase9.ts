@@ -4999,6 +4999,16 @@ export function buildQualificationFunnel(
   };
 }
 
+export function isCausalPositionActiveAt(
+  entryTime: number | null,
+  exitEffectiveTime: number | null,
+  transitionTime: number,
+): boolean {
+  return entryTime !== null
+    && entryTime <= transitionTime
+    && (exitEffectiveTime === null || transitionTime < exitEffectiveTime);
+}
+
 export function runCausalBacktest(
   request: BacktestRequest,
   riskInput?: { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean },
@@ -5079,8 +5089,8 @@ export function runCausalBacktest(
   const reportContract = dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
     ? { ...specification, fullContractSymbol: dataset.contractSymbol }
     : specification;
-  let lastExitIndex = -1;
-  let activeEntryIndex = -1;
+  let activeEntryTime: number | null = null;
+  let activeExitEffectiveTime: number | null = null;
   const executedEntryKeys = new Set<string>();
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
   let previousContractSymbol: string | null = null;
@@ -5097,8 +5107,8 @@ export function runCausalBacktest(
     if (dataset.contractSchedule && previousContractSymbol !== null && previousContractSymbol !== currentContractSymbol) {
       // Never carry a position, indicators, or execution state through a
       // scheduled contract boundary.
-      lastExitIndex = index - 1;
-      activeEntryIndex = -1;
+      activeEntryTime = null;
+      activeExitEffectiveTime = null;
     }
     previousContractSymbol = currentContractSymbol;
     const contractCandles = dataset.contractSchedule
@@ -5116,7 +5126,6 @@ export function runCausalBacktest(
     const regularWindow = sessionWindow(tradingDate, "regular", calendar);
     if (!regularWindow || candle.openTime < regularWindow.openTime || candle.openTime >= regularWindow.closeTime) continue;
      if (!candle.isComplete || !candle.closeTime) continue;
-     const positionActive = lastExitIndex >= index;
     const cursor = {
       cursor: candle.closeTime,
       visibleCandleCount: visibleContractCandles.length,
@@ -5147,13 +5156,8 @@ export function runCausalBacktest(
         sourceFingerprint: replaySourceFingerprint,
         // The active Shadow configuration is authoritative for ordinary backtests.
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
-         activePositionAt: (timestamp) => {
-           const transitionIndex = visibleContractCandles.findIndex((candidate) => candidate.closeTime === timestamp);
-           return transitionIndex >= 0
-             && activeEntryIndex >= 0
-             && activeEntryIndex <= transitionIndex
-             && lastExitIndex >= transitionIndex;
-         },
+          activePositionAt: (timestamp) =>
+            isCausalPositionActiveAt(activeEntryTime, activeExitEffectiveTime, timestamp),
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations.filter((evaluation) => {
@@ -5604,8 +5608,8 @@ export function runCausalBacktest(
            selectedAudit.runnerBreakevenIgnoredForTighterStop = modeled.audit.runnerBreakevenIgnoredForTighterStop;
          selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
-       activeEntryIndex = index;
-       lastExitIndex = Math.max(lastExitIndex, candleIndexByOpenTime.get(exitCandle.openTime ?? candle.openTime) ?? index);
+        activeEntryTime = trigger.closeTime;
+        activeExitEffectiveTime = isOpen ? null : exitCandle.closeTime ?? trigger.closeTime;
       continue;
     }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
@@ -5762,8 +5766,8 @@ export function runCausalBacktest(
          legs: [],
        },
     });
-     activeEntryIndex = index;
-     lastExitIndex = Math.min(exitIndex, candles.length - 1);
+      activeEntryTime = candle.closeTime;
+      activeExitEffectiveTime = exitCandle.closeTime;
   }
   markCompletedSessionBeforeIndex(candles.length);
 

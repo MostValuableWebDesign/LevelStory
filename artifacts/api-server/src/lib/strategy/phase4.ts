@@ -526,11 +526,36 @@ export function detectInitialBreakout(
  */
 export function breakoutFromOrbTrendTransition(
   transition: OrbTrendTransition,
+  causalCandles: readonly Candle[] = [],
+  config?: StrategyConfig,
+  specification?: FuturesContractSpecification,
 ): BreakoutEvent {
   const candle = transition.confirmingCandle;
   const distanceOutside = transition.direction === "long"
     ? candle.close - transition.finalizedOrbHigh
     : transition.finalizedOrbLow - candle.close;
+  const causalConfirmingCandle: Candle = {
+    ...candle,
+    isComplete: true,
+  };
+  const available = completedCandles([
+    ...causalCandles,
+    causalConfirmingCandle,
+  ]).filter((candidate) => candidate.closeTime <= candle.closeTime);
+  const quality = config && available.some((candidate) => candidate.openTime === candle.openTime)
+    ? breakoutQuality(
+      available.find((candidate) => candidate.openTime === candle.openTime) ?? causalConfirmingCandle,
+      transition.direction,
+      available,
+      {
+        high: transition.finalizedOrbHigh,
+        low: transition.finalizedOrbLow,
+        complete: true,
+      },
+      config,
+      specification?.tickSize ?? MES_TICK_SIZE,
+    )
+    : null;
   return {
     detected: true,
     direction: transition.direction,
@@ -542,12 +567,12 @@ export function breakoutFromOrbTrendTransition(
     distanceOutside: Number(Math.max(0, distanceOutside).toFixed(2)),
     meaningfulDistance: Number(Math.max(0, distanceOutside).toFixed(2)),
     breakoutVolume: candle.volume,
-    baselineVolume: null,
-    volumeRatio: null,
-    volumeSupported: false,
-    bodyRatio: null,
-    closeLocationRatio: null,
-    candleStructureSupported: false,
+    baselineVolume: quality?.baselineVolume ?? null,
+    volumeRatio: quality?.volumeRatio ?? null,
+    volumeSupported: quality?.volumePassed ?? false,
+    bodyRatio: quality?.bodyRatio ?? null,
+    closeLocationRatio: quality?.closeLocationRatio ?? null,
+    candleStructureSupported: quality ? quality.bodyPassed && quality.closeLocationPassed : false,
     continuationConfirmed: true,
     continuationCondition: "IMMEDIATE_DIRECTIONAL_EXTENSION",
     failed: false,

@@ -20,6 +20,7 @@ import {
   type EarlyOrbMomentumEvidence,
   type PatienceAnalysis,
   type PatienceOccurrence,
+  isTerminalPullbackArmState,
   type PatienceEligibilityReason,
   type PatienceState,
   type DecisionState,
@@ -586,7 +587,7 @@ export function createMarketSnapshot(
   // active, executable pullback/candidate generation starts from that epoch's
   // own confirming candle and direction.
   const executableBreakout = activeEpochTransition
-    ? breakoutFromOrbTrendTransition(activeEpochTransition)
+    ? breakoutFromOrbTrendTransition(activeEpochTransition, regular, config, specification)
     : breakout;
   const qualifyingLevels = [
     ...levels.levels,
@@ -691,11 +692,23 @@ export function createMarketSnapshot(
     orbTrendDirection ? orbTrend : undefined,
     orbTrendDirection ? orbTrend.epochId : undefined,
   );
+  const epochContexts = new Map<string, {
+    breakout: ReturnType<typeof breakoutFromOrbTrendTransition>;
+    pullback: ReturnType<typeof analyzePullback>;
+    patience: PatienceAnalysis;
+  }>();
+  if (activeEpochTransition && orbTrend.epochId !== null) {
+    epochContexts.set(orbTrend.epochId, {
+      breakout: executableBreakout,
+      pullback,
+      patience,
+    });
+  }
   const epochOccurrences: PatienceOccurrence[] = [...(patience.occurrences ?? [])];
   if (orbTrend.transitions.length > 1) {
     for (const transition of orbTrend.transitions) {
       if (transition.epochId === orbTrend.epochId) continue;
-      const epochBreakout = breakoutFromOrbTrendTransition(transition);
+      const epochBreakout = breakoutFromOrbTrendTransition(transition, regular, config, specification);
       const epochPullback = analyzePullback(regular, epochBreakout, qualifyingLevels, specification, config, {
         causalCandles: historicalFeed,
         calendar,
@@ -727,6 +740,11 @@ export function createMarketSnapshot(
         orbTrend,
         transition.epochId,
       );
+      epochContexts.set(transition.epochId, {
+        breakout: epochBreakout,
+        pullback: epochPullback,
+        patience: epochPatience,
+      });
       epochOccurrences.push(...(epochPatience.occurrences ?? []));
     }
   }
@@ -737,12 +755,20 @@ export function createMarketSnapshot(
     if (transition.previousState === "NEUTRAL") continue;
     const priorEpochId = orbTrend.transitions[transitionIndex - 1]?.epochId;
     if (!priorEpochId) continue;
+    const priorEpoch = epochContexts.get(priorEpochId);
     const expired = epochOccurrences.filter((occurrence) =>
       occurrence.orbTrendEpochId === priorEpochId
       && occurrence.outcomeStatus !== "CONFIRMED"
       && occurrence.reasonCode.includes("ORB_TREND_REVERSED"),
     );
-    transition.expiredArmIds = [...new Set(expired.map((occurrence) => occurrence.eligibilityArmId).filter((id): id is string => Boolean(id)))];
+    const pendingPullbackArmId = priorEpoch?.pullback.armId
+      && !isTerminalPullbackArmState(priorEpoch.pullback.armState)
+      ? priorEpoch.pullback.armId
+      : null;
+    transition.expiredArmIds = [...new Set([
+      ...(pendingPullbackArmId ? [pendingPullbackArmId] : []),
+      ...expired.map((occurrence) => occurrence.eligibilityArmId).filter((id): id is string => Boolean(id)),
+    ])];
     transition.expiredCandidateIds = [...new Set(expired.map((occurrence) => occurrence.occurrenceId))];
   }
   const earlyOrbMomentum = earlyOrbMomentumPatienceAnalysis(regular, levels.ntz, {

@@ -2653,15 +2653,37 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
           <div className="bg-card px-3 py-2"><div className="eyebrow text-muted-foreground">Transitions</div><div className="mono mt-1 text-xs">{orbTransitions.length}</div><div className="mt-1 text-[10px] text-muted-foreground">{orbTransitions.length ? `${safeValue(orbTransitions.at(-1)?.expirationReason ?? "initial establishment")}` : "No completed boundary close"}</div></div>
         </div>
         {orbTransitions.length > 0 && <div className="mt-3 space-y-1.5">
-          {orbTransitions.map((transition, index) => <div key={`${safeValue(transition.epochId)}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-l-2 border-accent/50 pl-3 text-[10px] text-muted-foreground">
-            <span className="font-bold text-foreground">{safeValue(transition.previousState)} → {safeValue(transition.newState)}</span>
-            <span>confirmed {formatReviewTime(safeValue(transition.confirmingCandle && typeof transition.confirmingCandle === "object" ? (transition.confirmingCandle as Record<string, unknown>).closeTime : ""))}</span>
-            <span>effective {formatReviewTime(safeValue(transition.effectiveFromTimestamp))}</span>
-            {typeof transition.expirationReason === "string" && <span className="text-amber-600">{transition.expirationReason}</span>}
-            {transition.activePositionBlocked === true && <span className="text-amber-600">entry blocked by active position</span>}
-             <span>expired arms {Array.isArray(transition.expiredArmIds) && transition.expiredArmIds.length ? transition.expiredArmIds.join(", ") : "None"}</span>
-             <span>expired candidates {Array.isArray(transition.expiredCandidateIds) && transition.expiredCandidateIds.length ? transition.expiredCandidateIds.join(", ") : "None"}</span>
-          </div>)}
+           {orbTransitions.map((transition, index) => {
+             const confirming = transition.confirmingCandle && typeof transition.confirmingCandle === "object"
+               ? transition.confirmingCandle as Record<string, unknown>
+               : {};
+             const expiredArms = Array.isArray(transition.expiredArmIds) && transition.expiredArmIds.length
+               ? transition.expiredArmIds.join(", ")
+               : "None";
+             const expiredCandidates = Array.isArray(transition.expiredCandidateIds) && transition.expiredCandidateIds.length
+               ? transition.expiredCandidateIds.join(", ")
+               : "None";
+             return <div key={`${safeValue(transition.epochId)}-${index}`} className="border-l-2 border-accent/50 pl-3 text-[10px] text-muted-foreground">
+               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                 <span className="font-bold text-foreground">{safeValue(transition.previousState)} → {safeValue(transition.newState)}</span>
+                 <span>{safeValue(transition.direction)}</span>
+                 <span>epoch {safeValue(transition.epochId)}</span>
+                 <span>boundary {safeValue(transition.boundaryCrossed)}</span>
+                 {typeof transition.expirationReason === "string" && <span className="text-amber-600">{transition.expirationReason}</span>}
+                 {transition.activePositionBlocked === true && <span className="text-amber-600">entry blocked by active position</span>}
+               </div>
+               <div className="mt-2 grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Confirming candle OHLCV</div><div className="mono mt-1">{safeValue(confirming.open)} / {safeValue(confirming.high)} / {safeValue(confirming.low)} / {safeValue(confirming.close)} · {safeValue(confirming.volume)}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Confirmation / effective</div><div className="mono mt-1">{formatReviewTime(safeValue(confirming.closeTime))} → {formatReviewTime(safeValue(transition.effectiveFromTimestamp))}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Finalized ORB</div><div className="mono mt-1">{safeValue(transition.finalizedOrbLow)} – {safeValue(transition.finalizedOrbHigh)}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Buffer</div><div className="mono mt-1">{safeValue(transition.confirmationBufferTicks)} ticks · {safeValue(transition.confirmationBufferPoints)} pt</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Expired arms</div><div className="mono mt-1 break-words">{expiredArms}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Expired candidates</div><div className="mono mt-1 break-words">{expiredCandidates}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Formula version</div><div className="mono mt-1 break-words">{safeValue(transition.formulaVersion)}</div></div>
+                 <div className="bg-card px-2 py-2"><div className="eyebrow text-muted-foreground">Strategy version</div><div className="mono mt-1 break-words">{safeValue(transition.strategyVersion)}</div></div>
+               </div>
+             </div>;
+           })}
         </div>}
       </div>}
       {earlyOrb && earlyOrb.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="early-orb-causal-evidence">

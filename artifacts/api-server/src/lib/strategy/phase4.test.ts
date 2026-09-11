@@ -3,7 +3,7 @@ import test from "node:test";
 import { getFuturesContractSpecification } from "../futures/contracts.js";
 import { sessionCalendarForContract, timestampForTradingDate } from "../futures/session-calendar.js";
 import { strategyConfig } from "./config.js";
-import { analyzePullback, classifyRetracement, detectInitialBreakout, detectPullbackStructure, evaluateOrbBreakoutQuality, fibonacciAnalysis, isTerminalPullbackArmState, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, reducePullbackArmLifecycles, type BreakoutEvent } from "./phase4.js";
+import { analyzePullback, breakoutFromOrbTrendTransition, classifyRetracement, detectInitialBreakout, detectPullbackStructure, evaluateOrbBreakoutQuality, fibonacciAnalysis, isTerminalPullbackArmState, levelInteractionDistance, phase4Volume, qualifyLevelInteraction, reducePullbackArmLifecycles, type BreakoutEvent } from "./phase4.js";
 import { phase5PatienceAnalysis } from "./phase5.js";
 import type { Candle } from "./types.js";
 
@@ -142,6 +142,81 @@ test("ORB breakout qualification does not require breakout volume support", () =
   assert.equal(breakout.detected, true);
   assert.equal(breakout.volumeSupported, false);
   assert.equal(breakout.continuationCondition, "IMMEDIATE_DIRECTIONAL_EXTENSION");
+});
+
+test("causal ORB epoch breakout preserves only confirmation-time quality evidence", () => {
+  const candles = breakoutFixture();
+  const confirming = candles[6];
+  const breakout = breakoutFromOrbTrendTransition({
+    previousState: "NEUTRAL",
+    newState: "BULLISH_ORB_TREND",
+    direction: "long",
+    epochId: "orb-epoch-test",
+    finalizedOrbHigh: 102,
+    finalizedOrbLow: 99,
+    confirmationBufferTicks: 2,
+    confirmationBufferPoints: 0.5,
+    confirmingCandle: {
+      openTime: confirming.openTime,
+      closeTime: confirming.closeTime,
+      open: confirming.open,
+      high: confirming.high,
+      low: confirming.low,
+      close: confirming.close,
+      volume: confirming.volume,
+    },
+    boundaryCrossed: "ORB_HIGH",
+    effectiveFromTimestamp: confirming.closeTime,
+    expiredArmIds: [],
+    expiredCandidateIds: [],
+    expirationReason: null,
+    activePositionBlocked: false,
+    formulaVersion: "test-formula",
+    strategyVersion: "test-strategy",
+  }, candles, config, specification);
+
+  assert.equal(breakout.breakoutVolume, confirming.volume);
+  assert.equal(breakout.baselineVolume, 100);
+  assert.equal(breakout.volumeRatio, 1.3);
+  assert.equal(breakout.volumeSupported, true);
+  assert.equal(breakout.bodyRatio, Number(((confirming.close - confirming.open) / (confirming.high - confirming.low)).toFixed(2)));
+  assert.equal(breakout.closeLocationRatio, Number(((confirming.close - confirming.low) / (confirming.high - confirming.low)).toFixed(2)));
+  assert.equal(breakout.distanceOutside, 2.5);
+  assert.equal(breakout.candleOpenTime, confirming.openTime);
+
+  const futureChanged = breakoutFromOrbTrendTransition({
+    ...{
+      previousState: "NEUTRAL",
+      newState: "BULLISH_ORB_TREND",
+      direction: "long",
+      epochId: "orb-epoch-test",
+      finalizedOrbHigh: 102,
+      finalizedOrbLow: 99,
+      confirmationBufferTicks: 2,
+      confirmationBufferPoints: 0.5,
+      confirmingCandle: {
+        openTime: confirming.openTime,
+        closeTime: confirming.closeTime,
+        open: confirming.open,
+        high: confirming.high,
+        low: confirming.low,
+        close: confirming.close,
+        volume: confirming.volume,
+      },
+      boundaryCrossed: "ORB_HIGH",
+      effectiveFromTimestamp: confirming.closeTime,
+      expiredArmIds: [],
+      expiredCandidateIds: [],
+      expirationReason: null,
+      activePositionBlocked: false,
+      formulaVersion: "test-formula",
+      strategyVersion: "test-strategy",
+    },
+  }, [...candles.slice(0, 7), { ...candles[7], volume: 100_000, close: 1_000 }], config, specification);
+  assert.equal(futureChanged.baselineVolume, breakout.baselineVolume);
+  assert.equal(futureChanged.volumeRatio, breakout.volumeRatio);
+  assert.equal(futureChanged.bodyRatio, breakout.bodyRatio);
+  assert.equal(futureChanged.closeLocationRatio, breakout.closeLocationRatio);
 });
 
 test("pullback uses the shared 12-tick full-range tolerance and records interaction types", () => {

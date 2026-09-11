@@ -375,6 +375,42 @@ test("consolidation breakout requires a strong breakout and shared patience sequ
   assert.notEqual(noPatience.decision, "SETUP QUALIFIED");
 });
 
+test("consolidation breakout uses the active bearish ORB epoch and directional close location", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const context = baseContext({
+    candles: withCausalBaseline([
+      ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+      candle(breakoutOpenTime, 9.96, 10.05, 8.5, 8.7, 300),
+    ]),
+    breakout: {
+      ...baseContext().breakout,
+      direction: "short",
+      candleOpenTime: breakoutOpenTime,
+      time: breakoutOpenTime + 300_000,
+      closeLocationRatio: 0.1,
+      bodyRatio: 0.8,
+      volumeSupported: true,
+    },
+    orbTrend: {
+      state: "BEARISH_ORB_TREND",
+      direction: "short",
+      epochId: "bearish-epoch",
+      finalizedOrbHigh: 10,
+      finalizedOrbLow: 9,
+      finalizedAt: 0,
+      confirmationBufferTicks: 2,
+      confirmationBufferPoints: 0.5,
+      transitions: [],
+      trendDirectionAt: () => "short",
+      trendStateAt: () => "BEARISH_ORB_TREND",
+      epochIdAt: () => "bearish-epoch",
+    },
+  });
+  const result = evaluateStrongBreakoutAfterConsolidation(context);
+  assert.equal(result.direction, "short");
+  assert.equal(result.rules.find((rule) => rule.key === "strongBreakout")?.passed, true);
+});
+
 test("ORB continuation never qualifies when an actual mandatory gate fails", () => {
   const gates: Array<[string, Partial<Phase6Context>]> = [
     ["NTZ", { levels: { ...baseContext().levels, ntz: { ...ntz(), complete: false } } }],

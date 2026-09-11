@@ -11,6 +11,7 @@ import {
   buildHistoricalOccurrenceLedger,
   projectHistoricalTradeCandidates,
   reduceHistoricalPullbackLifecycles,
+  isCausalPositionActiveAt,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -23,6 +24,15 @@ import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/se
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { RunBacktestBody } from "@workspace/api-zod";
+
+test("causal active-position timestamps use one domain and release exactly at the exit boundary", () => {
+  assert.equal(isCausalPositionActiveAt(100, 200, 99), false);
+  assert.equal(isCausalPositionActiveAt(100, 200, 100), true);
+  assert.equal(isCausalPositionActiveAt(100, 200, 199), true);
+  assert.equal(isCausalPositionActiveAt(100, 200, 200), false);
+  assert.equal(isCausalPositionActiveAt(100, null, 10_000), true);
+  assert.equal(isCausalPositionActiveAt(null, null, 100), false);
+});
 import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
 import { adaptiveExecutionManagement } from "./strategy/execution-management.js";
 

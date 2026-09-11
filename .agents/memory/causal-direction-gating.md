@@ -14,3 +14,9 @@ Each ORB epoch must also own its executable breakout and pullback context. When 
 **Why:** Reusing the first breakout after a reversal left the new direction blocked by stale evidence, while direction-only filtering could merge separated epochs and lose the audit trail for invalidated pending work.
 
 **How to apply:** Build fresh epoch breakout context from the confirming transition, make it effective on the next candle, and pass the epoch identity through pullback, Phase 5, candidate, and historical transition projection.
+
+Epoch breakout quality metrics must be derived from completed candles at or before the confirming close; active-position arbitration must compare entry and effective-exit timestamps in the same candle-time domain.
+
+**Why:** Contract-local replay indexes are not comparable with the global replay cursor across scheduled rollovers, and future candles can otherwise leak into epoch quality or continuation qualification.
+
+**How to apply:** Filter causal metric inputs by confirmation time and use an exclusive effective-exit boundary; clear the timestamp state when the scheduled contract changes.
