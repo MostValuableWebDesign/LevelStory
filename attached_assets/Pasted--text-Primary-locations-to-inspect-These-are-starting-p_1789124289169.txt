@@ -1,0 +1,228 @@
+```text
+Primary locations to inspect
+
+These are starting points, not the complete permitted scope. Trace all callers, projections, API types, replay paths, and tests before making changes.
+
+1. Prior/new epoch candle boundary
+
+- `artifacts/api-server/src/lib/market-data.ts`
+- Epoch reconstruction around `epochCandles`, `preReversalCandles`, and `preReversalCausalCandles`
+- Current logic filters against `transition.confirmingCandle.openTime`
+- Replace the open-time cutoff with causal handling based on `transition.effectiveFromTimestamp`
+
+2. ORB transition timing
+
+- `artifacts/api-server/src/lib/strategy/orb-trend.ts`
+- `evaluateOrbTrend()`
+- Verify confirmation time, effective-from time, `trendDirectionAt()`, `trendStateAt()`, and `epochIdAt()`
+
+3. Prior-epoch patience and candidate disposition
+
+- `artifacts/api-server/src/lib/strategy/phase5.ts`
+- `phase5PatienceAnalysis()`
+- `buildPatienceOccurrences()`
+- ORB reversal invalidation logic using `ORB_TREND_REVERSED`
+- Ensure confirming-candle triggers are resolved before pending occurrences expire
+
+4. Pullback-arm lifecycle
+
+- `artifacts/api-server/src/lib/strategy/phase4.ts`
+- `analyzePullback()`
+- `findPullbackTerminal()`
+- `reducePullbackArmLifecycles()`
+- Preserve the actual prior arm ID and distinguish reversal expiration from earlier independent terminal reasons
+
+5. Active-position interval predicate
+
+- `artifacts/api-server/src/lib/account-position-gate.ts`
+- `activeAccountPositionAt()`
+- `accountEntryBlockFor()`
+- Require:
+  `position.entryTime <= queryTime < position.fullExitTime`
+- Handle open positions and exact exit timestamps consistently
+
+6. Authoritative ORB position reconciliation
+
+- `artifacts/api-server/src/lib/phase9.ts`
+- `reconcileOrbTrendTransitionPositionEvidence()`
+- `applyHistoricalAccountPositionGate()`
+- `projectHistoricalTradeCandidates()`
+- Ensure only account-gate-accepted trades can set `activePositionBlocked`
+
+7. Visual Review evidence
+
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- ORB trend evidence panel identified by:
+  `data-testid="orb-trend-causal-evidence"`
+- Display confirmed, expired, blocked, and ambiguous dispositions clearly
+
+8. Tests
+
+Inspect and extend:
+
+- `artifacts/api-server/src/lib/strategy/orb-trend.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase4.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase5.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase6.test.ts`
+- `artifacts/api-server/src/lib/phase9.test.ts`
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+- `artifacts/api-server/src/lib/account-position-gate.test.ts`
+- `artifacts/api-server/src/lib/shadow-account-replay.test.ts`
+- Relevant Visual Review frontend tests
+
+Do not limit the fix to these files if repository tracing identifies additional affected API schemas, cache versions, candidate projections, or replay paths.
+
+Fix the two remaining ORB directional-trend integration defects identified in LevelStory-main 39.
+
+Inspect the current implementation before changing code. Preserve the working ORB state machine, epoch-specific breakout metrics, pullback reconstruction, consolidation behavior, account-position gate, profit management, and Visual Review evidence.
+
+Objective
+
+Correct the causal boundary between the prior and new ORB epochs, and prevent future positions from being reported as active during earlier ORB transitions.
+
+1. Keep the reversal-confirming candle in the prior epoch
+
+The current implementation ends the prior epoch with:
+
+`candle.openTime < transition.confirmingCandle.openTime`
+
+This removes the reversal-confirming candle at its open even though the new ORB direction is not effective until that candle completes.
+
+Correct behavior:
+
+- The previous ORB direction remains authoritative throughout the reversal-confirming candle.
+- The reversal is confirmed only when that completed candle closes beyond the opposite ORB boundary and confirmation buffer.
+- The new direction becomes effective at `transition.effectiveFromTimestamp`.
+- The first candle evaluated under the new direction is the immediately following candle.
+- Prior-epoch pullback, patience, and trigger evaluation must include the reversal-confirming candle.
+- Do not allow the new epoch to use the confirming candle as its first pullback, patience, or entry candle.
+- Do not retroactively invalidate a prior-direction candidate whose entry threshold was reached before the reversal became effective.
+
+Use timestamps rather than the confirming candle’s open time when partitioning epochs.
+
+The prior epoch’s visible window should extend through the confirming candle, subject to deterministic event ordering at its close. The new epoch window should begin at `effectiveFromTimestamp`.
+
+2. Define same-timestamp event ordering
+
+Create one explicit policy for events occurring on the reversal-confirming candle.
+
+Recommended order:
+
+1. Process intrabar stop and target events for any already-active position.
+2. Process a previously armed prior-direction entry threshold if the available OHLC ordering proves it occurred before invalidation.
+3. If entry-versus-reversal ordering cannot be proven from five-minute OHLC, mark the occurrence ambiguous instead of automatically expiring or confirming it.
+4. Complete the candle.
+5. Confirm the ORB reversal from the completed close.
+6. Expire remaining pending prior-epoch arms and candidates.
+7. Make the new ORB direction effective for the following candle.
+
+Apply the project’s existing tick or one-minute disambiguation sources when available.
+
+Do not:
+
+- Let the new trend affect the confirming candle.
+- Automatically discard a prior-direction trigger that occurred during the confirming candle.
+- Use future candles to resolve the ordering.
+- Permit both confirmed entry and expired-candidate disposition for the same occurrence.
+
+3. Correct prior-epoch expiration after event ordering
+
+At `effectiveFromTimestamp`:
+
+- Include the real prior Phase 4 arm in `expiredArmIds` if it remained pending after processing the confirming candle.
+- Include pending, unconfirmed prior-epoch occurrences in `expiredCandidateIds`.
+- Do not expire an occurrence that became a confirmed entry before the reversal took effect.
+- Do not expire an occurrence already terminated for an earlier independent reason.
+- Record ambiguous same-candle cases explicitly.
+- Continue managing an active position without reversing or closing it merely because the ORB trend changed.
+- Keep `ORB_TREND_REVERSED` as the canonical reason for state that genuinely expires at the transition.
+
+4. Fix the active-position interval predicate
+
+`activeAccountPositionAt()` currently checks only whether the position exits after the queried timestamp. It does not ensure that the position had entered by then.
+
+Use this interval:
+
+`positionEntryTime <= queryTime < fullExitEffectiveTime`
+
+For open positions:
+
+`positionEntryTime <= queryTime`
+
+Requirements:
+
+- Parse and validate `position.entryTime`.
+- A position with an entry later than the queried transition must return false.
+- A position entered exactly at the query timestamp follows the project’s documented same-timestamp ordering.
+- A position fully exited exactly at the query timestamp must return false if exits are effective at that timestamp.
+- An open position remains active after entry.
+- Invalid position entry timestamps must not silently make a future position block earlier history. Return a conservative, explicitly audited result or reject invalid position evidence before reconciliation.
+- Rename the predicate’s `entryTime` argument to `queryTime` or `evaluationTime` to avoid confusing it with `position.entryTime`.
+
+5. Reconcile only positions active at the transition
+
+Update `reconcileOrbTrendTransitionPositionEvidence()` so it:
+
+- Uses the corrected interval predicate.
+- Considers only authoritative trades accepted by the account-position gate.
+- Matches the correct contract.
+- Respects contract-boundary resets.
+- Does not let a future authoritative trade block an earlier transition.
+- Does not let a blocked or rejected candidate become a blocking position.
+- Keeps detecting the ORB transition even when entry is blocked.
+- Sets `activePositionBlocked` without changing the transition direction or timestamps.
+
+6. Add regression tests
+
+Add tests for:
+
+- The reversal-confirming candle remains part of the prior epoch.
+- The following candle is the first candle under the new epoch.
+- A prior-direction threshold reached during the confirming candle is processed before reversal expiration when ordering is known.
+- An ambiguous same-candle threshold/reversal sequence is labeled ambiguous.
+- A confirmed prior-direction entry is not included in `expiredCandidateIds`.
+- A still-pending prior-direction candidate is expired at `effectiveFromTimestamp`.
+- A prior Phase 4 arm is included in `expiredArmIds` only when still pending after confirming-candle processing.
+- No occurrence receives both confirmed and expired dispositions.
+- A position entered before a transition and exiting afterward blocks entry.
+- A position entered after a transition does not block that transition.
+- A position entered exactly at the transition follows the documented ordering.
+- A position exiting exactly at the transition is no longer active.
+- An open position remains active after entry.
+- Invalid position timestamps receive deterministic handling.
+- Reconciliation ignores blocked and rejected candidates.
+- Scheduled contract boundaries remain isolated.
+- Shadow Account Replay and ORB transition evidence agree.
+- Visual Review displays the resulting confirmed, expired, or ambiguous disposition correctly.
+
+Register all tests in the normal API and frontend test workflows.
+
+7. Verification
+
+Run:
+
+- API typecheck
+- Frontend typecheck
+- ORB trend tests
+- Phase 4 tests
+- Phase 5 tests
+- Phase 6 tests
+- Phase 9 tests
+- Phase 9 integration tests
+- Account-position-gate tests
+- Multi-contract replay tests
+- Shadow Account Replay tests
+- Visual Review tests
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Root causes
+- Files changed
+- Exact timestamp and event-ordering policy implemented
+- Tests added and results
+- Any remaining limitations
+
+Do not claim completion if the prior epoch still ends at the reversal candle’s open, if a prior-direction trigger on that candle is silently discarded, or if a future trade can mark an earlier ORB transition as position-blocked.
+```

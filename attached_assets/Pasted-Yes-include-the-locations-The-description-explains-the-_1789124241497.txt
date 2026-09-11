@@ -1,0 +1,82 @@
+Yes—include the locations. The description explains the intended behavior, while file/function locations help the coding agent reach the relevant implementation quickly.
+
+Use locations as starting points, not as strict limits, because related types, projections, and tests may live elsewhere.
+
+Add this section to the prompt:
+
+```text
+Primary locations to inspect
+
+These are starting points, not the complete permitted scope. Trace all callers, projections, API types, replay paths, and tests before making changes.
+
+1. Prior/new epoch candle boundary
+
+- `artifacts/api-server/src/lib/market-data.ts`
+- Epoch reconstruction around `epochCandles`, `preReversalCandles`, and `preReversalCausalCandles`
+- Current logic filters against `transition.confirmingCandle.openTime`
+- Replace the open-time cutoff with causal handling based on `transition.effectiveFromTimestamp`
+
+2. ORB transition timing
+
+- `artifacts/api-server/src/lib/strategy/orb-trend.ts`
+- `evaluateOrbTrend()`
+- Verify confirmation time, effective-from time, `trendDirectionAt()`, `trendStateAt()`, and `epochIdAt()`
+
+3. Prior-epoch patience and candidate disposition
+
+- `artifacts/api-server/src/lib/strategy/phase5.ts`
+- `phase5PatienceAnalysis()`
+- `buildPatienceOccurrences()`
+- ORB reversal invalidation logic using `ORB_TREND_REVERSED`
+- Ensure confirming-candle triggers are resolved before pending occurrences expire
+
+4. Pullback-arm lifecycle
+
+- `artifacts/api-server/src/lib/strategy/phase4.ts`
+- `analyzePullback()`
+- `findPullbackTerminal()`
+- `reducePullbackArmLifecycles()`
+- Preserve the actual prior arm ID and distinguish reversal expiration from earlier independent terminal reasons
+
+5. Active-position interval predicate
+
+- `artifacts/api-server/src/lib/account-position-gate.ts`
+- `activeAccountPositionAt()`
+- `accountEntryBlockFor()`
+- Require:
+  `position.entryTime <= queryTime < position.fullExitTime`
+- Handle open positions and exact exit timestamps consistently
+
+6. Authoritative ORB position reconciliation
+
+- `artifacts/api-server/src/lib/phase9.ts`
+- `reconcileOrbTrendTransitionPositionEvidence()`
+- `applyHistoricalAccountPositionGate()`
+- `projectHistoricalTradeCandidates()`
+- Ensure only account-gate-accepted trades can set `activePositionBlocked`
+
+7. Visual Review evidence
+
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- ORB trend evidence panel identified by:
+  `data-testid="orb-trend-causal-evidence"`
+- Display confirmed, expired, blocked, and ambiguous dispositions clearly
+
+8. Tests
+
+Inspect and extend:
+
+- `artifacts/api-server/src/lib/strategy/orb-trend.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase4.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase5.test.ts`
+- `artifacts/api-server/src/lib/strategy/phase6.test.ts`
+- `artifacts/api-server/src/lib/phase9.test.ts`
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+- `artifacts/api-server/src/lib/account-position-gate.test.ts`
+- `artifacts/api-server/src/lib/shadow-account-replay.test.ts`
+- Relevant Visual Review frontend tests
+
+Do not limit the fix to these files if repository tracing identifies additional affected API schemas, cache versions, candidate projections, or replay paths.
+```
+
+That combination—behavioral requirements plus likely code locations—is the most effective prompt.
