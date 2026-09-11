@@ -1,0 +1,169 @@
+```text
+Fix the remaining ORB directional-trend integration issues identified in the review of LevelStory-main 38.
+
+Inspect the current implementation before changing code. Preserve all correctly implemented ORB epoch behavior, profit management, causal timing, contract handling, and strategy requirements.
+
+Objective
+
+Complete reversal expiration, make active-position transition evidence consistent with Shadow Account Replay, and add missing end-to-end regression coverage.
+
+1. Preserve existing working behavior
+
+Keep all of the following intact:
+
+- NEUTRAL, BULLISH_ORB_TREND, and BEARISH_ORB_TREND states.
+- Completed-close ORB establishment and reversal.
+- Wick-only breaks and inside closes do not change state.
+- Direction changes become effective on the following candle.
+- Unique epoch IDs for every establishment and reversal.
+- Fresh epoch-specific breakout, pullback, patience, and candidate contexts.
+- Causal epoch-specific volume, body, close-location, and distance metrics.
+- Consolidation continuation using the active ORB direction.
+- Multiple independent qualifying occurrences.
+- Contract-boundary position resets.
+- Single-active-trade enforcement in Shadow Account Replay.
+- Existing Visual Review transition evidence.
+- Registered ORB trend tests.
+
+2. Correct prior-epoch pullback-arm expiration
+
+Current behavior recomputes the prior epoch with the reversal candle visible. Phase 4 consequently marks the prior pullback arm terminal before `expiredArmIds` is populated. The code then includes only nonterminal arms, causing the actual prior Phase 4 arm ID to be omitted.
+
+Fix this causally.
+
+When an ORB reversal is confirmed:
+
+- Determine the prior epoch arm’s state immediately before the reversal becomes effective.
+- If it was active immediately before that boundary, expire it with `ORB_TREND_REVERSED`.
+- Include its real Phase 4 arm ID in `expiredArmIds`.
+- Treat reversal-caused terminal states such as `OPPOSITE_BREAKOUT_INVALIDATED` and `ORB_REENTRY_INVALIDATED` as ORB reversal expiration when they occur at the same causal transition boundary.
+- Preserve the lower-level terminal observation as supporting evidence if useful, but make `ORB_TREND_REVERSED` the canonical epoch-expiration reason.
+- Include the arm even if it never produced a patience occurrence.
+- Include pending Phase 5 eligibility-arm IDs associated with the prior epoch.
+- Do not include arms already expired before the reversal because of session boundary, contract boundary, data gap, entry cutoff, confirmed entry, or another independent terminal condition.
+- Do not expire a confirmed or active position.
+- Do not manufacture placeholder IDs.
+
+Prefer evaluating the prior arm at a cursor immediately before `effectiveFromTimestamp`, or explicitly compare its terminal timestamp and reason with the ORB reversal transition.
+
+3. Keep candidate expiration separate from arm expiration
+
+Populate `expiredCandidateIds` only from real prior-epoch candidates or occurrences that:
+
+- Were pending and unconfirmed immediately before the reversal.
+- Belong to the prior epoch.
+- Had not already expired for another reason.
+- Were invalidated when the reversal became effective.
+
+Do not include:
+
+- Confirmed entries
+- Completed trades
+- Candidates belonging to another epoch
+- Candidates created after the reversal
+- Placeholder or reconstructed IDs that were never exposed by candidate generation
+
+Ensure the same expiration identities propagate through:
+
+- Phase 4
+- Phase 5
+- Phase 9
+- Historical candidate projection
+- Combined multi-date replay
+- Shadow Account Replay
+- Visual Review audit evidence
+
+4. Use one authoritative active-position timeline
+
+The historical generator intentionally simulates candidates independently, while Shadow Account Replay later applies the single-active-trade gate. Do not use the most recently simulated candidate as the source of `activePositionBlocked`.
+
+Create or reuse one authoritative account-position timeline based on candidates actually accepted by the single-active-trade gate.
+
+Requirements:
+
+- A position becomes active at its modeled fill/entry-effective timestamp.
+- It remains active through partial profit-taking while any contract or runner remains open.
+- It becomes flat only at the authoritative full-exit effective timestamp.
+- A newly detected ORB direction may still be recorded while a position is active.
+- New entry is blocked until the authoritative position is fully flat.
+- Set `activePositionBlocked` from this accepted-position timeline.
+- Independently simulated overlapping candidates must not overwrite the authoritative position interval.
+- Blocked candidates must not become the position used to block later candidates.
+- Do not interrupt or reverse an existing position when the ORB trend reverses.
+- Continue managing the existing position using its original stop, target, breakeven, recovery, and runner rules.
+- Reset account-position state at an actual scheduled contract boundary.
+- Use timestamps consistently; do not compare local and global candle indices.
+
+If Phase 9 must generate independent signal evidence before Shadow Account Replay selects entered trades, separate these concepts explicitly:
+
+- `signalSimulationPosition`
+- `authoritativeAccountPosition`
+
+Only the authoritative account position may control `activePositionBlocked` and entry disposition.
+
+5. Reconcile transition evidence after account replay
+
+If the authoritative entered-trade timeline is only known after Shadow Account Replay:
+
+- Reconcile each ORB transition against the final accepted-position ledger.
+- Update `activePositionBlocked` deterministically.
+- Preserve the transition’s original confirmation and effective timestamps.
+- Do not change the ORB direction based on account position.
+- Propagate reconciled evidence into the Visual Review Set and replay results.
+- Ensure regeneration produces identical results for the same inputs.
+
+6. Add required regression tests
+
+Add tests proving:
+
+- A prior Phase 4 arm active immediately before reversal appears in `expiredArmIds`.
+- An arm with no patience occurrence still appears in `expiredArmIds`.
+- An arm already expired before reversal is not included.
+- A reversal-caused `ORB_REENTRY_INVALIDATED` arm is canonically reported as `ORB_TREND_REVERSED`.
+- A reversal-caused `OPPOSITE_BREAKOUT_INVALIDATED` arm is canonically reported as `ORB_TREND_REVERSED`.
+- Pending prior-epoch candidates appear in `expiredCandidateIds`.
+- Confirmed entries never appear in `expiredCandidateIds`.
+- IDs are unique, stable, and belong to the correct epoch.
+- A reversal while an authoritative position is active sets `activePositionBlocked: true`.
+- A partial exit with a runner still open continues blocking entries.
+- A full exit at the effective timestamp permits later entries according to existing same-timestamp ordering.
+- An independently simulated overlapping candidate does not replace the authoritative position.
+- A blocked candidate does not become a blocking position.
+- Scheduled multi-contract replay resets position state correctly.
+- Combined multi-date replay uses identical position semantics.
+- Shadow Account Replay and ORB transition evidence agree.
+- Visual Review displays real expired arm/candidate IDs and active-position status.
+- A complete bullish-to-bearish and bearish-to-bullish candidate-generation fixture works end to end.
+
+Register every new test in the normal test workflow.
+
+7. Verification
+
+Run:
+
+- API typecheck
+- Frontend typecheck
+- ORB trend tests
+- Phase 4 tests
+- Phase 5 tests
+- Phase 6 tests
+- Phase 9 and Phase 9 integration tests
+- Account-position-gate tests
+- Multi-contract replay tests
+- Combined replay tests
+- Shadow Account Replay tests
+- Visual Review tests
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Root causes
+- Files changed
+- Exact lifecycle and position-timeline behavior implemented
+- Tests added
+- Test results
+- Any remaining limitations
+
+Do not claim completion if a prior active Phase 4 arm is missing merely because it became terminal when the reversal candle was added. Do not derive `activePositionBlocked` from the latest independently simulated candidate when Shadow Account Replay accepted a different authoritative position.
+```
