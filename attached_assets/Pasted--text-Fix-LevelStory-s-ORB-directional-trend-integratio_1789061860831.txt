@@ -1,0 +1,147 @@
+```text
+Fix LevelStory’s ORB directional-trend integration based on the audit of LevelStory-main 36.
+
+Before changing anything, inspect the current implementation and tests. Preserve all existing strategy, profit-management, single-active-trade, causal-data, and Shadow Account Replay behavior unless explicitly changed below.
+
+Objective
+
+Make the causal ORB trend state machine authoritative throughout candidate generation—not merely displayed as diagnostic evidence. When price establishes or reverses the ORB trend, the app must evaluate independent opportunities in the effective direction using a new causal epoch.
+
+Required behavior
+
+1. Establishing and reversing ORB direction
+
+- Start each session in NEUTRAL.
+- A completed candle closing at or beyond the governed confirmation buffer above the finalized ORB high establishes BULLISH_ORB_TREND.
+- A completed candle closing at or beyond the governed confirmation buffer below the finalized ORB low establishes BEARISH_ORB_TREND.
+- While bullish, a qualifying completed close below the opposite ORB boundary reverses the trend to bearish.
+- While bearish, a qualifying completed close above the opposite ORB boundary reverses the trend to bullish.
+- A wick beyond a boundary or a close inside the ORB must not establish or reverse the trend.
+- Do not require VWAP, EMA 200, volume, candle-body percentage, or close-location percentage to establish or reverse the ORB trend.
+- Each transition becomes effective beginning with the immediately following candle.
+- Support multiple causal reversals during one session.
+
+2. Create a fresh executable context for every trend epoch
+
+- Stop passing the session’s original `detectInitialBreakout()` result into every later pullback and setup evaluation.
+- Build a directional breakout/epoch context from each effective ORB trend transition.
+- Each epoch must contain its own:
+  - Direction
+  - Establishing or reversing candle
+  - Confirmation and effective timestamps
+  - Finalized ORB boundaries
+  - Breakout price/evidence
+  - Pullback lifecycle
+  - Patience occurrences
+  - Candidate IDs
+- After a bullish-to-bearish reversal, subsequent bearish pullbacks and patience sequences must be evaluated from the bearish epoch.
+- After a bearish-to-bullish reversal, subsequent bullish opportunities must use the new bullish epoch.
+- Never reuse a pullback event, patience sequence, or candidate from an expired opposite-direction epoch.
+- Multiple qualifying occurrences within the same active epoch must remain independent candidates.
+
+3. Remove stale-breakout rejection
+
+Update `evaluateOrbBreakPullbackContinuation` and any other ORB-dependent setup evaluators so a valid current ORB epoch does not fail because the original session breakout had the opposite direction.
+
+- Do not require `context.breakout.direction === context.orbTrend.direction`.
+- When an ORB trend epoch is active, use its direction and epoch-specific breakout evidence as authoritative.
+- `ORB_PULLBACK_CONTINUATION`, `PATIENCE_CANDLE_CONTINUATION`, and applicable consolidation-continuation logic must be able to qualify in the reversed direction.
+- For consolidation logic, do not prefer the stale original breakout direction over the active ORB trend direction.
+- Legacy breakout detection may remain for compatibility or diagnostics, but it must not override or block a valid active ORB epoch.
+
+4. Expire pending opposite-direction state causally
+
+When an ORB reversal becomes effective:
+
+- Expire pending arms belonging to the prior direction.
+- Invalidate pending, unconfirmed candidates from the prior direction.
+- Record `ORB_TREND_REVERSED` as the expiration reason.
+- Populate `expiredArmIds` and `expiredCandidateIds` with the actual affected IDs.
+- Do not retroactively invalidate a candidate that entered before the reversal became effective.
+- An already-active position must continue under its original stop, target, breakeven, runner, and exit rules.
+
+5. Integrate the single-active-trade rule
+
+- At every ORB transition, determine whether an account position is active.
+- Supply real position-state information to the ORB transition/audit path.
+- If a position is active, the new trend may still be detected and displayed, but entry in the new direction must remain blocked until the account is flat.
+- Set `activePositionBlocked` accurately.
+- Once flat, only still-causally-valid opportunities may enter; do not revive expired candidates.
+
+6. Audit and Visual Review evidence
+
+For every transition and generated candidate, expose:
+
+- Previous and new ORB trend states
+- Direction
+- Epoch ID
+- Finalized ORB high and low
+- Confirmation buffer
+- Establishing/reversal candle OHLCV
+- Confirmation timestamp
+- Effective-from timestamp
+- Boundary crossed
+- Expired arm IDs
+- Expired candidate IDs
+- Expiration reason
+- Whether entry was blocked by an active position
+- Formula version
+- Strategy version
+
+Update Visual Review so these values are displayed clearly. Do not render empty expired-ID fields as meaningful evidence; show “None” when nothing was expired.
+
+7. Causal integrity
+
+- Use only completed candles available at each evaluation cursor.
+- Never use a reversal candle’s result before that candle completes.
+- The new direction must not affect the confirming candle itself.
+- It becomes usable beginning with the following candle.
+- Historical replay, candidate generation, combined multi-date replay, and Shadow Account Replay must use identical epoch-transition behavior.
+
+8. Tests
+
+Add and register tests in the normal API test command for:
+
+- Neutral to bullish establishment
+- Neutral to bearish establishment
+- Bullish to bearish reversal
+- Bearish to bullish reversal
+- Multiple reversals in one session
+- Wick outside without a qualifying close
+- Close inside the ORB
+- Exact confirmation-buffer boundary
+- New state effective only on the following candle
+- Fresh opposite-direction pullback arm after reversal
+- Opposite-direction patience sequence qualifying after reversal
+- Stale original breakout not blocking the new direction
+- Pending prior-direction arm and candidate expiration
+- Accurate expired arm/candidate IDs
+- Active-position blocking without interrupting position management
+- Entry eligibility after the account becomes flat
+- Multiple independent occurrences in one epoch
+- Visual Review audit rendering
+- Shadow Account Replay consistency
+- A regression fixture matching an initial upside ORB break followed by a confirmed downside ORB reversal and subsequent bearish continuation
+
+Ensure `orb-trend.test.ts` is included in the standard API test script.
+
+Verification
+
+Run:
+
+- API typecheck
+- Frontend typecheck
+- Focused ORB trend, Phase 4, Phase 5, Phase 6, Phase 9, Visual Review, account-position-gate, and Shadow Account Replay tests
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Root cause
+- Files changed
+- Exact behavior implemented
+- Tests added and their results
+- Any remaining limitations
+
+Do not claim completion if the Visual Review direction changes but candidate generation is still tied to the original breakout. Do not weaken unrelated strategy requirements or introduce future-candle leakage.
+```
