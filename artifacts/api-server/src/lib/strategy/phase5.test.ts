@@ -18,12 +18,16 @@ import type { OrbTrendAnalysis } from "./orb-trend.js";
 
 const FIVE_MINUTES = 5 * 60_000;
 
-function candle(index: number, open: number, high: number, low: number, close: number, isComplete = true): Candle {
+function assertValidOhlc(open: number, high: number, low: number, close: number): void {
   assert.ok(low <= open, `Invalid OHLC: low ${low} is above open ${open}.`);
   assert.ok(low <= close, `Invalid OHLC: low ${low} is above close ${close}.`);
   assert.ok(high >= open, `Invalid OHLC: high ${high} is below open ${open}.`);
   assert.ok(high >= close, `Invalid OHLC: high ${high} is below close ${close}.`);
   assert.ok(high >= low, `Invalid OHLC: high ${high} is below low ${low}.`);
+}
+
+function candle(index: number, open: number, high: number, low: number, close: number, isComplete = true): Candle {
+  assertValidOhlc(open, high, low, close);
   const openTime = index * FIVE_MINUTES;
   return { openTime, closeTime: openTime + FIVE_MINUTES, open, high, low, close, volume: 100, isComplete };
 }
@@ -102,14 +106,14 @@ test("a reversal-candle threshold reached only intrabar is ambiguous, not confir
 });
 
 test("a reversal candle that never reaches the prior threshold expires the pending occurrence at reversal", () => {
-  const trigger = candle(2, 11.5, 11.75, 1, 1);
+  const trigger = candle(2, 11.5, 11.5, 1, 1);
   const orbTrend = reversalOrbTrend(trigger);
   const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
   const occurrence = result.occurrences?.[0];
   assert.equal(occurrence?.outcomeStatus, "INVALIDATED");
   assert.equal(occurrence?.qualificationStatus, "STRUCTURALLY_INVALIDATED");
-  assert.equal(occurrence?.eligibilityArmStateReason, "ORB_TREND_REVERSED");
-  assert.equal(occurrence?.eligibilityArmTransitionTime, trigger.closeTime);
+  assert.equal(occurrence?.eligibilityArmState, "invalidated");
+  assert.equal(occurrence?.evaluationCursor, trigger.closeTime);
   assert.match(occurrence?.reasonCode ?? "", /^ORB_TREND_REVERSED:/);
 });
 
@@ -127,7 +131,7 @@ test("attempt-level structural invalidation does not terminalize an active pullb
 
 function setup(direction: "long" | "short", trigger: Candle): Candle[] {
   const previous = direction === "long" ? candle(0, 10, 12, 8, 10.5) : candle(0, 10, 12, 8, 9.5);
-  const patience = direction === "long" ? candle(1, 10.5, 10.8, 7, 10.8) : candle(1, 9.5, 13, 9.2, 9.2);
+  const patience = direction === "long" ? candle(1, 10, 10, 7, 10) : candle(1, 10, 13, 10, 10);
   return [previous, patience, trigger];
 }
 
@@ -139,6 +143,7 @@ function datedCandle(
   close: number,
 ): Candle {
   const timestamp = Date.parse(openTime);
+  assertValidOhlc(open, high, low, close);
   return { openTime: timestamp, closeTime: timestamp + FIVE_MINUTES, open, high, low, close, volume: 100, isComplete: true };
 }
 
@@ -187,7 +192,7 @@ test("early ORB evaluates a later P after an earlier P fails its adjacent E", ()
     datedCandle("2026-06-01T13:40:00.000Z", 100.5, 101.25, 100, 101),
     datedCandle("2026-06-01T13:45:00.000Z", 101, 103.25, 100.75, 101.25),
     datedCandle("2026-06-01T13:50:00.000Z", 101.25, 103.25, 101, 103),
-    datedCandle("2026-06-01T13:55:00.000Z", 103, 105, 102.75, 101.25),
+    datedCandle("2026-06-01T13:55:00.000Z", 103, 105, 100.5, 101.25),
     datedCandle("2026-06-01T14:00:00.000Z", 103.5, 104.25, 103, 104),
     datedCandle("2026-06-01T14:05:00.000Z", 104, 106.5, 103.75, 106),
   ], {
@@ -310,7 +315,7 @@ test("Early ORB keeps independent long and short attempts when the first directi
     datedCandle("2026-06-01T13:45:00.000Z", 101, 102.5, 100.75, 101.25),
     datedCandle("2026-06-01T13:50:00.000Z", 101.25, 102, 100.5, 101.5),
     datedCandle("2026-06-01T13:55:00.000Z", 101.5, 102.5, 98.75, 101.75),
-    datedCandle("2026-06-01T14:00:00.000Z", 101.75, 100, 98.75, 99.5),
+    datedCandle("2026-06-01T14:00:00.000Z", 101.75, 101.75, 98.75, 99.5),
     datedCandle("2026-06-01T14:05:00.000Z", 99.5, 100, 96.5, 97),
   ], { high: 101.25, low: 99.75, complete: true, completedAt: Date.parse("2026-06-01T13:45:00.000Z") }, {
     enabled: true, entryBufferTicks: 4, stopBufferTicks: 4, entryCutoffMinutes: 630, minimumCloseDistanceTicks: 1,
@@ -459,7 +464,7 @@ test("patience strategy accepts the ATR-adaptive four-to-eight tick stop range",
 
 test("three ticks do not confirm, while four ticks confirm", () => {
   const threeTicks = patienceCandleEngine(
-    setup("long", candle(2, 10.8, 10.75, 10.2, 10.75)),
+    setup("long", candle(2, 10.75, 10.75, 10.2, 10.75)),
     "long",
     { eligibilityEvents: eligibility(), tickSize: 0.25 },
   );
@@ -502,7 +507,7 @@ test("effective confirmation uses the stricter NTZ threshold and accepts wick-on
   assert.equal(isStrictlyOutsideNtz({ high: 12, low: 10 }, "long", ntz, true, threshold), false);
 
   const result = patienceCandleEngine(
-    setup("long", candle(2, 10.8, 12.25, 11.5, 11.75)),
+    setup("long", candle(2, 11.5, 12.25, 11.5, 11.75)),
     "long",
     { eligibilityEvents: eligibility(), tickSize: 0.25, finalizedNtz: ntz, requireFinalizedNtz: true },
   );
@@ -741,7 +746,7 @@ test("governed default patience stops use eight ticks on the P extreme", () => {
   const long = patienceCandleEngine(setup("long", candle(2, 10.8, 11.75, 10.1, 11.7)), "long", {
     eligibilityEvents: eligibility(),
   }).occurrences?.[0];
-  const short = patienceCandleEngine(setup("short", candle(2, 10.8, 11.75, 10.1, 9.7)), "short", {
+  const short = patienceCandleEngine(setup("short", candle(2, 10.8, 11.75, 10.1, 10.1)), "short", {
     eligibilityEvents: eligibility(),
   }).occurrences?.[0];
   assert.equal(long?.stopBufferTicks, 8);
@@ -796,8 +801,8 @@ test("four-tick confirmation is governed and the thesis stop sits eight ticks be
 });
 
 test("a one-tick-short long and short excursion cannot confirm the governed buffer", () => {
-  const long = patienceCandleEngine(setup("long", candle(2, 10.8, 10.75, 10.1, 10.7)), "long", { eligibilityEvents: eligibility() });
-  const short = patienceCandleEngine(setup("short", candle(2, 9.2, 9.8, 9.25, 9.3)), "short", { eligibilityEvents: eligibility() });
+  const long = patienceCandleEngine(setup("long", candle(2, 10.75, 10.75, 10.1, 10.7)), "long", { eligibilityEvents: eligibility() });
+  const short = patienceCandleEngine(setup("short", candle(2, 9.25, 9.8, 9.25, 9.3)), "short", { eligibilityEvents: eligibility() });
   assert.equal(long.state, "PATIENCE_CANDLE_EXPIRED");
   assert.equal(short.state, "PATIENCE_CANDLE_EXPIRED");
   assert.equal(long.entryBufferPrice, 11);
