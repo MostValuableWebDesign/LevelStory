@@ -2668,6 +2668,20 @@ function formatSignedMoney(value: number | null | undefined): string {
   return `${sign}$${Math.abs(value).toFixed(2)}`;
 }
 
+function tradeExitExplanation(trade: TradeEvidenceView | null, open: boolean): string {
+  if (!trade || open) return "Position remains open.";
+  const reason = String(trade.audit?.exitReason ?? trade.outcome ?? "").toLowerCase();
+  if (reason === "target") return "Price reached the planned target.";
+  if (reason === "runner") return "The runner exited after profit protection.";
+  if (reason === "stop" || reason === "strategy stop") return "Price crossed the strategy stop.";
+  if (reason === "catastrophe stop") return "Price crossed the catastrophe stop.";
+  if (reason === "breakeven") return "Price returned to the breakeven stop.";
+  if (reason === "breakeven recovery") return "The recovery stop closed the position.";
+  if (reason === "session close") return "The position closed at the session boundary.";
+  if (reason === "manual") return "The position was closed by the execution rule.";
+  return `The position closed because of ${traderLabel(trade.audit?.exitReason ?? trade.outcome).toLowerCase()}.`;
+}
+
 function tradeResultLabel(trade: TradeEvidenceView | null, audit: Record<string, unknown>): string {
   if (!trade) {
     const category = String(audit.rejectionCategory ?? "").toUpperCase();
@@ -2747,8 +2761,27 @@ function TradeAtAGlance({
   const result = tradeResultLabel(trade, audit);
   const open = trade?.outcome === "open" || trade?.exitTime === null || trade?.exitPrice == null;
   const targetPlan = trade?.targetPlan ?? trade?.audit?.targetPlan;
-  const target = targetPlan?.targetPrice ?? trade?.audit?.effectiveTargetPrice ?? trade?.audit?.oneRPrice;
-  const stop = trade?.audit?.primaryLossExitLevel?.stopPrice;
+  const legs = trade?.audit?.legs ?? [];
+  const quantity = legs.reduce((sum, leg) => sum + (typeof leg.quantity === "number" ? leg.quantity : 0), 0) || trade?.contracts;
+  const oneRPrice = typeof trade?.audit?.oneRPrice === "number" ? trade.audit.oneRPrice : null;
+  const hasKeyLevelTarget = targetPlan?.selectedTargetLevel !== null
+    && targetPlan?.selectedTargetLevel !== undefined
+    && typeof targetPlan?.targetPrice === "number"
+    && targetPlan.fallbackUsed !== true;
+  const noEligibleKeyLevel = targetPlan?.disposition === "NO_ELIGIBLE_KEY_LEVEL" || !hasKeyLevelTarget;
+  const oneRStatus = oneRPrice === null
+    ? "Not applicable"
+    : hasKeyLevelTarget
+      ? "Not active · key-level target"
+      : trade?.audit?.oneRReached
+        ? "Reached"
+        : "Not reached";
+  const singleContractRule = trade?.contracts === 1 && noEligibleKeyLevel && oneRPrice !== null
+    ? "Full exit at +1R"
+    : trade?.contracts === 1 && hasKeyLevelTarget
+      ? "Key-level target has priority"
+      : "—";
+  const exitExplanation = tradeExitExplanation(trade, open);
   const line = trade
     ? `${result.toUpperCase()} · ${(trade.direction ?? "—").toUpperCase()} ${trade.contracts ?? "—"} MES · Net ${formatSignedMoney(trade.netPnl)}`
     : `${result.toUpperCase()} · No modeled entry`;
@@ -2760,18 +2793,20 @@ function TradeAtAGlance({
       </div>
       <span className={`shrink-0 border px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${resultTone(result)}`} data-testid="status-trade-result">{result}</span>
     </div>
-    <div className="mt-4 grid gap-3 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
-      <div><div className="eyebrow text-muted-foreground">Entry / exit</div><div className="mono mt-1 font-bold">{formatTradePrice(trade?.entryPrice)} <span className="text-muted-foreground">→</span> {open ? "Open" : formatTradePrice(trade?.exitPrice)}</div></div>
+     <div className="mt-4 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Entry price</div><div className="mono mt-1 font-bold">{formatTradePrice(trade?.entryPrice)}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Exit price</div><div className="mono mt-1 font-bold">{open ? "—" : formatTradePrice(trade?.exitPrice)}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Quantity</div><div className="mono mt-1 font-bold">{quantity ?? "—"}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">P/L</div><div className="mono mt-1 font-bold">{formatSignedMoney(trade?.netPnl)}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mono mt-1 font-bold">{trade?.contracts ?? "—"}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">1R status</div><div className="mt-1 font-semibold">{oneRStatus}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Single-contract rule</div><div className="mt-1 font-semibold">{singleContractRule}</div></div>
+       <div className="bg-card px-3 py-3"><div className="eyebrow text-muted-foreground">Exit reason</div><div className="mt-1 font-semibold">{exitExplanation}</div></div>
+     </div>
+     <div className="mt-3 grid gap-3 text-[10px] sm:grid-cols-2">
       <div><div className="eyebrow text-muted-foreground">Entry / exit time</div><div className="mt-1 font-semibold">{formatTradeTime(trade?.entryTime)} <span className="text-muted-foreground">→</span> {open ? "Current" : formatTradeTime(trade?.exitTime)}</div></div>
       <div><div className="eyebrow text-muted-foreground">Strategy</div><div className="mt-1 break-words font-semibold">{strategyName}</div></div>
-      <div><div className="eyebrow text-muted-foreground">Exit reason</div><div className="mt-1 break-words font-semibold">{open ? "Open / unscored" : traderLabel(trade?.audit?.exitReason ?? trade?.outcome)}</div></div>
     </div>
-    {trade && <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-3 text-[10px]">
-      <span>Fees <strong className="mono">{formatSignedMoney(trade.fees)}</strong></span>
-      <span>Target <strong className="mono">{formatTradePrice(target)}</strong></span>
-      <span>Stop <strong className="mono">{formatTradePrice(stop)}</strong></span>
-      {trade.audit?.oneRPrice != null && <span>R result <strong className="mono">{trade.netPnl == null || trade.audit.initialTargetPrice == null || trade.entryPrice == null ? "—" : `${(trade.netPnl / Math.max(Math.abs(trade.audit.initialTargetPrice - trade.entryPrice), 0.01)).toFixed(2)}R`}</strong></span>}
-    </div>}
   </section>;
 }
 
@@ -2851,11 +2886,7 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">P close distance</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.pDistanceTicks)} ticks · {safeValue(earlyOrb.pDistancePoints)} pt</div><div className="mt-1 text-[10px] text-muted-foreground">Minimum governed distance is captured in the request.</div></div>
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.confirmationThreshold)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(earlyOrb.eClose)} E close · {safeValue(earlyOrb.finalStrategyStop)} stop</div></div>
       </div>}
-      <TradeInspector trade={trade} audit={audit} strategyName={strategyName} />
-     <details className="border-t border-border px-5 py-4 sm:px-6" data-testid="technical-details">
-        <summary className="cursor-pointer text-xs font-semibold">Technical details</summary>
-      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-secondary/60 p-3 text-[10px] leading-4 text-muted-foreground">{JSON.stringify(evidence, null, 2)}</pre>
-    </details>
+       <TradeInspector trade={trade} audit={audit} />
       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
       </div>}
   </Panel>;
@@ -2878,17 +2909,13 @@ function formatTargetUpdateTime(value: number | null | undefined): string {
 function TradeInspector({
   trade,
   audit,
-  strategyName,
 }: {
   trade: TradeEvidenceView | null;
   audit: Record<string, unknown>;
-  strategyName: string;
 }) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    whyQualified: false,
     otherStrategies: false,
     skippedTargetLevels: false,
-    fullAudit: false,
   });
   const toggle = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
   const result = tradeResultLabel(trade, audit);
@@ -2909,12 +2936,6 @@ function TradeInspector({
       <div className="eyebrow text-muted-foreground">Strategy and execution details</div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Authoritative trade inspector</h2><span className={`border px-2 py-1 text-[9px] font-bold uppercase ${resultTone(result)}`}>{result}</span></div>
     </div>
-    <InspectorAccordion id="full-audit" title="Full audit details" detail="Exact machine evidence" open={openSections.fullAudit} onToggle={() => toggle("fullAudit")}>
-      <TechnicalTradeInspector trade={trade} />
-    </InspectorAccordion>
-    <InspectorAccordion id="why-qualified" title="Why this qualified" detail={strategyName} open={openSections.whyQualified} onToggle={() => toggle("whyQualified")}>
-      <p>{trade ? "This setup qualified for execution." : "This setup did not qualify for execution."}</p>
-    </InspectorAccordion>
     {alternatives.length > 0 && <InspectorAccordion id="other-strategies" title="Other strategies considered" detail={`${alternatives.length} recorded`} open={openSections.otherStrategies} onToggle={() => toggle("otherStrategies")}>
       <div className="space-y-2">{alternatives.map((alternative, index) => <div key={index} className="border border-border bg-card px-3 py-2">
         <div className="flex flex-wrap justify-between gap-2 font-semibold"><span>{traderLabel(alternative.strategy ?? alternative.strategyKey)}</span><span>{traderLabel(alternative.status ?? alternative.rejectionCategory ?? "ambiguous")}</span></div>
