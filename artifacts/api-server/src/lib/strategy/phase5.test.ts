@@ -14,6 +14,7 @@ import {
 } from "./phase5.js";
 import type { PullbackAnalysis } from "./phase4.js";
 import type { Candle } from "./types.js";
+import type { OrbTrendAnalysis } from "./orb-trend.js";
 
 const FIVE_MINUTES = 5 * 60_000;
 
@@ -25,6 +26,87 @@ function candle(index: number, open: number, high: number, low: number, close: n
 function eligibility(time = FIVE_MINUTES): PatienceEligibilityEvent[] {
   return [{ time, reason: "pullback", detail: "Retest reached a qualifying level." }];
 }
+
+function reversalOrbTrend(confirmingCandle: Candle): OrbTrendAnalysis {
+  return {
+    transitions: [{
+      previousState: "BULLISH_ORB_TREND",
+      newState: "BEARISH_ORB_TREND",
+      direction: "short",
+      epochId: "bearish-epoch",
+      confirmingCandle: {
+        openTime: confirmingCandle.openTime,
+        closeTime: confirmingCandle.closeTime,
+        open: confirmingCandle.open,
+        high: confirmingCandle.high,
+        low: confirmingCandle.low,
+        close: confirmingCandle.close,
+        volume: confirmingCandle.volume,
+      },
+      effectiveFromTimestamp: confirmingCandle.closeTime,
+    }],
+    trendDirectionAt: (openTime: number) => openTime < confirmingCandle.closeTime ? "long" : "short",
+    epochIdAt: (openTime: number) => openTime < confirmingCandle.closeTime ? "bullish-epoch" : "bearish-epoch",
+  } as unknown as OrbTrendAnalysis;
+}
+
+function reversalPatienceFixture(trigger: Candle): Candle[] {
+  return [
+    candle(0, 10, 12, 8, 10.5),
+    candle(1, 10.5, 10, 9.5, 10.8),
+    trigger,
+  ];
+}
+
+function reversalPatienceOptions(trigger: Candle, orbTrend: OrbTrendAnalysis) {
+  return {
+    eligibilityEvents: eligibility(),
+    trend: "bullish" as const,
+    directionSource: "ORB_TREND" as const,
+    orbTrend,
+    orbTrendEpochId: "bullish-epoch",
+    finalizedNtz: { high: 9, low: 2, complete: true },
+    requireFinalizedNtz: true,
+  };
+}
+
+test("a prior-direction threshold reached at the reversal candle open remains confirmed", () => {
+  const trigger = candle(2, 11, 11.25, 7, 1);
+  const orbTrend = reversalOrbTrend(trigger);
+  const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
+  const occurrence = result.occurrences?.[0];
+  assert.equal(result.state, "ENTRY_TRIGGERED");
+  assert.equal(occurrence?.outcomeStatus, "CONFIRMED");
+  assert.equal(occurrence?.qualificationStatus, "SIGNAL_CONFIRMED");
+  assert.equal(occurrence?.orbTrendEpochId, "bullish-epoch");
+  assert.notEqual(occurrence?.eligibilityArmState, "invalidated");
+  assert.doesNotMatch(occurrence?.reasonCode ?? "", /ORB_TREND_REVERSED/);
+});
+
+test("a reversal-candle threshold reached only intrabar is ambiguous, not confirmed", () => {
+  const trigger = candle(2, 10.5, 11.25, 7, 1);
+  const orbTrend = reversalOrbTrend(trigger);
+  const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
+  const occurrence = result.occurrences?.[0];
+  assert.equal(result.state, "AMBIGUOUS_EVENT_ORDER");
+  assert.equal(occurrence?.outcomeStatus, "INVALIDATED");
+  assert.equal(occurrence?.qualificationStatus, "STRUCTURALLY_INVALIDATED");
+  assert.match(occurrence?.reasonCode ?? "", /same candle.*cannot prove/i);
+  assert.notEqual(occurrence?.outcomeStatus, "CONFIRMED");
+  assert.notEqual(occurrence?.reasonCode, "ORB_TREND_REVERSED");
+});
+
+test("a reversal candle that never reaches the prior threshold expires the pending occurrence at reversal", () => {
+  const trigger = candle(2, 10.5, 10.75, 7, 1);
+  const orbTrend = reversalOrbTrend(trigger);
+  const result = patienceCandleEngine(reversalPatienceFixture(trigger), "long", reversalPatienceOptions(trigger, orbTrend));
+  const occurrence = result.occurrences?.[0];
+  assert.equal(occurrence?.outcomeStatus, "INVALIDATED");
+  assert.equal(occurrence?.qualificationStatus, "STRUCTURALLY_INVALIDATED");
+  assert.equal(occurrence?.eligibilityArmStateReason, "ORB_TREND_REVERSED");
+  assert.equal(occurrence?.eligibilityArmTransitionTime, trigger.closeTime);
+  assert.match(occurrence?.reasonCode ?? "", /^ORB_TREND_REVERSED:/);
+});
 
 test("attempt-level structural invalidation does not terminalize an active pullback arm", () => {
   const transitions = patienceArmLifecycleTransitions({

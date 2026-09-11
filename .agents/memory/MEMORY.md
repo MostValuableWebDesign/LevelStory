@@ -62,6 +62,7 @@
 - [Compact batch funnel](compact-batch-funnel.md) — use compact qualification batches for large historical blocker analysis; reconcile funnel counts with causal-ledger diagnostics.
 - [Strategy registration surfaces](strategy-registration-surfaces.md) — new strategy IDs must reach replay selection and dashboard performance allowlists, not just taxonomy and evaluators.
 - [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.
+- [Phase 5 ambiguity projection](phase5-ambiguity-projection.md) — top-level patience analysis must preserve an occurrence's same-candle reversal ambiguity instead of falling back to entry triggered.
 - [Unlimited confirmed entries](unlimited-confirmed-entries.md) — evaluate every eligible Early ORB P→E sequence; do not cap confirmed entries per direction.
 - [Early ORB provenance](early-orb-provenance.md) — identify merged Early ORB occurrences from arm/provenance metadata, not only optional evidence or canonical strategy labels.
 - [Visual replay timeout fallback](visual-replay-timeout-fallback.md) — stream validated snapshots; on timeout expose only same-request or worker-emitted partial evidence, never unrelated data.

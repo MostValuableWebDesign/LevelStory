@@ -209,6 +209,160 @@ test("a reversal expires the real prior-epoch arm and pending candidate at the c
   assert.equal(reversal?.expirationReason, "ORB_TREND_REVERSED");
   assert.equal(reversal?.expiredArmIds.includes(priorArmId!), true);
   assert.equal(reversal?.expiredCandidateIds.includes(pendingCandidateId!), true);
+  const matchingOccurrences = afterReversal.patience.occurrences?.filter(
+    (occurrence) => occurrence.occurrenceId === pendingCandidateId,
+  ) ?? [];
+  assert.equal(matchingOccurrences.length, 1);
+  assert.notEqual(matchingOccurrences[0]?.outcomeStatus, "CONFIRMED");
+});
+
+test("an ORB reversal candle that reaches the prior threshold at open confirms the prior-epoch occurrence", () => {
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: "2026-08-25",
+    days: 1,
+    seed: 11,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const window = sessionWindow("2026-08-25", "regular", calendar)!;
+  const regular = source.filter((candle) =>
+    candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  const beforeReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[35].closeTime,
+      allCandles: source,
+      historicalFeed: source,
+      premarketAvailable: true,
+    },
+  );
+  const priorCandidate = beforeReversal.patience.occurrences?.find(
+    (occurrence) => occurrence.outcomeStatus === "CANDIDATE",
+  );
+  assert.ok(priorCandidate?.confirmationThreshold);
+  assert.ok(beforeReversal.orbTrend.finalizedOrbLow !== null);
+  const reversalBoundary = beforeReversal.orbTrend.finalizedOrbLow!
+    - beforeReversal.orbTrend.confirmationBufferPoints
+    - specification.tickSize;
+  const threshold = priorCandidate!.confirmationThreshold!;
+  const reversalCandles = source.map((candle) =>
+    candle.openTime !== regular[36].openTime
+      ? candle
+      : {
+        ...candle,
+        open: threshold,
+        high: threshold + specification.tickSize,
+        low: reversalBoundary - specification.tickSize,
+        close: reversalBoundary - specification.tickSize,
+        bid: reversalBoundary - 2 * specification.tickSize,
+        ask: reversalBoundary - specification.tickSize,
+      });
+  const afterReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[36].closeTime,
+      allCandles: reversalCandles,
+      historicalFeed: reversalCandles,
+      premarketAvailable: true,
+    },
+  );
+  const matchingOccurrences = afterReversal.patience.occurrences?.filter(
+    (occurrence) => occurrence.occurrenceId === priorCandidate!.occurrenceId,
+  ) ?? [];
+  const reversal = afterReversal.orbTrend.transitions.at(-1);
+  assert.equal(matchingOccurrences.length, 1);
+  assert.equal(matchingOccurrences[0]?.outcomeStatus, "CONFIRMED");
+  assert.equal(matchingOccurrences[0]?.qualificationStatus, "SIGNAL_CONFIRMED");
+  assert.equal(afterReversal.patience.state, "ENTRY_TRIGGERED");
+  assert.equal(reversal?.expiredCandidateIds.includes(priorCandidate!.occurrenceId), false);
+  assert.equal(
+    matchingOccurrences.some((occurrence) => occurrence.outcomeStatus === "CONFIRMED"
+      && reversal?.expiredCandidateIds.includes(occurrence.occurrenceId)),
+    false,
+  );
+});
+
+test("an ORB reversal candle that reaches the prior threshold only intrabar is retained as ambiguous", () => {
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: "2026-08-25",
+    days: 1,
+    seed: 11,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const window = sessionWindow("2026-08-25", "regular", calendar)!;
+  const regular = source.filter((candle) =>
+    candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  const beforeReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[35].closeTime,
+      allCandles: source,
+      historicalFeed: source,
+      premarketAvailable: true,
+    },
+  );
+  const priorCandidate = beforeReversal.patience.occurrences?.find(
+    (occurrence) => occurrence.outcomeStatus === "CANDIDATE",
+  );
+  assert.ok(priorCandidate?.confirmationThreshold);
+  assert.ok(beforeReversal.orbTrend.finalizedOrbLow !== null);
+  const reversalBoundary = beforeReversal.orbTrend.finalizedOrbLow!
+    - beforeReversal.orbTrend.confirmationBufferPoints
+    - specification.tickSize;
+  const threshold = priorCandidate!.confirmationThreshold!;
+  const reversalCandles = source.map((candle) =>
+    candle.openTime !== regular[36].openTime
+      ? candle
+      : {
+        ...candle,
+        open: threshold - specification.tickSize,
+        high: threshold + specification.tickSize,
+        low: reversalBoundary - specification.tickSize,
+        close: reversalBoundary - specification.tickSize,
+        bid: reversalBoundary - 2 * specification.tickSize,
+        ask: reversalBoundary - specification.tickSize,
+      });
+  const afterReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[36].closeTime,
+      allCandles: reversalCandles,
+      historicalFeed: reversalCandles,
+      premarketAvailable: true,
+    },
+  );
+  const matchingOccurrences = afterReversal.patience.occurrences?.filter(
+    (occurrence) => occurrence.occurrenceId === priorCandidate!.occurrenceId,
+  ) ?? [];
+  assert.equal(matchingOccurrences.length, 1);
+  assert.equal(matchingOccurrences[0]?.status, "AMBIGUOUS_EVENT_ORDER");
+  assert.equal(matchingOccurrences[0]?.outcomeStatus, "INVALIDATED");
+  assert.equal(matchingOccurrences[0]?.qualificationStatus, "STRUCTURALLY_INVALIDATED");
+  assert.equal(afterReversal.patience.state, "AMBIGUOUS_EVENT_ORDER");
+  assert.equal(matchingOccurrences.some((occurrence) => occurrence.outcomeStatus === "CONFIRMED"), false);
 });
 
 test("deterministic modeled lifecycles start management after E and use the buffered P extreme", () => {

@@ -348,10 +348,19 @@ export function patienceCandleEngine(
     && occurrence.triggerCandle?.openTime !== undefined
     && occurrence.patienceCandle.openTime !== undefined,
   );
+  const ambiguousOccurrence = occurrences.find((occurrence) =>
+    occurrence.status === "AMBIGUOUS_EVENT_ORDER"
+    && occurrence.triggerCandle?.openTime !== undefined
+    && occurrence.patienceCandle.openTime !== undefined,
+  );
   const executableCandidates = candidateIndexes.filter(({ candle }) =>
     isPatienceCandleOutsideNtz(candle, direction, options.finalizedNtz, options.requireFinalizedNtz));
-  const candidate = (confirmedOccurrence
-    ? candidateIndexes.find(({ candle }) => candle.openTime === confirmedOccurrence.patienceCandle.openTime)
+  // Reuse the occurrence that already captured an ambiguous reversal candle.
+  // Falling back to any threshold-reaching candidate would recompute it as an
+  // executable ENTRY_TRIGGERED result and discard the causal ordering evidence.
+  const replayOccurrence = confirmedOccurrence ?? ambiguousOccurrence;
+  const candidate = (replayOccurrence
+    ? candidateIndexes.find(({ candle }) => candle.openTime === replayOccurrence.patienceCandle.openTime)
     : undefined) ?? candidateIndexes.find(({ candle }) => {
     const next = sorted.find((item) => item.openTime > candle.openTime);
     if (!next || !next.isComplete || next.openTime !== candle.closeTime) return false;
@@ -429,7 +438,35 @@ export function patienceCandleEngine(
         detail: `The immediate-next entry candle is missing for ${formatFiveMinuteWindow(candidate.candle.closeTime)}; later candles cannot reuse this patience pattern.`,
       });
     }
-      return finalize(evaluateTrigger(candidate.candle, previous, next, direction, event, trend, directionSource, options.orbTrend, tickSize, entryBufferTicks, stopBufferTicks, options.finalizedNtz, options.requireFinalizedNtz, options.entryCutoffMinutes));
+      const analysis = evaluateTrigger(
+        candidate.candle,
+        previous,
+        next,
+        direction,
+        event,
+        trend,
+        directionSource,
+        options.orbTrend,
+        tickSize,
+        entryBufferTicks,
+        stopBufferTicks,
+        options.finalizedNtz,
+        options.requireFinalizedNtz,
+        options.entryCutoffMinutes,
+      );
+      if (
+        ambiguousOccurrence
+        && ambiguousOccurrence.patienceCandle.openTime === candidate.candle.openTime
+        && ambiguousOccurrence.triggerCandle?.openTime === next.openTime
+      ) {
+        return finalize({
+          ...analysis,
+          state: "AMBIGUOUS_EVENT_ORDER",
+          triggerPrice: null,
+          detail: ambiguousOccurrence.reasonCode,
+        });
+      }
+      return finalize(analysis);
   }
 
   const forming = sorted.at(-1);

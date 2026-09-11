@@ -56,8 +56,10 @@ test("ORB trend establishes, reverses, and creates a unique epoch per direction"
   const reversal = result.transitions[1]!;
   const reversalFollowing = candle(6, 92, 95, 90);
   assert.equal(result.trendDirectionAt(reversal.confirmingCandle.openTime), "long");
+  assert.equal(result.trendDirectionAt(reversal.confirmingCandle.closeTime), "short");
   assert.equal(result.trendDirectionAt(reversalFollowing.openTime), "short");
   assert.equal(result.epochIdAt(reversal.confirmingCandle.openTime), firstEpoch.epochId);
+  assert.equal(result.epochIdAt(reversal.confirmingCandle.closeTime), reversal.epochId);
   assert.equal(result.epochIdAt(reversalFollowing.openTime), reversal.epochId);
 });
 

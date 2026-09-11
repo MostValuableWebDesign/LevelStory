@@ -308,6 +308,75 @@ test("a completed opposite-direction breakout invalidates the prior pullback arm
   assert.equal(pullback.evaluatedCandles, 0);
 });
 
+test("deferring the reversal-confirming candle preserves it in the prior epoch window", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const confirmingCandle = candle(1, 100, 100, 95, 96, 200);
+  const continuation = candle(2, 96, 97, 94, 95, 100);
+  const pullback = analyzePullback(
+    [breakoutCandle, confirmingCandle, continuation],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    {
+      finalizedNtz: { high: 100, low: 99, complete: true },
+      deferTerminalAtCandleOpenTime: confirmingCandle.openTime,
+    },
+  );
+  assert.notEqual(pullback.armState, "OPPOSITE_BREAKOUT_INVALIDATED");
+  assert.equal(pullback.evaluatedCandles, 1);
+  assert.ok(pullback.events.some((event) => event.candle?.openTime === confirmingCandle.openTime));
+});
+
+test("reversal deferral is candle-specific and a later opposite breakout still terminates the arm", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const confirmingCandle = candle(1, 100, 100, 95, 96, 200);
+  const laterTerminal = candle(2, 96, 97, 94, 95, 400);
+  const pullback = analyzePullback(
+    [breakoutCandle, confirmingCandle, laterTerminal],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    {
+      finalizedNtz: { high: 100, low: 99, complete: true },
+      deferTerminalAtCandleOpenTime: confirmingCandle.openTime,
+    },
+  );
+  assert.equal(isTerminalPullbackArmState(pullback.armState), true);
+  assert.equal(pullback.armTransitions?.at(-1)?.time, laterTerminal.closeTime);
+  assert.equal(pullback.evaluatedCandles, 1);
+});
+
+test("an earlier session boundary remains terminal even when its candle is marked for reversal deferral", () => {
+  const breakoutCandle = candle(0, 100, 101, 99, 100, 100);
+  const sameSession = candle(1, 100, 100.5, 99.5, 100.2, 100);
+  const nextDateOpen = timestampForTradingDate("2026-08-26", "09:30", calendar);
+  const confirmingCandle = {
+    ...sameSession,
+    openTime: nextDateOpen,
+    closeTime: nextDateOpen + 5 * 60_000,
+    open: 100,
+    high: 100,
+    low: 95,
+    close: 96,
+  };
+  const pullback = analyzePullback(
+    [breakoutCandle, sameSession, confirmingCandle],
+    breakoutAt(breakoutCandle),
+    [{ name: "Late level", price: 100 }],
+    specification,
+    config,
+    {
+      finalizedNtz: { high: 100, low: 99, complete: true },
+      deferTerminalAtCandleOpenTime: confirmingCandle.openTime,
+    },
+  );
+  assert.equal(pullback.armState, "SESSION_BOUNDARY_EXPIRED");
+  assert.equal(pullback.evaluatedCandles, 1);
+  assert.notEqual(pullback.armTransitions?.at(-1)?.to, "ARMED_AFTER_BREAKOUT");
+});
+
 test("trading-date and contract changes terminate the pullback arm without bridging candles", () => {
   const breakoutCandle = { ...candle(0, 100, 101, 99, 100, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
   const sameSession = { ...candle(1, 100, 100.5, 99.5, 100.2, 100), contractSymbol: "MESM6" } as Candle & { contractSymbol: string };
