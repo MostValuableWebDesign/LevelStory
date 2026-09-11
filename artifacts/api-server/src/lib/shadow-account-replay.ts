@@ -374,9 +374,6 @@ function replayTradeWithFixedContracts(
     primaryLossExitLevel: replayInput.primaryLossExitLevel,
     oneRProfitRule: rebuiltTargetPlan?.fallbackUsed === true || useOneRProfitRule,
     targetIsOneR: rebuiltTargetPlan?.fallbackUsed === true,
-    breakevenTriggerTicks: replayTargetPrice !== null
-      ? DEFAULT_STRATEGY_CONFIG.targetBreakevenTriggerTicks
-       : null,
     structureTrailing: true,
     trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,

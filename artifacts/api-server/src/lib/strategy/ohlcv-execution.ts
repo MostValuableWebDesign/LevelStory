@@ -18,9 +18,6 @@ export const PRIMARY_LEVEL_EXIT_REACHED_LABEL = "PRIMARY_LEVEL_EXIT_REACHED";
 export const NO_FORWARD_LEVEL_1R_PLAN_LABEL = "NO_FORWARD_LEVEL_1R_PLAN";
 export const NO_LEVEL_BAR_TIMER_STARTED_LABEL = "NO_LEVEL_BAR_TIMER_STARTED";
 export const NO_LEVEL_BREAKEVEN_ACTIVATED_LABEL = "NO_LEVEL_BREAKEVEN_ACTIVATED";
-export const TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL = "TARGET_BREAKEVEN_TRIGGER_REACHED";
-/** @deprecated Use TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL. */
-export const STRONG_BREAKOUT_BREAKEVEN_TRIGGER_REACHED_LABEL = TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL;
 export const BREAKEVEN_STOP_ARMED_LABEL = "BREAKEVEN_STOP_ARMED";
 export const BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL = "BREAKEVEN_RECOVERY_EXIT_ARMED";
 export const BREAKEVEN_EXIT_REACHED_LABEL = "BREAKEVEN_EXIT_REACHED";
@@ -326,8 +323,6 @@ export type OhlcvExecutionInput = {
   trailingBufferTicks?: number;
   /** Governed post-entry completed-bar delay before no-target breakeven management. */
   noLevelBreakevenActivationBars?: number;
-  /** Universal favorable excursion for target-bound trades before the entry stop is armed. */
-  breakevenTriggerTicks?: number | null;
   /**
    * A selected VWAP/EMA 200 target remains identity-frozen, but its
    * executable price may ratchet closer after completed candles. The history
@@ -423,14 +418,9 @@ function completedSwing(
 
 function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
   const noForwardLevelAtEntry = input.oneRProfitRule === true;
-  const breakevenTriggerTicks = input.breakevenTriggerTicks ?? null;
-  const breakevenActivationBars = noForwardLevelAtEntry && breakevenTriggerTicks === null
+  const breakevenActivationBars = noForwardLevelAtEntry
     ? input.noLevelBreakevenActivationBars ?? BREAKEVEN_EVALUATION_BARS
     : null;
-  if (breakevenTriggerTicks !== null
-    && (!Number.isInteger(breakevenTriggerTicks) || breakevenTriggerTicks <= 0)) {
-    throw new Error("Breakeven trigger ticks must be a positive whole number.");
-  }
   const initialTargetPrice = input.targetPrice ?? input.target ?? null;
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
@@ -529,14 +519,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const oneRProfitRule = input.oneRProfitRule === true
     && (initialTarget === null || input.targetIsOneR === true);
   const noForwardLevelAtEntry = oneRProfitRule;
-  const breakevenTriggerTicks = input.breakevenTriggerTicks ?? null;
-  const breakevenActivationBars = noForwardLevelAtEntry && breakevenTriggerTicks === null
+  const breakevenActivationBars = noForwardLevelAtEntry
     ? input.noLevelBreakevenActivationBars ?? BREAKEVEN_EVALUATION_BARS
     : null;
-  if (breakevenTriggerTicks !== null
-    && (!Number.isInteger(breakevenTriggerTicks) || breakevenTriggerTicks <= 0)) {
-    throw new Error("Breakeven trigger ticks must be a positive whole number.");
-  }
   if (breakevenActivationBars !== null
     && (!Number.isInteger(breakevenActivationBars) || breakevenActivationBars <= 0)) {
     throw new Error("No-level breakeven activation bars must be a positive whole number.");
@@ -558,9 +543,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       : []),
      ...(breakevenActivationBars !== null
        ? [`Progress-based breakeven/recovery is evaluated after ${breakevenActivationBars} completed post-entry candles; changes are effective on the following candle.`]
-       : []),
-     ...(breakevenTriggerTicks !== null
-       ? [`Breakeven arms after ${breakevenTriggerTicks} favorable MES ticks; the entry stop is effective on the following candle.`]
        : []),
     ...(input.structureTrailing
       ? [`Structure trailing uses the most recent completed three-candle five-minute swing with an ${input.trailingBufferTicks ?? 8}-tick buffer and never widens.`]
@@ -614,7 +596,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   // Keep it null until the configured target or no-level trigger arms breakeven.
   let breakevenPrice: number | null = null;
   let breakevenDisposition: BreakevenDisposition =
-    breakevenTriggerTicks !== null || breakevenActivationBars !== null ? "PENDING" : "NOT_APPLICABLE";
+    breakevenActivationBars !== null ? "PENDING" : "NOT_APPLICABLE";
   let breakevenMfePrice: number | null = null;
   let breakevenMfePoints: number | null = null;
   let breakevenMfeTicks: number | null = null;
@@ -624,8 +606,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let breakevenRecoveryExitTimestamp: number | null = null;
   let breakevenMode: "none" | "stop" | "recovery" = "none";
   let breakevenEvaluated = false;
-  let breakevenTriggerPending = false;
-  let breakevenTriggerPendingCandleIndex: number | null = null;
   let runnerBreakevenPending = false;
   let runnerBreakevenPendingCandleIndex: number | null = null;
   let runnerBreakevenPendingTimestamp: number | null = null;
@@ -678,32 +658,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         noLevelTimerStarted = true;
         eventLabels.push(NO_LEVEL_BAR_TIMER_STARTED_LABEL);
       }
-    }
-    if (
-      breakevenTriggerPending
-      && breakevenTriggerPendingCandleIndex !== null
-      && candleIndex > breakevenTriggerPendingCandleIndex
-      && !breakevenActivated
-      && !targetHit
-      && !oneRReached
-      && remaining > 0
-    ) {
-      breakevenTriggerPending = false;
-      breakevenTriggerPendingCandleIndex = null;
-      breakevenMode = "stop";
-      breakevenActivated = true;
-      breakevenActivationTimestamp = typeof candles[candleIndex - 1]?.closeTime === "number"
-        && Number.isFinite(candles[candleIndex - 1]?.closeTime)
-        ? candles[candleIndex - 1]!.closeTime!
-        : null;
-      breakevenEffectiveFromTimestamp = typeof candle.openTime === "number"
-        && Number.isFinite(candle.openTime)
-        ? candle.openTime
-        : null;
-      breakevenPrice = modeledFill;
-      originalStopStillActive = true;
-      breakevenDisposition = "BREAKEVEN_STOP_ARMED";
-      eventLabels.push(BREAKEVEN_STOP_ARMED_LABEL);
     }
     const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
     const breakevenStopArmed = breakevenMode === "stop";
@@ -978,42 +932,6 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         originalStopStillActive = true;
         breakevenDisposition = "BREAKEVEN_RECOVERY_EXIT_ARMED";
         eventLabels.push(BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL);
-      }
-    }
-    if (
-      breakevenTriggerTicks !== null
-      && !breakevenTriggerPending
-      && !breakevenActivated
-      && !targetHit
-      && !oneRReached
-      && remaining > 0
-    ) {
-      const triggerPrice = input.direction === "long"
-        ? modeledFill + breakevenTriggerTicks * size
-        : modeledFill - breakevenTriggerTicks * size;
-      const triggerReached = input.direction === "long"
-        ? candle.high >= triggerPrice
-        : candle.low <= triggerPrice;
-      if (triggerReached) {
-        const favorableExtreme = input.direction === "long"
-          ? Math.max(modeledFill, candle.high)
-          : Math.min(modeledFill, candle.low);
-        const favorableExcursionPoints = Math.abs(favorableExtreme - modeledFill);
-        breakevenMfePrice = tick(favorableExtreme, size);
-        breakevenMfePoints = Number(favorableExcursionPoints.toFixed(10));
-        breakevenMfeTicks = Number((favorableExcursionPoints / size).toFixed(10));
-        breakevenMfeR = initialRiskPoints && initialRiskPoints > 0
-          ? Number((favorableExcursionPoints / initialRiskPoints).toFixed(10))
-          : 0;
-        breakevenEvaluationClose = tick(candle.close, size);
-        breakevenEvaluationCloseDisposition = favorableClose(input.direction, candle.close, modeledFill)
-          ? "favorable"
-          : candle.close === modeledFill
-            ? "neutral"
-            : "adverse";
-        breakevenTriggerPending = true;
-        breakevenTriggerPendingCandleIndex = candleIndex;
-        eventLabels.push(TARGET_BREAKEVEN_TRIGGER_REACHED_LABEL);
       }
     }
     if (

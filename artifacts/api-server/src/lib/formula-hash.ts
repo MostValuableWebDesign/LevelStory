@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v21-orb-trend-epochs-account-single-active-trade";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v22-orb-trend-epochs-account-single-active-trade-no-target-breakeven";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -41,7 +41,6 @@ export function formulaConfiguration(
         maximumRisk: "clamp(ceil(atrTicks*1.50),20,40)",
         breakevenBars: 6,
         breakevenExcursionR: 0.5,
-        targetBreakevenTriggerTicks: config.targetBreakevenTriggerTicks,
         runnerBuffer: "clamp(ceil(atrTicks*0.10),4,8)",
         fixedContracts: config.executionManagementFixedContracts,
       },

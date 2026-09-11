@@ -1,10 +1,10 @@
 ---
-name: Universal target breakeven
-description: The shared nine-tick target-trade breakeven trigger and its causal activation boundary.
+name: Target-trade breakeven removal
+description: Target-bound trades no longer use the shared nine-tick favorable-excursion breakeven trigger.
 ---
 
-Every target-bound strategy uses a nine-MES-tick favorable excursion trigger, including when an eligible key-level target or an exactly-1R fallback target remains active. The trigger candle only creates pending state; the entry-price stop becomes effective on the following candle, with adverse-first OHLCV handling. The legacy completed-bar rule remains only for no-target management without a target trigger.
+Target-bound strategies do not arm breakeven from a universal favorable-excursion tick threshold. The six-completed-bar rule remains only for no-forward-level management, and post-target runner protection remains a separate management rule.
 
-**Why:** Target trades previously received this behavior only when their edge was Strong Breakout, while other strategies used no-target timing or no breakeven at all. Same-candle stop activation would also use information unavailable at the entry candle boundary and create optimistic replay exits.
+**Why:** The shared nine-tick trigger changed outcomes across every target-bearing strategy and mixed target management with no-target recovery semantics. Removing it keeps target exits governed by their frozen target/stop plans and preserves the distinct runner-management behavior.
 
-**How to apply:** Keep the governed trigger in shared strategy configuration, pass it whenever a target price exists through candidate-owned historical execution and Shadow Account Replay, preserve measured excursion and trigger/activation labels in audit evidence, and keep no-target bar management separate.
+**How to apply:** Do not add a target-bound breakeven trigger to strategy configuration or execution calls. Keep no-level completed-bar breakeven and post-target runner protection separate.

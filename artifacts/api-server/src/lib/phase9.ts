@@ -4719,9 +4719,6 @@ function candidateDrivenEntryTrade(
          : undefined,
        oneRProfitRule: targetPlan?.fallbackUsed === true,
        targetIsOneR: targetPlan?.fallbackUsed === true,
-       breakevenTriggerTicks: targetPrice !== null
-         ? config.targetBreakevenTriggerTicks
-         : null,
        structureTrailing: true,
        trailingBufferTicks: management.runnerBufferTicks ?? 4,
        noLevelBreakevenActivationBars: 6,
@@ -5439,9 +5436,6 @@ export function runCausalBacktest(
                }),
             }
             : undefined,
-           breakevenTriggerTicks: target !== null
-             ? replayStrategyConfig.targetBreakevenTriggerTicks
-            : null,
          strategyStop,
           primaryLossExitLevel,
          catastropheStop: snapshot.riskPlan.catastropheStop,
