@@ -1,0 +1,173 @@
+```text
+Fix the remaining ORB directional-trend integration issues identified in the review of LevelStory-main 37.
+
+Before changing code, inspect the current implementation and preserve the ORB epoch behavior that is already working. Do not weaken unrelated strategy requirements, change profit management, or introduce future-candle leakage.
+
+1. Preserve the completed implementation
+
+Keep the following behavior intact:
+
+- Causal NEUTRAL, BULLISH_ORB_TREND, and BEARISH_ORB_TREND states.
+- Completed-close ORB confirmation.
+- Wick-only breaks and inside closes do not change direction.
+- Reversals become effective on the following candle.
+- Every transition creates a unique epoch.
+- Active epochs use fresh executable breakout and pullback contexts.
+- Phase 5 filters occurrences by epoch and direction.
+- Multiple independent qualifying occurrences remain supported.
+- Single-active-trade enforcement remains authoritative.
+- `orb-trend.test.ts` remains registered in the standard API test command.
+
+2. Preserve consolidation-breakout eligibility
+
+`breakoutFromOrbTrendTransition()` currently creates an epoch breakout with:
+
+- `volumeSupported: false`
+- `bodyRatio: null`
+- `closeLocationRatio: null`
+
+This makes `CONSOLIDATION_BREAKOUT_CONTINUATION` unable to pass its existing strong-breakout requirements whenever an ORB epoch is active.
+
+Fix this without bypassing or weakening the consolidation strategy rules.
+
+For every epoch-specific breakout:
+
+- Calculate candle body ratio from the confirming candle.
+- Calculate directional close-location ratio from the confirming candle.
+- Calculate causal volume evidence using only completed candles available at the confirmation timestamp.
+- Calculate the applicable prior-volume baseline and volume ratio.
+- Set `volumeSupported` using the existing governed consolidation/breakout threshold.
+- Preserve the actual distance outside the ORB.
+- Retain the original confirming candle’s OHLCV and timestamps.
+- Do not automatically mark strong-breakout evidence as passed merely because an ORB epoch exists.
+
+If the helper cannot calculate these fields without candle history, change its interface to accept the causal candle history, configuration, and contract specification needed to calculate them correctly.
+
+Ensure consolidation continuation uses the active epoch direction before any legacy breakout direction.
+
+3. Expire every prior-epoch arm
+
+Current reversal evidence only derives `expiredArmIds` from patience occurrences. This misses a valid prior-epoch pullback arm when that arm did not produce a patience occurrence.
+
+For each ORB epoch, retain its actual pullback lifecycle and arm identity.
+
+When a reversal becomes effective:
+
+- Find the immediately prior ORB epoch.
+- Expire every still-pending arm belonging to that epoch.
+- Include the actual Phase 4 pullback arm ID even when it has no patience occurrences.
+- Include any additional pending eligibility-arm IDs created by Phase 5.
+- Populate `expiredArmIds` with unique real IDs.
+- Populate `expiredCandidateIds` only with real pending, unconfirmed candidate/occurrence IDs.
+- Use `ORB_TREND_REVERSED` as the terminal and audit reason.
+- Do not expire confirmed entries or already-active positions.
+- Do not manufacture placeholder IDs.
+
+Propagate the expiration through Phase 4, Phase 5, Phase 9, Visual Review, combined replay, and Shadow Account Replay.
+
+4. Fix active-position auditing for multi-contract replay
+
+The current `activePositionAt` implementation compares:
+
+- A contract-local `transitionIndex`
+- Global replay `activeEntryIndex` and `lastExitIndex`
+
+These indices are not comparable when the dataset contains a contract schedule.
+
+Replace this with one consistent causal method, preferably timestamps:
+
+- Track active position entry time.
+- Track active position exit time.
+- At an ORB transition timestamp, report active when:
+  `entryTime <= transitionTime < exitEffectiveTime`
+- Respect the project’s existing same-candle ordering policy.
+- Reset position state correctly at a scheduled contract boundary.
+- Do not carry a position across contract changes.
+- Make ordinary, combined multi-date, and multi-contract replay use identical semantics.
+- Keep detecting and displaying ORB reversals while a position is active.
+- Block only the new entry; continue managing the existing position normally.
+- Set `activePositionBlocked` accurately in transition evidence.
+
+If indices are retained, convert every value to the same contract-local or global index domain before comparison and add assertions preventing mixed-domain comparisons.
+
+5. Complete Visual Review evidence
+
+For each ORB transition, clearly display:
+
+- Previous state and new state
+- Direction
+- Epoch ID
+- Boundary crossed
+- Confirming candle OHLCV
+- Confirmation timestamp
+- Effective-from timestamp
+- Finalized ORB high and low
+- Confirmation buffer
+- Expired arm IDs, or “None”
+- Expired candidate IDs, or “None”
+- Expiration reason
+- Active-position blocking status
+- Formula version
+- Strategy version
+
+Keep raw technical JSON available, but do not rely on raw JSON as the only presentation of these fields.
+
+6. Add integration and regression tests
+
+Add tests covering:
+
+- A fresh bearish pullback arm after bullish-to-bearish reversal.
+- A fresh bullish pullback arm after bearish-to-bullish reversal.
+- A reversed-direction patience sequence qualifying independently.
+- Multiple qualifying occurrences within one epoch.
+- An active pullback arm with no patience occurrence appearing in `expiredArmIds`.
+- Pending occurrence IDs appearing in `expiredCandidateIds`.
+- Confirmed entries not being expired retroactively.
+- Epoch-specific body ratio and close-location calculations.
+- Epoch-specific causal volume baseline and ratio.
+- Consolidation continuation passing when the epoch candle genuinely meets all existing requirements.
+- Consolidation continuation failing when volume, body, or close-location requirements genuinely fail.
+- Active-position blocking in ordinary replay.
+- Active-position blocking in scheduled multi-contract replay.
+- Position state reset at a contract boundary.
+- Entry eligibility after the account becomes flat.
+- Combined multi-date replay consistency.
+- Shadow Account Replay consistency.
+- Visual Review rendering of the complete transition evidence.
+- No future-candle data used in any epoch metric or transition.
+
+Register every new test in the standard test workflow.
+
+7. Verification
+
+Run:
+
+- API typecheck
+- Frontend typecheck
+- ORB trend tests
+- Phase 4 tests
+- Phase 5 tests
+- Phase 6 tests
+- Phase 9 and Phase 9 integration tests
+- Multi-contract replay tests
+- Account-position-gate tests
+- Shadow Account Replay tests
+- Visual Review tests
+- Frontend production build
+- `git diff --check`
+
+Report:
+
+- Root causes
+- Files changed
+- Exact behavior implemented
+- Test results
+- Any remaining limitations
+
+Do not claim completion if:
+
+- Consolidation continuation is unreachable under active ORB epochs.
+- Arms without patience occurrences are missing from reversal expiration.
+- Multi-contract position blocking still compares indices from different collections.
+- The behavior is only unit-tested at the state-machine level without candidate-generation and replay coverage.
+```
