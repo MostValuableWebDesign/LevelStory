@@ -2405,6 +2405,18 @@ function buildMachineSnapshot(
     evaluationCloseTime,
     index?.completeCandlesByContract.get(audit.contractSymbol),
   );
+  const authoritativeOrbTransitions = new Map(
+    (audit.orbTrendTransitions ?? []).map((transition) => [transition.epochId, transition]),
+  );
+  const reconciledOrbTrend = {
+    ...evaluationSnapshot.orbTrend,
+    transitions: evaluationSnapshot.orbTrend.transitions.map((transition) => {
+      const authoritative = authoritativeOrbTransitions.get(transition.epochId);
+      return authoritative
+        ? { ...transition, ...authoritative }
+        : transition;
+    }),
+  };
   const indicatorSeries = buildIndicatorSeries(
     historicalCandles,
     visibleReview,
@@ -2519,7 +2531,7 @@ function buildMachineSnapshot(
       market: {
         levels: evaluationSnapshot.levels,
         breakout: evaluationSnapshot.breakout,
-        orbTrend: evaluationSnapshot.orbTrend,
+        orbTrend: reconciledOrbTrend,
         pullback: evaluationSnapshot.pullback,
         patience: evaluationSnapshot.patience,
         earlyOrbMomentum: evaluationSnapshot.earlyOrbMomentum,

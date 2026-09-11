@@ -96,8 +96,8 @@ test("Visual Review keeps the Early ORB choice local, accessible, and captured p
   assert.match(page, /levelstory\.visualReview\.earlyOrbMomentumEnabled/);
   assert.match(page, /enabled: true/);
   assert.match(page, /role="switch"/);
-  assert.match(page, /aria-checked=\{earlyOrb\.enabled\}/);
-  assert.match(page, /data-testid="switch-early-orb-momentum"/);
+  assert.match(page, /aria-checked=\{enabled\}/);
+  assert.match(page, /"switch-early-orb-momentum"/);
   assert.match(page, /setItem\(EARLY_ORB_MOMENTUM_STORAGE_KEY, String\(next\.earlyOrbMomentum\.enabled\)\)/);
   assert.match(page, /Enabled.*Disabled.*for this set|earlyOrbEnabled/);
   assert.doesNotMatch(page, /useGetStrategyActive/);

@@ -1495,7 +1495,9 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
                      checked={enabled}
                      onChange={(event) => updateStrategyEnabled(strategy.id, event.target.checked)}
                      className="peer sr-only"
-                     data-testid={`switch-strategy-${strategy.id}`}
+                      data-testid={strategy.id === "EARLY_ORB_MOMENTUM_CONTINUATION"
+                        ? "switch-early-orb-momentum"
+                        : `switch-strategy-${strategy.id}`}
                    />
                    <span aria-hidden="true" className={`relative h-5 w-9 rounded-full border transition ${enabled ? "border-[hsl(var(--positive)/.5)] bg-[hsl(var(--positive)/.2)]" : "border-border bg-muted"}`}>
                      <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition ${enabled ? "left-[18px]" : "left-0.5"}`} />

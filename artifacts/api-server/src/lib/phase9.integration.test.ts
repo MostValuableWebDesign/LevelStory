@@ -152,6 +152,65 @@ test("deterministic bullish and bearish A+ fixtures qualify with the governed en
   }
 });
 
+test("a reversal expires the real prior-epoch arm and pending candidate at the confirming boundary", () => {
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: "2026-08-25",
+    days: 1,
+    seed: 11,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const window = sessionWindow("2026-08-25", "regular", calendar)!;
+  const regular = source.filter((candle) =>
+    candle.openTime >= window.openTime && candle.openTime < window.closeTime);
+  const beforeReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[35].closeTime,
+      allCandles: source,
+      historicalFeed: source,
+      premarketAvailable: true,
+    },
+  );
+  const priorArmId = beforeReversal.pullback.armId;
+  const pendingCandidateId = beforeReversal.patience.occurrences?.find(
+    (occurrence) => occurrence.outcomeStatus === "CANDIDATE",
+  )?.occurrenceId;
+  assert.equal(beforeReversal.pullback.armState, "PATIENCE_ARMED");
+  assert.ok(priorArmId);
+  assert.ok(pendingCandidateId);
+
+  const reversalCandles = source.map((candle) =>
+    candle.openTime !== regular[36].openTime
+      ? candle
+      : { ...candle, open: 6798, high: 6798.5, low: 6797.5, close: 6798 });
+  const afterReversal = createMarketSnapshot(
+    "MES",
+    "regular",
+    undefined,
+    undefined,
+    { targetDollars: 75, slippageMode: "normal" },
+    {
+      tradingDate: "2026-08-25",
+      cursor: regular[36].closeTime,
+      allCandles: reversalCandles,
+      historicalFeed: reversalCandles,
+      premarketAvailable: true,
+    },
+  );
+  const reversal = afterReversal.orbTrend.transitions.at(-1);
+  assert.equal(reversal?.direction, "short");
+  assert.equal(reversal?.expirationReason, "ORB_TREND_REVERSED");
+  assert.equal(reversal?.expiredArmIds.includes(priorArmId!), true);
+  assert.equal(reversal?.expiredCandidateIds.includes(pendingCandidateId!), true);
+});
+
 test("deterministic modeled lifecycles start management after E and use the buffered P extreme", () => {
   const longStop = 6972.75;
   const longRevisit = simulatePhase8ShadowExecution({

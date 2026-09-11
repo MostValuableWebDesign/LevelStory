@@ -12,6 +12,8 @@ import {
   projectHistoricalTradeCandidates,
   reduceHistoricalPullbackLifecycles,
   isCausalPositionActiveAt,
+  applyHistoricalAccountPositionGate,
+  reconcileOrbTrendTransitionPositionEvidence,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -32,6 +34,113 @@ test("causal active-position timestamps use one domain and release exactly at th
   assert.equal(isCausalPositionActiveAt(100, 200, 200), false);
   assert.equal(isCausalPositionActiveAt(100, null, 10_000), true);
   assert.equal(isCausalPositionActiveAt(null, null, 100), false);
+});
+
+function gateCandidate(
+  candidateId: string,
+  contractSymbol: string,
+  entryTime: string,
+) {
+  return {
+    candidateId,
+    signalOccurrenceId: `${candidateId}-signal`,
+    tradingDate: "2026-08-25",
+    contractSymbol,
+    contractMonth: contractSymbol.slice(-2),
+    direction: "long",
+    primaryEdge: "ORB_PULLBACK_CONTINUATION",
+    period: "in_sample",
+    entryObservationTimestamp: entryTime,
+    executionStatus: "MODELED_TRADE_CREATED",
+    entryReachedThreshold: true,
+  } as any;
+}
+
+function gateTrade(
+  candidateId: string,
+  contractSymbol: string,
+  entryTime: string,
+  exitTime: string | null,
+  remainingQuantity = 0,
+) {
+  return {
+    id: `${candidateId}-trade`,
+    candidateId,
+    signalOccurrenceId: `${candidateId}-signal`,
+    tradingDate: "2026-08-25",
+    contractSymbol,
+    entryTime,
+    exitTime,
+    outcome: exitTime === null ? "open" : "target",
+    contracts: 2,
+    audit: {
+      remainingQuantity,
+      runnerActivated: remainingQuantity > 0,
+      runnerExited: false,
+      exitCandleCloseTime: exitTime,
+      legs: exitTime
+        ? [{ kind: "full", quantity: remainingQuantity > 0 ? 1 : 2, exitCandleCloseTime: exitTime }]
+        : [],
+    },
+  } as any;
+}
+
+test("authoritative account gating keeps blocked candidates from becoming blockers and preserves runners", () => {
+  const first = gateCandidate("first", "MESU6", "2026-08-25T14:00:00.000Z");
+  const blocked = gateCandidate("blocked", "MESU6", "2026-08-25T14:05:00.000Z");
+  const later = gateCandidate("later", "MESU6", "2026-08-25T14:35:00.000Z");
+  const result = applyHistoricalAccountPositionGate(
+    [first, blocked, later],
+    [
+      gateTrade("first", "MESU6", first.entryObservationTimestamp, "2026-08-25T14:30:00.000Z", 1),
+      gateTrade("blocked", "MESU6", blocked.entryObservationTimestamp, "2026-08-25T14:40:00.000Z"),
+      gateTrade("later", "MESU6", later.entryObservationTimestamp, "2026-08-25T14:45:00.000Z"),
+    ],
+  );
+  assert.equal(result.blockedCandidateCount, 2);
+  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["first"]);
+  assert.equal(result.candidates.find((candidate) => candidate.candidateId === "blocked")?.accountEntryBlock?.blockingCandidateId, "first");
+  assert.equal(result.candidates.find((candidate) => candidate.candidateId === "later")?.accountEntryBlock?.blockingCandidateId, "first");
+});
+
+test("authoritative account gating releases at the full-exit timestamp and resets at scheduled contract boundaries", () => {
+  const first = gateCandidate("first-exit", "MESU6", "2026-08-25T14:00:00.000Z");
+  const sameTimestamp = gateCandidate("same-time", "MESU6", "2026-08-25T14:30:00.000Z");
+  const rollover = gateCandidate("rollover", "MESZ6", "2026-08-25T14:31:00.000Z");
+  const result = applyHistoricalAccountPositionGate(
+    [first, sameTimestamp, rollover],
+    [
+      gateTrade("first-exit", "MESU6", first.entryObservationTimestamp, "2026-08-25T14:30:00.000Z"),
+      gateTrade("same-time", "MESU6", sameTimestamp.entryObservationTimestamp, "2026-08-25T14:35:00.000Z"),
+      gateTrade("rollover", "MESZ6", rollover.entryObservationTimestamp, null, 2),
+    ],
+    { resetAtContractBoundary: true },
+  );
+  assert.equal(result.blockedCandidateCount, 0);
+  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["first-exit", "same-time", "rollover"]);
+});
+
+test("ORB transition evidence is reconciled from accepted account positions, not blocked simulations", () => {
+  const accepted = gateCandidate("accepted", "MESU6", "2026-08-25T14:00:00.000Z");
+  const blocked = gateCandidate("blocked-transition", "MESU6", "2026-08-25T14:05:00.000Z");
+  const trade = gateTrade("accepted", "MESU6", accepted.entryObservationTimestamp, "2026-08-25T14:30:00.000Z");
+  const transition = {
+    previousState: "BULLISH_ORB_TREND",
+    newState: "BEARISH_ORB_TREND",
+    direction: "short",
+    epochId: "bearish-epoch",
+    effectiveFromTimestamp: "2026-08-25T14:10:00.000Z",
+    activePositionBlocked: false,
+  };
+  const sameContractAudit = { contractSymbol: "MESU6", orbTrendTransitions: [transition] };
+  const rolloverAudit = { contractSymbol: "MESZ6", orbTrendTransitions: [{ ...transition }] };
+  reconcileOrbTrendTransitionPositionEvidence(
+    [sameContractAudit, rolloverAudit] as any,
+    [trade] as any,
+    [accepted, blocked] as any,
+  );
+  assert.equal(sameContractAudit.orbTrendTransitions[0].activePositionBlocked, true);
+  assert.equal(rolloverAudit.orbTrendTransitions[0].activePositionBlocked, false);
 });
 import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
 import { adaptiveExecutionManagement } from "./strategy/execution-management.js";

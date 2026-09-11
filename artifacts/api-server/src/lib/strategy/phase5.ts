@@ -1234,7 +1234,7 @@ function buildPatienceOccurrences(
     const reversal = orbTrend?.transitions.find((transition) =>
       transition.direction !== occurrence.direction
       && transition.effectiveFromTimestamp >= occurrence.patienceCandle.closeTime
-      && occurrence.outcomeStatus !== "CONFIRMED"
+      && occurrence.outcomeStatus === "CANDIDATE"
       && (occurrence.triggerCandle === null || occurrence.triggerCandle.closeTime >= transition.effectiveFromTimestamp),
     );
     if (reversal) {

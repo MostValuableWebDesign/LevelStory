@@ -706,11 +706,19 @@ export function createMarketSnapshot(
   }
   const epochOccurrences: PatienceOccurrence[] = [...(patience.occurrences ?? [])];
   if (orbTrend.transitions.length > 1) {
-    for (const transition of orbTrend.transitions) {
+    for (const [transitionIndex, transition] of orbTrend.transitions.entries()) {
       if (transition.epochId === orbTrend.epochId) continue;
+      const nextTransition = orbTrend.transitions[transitionIndex + 1];
+      const nextEpochOpenTime = nextTransition?.confirmingCandle.openTime;
+      const epochCandles = nextEpochOpenTime === undefined
+        ? regular
+        : regular.filter((candle) => candle.openTime < nextEpochOpenTime);
+      const epochCausalCandles = nextEpochOpenTime === undefined
+        ? historicalFeed
+        : historicalFeed.filter((candle) => candle.openTime < nextEpochOpenTime);
       const epochBreakout = breakoutFromOrbTrendTransition(transition, regular, config, specification);
-      const epochPullback = analyzePullback(regular, epochBreakout, qualifyingLevels, specification, config, {
-        causalCandles: historicalFeed,
+      const epochPullback = analyzePullback(epochCandles, epochBreakout, qualifyingLevels, specification, config, {
+        causalCandles: epochCausalCandles,
         calendar,
         finalizedNtz: levels.ntz,
         armIdentity: {
@@ -725,7 +733,7 @@ export function createMarketSnapshot(
         },
       });
       const epochPatience = phase5PatienceAnalysis(
-        regular,
+        epochCandles,
         transition.direction,
         epochPullback,
         levels.ntz,
@@ -755,15 +763,68 @@ export function createMarketSnapshot(
     if (transition.previousState === "NEUTRAL") continue;
     const priorEpochId = orbTrend.transitions[transitionIndex - 1]?.epochId;
     if (!priorEpochId) continue;
-    const priorEpoch = epochContexts.get(priorEpochId);
-    const expired = epochOccurrences.filter((occurrence) =>
-      occurrence.orbTrendEpochId === priorEpochId
-      && occurrence.outcomeStatus !== "CONFIRMED"
-      && occurrence.reasonCode.includes("ORB_TREND_REVERSED"),
+    const priorTransition = orbTrend.transitions[transitionIndex - 1];
+    const preReversalCandles = regular.filter((candle) =>
+      candle.openTime < transition.confirmingCandle.openTime,
     );
-    const pendingPullbackArmId = priorEpoch?.pullback.armId
-      && !isTerminalPullbackArmState(priorEpoch.pullback.armState)
-      ? priorEpoch.pullback.armId
+    const preReversalCausalCandles = historicalFeed.filter((candle) =>
+      candle.openTime < transition.confirmingCandle.openTime,
+    );
+    const preReversalBreakout = breakoutFromOrbTrendTransition(
+      priorTransition,
+      preReversalCandles,
+      config,
+      specification,
+    );
+    const preReversalPullback = analyzePullback(
+      preReversalCandles,
+      preReversalBreakout,
+      qualifyingLevels,
+      specification,
+      config,
+      {
+        causalCandles: preReversalCausalCandles,
+        calendar,
+        finalizedNtz: levels.ntz,
+        armIdentity: {
+          sourceFingerprint,
+          formulaHash,
+          contractSymbol: specification.fullContractSymbol,
+          tradingDate,
+          finalizedNtzIdentity: levels.ntz
+            ? `${levels.ntz.high}|${levels.ntz.low}|${levels.ntz.completedAt ?? "unknown"}`
+            : "ntz-incomplete",
+          configurationHash: activeShadowStrategySnapshot().formulaHash,
+        },
+      },
+    );
+    const preReversalPatience = phase5PatienceAnalysis(
+      preReversalCandles,
+      priorTransition.direction,
+      preReversalPullback,
+      levels.ntz,
+      levels.ntzEvents,
+      preReversalBreakout.time,
+      trend.direction,
+      specification.tickSize,
+      config.patienceEntryBufferTicks,
+      config.patienceStopBufferTicks,
+      false,
+      "ORB_TREND",
+      orbTrend,
+      priorEpochId,
+    );
+    const expired = (preReversalPatience.occurrences ?? []).filter((occurrence) =>
+      occurrence.orbTrendEpochId === priorEpochId
+      && occurrence.outcomeStatus === "INVALIDATED"
+      && occurrence.reasonCode.includes("ORB_TREND_REVERSED")
+      && occurrence.patienceCandle.closeTime <= transition.confirmingCandle.openTime
+      && (occurrence.triggerCandle === null
+        || occurrence.triggerCandle.openTime >= transition.confirmingCandle.openTime),
+    );
+    const pendingPullbackArmId = preReversalPullback.armId
+      && !isTerminalPullbackArmState(preReversalPullback.armState)
+      ? preReversalPullback.armId
       : null;
     transition.expiredArmIds = [...new Set([
       ...(pendingPullbackArmId ? [pendingPullbackArmId] : []),

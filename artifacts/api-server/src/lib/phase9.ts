@@ -4071,9 +4071,43 @@ function accountPositionForHistoricalTrade(trade: BacktestTrade, candidate: Hist
   });
 }
 
+export function reconcileOrbTrendTransitionPositionEvidence(
+  audit: readonly BacktestAuditRecord[],
+  authoritativeTrades: readonly BacktestTrade[],
+  candidates: readonly HistoricalTradeCandidate[],
+): void {
+  const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const authoritativePositions = authoritativeTrades
+    .filter((trade): trade is BacktestTrade & { candidateId: string } => Boolean(trade.candidateId))
+    .map((trade) => ({
+      trade,
+      candidate: candidateById.get(trade.candidateId),
+      position: candidateById.get(trade.candidateId)
+        ? accountPositionForHistoricalTrade(trade, candidateById.get(trade.candidateId)!)
+        : null,
+    }))
+    .filter((item): item is typeof item & { position: NonNullable<typeof item.position> } => item.position !== null);
+
+  for (const record of audit) {
+    for (const transition of record.orbTrendTransitions ?? []) {
+      const effectiveTimestamp = Date.parse(transition.effectiveFromTimestamp);
+      if (!Number.isFinite(effectiveTimestamp)) {
+        transition.activePositionBlocked = false;
+        continue;
+      }
+      const blockingPosition = authoritativePositions
+        .filter((item) => (item.candidate?.contractSymbol ?? item.trade.contractSymbol) === record.contractSymbol)
+        .map((item) => accountEntryBlockFor(item.position, transition.effectiveFromTimestamp))
+        .find((block): block is AccountEntryBlock => block !== null);
+      transition.activePositionBlocked = blockingPosition !== undefined;
+    }
+  }
+}
+
 export function applyHistoricalAccountPositionGate(
   candidates: readonly HistoricalTradeCandidate[],
   authoritativeTrades: readonly BacktestTrade[],
+  options: { resetAtContractBoundary?: boolean } = {},
 ): {
   candidates: HistoricalTradeCandidate[];
   authoritativeTrades: BacktestTrade[];
@@ -4093,8 +4127,17 @@ export function applyHistoricalAccountPositionGate(
   const acceptedTradeIds = new Set<string>();
   const activePositions: ReturnType<typeof accountPositionForHistoricalTrade>[] = [];
   let blockedCandidateCount = 0;
+  let previousContractSymbol: string | null = null;
 
   for (const candidate of orderedCandidates) {
+    if (
+      options.resetAtContractBoundary
+      && previousContractSymbol !== null
+      && previousContractSymbol !== candidate.contractSymbol
+    ) {
+      activePositions.length = 0;
+    }
+    previousContractSymbol = candidate.contractSymbol;
     if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
     const trade = tradeByCandidateId.get(candidate.candidateId);
     if (!trade) continue;
@@ -4433,7 +4476,9 @@ export function projectHistoricalTradeCandidates(
     authoritativeTrades.push(projectedTrade);
     candidates.push(candidateWithOccurrenceIdentity);
   }
-  const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades);
+  const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades, {
+    resetAtContractBoundary: Boolean(executionContext?.dataset.contractSchedule),
+  });
   candidates.splice(0, candidates.length, ...accountGate.candidates);
   authoritativeTrades.splice(0, authoritativeTrades.length, ...accountGate.authoritativeTrades);
   const rejectionBySignalId = new Map(rejected.map((rejection) => [rejection.signalOccurrenceId, rejection]));
@@ -5089,11 +5134,8 @@ export function runCausalBacktest(
   const reportContract = dataset.source === "historical_databento" || dataset.source === "historical_databento_multicontract"
     ? { ...specification, fullContractSymbol: dataset.contractSymbol }
     : specification;
-  let activeEntryTime: number | null = null;
-  let activeExitEffectiveTime: number | null = null;
   const executedEntryKeys = new Set<string>();
   let finalReplay: ReplayCursor = { cursor: 0, visibleCandleCount: 0, visibleCandleCloseTime: null, mode: "replay" };
-  let previousContractSymbol: string | null = null;
 
   for (let index = 0; index < candles.length; index += 1) {
     markCompletedSessionBeforeIndex(index);
@@ -5104,13 +5146,6 @@ export function runCausalBacktest(
     const currentContractMonth = dataset.contractSchedule
       ? parseMesContractSymbol(currentContractSymbol)?.contractMonth ?? dataset.contractMonth
       : dataset.contractMonth;
-    if (dataset.contractSchedule && previousContractSymbol !== null && previousContractSymbol !== currentContractSymbol) {
-      // Never carry a position, indicators, or execution state through a
-      // scheduled contract boundary.
-      activeEntryTime = null;
-      activeExitEffectiveTime = null;
-    }
-    previousContractSymbol = currentContractSymbol;
     const contractCandles = dataset.contractSchedule
       ? replayIndexes.candlesByContract.get(currentContractSymbol) ?? []
       : candles;
@@ -5156,8 +5191,6 @@ export function runCausalBacktest(
         sourceFingerprint: replaySourceFingerprint,
         // The active Shadow configuration is authoritative for ordinary backtests.
         ohlcvStopBufferTicks: executionMode === "ohlcv_modeled" ? stopBufferTicks : undefined,
-          activePositionAt: (timestamp) =>
-            isCausalPositionActiveAt(activeEntryTime, activeExitEffectiveTime, timestamp),
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations.filter((evaluation) => {
@@ -5608,8 +5641,6 @@ export function runCausalBacktest(
            selectedAudit.runnerBreakevenIgnoredForTighterStop = modeled.audit.runnerBreakevenIgnoredForTighterStop;
          selectedAudit.originalStopStillActive = modeled.audit.originalStopStillActive;
       }
-        activeEntryTime = trigger.closeTime;
-        activeExitEffectiveTime = isOpen ? null : exitCandle.closeTime ?? trigger.closeTime;
       continue;
     }
     const entryReference = snapshot.riskPlan.entry ?? candle.close;
@@ -5766,8 +5797,6 @@ export function runCausalBacktest(
          legs: [],
        },
     });
-      activeEntryTime = candle.closeTime;
-      activeExitEffectiveTime = exitCandle.closeTime;
   }
   markCompletedSessionBeforeIndex(candles.length);
 
@@ -5783,6 +5812,11 @@ export function runCausalBacktest(
     executionMode,
     lifecycle,
   });
+  reconcileOrbTrendTransitionPositionEvidence(
+    audit,
+    reconciliation.authoritativeTrades,
+    reconciliation.candidates,
+  );
   const authoritativeTrades = reconciliation.authoritativeTrades;
   const inSampleTrades = authoritativeTrades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = authoritativeTrades.filter((trade) => trade.period === "out_of_sample");
