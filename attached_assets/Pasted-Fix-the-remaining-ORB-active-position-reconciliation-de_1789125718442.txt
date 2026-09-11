@@ -1,0 +1,130 @@
+Fix the remaining ORB active-position reconciliation defect identified in LevelStory-main 40.
+
+Inspect the current implementation before making changes. Preserve all existing ORB state transitions, epoch timing, candidate generation, pullback expiration, consolidation logic, trade management, and Shadow Account Replay behavior.
+
+Objective
+
+Ensure a position can block an ORB transition only when that position had already entered and remained active at the transition timestamp.
+
+Primary locations to inspect
+
+These are starting points, not strict limits:
+
+- `artifacts/api-server/src/lib/account-position-gate.ts`
+  - `activeAccountPositionAt()`
+  - `accountEntryBlockFor()`
+  - `authoritativeFullExitTime()`
+- `artifacts/api-server/src/lib/phase9.ts`
+  - `reconcileOrbTrendTransitionPositionEvidence()`
+  - `applyHistoricalAccountPositionGate()`
+- `artifacts/api-server/src/lib/account-position-gate.test.ts`
+- `artifacts/api-server/src/lib/phase9.test.ts`
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+- `artifacts/api-server/src/lib/shadow-account-replay.test.ts`
+
+Trace any other callers before changing the shared predicate.
+
+1. Correct the active-position interval
+
+Current defect:
+
+`activeAccountPositionAt()` returns true immediately when `fullExitTime` is null or invalid. That happens before checking whether `position.entryTime` is later than the query timestamp.
+
+As a result, a future open or unresolved position can incorrectly block an earlier ORB transition.
+
+Apply this order:
+
+1. Parse and validate `position.entryTime`.
+2. Parse and validate the query/evaluation timestamp.
+3. If `positionEntryTimestamp > queryTimestamp`, return false.
+4. If the position has no authoritative full-exit timestamp, return true.
+5. If a valid full-exit timestamp exists, return:
+   `positionEntryTimestamp <= queryTimestamp && queryTimestamp < fullExitTimestamp`
+
+Equivalent rule:
+
+For a closed position:
+
+`entryTime <= queryTime < fullExitTime`
+
+For an open or unresolved position:
+
+`entryTime <= queryTime`
+
+2. Exact timestamp behavior
+
+Preserve the established ordering:
+
+- Entry exactly at the query timestamp means the position is active.
+- Full exit exactly at the query timestamp means the position is no longer active.
+- Entry after the query timestamp means the position is not active.
+- Partial exit does not release the gate while quantity remains open.
+- A runner remaining open keeps the position active.
+- A blocked or rejected candidate never becomes an active position.
+- Contract-boundary resets remain unchanged.
+
+3. Invalid timestamp handling
+
+- Invalid position entry timestamps must continue producing `InvalidAccountPositionEvidenceError`.
+- Invalid query timestamps must continue producing `InvalidAccountPositionEvidenceError`.
+- A missing or invalid full-exit timestamp may be treated conservatively as an unresolved/open position, but only after verifying that its entry occurred on or before the query timestamp.
+- Do not let conservative exit handling override the entry-time boundary.
+
+4. ORB transition reconciliation
+
+Confirm that `reconcileOrbTrendTransitionPositionEvidence()`:
+
+- Uses only authoritative trades accepted by the account-position gate.
+- Uses the corrected interval predicate.
+- Matches the correct contract.
+- Does not allow a future position to block an earlier transition.
+- Allows an earlier open position to block a later transition.
+- Keeps detecting and displaying the ORB transition even when entry is blocked.
+- Changes only `activePositionBlocked`; it must not alter direction, epoch, confirmation time, or effective time.
+
+5. Regression tests
+
+Add tests for:
+
+- A future closed position does not block earlier history.
+- A future open position does not block earlier history.
+- A future unscored position does not block earlier history.
+- A future position with an invalid exit timestamp does not block earlier history.
+- An earlier open position blocks a later query.
+- An earlier unscored position blocks conservatively.
+- Entry exactly at the query timestamp is active.
+- Entry one millisecond after the query is not active.
+- Full exit exactly at the query timestamp releases the gate.
+- Full exit one millisecond after the query keeps the position active.
+- A partial exit with a runner open continues blocking.
+- Reconciliation with a later open authoritative trade leaves an earlier ORB transition unblocked.
+- Reconciliation with an earlier active authoritative trade marks a later ORB transition blocked.
+- Blocked and rejected candidates are not used as positions.
+- Contract-boundary isolation remains correct.
+- Shadow Account Replay and Phase 9 transition evidence agree.
+
+Keep or add integration coverage confirming that a prior-direction trigger on the reversal-confirming candle is processed under the prior epoch and is not retroactively expired.
+
+6. Verification
+
+Run:
+
+- API typecheck
+- Account-position-gate tests
+- Phase 9 tests
+- Phase 9 integration tests
+- ORB trend tests
+- Multi-contract replay tests
+- Shadow Account Replay tests
+- Frontend typecheck if shared types change
+- `git diff --check`
+
+Report:
+
+- Root cause
+- Files changed
+- Exact interval behavior implemented
+- Tests added and results
+- Any remaining limitations
+
+Do not claim completion if an open, unscored, or invalid-exit position with an entry after the ORB transition can still set `activePositionBlocked` to true.
