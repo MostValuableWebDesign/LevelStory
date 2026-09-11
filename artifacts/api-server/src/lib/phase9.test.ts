@@ -142,6 +142,36 @@ test("ORB transition evidence is reconciled from accepted account positions, not
   assert.equal(sameContractAudit.orbTrendTransitions[0].activePositionBlocked, true);
   assert.equal(rolloverAudit.orbTrendTransitions[0].activePositionBlocked, false);
 });
+
+test("ORB transition reconciliation applies the entry boundary before unresolved-exit conservatism", () => {
+  const candidate = gateCandidate("future-position", "MESU6", "2026-08-25T14:25:00.000Z");
+  const trade = gateTrade("future-position", "MESU6", candidate.entryObservationTimestamp, null);
+  const audit = {
+    contractSymbol: "MESU6",
+    orbTrendTransitions: [
+      {
+        previousState: "BULLISH_ORB_TREND",
+        newState: "BEARISH_ORB_TREND",
+        direction: "short",
+        epochId: "bearish-epoch-early",
+        effectiveFromTimestamp: "2026-08-25T14:10:00.000Z",
+        activePositionBlocked: true,
+      },
+      {
+        previousState: "BEARISH_ORB_TREND",
+        newState: "BULLISH_ORB_TREND",
+        direction: "long",
+        epochId: "bullish-epoch-later",
+        effectiveFromTimestamp: "2026-08-25T14:30:00.000Z",
+        activePositionBlocked: false,
+      },
+    ],
+  };
+  reconcileOrbTrendTransitionPositionEvidence([audit] as any, [trade] as any, [candidate] as any);
+  assert.equal(audit.orbTrendTransitions[0].activePositionBlocked, false);
+  assert.equal(audit.orbTrendTransitions[1].activePositionBlocked, true);
+});
+
 import { reducePullbackArmLifecycles } from "./strategy/phase4.js";
 import { adaptiveExecutionManagement } from "./strategy/execution-management.js";
 

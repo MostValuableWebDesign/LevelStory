@@ -47,6 +47,33 @@ test("an invalid exit timestamp blocks conservatively", () => {
   assert.equal(accountEntryBlockFor(position({ exitTime: "not-a-date" }), entry)?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
 });
 
+test("future closed, open, unscored, and invalid-exit positions do not block earlier history", () => {
+  const futureEntry = "2026-08-25T14:05:00.000Z";
+  const variants: Array<Partial<Parameters<typeof activeAccountPositionFromTrade>[0]>> = [
+    { status: "closed", exitTime: "2026-08-25T14:30:00.000Z" },
+    { status: "open", exitTime: null },
+    { status: "unscored", exitTime: null },
+    { status: "closed", exitTime: "not-a-date" },
+  ];
+  for (const overrides of variants) {
+    assert.equal(accountEntryBlockFor(position({ ...overrides, entryTime: futureEntry }), entry), null);
+  }
+});
+
+test("an earlier open position continues blocking a later query", () => {
+  assert.equal(
+    accountEntryBlockFor(position({ status: "open", exitTime: null }), "2026-08-25T14:31:00.000Z")?.blockingStatus,
+    "open",
+  );
+});
+
+test("an entry one millisecond after the query is not active", () => {
+  assert.equal(
+    accountEntryBlockFor(position({ entryTime: "2026-08-25T14:00:00.001Z" }), entry),
+    null,
+  );
+});
+
 test("an ambiguous but fully evidenced zero-quantity exit releases the gate", () => {
   const exitTime = "2026-08-25T14:20:00.000Z";
   const flatAmbiguous = position({
@@ -63,6 +90,18 @@ test("an ambiguous but fully evidenced zero-quantity exit releases the gate", ()
 test("an ambiguous trade without authoritative full-exit evidence remains active", () => {
   const unresolved = position({ status: "unscored", exitTime: "2026-08-25T14:20:00.000Z", remainingContracts: 0 });
   assert.equal(accountEntryBlockFor(unresolved, "2026-08-25T14:21:00.000Z")?.blockingStatus, "unscored");
+});
+
+test("a partial exit with a runner remaining continues blocking", () => {
+  const block = accountEntryBlockFor(position({
+    status: "closed",
+    exitTime: "2026-08-25T14:20:00.000Z",
+    contracts: 2,
+    remainingContracts: 1,
+    runnerActive: true,
+  }), "2026-08-25T14:21:00.000Z");
+  assert.equal(block?.blockingRemainingContracts, 1);
+  assert.equal(block?.blockingRunnerActive, true);
 });
 
 test("one-contract state reports no runner", () => {
@@ -130,6 +169,14 @@ test("a position entered exactly at the query timestamp is active", () => {
 test("invalid position entry evidence is rejected explicitly", () => {
   assert.throws(
     () => accountEntryBlockFor(position({ entryTime: "not-a-date" }), entry),
+    (error: unknown) => error instanceof InvalidAccountPositionEvidenceError
+      && error.code === "INVALID_ACCOUNT_POSITION_TIMESTAMP",
+  );
+});
+
+test("invalid query evidence is rejected explicitly", () => {
+  assert.throws(
+    () => accountEntryBlockFor(position(), "not-a-date"),
     (error: unknown) => error instanceof InvalidAccountPositionEvidenceError
       && error.code === "INVALID_ACCOUNT_POSITION_TIMESTAMP",
   );

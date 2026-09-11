@@ -83,11 +83,12 @@ export function activeAccountPositionAt(
       `Invalid account position query timestamp for ${position.tradeId}.`,
     );
   }
+  if (positionEntryTimestamp > queryTimestamp) return false;
   const exitTimestamp = position.fullExitTime === null ? Number.NaN : Date.parse(position.fullExitTime);
   if (!Number.isFinite(exitTimestamp)) return true;
   // A completed full exit is effective at its completed timestamp. If the
   // timestamps are ambiguous or the exit is later, remain conservative.
-  return positionEntryTimestamp <= queryTimestamp && queryTimestamp < exitTimestamp;
+  return queryTimestamp < exitTimestamp;
 }
 
 export function accountEntryBlockFor(
