@@ -2758,9 +2758,18 @@ function TradeAtAGlance({
   audit: Record<string, unknown>;
   strategyName: string;
 }) {
+  const [skippedTargetsOpen, setSkippedTargetsOpen] = useState(false);
   const result = tradeResultLabel(trade, audit);
   const open = trade?.outcome === "open" || trade?.exitTime === null || trade?.exitPrice == null;
   const targetPlan = trade?.targetPlan ?? trade?.audit?.targetPlan;
+  const skippedLevels = targetPlan?.skippedLevels ?? [];
+  const skippedGroups = skippedLevels.reduce((grouped, level) => {
+    const reason = traderLabel(level.reason);
+    const existing = grouped.get(reason) ?? [];
+    existing.push(level);
+    grouped.set(reason, existing);
+    return grouped;
+  }, new Map<string, typeof skippedLevels>());
   const legs = trade?.audit?.legs ?? [];
   const quantity = legs.reduce((sum, leg) => sum + (typeof leg.quantity === "number" ? leg.quantity : 0), 0) || trade?.contracts;
   const oneRPrice = typeof trade?.audit?.oneRPrice === "number" ? trade.audit.oneRPrice : null;
@@ -2807,6 +2816,14 @@ function TradeAtAGlance({
       <div><div className="eyebrow text-muted-foreground">Entry / exit time</div><div className="mt-1 font-semibold">{formatTradeTime(trade?.entryTime)} <span className="text-muted-foreground">→</span> {open ? "Current" : formatTradeTime(trade?.exitTime)}</div></div>
       <div><div className="eyebrow text-muted-foreground">Strategy</div><div className="mt-1 break-words font-semibold">{strategyName}</div></div>
     </div>
+     {skippedLevels.length > 0 && <div className="mt-4 border-t border-border pt-3">
+       <InspectorAccordion id="skipped-target-levels" title="Skipped target levels" detail={`${skippedLevels.length} evaluated`} open={skippedTargetsOpen} onToggle={() => setSkippedTargetsOpen((current) => !current)}>
+         <div className="space-y-3" data-testid="grouped-skipped-levels">{Array.from(skippedGroups.entries()).map(([reason, levels]) => <div key={reason}>
+           <div className="font-semibold">{reason} <span className="font-normal text-muted-foreground">({levels.length})</span></div>
+           <div className="mt-1 space-y-1">{levels.map((level) => <div key={`${level.id}-${level.reason}`} className="flex flex-wrap justify-between gap-2 border-b border-border/70 py-1 text-muted-foreground"><span>{traderLabel(level.id)}</span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks ?? "—"} ticks</span></div>)}</div>
+         </div>)}</div>
+       </InspectorAccordion>
+     </div>}
   </section>;
 }
 
@@ -2886,7 +2903,6 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">P close distance</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.pDistanceTicks)} ticks · {safeValue(earlyOrb.pDistancePoints)} pt</div><div className="mt-1 text-[10px] text-muted-foreground">Minimum governed distance is captured in the request.</div></div>
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.confirmationThreshold)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(earlyOrb.eClose)} E close · {safeValue(earlyOrb.finalStrategyStop)} stop</div></div>
       </div>}
-       <TradeInspector trade={trade} audit={audit} />
       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
       </div>}
   </Panel>;
@@ -2904,51 +2920,6 @@ function formatTargetUpdateTime(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
     ? formatReviewTime(new Date(value).toISOString())
     : "—";
-}
-
-function TradeInspector({
-  trade,
-  audit,
-}: {
-  trade: TradeEvidenceView | null;
-  audit: Record<string, unknown>;
-}) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    otherStrategies: false,
-    skippedTargetLevels: false,
-  });
-  const toggle = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
-  const result = tradeResultLabel(trade, audit);
-  const targetPlan = trade?.targetPlan ?? trade?.audit?.targetPlan;
-  const skippedLevels = targetPlan?.skippedLevels ?? [];
-  const groups = skippedLevels.reduce((grouped, level) => {
-    const reason = traderLabel(level.reason);
-    const existing = grouped.get(reason) ?? [];
-    existing.push(level);
-    grouped.set(reason, existing);
-    return grouped;
-  }, new Map<string, typeof skippedLevels>());
-  const rawAlternatives = [audit.otherStrategies, audit.strategyEvaluations, audit.alternativeStrategies]
-    .find((value): value is unknown[] => Array.isArray(value)) ?? [];
-  const alternatives = rawAlternatives.filter((value): value is Record<string, unknown> => typeof value === "object" && value !== null);
-  return <section className="mt-4 border border-border bg-card" data-testid="trade-inspector">
-    <div className="border-b border-border px-4 py-3 sm:px-5">
-      <div className="eyebrow text-muted-foreground">Strategy and execution details</div>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Authoritative trade inspector</h2><span className={`border px-2 py-1 text-[9px] font-bold uppercase ${resultTone(result)}`}>{result}</span></div>
-    </div>
-    {alternatives.length > 0 && <InspectorAccordion id="other-strategies" title="Other strategies considered" detail={`${alternatives.length} recorded`} open={openSections.otherStrategies} onToggle={() => toggle("otherStrategies")}>
-      <div className="space-y-2">{alternatives.map((alternative, index) => <div key={index} className="border border-border bg-card px-3 py-2">
-        <div className="flex flex-wrap justify-between gap-2 font-semibold"><span>{traderLabel(alternative.strategy ?? alternative.strategyKey)}</span><span>{traderLabel(alternative.status ?? alternative.rejectionCategory ?? "ambiguous")}</span></div>
-        {typeof alternative.reason === "string" && <p className="mt-1 text-muted-foreground">{alternative.reason}</p>}
-      </div>)}</div>
-    </InspectorAccordion>}
-    {skippedLevels.length > 0 && <InspectorAccordion id="skipped-target-levels" title="Skipped target levels" detail={`${skippedLevels.length} evaluated`} open={openSections.skippedTargetLevels} onToggle={() => toggle("skippedTargetLevels")}>
-      <div className="space-y-3" data-testid="grouped-skipped-levels">{Array.from(groups.entries()).map(([reason, levels]) => <div key={reason}>
-        <div className="font-semibold">{reason} <span className="font-normal text-muted-foreground">({levels.length})</span></div>
-        <div className="mt-1 space-y-1">{levels.map((level) => <div key={`${level.id}-${level.reason}`} className="flex flex-wrap justify-between gap-2 border-b border-border/70 py-1 text-muted-foreground"><span>{traderLabel(level.id)}</span><span className="mono">{formatTradePrice(level.price)} · {level.distanceTicks ?? "—"} ticks</span></div>)}</div>
-      </div>)}</div>
-    </InspectorAccordion>}
-  </section>;
 }
 
 function TechnicalTradeInspector({ trade }: { trade: TradeEvidenceView | null }) {

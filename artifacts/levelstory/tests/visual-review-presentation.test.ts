@@ -357,24 +357,19 @@ test("trade presentation translates statuses and machine labels without changing
   assert.doesNotMatch(page, /data-testid="orb-trend-causal-evidence"/);
 });
 
-test("trade details use keyboard-accessible, session-local progressive disclosure", () => {
-  assert.match(page, /const \[openSections, setOpenSections\] = useState<Record<string, boolean>>/);
-  for (const section of ["otherStrategies", "skippedTargetLevels"]) {
-    assert.match(page, new RegExp(section));
-  }
+test("skipped target levels live inside the trade-at-a-glance disclosure", () => {
+  assert.match(page, /const \[skippedTargetsOpen, setSkippedTargetsOpen\] = useState\(false\)/);
   assert.doesNotMatch(page, /title="Full audit details"/);
   assert.doesNotMatch(page, /title="Why this qualified"/);
   assert.doesNotMatch(page, /data-testid="technical-details"/);
+  assert.doesNotMatch(page, /Strategy and execution details/);
+  assert.doesNotMatch(page, /data-testid="trade-inspector"/);
   assert.doesNotMatch(page, /title="Entry, stop and target"/);
   assert.doesNotMatch(page, /title="Position management"/);
   assert.doesNotMatch(page, /title="ORB \/ trend context"/);
-  assert.match(page, /aria-expanded=\{open\}/);
-  assert.match(page, /aria-controls=\{`\$\{id\}-content`\}/);
-  assert.match(page, /event\.key === "Enter" \|\| event\.key === " "/);
-  assert.match(page, /data-testid=\{`accordion-\$\{id\}`\}/);
+  assert.match(page, /data-testid="trade-at-a-glance"/);
   assert.match(page, /data-testid="grouped-skipped-levels"/);
-  assert.match(page, /Other strategies considered/);
-  assert.doesNotMatch(page, /whyQualified/);
+  assert.ok(page.indexOf('data-testid="trade-at-a-glance"') < page.indexOf('data-testid="grouped-skipped-levels"'));
 });
 
 test("removed position-management details are not rendered in the inspector", () => {
