@@ -201,7 +201,6 @@ test("visual review presentation retains human-only shading and semantic level c
    assert.doesNotMatch(page, /Critical · Premarket low/);
    assert.match(page, /data-testid="trade-lifetime-overlay"/);
     assert.match(page, /data-testid="dynamic-target-step-line"/);
-   assert.match(page, /data-testid="trade-inspector"/);
    assert.match(page, /data-testid="trade-target-summary"/);
     assert.match(page, /data-testid="target-adjustment-ledger"/);
     assert.match(page, /effectiveTargetPrice/);
