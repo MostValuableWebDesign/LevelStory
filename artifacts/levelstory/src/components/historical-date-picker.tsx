@@ -5,7 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { canonicalToDate, dateToCanonical, formatDateForDisplay, parseDateText } from "@/lib/historical-date";
-import { historicalDateReason, latestEligibleDate, relativeEligibleDate, restoreLastEligibleDate, sortedEligibleDates } from "@/lib/historical-date-picker";
+import {
+  CALENDAR_MONTHS,
+  clampDisplayMonth,
+  historicalDateReason,
+  latestEligibleDate,
+  monthSelection,
+  relativeEligibleDate,
+  resolveOpeningMonth,
+  restoreLastEligibleDate,
+  sortedEligibleDates,
+  yearSelection,
+} from "@/lib/historical-date-picker";
 
 type DatePickerProps = {
   value: string;
@@ -19,14 +30,6 @@ type DatePickerProps = {
 
 const FALLBACK_MIN_DATE = "2021-01-01";
 const FALLBACK_MAX_DATE = "2026-12-31";
-
-function addMonths(date: Date, amount: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
-}
-
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}`;
-}
 
 function monthLabel(date: Date): string {
   return date.toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -74,30 +77,33 @@ export function HistoricalDatePicker({
   label = "Review-period end date · New York",
 }: DatePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const suppressOpenOnFocusRef = useRef(false);
   const coverageMin = minDate ?? null;
   const coverageMax = maxDate ?? null;
+  const effectiveMin = coverageMin ?? FALLBACK_MIN_DATE;
+  const effectiveMax = coverageMax ?? FALLBACK_MAX_DATE;
+  const knownEligibleDates = useMemo(() => sortedEligibleDates(eligibleDates), [eligibleDates]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(formatDateForDisplay(value));
   const [lastValidValue, setLastValidValue] = useState(value);
   const [error, setError] = useState<string | null>(null);
-  const [displayMonth, setDisplayMonth] = useState(
-    canonicalToDate(value) ?? canonicalToDate(coverageMax) ?? new Date(),
-  );
-  const knownEligibleDates = useMemo(() => sortedEligibleDates(eligibleDates), [eligibleDates]);
-  const effectiveMin = coverageMin ?? FALLBACK_MIN_DATE;
-  const effectiveMax = coverageMax ?? FALLBACK_MAX_DATE;
+  const [displayMonth, setDisplayMonth] = useState(() => resolveOpeningMonth({
+    value,
+    lastValidValue: value,
+    eligibleDates: knownEligibleDates,
+    minDate: effectiveMin,
+    maxDate: effectiveMax,
+    today: todayInNewYork(),
+  }));
   const minMonth = canonicalToDate(effectiveMin) ?? new Date(2021, 0, 1);
   const maxMonth = canonicalToDate(effectiveMax) ?? new Date(2026, 11, 31);
-  const monthOptions = useMemo(() => {
-    const options: Date[] = [];
-    for (let cursor = new Date(minMonth.getFullYear(), minMonth.getMonth(), 1); cursor <= maxMonth; cursor = addMonths(cursor, 1)) {
-      options.push(cursor);
-    }
-    return options;
-  }, [maxMonth, minMonth]);
+  const monthOptions = useMemo(
+    () => CALENDAR_MONTHS.map((label, monthIndex) => ({ label, monthIndex })),
+    [],
+  );
   const yearOptions = useMemo(
-    () => [...new Set(monthOptions.map((date) => date.getFullYear()))],
-    [monthOptions],
+    () => Array.from({ length: maxMonth.getFullYear() - minMonth.getFullYear() + 1 }, (_, index) => minMonth.getFullYear() + index),
+    [maxMonth, minMonth],
   );
 
   const reasonForDate = (dateValue: string): string | null => {
@@ -131,8 +137,7 @@ export function HistoricalDatePicker({
     setDraft(formatDateForDisplay(parsed));
     setError(null);
     if (close) {
-      setOpen(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
+      closePopover(false);
     }
     return true;
   };
@@ -166,14 +171,26 @@ export function HistoricalDatePicker({
   const nextEligibleDate = knownEligibleDates
     ? relativeEligibleDate(navigationDate, 1, knownEligibleDates)
     : null;
-  const currentMonthKey = monthOptions.some((date) => monthKey(date) === monthKey(displayMonth))
-    ? monthKey(displayMonth)
-    : monthKey(maxMonth);
-  const currentMonth = monthOptions.find((date) => monthKey(date) === currentMonthKey) ?? maxMonth;
+  const currentMonth = clampDisplayMonth(displayMonth, effectiveMin, effectiveMax);
+  const currentMonthKey = currentMonth.getMonth().toString();
+
+  const synchronizeDisplayMonth = () => {
+    setDisplayMonth(resolveOpeningMonth({
+      value: parseDateText(draft) ?? value,
+      lastValidValue,
+      eligibleDates: knownEligibleDates,
+      minDate: effectiveMin,
+      maxDate: effectiveMax,
+      today,
+    }));
+  };
 
   useEffect(() => {
-    setDraft(formatDateForDisplay(value));
-    if (knownEligibleDates?.includes(value)) {
+    const restoredValue = knownEligibleDates && !knownEligibleDates.includes(value)
+      ? restoreLastEligibleDate(lastValidValue, knownEligibleDates)
+      : value;
+    setDraft(formatDateForDisplay(restoredValue));
+    if (!knownEligibleDates || knownEligibleDates.includes(value)) {
       setLastValidValue(value);
       setError(null);
     }
@@ -188,9 +205,19 @@ export function HistoricalDatePicker({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [knownEligibleDates]);
 
+  useEffect(() => {
+    if (!open) synchronizeDisplayMonth();
+  // Keep a closed picker synchronized with controlled values and metadata; an open picker belongs to the user's browsing state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverageMax, coverageMin, knownEligibleDates, lastValidValue, open, value]);
+
   const closePopover = (nextOpen: boolean) => {
+    if (nextOpen && !open) synchronizeDisplayMonth();
     setOpen(nextOpen);
-    if (!nextOpen) requestAnimationFrame(() => inputRef.current?.focus());
+    if (!nextOpen) {
+      suppressOpenOnFocusRef.current = true;
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   };
 
   return (
@@ -209,10 +236,13 @@ export function HistoricalDatePicker({
             data-testid="historical-date-input"
             value={draft}
             onFocus={() => {
-              setDisplayMonth(selectedDate ?? canonicalToDate(effectiveMax) ?? new Date());
-              setOpen(true);
+              if (suppressOpenOnFocusRef.current) {
+                suppressOpenOnFocusRef.current = false;
+                return;
+              }
+              closePopover(true);
             }}
-            onClick={() => setOpen(true)}
+            onClick={() => closePopover(true)}
             onChange={(event) => {
               const nextDraft = event.target.value;
               setDraft(nextDraft);
@@ -270,11 +300,15 @@ export function HistoricalDatePicker({
                     className="field h-8 w-full py-1 pr-7 text-xs normal-case tracking-normal"
                     value={currentMonthKey}
                     onChange={(event) => {
-                      const next = monthOptions.find((date) => monthKey(date) === event.target.value);
-                      if (next) setDisplayMonth(next);
+                      setDisplayMonth(monthSelection(
+                        currentMonth.getFullYear(),
+                        Number(event.target.value),
+                        effectiveMin,
+                        effectiveMax,
+                      ));
                     }}
                   >
-                    {monthOptions.map((date) => <option key={monthKey(date)} value={monthKey(date)}>{date.toLocaleString("en-US", { month: "long" })}</option>)}
+                    {monthOptions.map(({ label: monthName, monthIndex }) => <option key={monthIndex} value={monthIndex}>{monthName}</option>)}
                   </select>
                 </label>
                 <label className="space-y-1 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">
@@ -285,9 +319,7 @@ export function HistoricalDatePicker({
                     value={currentMonth.getFullYear()}
                     onChange={(event) => {
                       const nextYear = Number(event.target.value);
-                      const next = monthOptions.find((date) => date.getFullYear() === nextYear && date.getMonth() === currentMonth.getMonth())
-                        ?? monthOptions.find((date) => date.getFullYear() === nextYear);
-                      if (next) setDisplayMonth(next);
+                      setDisplayMonth(yearSelection(nextYear, currentMonth.getMonth(), effectiveMin, effectiveMax));
                     }}
                   >
                     {yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
@@ -300,7 +332,7 @@ export function HistoricalDatePicker({
                   mode="single"
                   selected={selectedDateIsEligible ? selectedDate ?? undefined : undefined}
                   month={currentMonth}
-                  onMonthChange={setDisplayMonth}
+                  onMonthChange={(nextMonth) => setDisplayMonth(clampDisplayMonth(nextMonth, effectiveMin, effectiveMax))}
                   onSelect={chooseDate}
                   fromMonth={minMonth}
                   toMonth={maxMonth}

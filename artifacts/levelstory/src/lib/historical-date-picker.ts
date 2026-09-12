@@ -1,3 +1,65 @@
+function canonicalToDate(value: string | null | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+export const CALENDAR_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+function monthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+export function clampDisplayMonth(date: Date, minDate: string, maxDate: string): Date {
+  const month = monthStart(date);
+  const minMonth = monthStart(canonicalToDate(minDate) ?? new Date(2021, 0, 1));
+  const maxMonth = monthStart(canonicalToDate(maxDate) ?? new Date(2026, 11, 1));
+  if (month < minMonth) return minMonth;
+  if (month > maxMonth) return maxMonth;
+  return month;
+}
+
+export function resolveOpeningMonth({
+  value,
+  lastValidValue,
+  eligibleDates,
+  minDate,
+  maxDate,
+  today,
+}: {
+  value?: string | null;
+  lastValidValue?: string | null;
+  eligibleDates?: readonly string[];
+  minDate: string;
+  maxDate: string;
+  today: string;
+}): Date {
+  const eligible = new Set(eligibleDates ?? []);
+  const candidates = [
+    value && (!eligibleDates || eligible.has(value)) ? value : null,
+    lastValidValue && (!eligibleDates || eligible.has(lastValidValue)) ? lastValidValue : null,
+    latestEligibleDate(eligibleDates),
+    maxDate,
+    today,
+  ];
+  const selected = candidates.find((candidate): candidate is string => Boolean(candidate && canonicalToDate(candidate)));
+  return clampDisplayMonth(canonicalToDate(selected ?? today) ?? new Date(), minDate, maxDate);
+}
+
 export function sortedEligibleDates(eligibleDates: readonly string[] | undefined): string[] | undefined {
   return eligibleDates === undefined ? undefined : [...new Set(eligibleDates)].sort();
 }
@@ -36,4 +98,22 @@ export function restoreLastEligibleDate(
   eligibleDates: readonly string[] | undefined,
 ): string {
   return eligibleDates?.includes(lastValidDate) ? lastValidDate : "";
+}
+
+export function monthSelection(
+  year: number,
+  monthIndex: number,
+  minDate: string,
+  maxDate: string,
+): Date {
+  return clampDisplayMonth(new Date(year, monthIndex, 1), minDate, maxDate);
+}
+
+export function yearSelection(
+  year: number,
+  currentMonthIndex: number,
+  minDate: string,
+  maxDate: string,
+): Date {
+  return monthSelection(year, currentMonthIndex, minDate, maxDate);
 }

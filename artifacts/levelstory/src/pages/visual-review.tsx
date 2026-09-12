@@ -511,7 +511,7 @@ export default function VisualReview() {
       queryKey: ["historical-data-index-status", "visual-review"],
       refetchInterval: (query) => {
         const state = query.state.data?.state;
-        return state === "indexing" || state === "not_started" ? 1500 : false;
+         return state === "indexing" || state === "not_started" ? 5000 : false;
       },
       staleTime: 30_000,
     },
@@ -1470,9 +1470,9 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           onChange={(value) => update("endDate", value)}
           minDate={historicalIndex?.indexedStartDate ?? null}
           maxDate={historicalIndex?.indexedEndDate ?? null}
-           eligibleDates={historicalIndex?.eligibleTradingDates}
+           eligibleDates={historicalIndex?.state === "ready" ? historicalIndex.eligibleTradingDates : undefined}
            disabledDateReasons={new Map(
-             (historicalIndex?.ineligibleDates ?? [])
+             (historicalIndex?.state === "ready" ? historicalIndex.ineligibleDates : [])
                .filter((item): item is typeof item & { reason: string } => typeof item.reason === "string")
                .map((item) => [item.tradingDate, item.reason]),
            )}
