@@ -1,0 +1,254 @@
+Use this prompt:
+Fix the remaining historical Databento pipeline issues in LevelStory.
+
+Repository:
+https://github.com/MostValuableWebDesign/LevelStory.git
+
+Before making changes:
+1. Pull the latest `main`.
+2. Inspect the current implementation and existing tests.
+3. Preserve all completed streaming, SQLite indexing, persistent-storage, atomic-commit, and 10-session-limit behavior.
+4. Do not perform a five-year strategy replay or full five-year end-to-end scan.
+5. Do not rewrite unrelated trading-strategy logic.
+
+Core requirement
+
+LevelStory must support this workflow:
+
+- Upload and permanently store/index one five-year Databento MES OHLCV-1m CSV or CSV.ZST file.
+- Treat that indexed data as a persistent historical library.
+- Visual Review and backtests must query only the requested stored sessions.
+- No analysis request may process more than 10 distinct stored trading sessions.
+- Stored candle presence—not rollover eligibility—determines whether a date has data.
+- A missing date should return a clear no-data result, not be classified as an ineligible or blocked date.
+
+Implement the following specific fixes.
+
+1. Make import cancellation and recovery genuinely resumable
+
+Relevant files:
+
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/api-server/src/lib/futures/historical-index-store.ts`
+- `artifacts/api-server/src/routes/historical-data-upload.ts`
+- `artifacts/api-server/src/lib/futures/historical-import-job-store.ts`
+
+Current problem:
+
+- `buildMultiContractIndex()` catches every error and calls `stagedStore.abortAtomic()`.
+- `abortAtomic()` closes and deletes the staging SQLite database.
+- The import checkpoint is stored inside that staging database.
+- Therefore, cancellation or a recoverable interruption deletes the checkpoint it needs for resumption.
+- `preserveAtomic()` exists but is not used for recoverable cancellation/interruption.
+- Checkpoints are written only after a complete physical source file finishes. With one five-year file, an interruption can cause the entire file to be parsed again.
+
+Required behavior:
+
+- Distinguish recoverable interruption/cancellation from unrecoverable corruption, incompatibility, or fingerprint mismatch.
+- On user cancellation, shutdown, lease interruption, or another recoverable interruption:
+  - finish or roll back the current SQLite transaction safely;
+  - persist the latest verified checkpoint;
+  - close the staging database without deleting it;
+  - retain `stagingIndexPath` and checkpoint metadata in the durable import-job record;
+  - mark the job as `paused` or `cancelled_resumable`, not permanently terminal;
+  - expose an explicit Resume action/route.
+- Use `preserveAtomic()` or equivalent safe behavior for recoverable interruptions.
+- Use `abortAtomic()` only when the staging index is invalid and must be discarded.
+- A source fingerprint mismatch must never reuse an incompatible checkpoint.
+- Never modify or delete the previous committed historical library while a replacement is incomplete.
+
+Checkpoint granularity:
+
+- Do not checkpoint only at the end of the five-year physical file.
+- Create verified restart boundaries during streaming, preferably by completed contract/trading-date partition.
+- Persist sufficient state to skip already completed partitions after restart.
+- Do not mark a trading-date partition complete until every row belonging to that partition and its required 5-minute aggregation has been safely committed.
+- If compressed-stream byte offsets cannot be safely resumed, restart the source stream but skip already committed, verified partitions without rewriting/reaggregating them.
+- Progress totals must continue from the checkpoint rather than reset or double-count.
+- Repeated resume operations must be idempotent.
+
+Add tests proving:
+
+- Cancellation preserves the staging SQLite file and its checkpoint.
+- A cancelled/resumable job can be resumed.
+- Resume skips completed partitions.
+- Resume does not duplicate one-minute or five-minute candles.
+- Resume produces the same final summary and candle counts as an uninterrupted import.
+- Fingerprint mismatch rejects or safely replaces the stale checkpoint.
+- A failed replacement import leaves the previous committed library unchanged.
+
+Use small deterministic fixtures split across several trading dates. Do not use a five-year fixture.
+
+2. Remove eligibility as a date-selection gate
+
+Relevant files:
+
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- `artifacts/levelstory/src/pages/backtest.tsx`
+- `artifacts/levelstory/src/lib/backtest-state.ts`
+- API schemas/types describing historical index status
+
+Current problem:
+
+- Core replay resolution now checks actual stored candles, but the frontend and batch backtest still prefer `eligibleTradingDates`.
+- `visual-review.tsx` passes `historicalIndex.eligibleTradingDates` into the calendar.
+- `backtest.tsx` uses:
+  `eligibleTradingDates ?? availableTradingDates`
+- The UI still reports “Eligible / ineligible dates” and “Range has blocked dates.”
+- A stored date can therefore remain hidden, mislabeled, or excluded because of rollover-schedule eligibility.
+
+Required behavior:
+
+- Make actual indexed one-minute candle presence the only authority for date availability.
+- Use `allObservedTradingDates` or a clearly named `availableTradingDates` field containing every distinct stored trading date.
+- Visual Review and backtest selection must never prefer `eligibleTradingDates`.
+- Remove `eligibleTradingDates` and `ineligibleDates` from all selection, validation, calendar-disabling, batch-construction, and readiness logic.
+- Rollover/scheduled-contract information may remain diagnostic metadata only.
+- When multiple MES contract symbols contain the same date:
+  - prefer the scheduled contract if it has stored candles;
+  - otherwise choose the deterministic stored fallback already implemented;
+  - do not reject the date.
+- A date with no candles should be selectable, but execution must return a clear `NO_HISTORICAL_DATA`/HTTP 422 result.
+- Weekends, holidays, missing dates, and dates outside stored coverage must not be called “ineligible” or “blocked.”
+
+Update the UI:
+
+- Visual Review must pass all stored dates to `HistoricalDatePicker` for availability highlighting.
+- Backtest batch construction must use all stored dates within the requested range.
+- Rename status labels:
+  - “Eligible dates” → “Stored trading dates”
+  - “Ineligible dates” → “Dates without stored data” or remove the metric
+  - “Range has blocked dates” → a neutral coverage message
+- Availability highlighting is informational only and must not disable otherwise valid calendar dates.
+
+Maintain backward compatibility when reading an older persisted summary if needed, but normalize it into the new stored-date model before it reaches selection logic.
+
+Add tests proving:
+
+- A stored date previously marked ineligible is still selectable and replayable.
+- The Visual Review calendar receives all stored dates.
+- Backtest batch construction includes every stored date within the selected range.
+- A missing date returns a no-data response rather than an eligibility error.
+- Multiple-contract overlap uses the scheduled contract when present and deterministic fallback otherwise.
+
+3. Keep ordinary replay access metadata-only
+
+Relevant file:
+
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+
+Current problem:
+
+`getReadyHistoricalMultiContractIndex()` calls:
+
+`readCommittedIndex({ validateSources: true })`
+
+That hashes the complete uploaded source file when the index is first accessed. A Visual Review request can therefore reread the entire five-year source file before loading a maximum of 10 sessions.
+
+Required behavior:
+
+- Ordinary Visual Review, backtest, calendar, status, and ready-index access must validate only committed SQLite metadata and manifest compatibility.
+- They must not hash or reread the five-year source file.
+- Keep full source-file fingerprint validation and SQLite integrity/partition reconciliation in:
+  - import finalization;
+  - explicit maintenance validation;
+  - or an explicitly invoked administrative startup check.
+- Change `getReadyHistoricalMultiContractIndex()` to use metadata-only committed-index validation.
+- Loading the library for a replay must open the committed SQLite index and query only the selected dates.
+
+Add a test that spies on or substitutes the fingerprint function and proves that ordinary ready-index access does not read/hash the source file.
+
+4. Preserve and verify the 10-session server-side limit
+
+The existing server-side maximum is important and must remain authoritative.
+
+Required behavior:
+
+- Maximum: 10 distinct stored trading sessions per Visual Review or backtest request.
+- The limit is based on distinct stored trading dates, not calendar-day distance.
+- A calendar range spanning weekends or holidays may exceed 10 calendar days if it resolves to 10 or fewer stored trading sessions.
+- More than 10 resolved stored sessions must return a clear validation error before candle retrieval or strategy evaluation.
+- Never load all five years and slice the results afterward.
+- Resolve the requested stored dates first, reject if over 10, and query SQLite only for those accepted dates.
+- Deduplicate explicit dates before enforcing the limit.
+- Apply the same enforcement to every Visual Review, single backtest, batch backtest, and replay entry point.
+
+Add small fixture tests for:
+
+- Exactly 10 stored sessions succeeds.
+- 11 stored sessions fails before candle retrieval.
+- A wide calendar range containing only 10 stored sessions succeeds.
+- Duplicate requested dates cannot bypass or incorrectly trigger the limit.
+- Missing calendar dates do not count toward the 10-session maximum.
+
+5. Do not regress completed functionality
+
+Preserve:
+
+- Bounded streaming ingestion with `retainCandles: false`.
+- Direct one-minute SQLite batch writes.
+- Incremental five-minute aggregation.
+- Persistent uploaded source files, SQLite index, and job records.
+- Atomic replacement of a previously committed index.
+- Summary-only merging without rematerializing all candles.
+- Metadata-only routine status polling.
+- Explicit maintenance validation.
+- Existing Visual Review and Shadow Account behavior unrelated to historical data selection.
+
+Verification constraints
+
+Do not run a five-year import or five-year strategy scan.
+
+Run only:
+
+1. Typechecks for affected API and frontend packages.
+2. Focused historical importer/index/replay/upload-route tests.
+3. Focused Visual Review and backtest date-selection tests.
+4. New deterministic resume/cancel tests using tiny fixtures.
+5. `git diff --check`.
+
+Do not run the complete repository test suite unless a focused failure requires it.
+
+Final response
+
+Report:
+
+- Exact files changed.
+- How staging checkpoints survive cancellation.
+- The resume boundary and idempotency behavior.
+- Confirmation that stored candle presence is now the only date-availability authority.
+- Confirmation that ordinary replay access does not hash the five-year source file.
+- Confirmation that every analysis path is limited to 10 stored sessions.
+- Focused test and typecheck results.
+- Any remaining limitation, without claiming that a real five-year import was tested.
+
+
+7:24 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
+
+
+
+
+
+
+
+5.6 TerraExtra High5.6 SolMedium
