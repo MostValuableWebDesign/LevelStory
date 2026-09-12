@@ -1,0 +1,111 @@
+```text
+Update LevelStory’s historical Databento pipeline and date-selection behavior.
+
+Our requirement is:
+
+- Upload and permanently index one five-year Databento MES OHLCV-1m file.
+- Keep the indexed data as a reusable historical data library.
+- Analyze or replay only user-selected periods containing no more than 10 trading days.
+- Do not automatically scan or replay the complete five-year dataset after upload.
+- Allow the user to select any calendar date or date range. Remove the current calendar “ineligible date” restrictions and disabled-date behavior.
+
+Important date behavior:
+
+- Do not disable dates in the calendar based on contract scheduling, indexed eligibility metadata, weekends, holidays, missing sessions, incomplete sessions, or data-quality classifications.
+- The date picker must allow direct selection of any start and end date.
+- After selection, resolve the range against the indexed database and use only trading sessions that actually contain stored data.
+- Weekends, holidays, and dates without stored candles must be reported as “no historical data available,” not treated as invalid selections and not silently replaced with another date.
+- Data-quality problems may be displayed as warnings, but they must not make a date unselectable.
+- Do not fabricate candles or replay unavailable dates.
+- The maximum is 10 distinct trading sessions containing data, not 10 calendar days. A calendar range may span more than 10 calendar days when weekends or holidays are included.
+- If the resolved range contains more than 10 trading sessions, reject the request with a clear validation message asking the user to shorten the range.
+- Enforce this limit server-side for every Visual Review, candidate-generation, replay, and backtest entry point. Do not rely only on frontend validation.
+- Query SQLite only for the resolved dates and scheduled contracts needed by that request.
+
+The important remaining pipeline issues are:
+
+1. Five-year import can run out of memory
+
+The importer still holds the complete dataset in memory. Replace this with genuinely bounded streaming ingestion:
+
+- Read the CSV or CSV.zst stream once.
+- Validate and normalize rows incrementally.
+- Route rows by their actual MES contract symbol.
+- Write candles directly into an atomic staging SQLite database in bounded transactions.
+- Partition storage by contract symbol, trading date, and timeframe.
+- Keep only the current bounded batch and the minimal aggregation/deduplication state in memory.
+- Do not retain five years of one-minute candles in arrays or Maps.
+- Do not serialize the complete dataset to an intermediate JSONL file and load it back into memory.
+- `flushCount` must reflect actual successful database flushes, not a calculated approximation.
+- Generate five-minute candles incrementally or from indexed one-minute partitions without loading the full history.
+
+2. Stored data is not fully durable
+
+Use one configurable persistent root such as `LEVELSTORY_HISTORICAL_DATA_DIR` for:
+
+- The committed historical SQLite index
+- Atomic staging indexes
+- Materialized uploaded files
+- Import-job storage
+- Import checkpoints and temporary artifacts
+
+Do not place durable historical data under `process.cwd()/.cache`. Validate the configured directory at startup and surface a clear configuration error if it is unavailable or unwritable.
+
+3. Older indexes can be erased during initialization
+
+- Never delete or mutate an existing incompatible index merely by opening it or requesting status.
+- Report that the existing index is incompatible and regeneration is required.
+- Build the replacement in a separate staging database.
+- Keep the previous ready index available until the replacement is completely validated and atomically committed.
+- Only remove or archive the old index after the new index has committed successfully.
+
+4. Enforce the 10-trading-day scan limit server-side
+
+- Selected-date SQLite retrieval already exists; preserve it.
+- Add a shared authoritative validator used by all Visual Review and backtest routes.
+- Resolve the requested calendar range into stored trading sessions.
+- Permit zero through 10 available trading sessions.
+- Return a no-data result when zero sessions are available.
+- Reject more than 10 available trading sessions.
+- Never load unrelated contracts, dates, or the complete five-year library into replay memory.
+
+5. Import recovery and cancellation remain incomplete
+
+- Persist real checkpoints for completed files, contracts, dates, partitions, and committed row batches.
+- After restart, resume after the latest verified checkpoint rather than reparsing the complete file.
+- Connect the job AbortSignal to object download, decompression, CSV parsing, batching, aggregation, worker activity, and SQLite writes.
+- Check cancellation between bounded batches.
+- Roll back the active transaction and delete only the current staging artifacts on cancellation.
+- Preserve the previous committed historical library.
+- Clean up temporary worker and staging files.
+- Update per-file and job-wide progress using actual cumulative rows and completed partitions.
+
+Additional correctness requirements:
+
+- A generic multi-symbol Databento file must produce accurate summaries for every detected contract, not an arbitrary first-contract summary.
+- Progress must remain monotonic and between 0% and 100%.
+- Physical-file counts and detected-contract counts must be reported separately.
+- Preserve date-specific data-quality diagnostics, but use them as warnings rather than calendar eligibility gates.
+- Harmless identical duplicate rows may be deduplicated.
+- Conflicting duplicate timestamps must be reported and must not be silently resolved.
+- Ordinary status polling must use lightweight metadata checks. Do not run full source hashing or `PRAGMA integrity_check` on every poll.
+- Provide an explicit maintenance operation for full source and SQLite integrity verification.
+
+Tests required:
+
+- A large synthetic multi-contract input proves memory stays bounded and real batches are flushed.
+- A single generic file containing interleaved contracts is parsed once and indexed correctly.
+- Any calendar date can be selected in the UI.
+- Weekends, holidays, and missing-data dates remain selectable and return an explicit no-data result.
+- A range resolving to exactly 10 trading sessions succeeds.
+- A range resolving to 11 trading sessions is rejected by the backend.
+- A wide calendar range containing no more than 10 stored trading sessions succeeds.
+- Replay reads only the selected partitions.
+- Restart resumes from a verified checkpoint.
+- Cancellation interrupts download and parsing promptly and preserves the previous committed index.
+- Opening an older index does not erase or mutate it.
+- Status polling does not hash source files or run a full SQLite integrity scan.
+- Generic-file summaries, detected-contract counts, and progress are accurate.
+
+Do not run a real five-year replay or full five-year strategy scan as part of verification. Use focused deterministic fixtures and a bounded synthetic ingestion test. Report exactly which tests were run, their results, and any remaining limitations.
+```
