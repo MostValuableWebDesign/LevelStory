@@ -21,6 +21,7 @@ type DatePickerProps = {
   onChange: (value: string) => void;
   minDate?: string | null;
   maxDate?: string | null;
+  availableDates?: readonly string[];
   eligibleDates?: readonly string[];
   disabledDateReasons?: ReadonlyMap<string, string>;
   label?: string;
@@ -51,16 +52,15 @@ function DatePickerDayButton({
   ...props
 }: ComponentProps<typeof CalendarDayButton> & { dateReason?: string | null }) {
   const disabled = Boolean(modifiers.disabled);
-  const eligible = Boolean(modifiers.eligible);
-  const ineligible = Boolean(modifiers.ineligible);
+  const available = Boolean(modifiers.available);
   return (
     <CalendarDayButton
       day={day}
       modifiers={modifiers}
       {...props}
-      aria-label={`${day.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}${eligible ? ", eligible trading date" : ineligible ? `, unavailable trading date, ${dateReason ?? "not an eligible indexed trading date"}` : disabled ? `, ${dateReason ?? "outside indexed coverage"}` : ""}`}
-      title={disabled ? (dateReason ?? "This date is not an eligible indexed trading date.") : undefined}
-      className={ineligible ? "text-muted-foreground line-through opacity-60" : eligible ? "font-semibold" : undefined}
+      aria-label={`${day.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}${available ? ", stored historical data" : disabled ? `, ${dateReason ?? "outside configured coverage"}` : ""}`}
+      title={disabled ? (dateReason ?? "Outside configured historical coverage.") : undefined}
+      className={available ? "font-semibold" : undefined}
     />
   );
 }
@@ -70,6 +70,7 @@ export function HistoricalDatePicker({
   onChange,
   minDate,
   maxDate,
+  availableDates,
   eligibleDates,
   disabledDateReasons,
   label = "Review-period end date · New York",
@@ -80,7 +81,10 @@ export function HistoricalDatePicker({
   const coverageMax = maxDate ?? null;
   const effectiveMin = coverageMin ?? FALLBACK_MIN_DATE;
   const effectiveMax = coverageMax ?? FALLBACK_MAX_DATE;
-  const knownEligibleDates = useMemo(() => sortedEligibleDates(eligibleDates), [eligibleDates]);
+  const knownEligibleDates = useMemo(
+    () => sortedEligibleDates(availableDates ?? eligibleDates),
+    [availableDates, eligibleDates],
+  );
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(formatDateForDisplay(value));
   const [lastValidValue, setLastValidValue] = useState(value);
@@ -146,7 +150,7 @@ export function HistoricalDatePicker({
     commit(dateToCanonical(current));
   };
 
-  const latestIndexedDate = effectiveMax ?? latestEligibleDate(knownEligibleDates);
+  const latestIndexedDate = latestEligibleDate(knownEligibleDates);
   const today = todayInNewYork();
   const canChooseToday = !reasonForDate(today);
   const selectedDate = canonicalToDate(value);
@@ -316,6 +320,11 @@ export function HistoricalDatePicker({
                   fromMonth={minMonth}
                   toMonth={maxMonth}
                   captionLayout="label"
+                   modifiers={{
+                     available: (knownEligibleDates ?? [])
+                       .map((date) => canonicalToDate(date))
+                       .filter((date): date is Date => Boolean(date)),
+                   }}
                   disabled={(date) => Boolean(reasonForDate(dateToCanonical(date)))}
                   className="mx-auto"
                   components={{
@@ -361,7 +370,7 @@ export function HistoricalDatePicker({
           )}
         </div>
       )}
-      {!knownEligibleDates && <p className="text-[10px] text-muted-foreground">Waiting for authoritative eligible-date metadata.</p>}
+      {!knownEligibleDates && <p className="text-[10px] text-muted-foreground">Waiting for indexed-date metadata.</p>}
     </div>
   );
 }

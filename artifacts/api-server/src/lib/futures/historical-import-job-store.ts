@@ -52,13 +52,16 @@ export type PersistedHistoricalImportJob = {
   status: unknown | null;
   indexKey: string | null;
   stagingIndexPath: string | null;
+  sourceFingerprint: string | null;
+  sourceOffset: number | null;
+  completedPartitions: string[];
   leaseOwner: string | null;
   leaseUntil: string | null;
   heartbeatAt: string | null;
 };
 
 const defaultPath = historicalDataPath("historical-import-jobs.sqlite");
-export const HISTORICAL_IMPORT_JOB_SCHEMA_VERSION = 2 as const;
+export const HISTORICAL_IMPORT_JOB_SCHEMA_VERSION = 3 as const;
 
 export class HistoricalImportJobStore {
   private readonly database: DatabaseSync;
@@ -94,6 +97,9 @@ export class HistoricalImportJobStore {
         status_json TEXT,
          index_key TEXT,
          staging_index_path TEXT,
+         source_fingerprint TEXT,
+         source_offset INTEGER,
+         completed_partitions_json TEXT NOT NULL DEFAULT '[]',
          lease_owner TEXT,
          lease_until TEXT,
          heartbeat_at TEXT
@@ -101,8 +107,13 @@ export class HistoricalImportJobStore {
       CREATE INDEX IF NOT EXISTS import_jobs_state ON import_jobs(state, updated_at);
     `);
     const columns = new Set((this.database.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>).map((column) => column.name));
-    for (const column of ["lease_owner", "lease_until", "heartbeat_at"]) {
+    for (const column of [
+      "lease_owner", "lease_until", "heartbeat_at", "source_fingerprint", "source_offset",
+    ]) {
       if (!columns.has(column)) this.database.exec(`ALTER TABLE import_jobs ADD COLUMN ${column} TEXT`);
+    }
+    if (!columns.has("completed_partitions_json")) {
+      this.database.exec("ALTER TABLE import_jobs ADD COLUMN completed_partitions_json TEXT NOT NULL DEFAULT '[]'");
     }
     this.database.exec(`PRAGMA user_version = ${HISTORICAL_IMPORT_JOB_SCHEMA_VERSION}`);
   }
@@ -114,8 +125,12 @@ export class HistoricalImportJobStore {
        current_contract, current_trading_date, progress, phase_progress,
        rows_processed, accepted_rows, rejected_rows, created_at, started_at,
        updated_at, completed_at, error, status_json, index_key, staging_index_path,
-       lease_owner, lease_until, heartbeat_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source_fingerprint, source_offset, completed_partitions_json,
+        lease_owner, lease_until, heartbeat_at)
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
     `).run(
       job.jobId,
       job.state,
@@ -137,6 +152,9 @@ export class HistoricalImportJobStore {
       job.status === null ? null : JSON.stringify(job.status),
       job.indexKey,
       job.stagingIndexPath,
+      job.sourceFingerprint,
+      job.sourceOffset,
+      JSON.stringify(job.completedPartitions),
       job.leaseOwner,
       job.leaseUntil,
       job.heartbeatAt,
@@ -186,6 +204,7 @@ export class HistoricalImportJobStore {
         rows_processed = ?, accepted_rows = ?, rejected_rows = ?, created_at = ?,
         started_at = ?, updated_at = ?, completed_at = ?, error = ?, status_json = ?,
         index_key = ?, staging_index_path = ?
+        , source_fingerprint = ?, source_offset = ?, completed_partitions_json = ?
         , lease_owner = ?, lease_until = ?, heartbeat_at = ?
       WHERE job_id = ?
     `).run(
@@ -208,6 +227,9 @@ export class HistoricalImportJobStore {
       next.status === null ? null : JSON.stringify(next.status),
       next.indexKey,
       next.stagingIndexPath,
+      next.sourceFingerprint,
+      next.sourceOffset,
+      JSON.stringify(next.completedPartitions),
       next.leaseOwner,
       next.leaseUntil,
       next.heartbeatAt,
@@ -249,6 +271,9 @@ type JobRow = {
   status_json: string | null;
   index_key: string | null;
   staging_index_path: string | null;
+  source_fingerprint: string | null;
+  source_offset: number | null;
+  completed_partitions_json: string;
   lease_owner: string | null;
   lease_until: string | null;
   heartbeat_at: string | null;
@@ -276,6 +301,9 @@ function rowToJob(row: JobRow): PersistedHistoricalImportJob {
     status: row.status_json ? JSON.parse(row.status_json) : null,
     indexKey: row.index_key,
     stagingIndexPath: row.staging_index_path,
+    sourceFingerprint: row.source_fingerprint,
+    sourceOffset: row.source_offset,
+    completedPartitions: JSON.parse(row.completed_partitions_json || "[]") as string[],
     leaseOwner: row.lease_owner,
     leaseUntil: row.lease_until,
     heartbeatAt: row.heartbeat_at,

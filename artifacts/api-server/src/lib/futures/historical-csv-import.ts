@@ -946,7 +946,218 @@ type BatchImportState = {
   previousTimestamp: number | null;
   fastDateCache: Map<number, string>;
   fastSessionCache: Map<number, string>;
+  streamingGapState: StreamingGapState | null;
+  streamingAggregationCounts: HistoricalCsvImportSummary["aggregationCounts"];
+  streamingAggregationBuckets: Map<5 | 15 | 60, number | null>;
 };
+
+type StreamingGapState = {
+  previousOpenTime: number | null;
+  tradingDates: Set<string>;
+  regularCounts: Map<string, number>;
+  overnightCounts: Map<string, number>;
+  earlyCloseDates: Set<string>;
+  regularMissingByDate: Map<string, number>;
+  missingMinuteGaps: number;
+  missingGapSegments: number;
+  regularSessionGapSegments: number;
+  overnightGapSegments: number;
+  unexpectedOvernightMissingMinutes: number;
+  maintenanceGapMinutes: number;
+  weekendHolidayClosedMinutes: number;
+  earlyCloseMinutes: number;
+  overnightCoverageObserved: boolean;
+};
+
+function createStreamingGapState(): StreamingGapState {
+  return {
+    previousOpenTime: null,
+    tradingDates: new Set(),
+    regularCounts: new Map(),
+    overnightCounts: new Map(),
+    earlyCloseDates: new Set(),
+    regularMissingByDate: new Map(),
+    missingMinuteGaps: 0,
+    missingGapSegments: 0,
+    regularSessionGapSegments: 0,
+    overnightGapSegments: 0,
+    unexpectedOvernightMissingMinutes: 0,
+    maintenanceGapMinutes: 0,
+    weekendHolidayClosedMinutes: 0,
+    earlyCloseMinutes: 0,
+    overnightCoverageObserved: false,
+  };
+}
+
+function addStreamingGapCandle(
+  state: StreamingGapState,
+  candle: NormalizedCandle,
+  calendar: FuturesSessionCalendar,
+): void {
+  const date = tradingDateForTimestamp(candle.openTime, calendar);
+  if (isTradingDate(date, calendar)) state.tradingDates.add(date);
+  const regular = sessionWindow(date, "regular", calendar);
+  if (regular && candle.openTime >= regular.openTime && candle.openTime < regular.closeTime) {
+    state.regularCounts.set(date, (state.regularCounts.get(date) ?? 0) + 1);
+    if (regular.earlyClose) state.earlyCloseDates.add(date);
+  }
+  const overnightDate = overnightOwnerDate(candle.openTime, calendar);
+  if (overnightDate) {
+    state.overnightCounts.set(overnightDate, (state.overnightCounts.get(overnightDate) ?? 0) + 1);
+  }
+  const previousOpenTime = state.previousOpenTime;
+  if (previousOpenTime !== null) {
+    const gapStart = previousOpenTime + MINUTE;
+    const gapEnd = candle.openTime;
+    const missing = Math.max(0, Math.round((gapEnd - gapStart) / MINUTE));
+    if (missing > 0) {
+      let gapRegular = false;
+      let gapOvernight = false;
+      let regularMinutesInGap = 0;
+      let earlyMinutesInGap = 0;
+      let overnightMinutesInGap = 0;
+      let maintenanceMinutesInGap = 0;
+      const firstDate = tradingDateForTimestamp(gapStart, calendar);
+      const lastDate = tradingDateForTimestamp(Math.max(gapStart, gapEnd - MINUTE), calendar);
+      for (
+        let cursor = Date.parse(`${firstDate}T12:00:00Z`) - 2 * 86_400_000;
+        cursor <= Date.parse(`${lastDate}T12:00:00Z`) + 2 * 86_400_000;
+        cursor += 86_400_000
+      ) {
+        const gapDate = new Date(cursor).toISOString().slice(0, 10);
+        const gapRegularWindow = sessionWindow(gapDate, "regular", calendar);
+        if (gapRegularWindow) {
+          const regularMinutes = overlapMinutes(gapStart, gapEnd, gapRegularWindow);
+          if (regularMinutes > 0) {
+            gapRegular = true;
+            regularMinutesInGap += regularMinutes;
+            state.regularMissingByDate.set(
+              gapDate,
+              (state.regularMissingByDate.get(gapDate) ?? 0) + regularMinutes,
+            );
+          }
+          if (gapRegularWindow.earlyClose) {
+            earlyMinutesInGap += overlapMinutes(gapStart, gapEnd, {
+              openTime: gapRegularWindow.closeTime,
+              closeTime: newYorkTimeToUtc(gapDate, calendar.regular.end),
+            });
+          }
+        }
+        if (isTradingDate(gapDate, calendar)) {
+          for (const maintenance of calendar.maintenanceClosures.default ?? []) {
+            maintenanceMinutesInGap += overlapMinutes(gapStart, gapEnd, {
+              openTime: newYorkTimeToUtc(previousCalendarDate(gapDate), maintenance.start),
+              closeTime: newYorkTimeToUtc(gapDate, maintenance.end),
+            });
+          }
+          const overnightMinutes = overlapMinutes(gapStart, gapEnd, {
+            openTime: newYorkTimeToUtc(previousCalendarDate(gapDate), "18:00"),
+            closeTime: newYorkTimeToUtc(gapDate, "04:00"),
+          });
+          if (overnightMinutes > 0) {
+            gapOvernight = true;
+            overnightMinutesInGap += overnightMinutes;
+          }
+        }
+      }
+      const classified = regularMinutesInGap + earlyMinutesInGap + overnightMinutesInGap + maintenanceMinutesInGap;
+      if (classified > missing) {
+        throw new Error("Historical gap classification overlapped its missing-minute interval.");
+      }
+      state.missingMinuteGaps += missing;
+      state.missingGapSegments += 1;
+      state.regularSessionGapSegments += gapRegular ? 1 : 0;
+      state.overnightGapSegments += gapOvernight ? 1 : 0;
+      state.unexpectedOvernightMissingMinutes += overnightMinutesInGap;
+      state.maintenanceGapMinutes += maintenanceMinutesInGap;
+      state.weekendHolidayClosedMinutes += Math.max(0, missing - classified);
+      state.earlyCloseMinutes += earlyMinutesInGap;
+    }
+  }
+  state.previousOpenTime = candle.openTime;
+}
+
+function finalizeStreamingGapState(
+  state: StreamingGapState,
+  calendar: FuturesSessionCalendar,
+): ReturnType<typeof countSessionAwareGaps> {
+  const sortedDates = [...state.tradingDates].sort();
+  if (sortedDates.length > 0) {
+    for (
+      let cursor = Date.parse(`${sortedDates[0]}T12:00:00Z`);
+      cursor <= Date.parse(`${sortedDates.at(-1)!}T12:00:00Z`);
+      cursor += 86_400_000
+    ) {
+      const date = new Date(cursor).toISOString().slice(0, 10);
+      if (isTradingDate(date, calendar)) state.tradingDates.add(date);
+    }
+  }
+  const allTradingDates = [...state.tradingDates].sort();
+  const inactiveContractThresholdPercent = Number(process.env.LEVELSTORY_INACTIVE_RTH_THRESHOLD_PERCENT ?? 50);
+  const missingRegularSessionDates: string[] = [];
+  const missingOvernightSessionDates: string[] = [];
+  const completeRegularSessionDates: string[] = [];
+  const inactiveDates = new Set<string>();
+  const earlyCloseDates = new Set(state.earlyCloseDates);
+  let regularSessionMissingMinutes = 0;
+  let inactiveContractMinutes = 0;
+  let unexpectedRegularSessionMissingMinutes = 0;
+  for (const date of allTradingDates) {
+    const regular = sessionWindow(date, "regular", calendar);
+    const expectedRegularMinutes = regular ? Math.round((regular.closeTime - regular.openTime) / MINUTE) : 0;
+    const regularCount = state.regularCounts.get(date) ?? 0;
+    if (regularCount === 0 || regularCount < expectedRegularMinutes * inactiveContractThresholdPercent / 100) {
+      missingRegularSessionDates.push(date);
+      inactiveDates.add(date);
+    }
+    if (regularCount >= expectedRegularMinutes) completeRegularSessionDates.push(date);
+    if (state.overnightCoverageObserved && (state.overnightCounts.get(date) ?? 0) === 0) {
+      missingOvernightSessionDates.push(date);
+    }
+    if (calendar.earlyCloses[date]) earlyCloseDates.add(date);
+    const missingForDate = state.regularMissingByDate.get(date) ?? 0;
+    regularSessionMissingMinutes += missingForDate;
+    if (inactiveDates.has(date)) inactiveContractMinutes += missingForDate;
+    else unexpectedRegularSessionMissingMinutes += missingForDate;
+  }
+  const unexpectedMissingMinutes = unexpectedRegularSessionMissingMinutes
+    + state.unexpectedOvernightMissingMinutes;
+  const expectedClosedMinutes = state.maintenanceGapMinutes
+    + state.weekendHolidayClosedMinutes
+    + state.earlyCloseMinutes;
+  if (
+    unexpectedMissingMinutes + inactiveContractMinutes + expectedClosedMinutes !== state.missingMinuteGaps
+  ) {
+    throw new Error("Historical gap classification did not reconcile its missing-minute totals.");
+  }
+  return {
+    missingMinuteGaps: state.missingMinuteGaps,
+    missingGapSegments: state.missingGapSegments,
+    unexpectedOpenSessionMissingMinutes: unexpectedRegularSessionMissingMinutes,
+    unexpectedOvernightMissingMinutes: state.unexpectedOvernightMissingMinutes,
+    unexpectedRegularSessionMissingMinutes,
+    unexpectedMissingMinutes,
+    regularSessionGapSegments: state.regularSessionGapSegments,
+    overnightGapSegments: state.overnightGapSegments,
+    regularSessionMissingMinutes,
+    expectedClosedMarketMinutes: expectedClosedMinutes,
+    expectedClosedMinutes,
+    weekendHolidayClosedMinutes: state.weekendHolidayClosedMinutes,
+    earlyCloseMinutes: state.earlyCloseMinutes,
+    inactiveContractMinutes,
+    lowLiquidityInactiveMinutes: inactiveContractMinutes,
+    coverageScope: "full_file",
+    inactiveContractThresholdPercent,
+    inactiveContractDays: missingRegularSessionDates.length,
+    missingRegularSessionDates,
+    missingOvernightSessionDates,
+    completeRegularSessionDates,
+    maintenanceGapMinutes: state.maintenanceGapMinutes,
+    weekendHolidayGapMinutes: state.weekendHolidayClosedMinutes,
+    earlyCloseDates: [...earlyCloseDates].sort(),
+    overnightCoverageObserved: state.overnightCounts.size > 0,
+  };
+}
 
 function specificationForDetectedSymbol(
   base: FuturesContractSpecification,
@@ -972,22 +1183,31 @@ function finalizeBatchState(
     analyzeCoverage?: boolean;
     aggregations?: readonly (5 | 15 | 60)[];
     contentFingerprint: string;
+    retainCandles: boolean;
   },
 ): HistoricalCsvImport {
   const gapReport = options.analyzeCoverage === false
     ? { ...countSessionAwareGaps([], state.calendar), coverageScope: "full_file" as const }
-    : countSessionAwareGaps(state.candles, state.calendar);
+    : options.retainCandles
+      ? countSessionAwareGaps(state.candles, state.calendar)
+      : finalizeStreamingGapState(state.streamingGapState!, state.calendar);
   Object.assign(state.summary, gapReport);
   state.summary.availableTradingDates = [...state.tradingDates].sort();
   const aggregationSet = new Set(options.aggregations ?? [5, 15, 60]);
-  const fiveMinute = aggregationSet.has(5) ? aggregate(state.candles, 5, state.specification) : [];
-  const fifteenMinute = aggregationSet.has(15) ? aggregate(state.candles, 15, state.specification) : [];
-  const oneHour = aggregationSet.has(60) ? aggregate(state.candles, 60, state.specification) : [];
+  const fiveMinute = options.retainCandles && aggregationSet.has(5)
+    ? aggregate(state.candles, 5, state.specification)
+    : [];
+  const fifteenMinute = options.retainCandles && aggregationSet.has(15)
+    ? aggregate(state.candles, 15, state.specification)
+    : [];
+  const oneHour = options.retainCandles && aggregationSet.has(60)
+    ? aggregate(state.candles, 60, state.specification)
+    : [];
   state.summary.aggregationCounts = {
-    oneMinute: state.candles.length,
-    fiveMinute: fiveMinute.length,
-    fifteenMinute: fifteenMinute.length,
-    oneHour: oneHour.length,
+    oneMinute: options.retainCandles ? state.candles.length : state.summary.validRows,
+    fiveMinute: options.retainCandles ? fiveMinute.length : state.streamingAggregationCounts.fiveMinute,
+    fifteenMinute: options.retainCandles ? fifteenMinute.length : state.streamingAggregationCounts.fifteenMinute,
+    oneHour: options.retainCandles ? oneHour.length : state.streamingAggregationCounts.oneHour,
   };
   return {
     summary: state.summary,
@@ -1052,6 +1272,18 @@ export async function importHistoricalCsvBatch(
       previousTimestamp: null,
       fastDateCache: new Map(),
       fastSessionCache: new Map(),
+      streamingGapState: options.retainCandles === false ? createStreamingGapState() : null,
+      streamingAggregationCounts: {
+        oneMinute: 0,
+        fiveMinute: 0,
+        fifteenMinute: 0,
+        oneHour: 0,
+      },
+      streamingAggregationBuckets: new Map([
+        [5, null],
+        [15, null],
+        [60, null],
+      ]),
     };
     state.summary.detectedSymbol = symbol;
     states.set(symbol, state);
@@ -1173,6 +1405,18 @@ export async function importHistoricalCsvBatch(
     state.previousTimestamp = parsedTimestamp;
     state.lastCandle = candle;
     if (options.retainCandles !== false) state.candles.push(candle);
+    if (state.streamingGapState) {
+      addStreamingGapCandle(state.streamingGapState, candle, state.calendar);
+      for (const interval of [5, 15, 60] as const) {
+        if (!(options.aggregations ?? [5, 15, 60]).includes(interval)) continue;
+        const bucket = Math.floor(candle.openTime / (interval * MINUTE));
+        if (state.streamingAggregationBuckets.get(interval) !== bucket) {
+          state.streamingAggregationBuckets.set(interval, bucket);
+          const key = interval === 5 ? "fiveMinute" : interval === 15 ? "fifteenMinute" : "oneHour";
+          state.streamingAggregationCounts[key] += 1;
+        }
+      }
+    }
     const batch = pending.get(validSymbol) ?? [];
     batch.push(candle);
     pending.set(validSymbol, batch);
@@ -1207,9 +1451,109 @@ export async function importHistoricalCsvBatch(
       analyzeCoverage: options.analyzeCoverage,
       aggregations: options.aggregations,
       contentFingerprint,
+      retainCandles: options.retainCandles !== false,
     }));
   }
   return { imports, rejectedRows, rowsRead, flushCount };
+}
+
+/**
+ * Merges fragment metadata without touching candle arrays. This is the
+ * aggregation path used by bounded imports, where SQLite already owns the
+ * normalized candles and the parser intentionally retained none in memory.
+ */
+export function mergeHistoricalCsvImportSummaries(
+  fragments: readonly HistoricalCsvImportSummary[],
+  specification: FuturesContractSpecification,
+  calendar: FuturesSessionCalendar,
+  contentFingerprint: string,
+): HistoricalCsvImport {
+  if (!fragments.length) throw new Error("At least one historical CSV summary is required.");
+  const first = fragments[0];
+  const sum = (selector: (summary: HistoricalCsvImportSummary) => number): number =>
+    fragments.reduce((total, summary) => total + selector(summary), 0);
+  const union = (selector: (summary: HistoricalCsvImportSummary) => readonly string[]): string[] =>
+    [...new Set(fragments.flatMap(selector))].sort();
+  const earliest = fragments
+    .map((summary) => summary.earliestTimestamp)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0] ?? null;
+  const latest = fragments
+    .map((summary) => summary.latestTimestamp)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+  const rejectionReasons = Object.fromEntries(
+    fragments.flatMap((summary) => Object.entries(summary.rejectionReasons))
+      .reduce((counts, [reason, count]) => counts.set(reason, (counts.get(reason) ?? 0) + count), new Map<string, number>()),
+  );
+  const errors = fragments.flatMap((summary) => summary.errors).slice(0, MAX_REPORTED_ERRORS);
+  const untrustedTradingDates = Object.fromEntries(
+    [...fragments.flatMap((summary) => Object.entries(summary.untrustedTradingDates ?? {}))
+      .reduce((dates, [date, reasons]) => {
+        const current = dates.get(date) ?? new Set<string>();
+        for (const reason of reasons) current.add(reason);
+        dates.set(date, current);
+        return dates;
+      }, new Map<string, Set<string>>()).entries()]
+      .map(([date, reasons]) => [date, [...reasons].sort()]),
+  );
+  const summary: HistoricalCsvImportSummary = {
+    ...first,
+    filename: fragments.map((fragment) => fragment.filename).sort().join(","),
+    detectedSymbol: fragments.map((fragment) => fragment.detectedSymbol).find(Boolean) ?? null,
+    earliestTimestamp: earliest,
+    latestTimestamp: latest,
+    totalRows: sum((item) => item.totalRows),
+    validRows: sum((item) => item.validRows),
+    rejectedRows: sum((item) => item.rejectedRows),
+    duplicateRowsRemoved: sum((item) => item.duplicateRowsRemoved),
+    missingMinuteGaps: sum((item) => item.missingMinuteGaps),
+    missingGapSegments: sum((item) => item.missingGapSegments),
+    unexpectedMissingMinutes: sum((item) => item.unexpectedMissingMinutes),
+    unexpectedOpenSessionMissingMinutes: sum((item) => item.unexpectedOpenSessionMissingMinutes),
+    unexpectedOvernightMissingMinutes: sum((item) => item.unexpectedOvernightMissingMinutes),
+    unexpectedRegularSessionMissingMinutes: sum((item) => item.unexpectedRegularSessionMissingMinutes),
+    regularSessionGapSegments: sum((item) => item.regularSessionGapSegments),
+    overnightGapSegments: sum((item) => item.overnightGapSegments),
+    regularSessionMissingMinutes: sum((item) => item.regularSessionMissingMinutes),
+    expectedClosedMarketMinutes: sum((item) => item.expectedClosedMarketMinutes),
+    expectedClosedMinutes: sum((item) => item.expectedClosedMinutes),
+    weekendHolidayClosedMinutes: sum((item) => item.weekendHolidayClosedMinutes),
+    earlyCloseMinutes: sum((item) => item.earlyCloseMinutes),
+    inactiveContractMinutes: sum((item) => item.inactiveContractMinutes),
+    lowLiquidityInactiveMinutes: sum((item) => item.lowLiquidityInactiveMinutes),
+    inactiveContractDays: union((item) => item.missingRegularSessionDates).length,
+    missingRegularSessionDates: union((item) => item.missingRegularSessionDates),
+    missingOvernightSessionDates: union((item) => item.missingOvernightSessionDates),
+    completeRegularSessionDates: union((item) => item.completeRegularSessionDates),
+    maintenanceGapMinutes: sum((item) => item.maintenanceGapMinutes),
+    weekendHolidayGapMinutes: sum((item) => item.weekendHolidayGapMinutes),
+    earlyCloseDates: union((item) => item.earlyCloseDates),
+    overnightCoverageObserved: fragments.some((item) => item.overnightCoverageObserved),
+    regularSessionCandleCount: sum((item) => item.regularSessionCandleCount),
+    overnightCandleCount: sum((item) => item.overnightCandleCount),
+    availableTradingDates: union((item) => item.availableTradingDates),
+    rejectionReasons,
+    errors,
+    untrustedTradingDates,
+    aggregationCounts: {
+      oneMinute: sum((item) => item.aggregationCounts.oneMinute),
+      fiveMinute: sum((item) => item.aggregationCounts.fiveMinute),
+      fifteenMinute: sum((item) => item.aggregationCounts.fifteenMinute),
+      oneHour: sum((item) => item.aggregationCounts.oneHour),
+    },
+  };
+  return {
+    summary,
+    contentFingerprint,
+    oneMinute: [],
+    fiveMinute: [],
+    fifteenMinute: [],
+    oneHour: [],
+    specification,
+    calendar,
+  };
 }
 
 /**

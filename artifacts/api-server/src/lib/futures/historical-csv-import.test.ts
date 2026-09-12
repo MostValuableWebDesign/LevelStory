@@ -10,9 +10,10 @@ import {
   historicalImportToReplayDataset,
   importHistoricalCsv,
   importHistoricalCsvBatch,
+  mergeHistoricalCsvImportSummaries,
   mergeHistoricalCsvImports,
 } from "./historical-csv-import.js";
-import { newYorkTimeToUtc, tradingDateForTimestamp } from "./session-calendar.js";
+import { newYorkTimeToUtc, sessionCalendarForContract, tradingDateForTimestamp } from "./session-calendar.js";
 
 const specification = getFuturesContractSpecification("MES");
 
@@ -421,6 +422,38 @@ test("demultiplexes compressed generic Databento files without rereading per sym
     assert.equal(batch.imports.size, 2);
     assert.equal(batch.rowsRead, 2);
     assert.equal(batch.flushCount, 2);
+  });
+});
+
+test("preserves bounded fragment summaries without retained candle arrays", async () => {
+  await withGenericCsv([
+    "2025-09-05T13:30:00.000Z,1,1,1,100,101,99,100.5,12,MESU5",
+    "2025-09-05T13:31:00.000Z,1,1,1,100.5,101.5,100,101,13,MESU5",
+    "2025-09-05T13:32:00.000Z,1,1,1,101,102,100.5,101.5,14,MESU5",
+    "2025-09-05T13:33:00.000Z,1,1,1,101.5,102.5,101,102,15,MESU5",
+    "2025-09-05T13:34:00.000Z,1,1,1,102,103,101.5,102.5,16,MESU5",
+  ], false, async (path) => {
+    const batch = await importHistoricalCsvBatch(path, specification, {
+      retainCandles: false,
+      aggregations: [5],
+      batchSize: 2,
+      onBatch: async () => undefined,
+    });
+    const fragment = batch.imports.get("MESU5");
+    assert.ok(fragment);
+    assert.equal(fragment.oneMinute.length, 0);
+    assert.equal(fragment.summary.validRows, 5);
+    assert.equal(fragment.summary.aggregationCounts.oneMinute, 5);
+    assert.equal(fragment.summary.aggregationCounts.fiveMinute, 1);
+    const merged = mergeHistoricalCsvImportSummaries(
+      [fragment.summary],
+      { ...specification, fullContractSymbol: "MESU5", contractMonth: "2025-09" },
+      sessionCalendarForContract({ ...specification, fullContractSymbol: "MESU5", contractMonth: "2025-09" }),
+      fragment.contentFingerprint,
+    );
+    assert.equal(merged.summary.validRows, 5);
+    assert.equal(merged.summary.availableTradingDates.length, 1);
+    assert.equal(merged.summary.aggregationCounts.fiveMinute, 1);
   });
 });
 

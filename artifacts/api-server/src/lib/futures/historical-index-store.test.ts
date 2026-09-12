@@ -137,6 +137,26 @@ test("stores and reloads date/timeframe partitions and the committed source mani
     importerVersion: "fixture",
     scheduleVersion: "fixture",
   }), []);
+  assert.deepEqual(reopened.runMaintenanceValidation({
+    aggregationCounts: { oneMinute: 1, fiveMinute: 1, fifteenMinute: 0, oneHour: 0 },
+  }), []);
+  const checkpoint = {
+    sourceFingerprint: "fixture-source",
+    currentFile: "fixture.csv",
+    currentContract: "MESU5",
+    currentTradingDate: "2025-09-05",
+    sourceOffset: null,
+    completedPartitions: ["MESU5:1:2025-09-05"],
+    completedFiles: [],
+    rowsProcessed: 1,
+    acceptedRows: 1,
+    rejectedRows: 0,
+    stagingIndexPath: path,
+    heartbeatAt: new Date().toISOString(),
+    resumeNote: "fixture",
+  } as const;
+  reopened.writeCheckpoint(checkpoint);
+  assert.deepEqual(reopened.readCheckpoint(), checkpoint);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 1).map((candle) => candle.close), [100.5]);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 5).map((candle) => candle.close), [100.5]);
   reopened.close();

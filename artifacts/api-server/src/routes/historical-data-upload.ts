@@ -13,6 +13,7 @@ import {
 import {
   getHistoricalMultiContractIndexStatus,
   importHistoricalMultiContract,
+  validateHistoricalMultiContractIndexMaintenance,
   type HistoricalIndexSourceFile,
 } from "../lib/futures/multi-contract-replay.js";
 import { getHistoricalCsvFingerprint } from "../lib/futures/historical-csv-import.js";
@@ -54,6 +55,8 @@ const ACTIVE_IMPORT_STATES = [
   "reconciling",
   "committing",
 ] as const;
+const LEASE_OWNER = `api-${process.pid}`;
+const LEASE_MS = 5 * 60_000;
 
 const recoveredJobIds: string[] = [];
 for (const job of importJobStore.listActive()) {
@@ -93,6 +96,9 @@ async function runImportJob(jobId: string): Promise<void> {
     state: "materializing",
     startedAt: initial.startedAt ?? new Date().toISOString(),
     error: null,
+    leaseOwner: LEASE_OWNER,
+    leaseUntil: new Date(Date.now() + LEASE_MS).toISOString(),
+    heartbeatAt: new Date().toISOString(),
   })) {
     runningJobs.delete(jobId);
     jobControllers.delete(jobId);
@@ -141,9 +147,22 @@ async function runImportJob(jobId: string): Promise<void> {
       });
     }
       if (controller.signal.aborted || getJob(jobId)?.state === "cancelled") throw new Error("Historical import was cancelled.");
+    const sourceFingerprint = materialized
+      .map((file) => file.contentFingerprint)
+      .filter((fingerprint): fingerprint is string => Boolean(fingerprint))
+      .sort()
+      .join("|");
+    updateJob(jobId, {
+      sourceFingerprint,
+      stagingIndexPath: getJob(jobId)?.stagingIndexPath ?? null,
+      heartbeatAt: new Date().toISOString(),
+      leaseUntil: new Date(Date.now() + LEASE_MS).toISOString(),
+    });
     updateJob(jobId, { state: "validating", phaseProgress: 0, progress: 25 });
+    const resumeJob = getJob(jobId)!;
     const imported = await importHistoricalMultiContract({
       sources: materialized,
+      stagingPath: resumeJob.stagingIndexPath,
       onProgress: (progress) => {
         if (controller.signal.aborted || getJob(jobId)?.state === "cancelled") return;
         updateJob(jobId, {
@@ -153,6 +172,14 @@ async function runImportJob(jobId: string): Promise<void> {
           rowsProcessed: progress.rowsRead,
           acceptedRows: progress.validRows,
           rejectedRows: progress.rejectedRows,
+          currentFilename: progress.currentFile ?? null,
+          currentContract: progress.currentContract ?? null,
+          currentTradingDate: progress.currentTradingDate ?? null,
+          sourceOffset: progress.sourceOffset ?? null,
+          stagingIndexPath: progress.stagingIndexPath ?? null,
+          completedPartitions: [...(progress.completedPartitions ?? getJob(jobId)?.completedPartitions ?? [])],
+          heartbeatAt: new Date().toISOString(),
+          leaseUntil: new Date(Date.now() + LEASE_MS).toISOString(),
         });
       },
       signal: controller.signal,
@@ -304,6 +331,9 @@ router.post(
       status: null,
       indexKey: null,
       stagingIndexPath: null,
+      sourceFingerprint: null,
+      sourceOffset: null,
+      completedPartitions: [],
       leaseOwner: null,
       leaseUntil: null,
       heartbeatAt: null,
@@ -352,6 +382,15 @@ router.get("/historical-data/import/:jobId", requireRole("reviewer"), async (req
     return;
   }
   res.json(jobResponse(job));
+});
+
+router.post("/historical-data/maintenance/validate", requireRole("reviewer"), async (_req, res) => {
+  try {
+    const result = await validateHistoricalMultiContractIndexMaintenance();
+    res.json({ ...result, message: "Historical source, SQLite integrity, and partition validation completed." });
+  } catch (error) {
+    res.status(422).json({ error: error instanceof Error ? error.message : "Historical maintenance validation failed." });
+  }
 });
 
 export default router;

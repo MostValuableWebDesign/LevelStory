@@ -1468,14 +1468,9 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <HistoricalDatePicker
           value={request.endDate}
           onChange={(value) => update("endDate", value)}
-          minDate={historicalIndex?.indexedStartDate ?? null}
-          maxDate={historicalIndex?.indexedEndDate ?? null}
-           eligibleDates={historicalIndex?.state === "ready" ? historicalIndex.eligibleTradingDates : undefined}
-           disabledDateReasons={new Map(
-             (historicalIndex?.state === "ready" ? historicalIndex.ineligibleDates : [])
-               .filter((item): item is typeof item & { reason: string } => typeof item.reason === "string")
-               .map((item) => [item.tradingDate, item.reason]),
-           )}
+          minDate={null}
+          maxDate={null}
+          availableDates={historicalIndex?.state === "ready" ? historicalIndex.eligibleTradingDates : undefined}
         />
       </Field>
       <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>

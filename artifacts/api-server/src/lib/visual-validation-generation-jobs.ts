@@ -17,7 +17,10 @@ import {
   visualValidationCacheMetadata,
   type VisualValidationCacheMetadata,
 } from "./visual-validation-cache.js";
-import { getReadyHistoricalMultiContractIndex } from "./futures/multi-contract-replay.js";
+import {
+  getReadyHistoricalMultiContractIndex,
+  resolveStoredHistoricalDates,
+} from "./futures/multi-contract-replay.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
 
@@ -97,8 +100,7 @@ async function cacheMetadataForRequest(request: VisualValidationRequest): Promis
   if ((request.source ?? "historical_databento") === "historical_databento") {
     const imported = await getReadyHistoricalMultiContractIndex();
     const processedDates = imported
-      ? imported.summary.eligibleTradingDates
-        .filter((date) => date <= request.endDate)
+      ? resolveStoredHistoricalDates(imported, undefined, request.endDate)
         .slice(-(request.inSampleDays + request.outOfSampleDays))
       : [];
     return visualValidationCacheMetadata(

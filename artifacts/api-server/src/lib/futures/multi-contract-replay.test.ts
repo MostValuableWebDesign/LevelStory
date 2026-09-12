@@ -11,6 +11,7 @@ import {
   multiContractImportToReplayDataset,
   parseMesContractSymbol,
   resolveExplicitMultiContractFiles,
+  resolveStoredHistoricalDates,
   scheduledMesContractForDate,
   assertMultiContractCoverageReconciles,
   validateMultiContractContentFingerprint,
@@ -248,6 +249,26 @@ test("rejects an explicit sparse sample when fewer stored sessions remain", () =
     () => multiContractImportToReplayDataset(imported, date, "2025-09-12", 1, 1, [date, "2025-09-12"]),
     /contains 1 stored trading sessions; 2 are required/i,
   );
+});
+
+test("resolves stored dates even when the rollover schedule has no entry", () => {
+  const tradingDate = "2021-09-11";
+  const contractSymbol = "MESZ1";
+  const specification = contractSpecificationForMesSymbol(contractSymbol);
+  const imported = {
+    summary: { allObservedTradingDates: [tradingDate] },
+    contracts: new Map([[contractSymbol, {
+      summary: { availableTradingDates: [tradingDate] },
+      specification,
+      calendar: sessionCalendarForContract(specification),
+      oneMinute: [],
+      fiveMinute: [],
+      fifteenMinute: [],
+      oneHour: [],
+    }]]),
+  } as unknown as HistoricalMultiContractImport;
+  assert.equal(scheduledMesContractForDate(tradingDate), null);
+  assert.deepEqual(resolveStoredHistoricalDates(imported, tradingDate, tradingDate), [tradingDate]);
 });
 
 test("explains when a requested range has no stored history", () => {

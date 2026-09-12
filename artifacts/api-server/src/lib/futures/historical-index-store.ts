@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdir, rename, unlink } from "node:fs/promises";
+import { mkdir, rename, unlink, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { HistoricalCsvImportSummary, HistoricalCsvImport } from "./historical-csv-import.js";
 import type { NormalizedCandle } from "./market-data-provider.js";
@@ -47,6 +47,28 @@ export type HistoricalIndexManifest = {
   files: readonly HistoricalIndexManifestFile[];
 };
 
+export type HistoricalIndexCheckpoint = {
+  sourceFingerprint: string;
+  currentFile: string | null;
+  currentContract: string | null;
+  currentTradingDate: string | null;
+  sourceOffset: number | null;
+  completedPartitions: readonly string[];
+  completedFiles: ReadonlyArray<{
+    filename: string;
+    path: string;
+    contractSymbol: string;
+    fingerprint: string;
+    summary: HistoricalCsvImportSummary;
+  }>;
+  rowsProcessed: number;
+  acceptedRows: number;
+  rejectedRows: number;
+  stagingIndexPath: string;
+  heartbeatAt: string;
+  resumeNote: string | null;
+};
+
 type CandleRow = {
   open_time: number;
   close_time: number;
@@ -90,9 +112,16 @@ export class HistoricalIndexStore {
     return store;
   }
 
-  static async createAtomic(path: string): Promise<HistoricalIndexStore> {
+  static async createAtomic(path: string, resumePath?: string | null): Promise<HistoricalIndexStore> {
     await mkdir(dirname(path), { recursive: true });
-    const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+    let temporaryPath = resumePath ?? `${path}.${process.pid}.${Date.now()}.tmp`;
+    if (resumePath) {
+      try {
+        await stat(resumePath);
+      } catch {
+        temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+      }
+    }
     const database = new DatabaseSync(temporaryPath);
     const store = new HistoricalIndexStore(database, path);
     store.initialize();
@@ -101,6 +130,10 @@ export class HistoricalIndexStore {
   }
 
   private temporaryPath: string | null = null;
+
+  get stagingPath(): string | null {
+    return this.temporaryPath;
+  }
 
   private initialize(): void {
     const existingVersion = Number((this.database.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version ?? 0);
@@ -189,6 +222,10 @@ export class HistoricalIndexStore {
           REFERENCES candle_partitions(contract_symbol, trading_date, timeframe)
           ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS import_checkpoint (
+        checkpoint_id INTEGER PRIMARY KEY CHECK (checkpoint_id = 1),
+        checkpoint_json TEXT NOT NULL
+      );
       CREATE INDEX IF NOT EXISTS candles_by_date
         ON candles (trading_date, contract_symbol, timeframe, open_time);
       CREATE INDEX IF NOT EXISTS candles_by_contract_time
@@ -216,6 +253,20 @@ export class HistoricalIndexStore {
       ["sessionCalendarVersion", metadata.sessionCalendarVersion ?? "unknown"],
     ];
     for (const [key, value] of entries) statement.run(key, value);
+  }
+
+  writeCheckpoint(checkpoint: HistoricalIndexCheckpoint): void {
+    this.database.prepare(`
+      INSERT OR REPLACE INTO import_checkpoint (checkpoint_id, checkpoint_json)
+      VALUES (1, ?)
+    `).run(JSON.stringify(checkpoint));
+  }
+
+  readCheckpoint(): HistoricalIndexCheckpoint | null {
+    const row = this.database.prepare(
+      "SELECT checkpoint_json FROM import_checkpoint WHERE checkpoint_id = 1",
+    ).get() as { checkpoint_json?: string } | undefined;
+    return row?.checkpoint_json ? JSON.parse(row.checkpoint_json) as HistoricalIndexCheckpoint : null;
   }
 
   readMetadata(): HistoricalIndexMetadata | null {
@@ -370,8 +421,6 @@ export class HistoricalIndexStore {
     scheduleVersion?: string;
   }): string[] {
     const errors: string[] = [];
-    const integrity = this.database.prepare("PRAGMA integrity_check").get() as { integrity_check?: string };
-    if (integrity.integrity_check !== "ok") errors.push("SQLITE_INTEGRITY_CHECK_FAILED");
     const manifest = this.readManifest();
     if (!manifest) errors.push("COMMITTED_MANIFEST_MISSING_OR_INCOMPATIBLE");
     if (manifest && expected) {
@@ -379,6 +428,70 @@ export class HistoricalIndexStore {
       if (expected.contentFingerprint && manifest.contentFingerprint !== expected.contentFingerprint) errors.push("MANIFEST_CONTENT_FINGERPRINT_MISMATCH");
       if (expected.importerVersion && manifest.importerVersion !== expected.importerVersion) errors.push("MANIFEST_IMPORTER_VERSION_MISMATCH");
       if (expected.scheduleVersion && manifest.scheduleVersion !== expected.scheduleVersion) errors.push("MANIFEST_SCHEDULE_VERSION_MISMATCH");
+    }
+    return errors;
+  }
+
+  /**
+   * Expensive checks are deliberately separate from routine status polling.
+   * This verifies SQLite integrity and every persisted partition count.
+   */
+  runMaintenanceValidation(expectedSummary?: {
+    aggregationCounts?: {
+      oneMinute: number;
+      fiveMinute: number;
+      fifteenMinute: number;
+      oneHour: number;
+    };
+  }): string[] {
+    const errors: string[] = [];
+    const integrity = this.database.prepare("PRAGMA integrity_check").get() as { integrity_check?: string };
+    if (integrity.integrity_check !== "ok") errors.push("SQLITE_INTEGRITY_CHECK_FAILED");
+    const mismatches = this.database.prepare(`
+      SELECT p.contract_symbol, p.trading_date, p.timeframe, p.candle_count,
+             COUNT(c.open_time) AS actual_count
+      FROM candle_partitions p
+      LEFT JOIN candles c
+        ON c.contract_symbol = p.contract_symbol
+       AND c.trading_date = p.trading_date
+       AND c.timeframe = p.timeframe
+      GROUP BY p.contract_symbol, p.trading_date, p.timeframe, p.candle_count
+      HAVING p.candle_count <> COUNT(c.open_time)
+    `).all() as Array<{ contract_symbol: string; trading_date: string; timeframe: number; candle_count: number; actual_count: number }>;
+    for (const mismatch of mismatches) {
+      errors.push(
+        `PARTITION_COUNT_MISMATCH:${mismatch.contract_symbol}:${mismatch.trading_date}:${mismatch.timeframe}:${mismatch.candle_count}:${mismatch.actual_count}`,
+      );
+    }
+    const orphan = this.database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM candles c
+      LEFT JOIN candle_partitions p
+        ON p.contract_symbol = c.contract_symbol
+       AND p.trading_date = c.trading_date
+       AND p.timeframe = c.timeframe
+      WHERE p.contract_symbol IS NULL
+    `).get() as { count?: number };
+    if (Number(orphan.count ?? 0) > 0) errors.push(`ORPHAN_CANDLE_ROWS:${Number(orphan.count)}`);
+    if (expectedSummary?.aggregationCounts) {
+      const expected = expectedSummary.aggregationCounts;
+      const actual = this.database.prepare(`
+        SELECT timeframe, COUNT(*) AS count
+        FROM candles
+        GROUP BY timeframe
+      `).all() as Array<{ timeframe: number; count: number }>;
+      const actualByTimeframe = new Map(actual.map((row) => [row.timeframe, Number(row.count)]));
+      for (const [timeframe, expectedCount] of [
+        [1, expected.oneMinute],
+        [5, expected.fiveMinute],
+        [15, expected.fifteenMinute],
+        [60, expected.oneHour],
+      ] as const) {
+        const actualCount = actualByTimeframe.get(timeframe) ?? 0;
+        if (actualCount !== expectedCount) {
+          errors.push(`AGGREGATION_COUNT_MISMATCH:${timeframe}:${expectedCount}:${actualCount}`);
+        }
+      }
     }
     return errors;
   }
@@ -626,6 +739,16 @@ export class HistoricalIndexStore {
     }));
   }
 
+  getContractSymbolsForDate(tradingDate: string, timeframe: Timeframe = 1): string[] {
+    return (this.database.prepare(`
+      SELECT DISTINCT contract_symbol
+      FROM candles
+      WHERE trading_date = ? AND timeframe = ?
+      ORDER BY contract_symbol
+    `).all(tradingDate, timeframe) as Array<{ contract_symbol: string }>)
+      .map((row) => row.contract_symbol);
+  }
+
   getPartitionCount(): number {
     const row = this.database.prepare("SELECT COUNT(*) AS count FROM candle_partitions").get() as { count: number };
     return Number(row.count);
@@ -647,5 +770,12 @@ export class HistoricalIndexStore {
     this.close();
     this.temporaryPath = null;
     if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
+  }
+
+  preserveAtomic(): string | null {
+    const temporaryPath = this.temporaryPath;
+    this.close();
+    this.temporaryPath = null;
+    return temporaryPath;
   }
 }
