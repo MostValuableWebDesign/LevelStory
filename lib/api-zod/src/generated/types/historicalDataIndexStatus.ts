@@ -29,6 +29,7 @@ export interface HistoricalDataIndexStatus {
   indexedStartDate: string | null;
   /** @nullable */
   indexedEndDate: string | null;
+  availableTradingDates: string[];
   scheduleVersion: string;
   importerVersion: string;
   discoveredContracts: string[];

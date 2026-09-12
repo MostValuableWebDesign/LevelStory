@@ -3053,6 +3053,9 @@ components:
         requestedEndDate: { type: string }
         indexedStartDate: { type: ["string", "null"] }
         indexedEndDate: { type: ["string", "null"] }
+        availableTradingDates:
+          type: array
+          items: { type: string }
         scheduleVersion: { type: string }
         importerVersion: { type: string }
         discoveredContracts:
@@ -3092,7 +3095,7 @@ components:
         message: { type: ["string", "null"] }
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
-      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
+      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, availableTradingDates, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
     HistoricalDataUploadRequest:
       type: object
       properties:

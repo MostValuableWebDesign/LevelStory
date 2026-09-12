@@ -11,6 +11,8 @@ export type HistoricalImportPhase =
   | "aggregating"
   | "reconciling"
   | "committing"
+  | "paused"
+  | "cancelled_resumable"
   | "ready"
   | "failed"
   | "cancelled";

@@ -27,7 +27,6 @@ import {
   publicHistoricalImportSummary,
 } from "../lib/futures/historical-csv-import.js";
 import {
-  importHistoricalMultiContract,
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
   MES_SUPPORTED_START_DATE,
@@ -80,7 +79,7 @@ const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
 export const BACKTEST_REQUEST_TIMEOUT_MS = 120_000;
 export const BACKTEST_WORKER_DEADLINE_MS = 110_000;
-export const BATCH_BACKTEST_MAX_PARTITIONS = 60;
+export const BATCH_BACKTEST_MAX_PARTITIONS = MAX_BACKTEST_SESSIONS;
 const EMA_COMPARISON_PERIOD = 200;
 const EMA_COMPARISON_MAX_SELECTIONS = 3;
 
@@ -361,7 +360,12 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const request = parsed.data as BatchBacktestRequest;
+    const request = {
+      ...parsed.data,
+      selectedDates: parsed.data.selectedDates
+        ? [...new Set(parsed.data.selectedDates)]
+        : undefined,
+    } as BatchBacktestRequest;
     try {
       validateHistoricalBacktestSource(request);
     } catch (error) {
@@ -428,7 +432,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           ? await getHistoricalCsvImport(specification)
           : null;
         const multiContract = source === MULTI_CONTRACT_SOURCE
-          ? await importHistoricalMultiContract()
+          ? await getReadyHistoricalMultiContractIndex()
           : null;
         const replayDataset = imported
           ? historicalImportToReplayDataset(imported, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
@@ -780,7 +784,8 @@ router.get("/historical-data", historicalRateLimit, requestTimeout(120_000), asy
         res.status(422).json({ error: "Multi-contract historical replay only supports the exact MES root symbol." });
         return;
       }
-      const imported = await importHistoricalMultiContract();
+      const imported = await getReadyHistoricalMultiContractIndex();
+      if (!imported) throw new HistoricalNoDataError("No committed historical MES index is available.");
       if (res.headersSent) return;
       assertMultiContractCoverageReconciles(imported.summary);
       res.json(GetHistoricalDataResponse.parse(imported.summary));
@@ -810,7 +815,8 @@ router.get("/historical-data/ema-comparison", historicalRateLimit, requestTimeou
       : [];
     const series: EmaComparisonSeries[] = [];
     if (source === MULTI_CONTRACT_SOURCE) {
-      const imported = await importHistoricalMultiContract();
+      const imported = await getReadyHistoricalMultiContractIndex();
+      if (!imported) throw new HistoricalNoDataError("No committed historical MES index is available.");
       for (const contract of imported.contracts.values()) {
         const calculated = independentlyCalculateEma(contract.fiveMinute, EMA_COMPARISON_PERIOD);
         if (calculated.values.size > 0) series.push(calculated);
@@ -902,7 +908,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         : null;
       const multiContract = parsed.data.source === MULTI_CONTRACT_SOURCE
         ? await abortable(
-            Promise.resolve().then(() => importHistoricalMultiContract()),
+            Promise.resolve().then(() => getReadyHistoricalMultiContractIndex()),
             deadline.signal,
           )
         : null;

@@ -111,14 +111,14 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
         {multiContract && <div className="mt-5 space-y-5">
           {!coverageTotals.reconciles ? <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive" role="alert">Coverage totals failed reconciliation. Backtest eligibility is unavailable until the server returns a consistent summary.</div> : <>
             <section aria-labelledby="coverage-totals-heading">
-              <div id="coverage-totals-heading" className="eyebrow mb-2 text-foreground">Replay eligibility totals</div>
+              <div id="coverage-totals-heading" className="eyebrow mb-2 text-foreground">Stored data coverage totals</div>
               <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
                 <div className="bg-card px-4 py-4"><div className="eyebrow">All observed dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.allObservedDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Informational only</div></div>
-                <div className="bg-card px-4 py-4"><div className="eyebrow">Eligible scheduled replay dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">May enter a backtest or batch</div></div>
-                <div className="bg-card px-4 py-4"><div className="eyebrow">Ineligible observed dates</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.ineligibleObservedDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Observed, but blocked</div></div>
+                <div className="bg-card px-4 py-4"><div className="eyebrow">Stored dates with scheduled coverage</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Schedule detail only</div></div>
+                <div className="bg-card px-4 py-4"><div className="eyebrow">Stored dates without scheduled coverage</div><div className="mono mt-2 text-lg text-foreground">{coverageTotals.ineligibleObservedDateCount.toLocaleString()}</div><div className="mt-1 text-[10px]">Still available for deterministic fallback</div></div>
               </div>
-              <p className="mt-3 max-w-4xl text-foreground">All observed dates come from every accepted contract file. Eligible scheduled replay dates contain sufficient data for the contract selected by the deterministic rollover schedule. Backtests use eligible dates only.</p>
-              <p className="mt-2 font-semibold text-foreground">Reconciliation: {coverageTotals.allObservedDateCount.toLocaleString()} all observed = {coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()} eligible + {coverageTotals.ineligibleObservedDateCount.toLocaleString()} ineligible observed.</p>
+              <p className="mt-3 max-w-4xl text-foreground">Stored dates come from every accepted contract file. Scheduled coverage is diagnostic context; date availability comes from stored candle presence and deterministic fallback selection.</p>
+              <p className="mt-2 font-semibold text-foreground">Reconciliation: {coverageTotals.allObservedDateCount.toLocaleString()} stored = {coverageTotals.eligibleScheduledReplayDateCount.toLocaleString()} with scheduled coverage + {coverageTotals.ineligibleObservedDateCount.toLocaleString()} with fallback coverage.</p>
             </section>
             <section aria-labelledby="coverage-inventory-heading">
               <div id="coverage-inventory-heading" className="eyebrow mb-2 text-foreground">Coverage inventory</div>
@@ -129,7 +129,7 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
                   [String(inactiveFutureContractCount), "Inactive / future contracts"],
                   [String(rejectedSpreadOrDuplicateFileCount), "Rejected spreads or duplicate files"],
                   [String(missingScheduledContractFileCount), "Missing scheduled contract files"],
-                  [String(data.ineligibleScheduledDateCount ?? data.ineligibleDates?.length ?? 0), "Ineligible scheduled dates"],
+                  [String(data.ineligibleScheduledDateCount ?? data.ineligibleDates?.length ?? 0), "Dates without scheduled coverage"],
                 ].map(([value, label]) => <div key={label} className="bg-card px-4 py-4"><div className="eyebrow">{label}</div><div className="mono mt-2 text-sm text-foreground">{value}</div></div>)}
               </div>
             </section>
@@ -168,6 +168,7 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [lastJob, setLastJob] = useState<{
+    jobId?: string;
     state?: string;
     progress?: number;
     phaseProgress?: number;
@@ -239,8 +240,8 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         } else if (body.state === "failed") {
           setMessage(body.error ?? "Historical indexing failed. Review the rejected files and try again.");
           setJobId(null);
-        } else if (body.state === "cancelled") {
-          setMessage(body.error ?? "Historical import cancelled; the previous ready library was preserved.");
+        } else if (body.state === "cancelled" || body.state === "cancelled_resumable" || body.state === "paused") {
+          setMessage(body.error ?? "Historical import paused; the previous ready library was preserved.");
           setJobId(null);
         } else {
           const phase = {
@@ -326,10 +327,29 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "The import could not be cancelled.");
-      setMessage("Cancellation recorded. The previous ready library will remain active.");
+       setLastJob({ jobId, state: "cancelled_resumable", error: "Import paused at the last verified checkpoint; resume to continue." });
+       setMessage("Cancellation recorded. The previous ready library will remain active. Resume is available from the last verified checkpoint.");
       setJobId(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The import could not be cancelled.");
+    }
+  };
+
+  const resumeImport = async () => {
+    const resumableJobId = lastJob?.jobId;
+    if (!resumableJobId) return;
+    try {
+      const response = await fetch(`/api/historical-data/import/${resumableJobId}/resume`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await response.json() as { state?: string; error?: string };
+      if (!response.ok) throw new Error(body.error ?? "The import could not be resumed.");
+      setJobId(resumableJobId);
+      setLastJob((current) => ({ ...current, jobId: resumableJobId, state: body.state ?? "queued" }));
+      setMessage("Import resumed from the last verified checkpoint.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The import could not be resumed.");
     }
   };
 
@@ -355,6 +375,9 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         />
         {jobId && <button type="button" onClick={() => void cancelImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-destructive/50 px-4 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-50" data-testid="button-cancel-historical-import">
           <Square size={12} />Cancel import
+        </button>}
+        {lastJob?.state === "cancelled_resumable" && lastJob.jobId && <button type="button" onClick={() => void resumeImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-accent px-4 text-xs font-bold text-accent hover:bg-accent/10 disabled:opacity-50" data-testid="button-resume-historical-import">
+          <Play size={12} />Resume import
         </button>}
         <button type="button" onClick={() => void upload()} disabled={busy || Boolean(jobId) || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
           <Upload size={13} />{busy ? "Uploading…" : `Upload ${files.length || ""} files`}
@@ -923,9 +946,11 @@ export default function Backtest() {
   } as const;
 
   const availableBatchDates = useMemo(() => {
-    const dates = historicalImport.data?.eligibleTradingDates ?? historicalImport.data?.availableTradingDates ?? [];
-    return dates.filter((date) => date >= startDate && date <= endDate).sort();
-  }, [endDate, historicalImport.data?.availableTradingDates, historicalImport.data?.eligibleTradingDates, startDate]);
+    const dates = historicalImport.data?.allObservedTradingDates
+      ?? historicalImport.data?.availableTradingDates
+      ?? [];
+    return dates.filter((date) => date >= startDate && date <= endDate).sort().slice(-MAX_BACKTEST_SESSIONS);
+  }, [endDate, historicalImport.data?.allObservedTradingDates, historicalImport.data?.availableTradingDates, startDate]);
   const batchRequest = {
     ...request,
     ...(availableBatchDates.length >= 2 ? { selectedDates: availableBatchDates } : {}),
@@ -959,7 +984,7 @@ export default function Backtest() {
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
          {source === MULTI_CONTRACT_SOURCE && <HistoricalDataUploadPanel onImported={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} />}
          {source !== "simulated" && <div className="mb-5 space-y-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /><HistoricalEmaComparisonPanel report={emaComparison.data} isLoading={emaComparison.isLoading || emaComparison.isFetching} isError={emaComparison.isError} selectedTimestamps={selectedEmaTimestamps} onToggle={(timestamp) => setSelectedEmaTimestamps((current) => current.includes(timestamp) ? current.filter((item) => item !== timestamp) : current.length < 3 ? [...current, timestamp] : current)} /></div>}
-         {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div>{multiContractIndex.data && <div className="grid border-t border-border sm:grid-cols-2 lg:grid-cols-4" data-testid="historical-index-coverage"><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Requested coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.requestedStartDate} → {multiContractIndex.data.requestedEndDate}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Indexed coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.indexedStartDate ?? "—"} → {multiContractIndex.data.indexedEndDate ?? "—"}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Eligible / ineligible dates</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.eligibleTradingDateCount.toLocaleString()} / {multiContractIndex.data.ineligibleTradingDateCount.toLocaleString()}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Readiness</div><div className={`mt-1 font-semibold ${multiContractIndex.data.fullRangeReady ? "status-positive" : "status-negative"}`}>{multiContractIndex.data.fullRangeReady ? "Full requested range ready" : "Range has blocked dates"}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Schedule / importer</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.scheduleVersion} · {multiContractIndex.data.importerVersion}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mt-1 text-[11px] text-muted-foreground">{multiContractIndex.data.acceptedContracts.length} accepted of {multiContractIndex.data.discoveredContracts.length} discovered · {multiContractIndex.data.missingScheduledContracts.length} missing scheduled</div></div><div className="px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Merged source fragments</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">{multiContractIndex.data.filesMergedPerContract.map((item) => <span key={item.contractSymbol} className="mono">{item.contractSymbol}: {item.fragmentCount}</span>)}{multiContractIndex.data.filesMergedPerContract.length === 0 && <span>—</span>}</div></div>{multiContractIndex.data.rejectedFiles.length > 0 && <div className="border-t border-border px-4 py-3 text-[11px] text-destructive sm:col-span-2 lg:col-span-4"><div className="eyebrow">Rejected source files</div><div className="mt-1">{multiContractIndex.data.rejectedFiles.map((file) => `${file.filename} (${file.reason})`).join(" · ")}</div></div>}</div>}</Panel>}
+         {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div>{multiContractIndex.data && <div className="grid border-t border-border sm:grid-cols-2 lg:grid-cols-4" data-testid="historical-index-coverage"><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Requested coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.requestedStartDate} → {multiContractIndex.data.requestedEndDate}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Indexed coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.indexedStartDate ?? "—"} → {multiContractIndex.data.indexedEndDate ?? "—"}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Stored dates / schedule diagnostics</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.availableTradingDates.length.toLocaleString()} / {multiContractIndex.data.eligibleTradingDateCount.toLocaleString()}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Readiness</div><div className={`mt-1 font-semibold ${multiContractIndex.data.fullRangeReady ? "status-positive" : "status-negative"}`}>{multiContractIndex.data.fullRangeReady ? "Stored coverage available" : "Some dates lack scheduled coverage"}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Schedule / importer</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.scheduleVersion} · {multiContractIndex.data.importerVersion}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mt-1 text-[11px] text-muted-foreground">{multiContractIndex.data.acceptedContracts.length} accepted of {multiContractIndex.data.discoveredContracts.length} discovered · {multiContractIndex.data.missingScheduledContracts.length} missing scheduled</div></div><div className="px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Merged source fragments</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">{multiContractIndex.data.filesMergedPerContract.map((item) => <span key={item.contractSymbol} className="mono">{item.contractSymbol}: {item.fragmentCount}</span>)}{multiContractIndex.data.filesMergedPerContract.length === 0 && <span>—</span>}</div></div>{multiContractIndex.data.rejectedFiles.length > 0 && <div className="border-t border-border px-4 py-3 text-[11px] text-destructive sm:col-span-2 lg:col-span-4"><div className="eyebrow">Rejected source files</div><div className="mt-1">{multiContractIndex.data.rejectedFiles.map((file) => `${file.filename} (${file.reason})`).join(" · ")}</div></div>}</div>}</Panel>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -985,7 +1010,7 @@ export default function Backtest() {
                <div className={`text-[11px] ${sessionLimits.error ? "text-destructive" : "text-muted-foreground"}`} data-testid="backtest-session-limit">
                  {sessionLimits.error ?? `Single-run sessions requested: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.requested : "—"} / ${MAX_BACKTEST_SESSIONS}. Remaining capacity: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.remaining : "—"}.`}
                </div>
-               <div className="mt-1 text-[11px] text-muted-foreground">The qualification batch is separate and may include up to {availableBatchDates.length ? Math.min(availableBatchDates.length, 60) : 60} selected eligible dates (batch ceiling: 60); it does not use the single-run {MAX_BACKTEST_SESSIONS}-session validation ceiling.</div>
+               <div className="mt-1 text-[11px] text-muted-foreground">The qualification batch is separate and may include up to {MAX_BACKTEST_SESSIONS} selected stored dates; it uses the same historical session ceiling as a single run.</div>
              </div>
           </form>
              <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Eligible scheduled dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>

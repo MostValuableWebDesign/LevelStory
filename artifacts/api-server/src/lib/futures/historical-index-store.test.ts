@@ -161,3 +161,36 @@ test("stores and reloads date/timeframe partitions and the committed source mani
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 5).map((candle) => candle.close), [100.5]);
   reopened.close();
 });
+
+test("preserves checkpointed staging for resumable cancellation and keeps replay writes idempotent", async () => {
+  const directory = await mkdtemp("/tmp/levelstory-index-resume-");
+  const committedPath = join(directory, "history.sqlite");
+  const staged = await HistoricalIndexStore.createAtomic(committedPath);
+  const checkpoint = {
+    sourceFingerprint: "resume-source",
+    currentFile: "fixture.csv",
+    currentContract: "MESU5",
+    currentTradingDate: "2025-09-05",
+    sourceOffset: null,
+    completedPartitions: ["MESU5:1:2025-09-05", "MESU5:5:2025-09-05"],
+    completedFiles: [],
+    rowsProcessed: 2,
+    acceptedRows: 2,
+    rejectedRows: 0,
+    stagingIndexPath: staged.stagingPath!,
+    heartbeatAt: new Date().toISOString(),
+    resumeNote: "cancellation",
+  } as const;
+  staged.writeCheckpoint(checkpoint);
+  const stagingPath = staged.stagingPath;
+  assert.ok(stagingPath);
+  assert.equal(staged.preserveAtomic(), stagingPath);
+
+  const resumed = await HistoricalIndexStore.createAtomic(committedPath, stagingPath);
+  assert.deepEqual(resumed.readCheckpoint(), checkpoint);
+  const imported = fixtureImport();
+  resumed.writeImport(imported, imported.contentFingerprint);
+  resumed.writeImport(imported, imported.contentFingerprint);
+  assert.equal(resumed.getPartitionCount(), 2);
+  await resumed.abortAtomic();
+});

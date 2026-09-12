@@ -1470,7 +1470,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           onChange={(value) => update("endDate", value)}
           minDate={null}
           maxDate={null}
-          availableDates={historicalIndex?.state === "ready" ? historicalIndex.eligibleTradingDates : undefined}
+           availableDates={historicalIndex?.state === "ready" ? historicalIndex.availableTradingDates : undefined}
         />
       </Field>
       <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>

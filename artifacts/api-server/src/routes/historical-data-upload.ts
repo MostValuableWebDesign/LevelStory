@@ -55,6 +55,7 @@ const ACTIVE_IMPORT_STATES = [
   "reconciling",
   "committing",
 ] as const;
+const RESUMABLE_IMPORT_STATES = ["paused", "cancelled_resumable"] as const;
 const LEASE_OWNER = `api-${process.pid}`;
 const LEASE_MS = 5 * 60_000;
 
@@ -208,16 +209,16 @@ async function runImportJob(jobId: string): Promise<void> {
     const completedAt = new Date().toISOString();
     const cancelled = getJob(jobId)?.state === "cancelled" || (error instanceof Error && error.message === "Historical import was cancelled.");
     const current = getJob(jobId);
-    if (!current || ["ready", "failed", "cancelled"].includes(current.state)) {
+    if (!current || ["ready", "failed", "cancelled", "cancelled_resumable", "paused"].includes(current.state)) {
       jobControllers.delete(jobId);
       runningJobs.delete(jobId);
       return;
     }
     importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
-      state: cancelled ? "cancelled" : "failed",
-      error: cancelled ? "Import cancelled; the previous ready historical library was preserved." : error instanceof Error ? error.message : "Historical import failed.",
+      state: cancelled ? "cancelled_resumable" : "failed",
+      error: cancelled ? "Import paused at the last verified checkpoint; resume to continue without replacing the ready library." : error instanceof Error ? error.message : "Historical import failed.",
       completedAt,
-      progress: cancelled ? 0 : 0,
+      progress: cancelled ? current.progress : 0,
     });
   } finally {
     jobControllers.delete(jobId);
@@ -362,9 +363,9 @@ router.post("/historical-data/import/:jobId/cancel", requireRole("reviewer"), as
     return;
   }
   const cancelled = importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
-    state: "cancelled",
-    completedAt: new Date().toISOString(),
-    error: "Cancellation requested; active work will stop at the next safe checkpoint.",
+    state: "cancelled_resumable",
+    completedAt: null,
+    error: "Cancellation requested; the staging index will be retained at the last safe checkpoint.",
   });
   jobControllers.get(jobId)?.abort();
   if (!cancelled) {
@@ -372,6 +373,27 @@ router.post("/historical-data/import/:jobId/cancel", requireRole("reviewer"), as
     return;
   }
   res.json(jobResponse(cancelled));
+});
+
+router.post("/historical-data/import/:jobId/resume", requireRole("reviewer"), async (req, res) => {
+  const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+  const resumed = importJobStore.updateIfState(jobId, RESUMABLE_IMPORT_STATES, {
+    state: "queued",
+    completedAt: null,
+    error: null,
+    leaseOwner: null,
+    leaseUntil: null,
+    heartbeatAt: null,
+  });
+  if (!resumed) {
+    const existing = getJob(jobId);
+    res.status(existing ? 409 : 404).json({
+      error: existing ? `Historical import is not resumable from state ${existing.state}.` : "Historical import job was not found in durable job storage.",
+    });
+    return;
+  }
+  void runImportJob(jobId);
+  res.json(jobResponse(resumed));
 });
 
 router.get("/historical-data/import/:jobId", requireRole("reviewer"), async (req, res) => {

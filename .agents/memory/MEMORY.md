@@ -73,3 +73,4 @@
 - [Historical Zstandard import](historical-zstd-import.md) — stream .csv.zst through decompression, hash compressed bytes, and preserve the suffix for contract discovery.
 - [Historical import batching](historical-import-batching.md) — demultiplex generic files once, scope diagnostics by contract/date, and keep status polling metadata-only.
 - [Historical import checkpoints](historical-import-checkpoints.md) — resumable imports persist verified file boundaries and staging state; expensive integrity/source checks stay explicit maintenance work.
+- [Stored-date availability](stored-date-availability.md) — persisted candle presence controls replay availability; rollover eligibility remains preference and diagnostics only.

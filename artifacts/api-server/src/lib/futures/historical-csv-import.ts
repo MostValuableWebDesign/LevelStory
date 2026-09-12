@@ -575,8 +575,16 @@ export function historicalImportToReplayDataset(
   if (requiredDates > MAX_HISTORICAL_SESSIONS || (startDate && requestedDates.length > MAX_HISTORICAL_SESSIONS)) {
     throw new Error(`Historical range resolves to ${requestedDates.length} stored trading sessions; shorten the range to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
   }
-  const exactDates = selectedDatesOverride
-    ? [...new Set(selectedDatesOverride)].filter((date) => requestedDates.includes(date)).sort()
+  const explicitDates = selectedDatesOverride ? [...new Set(selectedDatesOverride)].sort() : null;
+  if (explicitDates && explicitDates.length > MAX_HISTORICAL_SESSIONS) {
+    throw new Error(`The request contains ${explicitDates.length} stored trading sessions; shorten it to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
+  }
+  const missingExplicitDates = explicitDates?.filter((date) => !requestedDates.includes(date)) ?? [];
+  if (missingExplicitDates.length) {
+    throw new HistoricalNoDataError(`No historical data is available for the requested trading date${missingExplicitDates.length === 1 ? "" : "s"}: ${missingExplicitDates.join(", ")}.`);
+  }
+  const exactDates = explicitDates
+    ? explicitDates.filter((date) => requestedDates.includes(date))
     : null;
   if (requestedDates.length === 0 || (exactDates && exactDates.length === 0)) {
     throw new HistoricalNoDataError(`No historical data available${startDate ? ` between ${startDate} and` : " before"} ${endDate}.`);
