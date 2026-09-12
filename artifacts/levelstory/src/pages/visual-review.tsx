@@ -1481,10 +1481,6 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <Field label="In-sample days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
         <Field label="Out-of-sample days"><select className="field mono" value={request.outOfSampleDays} onChange={(event) => update("outOfSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
       </div>
-      <label className="flex cursor-pointer items-start gap-3 border border-border bg-muted/35 p-3">
-        <input type="checkbox" className="mt-0.5 accent-[hsl(var(--accent))]" checked={request.premarketAvailable ?? true} onChange={(event) => update("premarketAvailable", event.target.checked)} />
-        <span><span className="block text-xs font-semibold">Include premarket context</span><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Keep this explicit; unavailable context must remain unavailable in the set.</span></span>
-      </label>
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
