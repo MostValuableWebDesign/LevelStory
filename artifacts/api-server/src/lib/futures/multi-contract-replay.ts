@@ -232,6 +232,8 @@ export type MultiContractIndexStatus = {
   missingScheduledContracts: string[];
   eligibleTradingDateCount: number;
   ineligibleTradingDateCount: number;
+  eligibleTradingDates: string[];
+  ineligibleDates: MultiContractEligibility[];
   mergedFileCount: number;
   filesMergedPerContract: Array<{ contractSymbol: string; fragmentCount: number }>;
   rejectedFiles: Array<{ filename: string; reason: string }>;
@@ -888,6 +890,8 @@ let indexStatus: MultiContractIndexStatus = {
   missingScheduledContracts: [],
   eligibleTradingDateCount: 0,
   ineligibleTradingDateCount: 0,
+  eligibleTradingDates: [],
+  ineligibleDates: [],
   mergedFileCount: 0,
   filesMergedPerContract: [],
   rejectedFiles: [],
@@ -1182,6 +1186,8 @@ function indexStatusFromSummary(
     )].sort(compareMesContractSymbols),
     eligibleTradingDateCount: summary.eligibleTradingDates.length,
     ineligibleTradingDateCount: scheduledRows.filter((item) => !item.backtestEligible).length,
+    eligibleTradingDates: summary.eligibleTradingDates,
+    ineligibleDates: summary.ineligibleDates,
     mergedFileCount: summary.files.length,
     filesMergedPerContract,
     rejectedFiles: summary.rejectedFiles,

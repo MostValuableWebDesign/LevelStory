@@ -3066,6 +3066,11 @@ components:
           items: { type: string }
         eligibleTradingDateCount: { type: number, minimum: 0 }
         ineligibleTradingDateCount: { type: number, minimum: 0 }
+        eligibleTradingDates: { type: array, items: { type: string } }
+        ineligibleDates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricalImportSummary/properties/ineligibleDates/items'
         mergedFileCount: { type: number, minimum: 0 }
         filesMergedPerContract:
           type: array
@@ -3087,7 +3092,7 @@ components:
         message: { type: ["string", "null"] }
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
-      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
+      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
     HistoricalDataUploadRequest:
       type: object
       properties:

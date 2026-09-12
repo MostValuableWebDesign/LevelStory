@@ -1779,6 +1779,50 @@ export const HistoricalDataIndexStatusState = {
   failed: 'failed',
 } as const;
 
+export type HistoricalDataIndexStatusIneligibleDatesItemStatus = typeof HistoricalDataIndexStatusIneligibleDatesItemStatus[keyof typeof HistoricalDataIndexStatusIneligibleDatesItemStatus];
+
+
+export const HistoricalDataIndexStatusIneligibleDatesItemStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  no_scheduled_contract: 'no_scheduled_contract',
+} as const;
+
+export type HistoricalDataIndexStatusIneligibleDatesItemCoverageStatus = typeof HistoricalDataIndexStatusIneligibleDatesItemCoverageStatus[keyof typeof HistoricalDataIndexStatusIneligibleDatesItemCoverageStatus];
+
+
+export const HistoricalDataIndexStatusIneligibleDatesItemCoverageStatus = {
+  eligible: 'eligible',
+  missing_scheduled_file: 'missing_scheduled_file',
+  no_scheduled_contract_candles: 'no_scheduled_contract_candles',
+  insufficient_rth_coverage: 'insufficient_rth_coverage',
+  invalid_or_rejected_source_data: 'invalid_or_rejected_source_data',
+  duplicate_or_overlapping_active_contract_data: 'duplicate_or_overlapping_active_contract_data',
+  outside_configured_rollover_schedule: 'outside_configured_rollover_schedule',
+} as const;
+
+export type HistoricalDataIndexStatusIneligibleDatesItem = {
+  tradingDate: string;
+  /** @nullable */
+  scheduledContractSymbol: string | null;
+  scheduleVersion: string;
+  rolloverReason: string;
+  status: HistoricalDataIndexStatusIneligibleDatesItemStatus;
+  coverageStatus: HistoricalDataIndexStatusIneligibleDatesItemCoverageStatus;
+  /** @nullable */
+  reason: string | null;
+  observedInAnyFile: boolean;
+  scheduledContractFileAvailable: boolean;
+  scheduledContractDataAvailable: boolean;
+  availableOnContract: boolean;
+  regularSessionComplete: boolean;
+  backtestEligible: boolean;
+};
+
 export type HistoricalDataIndexStatusFilesMergedPerContractItem = {
   contractSymbol: string;
   /** @minimum 1 */
@@ -1818,6 +1862,8 @@ export interface HistoricalDataIndexStatus {
   eligibleTradingDateCount: number;
   /** @minimum 0 */
   ineligibleTradingDateCount: number;
+  eligibleTradingDates: string[];
+  ineligibleDates: HistoricalDataIndexStatusIneligibleDatesItem[];
   /** @minimum 0 */
   mergedFileCount: number;
   filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];

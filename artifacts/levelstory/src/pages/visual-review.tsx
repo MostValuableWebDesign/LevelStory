@@ -29,7 +29,6 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
-  useGetHistoricalData,
   useGetHistoricalDataIndexStatus,
   useRecordVisualValidationReview,
   useAnalyzeVisualValidationTeaching,
@@ -51,7 +50,6 @@ import type {
   KeyLevelTargetPlan,
   BacktestTradeAuditTargetUpdateLedgerItem,
   HistoricalDataIndexStatus,
-  HistoricalImportSummary,
 } from "@workspace/api-client-react";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -518,16 +516,6 @@ export default function VisualReview() {
       staleTime: 30_000,
     },
   });
-  const historicalData = useGetHistoricalData(
-    { source: "historical_databento_multicontract", symbol: "MES" },
-    {
-      query: {
-        enabled: historicalIndex.data?.state === "ready",
-        queryKey: ["historical-date-metadata", historicalIndex.data?.indexKey ?? "none"],
-        staleTime: 30_000,
-      },
-    },
-  );
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
@@ -1036,7 +1024,7 @@ export default function VisualReview() {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} historicalData={historicalData.data} />
+                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} />
                <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}
@@ -1440,7 +1428,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex, historicalData }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus; historicalData?: HistoricalImportSummary }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
@@ -1482,9 +1470,9 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           onChange={(value) => update("endDate", value)}
           minDate={historicalIndex?.indexedStartDate ?? null}
           maxDate={historicalIndex?.indexedEndDate ?? null}
-           eligibleDates={historicalData?.eligibleTradingDates}
+           eligibleDates={historicalIndex?.eligibleTradingDates}
            disabledDateReasons={new Map(
-             (historicalData?.ineligibleDates ?? [])
+             (historicalIndex?.ineligibleDates ?? [])
                .filter((item): item is typeof item & { reason: string } => typeof item.reason === "string")
                .map((item) => [item.tradingDate, item.reason]),
            )}

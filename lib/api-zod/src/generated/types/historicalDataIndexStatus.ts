@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { HistoricalDataIndexStatusFilesMergedPerContractItem } from './historicalDataIndexStatusFilesMergedPerContractItem';
+import type { HistoricalDataIndexStatusIneligibleDatesItem } from './historicalDataIndexStatusIneligibleDatesItem';
 import type { HistoricalDataIndexStatusRejectedFilesItem } from './historicalDataIndexStatusRejectedFilesItem';
 import type { HistoricalDataIndexStatusState } from './historicalDataIndexStatusState';
 
@@ -37,6 +38,8 @@ export interface HistoricalDataIndexStatus {
   eligibleTradingDateCount: number;
   /** @minimum 0 */
   ineligibleTradingDateCount: number;
+  eligibleTradingDates: string[];
+  ineligibleDates: HistoricalDataIndexStatusIneligibleDatesItem[];
   /** @minimum 0 */
   mergedFileCount: number;
   filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];

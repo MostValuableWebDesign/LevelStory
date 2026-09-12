@@ -3,8 +3,9 @@ import type { ComponentProps } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { canonicalToDate, dateToCanonical, formatDateForDisplay, parseDateText } from "@/lib/historical-date";
+import { historicalDateReason, latestEligibleDate, relativeEligibleDate, restoreLastEligibleDate, sortedEligibleDates } from "@/lib/historical-date-picker";
 
 type DatePickerProps = {
   value: string;
@@ -18,23 +19,6 @@ type DatePickerProps = {
 
 const FALLBACK_MIN_DATE = "2021-01-01";
 const FALLBACK_MAX_DATE = "2026-12-31";
-
-export function sortedEligibleDates(eligibleDates: readonly string[] | undefined): string[] | undefined {
-  return eligibleDates === undefined ? undefined : [...new Set(eligibleDates)].sort();
-}
-
-export function relativeEligibleDate(
-  current: string,
-  direction: -1 | 1,
-  eligibleDates: readonly string[],
-): string | null {
-  const dates = direction < 0 ? [...eligibleDates].reverse() : eligibleDates;
-  return dates.find((candidate) => direction < 0 ? candidate < current : candidate > current) ?? null;
-}
-
-export function latestEligibleDate(eligibleDates: readonly string[] | undefined): string | null {
-  return eligibleDates?.at(-1) ?? null;
-}
 
 function addMonths(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
@@ -62,8 +46,9 @@ function todayInNewYork(): string {
 function DatePickerDayButton({
   day,
   modifiers,
+  dateReason,
   ...props
-}: ComponentProps<typeof CalendarDayButton>) {
+}: ComponentProps<typeof CalendarDayButton> & { dateReason?: string | null }) {
   const disabled = Boolean(modifiers.disabled);
   const eligible = Boolean(modifiers.eligible);
   const ineligible = Boolean(modifiers.ineligible);
@@ -72,12 +57,8 @@ function DatePickerDayButton({
       day={day}
       modifiers={modifiers}
       {...props}
-      aria-label={`${day.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}${eligible ? ", eligible trading date" : ineligible ? ", unavailable trading date" : ""}`}
-      title={disabled
-        ? ineligible
-          ? "Indexed coverage includes this date, but scheduled-contract data is unavailable."
-          : "This date is outside indexed coverage."
-        : undefined}
+      aria-label={`${day.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}${eligible ? ", eligible trading date" : ineligible ? `, unavailable trading date, ${dateReason ?? "not an eligible indexed trading date"}` : disabled ? `, ${dateReason ?? "outside indexed coverage"}` : ""}`}
+      title={disabled ? (dateReason ?? "This date is not an eligible indexed trading date.") : undefined}
       className={ineligible ? "text-muted-foreground line-through opacity-60" : eligible ? "font-semibold" : undefined}
     />
   );
@@ -120,13 +101,7 @@ export function HistoricalDatePicker({
   );
 
   const reasonForDate = (dateValue: string): string | null => {
-    if (coverageMin && dateValue < coverageMin) return "Before the indexed historical coverage.";
-    if (coverageMax && dateValue > coverageMax) return "After the indexed historical coverage.";
-    if (!knownEligibleDates) return "Indexed eligible-date metadata is still loading.";
-    const explicitReason = disabledDateReasons?.get(dateValue);
-    if (explicitReason) return explicitReason;
-    if (!knownEligibleDates.includes(dateValue)) return "This date is not an eligible indexed trading date.";
-    return null;
+    return historicalDateReason(dateValue, knownEligibleDates, coverageMin, coverageMax, disabledDateReasons);
   };
 
   const nearestEligibleHint = (dateValue: string): string => {
@@ -172,7 +147,7 @@ export function HistoricalDatePicker({
       setError("Eligible trading-date metadata is still loading.");
       return;
     }
-    const current = parseDateText(value) ?? latestEligibleDate(knownEligibleDates) ?? effectiveMax;
+    const current = parseDateText(draft) ?? parseDateText(value) ?? latestEligibleDate(knownEligibleDates) ?? effectiveMax;
     const next = relativeEligibleDate(current, direction, knownEligibleDates);
     if (next) commit(next);
   };
@@ -181,6 +156,16 @@ export function HistoricalDatePicker({
   const today = todayInNewYork();
   const canChooseToday = Boolean(knownEligibleDates?.includes(today));
   const selectedDate = canonicalToDate(value);
+  const selectedDateIsEligible = selectedDate
+    ? !reasonForDate(dateToCanonical(selectedDate))
+    : false;
+  const navigationDate = parseDateText(draft) ?? value;
+  const previousEligibleDate = knownEligibleDates
+    ? relativeEligibleDate(navigationDate, -1, knownEligibleDates)
+    : null;
+  const nextEligibleDate = knownEligibleDates
+    ? relativeEligibleDate(navigationDate, 1, knownEligibleDates)
+    : null;
   const currentMonthKey = monthOptions.some((date) => monthKey(date) === monthKey(displayMonth))
     ? monthKey(displayMonth)
     : monthKey(maxMonth);
@@ -196,7 +181,7 @@ export function HistoricalDatePicker({
 
   useEffect(() => {
     if (!knownEligibleDates || knownEligibleDates.includes(value)) return;
-    const fallback = knownEligibleDates.includes(lastValidValue) ? lastValidValue : "";
+    const fallback = restoreLastEligibleDate(lastValidValue, knownEligibleDates);
     setDraft(formatDateForDisplay(fallback));
     setError(`${reasonForDate(value) ?? "The selected date is no longer eligible."}${fallback ? "" : " Choose Latest indexed date."}`);
   // The picker should react to metadata refreshes without changing focus or silently selecting a replacement.
@@ -211,7 +196,9 @@ export function HistoricalDatePicker({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+        <Popover open={open} onOpenChange={closePopover}>
+          <PopoverAnchor asChild>
+            <div className="relative min-w-0 flex-1">
           <input
             ref={inputRef}
             required
@@ -229,15 +216,7 @@ export function HistoricalDatePicker({
             onChange={(event) => {
               const nextDraft = event.target.value;
               setDraft(nextDraft);
-              const parsed = parseDateText(nextDraft);
-              if (parsed && !reasonForDate(parsed)) {
-                onChange(parsed);
-                setLastValidValue(parsed);
-                setDraft(formatDateForDisplay(parsed));
-                setError(null);
-              } else if (error) {
-                setError(null);
-              }
+              if (error) setError(null);
             }}
             onBlur={() => {
               if (!draft.trim()) {
@@ -247,7 +226,7 @@ export function HistoricalDatePicker({
               const parsed = parseDateText(draft);
               if (!parsed || !commit(parsed, false)) {
                 setDraft(formatDateForDisplay(
-                  knownEligibleDates?.includes(lastValidValue) ? lastValidValue : "",
+                  restoreLastEligibleDate(lastValidValue, knownEligibleDates),
                 ));
               }
             }}
@@ -264,22 +243,23 @@ export function HistoricalDatePicker({
               }
             }}
           />
-          <Popover open={open} onOpenChange={closePopover}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Open ${label} picker`}
-                className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-muted-foreground hover:text-foreground"
-                onMouseDown={(event) => event.preventDefault()}
-              >
-                <CalendarDays size={15} aria-hidden="true" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Open ${label} picker`}
+              className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-muted-foreground hover:text-foreground"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <CalendarDays size={15} aria-hidden="true" />
+            </button>
+          </PopoverTrigger>
+            </div>
+          </PopoverAnchor>
+          <PopoverContent
               align="start"
               side="bottom"
               sideOffset={6}
-              className="w-[min(400px,calc(100vw-24px))] max-w-[calc(100vw-24px)] p-2"
+              className="w-[min(400px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] p-2"
               onOpenAutoFocus={(event) => event.preventDefault()}
             >
               <div className="mb-1 grid grid-cols-2 gap-2 border-b border-border px-2 pb-2">
@@ -318,7 +298,7 @@ export function HistoricalDatePicker({
                 <div className="sr-only" aria-live="polite">Showing {monthLabel(currentMonth)}</div>
                 <Calendar
                   mode="single"
-                  selected={selectedDate ?? undefined}
+                  selected={selectedDateIsEligible ? selectedDate ?? undefined : undefined}
                   month={currentMonth}
                   onMonthChange={setDisplayMonth}
                   onSelect={chooseDate}
@@ -335,8 +315,14 @@ export function HistoricalDatePicker({
                       && !knownEligibleDates.includes(dateToCanonical(date)),
                     ),
                   }}
+                  className="mx-auto"
                   components={{
-                    DayButton: (props) => <DatePickerDayButton {...props} />,
+                    DayButton: (props) => (
+                      <DatePickerDayButton
+                        {...props}
+                        dateReason={reasonForDate(dateToCanonical(props.day.date))}
+                      />
+                    ),
                   }}
                   aria-label={`${label} calendar showing ${monthLabel(currentMonth)}`}
                 />
@@ -344,25 +330,35 @@ export function HistoricalDatePicker({
               <p className="px-3 pb-1 text-[10px] leading-4 text-muted-foreground" id={`${label.replaceAll(" ", "-")}-help`}>
                 <span className="font-semibold text-foreground">Bold</span> dates are eligible. Struck-through dates are inside coverage but unavailable for the scheduled contract.
               </p>
-              <div className="flex flex-wrap gap-1 border-t border-border px-3 pt-2">
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => moveToRelativeDate(-1)} disabled={!knownEligibleDates || !relativeEligibleDate(value, -1, knownEligibleDates)}>
-                  <ChevronLeft size={12} aria-hidden="true" /> Previous eligible date
+              <div className="grid grid-cols-2 gap-1 border-t border-border px-3 pt-2">
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Previous eligible date" onClick={() => moveToRelativeDate(-1)} disabled={!previousEligibleDate}>
+                  <ChevronLeft size={12} aria-hidden="true" /> Previous
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => moveToRelativeDate(1)} disabled={!knownEligibleDates || !relativeEligibleDate(value, 1, knownEligibleDates)}>
-                  Next eligible date <ChevronRight size={12} aria-hidden="true" />
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Next eligible date" onClick={() => moveToRelativeDate(1)} disabled={!nextEligibleDate}>
+                  Next <ChevronRight size={12} aria-hidden="true" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => latestIndexedDate && commit(latestIndexedDate)} disabled={!latestIndexedDate}>
-                  Latest indexed date
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Latest indexed date" onClick={() => latestIndexedDate && commit(latestIndexedDate)} disabled={!latestIndexedDate}>
+                  Latest
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => commit(today)} disabled={!canChooseToday}>
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Today" onClick={() => commit(today)} disabled={!canChooseToday}>
                   Today
                 </Button>
               </div>
-            </PopoverContent>
-          </Popover>
+          </PopoverContent>
+        </Popover>
         </div>
-      </div>
-      {error && <p className="text-[10px] text-negative" role="alert">{error}</p>}
+      {error && (
+        <div className="space-y-1" role="alert">
+          <p className="text-[10px] text-negative">{error}</p>
+          {(previousEligibleDate || nextEligibleDate || latestIndexedDate) && (
+            <div className="flex flex-wrap gap-1">
+              {previousEligibleDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(previousEligibleDate)}>Use previous {formatDateForDisplay(previousEligibleDate)}</button>}
+              {nextEligibleDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(nextEligibleDate)}>Use next {formatDateForDisplay(nextEligibleDate)}</button>}
+              {latestIndexedDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(latestIndexedDate)}>Use latest indexed date</button>}
+            </div>
+          )}
+        </div>
+      )}
       {!knownEligibleDates && <p className="text-[10px] text-muted-foreground">Waiting for authoritative eligible-date metadata.</p>}
     </div>
   );
