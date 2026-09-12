@@ -8,6 +8,13 @@ import { signPrivateObjectUrl } from "../uploaded-chart-storage.js";
 
 const SAFE_PATH = /^\/objects\/uploads\/historical\/[a-f0-9-]+$/;
 
+export type MaterializedHistoricalObject = {
+  path: string;
+  objectPath: string;
+  originalFilename: string;
+  expectedCompression: "none" | "zstd";
+};
+
 export function isSafeHistoricalObjectPath(objectPath: string): boolean {
   return SAFE_PATH.test(objectPath);
 }
@@ -28,7 +35,7 @@ export async function signHistoricalObjectUrl(
 export async function materializeHistoricalObject(
   objectPath: string,
   originalFilename: string,
-): Promise<string> {
+): Promise<MaterializedHistoricalObject> {
   const url = await signHistoricalObjectUrl(objectPath, "GET", 120);
   const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
   if (!response.ok || !response.body) throw new Error(`Historical object could not be read (${response.status}).`);
@@ -40,5 +47,10 @@ export async function materializeHistoricalObject(
   await mkdir(directory, { recursive: true });
   const outputPath = join(directory, `${objectPath.split("/").at(-1)}-${safeFilename}`);
   await pipeline(Readable.fromWeb(response.body as globalThis.ReadableStream<Uint8Array>), createWriteStream(outputPath));
-  return outputPath;
+  return {
+    path: outputPath,
+    objectPath,
+    originalFilename: safeFilename,
+    expectedCompression: safeFilename.toLowerCase().endsWith(".zst") ? "zstd" : "none",
+  };
 }

@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
@@ -632,7 +632,7 @@ export async function importHistoricalCsv(
   };
 
   const compressed = filePath.toLowerCase().endsWith(".zst");
-  const fileStream = options.fastParse && !compressed ? null : createReadStream(filePath);
+  const fileStream = createReadStream(filePath);
   const contentHash = createHash("sha256");
   const processLine = (rawLine: string): void => {
     const line = String(rawLine).trim();
@@ -753,16 +753,10 @@ export async function importHistoricalCsv(
     if (sessionForRow(timestamp) === "regular") summary.regularSessionCandleCount += 1;
     else if (overnightOwnerDate(timestamp, calendar)) summary.overnightCandleCount += 1;
   };
-  if (options.fastParse && !compressed) {
-    const content = await readFile(filePath, "utf8");
-    contentHash.update(content);
-    for (const rawLine of content.split(/\r?\n/)) processLine(rawLine);
-  } else {
-    fileStream!.on("data", (chunk) => contentHash.update(chunk));
-    const decompressed = compressed ? fileStream!.pipe(createZstdDecompress()) : fileStream!;
-    const input = createInterface({ input: decompressed, crlfDelay: Infinity });
-    for await (const rawLine of input) processLine(String(rawLine));
-  }
+  fileStream.on("data", (chunk) => contentHash.update(chunk));
+  const decompressed = compressed ? fileStream.pipe(createZstdDecompress()) : fileStream;
+  const input = createInterface({ input: decompressed, crlfDelay: Infinity });
+  for await (const rawLine of input) processLine(String(rawLine));
   if (!headers) throw new Error("CSV file is empty.");
   const gapReport = options.analyzeCoverage === false
     ? {

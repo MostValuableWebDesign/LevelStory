@@ -50,8 +50,9 @@ import type {
   GetVisualValidationSetParams,
   GovernanceReasonInput,
   HealthStatus,
+  HistoricalDataImportAccepted,
+  HistoricalDataImportJob,
   HistoricalDataImportRequest,
-  HistoricalDataImportResponse,
   HistoricalDataIndexStatus,
   HistoricalDataUploadRequest,
   HistoricalDataUploadUrl,
@@ -2169,9 +2170,9 @@ export const getImportHistoricalDataUploadsUrl = () => {
 /**
  * @summary Materialize uploaded MES files and rebuild the historical index
  */
-export const importHistoricalDataUploads = async (historicalDataImportRequest: HistoricalDataImportRequest, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataImportResponse> => {
+export const importHistoricalDataUploads = async (historicalDataImportRequest: HistoricalDataImportRequest, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataImportAccepted> => {
 
-  return customFetch<HistoricalDataImportResponse>(getImportHistoricalDataUploadsUrl(),
+  return customFetch<HistoricalDataImportAccepted>(getImportHistoricalDataUploadsUrl(),
   {
     ...options,
     method: 'POST',
@@ -2228,6 +2229,83 @@ export const useImportHistoricalDataUploads = <TError = ErrorType<ErrorResponse>
       > => {
       return useMutation(getImportHistoricalDataUploadsMutationOptions(options));
     }
+
+export const getGetHistoricalDataImportStatusUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/historical-data/import/${jobId}`
+}
+
+/**
+ * @summary Get historical import job status
+ */
+export const getHistoricalDataImportStatus = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataImportJob> => {
+
+  return customFetch<HistoricalDataImportJob>(getGetHistoricalDataImportStatusUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalDataImportStatusQueryKey = (jobId: string,) => {
+    return [
+    `/api/historical-data/import/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetHistoricalDataImportStatusQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalDataImportStatus>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataImportStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalDataImportStatusQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalDataImportStatus>>> = ({ signal }) => getHistoricalDataImportStatus(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataImportStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalDataImportStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalDataImportStatus>>>
+export type GetHistoricalDataImportStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get historical import job status
+ */
+
+export function useGetHistoricalDataImportStatus<TData = Awaited<ReturnType<typeof getHistoricalDataImportStatus>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalDataImportStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalDataImportStatusQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetHistoricalEmaComparisonUrl = (params?: GetHistoricalEmaComparisonParams,) => {
   const normalizedParams = new URLSearchParams();

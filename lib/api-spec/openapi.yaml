@@ -803,13 +803,36 @@ paths:
               $ref: "#/components/schemas/HistoricalDataImportRequest"
       responses:
         "202":
-          description: Historical index imported
+          description: Historical import job accepted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HistoricalDataImportResponse"
+                $ref: "#/components/schemas/HistoricalDataImportAccepted"
         "422":
           description: Historical upload could not be imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /historical-data/import/{jobId}:
+    get:
+      operationId: getHistoricalDataImportStatus
+      tags: [backtest]
+      summary: Get historical import job status
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Historical import job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataImportJob"
+        "404":
+          description: Historical import job not found
           content:
             application/json:
               schema:
@@ -3085,6 +3108,43 @@ components:
             fullRangeReady: { type: boolean }
           required: [acceptedContracts, eligibleTradingDateCount, ineligibleScheduledDateCount, fullRangeReady]
       required: [state, filesMaterialized, status, summary]
+    HistoricalDataImportAccepted:
+      type: object
+      properties:
+        jobId: { type: string }
+        state: { type: string, enum: [queued] }
+        requestedFileCount: { type: number, minimum: 1 }
+        statusUrl: { type: string }
+        createdAt: { type: string }
+      required: [jobId, state, requestedFileCount, statusUrl, createdAt]
+    HistoricalDataImportJob:
+      type: object
+      properties:
+        jobId: { type: string }
+        state:
+          type: string
+          enum: [queued, materializing, indexing, ready, failed, cancelled]
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              objectPath: { type: string }
+              originalFilename: { type: string }
+            required: [objectPath, originalFilename]
+        materializedFileCount: { type: number, minimum: 0 }
+        currentFilename: { type: string, nullable: true }
+        progress: { type: number, minimum: 0, maximum: 100 }
+        createdAt: { type: string }
+        startedAt: { type: string, nullable: true }
+        updatedAt: { type: string }
+        completedAt: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        status:
+          allOf:
+            - $ref: "#/components/schemas/HistoricalDataIndexStatus"
+          nullable: true
+      required: [jobId, state, files, materializedFileCount, currentFilename, progress, createdAt, startedAt, updatedAt, completedAt, error, status]
     HistoricalEmaComparisonCandidate:
       type: object
       properties:

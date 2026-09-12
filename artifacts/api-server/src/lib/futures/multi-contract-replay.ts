@@ -35,7 +35,7 @@ const COMPRESSED_CSV_FILE = /\.csv\.(?:gz|zip)$/i;
 const execFileAsync = promisify(execFile);
 
 export const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
-export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V2" as const;
+export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V3_US_INDEX" as const;
 export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v4" as const;
 export const MES_SUPPORTED_START_DATE = "2021-09-12" as const;
 export const MES_SUPPORTED_END_DATE = "2026-09-11" as const;
@@ -72,15 +72,15 @@ export const MES_ROLLOVER_SCHEDULE = [
   { effectiveDate: "2023-09-11", contractSymbol: "MESZ3" },
   { effectiveDate: "2023-12-11", contractSymbol: "MESH4" },
   { effectiveDate: "2024-03-11", contractSymbol: "MESM4" },
-  { effectiveDate: "2024-06-10", contractSymbol: "MESU4" },
-  { effectiveDate: "2024-09-09", contractSymbol: "MESZ4" },
-  { effectiveDate: "2024-12-09", contractSymbol: "MESH5" },
-  { effectiveDate: "2025-03-10", contractSymbol: "MESM5" },
-  { effectiveDate: "2025-06-09", contractSymbol: "MESU5" },
-  { effectiveDate: "2025-09-08", contractSymbol: "MESZ5" },
-  { effectiveDate: "2025-12-08", contractSymbol: "MESH6" },
-  { effectiveDate: "2026-03-09", contractSymbol: "MESM6" },
-  { effectiveDate: "2026-06-08", contractSymbol: "MESU6" },
+  { effectiveDate: "2024-06-17", contractSymbol: "MESU4" },
+  { effectiveDate: "2024-09-16", contractSymbol: "MESZ4" },
+  { effectiveDate: "2024-12-16", contractSymbol: "MESH5" },
+  { effectiveDate: "2025-03-17", contractSymbol: "MESM5" },
+  { effectiveDate: "2025-06-16", contractSymbol: "MESU5" },
+  { effectiveDate: "2025-09-15", contractSymbol: "MESZ5" },
+  { effectiveDate: "2025-12-15", contractSymbol: "MESH6" },
+  { effectiveDate: "2026-03-16", contractSymbol: "MESM6" },
+  { effectiveDate: "2026-06-15", contractSymbol: "MESU6" },
   { effectiveDate: "2026-09-14", contractSymbol: "MESZ6" },
 ] as const;
 
@@ -400,10 +400,13 @@ function assetDirectories(): string[] {
   ];
 }
 
-async function resolveMultiContractFiles(): Promise<{
+async function resolveMultiContractFiles(
+  explicitSources?: readonly HistoricalIndexSourceFile[],
+): Promise<{
   accepted: Array<{ filename: string; contractSymbol: string; path: string }>;
   rejectedFiles: Array<{ filename: string; reason: string }>;
 }> {
+  if (explicitSources) return resolveExplicitMultiContractFiles(explicitSources);
   const allNames = new Set<string>();
   const pathByFilename = new Map<string, string>();
   for (const directory of assetDirectories()) {
@@ -467,6 +470,54 @@ async function resolveMultiContractFiles(): Promise<{
     }
     const fragments = byContract.get(contractSymbol) ?? [];
     fragments.push({ filename, path });
+    byContract.set(contractSymbol, fragments);
+  }
+  const accepted = [...byContract.entries()]
+    .sort(([first], [second]) => compareMesContractSymbols(first, second))
+    .flatMap(([contractSymbol, fragments]) => fragments
+      .sort((first, second) => first.filename.localeCompare(second.filename))
+      .map((fragment) => ({ ...fragment, contractSymbol })));
+  return { accepted, rejectedFiles };
+}
+
+export function resolveExplicitMultiContractFiles(
+  sources: readonly HistoricalIndexSourceFile[],
+): {
+  accepted: Array<{ filename: string; contractSymbol: string; path: string }>;
+  rejectedFiles: Array<{ filename: string; reason: string }>;
+} {
+  const rejectedFiles: Array<{ filename: string; reason: string }> = [];
+  const byContract = new Map<string, Array<{ filename: string; path: string }>>();
+  for (const source of sources) {
+    const filename = basename(source.originalFilename);
+    if (filename !== source.originalFilename || !/^[A-Za-z0-9._-]+$/.test(filename)) {
+      rejectedFiles.push({ filename: source.originalFilename, reason: "UNSAFE_ORIGINAL_FILENAME" });
+      continue;
+    }
+    if (COMPRESSED_CSV_FILE.test(filename)) {
+      rejectedFiles.push({ filename, reason: "UNSUPPORTED_COMPRESSION" });
+      continue;
+    }
+    if (SPREAD_FILE.test(filename)) {
+      rejectedFiles.push({ filename, reason: "CALENDAR_SPREAD_REJECTED" });
+      continue;
+    }
+    if (/(?:^|[._-])(?!MES)[A-Z]{2,}[FGHJKMNQUVXZ]\d{1,2}(?=[._-]|$)/i.test(filename)) {
+      rejectedFiles.push({ filename, reason: "NON_MES_INSTRUMENT" });
+      continue;
+    }
+    const match = CONTRACT_FILE.exec(filename);
+    if (!match) {
+      rejectedFiles.push({ filename, reason: "UNKNOWN_OR_MALFORMED_CONTRACT" });
+      continue;
+    }
+    const contractSymbol = match[1].toUpperCase();
+    if (!isQuarterlyMesContract(contractSymbol)) {
+      rejectedFiles.push({ filename, reason: "NON_QUARTERLY_MES_CONTRACT" });
+      continue;
+    }
+    const fragments = byContract.get(contractSymbol) ?? [];
+    fragments.push({ filename, path: source.path });
     byContract.set(contractSymbol, fragments);
   }
   const accepted = [...byContract.entries()]
@@ -740,6 +791,13 @@ type MultiContractIdentity = {
   indexKey: string;
 };
 
+export type HistoricalIndexSourceFile = {
+  path: string;
+  originalFilename: string;
+  objectPath?: string;
+  expectedCompression?: "none" | "zstd";
+};
+
 let cachedImport: { indexKey: string; value: HistoricalMultiContractImport } | null = null;
 let importPromise: Promise<HistoricalMultiContractImport> | null = null;
 let activeIndexKey: string | null = null;
@@ -774,10 +832,13 @@ function updateIndexStatus(update: Partial<MultiContractIndexStatus>): void {
   indexStatus = { ...indexStatus, ...update, updatedAt: new Date().toISOString() };
 }
 
-async function resolveMultiContractIdentity(): Promise<MultiContractIdentity> {
-  const resolved = await resolveMultiContractFiles();
+async function resolveMultiContractIdentity(
+  explicitSources?: readonly HistoricalIndexSourceFile[],
+): Promise<MultiContractIdentity> {
+  const resolved = await resolveMultiContractFiles(explicitSources);
   if (resolved.accepted.length === 0) {
-    throw new Error("No uploaded outright MES contract CSVs were found in attached_assets.");
+    const rejected = resolved.rejectedFiles.map((file) => `${file.filename}:${file.reason}`).join(", ");
+    throw new Error(`No accepted outright MES contract files were supplied.${rejected ? ` Rejected files: ${rejected}.` : ""}`);
   }
   const fingerprints = await Promise.all(
     resolved.accepted.map((file) => getHistoricalCsvFingerprint(file.path)),
@@ -1366,9 +1427,11 @@ function startIndexing(identity: MultiContractIdentity): Promise<HistoricalMulti
   return importPromise;
 }
 
-export async function getHistoricalMultiContractIndexStatus(): Promise<MultiContractIndexStatus> {
+export async function getHistoricalMultiContractIndexStatus(
+  options: { sources?: readonly HistoricalIndexSourceFile[] } = {},
+): Promise<MultiContractIndexStatus> {
   try {
-    const identity = await resolveMultiContractIdentity();
+    const identity = await resolveMultiContractIdentity(options.sources);
     if (cachedImport?.indexKey === identity.indexKey && indexStatus.state === "ready") return { ...indexStatus };
     if (importPromise && activeIndexKey === identity.indexKey) return { ...indexStatus };
     const promise = startIndexing(identity);
@@ -1423,8 +1486,10 @@ export async function getReadyHistoricalMultiContractIndex(): Promise<Historical
   }
 }
 
-export async function importHistoricalMultiContract(): Promise<HistoricalMultiContractImport> {
-  const identity = await resolveMultiContractIdentity();
+export async function importHistoricalMultiContract(
+  options: { sources?: readonly HistoricalIndexSourceFile[] } = {},
+): Promise<HistoricalMultiContractImport> {
+  const identity = await resolveMultiContractIdentity(options.sources);
   if (cachedImport?.indexKey === identity.indexKey) return cachedImport.value;
   return startIndexing(identity);
 }

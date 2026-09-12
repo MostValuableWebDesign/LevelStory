@@ -167,7 +167,62 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
 function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem("levelstory:historical-import-job");
+    } catch {
+      return null;
+    }
+  });
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (jobId) window.localStorage.setItem("levelstory:historical-import-job", jobId);
+      else window.localStorage.removeItem("levelstory:historical-import-job");
+    } catch {
+      // Status polling remains usable when browser storage is unavailable.
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/historical-data/import/${jobId}`, { credentials: "include" });
+        const body = await response.json() as {
+          state?: string;
+          progress?: number;
+          materializedFileCount?: number;
+          files?: Array<unknown>;
+          currentFilename?: string | null;
+          error?: string | null;
+        };
+        if (!response.ok || cancelled) return;
+        if (body.state === "ready") {
+          setMessage("Historical index committed and ready. The active library status has been refreshed.");
+          setJobId(null);
+          onImported();
+        } else if (body.state === "failed") {
+          setMessage(body.error ?? "Historical indexing failed. Review the rejected files and try again.");
+          setJobId(null);
+        } else {
+          const phase = body.state === "materializing" ? "Materializing" : "Indexing";
+          const current = body.currentFilename ? ` · ${body.currentFilename}` : "";
+          setMessage(`${phase} historical data · ${body.progress ?? 0}% · ${body.materializedFileCount ?? 0}/${body.files?.length ?? 0} files${current}`);
+        }
+      } catch {
+        if (!cancelled) setMessage("Import job is still running; retrying status…");
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [jobId, onImported]);
 
   const upload = async () => {
     if (!files.length) {
@@ -206,11 +261,11 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         credentials: "include",
         body: JSON.stringify({ files: uploaded }),
       });
-      const importBody = await imported.json() as { error?: string; status?: { message?: string } };
-      if (!imported.ok) throw new Error(importBody.error ?? "Historical indexing could not start.");
-      setMessage(importBody.status?.message ?? "Historical indexing started. Refresh the lifecycle panel for progress.");
+      const importBody = await imported.json() as { error?: string; jobId?: string; requestedFileCount?: number };
+      if (!imported.ok || !importBody.jobId) throw new Error(importBody.error ?? "Historical indexing could not start.");
+      setJobId(importBody.jobId);
+      setMessage(`Uploads complete. Import job queued for ${importBody.requestedFileCount ?? uploaded.length} files.`);
       setFiles([]);
-      onImported();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Historical upload failed.");
     } finally {
@@ -234,11 +289,11 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
           multiple
           accept=".csv,.csv.zst,text/csv,application/zstd"
           onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-          disabled={busy}
+          disabled={busy || Boolean(jobId)}
           className="field min-h-10 flex-1 text-xs"
           data-testid="input-historical-data-files"
         />
-        <button type="button" onClick={() => void upload()} disabled={busy || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
+        <button type="button" onClick={() => void upload()} disabled={busy || Boolean(jobId) || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
           <Upload size={13} />{busy ? "Uploading…" : `Upload ${files.length || ""} files`}
         </button>
       </div>

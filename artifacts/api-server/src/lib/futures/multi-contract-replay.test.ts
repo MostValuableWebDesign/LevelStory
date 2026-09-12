@@ -10,6 +10,7 @@ import {
   contractSpecificationForMesSymbol,
   multiContractImportToReplayDataset,
   parseMesContractSymbol,
+  resolveExplicitMultiContractFiles,
   scheduledMesContractForDate,
   assertMultiContractCoverageReconciles,
   validateMultiContractContentFingerprint,
@@ -32,10 +33,43 @@ test("parses MES month codes and orders quarterly contracts chronologically", ()
   assert.deepEqual(["MESU5", "MESH6", "MESZ5"].sort(compareMesContractSymbols), ["MESU5", "MESZ5", "MESH6"]);
 });
 
+test("indexes UUID-prefixed explicit uploads from their original filenames", () => {
+  const resolved = resolveExplicitMultiContractFiles([
+    {
+      path: "/tmp/8fd-mes-u5.csv.zst",
+      originalFilename: "glbx-mdp3-20250613-20250617.ohlcv-1m.MESU5.csv.zst",
+      objectPath: "/objects/uploads/historical/8fd",
+      expectedCompression: "zstd",
+    },
+    {
+      path: "/tmp/another-same-name.csv.zst",
+      originalFilename: "glbx-mdp3-20250613-20250617.ohlcv-1m.MESU5.csv.zst",
+      objectPath: "/objects/uploads/historical/another",
+      expectedCompression: "zstd",
+    },
+    {
+      path: "/tmp/ignored.csv.zst",
+      originalFilename: "glbx-mdp3-20250613-20250617.ohlcv-1m.ESU5.csv.zst",
+      objectPath: "/objects/uploads/historical/ignored",
+      expectedCompression: "zstd",
+    },
+    {
+      path: "/tmp/spread.csv",
+      originalFilename: "glbx-mdp3-20250613-20250617.ohlcv-1m.MESU5-MESZ5.csv",
+      objectPath: "/objects/uploads/historical/spread",
+    },
+  ]);
+  assert.equal(resolved.accepted.length, 2);
+  assert.deepEqual(resolved.accepted.map((file) => file.contractSymbol), ["MESU5", "MESU5"]);
+  assert.equal(resolved.accepted[0]?.path, "/tmp/8fd-mes-u5.csv.zst");
+  assert.deepEqual(resolved.rejectedFiles.map((file) => file.reason), ["NON_MES_INSTRUMENT", "CALENDAR_SPREAD_REJECTED"]);
+});
+
 test("uses the versioned rollover schedule by trading date", () => {
-  assert.equal(scheduledMesContractForDate("2025-09-05"), "MESU5");
-  assert.equal(scheduledMesContractForDate("2025-09-08"), "MESZ5");
-  assert.equal(scheduledMesContractForDate("2026-06-11"), "MESU6");
+  assert.equal(scheduledMesContractForDate("2025-09-12"), "MESU5");
+  assert.equal(scheduledMesContractForDate("2025-09-15"), "MESZ5");
+  assert.equal(scheduledMesContractForDate("2026-06-12"), "MESM6");
+  assert.equal(scheduledMesContractForDate("2026-06-15"), "MESU6");
   assert.equal(scheduledMesContractForDate("2021-09-12"), "MESZ1");
   assert.equal(scheduledMesContractForDate("2026-09-10"), "MESU6");
   assert.equal(scheduledMesContractForDate("2026-09-11"), "MESU6");
@@ -62,15 +96,15 @@ test("applies every governed rollover boundary without premature contract select
     ["2023-09-08", "MESU3", "2023-09-11", "MESZ3", "2023-09-12", "MESZ3"],
     ["2023-12-08", "MESZ3", "2023-12-11", "MESH4", "2023-12-12", "MESH4"],
     ["2024-03-08", "MESH4", "2024-03-11", "MESM4", "2024-03-12", "MESM4"],
-    ["2024-06-07", "MESM4", "2024-06-10", "MESU4", "2024-06-11", "MESU4"],
-    ["2024-09-06", "MESU4", "2024-09-09", "MESZ4", "2024-09-10", "MESZ4"],
-    ["2024-12-06", "MESZ4", "2024-12-09", "MESH5", "2024-12-10", "MESH5"],
-    ["2025-03-07", "MESH5", "2025-03-10", "MESM5", "2025-03-11", "MESM5"],
-    ["2025-06-06", "MESM5", "2025-06-09", "MESU5", "2025-06-10", "MESU5"],
-    ["2025-09-05", "MESU5", "2025-09-08", "MESZ5", "2025-09-09", "MESZ5"],
-    ["2025-12-05", "MESZ5", "2025-12-08", "MESH6", "2025-12-09", "MESH6"],
-    ["2026-03-06", "MESH6", "2026-03-09", "MESM6", "2026-03-10", "MESM6"],
-    ["2026-06-05", "MESM6", "2026-06-08", "MESU6", "2026-06-09", "MESU6"],
+    ["2024-06-14", "MESM4", "2024-06-17", "MESU4", "2024-06-18", "MESU4"],
+    ["2024-09-13", "MESU4", "2024-09-16", "MESZ4", "2024-09-17", "MESZ4"],
+    ["2024-12-13", "MESZ4", "2024-12-16", "MESH5", "2024-12-17", "MESH5"],
+    ["2025-03-14", "MESH5", "2025-03-17", "MESM5", "2025-03-18", "MESM5"],
+    ["2025-06-13", "MESM5", "2025-06-16", "MESU5", "2025-06-17", "MESU5"],
+    ["2025-09-12", "MESU5", "2025-09-15", "MESZ5", "2025-09-16", "MESZ5"],
+    ["2025-12-12", "MESZ5", "2025-12-15", "MESH6", "2025-12-16", "MESH6"],
+    ["2026-03-13", "MESH6", "2026-03-16", "MESM6", "2026-03-17", "MESM6"],
+    ["2026-06-12", "MESM6", "2026-06-15", "MESU6", "2026-06-16", "MESU6"],
     ["2026-09-11", "MESU6", "2026-09-14", "MESZ6", "2026-09-15", "MESZ6"],
   ] as const;
   for (const [beforeDate, beforeContract, effectiveDate, effectiveContract, afterDate, afterContract] of expected) {
@@ -111,7 +145,7 @@ test("validates the explicit schedule before replay can start", () => {
 });
 
 test("selects contract-local candles on each rollover date without blending", () => {
-  const dates = ["2025-09-05", "2025-09-08"];
+  const dates = ["2025-09-12", "2025-09-15"];
   const contracts = new Map<string, any>();
   for (const [contractSymbol, tradingDate] of [["MESU5", dates[0]], ["MESZ5", dates[1]]] as const) {
     const specification = contractSpecificationForMesSymbol(contractSymbol);
@@ -260,12 +294,12 @@ function importedSummary(
 }
 
 test("calculates observed dates independently from eligible scheduled replay dates", () => {
-  const observedDates = ["2025-09-05", "2025-09-12"];
+  const observedDates = ["2025-09-05", "2026-09-11"];
   const calendar = sessionCalendarForContract(contractSpecificationForMesSymbol("MESU5"));
   const rows = buildMultiContractDateEligibility(
     new Map([
       ["MESU5", importedSummary("MESU5", ["2025-09-05"])],
-      ["MESZ6", importedSummary("MESZ6", ["2025-09-12"])],
+      ["MESH6", importedSummary("MESH6", ["2026-09-11"])],
     ]),
     observedDates,
     calendar,
@@ -273,8 +307,8 @@ test("calculates observed dates independently from eligible scheduled replay dat
   const eligible = rows.filter((row) => row.backtestEligible).map((row) => row.tradingDate);
   const observedIneligible = rows.filter((row) => row.observedInAnyFile && !row.backtestEligible).map((row) => row.tradingDate);
   assert.deepEqual(eligible, ["2025-09-05"]);
-  assert.deepEqual(observedIneligible, ["2025-09-12"]);
-  assert.equal(rows.find((row) => row.tradingDate === "2025-09-12")?.status, "missing_scheduled_file");
+  assert.deepEqual(observedIneligible, ["2026-09-11"]);
+  assert.equal(rows.find((row) => row.tradingDate === "2026-09-11")?.status, "missing_scheduled_file");
   assert.equal(observedDates.length, eligible.length + observedIneligible.length);
 });
 

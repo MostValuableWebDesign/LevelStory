@@ -1889,6 +1889,59 @@ export interface HistoricalDataImportResponse {
   summary: HistoricalDataImportResponseSummary;
 }
 
+export type HistoricalDataImportAcceptedState = typeof HistoricalDataImportAcceptedState[keyof typeof HistoricalDataImportAcceptedState];
+
+
+export const HistoricalDataImportAcceptedState = {
+  queued: 'queued',
+} as const;
+
+export interface HistoricalDataImportAccepted {
+  jobId: string;
+  state: HistoricalDataImportAcceptedState;
+  /** @minimum 1 */
+  requestedFileCount: number;
+  statusUrl: string;
+  createdAt: string;
+}
+
+export type HistoricalDataImportJobState = typeof HistoricalDataImportJobState[keyof typeof HistoricalDataImportJobState];
+
+
+export const HistoricalDataImportJobState = {
+  queued: 'queued',
+  materializing: 'materializing',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type HistoricalDataImportJobFilesItem = {
+  objectPath: string;
+  originalFilename: string;
+};
+
+export interface HistoricalDataImportJob {
+  jobId: string;
+  state: HistoricalDataImportJobState;
+  files: HistoricalDataImportJobFilesItem[];
+  /** @minimum 0 */
+  materializedFileCount: number;
+  currentFilename: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+  error: string | null;
+  status: HistoricalDataIndexStatus | null;
+}
+
 export interface HistoricalEmaComparisonCandidate {
   timestamp: string;
   contract: string;

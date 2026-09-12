@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { requireRole } from "../middlewares/authMiddleware.js";
@@ -10,6 +11,7 @@ import {
 import {
   getHistoricalMultiContractIndexStatus,
   importHistoricalMultiContract,
+  type HistoricalIndexSourceFile,
 } from "../lib/futures/multi-contract-replay.js";
 
 const MAX_HISTORICAL_UPLOAD_BYTES = 512 * 1024 * 1024;
@@ -31,6 +33,63 @@ function supportedFilename(filename: string): boolean {
 }
 
 const router: IRouter = Router();
+
+type ImportJobState = "queued" | "materializing" | "indexing" | "ready" | "failed" | "cancelled";
+type HistoricalImportJob = {
+  jobId: string;
+  state: ImportJobState;
+  files: Array<{ objectPath: string; originalFilename: string }>;
+  materializedFileCount: number;
+  currentFilename: string | null;
+  progress: number;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+  error: string | null;
+  status: Awaited<ReturnType<typeof getHistoricalMultiContractIndexStatus>> | null;
+};
+
+const importJobs = new Map<string, HistoricalImportJob>();
+let activeJobId: string | null = null;
+
+function jobResponse(job: HistoricalImportJob): HistoricalImportJob {
+  return { ...job, files: job.files.map((file) => ({ ...file })) };
+}
+
+async function runImportJob(job: HistoricalImportJob): Promise<void> {
+  job.state = "materializing";
+  job.startedAt = new Date().toISOString();
+  job.updatedAt = job.startedAt;
+  const materialized: HistoricalIndexSourceFile[] = [];
+  try {
+    for (const file of job.files) {
+      job.currentFilename = file.originalFilename;
+      const stored = await materializeHistoricalObject(file.objectPath, file.originalFilename);
+      materialized.push(stored);
+      job.materializedFileCount += 1;
+      job.progress = Math.round((job.materializedFileCount / job.files.length) * 20);
+      job.updatedAt = new Date().toISOString();
+    }
+    job.state = "indexing";
+    job.progress = 25;
+    job.updatedAt = new Date().toISOString();
+    const imported = await importHistoricalMultiContract({ sources: materialized });
+    job.status = await getHistoricalMultiContractIndexStatus({ sources: materialized });
+    job.state = imported.summary.indexingState === "ready" ? "ready" : "failed";
+    job.progress = job.state === "ready" ? 100 : 0;
+    job.completedAt = new Date().toISOString();
+    job.updatedAt = job.completedAt;
+    if (job.state === "ready") job.currentFilename = null;
+  } catch (error) {
+    job.state = "failed";
+    job.error = error instanceof Error ? error.message : "Historical import failed.";
+    job.completedAt = new Date().toISOString();
+    job.updatedAt = job.completedAt;
+  } finally {
+    if (activeJobId === job.jobId) activeJobId = null;
+  }
+}
 
 router.post(
   "/historical-data/uploads/request-url",
@@ -73,31 +132,55 @@ router.post(
       res.status(400).json({ error: "At least one uploaded .csv or .csv.zst file is required." });
       return;
     }
-    try {
-      const paths: string[] = [];
-      for (const file of parsed.data.files) {
-        if (!supportedFilename(file.originalFilename)) {
-          res.status(415).json({ error: `Unsupported historical filename: ${file.originalFilename}.` });
-          return;
-        }
-        paths.push(await materializeHistoricalObject(file.objectPath, file.originalFilename));
+    for (const file of parsed.data.files) {
+      if (!supportedFilename(file.originalFilename)) {
+        res.status(415).json({ error: `Unsupported historical filename: ${file.originalFilename}.` });
+        return;
       }
-      const imported = await importHistoricalMultiContract();
-      res.status(202).json({
-        state: imported.summary.indexingState,
-        filesMaterialized: paths.length,
-        status: await getHistoricalMultiContractIndexStatus(),
-        summary: {
-          acceptedContracts: imported.summary.acceptedContracts,
-          eligibleTradingDateCount: imported.summary.eligibleTradingDates.length,
-          ineligibleScheduledDateCount: imported.summary.ineligibleScheduledDateCount,
-          fullRangeReady: imported.summary.ineligibleScheduledDateCount === 0,
-        },
-      });
-    } catch (error) {
-      res.status(422).json({ error: error instanceof Error ? error.message : "Historical import failed." });
     }
+    if (activeJobId) {
+      const active = importJobs.get(activeJobId);
+      if (active && ["queued", "materializing", "indexing"].includes(active.state)) {
+        res.status(409).json({ error: "An equivalent historical import is already active.", jobId: active.jobId });
+        return;
+      }
+    }
+    const now = new Date().toISOString();
+    const job: HistoricalImportJob = {
+      jobId: `hist_${randomUUID()}`,
+      state: "queued",
+      files: parsed.data.files,
+      materializedFileCount: 0,
+      currentFilename: null,
+      progress: 0,
+      createdAt: now,
+      startedAt: null,
+      updatedAt: now,
+      completedAt: null,
+      error: null,
+      status: null,
+    };
+    importJobs.set(job.jobId, job);
+    activeJobId = job.jobId;
+    void runImportJob(job);
+    res.status(202).json({
+      jobId: job.jobId,
+      state: job.state,
+      requestedFileCount: job.files.length,
+      statusUrl: `/api/historical-data/import/${job.jobId}`,
+      createdAt: job.createdAt,
+    });
   },
 );
+
+router.get("/historical-data/import/:jobId", requireRole("reviewer"), async (req, res) => {
+  const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+  const job = importJobs.get(jobId);
+  if (!job) {
+    res.status(404).json({ error: "Historical import job was not found in this server process." });
+    return;
+  }
+  res.json(jobResponse(job));
+});
 
 export default router;
