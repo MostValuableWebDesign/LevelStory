@@ -1,0 +1,166 @@
+```text
+Fix the remaining historical Databento pipeline issues in LevelStory.
+
+Core requirement:
+
+- Upload and permanently index one five-year Databento MES OHLCV-1m file.
+- Keep it as a reusable historical data library.
+- Analyze or replay only a user-selected period containing no more than 10 stored trading sessions.
+- Never automatically scan or replay the entire five-year dataset.
+- Allow users to select any calendar date or date range. Missing-data dates may return a no-data result but must not be disabled or classified as invalid selections.
+
+Limit this implementation to the following four issues.
+
+1. Preserve streamed import summaries
+
+The new streaming path writes bounded candle batches directly to SQLite with `retainCandles: false`, but it later passes candle-free imports to `mergeHistoricalCsvImports`. That array-based merge recalculates the summary from empty candle arrays and resets fields such as:
+
+- `validRows`
+- `availableTradingDates`
+- Earliest and latest timestamps
+- Session counts
+- Aggregation counts
+- Coverage information
+
+Fix this without restoring full-history in-memory arrays.
+
+Requirements:
+
+- Create a summary-only merge path for streamed imports.
+- Merge metadata and counters directly from fragment summaries.
+- Preserve and deduplicate `availableTradingDates`.
+- Preserve earliest and latest timestamps.
+- Sum valid, rejected, duplicate, session, and aggregation counts correctly.
+- Merge rejection reasons and date-specific quality warnings.
+- Do not recalculate streamed summaries from empty candle arrays.
+- Do not call the array-based `mergeHistoricalCsvImports` for imports created with `retainCandles: false`.
+- The committed manifest and metadata must accurately describe the candles already written to SQLite.
+- Before commit, reconcile the summary against SQLite partition counts and fail safely if they disagree.
+- Preserve the previous ready index if reconciliation fails.
+
+Primary locations:
+
+- `artifacts/api-server/src/lib/futures/historical-csv-import.ts`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/api-server/src/lib/futures/historical-index-store.ts`
+
+2. Remove date-ineligibility gating
+
+Dates must not be disabled or rejected because of:
+
+- Weekends
+- Holidays
+- Missing sessions
+- Incomplete sessions
+- Data-quality warnings
+- Contract transitions
+- Rollover eligibility classifications
+- Missing scheduled-contract data
+
+Requirements:
+
+- Remove `eligibleTradingDates` and `ineligibleDates` as selection gates.
+- They may remain temporarily as diagnostic/deprecated response fields only if compatibility requires them, but they must never control whether a user can select a date.
+- Allow direct entry and calendar selection of any valid calendar date.
+- Do not disable dates before or after indexed coverage.
+- Visual Review and Backtest must accept arbitrary start and end dates.
+- After submission, resolve the range against the SQLite index.
+- Dates containing stored MES candles become the replay sessions.
+- Dates without stored candles return an explicit “no historical data available” result or are listed as missing dates.
+- Never silently replace a selected date with a nearby eligible date.
+- Never fabricate candles.
+- Do not label selectable dates as “eligible” or “ineligible” in the UI.
+- Replace those labels with neutral concepts such as:
+  - Stored data available
+  - No stored data
+  - Data-quality warning
+- When resolving a stored date, select the contract represented by the indexed candles for that date. Do not discard the date solely because `scheduledMesContractForDate()` selects a different or unavailable contract.
+- If more than one MES contract exists for a date, apply a deterministic contract-selection rule and expose the selected contract in diagnostics.
+
+Primary locations:
+
+- `artifacts/levelstory/src/components/historical-date-picker.tsx`
+- `artifacts/levelstory/src/lib/historical-date-picker.ts`
+- `artifacts/levelstory/src/pages/visual-review.tsx`
+- `artifacts/levelstory/src/pages/backtest.tsx`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+
+3. Make routine status polling lightweight
+
+Routine index-status requests must not scan the complete five-year SQLite database.
+
+Requirements:
+
+- Remove `PRAGMA integrity_check` from the normal `validateCommittedManifest` or status-polling path.
+- Routine status checks should inspect only lightweight metadata:
+  - Schema version
+  - Manifest presence
+  - Importer version
+  - Schedule version
+  - Index key
+  - Commit state
+- Provide a separate explicit maintenance method or endpoint for:
+  - `PRAGMA integrity_check`
+  - Complete source-file hashing
+  - Full partition reconciliation
+- Run expensive verification only after import, during controlled startup verification, or when explicitly requested.
+- Add a test proving repeated status requests do not execute `PRAGMA integrity_check` or hash the five-year source file.
+
+Primary locations:
+
+- `artifacts/api-server/src/lib/futures/historical-index-store.ts`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- Historical-data status route and tests
+
+4. Implement real import checkpoints and resume
+
+An interrupted five-year import must resume from verified completed work instead of reparsing everything.
+
+Requirements:
+
+- Persist checkpoints containing:
+  - Source fingerprint
+  - Current file
+  - Current contract
+  - Current trading date
+  - Last processed row or source offset when safely available
+  - Completed SQLite partitions
+  - Cumulative accepted and rejected rows
+  - Staging index path
+- Update `currentContract`, `currentTradingDate`, `stagingIndexPath`, lease fields, and heartbeat fields during real processing.
+- On restart, validate the source fingerprint and staging database.
+- Resume after the latest verified checkpoint.
+- Do not duplicate already committed candles.
+- If safe byte-offset resume is impossible for compressed `.zst` data, resume from the earliest incomplete contract/date boundary and explain that behavior in job diagnostics.
+- Connect the job AbortSignal to:
+  - Object download
+  - Decompression
+  - CSV iteration
+  - Batch callbacks
+  - SQLite transactions
+- Cancellation must roll back the active batch, remove incomplete temporary artifacts, preserve valid completed checkpoints, and leave the previous committed index untouched.
+
+Ten-session enforcement:
+
+- Preserve the shared server-side maximum of 10 stored trading sessions.
+- Count sessions after resolving the selected calendar range against SQLite.
+- Zero stored sessions must return an explicit no-data response.
+- One through 10 stored sessions must be allowed.
+- More than 10 stored sessions must return a clear validation error.
+- Query only the selected SQLite partitions.
+
+Required focused tests:
+
+1. Streamed imports retain correct summaries despite `retainCandles: false`.
+2. Committed metadata dates and counts reconcile with SQLite partitions.
+3. A single generic file with multiple interleaved MES contracts imports correctly.
+4. Every valid calendar date remains selectable.
+5. Missing-data dates return a no-data result instead of a disabled-date error.
+6. Exactly 10 stored sessions succeed; 11 fail.
+7. Replay reads only the selected SQLite partitions.
+8. Routine status polling does not run full integrity checks or source hashing.
+9. Restart resumes from a verified checkpoint.
+10. Cancellation preserves the prior committed index and removes incomplete staging work.
+
+Do not run a five-year replay or full five-year strategy scan. Use small deterministic fixtures and a synthetic multi-batch import to verify the behavior. Run only the focused historical importer, index-store, replay, upload-route, date-picker, Visual Review route, and Backtest route tests. Report the exact tests run and any remaining limitations.
+```
