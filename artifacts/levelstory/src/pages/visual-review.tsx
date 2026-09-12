@@ -29,6 +29,7 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
+  useGetHistoricalDataIndexStatus,
   useRecordVisualValidationReview,
   useAnalyzeVisualValidationTeaching,
 } from "@workspace/api-client-react";
@@ -48,6 +49,7 @@ import type {
   StrategyId,
   KeyLevelTargetPlan,
   BacktestTradeAuditTargetUpdateLedgerItem,
+  HistoricalDataIndexStatus,
 } from "@workspace/api-client-react";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -58,6 +60,7 @@ import {
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 import { UploadedChartAnalysis } from "@/components/uploaded-chart-analysis";
+import { HistoricalDatePicker } from "@/components/historical-date-picker";
 
 const FRONTEND_BUILD_ID = import.meta.env.VITE_LEVELSTORY_BUILD_ID ?? "local-development";
 const TRADE_TARGET_LEGEND_ID = "trade-target-exit";
@@ -503,6 +506,16 @@ export default function VisualReview() {
   };
 
   const startGeneration = useStartVisualValidationGenerationJob();
+  const historicalIndex = useGetHistoricalDataIndexStatus({
+    query: {
+      queryKey: ["historical-data-index-status", "visual-review"],
+      refetchInterval: (query) => {
+        const state = query.state.data?.state;
+        return state === "indexing" || state === "not_started" ? 1500 : false;
+      },
+      staleTime: 30_000,
+    },
+  });
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
@@ -1005,13 +1018,13 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
              <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
-               <GenerationPanel request={request} setRequest={(next) => {
+                <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined") {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-               }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} />
+                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} />
                <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}

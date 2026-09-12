@@ -1,0 +1,123 @@
+The current field uses the browser’s native `<input type="date">`, which creates the slow year/month navigation shown. Replace it with a searchable, direct-entry date picker.
+
+Use this prompt:
+
+```text
+Improve the Review-period end date control on LevelStory’s Visual Review page.
+
+Current implementation:
+`artifacts/levelstory/src/pages/visual-review.tsx`
+
+The form currently uses a native:
+
+<input type="date">
+
+The browser calendar makes selecting historical dates slow, especially when moving between 2021 and 2026.
+
+Replace only this date control with a compact LevelStory-styled date picker using the existing:
+
+- `components/ui/calendar.tsx`
+- `components/ui/popover.tsx`
+- Existing Button/Input components
+
+Do not change Visual Review generation, date interpretation, strategy logic, replay logic, API contracts, or historical-data limits.
+
+Required behavior:
+
+1. Direct date entry
+
+- Keep an editable text field.
+- Accept:
+  - MM/DD/YYYY
+  - M/D/YYYY
+  - YYYY-MM-DD
+- Display the selected value as MM/DD/YYYY.
+- Continue storing and submitting the canonical value as YYYY-MM-DD.
+- Pressing Enter with a valid date selects it.
+- Do not update the request with an incomplete or invalid value.
+- Show a concise inline validation message for invalid dates.
+
+2. Fast month and year selection
+
+The calendar popover must have:
+
+- A visible month dropdown.
+- A visible year dropdown.
+- Previous-month and next-month buttons.
+- No long scrolling list of years.
+- Selecting a year must immediately display that year.
+- Selecting a month must immediately display that month.
+- The user must be able to move from 2026 to 2021 with one year selection.
+
+Use the existing `Calendar` component with an appropriate dropdown caption layout, start month, end month, selected date, and displayed month state.
+
+3. Quick navigation
+
+Add compact actions:
+
+- Previous eligible date
+- Next eligible date
+- Latest indexed date
+- Today, only when today exists within indexed coverage
+
+If eligible historical dates are available from the existing historical-data status, previous/next navigation should skip weekends, holidays, missing dates, and ineligible dates.
+
+If eligible-date metadata is unavailable, retain ordinary calendar navigation without pretending a date is eligible.
+
+4. Historical coverage
+
+- Constrain navigation to the indexed historical start and end dates when that metadata is available.
+- Dates outside indexed coverage must be disabled.
+- Known ineligible or missing dates must be visually disabled.
+- Add a tooltip or accessible label explaining why a disabled date cannot be selected.
+- Do not silently move a user’s chosen date to another date.
+
+5. Selection interaction
+
+- Clicking the field or calendar icon opens the picker.
+- The picker initially opens on the currently selected month.
+- Clicking a valid date updates `request.endDate`.
+- Close the popover immediately after selecting a date.
+- Escape closes without changing the selection.
+- Clicking outside closes it.
+- Preserve keyboard navigation and focus handling.
+- Return focus to the date field after selection.
+- Use New York trading-date semantics; do not create timezone conversion that shifts the selected day.
+
+6. Layout
+
+Use a compact design consistent with LevelStory:
+
+- Date text field and calendar icon on one row.
+- Month/year selectors in the calendar header.
+- One month grid only.
+- Avoid the browser’s large expandable year list.
+- Ensure the popover remains inside the viewport on mobile.
+- Do not cover unrelated strategy controls unnecessarily.
+- Keep the label:
+  `Review-period end date · New York`
+
+7. Tests
+
+Add tests proving:
+
+- The picker opens on the currently selected month/year.
+- A user can jump directly from 2026 to 2021.
+- Manual MM/DD/YYYY entry produces the correct YYYY-MM-DD request value.
+- Manual YYYY-MM-DD entry works.
+- Invalid and incomplete input does not alter the request.
+- Selecting a calendar day closes the popover.
+- Previous/next eligible-date actions skip unavailable dates.
+- Dates outside indexed coverage are disabled.
+- No UTC conversion changes the selected New York trading date.
+- Visual Review submission still sends the correct `endDate`.
+
+Run:
+
+- Frontend typecheck
+- Focused Visual Review tests
+- Frontend production build
+- `git diff --check`
+
+Report the files changed and verification results. Do not modify other date controls unless required to create a reusable date-picker component.
+```
