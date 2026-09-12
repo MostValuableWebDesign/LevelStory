@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { canonicalToDate, dateToCanonical, formatDateForDisplay, parseDateText } from "@/lib/historical-date";
 
 type DatePickerProps = {
   value: string;
@@ -17,37 +18,6 @@ type DatePickerProps = {
 
 const FALLBACK_MIN_DATE = "2021-01-01";
 const FALLBACK_MAX_DATE = "2026-12-31";
-
-export function canonicalToDate(value: string | null | undefined): Date | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
-    ? date
-    : null;
-}
-
-export function dateToCanonical(date: Date): string {
-  return `${date.getFullYear().toString().padStart(4, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
-}
-
-export function formatDateForDisplay(value: string): string {
-  const date = canonicalToDate(value);
-  return date ? `${(date.getMonth() + 1).toString().padStart(2, "0")}/${date.getDate().toString().padStart(2, "0")}/${date.getFullYear()}` : value;
-}
-
-export function parseDateText(value: string): string | null {
-  const trimmed = value.trim();
-  const slashMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
-  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
-  const year = Number(slashMatch?.[3] ?? isoMatch?.[1]);
-  const month = Number(slashMatch?.[1] ?? isoMatch?.[2]);
-  const day = Number(slashMatch?.[2] ?? isoMatch?.[3]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-  return dateToCanonical(date);
-}
 
 function addDays(value: string, amount: number): string | null {
   const date = canonicalToDate(value);
@@ -124,7 +94,7 @@ export function HistoricalDatePicker({
     return null;
   };
 
-  const commit = (nextValue: string): boolean => {
+  const commit = (nextValue: string, close = true): boolean => {
     const parsed = parseDateText(nextValue);
     if (!parsed) {
       setError("Enter a date as MM/DD/YYYY or YYYY-MM-DD.");
@@ -138,8 +108,10 @@ export function HistoricalDatePicker({
     onChange(parsed);
     setDraft(formatDateForDisplay(parsed));
     setError(null);
-    setOpen(false);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    if (close) {
+      setOpen(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
     return true;
   };
 
@@ -169,7 +141,8 @@ export function HistoricalDatePicker({
 
   const latestIndexedDate = coverageMax;
   const today = todayInNewYork();
-  const canChooseToday = today >= effectiveMin
+  const canChooseToday = Boolean(coverageMin && coverageMax)
+    && today >= effectiveMin
     && today <= effectiveMax
     && !reasonForDate(today);
   const selectedDate = canonicalToDate(value);
@@ -206,7 +179,8 @@ export function HistoricalDatePicker({
             onBlur={() => {
               if (draft.trim()) {
                 const parsed = parseDateText(draft);
-                if (parsed) commit(parsed);
+                if (parsed) commit(parsed, false);
+                else setError("Enter a date as MM/DD/YYYY or YYYY-MM-DD.");
               }
             }}
             onKeyDown={(event) => {

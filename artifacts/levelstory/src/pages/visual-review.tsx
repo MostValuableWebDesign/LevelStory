@@ -1428,7 +1428,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
@@ -1465,7 +1465,12 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
       </div>
       <Field label={<span className="inline-flex items-center gap-1.5">Review-period end date · New York <InfoTip label="Review-period end date" text="The last requested trading date in the review period." /></span>}>
-        <input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} />
+        <HistoricalDatePicker
+          value={request.endDate}
+          onChange={(value) => update("endDate", value)}
+          minDate={historicalIndex?.indexedStartDate ?? null}
+          maxDate={historicalIndex?.indexedEndDate ?? null}
+        />
       </Field>
       <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
