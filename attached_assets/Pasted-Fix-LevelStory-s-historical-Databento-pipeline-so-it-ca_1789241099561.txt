@@ -1,0 +1,297 @@
+Fix LevelStory’s historical Databento pipeline so it can reliably upload, index, persist, and later query approximately five years of MES OHLCV-1m data.
+
+Repository:
+https://github.com/MostValuableWebDesign/LevelStory.git
+
+Previous Codex context:
+01a064ad-b891-7182-9cae-3a9d2cfaa45c
+
+Important product requirement:
+Uploading five years of history must build a reusable historical library. It must not automatically replay or backtest all five years. Visual Review and Backtest should later retrieve and replay only the specific selected trading dates.
+
+Inspect the current implementation before editing. Verify behavior directly rather than relying on previous implementation reports.
+
+Primary files to inspect:
+- artifacts/api-server/src/lib/futures/historical-csv-import.ts
+- artifacts/api-server/src/lib/futures/multi-contract-replay.ts
+- artifacts/api-server/src/lib/futures/multi-contract-index-worker.ts
+- artifacts/api-server/src/lib/futures/historical-index-store.ts
+- artifacts/api-server/src/lib/futures/historical-import-job-store.ts
+- artifacts/api-server/src/lib/futures/historical-upload-storage.ts
+- artifacts/api-server/src/routes/historical-data-upload.ts
+- artifacts/api-server/src/routes/historical-data-upload.test.ts
+- artifacts/api-server/src/lib/futures/historical-csv-import.test.ts
+- artifacts/api-server/src/lib/futures/historical-index-store.test.ts
+- artifacts/api-server/src/lib/futures/multi-contract-replay.test.ts
+- artifacts/levelstory/src/pages/backtest.tsx
+- Visual Review historical-data consumers
+- OpenAPI and generated API types for historical import jobs and index status
+
+Required fixes
+
+1. Correct generic multi-symbol Databento ingestion
+
+Support a standard Databento batch export such as:
+
+- `glbx-mdp3-....ohlcv-1m.csv`
+- `glbx-mdp3-....ohlcv-1m.csv.zst`
+
+A generic file may contain multiple outright quarterly MES symbols.
+
+During ingestion:
+
+- Read each row’s actual `symbol`.
+- Accept supported outright quarterly MES contracts such as MESH2, MESM2, MESU2, and MESZ2.
+- Reject calendar spreads and non-MES instruments without contaminating valid MES contracts.
+- Route each accepted candle to the SQLite partition matching that row’s actual contract symbol.
+- Never store candles from one symbol under another contract’s partition.
+- Assert before writing that every candle’s `contractSymbol` matches the SQLite partition contract.
+- Do not reread a generic file through `importOneContractForIndex` without `expectedSymbol`.
+- Remove the current discover-then-reimport path that loses the symbol filter.
+- Prefer one streaming pass that demultiplexes rows by symbol.
+
+Add a regression fixture containing interleaved rows for at least MESH6 and MESM6. Verify each contract/date partition contains only its own rows.
+
+2. Make ingestion memory-bounded and scalable
+
+Do not retain five years of one-minute candles in:
+
+- One complete `candles[]` array.
+- A complete timestamp-to-candle map.
+- Multiple per-symbol imports at the same time.
+- Another complete array during fragment merging.
+- A worker result followed by a complete parent-process reread.
+
+Implement streaming/chunked ingestion directly into the atomic staging SQLite database.
+
+Requirements:
+
+- Use prepared statements and bounded transactions.
+- Flush rows in bounded batches or completed contract/date partitions.
+- Keep memory proportional to the configured batch or active partition size, not total history size.
+- Deduplicate through SQLite keys or bounded partition state.
+- Build 5-minute candles incrementally or derive them one contract/date partition at a time after the one-minute partition is committed.
+- Do not construct unused 15-minute or 60-minute arrays during this import unless a consumer actually requires them.
+- The worker must write or stream normalized batches to the staging index; it must not return a full candle collection.
+- The parent must not reread the complete file after the worker finishes.
+- A generic multi-symbol file should require approximately one parsing pass, not one pass per discovered contract.
+
+Expose an internal configurable batch size so focused tests can prove multiple flushes using a small fixture.
+
+3. Fix duplicate and rejected-row eligibility behavior
+
+Do not invalidate every date for a contract because one row elsewhere in that contract was rejected or deduplicated.
+
+Apply diagnostics at the narrowest correct scope:
+
+- Identical duplicate timestamp with identical OHLCV: safely deduplicate and record it as a non-fatal diagnostic.
+- Identical overlaps between Databento fragments must not make the contract or its dates ineligible.
+- Conflicting duplicate timestamp with different OHLCV: fail the staging import or mark the specific affected contract/date ineligible with an explicit reason. Never silently select one value.
+- Malformed or invalid rows should be attributed to the affected contract/date when those fields can be determined.
+- A date should become ineligible when invalid data causes incomplete or untrustworthy coverage for that date.
+- Rejected spread or non-MES rows must not make valid MES dates ineligible.
+- Preserve aggregate diagnostic totals without using those global totals as a whole-contract eligibility gate.
+
+Eligibility must remain based on:
+
+- A valid trading date.
+- A scheduled MES contract.
+- Scheduled-contract candles being present.
+- Complete required RTH coverage for that date.
+- No unresolved conflicting data for that specific contract/date.
+
+4. Make restart recovery genuinely resumable
+
+Persist sufficient checkpoint state to resume after an API restart.
+
+Use the existing job fields or replace them with an equivalent explicit checkpoint model:
+
+- Materialized source files and fingerprints.
+- Staging index path.
+- Current source file.
+- Current contract.
+- Current trading date or completed partition.
+- Completed work units.
+- Rows read, accepted, rejected, and deduplicated.
+- Per-file state and detected contracts.
+
+On API startup:
+
+- Discover active persisted jobs.
+- Validate their materialized files and staging index.
+- Automatically resume valid queued/interrupted jobs without requiring the browser to poll the exact job ID first.
+- Mark unrecoverable jobs failed with a specific reason.
+- Do not leave a recovered queued job permanently blocking new imports.
+
+Do not redownload files that were already materialized and whose stored size and fingerprint still match.
+
+For compressed files where byte-offset resume is unsafe, rescan the source idempotently while skipping already committed partitions through persisted checkpoints. Never duplicate committed rows.
+
+5. Make cancellation safe
+
+Cancellation must not throw from an unprotected worker message callback.
+
+Implement cooperative cancellation using an AbortController, explicit worker cancellation message, worker termination, or another controlled mechanism.
+
+When cancellation is requested:
+
+- Stop at a safe transaction boundary.
+- Terminate active worker processing.
+- Mark the job cancelled.
+- Remove or preserve the staging database according to a documented resume policy.
+- Never expose a partially built staging index as ready.
+- Preserve the previously committed historical library.
+- Do not crash the API process.
+
+Add a focused test that cancels during worker/index processing and verifies the server remains responsive.
+
+6. Stop rehashing the complete source on every status request
+
+`GET` index-status operations must be inexpensive.
+
+- Do not hash all materialized five-year source files on every status request.
+- Load committed metadata and manifest information from SQLite.
+- Use the already validated in-memory committed index when available.
+- Perform full fingerprint validation during import, explicit integrity validation, or a controlled startup validation—not on every UI poll.
+- If startup validation is required, perform it once and cache its result.
+- A normal status request must not initiate discovery, reindexing, source downloading, or replay.
+
+Add a test using a fingerprint/hash spy or counter proving repeated status calls do not reread the source files.
+
+7. Correct progress and per-file diagnostics
+
+Progress must remain between 0 and 100 and must reflect expanded multi-symbol work correctly.
+
+Do not divide processed contract fragments by the number of physical uploaded files.
+
+Track meaningful work such as:
+
+- Source bytes or rows read.
+- Files materialized.
+- Contracts detected.
+- Contract/date partitions committed.
+- Rows accepted, rejected, and deduplicated.
+- Current filename, contract, and trading date.
+
+For every uploaded file, persist and return:
+
+- State: queued, materialized, indexing, accepted, rejected, failed, or cancelled.
+- Detected contracts.
+- Rows processed.
+- Accepted rows.
+- Rejected rows.
+- Duplicate rows.
+- Rejection reason, if applicable.
+
+A generic multi-symbol source must not be shown as inactive merely because its manifest contract symbol is `__MULTI_SYMBOL_BATCH__`.
+
+8. Preserve atomic committed-index behavior
+
+Continue building into a staging SQLite database.
+
+Only replace the active committed index after all of these succeed:
+
+- Source validation.
+- Contract separation.
+- Partition writes.
+- Coverage calculation.
+- Eligibility reconciliation.
+- Manifest write.
+- SQLite integrity check.
+
+On failure or cancellation:
+
+- Keep the previous ready index usable.
+- Never expose a partial index.
+- Clean up abandoned staging artifacts unless they are intentionally retained for resumable recovery.
+
+Persist the library in an explicitly configured durable data directory rather than assuming a temporary process-local `.cache` directory is durable. Add an environment setting such as `LEVELSTORY_HISTORICAL_DATA_DIR`, document its required deployment persistence, and retain a safe development default.
+
+9. Preserve selected-date lookup and replay
+
+After a correct index is committed:
+
+- Visual Review and Backtest must query SQLite only for requested eligible dates.
+- Resolve the scheduled MES contract for each requested date.
+- Read only that contract/date’s one-minute and required aggregate partitions.
+- Do not reload the source CSV.
+- Do not rebuild the index.
+- Do not automatically run a five-year backtest.
+- Continue supporting combined multi-date replay using only the dates explicitly selected by the request.
+- Reject ineligible dates with their exact stored reason.
+
+10. Version compatibility
+
+Because this changes indexing semantics:
+
+- Bump the historical importer version.
+- Bump the index schema or manifest version if storage changes require it.
+- Reject older contaminated/incompatible indexes with a clear “regeneration required” message.
+- Include importer, schema, schedule, and session-calendar versions in the committed manifest and index identity.
+
+Required focused tests
+
+Use small deterministic synthetic fixtures. Do not use or generate a real five-year dataset.
+
+Add tests for:
+
+1. Generic interleaved multi-symbol CSV and CSV.zst imports.
+2. Correct symbol-to-contract/date SQLite partitioning.
+3. No cross-contract candle contamination.
+4. A single parse pass or bounded number of passes for a generic file.
+5. Multiple bounded batch flushes.
+6. Bounded buffered-row count.
+7. Identical duplicate rows accepted and deduplicated.
+8. Conflicting duplicate rows rejected safely.
+9. A malformed row affecting only its applicable date.
+10. Spread/non-MES rows not poisoning valid MES dates.
+11. Complete and incomplete RTH date eligibility.
+12. Multiple fragments for the same contract.
+13. Cancellation during indexing without API-process failure.
+14. Previous ready index surviving cancellation or failure.
+15. Automatic restart recovery.
+16. Reuse of already materialized files after restart.
+17. Status polling without repeated source hashing.
+18. Accurate progress bounded to 0–100.
+19. Accurate per-file and detected-contract diagnostics.
+20. Committed-index reopen followed by selected-date replay.
+21. Selected-date replay reading SQLite without accessing source CSV.
+22. Old importer/index versions requiring regeneration.
+
+Verification limits
+
+Run only:
+
+- Historical CSV importer tests.
+- Historical SQLite index-store tests.
+- Multi-contract index/replay tests.
+- Historical upload-route tests.
+- Directly affected Visual Review or Backtest historical integration tests.
+- API typecheck.
+- Frontend typecheck only if frontend code changes.
+- `git diff --check`.
+
+Do not run:
+
+- The full API suite.
+- The full repository suite.
+- A real five-year import.
+- A real five-year replay or backtest.
+- Unrelated strategy, Phase 9, or trading execution suites unless compilation requires a directly affected test.
+
+Final report
+
+Provide:
+
+- Root causes found.
+- Architecture used for bounded streaming ingestion.
+- Files changed.
+- Importer/schema/manifest version changes.
+- Tests added.
+- Exact commands executed with pass/fail totals.
+- Confirmation that generic multi-symbol candles cannot cross contract partitions.
+- Confirmation that upload/index does not automatically replay five years.
+- Confirmation that selected-date replay reads only SQLite partitions.
+- Any remaining limitations.
+
+Do not claim five-year readiness solely from unit tests. Clearly distinguish synthetic verification from a real production-sized import
