@@ -29,6 +29,7 @@ import {
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
   useGetShadowAccountReplay,
+  useGetHistoricalData,
   useGetHistoricalDataIndexStatus,
   useRecordVisualValidationReview,
   useAnalyzeVisualValidationTeaching,
@@ -50,6 +51,7 @@ import type {
   KeyLevelTargetPlan,
   BacktestTradeAuditTargetUpdateLedgerItem,
   HistoricalDataIndexStatus,
+  HistoricalImportSummary,
 } from "@workspace/api-client-react";
 import {
   DEFAULT_LEVEL_TOLERANCE_TICKS,
@@ -516,6 +518,16 @@ export default function VisualReview() {
       staleTime: 30_000,
     },
   });
+  const historicalData = useGetHistoricalData(
+    { source: "historical_databento_multicontract", symbol: "MES" },
+    {
+      query: {
+        enabled: historicalIndex.data?.state === "ready",
+        queryKey: ["historical-date-metadata", historicalIndex.data?.indexKey ?? "none"],
+        staleTime: 30_000,
+      },
+    },
+  );
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
@@ -1024,7 +1036,7 @@ export default function VisualReview() {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} />
+                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} historicalData={historicalData.data} />
                <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}
