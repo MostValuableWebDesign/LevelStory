@@ -1,0 +1,414 @@
+```text
+Fix the remaining historical Databento ingestion and lookup defects in LevelStory in one implementation pass.
+
+Repository context:
+- Start from the current repository state at or after commit `40a0c28`.
+- Read the affected code before editing.
+- Do not broadly refactor unrelated trading, strategy, execution, P/L, Visual Review, or Shadow Account Replay behavior.
+- Do not increase or remove the existing 22-session single-run, 60-date batch, or 400-day range limits.
+- The objective is to store approximately five years of MES OHLCV-1m history and retrieve only the smaller dates selected for a replay.
+- Do not implement a five-year combined replay.
+
+Affected areas:
+
+- `artifacts/api-server/src/lib/futures/historical-upload-storage.ts`
+- `artifacts/api-server/src/routes/historical-data-upload.ts`
+- `artifacts/api-server/src/lib/futures/historical-csv-import.ts`
+- `artifacts/api-server/src/lib/futures/historical-index-store.ts`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.test.ts`
+- `artifacts/api-server/src/lib/futures/historical-index-store.test.ts`
+- `artifacts/levelstory/src/pages/backtest.tsx`
+- API specification and generated clients when required
+
+Complete all of the following before reporting completion.
+
+1. Fix uploaded-file discovery
+
+Current defect:
+
+`materializeHistoricalObject()` stores an uploaded file using this form:
+
+`<object-uuid>-<original Databento filename>`
+
+For example:
+
+`8fd...-glbx-mdp3-20210912-20260911.ohlcv-1m.MESU5.csv.zst`
+
+However, `resolveMultiContractFiles()` filters candidates using:
+
+`file.startsWith("glbx-mdp3-")`
+
+Therefore, every file uploaded through the new UI is silently excluded from indexing.
+
+Required behavior:
+
+- Files uploaded through the historical-data UI must be discoverable immediately after materialization.
+- Preserve the user’s sanitized original filename separately from the unique stored identity.
+- Do not rely on the Databento portion appearing at character zero of the physical storage filename.
+- Continue preventing filename collisions when two uploads have the same original filename.
+- Continue preventing path traversal.
+- Parse the contract symbol from the original filename or explicitly stored metadata, not from an assumed physical filename prefix.
+- Accept:
+  - `.csv`
+  - `.csv.zst`
+  - Databento fragments
+  - UUID-prefixed materialized files
+- Reject:
+  - `.csv.gz`
+  - `.csv.zip`
+  - calendar spreads
+  - non-MES instruments
+  - malformed contract symbols
+  - unsafe paths
+- Do not silently ignore a file that was explicitly included in an import request.
+- Every requested file must appear as accepted or rejected with an explicit reason.
+- Do not fall back to reindexing unrelated files in `attached_assets` when an explicit upload/import request supplies files.
+
+Preferred design:
+
+- Pass the exact materialized files from the import job into the indexing service rather than rescanning every historical directory.
+- Represent each file with:
+  - physical path
+  - original filename
+  - object path
+  - expected compression
+  - fingerprint
+- Keep directory discovery only as a legacy/admin fallback.
+- Ensure the index identity includes the original filename, fingerprint, contract symbol, importer version, schedule version, and session-calendar version.
+
+Add regression tests proving:
+
+- A UUID-prefixed materialized `.csv.zst` file is discovered.
+- Its original contract symbol is parsed correctly.
+- The uploaded file is indexed rather than ignored.
+- Existing unrelated files in `attached_assets` are not substituted for the requested upload.
+- Two uploads sharing the same original filename do not overwrite each other.
+- An explicitly requested unrecognized file produces a rejection instead of disappearing.
+
+2. Correct every MES U.S. equity-index rollover date
+
+The current V2 schedule still contains several dates taken from the CME Nikkei/TOPIX column instead of the U.S. Indexes column.
+
+Use the “U.S. Indexes — Roll” dates from:
+
+https://www.cmegroup.com/trading/equity-index/rolldates.html
+
+Also preserve the convention change documented at:
+
+https://www.cmegroup.com/notices/electronic-trading/2022/04/20220418.html
+
+Use this governed MES schedule for the supported range:
+
+- 2021-09-12 → MESZ1
+- 2021-12-09 → MESH2
+- 2022-03-10 → MESM2
+- 2022-06-13 → MESU2
+- 2022-09-12 → MESZ2
+- 2022-12-12 → MESH3
+- 2023-03-13 → MESM3
+- 2023-06-12 → MESU3
+- 2023-09-11 → MESZ3
+- 2023-12-11 → MESH4
+- 2024-03-11 → MESM4
+- 2024-06-17 → MESU4
+- 2024-09-16 → MESZ4
+- 2024-12-16 → MESH5
+- 2025-03-17 → MESM5
+- 2025-06-16 → MESU5
+- 2025-09-15 → MESZ5
+- 2025-12-15 → MESH6
+- 2026-03-16 → MESM6
+- 2026-06-15 → MESU6
+- 2026-09-14 → MESZ6
+
+Specific corrections include:
+
+- 2024-06-10 must become 2024-06-17.
+- 2024-09-09 must become 2024-09-16.
+- 2024-12-09 must become 2024-12-16.
+- 2025-03-10 must become 2025-03-17.
+- 2025-06-09 must become 2025-06-16.
+- 2025-09-08 must become 2025-09-15.
+- 2025-12-08 must become 2025-12-15.
+- 2026-03-09 must become 2026-03-16.
+- 2026-06-08 must become 2026-06-15.
+- 2026-09-14 remains unchanged.
+
+Requirements:
+
+- Bump the schedule version because the contract/date mapping changes.
+- Invalidate any SQLite index built with the incorrect schedule version.
+- Preserve the authoritative source URLs and verification date.
+- Ensure each supported trading date selects exactly one outright MES contract.
+- Never blend the expiring and next contract on the same date.
+- Do not select the new contract before its official U.S. Index roll date.
+- Do not derive tests by mapping over the implementation schedule because that only repeats implementation errors.
+
+Add an independent expected-boundary fixture.
+
+For every transition, test:
+
+- The last trading session before the roll uses the old contract.
+- The roll date uses the new contract.
+- The next trading session uses the new contract.
+
+Explicitly test:
+
+- 2025-06-13 → MESM5
+- 2025-06-16 → MESU5
+- 2025-09-12 → MESU5
+- 2025-09-15 → MESZ5
+- 2026-03-13 → MESH6
+- 2026-03-16 → MESM6
+- 2026-06-12 → MESM6
+- 2026-06-15 → MESU6
+- 2026-09-11 → MESU6
+
+The supported data range currently ends on 2026-09-11, so MESZ6 may exist in the governed future boundary list without being required for readiness inside that supported range.
+
+3. Move materialization and indexing out of the HTTP request
+
+Current defect:
+
+`POST /historical-data/import` waits for `importHistoricalMultiContract()` to finish before returning its `202` response. A five-year import can keep the browser request open long enough to exceed platform or proxy timeouts.
+
+Required workflow:
+
+A. Browser uploads each source file directly to private object storage.
+
+B. Browser submits the uploaded object references to:
+
+`POST /historical-data/import`
+
+C. The endpoint must:
+
+- Validate the request.
+- Create an import job.
+- Return HTTP 202 immediately.
+- Return:
+  - `jobId`
+  - `state: "queued"`
+  - number of requested files
+  - status URL
+  - creation timestamp
+
+D. Background processing must then:
+
+- Materialize the requested objects.
+- Fingerprint them.
+- Validate filenames, compression, schema, symbols, and rows.
+- Build the staged SQLite index.
+- Atomically publish the staged database only after successful validation.
+- Keep the previously ready database available while a replacement is built.
+- Mark the job completed or failed.
+
+E. Add a status route such as:
+
+`GET /historical-data/import/:jobId`
+
+It must report:
+
+- queued, materializing, validating, indexing, ready, failed, or cancelled
+- requested file count
+- materialized file count
+- current filename
+- discovered and accepted contracts
+- rows processed
+- files completed
+- progress percentage
+- rejected files and reasons
+- indexed start and end dates
+- eligible trading-date count
+- missing contracts/dates
+- error message
+- created, started, updated, and completed timestamps
+
+F. Update the UI to poll the job-status endpoint.
+
+The UI must:
+
+- Stop displaying “Uploading…” after direct uploads finish.
+- Clearly distinguish upload progress from indexing progress.
+- Survive a page refresh by restoring the latest active job when practical.
+- Display failure details.
+- Refresh historical-library readiness when the job becomes ready.
+- Prevent accidentally starting multiple equivalent jobs while one is active.
+- Never display “ready” before the staged SQLite index has been committed successfully.
+
+Do not return `202` after the work has already completed. `202` must mean the job was accepted and is continuing asynchronously.
+
+4. Bound importer memory use
+
+SQLite selected-date lookup is already the correct direction and must be preserved.
+
+Current remaining issue:
+
+`importHistoricalCsv()` still accumulates every candle from a source file in:
+
+- a candle array
+- a timestamp map
+- aggregated arrays
+
+The worker then returns the complete imported object to the main thread. Large files can therefore be duplicated across worker and main-process memory.
+
+Required behavior:
+
+- Keep `.csv.zst` decompression streaming.
+- Parse and validate incrementally.
+- Write validated one-minute candles to the staged SQLite database in bounded batches, such as 5,000–20,000 rows.
+- Generate required five-minute candles incrementally or in a bounded per-date/per-session pass.
+- Do not send complete candle arrays from a worker to the parent process.
+- Worker messages should contain bounded progress events, summaries, and errors.
+- Memory use should be governed by the batch size and current trading-date aggregation—not total file size.
+- Preserve:
+  - duplicate detection
+  - conflicting-timestamp rejection
+  - OHLCV validation
+  - source row numbers
+  - session coverage
+  - file fingerprints
+  - source summaries
+- Support multiple fragments for the same contract.
+- Identical overlapping rows may be deduplicated.
+- Conflicting overlapping rows must fail closed with the contract, timestamp, and source files identified.
+- A failed staged import must not damage the currently ready index.
+- Close SQLite connections and worker resources after replacement, failure, or cancellation.
+
+If a full streaming refactor cannot be completed safely, do not claim bounded-memory five-year support. Report it explicitly.
+
+5. Handle Databento file organization explicitly
+
+Support the intended preferred format:
+
+- OHLCV-1m
+- MES outright quarterly contracts
+- CSV or CSV/zstd
+- Files split by instrument/contract
+- Optional additional fragments for large contracts
+
+If a file contains more than one outright MES contract:
+
+- Either stream and partition its rows by contract correctly, or
+- Reject it before indexing with:
+  `MULTIPLE_OUTRIGHT_SYMBOLS_REQUIRES_SPLIT_BY_INSTRUMENT`
+
+The UI must explain that the user should download or split Databento data by instrument if multi-symbol files are not supported.
+
+Do not silently accept part of a multi-symbol file.
+
+6. Add complete integration tests
+
+Add focused tests for all of these behaviors:
+
+Upload integration:
+
+- Request upload URL.
+- Materialize an uploaded file with a UUID physical prefix.
+- Submit the import request.
+- Receive an immediate 202 and job ID.
+- Poll the job to completion.
+- Confirm the exact uploaded file is indexed.
+- Confirm an unauthorized user cannot upload or start an import.
+- Confirm invalid object paths are rejected.
+- Confirm duplicate job requests do not create duplicate candles.
+
+Compression:
+
+- Plain CSV ingestion.
+- Streaming `.csv.zst` ingestion.
+- Unsupported gzip/ZIP rejection.
+- Corrupt zstd failure with an actionable error.
+
+Rollover:
+
+- Independent expected U.S. boundary table.
+- Before/on/after tests for every transition.
+- Specific 2024–2026 corrected dates listed above.
+- No premature contract selection.
+
+SQLite lookup:
+
+- Store dates across all required quarterly contracts.
+- Close and reopen the database.
+- Retrieve a date from the beginning, middle, and end of the supported range.
+- Confirm only requested contract/date/timeframe partitions are loaded.
+- Confirm selected-period replay still combines P/L across that run’s selected dates.
+- Confirm the existing replay limits remain unchanged.
+- Confirm missing scheduled data fails closed.
+- Confirm the active contract provenance is returned for every replayed date.
+
+Atomicity and recovery:
+
+- Existing ready index remains usable while a replacement is being built.
+- Failed import preserves the existing ready index.
+- Interrupted job is reported accurately.
+- Temporary databases and open connections are cleaned up.
+- Re-importing identical data is idempotent.
+
+Scale:
+
+- Create a reduced synthetic five-year fixture covering every governed contract and trading-year boundary.
+- Exercise the complete upload → job → SQLite → date lookup → replay path.
+- Add a larger generated ingestion test or benchmark demonstrating that memory growth is bounded by batch size rather than total rows.
+- Record processed rows, duration, and peak memory in the test/benchmark output.
+
+7. Preserve existing behavior
+
+Do not change:
+
+- Strategy eligibility
+- Patience-candle logic
+- Entry buffers
+- Stops
+- Profit targets
+- Breakeven/recovery
+- Contract management
+- Single-active-trade behavior
+- Shadow Account Replay economics
+- Visual Review candidate presentation
+- Existing selected-run aggregation
+- Existing 22-session, 60-date, or 400-day safety limits
+
+Only change historical upload, indexing, rollover selection, persistence, lookup, associated API/UI status behavior, and tests.
+
+8. Verification required before completion
+
+Run:
+
+- API typecheck
+- Frontend typecheck
+- Focused historical CSV tests
+- Historical index-store tests
+- Multi-contract replay tests
+- Historical upload route tests
+- Relevant backtest route tests
+- Relevant frontend upload/status tests
+- API production build
+- Frontend production build
+- `git diff --check`
+
+Also perform one production-like smoke test:
+
+1. Upload at least two MES contract files through the same API used by the UI.
+2. Confirm the import endpoint returns before indexing completes.
+3. Poll the job to ready.
+4. Restart or reopen the index.
+5. Retrieve one date from each contract.
+6. Run a small selected-date replay across the rollover.
+7. Confirm the correct contract and combined results.
+8. Confirm the full historical archive was not loaded into memory for the lookup.
+
+Report:
+
+- Files changed
+- Exact rollover corrections
+- Tests added
+- Test/build results
+- Any remaining limitation
+- Evidence that UUID-prefixed uploads are indexed
+- Evidence that 2025-06-13 uses MESM5 and 2025-06-16 uses MESU5
+- Evidence that date lookup reads only requested SQLite partitions
+
+Do not report the task complete if the upload UI’s physical filenames are still excluded, if the schedule still contains Nikkei/TOPIX dates for MES, or if the import request must remain open for the entire five-year indexing process.
+```
