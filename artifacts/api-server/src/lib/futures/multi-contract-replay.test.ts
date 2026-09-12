@@ -12,6 +12,7 @@ import {
   scheduledMesContractForDate,
   assertMultiContractCoverageReconciles,
   validateMultiContractContentFingerprint,
+  validateMesRolloverSchedule,
   type HistoricalMultiContractImport,
 } from "./multi-contract-replay.js";
 import { newYorkTimeToUtc, sessionCalendarForContract } from "./session-calendar.js";
@@ -34,13 +35,41 @@ test("uses the versioned rollover schedule by trading date", () => {
   assert.equal(scheduledMesContractForDate("2025-09-10"), "MESU5");
   assert.equal(scheduledMesContractForDate("2025-09-11"), "MESZ5");
   assert.equal(scheduledMesContractForDate("2026-06-11"), "MESU6");
-  assert.equal(scheduledMesContractForDate("2025-01-01"), null);
+  assert.equal(scheduledMesContractForDate("2021-09-12"), "MESZ1");
+  assert.equal(scheduledMesContractForDate("2026-09-10"), "MESZ6");
+  assert.equal(scheduledMesContractForDate("2021-09-11"), null);
+  assert.equal(scheduledMesContractForDate("2026-09-12"), null);
   assert.deepEqual(buildRolloverBoundaries(), MES_ROLLOVER_SCHEDULE.map((item, index) => ({
     effectiveDate: item.effectiveDate,
     fromContractSymbol: MES_ROLLOVER_SCHEDULE[index - 1]?.contractSymbol ?? null,
     toContractSymbol: item.contractSymbol,
     scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
   })));
+});
+
+test("validates the explicit schedule before replay can start", () => {
+  assert.doesNotThrow(() => validateMesRolloverSchedule());
+  assert.throws(
+    () => validateMesRolloverSchedule([
+      { effectiveDate: "2021-09-12", contractSymbol: "MESZ1" },
+      { effectiveDate: "2021-09-12", contractSymbol: "MESH2" },
+    ]),
+    /duplicate effective date/i,
+  );
+  assert.throws(
+    () => validateMesRolloverSchedule([
+      { effectiveDate: "2021-09-12", contractSymbol: "MESZ1" },
+      { effectiveDate: "2021-12-09", contractSymbol: "MESZ2" },
+    ]),
+    /quarterly contract/i,
+  );
+  assert.throws(
+    () => validateMesRolloverSchedule([
+      { effectiveDate: "2021-09-12", contractSymbol: "MESZ1" },
+      { effectiveDate: "2021-09-11", contractSymbol: "MESH2" },
+    ]),
+    /strictly increasing/i,
+  );
 });
 
 test("selects contract-local candles on each rollover date without blending", () => {
@@ -95,7 +124,7 @@ test("selects contract-local candles on each rollover date without blending", ()
   ]);
   assert.deepEqual([...new Set(dataset.candles.map((candle) => candle.contractSymbol))], ["MESU5", "MESZ5"]);
   assert.equal(dataset.contractSchedule?.version, MES_ROLLOVER_SCHEDULE_VERSION);
-  assert.equal(dataset.contractSchedule?.boundaries.length, 5);
+   assert.equal(dataset.contractSchedule?.boundaries.length, MES_ROLLOVER_SCHEDULE.length);
 });
 
 test("rejects an explicit sparse sample when one requested date is ineligible", () => {

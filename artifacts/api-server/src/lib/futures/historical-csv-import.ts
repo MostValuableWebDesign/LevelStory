@@ -97,6 +97,32 @@ type ParsedRow = {
   volume: number;
 };
 
+function unsupportedCompression(filePath: string): void {
+  if (filePath.toLowerCase().endsWith(".zst")) {
+    throw new Error("Unsupported historical CSV compression: .zst files must be decompressed to CSV before import.");
+  }
+}
+
+/**
+ * Databento puts the instrument symbol between the dataset and schema
+ * portions of its filename.  Generic fixture names are deliberately allowed;
+ * when the Databento shape is present, however, the name is authoritative.
+ */
+export function historicalCsvFilenameSymbol(filePath: string): string | null {
+  const filename = basename(filePath);
+  const match = filename.match(/(?:^|[._-])(MES[A-Z]\d{1,2})(?=[._-]|$)/i);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+function candleValuesEqual(first: NormalizedCandle, second: NormalizedCandle): boolean {
+  return first.open === second.open
+    && first.high === second.high
+    && first.low === second.low
+    && first.close === second.close
+    && first.volume === second.volume
+    && first.contractSymbol === second.contractSymbol;
+}
+
 function reasonFor(summary: HistoricalCsvImportSummary, row: number, reason: string): void {
   summary.rejectedRows += 1;
   summary.rejectionReasons[reason] = (summary.rejectionReasons[reason] ?? 0) + 1;
@@ -533,6 +559,8 @@ export async function importHistoricalCsv(
     contentFingerprint?: string;
   } = {},
 ): Promise<HistoricalCsvImport> {
+  unsupportedCompression(filePath);
+  const filenameSymbol = historicalCsvFilenameSymbol(filePath);
   const calendar = sessionCalendarForContract(specification);
   const summary: HistoricalCsvImportSummary = {
     source: "historical_databento",
@@ -577,6 +605,7 @@ export async function importHistoricalCsv(
     aggregationCounts: { oneMinute: 0, fiveMinute: 0, fifteenMinute: 0, oneHour: 0 },
   };
   const candles: NormalizedCandle[] = [];
+  const candleByTimestamp = new Map<number, NormalizedCandle>();
   const tradingDates = new Set<string>();
   let headers: string[] | null = null;
   let previousTimestamp: number | null = null;
@@ -636,6 +665,10 @@ export async function importHistoricalCsv(
       return;
     }
     if (summary.detectedSymbol === null) summary.detectedSymbol = symbol;
+    if (filenameSymbol && symbol !== filenameSymbol) {
+      reasonFor(summary, row, "FILENAME_SYMBOL_MISMATCH");
+      return;
+    }
     if (symbol !== summary.detectedSymbol) {
       reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
       return;
@@ -655,12 +688,38 @@ export async function importHistoricalCsv(
       return;
     }
     const timestamp = Date.parse(timestampValue);
+    if (timestamp % MINUTE !== 0) {
+      reasonFor(summary, row, "MISALIGNED_MINUTE_TIMESTAMP");
+      return;
+    }
     if (previousTimestamp !== null && timestamp < previousTimestamp) {
       reasonFor(summary, row, "OUT_OF_ORDER_TIMESTAMP");
       return;
     }
-    if (previousTimestamp !== null && timestamp === previousTimestamp) {
-      summary.duplicateRowsRemoved += 1;
+    const existing = candleByTimestamp.get(timestamp);
+    if (existing) {
+      if (!candleValuesEqual(existing, {
+        timestamp,
+        openTime: timestamp,
+        closeTime: timestamp + MINUTE,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        bid: null,
+        ask: null,
+        bidSize: null,
+        askSize: null,
+        contractSymbol: symbol,
+        isComplete: true,
+        intervalMinutes: 1,
+        quality: { valid: true, codes: ["MISSING_BID_ASK"] },
+      })) {
+        reasonFor(summary, row, "CONFLICTING_DUPLICATE_TIMESTAMP");
+      } else {
+        summary.duplicateRowsRemoved += 1;
+      }
       return;
     }
     previousTimestamp = timestamp;
@@ -683,6 +742,7 @@ export async function importHistoricalCsv(
       quality: { valid: true, codes: ["MISSING_BID_ASK"] },
     };
     candles.push(candle);
+    candleByTimestamp.set(timestamp, candle);
     summary.validRows += 1;
     summary.earliestTimestamp ??= new Date(timestamp).toISOString();
     summary.latestTimestamp = new Date(timestamp).toISOString();
@@ -731,6 +791,96 @@ export async function importHistoricalCsv(
   };
 }
 
+/**
+ * Deterministically joins fragments of one contract.  Fragments may overlap
+ * (the Databento download API commonly emits adjacent/overlapping pages), but
+ * disagreement at an event timestamp is never silently resolved.
+ */
+export function mergeHistoricalCsvImports(
+  fragments: readonly HistoricalCsvImport[],
+): HistoricalCsvImport {
+  if (!fragments.length) throw new Error("At least one historical CSV import is required.");
+  const first = fragments[0];
+  for (const fragment of fragments) {
+    if (fragment.specification.fullContractSymbol !== first.specification.fullContractSymbol) {
+      throw new Error("Historical CSV fragments must belong to the same contract.");
+    }
+    if (fragment.summary.detectedSymbol && first.summary.detectedSymbol
+      && fragment.summary.detectedSymbol !== first.summary.detectedSymbol) {
+      throw new Error("Historical CSV fragments contain incompatible symbols.");
+    }
+  }
+  const byTimestamp = new Map<number, NormalizedCandle>();
+  let duplicateRowsRemoved = 0;
+  for (const fragment of fragments) {
+    for (const candle of fragment.oneMinute) {
+      const existing = byTimestamp.get(candle.openTime);
+      if (!existing) {
+        byTimestamp.set(candle.openTime, candle);
+      } else if (candleValuesEqual(existing, candle)) {
+        duplicateRowsRemoved += 1;
+      } else {
+        throw new Error(`Conflicting OHLCV rows at timestamp ${new Date(candle.openTime).toISOString()}.`);
+      }
+    }
+  }
+  const oneMinute = [...byTimestamp.values()].sort((a, b) => a.openTime - b.openTime);
+  const fiveMinute = aggregate(oneMinute, 5, first.specification);
+  const fifteenMinute = aggregate(oneMinute, 15, first.specification);
+  const oneHour = aggregate(oneMinute, 60, first.specification);
+  const summary: HistoricalCsvImportSummary = {
+    ...first.summary,
+    filename: fragments.map((fragment) => fragment.summary.filename).sort().join(","),
+    detectedSymbol: first.summary.detectedSymbol
+      ?? fragments.map((fragment) => fragment.summary.detectedSymbol).find(Boolean)
+      ?? null,
+    totalRows: fragments.reduce((sum, fragment) => sum + fragment.summary.totalRows, 0),
+    validRows: oneMinute.length,
+    rejectedRows: fragments.reduce((sum, fragment) => sum + fragment.summary.rejectedRows, 0),
+    duplicateRowsRemoved: fragments.reduce((sum, fragment) => sum + fragment.summary.duplicateRowsRemoved, 0)
+      + duplicateRowsRemoved,
+    rejectionReasons: Object.fromEntries(
+      fragments.flatMap((fragment) => Object.entries(fragment.summary.rejectionReasons))
+        .reduce((counts, [reason, count]) => counts.set(reason, (counts.get(reason) ?? 0) + count), new Map<string, number>()),
+    ),
+    errors: fragments.flatMap((fragment) => fragment.summary.errors).slice(0, MAX_REPORTED_ERRORS),
+    aggregationCounts: {
+      oneMinute: oneMinute.length,
+      fiveMinute: fiveMinute.length,
+      fifteenMinute: fifteenMinute.length,
+      oneHour: oneHour.length,
+    },
+  };
+  summary.earliestTimestamp = oneMinute[0] ? new Date(oneMinute[0].openTime).toISOString() : null;
+  summary.latestTimestamp = oneMinute.at(-1) ? new Date(oneMinute.at(-1)!.openTime).toISOString() : null;
+  const tradingDates = new Set<string>();
+  summary.regularSessionCandleCount = 0;
+  summary.overnightCandleCount = 0;
+  for (const candle of oneMinute) {
+    const date = tradingDateForTimestamp(candle.openTime, first.calendar);
+    if (isTradingDate(date, first.calendar)) tradingDates.add(date);
+    const session = classifyFuturesSession(candle.openTime, first.calendar);
+    if (session === "regular") summary.regularSessionCandleCount += 1;
+    else if (overnightOwnerDate(candle.openTime, first.calendar)) summary.overnightCandleCount += 1;
+  }
+  Object.assign(summary, countSessionAwareGaps(oneMinute, first.calendar));
+  summary.availableTradingDates = [...tradingDates].sort();
+  const contentFingerprint = fragments
+    .map((fragment) => `${fragment.summary.filename}:${fragment.contentFingerprint}`)
+    .sort()
+    .join("|");
+  return {
+    summary,
+    contentFingerprint,
+    oneMinute,
+    fiveMinute,
+    fifteenMinute,
+    oneHour,
+    specification: first.specification,
+    calendar: first.calendar,
+  };
+}
+
 let cachedImport: { path: string; modifiedAt: number; value: HistoricalCsvImport } | null = null;
 let importPromise: Promise<HistoricalCsvImport> | null = null;
 
@@ -758,6 +908,7 @@ export async function getHistoricalCsvImport(
 }
 
 export async function getHistoricalCsvFingerprint(filePath?: string): Promise<string> {
+  if (filePath) unsupportedCompression(filePath);
   const resolvedPath = filePath ? boundedCsvPath(filePath) : await resolveImportPath();
   const hash = createHash("sha256");
   const stream = createReadStream(resolvedPath);

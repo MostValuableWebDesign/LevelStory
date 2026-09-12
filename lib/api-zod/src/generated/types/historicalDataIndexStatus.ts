@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalDataIndexStatusFilesMergedPerContractItem } from './historicalDataIndexStatusFilesMergedPerContractItem';
+import type { HistoricalDataIndexStatusRejectedFilesItem } from './historicalDataIndexStatusRejectedFilesItem';
 import type { HistoricalDataIndexStatusState } from './historicalDataIndexStatusState';
 
 export interface HistoricalDataIndexStatus {
@@ -20,6 +22,26 @@ export interface HistoricalDataIndexStatus {
   discoveredFileCount: number;
   /** @minimum 0 */
   indexedFileCount: number;
+  requestedStartDate: string;
+  requestedEndDate: string;
+  /** @nullable */
+  indexedStartDate: string | null;
+  /** @nullable */
+  indexedEndDate: string | null;
+  scheduleVersion: string;
+  importerVersion: string;
+  discoveredContracts: string[];
+  acceptedContracts: string[];
+  missingScheduledContracts: string[];
+  /** @minimum 0 */
+  eligibleTradingDateCount: number;
+  /** @minimum 0 */
+  ineligibleTradingDateCount: number;
+  /** @minimum 0 */
+  mergedFileCount: number;
+  filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];
+  rejectedFiles: HistoricalDataIndexStatusRejectedFilesItem[];
+  fullRangeReady: boolean;
   /** @nullable */
   message: string | null;
   /** @nullable */

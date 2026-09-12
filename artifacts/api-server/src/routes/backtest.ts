@@ -30,6 +30,7 @@ import {
   importHistoricalMultiContract,
   multiContractImportToReplayDataset,
   MULTI_CONTRACT_SOURCE,
+  MES_SUPPORTED_START_DATE,
   getHistoricalMultiContractIndexStatus,
   getReadyHistoricalMultiContractIndex,
   assertMultiContractCoverageReconciles,
@@ -970,7 +971,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         : multiContract
           ? multiContractImportToReplayDataset(
               multiContract,
-              parsed.data.startDate ?? "2025-08-27",
+              parsed.data.startDate ?? MES_SUPPORTED_START_DATE,
               parsed.data.endDate,
               parsed.data.inSampleDays,
               parsed.data.outOfSampleDays,

@@ -169,6 +169,8 @@ export * from './getVisualValidationSetSymbol';
 export * from './governanceReasonInput';
 export * from './healthStatus';
 export * from './historicalDataIndexStatus';
+export * from './historicalDataIndexStatusFilesMergedPerContractItem';
+export * from './historicalDataIndexStatusRejectedFilesItem';
 export * from './historicalDataIndexStatusState';
 export * from './historicalEmaComparisonCandidate';
 export * from './historicalEmaComparisonReport';

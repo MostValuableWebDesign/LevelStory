@@ -1779,6 +1779,17 @@ export const HistoricalDataIndexStatusState = {
   failed: 'failed',
 } as const;
 
+export type HistoricalDataIndexStatusFilesMergedPerContractItem = {
+  contractSymbol: string;
+  /** @minimum 1 */
+  fragmentCount: number;
+};
+
+export type HistoricalDataIndexStatusRejectedFilesItem = {
+  filename: string;
+  reason: string;
+};
+
 export interface HistoricalDataIndexStatus {
   state: HistoricalDataIndexStatusState;
   /** @nullable */
@@ -1792,6 +1803,26 @@ export interface HistoricalDataIndexStatus {
   discoveredFileCount: number;
   /** @minimum 0 */
   indexedFileCount: number;
+  requestedStartDate: string;
+  requestedEndDate: string;
+  /** @nullable */
+  indexedStartDate: string | null;
+  /** @nullable */
+  indexedEndDate: string | null;
+  scheduleVersion: string;
+  importerVersion: string;
+  discoveredContracts: string[];
+  acceptedContracts: string[];
+  missingScheduledContracts: string[];
+  /** @minimum 0 */
+  eligibleTradingDateCount: number;
+  /** @minimum 0 */
+  ineligibleTradingDateCount: number;
+  /** @minimum 0 */
+  mergedFileCount: number;
+  filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];
+  rejectedFiles: HistoricalDataIndexStatusRejectedFilesItem[];
+  fullRangeReady: boolean;
   /** @nullable */
   message: string | null;
   /** @nullable */

@@ -8,6 +8,7 @@ import {
   getHistoricalCsvFingerprint,
   historicalImportToReplayDataset,
   importHistoricalCsv,
+  mergeHistoricalCsvImports,
 } from "./historical-csv-import.js";
 import { newYorkTimeToUtc, tradingDateForTimestamp } from "./session-calendar.js";
 
@@ -264,5 +265,72 @@ test("actual historical source reconciles selected 5 plus 2 and 20 plus 2 ranges
         + gapReport.unexpectedOvernightMissingMinutes,
     );
     assert.ok(gapReport.missingMinuteGaps >= gapReport.unexpectedMissingMinutes);
+  }
+});
+
+test("merges overlapping fragments deterministically and retains all aggregate intervals", async () => {
+  const start = Date.parse("2026-08-26T13:30:00.000Z");
+  const rows = Array.from({ length: 10 }, (_, index) => row(start + index * 60_000, index));
+  await withCsv(rows.slice(0, 6), async (firstPath) => {
+    await withCsv(rows.slice(5), async (secondPath) => {
+      const first = await importHistoricalCsv(firstPath, specification);
+      const second = await importHistoricalCsv(secondPath, specification);
+      const merged = mergeHistoricalCsvImports([second, first]);
+      assert.equal(merged.oneMinute.length, 10);
+      assert.equal(merged.summary.duplicateRowsRemoved, 1);
+      assert.deepEqual(merged.oneMinute.map((candle) => candle.openTime), rows.map((_, i) => start + i * 60_000));
+      assert.ok(merged.fiveMinute.length > 0);
+      assert.ok(merged.fifteenMinute.length > 0);
+      assert.ok(merged.oneHour.length > 0);
+    });
+  });
+});
+
+test("rejects conflicting same-timestamp rows across fragments", async () => {
+  const timestamp = Date.parse("2026-08-26T13:30:00.000Z");
+  await withCsv([row(timestamp, 0)], async (firstPath) => {
+    await withCsv([row(timestamp, 1)], async (secondPath) => {
+      const first = await importHistoricalCsv(firstPath, specification);
+      const second = await importHistoricalCsv(secondPath, specification);
+      assert.throws(
+        () => mergeHistoricalCsvImports([first, second]),
+        /Conflicting OHLCV rows/,
+      );
+    });
+  });
+});
+
+test("rejects non-minute-aligned timestamps and compressed zstd inputs", async () => {
+  await withCsv([row(Date.parse("2026-08-26T13:30:30.000Z"), 0)], async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.rejectionReasons.MISALIGNED_MINUTE_TIMESTAMP, 1);
+    assert.equal(imported.oneMinute.length, 0);
+  });
+  const directory = await mkdtemp(join(tmpdir(), "levelstory-zst-"));
+  const path = join(directory, "historical.csv.zst");
+  try {
+    await writeFile(path, "not a csv");
+    await assert.rejects(
+      importHistoricalCsv(path, specification),
+      /Unsupported historical CSV compression: \.zst/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a Databento filename and internal symbol mismatch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "levelstory-mismatch-"));
+  const path = join(directory, "glbx-mdp3-20260901-20260902.ohlcv-1m.MESU6.csv");
+  try {
+    await writeFile(path, [
+      "ts_event,rtype,publisher_id,instrument_id,open,high,low,close,volume,symbol",
+      row(Date.parse("2026-08-26T13:30:00.000Z"), 0).replace("MESU6", "MESZ6"),
+    ].join("\n"));
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.rejectionReasons.FILENAME_SYMBOL_MISMATCH, 1);
+    assert.equal(imported.oneMinute.length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

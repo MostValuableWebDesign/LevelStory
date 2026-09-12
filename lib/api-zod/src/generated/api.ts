@@ -13899,6 +13899,13 @@ export const getHistoricalDataIndexStatusResponseDiscoveredFileCountMin = 0;
 
 export const getHistoricalDataIndexStatusResponseIndexedFileCountMin = 0;
 
+export const getHistoricalDataIndexStatusResponseEligibleTradingDateCountMin = 0;
+
+export const getHistoricalDataIndexStatusResponseIneligibleTradingDateCountMin = 0;
+
+export const getHistoricalDataIndexStatusResponseMergedFileCountMin = 0;
+
+
 
 
 export const GetHistoricalDataIndexStatusResponse = zod.object({
@@ -13907,6 +13914,27 @@ export const GetHistoricalDataIndexStatusResponse = zod.object({
   "progress": zod.number().min(getHistoricalDataIndexStatusResponseProgressMin).max(getHistoricalDataIndexStatusResponseProgressMax),
   "discoveredFileCount": zod.number().min(getHistoricalDataIndexStatusResponseDiscoveredFileCountMin),
   "indexedFileCount": zod.number().min(getHistoricalDataIndexStatusResponseIndexedFileCountMin),
+  "requestedStartDate": zod.string(),
+  "requestedEndDate": zod.string(),
+  "indexedStartDate": zod.string().nullable(),
+  "indexedEndDate": zod.string().nullable(),
+  "scheduleVersion": zod.string(),
+  "importerVersion": zod.string(),
+  "discoveredContracts": zod.array(zod.string()),
+  "acceptedContracts": zod.array(zod.string()),
+  "missingScheduledContracts": zod.array(zod.string()),
+  "eligibleTradingDateCount": zod.number().min(getHistoricalDataIndexStatusResponseEligibleTradingDateCountMin),
+  "ineligibleTradingDateCount": zod.number().min(getHistoricalDataIndexStatusResponseIneligibleTradingDateCountMin),
+  "mergedFileCount": zod.number().min(getHistoricalDataIndexStatusResponseMergedFileCountMin),
+  "filesMergedPerContract": zod.array(zod.object({
+  "contractSymbol": zod.string(),
+  "fragmentCount": zod.number().min(1)
+})),
+  "rejectedFiles": zod.array(zod.object({
+  "filename": zod.string(),
+  "reason": zod.string()
+})),
+  "fullRangeReady": zod.boolean(),
   "message": zod.string().nullable(),
   "error": zod.string().nullable(),
   "updatedAt": zod.coerce.date()

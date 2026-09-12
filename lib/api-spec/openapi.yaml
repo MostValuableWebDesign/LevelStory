@@ -2949,10 +2949,45 @@ components:
         progress: { type: number, minimum: 0, maximum: 100 }
         discoveredFileCount: { type: number, minimum: 0 }
         indexedFileCount: { type: number, minimum: 0 }
+        requestedStartDate: { type: string }
+        requestedEndDate: { type: string }
+        indexedStartDate: { type: ["string", "null"] }
+        indexedEndDate: { type: ["string", "null"] }
+        scheduleVersion: { type: string }
+        importerVersion: { type: string }
+        discoveredContracts:
+          type: array
+          items: { type: string }
+        acceptedContracts:
+          type: array
+          items: { type: string }
+        missingScheduledContracts:
+          type: array
+          items: { type: string }
+        eligibleTradingDateCount: { type: number, minimum: 0 }
+        ineligibleTradingDateCount: { type: number, minimum: 0 }
+        mergedFileCount: { type: number, minimum: 0 }
+        filesMergedPerContract:
+          type: array
+          items:
+            type: object
+            properties:
+              contractSymbol: { type: string }
+              fragmentCount: { type: number, minimum: 1 }
+            required: [contractSymbol, fragmentCount]
+        rejectedFiles:
+          type: array
+          items:
+            type: object
+            properties:
+              filename: { type: string }
+              reason: { type: string }
+            required: [filename, reason]
+        fullRangeReady: { type: boolean }
         message: { type: ["string", "null"] }
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
-      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, message, error, updatedAt]
+      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
     HistoricalEmaComparisonCandidate:
       type: object
       properties:
