@@ -1,0 +1,103 @@
+Current problem:
+The input can display a date such as 08/26/2026 while the open calendar displays September 2026. September is outside indexed coverage, so every visible date appears disabled. The visible calendar month must always open on the currently selected valid date.
+
+Files to inspect first:
+- artifacts/levelstory/src/components/historical-date-picker.tsx
+- artifacts/levelstory/src/components/ui/calendar.tsx
+- artifacts/levelstory/src/lib/historical-date-picker.ts
+- artifacts/levelstory/src/lib/historical-date.ts
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/tests/historical-date-picker.test.ts
+- Historical index status API schema and implementation supplying eligibleTradingDates and ineligibleDates
+
+Required fixes:
+
+1. Synchronize the displayed month
+
+When the popover opens—whether through the calendar icon, input focus, keyboard interaction, or another supported trigger—set the displayed calendar month using this priority:
+
+- The currently parsed valid input/value date.
+- The last valid eligible date.
+- The latest eligible indexed date.
+- The indexed coverage end date.
+- Today only if none of the above exists.
+
+If the input displays 08/26/2026, opening the calendar must display August 2026 with August 26 selected.
+
+Do not depend exclusively on the input’s onFocus handler. The calendar icon currently prevents input focus, so synchronize the month inside the shared popover-open path.
+
+Also synchronize displayMonth when the controlled value or historical metadata changes while the popover is closed. Do not unexpectedly move the month while a user is actively browsing another month in an open calendar.
+
+Clamp the displayed month to the authoritative indexed minimum and maximum months.
+
+2. Correct the month selector
+
+The month selector must contain exactly 12 unique calendar months: January through December.
+
+Do not build the month selector by rendering every month in the entire five-year coverage period with month-only labels. That creates repeated January, February, and other choices.
+
+The month and year selectors must operate independently:
+
+- Changing month preserves the selected year when that month is inside coverage.
+- Changing year preserves the selected month when possible.
+- If a month/year combination is outside coverage, clamp to the nearest covered month.
+- The year selector should contain only covered years.
+
+3. Preserve authoritative eligibility
+
+Continue using historicalIndex.eligibleTradingDates and historicalIndex.ineligibleDates.
+
+- Dates outside indexed coverage must be disabled.
+- Weekends, holidays, dates unavailable for the scheduled contract, and dates with insufficient coverage must remain disabled.
+- A disabled date must expose its exact reason through its tooltip/title and accessible label.
+- Previous and Next must move to the nearest eligible date, never merely the previous or next calendar day.
+- Latest must choose the latest eligible trading date, not simply indexedEndDate.
+- Today must remain disabled unless today is an eligible indexed date.
+- Do not silently replace an invalid controlled value.
+
+4. Improve the visible state
+
+- The selected eligible date must be visibly selected.
+- Do not visually emphasize “today” when it is outside indexed coverage in a way that makes it appear selectable.
+- Keep the popover approximately 400px wide, responsive on small screens, and free of unused blank space.
+- Keep the compact two-column footer controls.
+- Retain keyboard Escape handling and focus restoration.
+- The separate month/year controls and calendar navigation arrows must not overlap.
+
+5. Add real component interaction tests
+
+Do not rely only on source-code regex assertions. Add focused component tests proving:
+
+- Clicking the calendar icon while the input contains 08/26/2026 opens August 2026.
+- Focusing the input produces the same result.
+- A controlled value update while closed changes the month shown at the next opening.
+- Eligible-date metadata arriving after mount selects the correct display month without silently changing the requested value.
+- Browsing to another month while the popover is open is not immediately reset.
+- The month selector contains exactly 12 unique month options.
+- Changing month preserves year when possible.
+- Changing year preserves month when possible.
+- Out-of-coverage combinations are clamped.
+- The selected date is displayed and highlighted.
+- Previous and Next choose the nearest eligible dates.
+- Weekends and explicitly ineligible dates cannot be selected.
+- The calendar remains within the viewport at a mobile width.
+
+Verification scope:
+Run only focused checks needed for this calendar change:
+
+1. Historical date utility tests.
+2. Historical date picker component tests.
+3. Visual Review presentation/integration tests directly affected by the picker.
+4. Frontend TypeScript typecheck.
+5. Frontend production build only if required to validate the component.
+6. git diff --check.
+
+Do not run the full historical replay, five-year import, full API suite, or unrelated long-running tests.
+
+Report:
+- Root cause.
+- Files changed.
+- Exact behavior fixed.
+- Tests added.
+- Commands run and pass/fail totals.
+- Any remaining limitations.
