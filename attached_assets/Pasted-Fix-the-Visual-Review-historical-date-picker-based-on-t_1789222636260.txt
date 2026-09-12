@@ -1,0 +1,190 @@
+Fix the Visual Review historical date picker based on the current implementation in:
+
+- artifacts/levelstory/src/components/historical-date-picker.tsx
+- artifacts/levelstory/src/components/ui/calendar.tsx
+- artifacts/levelstory/src/components/ui/popover.tsx
+- artifacts/levelstory/src/lib/historical-date.ts
+- artifacts/levelstory/src/pages/visual-review.tsx
+- Historical index status API schema and route
+
+Do not change trading strategies, candidate generation, replay calculations, historical indexing, or account behavior.
+
+1. Connect authoritative eligible dates
+
+Visual Review currently passes only:
+
+- indexedStartDate
+- indexedEndDate
+
+It does not pass `eligibleDates` or `disabledDateReasons`, so weekends, holidays, incomplete sessions, and unavailable scheduled-contract dates can remain selectable.
+
+Extend the historical index calendar metadata so Visual Review receives:
+
+- `eligibleTradingDates`
+- Ineligible dates and their exact reasons
+- Indexed minimum and maximum dates
+
+A lightweight dedicated calendar-metadata endpoint is acceptable if returning these arrays through the existing status endpoint is undesirable.
+
+Pass the results into `HistoricalDatePicker`:
+
+- `eligibleDates={...}`
+- `disabledDateReasons={...}`
+
+Requirements:
+
+- Only authoritative eligible historical trading dates may be selected.
+- Do not infer eligibility from weekdays alone.
+- Saturday `10/10/2026` must not be accepted.
+- Skip weekends, holidays, missing scheduled contracts, incomplete coverage, and dates outside the committed index.
+- Use canonical `YYYY-MM-DD` comparisons without UTC conversion.
+- Keep previous/next navigation disabled until eligibility metadata is available. Do not fall back to calendar-day navigation.
+
+2. Fix previous and next eligible navigation
+
+The current previous-date logic uses `.find()` on an ascending array, which selects the oldest earlier date.
+
+Change it so:
+
+- Previous selects the nearest eligible date strictly before the current date.
+- Next selects the nearest eligible date strictly after the current date.
+- Disable Previous when no earlier eligible date exists.
+- Disable Next when no later eligible date exists.
+- If the typed date is invalid or ineligible, calculate nearest eligible dates relative to the parsed date when possible.
+- Add separate pure helper functions for previous/next lookup so they can be tested directly.
+
+3. Make the popover compact
+
+The long footer controls currently expand the popover to approximately 700–800px, while the calendar uses only the left portion.
+
+Use a deliberate responsive width:
+
+- Mobile: `w-[calc(100vw-1.5rem)]`
+- Desktop maximum: approximately `380px` or `400px`
+- Never wider than the viewport
+- No large blank area to the right
+- Center the calendar with `mx-auto`
+
+Arrange actions in a compact grid:
+
+- Previous
+- Next
+- Latest
+- Today
+
+Use short visible labels with complete accessible labels:
+
+- Visible: “Previous”
+- `aria-label`: “Previous eligible date”
+
+Allow buttons to wrap or use a two-column grid. Footer controls must never determine an oversized intrinsic popover width.
+
+Keep the popup inside the viewport and position it beneath the complete input field, not relative only to the small calendar-icon button. Use `PopoverAnchor` or an equivalent full-field anchor if necessary.
+
+4. Fix month/year navigation overlap
+
+The calendar navigation is absolutely positioned across the same area used by the month and year dropdowns. This causes the left arrow to overlap “Oct” and the right arrow to overlap “2026.”
+
+Correct the layout so:
+
+- Month and Year are separate readable dropdowns.
+- Their chevrons appear only once.
+- Previous-month and next-month buttons do not overlap either dropdown.
+- Reserve explicit horizontal space for navigation buttons or place them in a separate row.
+- Dropdown text and icons have sufficient padding.
+- The user can directly select any month and year inside indexed coverage.
+- Hide months and years outside indexed coverage.
+
+Apply date-picker-specific class overrides when possible instead of changing every calendar in the application.
+
+5. Correct manual input behavior
+
+When a user types a date:
+
+- Do not commit or reformat it while they are still typing.
+- Validate on Enter or blur.
+- Accept it only if it is in the authoritative eligible-date set.
+- If it is invalid or ineligible, show the exact reason.
+- Restore the last valid date after blur, or provide an explicit correction action.
+- Never leave an invalid date visually highlighted as the active selection.
+- When index metadata arrives, immediately validate the current value.
+- If the existing value is no longer eligible, show a clear message and offer:
+  - Nearest previous eligible date
+  - Nearest next eligible date
+  - Latest indexed date
+
+Do not silently replace the value without informing the user.
+
+6. Improve disabled-date explanations
+
+Use the supplied reason for each disabled date.
+
+Examples:
+
+- Weekend or market holiday
+- Outside indexed coverage
+- Scheduled contract unavailable
+- Insufficient regular-session coverage
+- No candles for scheduled contract
+
+The day tooltip and accessible description must use the exact reason instead of the current generic message.
+
+7. Accessibility
+
+Preserve or add:
+
+- Escape closes the picker and restores the draft.
+- Focus returns to the input after selection.
+- Arrow-key date movement.
+- Enter and Space selection.
+- Page Up/Page Down month navigation.
+- Accessible month/year labels.
+- Accessible previous/next/latest/today labels.
+- No unexpected opening or focus movement when eligibility metadata refreshes.
+
+8. Tests
+
+Add focused tests covering:
+
+1. Saturday cannot be selected.
+2. Holiday/ineligible date cannot be selected.
+3. Exact disabled reason is exposed.
+4. Previous returns the nearest earlier eligible date.
+5. Next returns the nearest later eligible date.
+6. Previous and Next disable at their boundaries.
+7. Navigation does not use calendar days while metadata is unavailable.
+8. Invalid manual input restores the last valid value.
+9. After-coverage input is rejected.
+10. Latest selects the latest eligible date, not merely indexedEndDate if that date is ineligible.
+11. Month and year can be selected directly.
+12. Month/year controls do not overlap navigation arrows.
+13. Popover has a maximum width around 400px.
+14. Footer controls do not expand the popover.
+15. Mobile viewport containment.
+16. New York canonical dates do not shift through UTC conversion.
+17. Focus restoration and Escape behavior.
+
+Verification
+
+Run only:
+
+- Frontend typecheck
+- Focused historical-date and date-picker tests
+- API schema/typecheck only if calendar metadata changes
+- Frontend production build
+- `git diff --check`
+
+Do not run the full API test suite.
+
+Final response
+
+Report:
+
+- Root causes fixed
+- How eligible dates reach Visual Review
+- Previous/next lookup behavior
+- Final popover dimensions
+- Month/year navigation layout
+- Invalid-date behavior
+- Tests run and exact pass counts
+- Remaining limitations

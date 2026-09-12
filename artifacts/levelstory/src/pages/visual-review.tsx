@@ -1440,7 +1440,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex, historicalData }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus; historicalData?: HistoricalImportSummary }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
@@ -1482,6 +1482,12 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           onChange={(value) => update("endDate", value)}
           minDate={historicalIndex?.indexedStartDate ?? null}
           maxDate={historicalIndex?.indexedEndDate ?? null}
+           eligibleDates={historicalData?.eligibleTradingDates}
+           disabledDateReasons={new Map(
+             (historicalData?.ineligibleDates ?? [])
+               .filter((item): item is typeof item & { reason: string } => typeof item.reason === "string")
+               .map((item) => [item.tradingDate, item.reason]),
+           )}
         />
       </Field>
       <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
