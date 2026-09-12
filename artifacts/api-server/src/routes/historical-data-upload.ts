@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { requireRole } from "../middlewares/authMiddleware.js";
@@ -6,6 +7,7 @@ import { requestRateLimit } from "../lib/security.js";
 import {
   newHistoricalObjectPath,
   materializeHistoricalObject,
+  MAX_HISTORICAL_UPLOAD_BYTES,
   signHistoricalObjectUrl,
 } from "../lib/futures/historical-upload-storage.js";
 import {
@@ -13,13 +15,13 @@ import {
   importHistoricalMultiContract,
   type HistoricalIndexSourceFile,
 } from "../lib/futures/multi-contract-replay.js";
+import { getHistoricalCsvFingerprint } from "../lib/futures/historical-csv-import.js";
 import {
   HistoricalImportJobStore,
   type PersistedHistoricalImportFile,
   type PersistedHistoricalImportJob,
 } from "../lib/futures/historical-import-job-store.js";
 
-const MAX_HISTORICAL_UPLOAD_BYTES = 512 * 1024 * 1024;
 const filenameSchema = z.string().min(1).max(255).regex(/^[A-Za-z0-9._-]+$/);
 const uploadMetadataSchema = z.object({
   originalFilename: filenameSchema,
@@ -30,6 +32,7 @@ const importRequestSchema = z.object({
   files: z.array(z.object({
     objectPath: z.string(),
     originalFilename: filenameSchema,
+    sizeBytes: z.number().int().positive().max(MAX_HISTORICAL_UPLOAD_BYTES).optional(),
   })).min(1).max(100),
 });
 
@@ -41,7 +44,18 @@ const router: IRouter = Router();
 
 const importJobStore = new HistoricalImportJobStore();
 const runningJobs = new Set<string>();
+const jobControllers = new Map<string, AbortController>();
+const ACTIVE_IMPORT_STATES = [
+  "queued",
+  "materializing",
+  "validating",
+  "indexing",
+  "aggregating",
+  "reconciling",
+  "committing",
+] as const;
 
+const recoveredJobIds: string[] = [];
 for (const job of importJobStore.listActive()) {
   importJobStore.update(job.jobId, {
     state: "queued",
@@ -50,6 +64,7 @@ for (const job of importJobStore.listActive()) {
     currentTradingDate: null,
     error: "Recovered after API restart; queued work will resume.",
   });
+  recoveredJobIds.push(job.jobId);
 }
 
 function jobResponse(job: PersistedHistoricalImportJob): PersistedHistoricalImportJob {
@@ -61,7 +76,7 @@ function getJob(jobId: string): PersistedHistoricalImportJob | null {
 }
 
 function updateJob(jobId: string, patch: Partial<PersistedHistoricalImportJob>): PersistedHistoricalImportJob {
-  return importJobStore.update(jobId, patch);
+  return importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, patch) ?? getJob(jobId)!;
 }
 
 async function runImportJob(jobId: string): Promise<void> {
@@ -72,11 +87,17 @@ async function runImportJob(jobId: string): Promise<void> {
     runningJobs.delete(jobId);
     return;
   }
-  updateJob(jobId, {
+  const controller = new AbortController();
+  jobControllers.set(jobId, controller);
+  if (!importJobStore.updateIfState(jobId, ["queued"], {
     state: "materializing",
     startedAt: initial.startedAt ?? new Date().toISOString(),
     error: null,
-  });
+  })) {
+    runningJobs.delete(jobId);
+    jobControllers.delete(jobId);
+    return;
+  }
   const materialized: HistoricalIndexSourceFile[] = [];
   try {
     const job = getJob(jobId)!;
@@ -88,7 +109,12 @@ async function runImportJob(jobId: string): Promise<void> {
         progress: Math.round((fileIndex / Math.max(1, job.files.length)) * 20),
       });
       if (getJob(jobId)?.state === "cancelled") throw new Error("Historical import was cancelled.");
-      const stored = await materializeHistoricalObject(file.objectPath, file.originalFilename);
+      const reused = await reusableMaterializedFile(file);
+      const stored = reused ?? await materializeHistoricalObject(
+        file.objectPath,
+        file.originalFilename,
+        { expectedSizeBytes: file.declaredSizeBytes },
+      );
       materialized.push({
         ...stored,
         sizeBytes: stored.sizeBytes,
@@ -103,6 +129,7 @@ async function runImportJob(jobId: string): Promise<void> {
             expectedCompression: stored.expectedCompression,
             contentFingerprint: stored.contentFingerprint,
             sizeBytes: stored.sizeBytes,
+            declaredSizeBytes: candidate.declaredSizeBytes,
             state: "materialized" as const,
           }
         : candidate);
@@ -113,12 +140,12 @@ async function runImportJob(jobId: string): Promise<void> {
         progress: Math.round(((fileIndex + 1) / Math.max(1, job.files.length)) * 20),
       });
     }
-    if (getJob(jobId)?.state === "cancelled") throw new Error("Historical import was cancelled.");
+      if (controller.signal.aborted || getJob(jobId)?.state === "cancelled") throw new Error("Historical import was cancelled.");
     updateJob(jobId, { state: "validating", phaseProgress: 0, progress: 25 });
     const imported = await importHistoricalMultiContract({
       sources: materialized,
       onProgress: (progress) => {
-        if (getJob(jobId)?.state === "cancelled") throw new Error("Historical import was cancelled.");
+        if (controller.signal.aborted || getJob(jobId)?.state === "cancelled") return;
         updateJob(jobId, {
           state: progress.phase === "aggregating" ? "aggregating" : "indexing",
           progress: Math.max(25, Math.min(90, progress.percent)),
@@ -128,7 +155,11 @@ async function runImportJob(jobId: string): Promise<void> {
           rejectedRows: progress.rejectedRows,
         });
       },
+      signal: controller.signal,
     });
+    if (controller.signal.aborted || getJob(jobId)?.state === "cancelled") {
+      throw new Error("Historical import was cancelled.");
+    }
     updateJob(jobId, {
       state: "reconciling",
       phaseProgress: 75,
@@ -137,7 +168,7 @@ async function runImportJob(jobId: string): Promise<void> {
       indexKey: imported.summary.indexKey,
     });
     const completedAt = new Date().toISOString();
-    updateJob(jobId, {
+    const completed = importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
       state: imported.summary.indexingState === "ready" ? "ready" : "failed",
       progress: imported.summary.indexingState === "ready" ? 100 : 0,
       phaseProgress: imported.summary.indexingState === "ready" ? 100 : 0,
@@ -145,17 +176,51 @@ async function runImportJob(jobId: string): Promise<void> {
       currentFilename: null,
       error: imported.summary.indexingState === "ready" ? null : "Historical index did not become ready.",
     });
+    if (!completed) return;
   } catch (error) {
     const completedAt = new Date().toISOString();
     const cancelled = getJob(jobId)?.state === "cancelled" || (error instanceof Error && error.message === "Historical import was cancelled.");
-    updateJob(jobId, {
+    const current = getJob(jobId);
+    if (!current || ["ready", "failed", "cancelled"].includes(current.state)) {
+      jobControllers.delete(jobId);
+      runningJobs.delete(jobId);
+      return;
+    }
+    importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
       state: cancelled ? "cancelled" : "failed",
       error: cancelled ? "Import cancelled; the previous ready historical library was preserved." : error instanceof Error ? error.message : "Historical import failed.",
       completedAt,
       progress: cancelled ? 0 : 0,
     });
   } finally {
+    jobControllers.delete(jobId);
     runningJobs.delete(jobId);
+  }
+}
+
+for (const jobId of recoveredJobIds) {
+  queueMicrotask(() => { void runImportJob(jobId); });
+}
+
+async function reusableMaterializedFile(
+  file: PersistedHistoricalImportFile,
+): Promise<Awaited<ReturnType<typeof materializeHistoricalObject>> | null> {
+  if (!file.materializedPath || file.sizeBytes === null || file.sizeBytes === undefined || !file.contentFingerprint) return null;
+  try {
+    const fileStats = await stat(file.materializedPath);
+    if (fileStats.size !== file.sizeBytes) return null;
+    const fingerprint = await getHistoricalCsvFingerprint(file.materializedPath);
+    if (fingerprint !== file.contentFingerprint) return null;
+    return {
+      path: file.materializedPath,
+      objectPath: file.objectPath,
+      originalFilename: file.originalFilename,
+      expectedCompression: file.expectedCompression ?? (file.originalFilename.toLowerCase().endsWith(".zst") ? "zstd" : "none"),
+      contentFingerprint: fingerprint,
+      sizeBytes: fileStats.size,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -239,6 +304,9 @@ router.post(
       status: null,
       indexKey: null,
       stagingIndexPath: null,
+      leaseOwner: null,
+      leaseUntil: null,
+      heartbeatAt: null,
     };
     importJobStore.create(job);
     void runImportJob(job.jobId);
@@ -263,11 +331,16 @@ router.post("/historical-data/import/:jobId/cancel", requireRole("reviewer"), as
     res.status(409).json({ error: `Historical import is already ${job.state}.` });
     return;
   }
-  const cancelled = updateJob(jobId, {
+  const cancelled = importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
     state: "cancelled",
     completedAt: new Date().toISOString(),
     error: "Cancellation requested; active work will stop at the next safe checkpoint.",
   });
+  jobControllers.get(jobId)?.abort();
+  if (!cancelled) {
+    res.status(409).json({ error: `Historical import is already ${getJob(jobId)?.state ?? "finished"}.` });
+    return;
+  }
   res.json(jobResponse(cancelled));
 });
 
@@ -278,8 +351,6 @@ router.get("/historical-data/import/:jobId", requireRole("reviewer"), async (req
     res.status(404).json({ error: "Historical import job was not found in durable job storage." });
     return;
   }
-  if (job.state === "queued" && !runningJobs.has(jobId)) void runImportJob(jobId);
-  job = getJob(jobId) ?? job;
   res.json(jobResponse(job));
 });
 

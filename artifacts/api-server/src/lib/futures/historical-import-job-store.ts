@@ -21,6 +21,7 @@ export type PersistedHistoricalImportFile = {
   expectedCompression?: "none" | "zstd";
   contentFingerprint?: string | null;
   sizeBytes?: number | null;
+  declaredSizeBytes?: number | null;
   state?: "queued" | "materialized" | "accepted" | "rejected" | "failed";
   detectedContracts?: string[];
   rowsProcessed?: number;
@@ -50,9 +51,13 @@ export type PersistedHistoricalImportJob = {
   status: unknown | null;
   indexKey: string | null;
   stagingIndexPath: string | null;
+  leaseOwner: string | null;
+  leaseUntil: string | null;
+  heartbeatAt: string | null;
 };
 
 const defaultPath = join(process.cwd(), ".cache", "historical-import-jobs.sqlite");
+export const HISTORICAL_IMPORT_JOB_SCHEMA_VERSION = 2 as const;
 
 export class HistoricalImportJobStore {
   private readonly database: DatabaseSync;
@@ -60,6 +65,10 @@ export class HistoricalImportJobStore {
   constructor(path = defaultPath) {
     mkdirSync(dirname(path), { recursive: true });
     this.database = new DatabaseSync(path);
+    const existingVersion = Number((this.database.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version ?? 0);
+    if (existingVersion > HISTORICAL_IMPORT_JOB_SCHEMA_VERSION) {
+      throw new Error(`Historical import job schema ${existingVersion} is newer than supported schema ${HISTORICAL_IMPORT_JOB_SCHEMA_VERSION}.`);
+    }
     this.database.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = FULL;
@@ -82,11 +91,19 @@ export class HistoricalImportJobStore {
         completed_at TEXT,
         error TEXT,
         status_json TEXT,
-        index_key TEXT,
-        staging_index_path TEXT
+         index_key TEXT,
+         staging_index_path TEXT,
+         lease_owner TEXT,
+         lease_until TEXT,
+         heartbeat_at TEXT
       );
       CREATE INDEX IF NOT EXISTS import_jobs_state ON import_jobs(state, updated_at);
     `);
+    const columns = new Set((this.database.prepare("PRAGMA table_info(import_jobs)").all() as Array<{ name: string }>).map((column) => column.name));
+    for (const column of ["lease_owner", "lease_until", "heartbeat_at"]) {
+      if (!columns.has(column)) this.database.exec(`ALTER TABLE import_jobs ADD COLUMN ${column} TEXT`);
+    }
+    this.database.exec(`PRAGMA user_version = ${HISTORICAL_IMPORT_JOB_SCHEMA_VERSION}`);
   }
 
   create(job: PersistedHistoricalImportJob): void {
@@ -95,8 +112,9 @@ export class HistoricalImportJobStore {
       (job_id, state, files_json, materialized_file_count, current_filename,
        current_contract, current_trading_date, progress, phase_progress,
        rows_processed, accepted_rows, rejected_rows, created_at, started_at,
-       updated_at, completed_at, error, status_json, index_key, staging_index_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       updated_at, completed_at, error, status_json, index_key, staging_index_path,
+       lease_owner, lease_until, heartbeat_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       job.jobId,
       job.state,
@@ -118,6 +136,9 @@ export class HistoricalImportJobStore {
       job.status === null ? null : JSON.stringify(job.status),
       job.indexKey,
       job.stagingIndexPath,
+      job.leaseOwner,
+      job.leaseUntil,
+      job.heartbeatAt,
     );
   }
 
@@ -130,6 +151,33 @@ export class HistoricalImportJobStore {
     const current = this.get(jobId);
     if (!current) throw new Error(`Historical import job ${jobId} was not found.`);
     const next = { ...current, ...patch, updatedAt: patch.updatedAt ?? new Date().toISOString() };
+    this.persist(next, jobId);
+    return next;
+  }
+
+  updateIfState(
+    jobId: string,
+    expectedStates: readonly HistoricalImportPhase[],
+    patch: Partial<PersistedHistoricalImportJob>,
+  ): PersistedHistoricalImportJob | null {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.get(jobId);
+      if (!current || !expectedStates.includes(current.state)) {
+        this.database.exec("ROLLBACK");
+        return null;
+      }
+      const next = { ...current, ...patch, updatedAt: patch.updatedAt ?? new Date().toISOString() };
+      this.persist(next, jobId);
+      this.database.exec("COMMIT");
+      return next;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private persist(next: PersistedHistoricalImportJob, jobId: string): void {
     this.database.prepare(`
       UPDATE import_jobs SET
         state = ?, files_json = ?, materialized_file_count = ?, current_filename = ?,
@@ -137,6 +185,7 @@ export class HistoricalImportJobStore {
         rows_processed = ?, accepted_rows = ?, rejected_rows = ?, created_at = ?,
         started_at = ?, updated_at = ?, completed_at = ?, error = ?, status_json = ?,
         index_key = ?, staging_index_path = ?
+        , lease_owner = ?, lease_until = ?, heartbeat_at = ?
       WHERE job_id = ?
     `).run(
       next.state,
@@ -158,9 +207,11 @@ export class HistoricalImportJobStore {
       next.status === null ? null : JSON.stringify(next.status),
       next.indexKey,
       next.stagingIndexPath,
+      next.leaseOwner,
+      next.leaseUntil,
+      next.heartbeatAt,
       jobId,
     );
-    return next;
   }
 
   listActive(): PersistedHistoricalImportJob[] {
@@ -197,6 +248,9 @@ type JobRow = {
   status_json: string | null;
   index_key: string | null;
   staging_index_path: string | null;
+  lease_owner: string | null;
+  lease_until: string | null;
+  heartbeat_at: string | null;
 };
 
 function rowToJob(row: JobRow): PersistedHistoricalImportJob {
@@ -221,5 +275,8 @@ function rowToJob(row: JobRow): PersistedHistoricalImportJob {
     status: row.status_json ? JSON.parse(row.status_json) : null,
     indexKey: row.index_key,
     stagingIndexPath: row.staging_index_path,
+    leaseOwner: row.lease_owner,
+    leaseUntil: row.lease_until,
+    heartbeatAt: row.heartbeat_at,
   };
 }

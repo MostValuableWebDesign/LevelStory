@@ -5,8 +5,8 @@ import type { HistoricalCsvImportSummary, HistoricalCsvImport } from "./historic
 import type { NormalizedCandle } from "./market-data-provider.js";
 import { tradingDateForTimestamp, type FuturesSessionCalendar } from "./session-calendar.js";
 
-export const HISTORICAL_INDEX_SCHEMA_VERSION = 3 as const;
-export const HISTORICAL_INDEX_MANIFEST_VERSION = 1 as const;
+export const HISTORICAL_INDEX_SCHEMA_VERSION = 4 as const;
+export const HISTORICAL_INDEX_MANIFEST_VERSION = 2 as const;
 
 export type HistoricalIndexMetadata = {
   indexKey: string;
@@ -93,6 +93,12 @@ export class HistoricalIndexStore {
   private temporaryPath: string | null = null;
 
   private initialize(): void {
+    const existingVersion = Number((this.database.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version ?? 0);
+    if (existingVersion > HISTORICAL_INDEX_SCHEMA_VERSION) {
+      throw new Error(
+        `Historical index schema ${existingVersion} is newer than supported schema ${HISTORICAL_INDEX_SCHEMA_VERSION}; regeneration is required.`,
+      );
+    }
     this.database.exec(`
       PRAGMA journal_mode = DELETE;
       PRAGMA synchronous = FULL;
@@ -181,6 +187,9 @@ export class HistoricalIndexStore {
     const manifestColumns = this.database.prepare("PRAGMA table_info(index_manifest_files)").all() as Array<{ name: string }>;
     if (!manifestColumns.some((column) => column.name === "detected_contracts_json")) {
       this.database.exec("ALTER TABLE index_manifest_files ADD COLUMN detected_contracts_json TEXT");
+    }
+    if (existingVersion > 0 && existingVersion < HISTORICAL_INDEX_SCHEMA_VERSION) {
+      this.database.exec("DELETE FROM index_metadata; DELETE FROM index_manifest; DELETE FROM index_manifest_files; DELETE FROM source_files; DELETE FROM candle_partitions; DELETE FROM candles;");
     }
     this.database.exec(`PRAGMA user_version = ${HISTORICAL_INDEX_SCHEMA_VERSION}`);
   }
@@ -282,6 +291,8 @@ export class HistoricalIndexStore {
              importer_version, schedule_version, session_calendar_version, state,
              summary_json, indexed_at, committed_at
       FROM index_manifest
+      WHERE state = 'committed'
+      ORDER BY committed_at DESC
       LIMIT 1
     `).get() as {
       index_key: string;
@@ -406,13 +417,6 @@ export class HistoricalIndexStore {
     timeframe: Timeframe,
     calendar: FuturesSessionCalendar,
   ): void {
-    const partitions = new Map<string, NormalizedCandle[]>();
-    for (const candle of candles) {
-      const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
-      const partition = partitions.get(tradingDate) ?? [];
-      partition.push(candle);
-      partitions.set(tradingDate, partition);
-    }
     const partitionStatement = this.database.prepare(`
       INSERT OR REPLACE INTO candle_partitions
       (contract_symbol, trading_date, timeframe, candle_count)
@@ -424,12 +428,23 @@ export class HistoricalIndexStore {
        volume, bid, ask, bid_size, ask_size, is_complete, quality_codes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const [tradingDate, partition] of partitions) {
-      partitionStatement.run(contractSymbol, tradingDate, timeframe, partition.length);
+    let currentDate: string | null = null;
+    let partition: NormalizedCandle[] = [];
+    const flush = (): void => {
+      if (!currentDate || !partition.length) return;
+      partitionStatement.run(contractSymbol, currentDate, timeframe, partition.length);
+      this.database.prepare(
+        "DELETE FROM candles WHERE contract_symbol = ? AND trading_date = ? AND timeframe = ?",
+      ).run(contractSymbol, currentDate, timeframe);
       for (const candle of partition) {
+        if (candle.contractSymbol !== contractSymbol) {
+          throw new Error(
+            `Historical index partition contract mismatch: partition=${contractSymbol}, candle=${candle.contractSymbol}.`,
+          );
+        }
         candleStatement.run(
           contractSymbol,
-          tradingDate,
+          currentDate,
           timeframe,
           candle.openTime,
           candle.closeTime,
@@ -446,7 +461,25 @@ export class HistoricalIndexStore {
           JSON.stringify(candle.quality.codes),
         );
       }
+      partition = [];
+    };
+    for (const candle of candles) {
+      if (candle.contractSymbol !== contractSymbol) {
+        throw new Error(
+          `Historical index partition contract mismatch: partition=${contractSymbol}, candle=${candle.contractSymbol}.`,
+        );
+      }
+      const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+      if (currentDate && tradingDate < currentDate) {
+        throw new Error(`Historical candles for ${contractSymbol} are not ordered by trading date.`);
+      }
+      if (currentDate !== tradingDate) {
+        flush();
+        currentDate = tradingDate;
+      }
+      partition.push(candle);
     }
+    flush();
   }
 
   getCandles(contractSymbol: string, tradingDate: string, timeframe: Timeframe): NormalizedCandle[] {

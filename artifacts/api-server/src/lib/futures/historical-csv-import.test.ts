@@ -9,6 +9,7 @@ import {
   getHistoricalCsvFingerprint,
   historicalImportToReplayDataset,
   importHistoricalCsv,
+  importHistoricalCsvBatch,
   mergeHistoricalCsvImports,
 } from "./historical-csv-import.js";
 import { newYorkTimeToUtc, tradingDateForTimestamp } from "./session-calendar.js";
@@ -24,6 +25,28 @@ async function withCsv(rows: string[], callback: (path: string) => Promise<void>
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+async function withGenericCsv(
+  rows: string[],
+  compressed: boolean,
+  callback: (path: string) => Promise<void>,
+): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "levelstory-generic-csv-"));
+  const plainPath = join(directory, "generic-databento.csv");
+  const content = ["ts_event,rtype,publisher_id,instrument_id,open,high,low,close,volume,symbol", ...rows].join("\n");
+  const path = compressed ? `${plainPath}.zst` : plainPath;
+  await writeFile(path, compressed ? zstdCompressSync(content) : content);
+  try {
+    await callback(path);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function genericRow(timestamp: number, symbol: string, index: number, close = 6800 + index + 0.5): string {
+  const price = 6800 + index;
+  return `${new Date(timestamp).toISOString()},33,1,42003239,${price},${price + 1},${price - 1},${close},${100 + index},${symbol}`;
 }
 
 function row(timestamp: number, index: number): string {
@@ -334,4 +357,68 @@ test("rejects a Databento filename and internal symbol mismatch", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("demultiplexes interleaved outright MES symbols in one streaming pass", async () => {
+  const start = Date.parse("2026-08-26T13:30:00.000Z");
+  await withGenericCsv([
+    genericRow(start, "MESH6", 0),
+    genericRow(start, "MESM6", 10),
+    genericRow(start + 60_000, "MESH6", 1),
+    genericRow(start + 60_000, "MESM6", 11),
+  ], false, async (path) => {
+    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    assert.deepEqual([...batch.imports.keys()], ["MESH6", "MESM6"]);
+    assert.equal(batch.imports.get("MESH6")?.summary.validRows, 2);
+    assert.equal(batch.imports.get("MESM6")?.summary.validRows, 2);
+    assert.equal(batch.rejectedRows.length, 0);
+  });
+});
+
+test("keeps duplicate and conflict diagnostics at contract/date scope", async () => {
+  const first = Date.parse("2026-08-26T13:30:00.000Z");
+  const second = Date.parse("2026-08-27T13:30:00.000Z");
+  await withGenericCsv([
+    genericRow(first, "MESH6", 0),
+    genericRow(first, "MESH6", 0),
+    genericRow(first, "MESH6", 0, 6800.75),
+    genericRow(second, "MESH6", 1),
+    genericRow(first, "MESM6", 10),
+    genericRow(second, "MESM6", 11),
+  ], false, async (path) => {
+    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    const mesh = batch.imports.get("MESH6")!;
+    const mesm = batch.imports.get("MESM6")!;
+    assert.equal(mesh.summary.duplicateRowsRemoved, 1);
+    assert.equal(mesh.summary.untrustedTradingDates?.["2026-08-26"]?.includes("CONFLICTING_DUPLICATE_TIMESTAMP"), true);
+    assert.equal(mesh.summary.untrustedTradingDates?.["2026-08-27"], undefined);
+    assert.equal(mesm.summary.rejectedRows, 0);
+  });
+});
+
+test("demultiplexes compressed generic Databento files without rereading per symbol", async () => {
+  const start = Date.parse("2026-08-26T13:30:00.000Z");
+  await withGenericCsv([
+    genericRow(start, "MESH6", 0),
+    genericRow(start, "MESM6", 10),
+  ], true, async (path) => {
+    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    assert.equal(batch.imports.size, 2);
+    assert.equal(batch.rowsRead, 2);
+    assert.equal(batch.flushCount, 1);
+  });
+});
+
+test("does not let one contract's malformed row invalidate another contract", async () => {
+  const start = Date.parse("2026-08-26T13:30:00.000Z");
+  await withGenericCsv([
+    genericRow(start, "MESH6", 0).replace(",6801,6799,", ",6799,6801,"),
+    genericRow(start, "MESM6", 10),
+  ], false, async (path) => {
+    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    assert.equal(batch.imports.get("MESH6")?.summary.validRows, 0);
+    assert.equal(batch.imports.get("MESH6")?.summary.rejectedRows, 1);
+    assert.equal(batch.imports.get("MESM6")?.summary.validRows, 1);
+    assert.equal(batch.imports.get("MESM6")?.summary.rejectedRows, 0);
+  });
 });

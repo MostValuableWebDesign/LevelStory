@@ -1,9 +1,11 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir, stat, unlink } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { promisify } from "node:util";
 import { basename, join } from "node:path";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
 import {
   getFuturesContractSpecification,
   type FuturesContractSpecification,
@@ -38,7 +40,7 @@ const execFileAsync = promisify(execFile);
 export const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
 export const MULTI_SYMBOL_SOURCE = "__MULTI_SYMBOL_BATCH__" as const;
 export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V3_US_INDEX" as const;
-export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v4" as const;
+export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v5" as const;
 export const MES_SUPPORTED_START_DATE = "2021-09-12" as const;
 export const MES_SUPPORTED_END_DATE = "2026-09-11" as const;
 export const MES_ROLLOVER_SCHEDULE_SOURCES = [
@@ -850,7 +852,9 @@ export function multiContractImportToReplayDataset(
   };
 }
 
-const INDEX_CACHE_PATH = join(process.cwd(), ".cache", "levelstory-multi-contract-index.sqlite");
+const HISTORICAL_DATA_DIR = process.env.LEVELSTORY_HISTORICAL_DATA_DIR?.trim()
+  || join(process.cwd(), ".cache");
+const INDEX_CACHE_PATH = join(HISTORICAL_DATA_DIR, "levelstory-multi-contract-index.sqlite");
 
 type MultiContractIdentity = {
   resolved: Awaited<ReturnType<typeof resolveMultiContractFiles>>;
@@ -1038,17 +1042,15 @@ export function buildMultiContractDateEligibility(
     }
     const availableOnContract = contract.summary.availableTradingDates.includes(tradingDate);
     const regularSessionComplete = contract.summary.completeRegularSessionDates.includes(tradingDate);
-    const hasInvalidSourceData = contract.summary.rejectedRows > 0;
-    const hasDuplicateSourceData = contract.summary.duplicateRowsRemoved > 0;
+    const sourceDataReasons = contract.summary.untrustedTradingDates?.[tradingDate] ?? [];
+    const hasInvalidSourceData = sourceDataReasons.length > 0;
     const status = hasInvalidSourceData
       ? "invalid_or_rejected_source_data"
-      : hasDuplicateSourceData
-        ? "duplicate_or_overlapping_active_contract_data"
-        : !availableOnContract
-          ? "no_scheduled_contract_candles"
-          : !regularSessionComplete
-            ? "insufficient_rth_coverage"
-            : "eligible";
+      : !availableOnContract
+        ? "no_scheduled_contract_candles"
+        : !regularSessionComplete
+          ? "insufficient_rth_coverage"
+          : "eligible";
     const coverageStatus = status;
     result.push({
       tradingDate,
@@ -1061,9 +1063,7 @@ export function buildMultiContractDateEligibility(
         ? null
         : status === "invalid_or_rejected_source_data"
           ? `INVALID_OR_REJECTED_SOURCE_DATA:${scheduledContractSymbol}`
-          : status === "duplicate_or_overlapping_active_contract_data"
-            ? `DUPLICATE_OR_OVERLAPPING_ACTIVE_CONTRACT_DATA:${scheduledContractSymbol}`
-            : status === "no_scheduled_contract_candles"
+          : status === "no_scheduled_contract_candles"
               ? `MISSING_SCHEDULED_CANDLES:${scheduledContractSymbol}`
               : `INSUFFICIENT_REGULAR_SESSION_COVERAGE:${scheduledContractSymbol}`,
        observedInAnyFile: observedDates.has(tradingDate),
@@ -1240,7 +1240,7 @@ async function readPersistedIndex(identity: MultiContractIdentity): Promise<Hist
   }
 }
 
-async function readCommittedIndex(): Promise<{
+async function readCommittedIndex(options: { validateSources?: boolean } = {}): Promise<{
   value: HistoricalMultiContractImport | null;
   error: string | null;
 }> {
@@ -1267,16 +1267,18 @@ async function readCommittedIndex(): Promise<{
       store.close();
       return { value: null, error: "Committed historical index source manifest is missing materialized source paths." };
     }
-    for (const file of manifest.files.filter((candidate) => candidate.status === "accepted" && candidate.materializedPath && candidate.contentFingerprint)) {
-      const fileStats = await stat(file.materializedPath!);
-      if (file.sizeBytes !== null && fileStats.size !== file.sizeBytes) {
-        store.close();
-        return { value: null, error: `Committed source size changed for ${file.filename}; regeneration is required.` };
-      }
-      const fingerprint = await getHistoricalCsvFingerprint(file.materializedPath!);
-      if (fingerprint !== file.contentFingerprint) {
-        store.close();
-        return { value: null, error: `Committed source fingerprint changed for ${file.filename}; regeneration is required.` };
+    if (options.validateSources) {
+      for (const file of manifest.files.filter((candidate) => candidate.status === "accepted" && candidate.materializedPath && candidate.contentFingerprint)) {
+        const fileStats = await stat(file.materializedPath!);
+        if (file.sizeBytes !== null && fileStats.size !== file.sizeBytes) {
+          store.close();
+          return { value: null, error: `Committed source size changed for ${file.filename}; regeneration is required.` };
+        }
+        const fingerprint = await getHistoricalCsvFingerprint(file.materializedPath!);
+        if (fingerprint !== file.contentFingerprint) {
+          store.close();
+          return { value: null, error: `Committed source fingerprint changed for ${file.filename}; regeneration is required.` };
+        }
       }
     }
     const summary = metadata.summary as HistoricalMultiContractImportSummary;
@@ -1305,7 +1307,9 @@ async function readCommittedIndex(): Promise<{
 async function buildMultiContractIndex(
   identity: MultiContractIdentity,
   onProgress?: (progress: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number }) => void,
+  signal?: AbortSignal,
 ): Promise<HistoricalMultiContractImport> {
+  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
   const persisted = await readPersistedIndex(identity);
   if (persisted) {
     updateIndexStatus({
@@ -1329,16 +1333,33 @@ async function buildMultiContractIndex(
   try {
   const importedContracts = new Map<string, HistoricalCsvImport>();
   const fragmentImports = new Map<string, HistoricalCsvImport>();
+  const parsedFragments = new Map<string, HistoricalCsvImport>();
   const fragmentsByContract = new Map<string, Array<{
     file: (typeof identity.resolved.accepted)[number];
     fingerprint: string;
   }>>();
   for (const [index, file] of identity.resolved.accepted.entries()) {
+    if (signal?.aborted) throw new Error("Historical index build was cancelled.");
     if (file.contractSymbol === MULTI_SYMBOL_SOURCE) {
       const batch = await importHistoricalCsvBatch(
         file.path,
         base,
-        { analyzeCoverage: true, aggregations: [5], fastParse: true, contentFingerprint: identity.fingerprints[index] },
+          {
+            analyzeCoverage: true,
+            aggregations: [5],
+            fastParse: true,
+            contentFingerprint: identity.fingerprints[index],
+            onProgress: (progress) => {
+              const fileBase = Math.round((index / Math.max(1, identity.resolved.accepted.length)) * 90);
+              const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
+              const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
+              updateIndexStatus({
+                progress: overall,
+                message: `Indexing ${file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
+              });
+              onProgress?.({ ...progress, percent: overall });
+            },
+          },
       );
       for (const [contractSymbol, imported] of batch.imports.entries()) {
         const fragments = fragmentsByContract.get(contractSymbol) ?? [];
@@ -1347,6 +1368,7 @@ async function buildMultiContractIndex(
           fingerprint: identity.fingerprints[index]!,
         });
         fragmentsByContract.set(contractSymbol, fragments);
+        parsedFragments.set(`${file.filename}::${contractSymbol}`, imported);
         fragmentImports.set(`${file.filename}::${contractSymbol}`, summaryOnlyHistoricalImport(imported));
       }
       continue;
@@ -1360,21 +1382,23 @@ async function buildMultiContractIndex(
     .sort(([first], [second]) => compareMesContractSymbols(first, second))) {
     const importedFragments: HistoricalCsvImport[] = [];
     for (const fragment of fragments) {
-      const imported = await importOneContractForIndex(
-        fragment.file.path,
-        contractSpecificationForMesSymbol(contractSymbol),
-        fragment.fingerprint,
-        (progress) => {
-          const fileBase = Math.round((indexedFragments / Math.max(1, identity.resolved.accepted.length)) * 90);
-          const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
-          const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
-          updateIndexStatus({
-            progress: overall,
-            message: `Indexing ${fragment.file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
-          });
-          onProgress?.({ ...progress, percent: overall });
-        },
-      );
+      if (signal?.aborted) throw new Error("Historical index build was cancelled.");
+      const preParsed = parsedFragments.get(`${fragment.file.filename}::${contractSymbol}`);
+      const imported = preParsed ?? await importOneContractForIndex(
+          fragment.file.path,
+          contractSpecificationForMesSymbol(contractSymbol),
+          fragment.fingerprint,
+          (progress) => {
+            const fileBase = Math.round((indexedFragments / Math.max(1, identity.resolved.accepted.length)) * 90);
+            const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
+            const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
+            updateIndexStatus({
+              progress: overall,
+              message: `Indexing ${fragment.file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
+            });
+            onProgress?.({ ...progress, percent: overall });
+          },
+        );
        fragmentImports.set(
          `${fragment.file.filename}::${contractSymbol}`,
          summaryOnlyHistoricalImport(imported),
@@ -1543,6 +1567,7 @@ async function buildMultiContractIndex(
     committedAt: new Date().toISOString(),
     files: manifestFiles,
   });
+  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
   await stagedStore.commitAtomic();
   const value: HistoricalMultiContractImport = {
     ...valueWithoutStorage,
@@ -1577,12 +1602,42 @@ function summaryOnlyHistoricalImport(imported: HistoricalCsvImport): HistoricalC
   };
 }
 
+async function readWorkerCandleFile(
+  dataPath: string,
+  summary: HistoricalCsvImportSummary,
+  specification: FuturesContractSpecification,
+  fingerprint: string,
+): Promise<HistoricalCsvImport> {
+  const oneMinute: NormalizedCandle[] = [];
+  try {
+    const input = createInterface({ input: createReadStream(dataPath), crlfDelay: Infinity });
+    for await (const line of input) {
+      if (!String(line).trim()) continue;
+      oneMinute.push(JSON.parse(String(line)) as NormalizedCandle);
+    }
+    return mergeHistoricalCsvImports([{
+      summary,
+      contentFingerprint: fingerprint,
+      oneMinute,
+      fiveMinute: [],
+      fifteenMinute: [],
+      oneHour: [],
+      specification,
+      calendar: sessionCalendarForContract(specification),
+    }]);
+  } finally {
+    await unlink(dataPath).catch(() => undefined);
+  }
+}
+
 async function importOneContractForIndex(
   filePath: string,
   specification: FuturesContractSpecification,
   fingerprint: string,
   onProgress?: (progress: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number }) => void,
+  signal?: AbortSignal,
 ): Promise<HistoricalCsvImport> {
+  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
   // The source-module path is used by unit tests, where the worker entry is
   // intentionally not compiled. The deployed bundle always uses the worker.
   if (import.meta.url.endsWith(".ts")) {
@@ -1605,6 +1660,7 @@ async function importOneContractForIndex(
       return;
     }
     let settled = false;
+    const abort = () => finish(() => reject(new Error("Historical index build was cancelled.")));
     const finish = (callback: () => void): void => {
       if (settled) return;
       settled = true;
@@ -1616,6 +1672,7 @@ async function importOneContractForIndex(
       ok?: boolean;
       summary?: HistoricalCsvImportSummary;
       fingerprint?: string;
+      dataPath?: string;
       progress?: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number };
       error?: string;
     }) => {
@@ -1628,18 +1685,19 @@ async function importOneContractForIndex(
           reject(new Error(message.error ?? "Historical CSV indexing failed."));
           return;
         }
-        // The worker returns only summary metadata. Re-read the source in the
-        // parent for the compatibility replay object; no complete candle array
-        // crosses the worker boundary.
-        void importHistoricalCsv(filePath, specification, {
-          analyzeCoverage: true,
-          aggregations: [5],
-          fastParse: true,
-          contentFingerprint: message.fingerprint ?? fingerprint,
-          onProgress,
-        }).then(resolve, reject);
+        if (!message.dataPath) {
+          reject(new Error("Historical index worker did not return its persisted batch path."));
+          return;
+        }
+        void readWorkerCandleFile(
+          message.dataPath,
+          message.summary,
+          specification,
+          message.fingerprint ?? fingerprint,
+        ).then(resolve, reject);
       });
     });
+    signal?.addEventListener("abort", abort, { once: true });
     worker.once("error", (error) => finish(() => reject(error)));
     worker.once("exit", (code) => {
       if (code !== 0) finish(() => reject(new Error(`Historical index worker exited with code ${code}.`)));
@@ -1650,6 +1708,7 @@ async function importOneContractForIndex(
 function startIndexing(
   identity: MultiContractIdentity,
   onProgress?: (progress: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number }) => void,
+  signal?: AbortSignal,
 ): Promise<HistoricalMultiContractImport> {
   if (importPromise && activeIndexKey === identity.indexKey) return importPromise;
   activeIndexKey = identity.indexKey;
@@ -1662,7 +1721,7 @@ function startIndexing(
     message: "Indexing historical MES contract files.",
     error: null,
   });
-  importPromise = buildMultiContractIndex(identity, onProgress)
+  importPromise = buildMultiContractIndex(identity, onProgress, signal)
     .then((value) => {
       cachedImport = { indexKey: identity.indexKey, value };
       return value;
@@ -1689,7 +1748,7 @@ export async function getHistoricalMultiContractIndexStatus(
 ): Promise<MultiContractIndexStatus> {
   try {
     if (!options.sources) {
-      const committed = await readCommittedIndex();
+       const committed = await readCommittedIndex();
       if (committed.value) {
         const value = committed.value;
         updateIndexStatus({
@@ -1714,6 +1773,10 @@ export async function getHistoricalMultiContractIndexStatus(
         });
         return { ...indexStatus };
       }
+      // Ordinary status polling must be metadata-only. Source discovery and
+      // full-byte hashing belong to an explicit import/startup validation,
+      // never to the browser's polling loop.
+      return { ...indexStatus };
     }
     const identity = await resolveMultiContractIdentity(options.sources);
     if (cachedImport?.indexKey === identity.indexKey && indexStatus.state === "ready") return { ...indexStatus };
@@ -1739,7 +1802,7 @@ export async function getReadyHistoricalMultiContractIndex(): Promise<Historical
   if (readyIndexLoad) return readyIndexLoad;
   readyIndexLoad = (async () => {
     try {
-      const committed = await readCommittedIndex();
+       const committed = await readCommittedIndex({ validateSources: true });
       if (!committed.value) return null;
       const persisted = committed.value;
       cachedImport = { indexKey: persisted.summary.indexKey, value: persisted };
@@ -1772,10 +1835,11 @@ export async function importHistoricalMultiContract(
   options: {
     sources?: readonly HistoricalIndexSourceFile[];
     onProgress?: (progress: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number }) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<HistoricalMultiContractImport> {
   if (!options.sources) {
-    const committed = await readCommittedIndex();
+     const committed = await readCommittedIndex({ validateSources: true });
     if (committed.value) {
       cachedImport = { indexKey: committed.value.summary.indexKey, value: committed.value };
       return committed.value;
@@ -1784,5 +1848,5 @@ export async function importHistoricalMultiContract(
   }
   const identity = await resolveMultiContractIdentity(options.sources);
   if (cachedImport?.indexKey === identity.indexKey) return cachedImport.value;
-  return startIndexing(identity, options.onProgress);
+  return startIndexing(identity, options.onProgress, options.signal);
 }

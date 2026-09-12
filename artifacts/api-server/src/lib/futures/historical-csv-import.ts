@@ -73,6 +73,11 @@ export type HistoricalCsvImportSummary = {
   availableTradingDates: string[];
   rejectionReasons: Record<string, number>;
   errors: Array<{ row: number; reason: string }>;
+  /**
+   * Data-quality failures keyed by the exact trading date they can affect.
+   * Aggregate rejectedRows is intentionally not used as a date eligibility gate.
+   */
+  untrustedTradingDates?: Record<string, string[]>;
   aggregationCounts: {
     oneMinute: number;
     fiveMinute: number;
@@ -95,6 +100,8 @@ export type HistoricalCsvImport = {
 export type HistoricalCsvBatchImport = {
   imports: ReadonlyMap<string, HistoricalCsvImport>;
   rejectedRows: Array<{ row: number; symbol: string | null; reason: string }>;
+  rowsRead?: number;
+  flushCount?: number;
 };
 
 export type HistoricalCsvProgress = {
@@ -114,6 +121,66 @@ type ParsedRow = {
   close: number;
   volume: number;
 };
+
+function createSummary(filename: string): HistoricalCsvImportSummary {
+  return {
+    source: "historical_databento",
+    filename,
+    detectedSymbol: null,
+    earliestTimestamp: null,
+    latestTimestamp: null,
+    totalRows: 0,
+    validRows: 0,
+    rejectedRows: 0,
+    duplicateRowsRemoved: 0,
+    missingMinuteGaps: 0,
+    missingGapSegments: 0,
+    unexpectedMissingMinutes: 0,
+    unexpectedOpenSessionMissingMinutes: 0,
+    unexpectedOvernightMissingMinutes: 0,
+    unexpectedRegularSessionMissingMinutes: 0,
+    regularSessionGapSegments: 0,
+    overnightGapSegments: 0,
+    regularSessionMissingMinutes: 0,
+    expectedClosedMarketMinutes: 0,
+    expectedClosedMinutes: 0,
+    weekendHolidayClosedMinutes: 0,
+    earlyCloseMinutes: 0,
+    inactiveContractMinutes: 0,
+    lowLiquidityInactiveMinutes: 0,
+    coverageScope: "full_file",
+    inactiveContractThresholdPercent: 50,
+    inactiveContractDays: 0,
+    missingRegularSessionDates: [],
+    missingOvernightSessionDates: [],
+    completeRegularSessionDates: [],
+    maintenanceGapMinutes: 0,
+    weekendHolidayGapMinutes: 0,
+    earlyCloseDates: [],
+    overnightCoverageObserved: false,
+    regularSessionCandleCount: 0,
+    overnightCandleCount: 0,
+    availableTradingDates: [],
+    rejectionReasons: {},
+    errors: [],
+    untrustedTradingDates: {},
+    aggregationCounts: { oneMinute: 0, fiveMinute: 0, fifteenMinute: 0, oneHour: 0 },
+  };
+}
+
+function markUntrustedDate(
+  summary: HistoricalCsvImportSummary,
+  tradingDate: string | null,
+  reason: string,
+): void {
+  if (!tradingDate) return;
+  const reasons = summary.untrustedTradingDates?.[tradingDate] ?? [];
+  if (!reasons.includes(reason)) reasons.push(reason);
+  summary.untrustedTradingDates = {
+    ...(summary.untrustedTradingDates ?? {}),
+    [tradingDate]: reasons,
+  };
+}
 
 function unsupportedCompression(filePath: string): void {
   if (/\.(?:csv\.(?:gz|zip)|zip)$/i.test(filePath)) {
@@ -195,6 +262,11 @@ function aggregate(
   const interval = intervalMinutes * MINUTE;
   const groups = new Map<number, NormalizedCandle[]>();
   for (const candle of candles) {
+    if (candle.contractSymbol !== specification.fullContractSymbol) {
+      throw new Error(
+        `Historical aggregation contract mismatch: expected ${specification.fullContractSymbol}, got ${candle.contractSymbol}.`,
+      );
+    }
     const bucket = Math.floor(candle.openTime / interval) * interval;
     const group = groups.get(bucket) ?? [];
     group.push(candle);
@@ -583,48 +655,7 @@ export async function importHistoricalCsv(
   unsupportedCompression(filePath);
   const filenameSymbol = historicalCsvFilenameSymbol(filePath);
   const calendar = sessionCalendarForContract(specification);
-  const summary: HistoricalCsvImportSummary = {
-    source: "historical_databento",
-    filename: basename(filePath),
-    detectedSymbol: null,
-    earliestTimestamp: null,
-    latestTimestamp: null,
-    totalRows: 0,
-    validRows: 0,
-    rejectedRows: 0,
-    duplicateRowsRemoved: 0,
-    missingMinuteGaps: 0,
-    missingGapSegments: 0,
-    unexpectedMissingMinutes: 0,
-    unexpectedOpenSessionMissingMinutes: 0,
-    unexpectedOvernightMissingMinutes: 0,
-    unexpectedRegularSessionMissingMinutes: 0,
-    regularSessionGapSegments: 0,
-    overnightGapSegments: 0,
-    regularSessionMissingMinutes: 0,
-    expectedClosedMarketMinutes: 0,
-    expectedClosedMinutes: 0,
-    weekendHolidayClosedMinutes: 0,
-    earlyCloseMinutes: 0,
-    inactiveContractMinutes: 0,
-    lowLiquidityInactiveMinutes: 0,
-    coverageScope: "full_file",
-    inactiveContractThresholdPercent: 50,
-    inactiveContractDays: 0,
-    missingRegularSessionDates: [],
-    missingOvernightSessionDates: [],
-    completeRegularSessionDates: [],
-    maintenanceGapMinutes: 0,
-    weekendHolidayGapMinutes: 0,
-    earlyCloseDates: [],
-    overnightCoverageObserved: false,
-    regularSessionCandleCount: 0,
-    overnightCandleCount: 0,
-    availableTradingDates: [],
-    rejectionReasons: {},
-    errors: [],
-    aggregationCounts: { oneMinute: 0, fiveMinute: 0, fifteenMinute: 0, oneHour: 0 },
-  };
+  const summary = createSummary(basename(filePath));
   const candles: NormalizedCandle[] = [];
   const candleByTimestamp = new Map<number, NormalizedCandle>();
   const tradingDates = new Set<string>();
@@ -653,6 +684,7 @@ export async function importHistoricalCsv(
 
   const compressed = filePath.toLowerCase().endsWith(".zst");
   const fileStream = createReadStream(filePath);
+  const sourceSize = (await stat(filePath)).size;
   const contentHash = createHash("sha256");
   const processLine = (rawLine: string): void => {
     const line = String(rawLine).trim();
@@ -673,7 +705,7 @@ export async function importHistoricalCsv(
         rowsRead: summary.totalRows,
         validRows: summary.validRows,
         rejectedRows: summary.rejectedRows,
-        percent: 0,
+        percent: sourceSize > 0 ? Math.min(99, Math.round((fileStream.bytesRead / sourceSize) * 100)) : 0,
       });
     }
     if (!values || values.length !== headers.length) {
@@ -683,53 +715,60 @@ export async function importHistoricalCsv(
     const record = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
     const timestampValue = record["ts_event"] || record["timestamp"] || record["event_time"] || "";
     const symbol = record["symbol"]?.trim() ?? "";
+    const parsedTimestamp = validIsoTimestamp(timestampValue) ? Date.parse(timestampValue) : null;
+    const reject = (reason: string): void => {
+      reasonFor(summary, row, reason);
+      if (parsedTimestamp !== null) {
+        markUntrustedDate(summary, tradingDateForTimestamp(parsedTimestamp, calendar), reason);
+      }
+    };
     if (!validIsoTimestamp(timestampValue)) {
-      reasonFor(summary, row, "INVALID_ISO_TIMESTAMP");
+      reject("INVALID_ISO_TIMESTAMP");
       return;
     }
     if (symbol.includes("-")) {
-      reasonFor(summary, row, "CALENDAR_SPREAD_REJECTED");
+      reject("CALENDAR_SPREAD_REJECTED");
       return;
     }
     if (!outrightMesSymbol(symbol)) {
-      reasonFor(summary, row, "NON_MES_OUTRIGHT_SYMBOL");
+      reject("NON_MES_OUTRIGHT_SYMBOL");
       return;
     }
     if (options.expectedSymbol && symbol !== options.expectedSymbol) {
       if (options.skipOtherSymbols) return;
-      reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
+       reject("MULTIPLE_OUTRIGHT_SYMBOLS");
       return;
     }
     if (summary.detectedSymbol === null) summary.detectedSymbol = options.expectedSymbol ?? symbol;
     if (filenameSymbol && symbol !== filenameSymbol) {
-      reasonFor(summary, row, "FILENAME_SYMBOL_MISMATCH");
+       reject("FILENAME_SYMBOL_MISMATCH");
       return;
     }
     if (!options.expectedSymbol && symbol !== summary.detectedSymbol) {
-      reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
+       reject("MULTIPLE_OUTRIGHT_SYMBOLS");
       return;
     }
     const numericValues = ["open", "high", "low", "close", "volume"].map((key) => requiredNumber(record[key] ?? ""));
     if (numericValues.some((value) => value === null)) {
-      reasonFor(summary, row, "NON_NUMERIC_OHLCV");
+       reject("NON_NUMERIC_OHLCV");
       return;
     }
     const [open, high, low, close, volume] = numericValues as number[];
     if (high < open || high < close || high < low || low > open || low > close || low > high) {
-      reasonFor(summary, row, "INVALID_OHLC_RELATIONSHIP");
+       reject("INVALID_OHLC_RELATIONSHIP");
       return;
     }
     if (volume < 0) {
-      reasonFor(summary, row, "NEGATIVE_VOLUME");
+       reject("NEGATIVE_VOLUME");
       return;
     }
     const timestamp = Date.parse(timestampValue);
     if (timestamp % MINUTE !== 0) {
-      reasonFor(summary, row, "MISALIGNED_MINUTE_TIMESTAMP");
+       reject("MISALIGNED_MINUTE_TIMESTAMP");
       return;
     }
     if (previousTimestamp !== null && timestamp < previousTimestamp) {
-      reasonFor(summary, row, "OUT_OF_ORDER_TIMESTAMP");
+       reject("OUT_OF_ORDER_TIMESTAMP");
       return;
     }
     const existing = candleByTimestamp.get(timestamp);
@@ -752,7 +791,7 @@ export async function importHistoricalCsv(
         intervalMinutes: 1,
         quality: { valid: true, codes: ["MISSING_BID_ASK"] },
       })) {
-        reasonFor(summary, row, "CONFLICTING_DUPLICATE_TIMESTAMP");
+         reject("CONFLICTING_DUPLICATE_TIMESTAMP");
       } else {
         summary.duplicateRowsRemoved += 1;
       }
@@ -808,9 +847,12 @@ export async function importHistoricalCsv(
   Object.assign(summary, gapReport);
   summary.availableTradingDates = [...tradingDates].sort();
   const aggregationSet = new Set(options.aggregations ?? [5, 15, 60]);
-  const fiveMinute = aggregationSet.has(5) ? aggregate(candles, 5, specification) : [];
-  const fifteenMinute = aggregationSet.has(15) ? aggregate(candles, 15, specification) : [];
-  const oneHour = aggregationSet.has(60) ? aggregate(candles, 60, specification) : [];
+  const resolvedSpecification = summary.detectedSymbol && !options.expectedSymbol
+    ? specificationForDetectedSymbol(specification, summary.detectedSymbol)
+    : specification;
+  const fiveMinute = aggregationSet.has(5) ? aggregate(candles, 5, resolvedSpecification) : [];
+  const fifteenMinute = aggregationSet.has(15) ? aggregate(candles, 15, resolvedSpecification) : [];
+  const oneHour = aggregationSet.has(60) ? aggregate(candles, 60, resolvedSpecification) : [];
   options.onProgress?.({
     phase: "aggregating",
     rowsRead: summary.totalRows,
@@ -831,8 +873,8 @@ export async function importHistoricalCsv(
     fiveMinute,
     fifteenMinute,
     oneHour,
-    specification,
-    calendar,
+    specification: resolvedSpecification,
+    calendar: sessionCalendarForContract(resolvedSpecification),
   };
 }
 
@@ -843,6 +885,7 @@ async function discoverHistoricalCsvSymbols(filePath: string): Promise<{
   unsupportedCompression(filePath);
   const compressed = filePath.toLowerCase().endsWith(".zst");
   const fileStream = createReadStream(filePath);
+  const sourceSize = (await stat(filePath)).size;
   const decompressed = compressed ? fileStream.pipe(createZstdDecompress()) : fileStream;
   const input = createInterface({ input: decompressed, crlfDelay: Infinity });
   let headers: string[] | null = null;
@@ -880,11 +923,76 @@ async function discoverHistoricalCsvSymbols(filePath: string): Promise<{
   return { symbols: [...symbols].sort(), rejectedRows };
 }
 
+type BatchImportState = {
+  summary: HistoricalCsvImportSummary;
+  specification: FuturesContractSpecification;
+  calendar: FuturesSessionCalendar;
+  candles: NormalizedCandle[];
+  candleByTimestamp: Map<number, NormalizedCandle>;
+  tradingDates: Set<string>;
+  previousTimestamp: number | null;
+  fastDateCache: Map<number, string>;
+  fastSessionCache: Map<number, string>;
+};
+
+function specificationForDetectedSymbol(
+  base: FuturesContractSpecification,
+  symbol: string,
+): FuturesContractSpecification {
+  const identity = /^MES([FGHJKMNQUVXZ])(\d{1,2})$/i.exec(symbol);
+  const month = identity
+    ? MONTH_CODE_TO_NUMBER[identity[1]!.toUpperCase() as keyof typeof MONTH_CODE_TO_NUMBER]
+    : undefined;
+  const yearToken = identity?.[2] ?? "";
+  const year = yearToken.length === 1 ? 2020 + Number(yearToken) : 2000 + Number(yearToken);
+  return {
+    ...base,
+    fullContractSymbol: symbol,
+    contractMonth: month ? `${year}-${String(month).padStart(2, "0")}` : base.contractMonth,
+    regularSessionHours: { ...base.regularSessionHours },
+  };
+}
+
+function finalizeBatchState(
+  state: BatchImportState,
+  options: {
+    analyzeCoverage?: boolean;
+    aggregations?: readonly (5 | 15 | 60)[];
+    contentFingerprint: string;
+  },
+): HistoricalCsvImport {
+  const gapReport = options.analyzeCoverage === false
+    ? { ...countSessionAwareGaps([], state.calendar), coverageScope: "full_file" as const }
+    : countSessionAwareGaps(state.candles, state.calendar);
+  Object.assign(state.summary, gapReport);
+  state.summary.availableTradingDates = [...state.tradingDates].sort();
+  const aggregationSet = new Set(options.aggregations ?? [5, 15, 60]);
+  const fiveMinute = aggregationSet.has(5) ? aggregate(state.candles, 5, state.specification) : [];
+  const fifteenMinute = aggregationSet.has(15) ? aggregate(state.candles, 15, state.specification) : [];
+  const oneHour = aggregationSet.has(60) ? aggregate(state.candles, 60, state.specification) : [];
+  state.summary.aggregationCounts = {
+    oneMinute: state.candles.length,
+    fiveMinute: fiveMinute.length,
+    fifteenMinute: fifteenMinute.length,
+    oneHour: oneHour.length,
+  };
+  return {
+    summary: state.summary,
+    contentFingerprint: options.contentFingerprint,
+    oneMinute: state.candles,
+    fiveMinute,
+    fifteenMinute,
+    oneHour,
+    specification: state.specification,
+    calendar: state.calendar,
+  };
+}
+
 /**
- * Reads a Databento batch export twice: once to discover actual outright
- * symbols, then once per symbol so each contract gets independent duplicate,
- * ordering, coverage, and aggregation state. This deliberately avoids ever
- * combining contracts under one replay identity.
+ * Reads a generic Databento batch once and keeps validation state independent
+ * for every discovered outright contract. The per-symbol ordering and
+ * duplicate maps are the important correctness boundary: interleaved symbols
+ * must not poison one another's chronology or partitions.
  */
 export async function importHistoricalCsvBatch(
   filePath: string,
@@ -894,28 +1002,178 @@ export async function importHistoricalCsvBatch(
     aggregations?: readonly (5 | 15 | 60)[];
     fastParse?: boolean;
     contentFingerprint?: string;
+    onProgress?: (progress: HistoricalCsvProgress) => void;
   } = {},
 ): Promise<HistoricalCsvBatchImport> {
-  const discovered = await discoverHistoricalCsvSymbols(filePath);
-  const imports = new Map<string, HistoricalCsvImport>();
-  for (const symbol of discovered.symbols) {
-    const identity = symbol.match(/^MES([FGHJKMNQUVXZ])(\d{1,2})$/i);
-    const imported = await importHistoricalCsv(filePath, {
-      ...specification,
-      fullContractSymbol: symbol,
-      contractMonth: identity
-        ? `${identity[2].length === 1 ? `202${identity[2]}` : `20${identity[2]}`}-${String(
-          MONTH_CODE_TO_NUMBER[identity[1].toUpperCase() as keyof typeof MONTH_CODE_TO_NUMBER],
-        ).padStart(2, "0")}`
-        : specification.contractMonth,
-    }, {
-      ...options,
-      expectedSymbol: symbol,
-      skipOtherSymbols: true,
-    });
-    imports.set(symbol, imported);
+  unsupportedCompression(filePath);
+  const compressed = filePath.toLowerCase().endsWith(".zst");
+  const fileStream = createReadStream(filePath);
+  const sourceSize = (await stat(filePath)).size;
+  const decompressed = compressed ? fileStream.pipe(createZstdDecompress()) : fileStream;
+  const input = createInterface({ input: decompressed, crlfDelay: Infinity });
+  const contentHash = createHash("sha256");
+  fileStream.on("data", (chunk) => contentHash.update(chunk));
+  const states = new Map<string, BatchImportState>();
+  const rejectedRows: Array<{ row: number; symbol: string | null; reason: string }> = [];
+  let headers: string[] | null = null;
+  let rowsRead = 0;
+  const filenameSymbol = historicalCsvFilenameSymbol(filePath);
+
+  const stateFor = (symbol: string): BatchImportState => {
+    const existing = states.get(symbol);
+    if (existing) return existing;
+    const contract = specificationForDetectedSymbol(specification, symbol);
+    const state: BatchImportState = {
+      summary: createSummary(basename(filePath)),
+      specification: contract,
+      calendar: sessionCalendarForContract(contract),
+      candles: [],
+      candleByTimestamp: new Map(),
+      tradingDates: new Set(),
+      previousTimestamp: null,
+      fastDateCache: new Map(),
+      fastSessionCache: new Map(),
+    };
+    state.summary.detectedSymbol = symbol;
+    states.set(symbol, state);
+    return state;
+  };
+
+  const reject = (state: BatchImportState | undefined, row: number, symbol: string | null, reason: string, date?: string | null) => {
+    rejectedRows.push({ row, symbol, reason });
+    if (state) {
+      reasonFor(state.summary, row, reason);
+      markUntrustedDate(state.summary, date ?? null, reason);
+    }
+  };
+
+  for await (const rawLine of input) {
+    const line = String(rawLine).trim();
+    if (!line) continue;
+    const values = parseCsvLine(line);
+    if (!headers) {
+      if (!values) throw new Error("CSV header contains an unterminated quoted field.");
+      headers = values.map((header) => header.toLowerCase());
+      const missing = REQUIRED_HEADERS.filter((header) => !headers!.includes(header));
+      if (missing.length) throw new Error(`CSV is missing required Databento columns: ${missing.join(", ")}.`);
+      continue;
+    }
+    rowsRead += 1;
+    if (rowsRead % 10_000 === 0) {
+      options.onProgress?.({
+        phase: "reading",
+        rowsRead,
+        validRows: [...states.values()].reduce((sum, state) => sum + state.summary.validRows, 0),
+        rejectedRows: rejectedRows.length,
+        percent: sourceSize > 0 ? Math.min(99, Math.round((fileStream.bytesRead / sourceSize) * 100)) : 0,
+      });
+    }
+    const row = rowsRead + 1;
+    const symbolIndex = headers.indexOf("symbol");
+    const rowSymbol = values && symbolIndex >= 0 ? values[symbolIndex]?.trim() || null : null;
+    const symbol = rowSymbol?.toUpperCase() ?? null;
+    const validSymbol = symbol && outrightMesSymbol(symbol) && !symbol.includes("-") ? symbol : null;
+    const state = validSymbol ? stateFor(validSymbol) : undefined;
+    if (state) state.summary.totalRows += 1;
+    if (!values || values.length !== headers.length) {
+      reject(state, row, symbol, "MALFORMED_ROW");
+      continue;
+    }
+    const record = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+    const timestampValue = record["ts_event"] || record["timestamp"] || record["event_time"] || "";
+    const parsedTimestamp = validIsoTimestamp(timestampValue) ? Date.parse(timestampValue) : null;
+    const date = parsedTimestamp === null || !state
+      ? null
+      : tradingDateForTimestamp(parsedTimestamp, state.calendar);
+    if (!parsedTimestamp) {
+      reject(state, row, symbol, "INVALID_ISO_TIMESTAMP");
+      continue;
+    }
+    if (!validSymbol) {
+      reject(undefined, row, symbol, symbol?.includes("-") ? "CALENDAR_SPREAD_REJECTED" : "NON_MES_OUTRIGHT_SYMBOL");
+      continue;
+    }
+    if (!state) {
+      reject(undefined, row, validSymbol, "INTERNAL_SYMBOL_STATE_UNAVAILABLE");
+      continue;
+    }
+    if (filenameSymbol && filenameSymbol !== validSymbol) {
+      reject(state, row, validSymbol, "FILENAME_SYMBOL_MISMATCH", date);
+      continue;
+    }
+    const numericValues = ["open", "high", "low", "close", "volume"].map((key) => requiredNumber(record[key] ?? ""));
+    if (numericValues.some((value) => value === null)) {
+      reject(state, row, validSymbol, "NON_NUMERIC_OHLCV", date);
+      continue;
+    }
+    const [open, high, low, close, volume] = numericValues as number[];
+    if (high < open || high < close || high < low || low > open || low > close || low > high) {
+      reject(state, row, validSymbol, "INVALID_OHLC_RELATIONSHIP", date);
+      continue;
+    }
+    if (volume < 0) {
+      reject(state, row, validSymbol, "NEGATIVE_VOLUME", date);
+      continue;
+    }
+    if (parsedTimestamp % MINUTE !== 0) {
+      reject(state, row, validSymbol, "MISALIGNED_MINUTE_TIMESTAMP", date);
+      continue;
+    }
+    if (state.previousTimestamp !== null && parsedTimestamp < state.previousTimestamp) {
+      reject(state, row, validSymbol, "OUT_OF_ORDER_TIMESTAMP", date);
+      continue;
+    }
+    const candle: NormalizedCandle = {
+      timestamp: parsedTimestamp,
+      openTime: parsedTimestamp,
+      closeTime: parsedTimestamp + MINUTE,
+      open,
+      high,
+      low,
+      close,
+      volume,
+      bid: null,
+      ask: null,
+      bidSize: null,
+      askSize: null,
+      contractSymbol: validSymbol,
+      isComplete: true,
+      intervalMinutes: 1,
+      quality: { valid: true, codes: ["MISSING_BID_ASK"] },
+    };
+    const existing = state.candleByTimestamp.get(parsedTimestamp);
+    if (existing) {
+      if (candleValuesEqual(existing, candle)) {
+        state.summary.duplicateRowsRemoved += 1;
+      } else {
+        reject(state, row, validSymbol, "CONFLICTING_DUPLICATE_TIMESTAMP", date);
+      }
+      continue;
+    }
+    state.previousTimestamp = parsedTimestamp;
+    state.candleByTimestamp.set(parsedTimestamp, candle);
+    state.candles.push(candle);
+    state.summary.validRows += 1;
+    state.summary.earliestTimestamp ??= new Date(parsedTimestamp).toISOString();
+    state.summary.latestTimestamp = new Date(parsedTimestamp).toISOString();
+    if (date && isTradingDate(date, state.calendar)) state.tradingDates.add(date);
+    const session = state.fastSessionCache.get(Math.floor(parsedTimestamp / (60 * MINUTE)))
+      ?? classifyFuturesSession(parsedTimestamp, state.calendar);
+    state.fastSessionCache.set(Math.floor(parsedTimestamp / (60 * MINUTE)), session);
+    if (session === "regular") state.summary.regularSessionCandleCount += 1;
+    else if (overnightOwnerDate(parsedTimestamp, state.calendar)) state.summary.overnightCandleCount += 1;
   }
-  return { imports, rejectedRows: discovered.rejectedRows };
+  if (!headers) throw new Error("CSV file is empty.");
+  const contentFingerprint = options.contentFingerprint ?? contentHash.digest("hex");
+  const imports = new Map<string, HistoricalCsvImport>();
+  for (const [symbol, state] of [...states.entries()].sort(([first], [second]) => first.localeCompare(second))) {
+    imports.set(symbol, finalizeBatchState(state, {
+      analyzeCoverage: options.analyzeCoverage,
+      aggregations: options.aggregations,
+      contentFingerprint,
+    }));
+  }
+  return { imports, rejectedRows, rowsRead, flushCount: Math.max(1, Math.ceil(rowsRead / 10_000)) };
 }
 
 /**
@@ -971,6 +1229,16 @@ export function mergeHistoricalCsvImports(
         .reduce((counts, [reason, count]) => counts.set(reason, (counts.get(reason) ?? 0) + count), new Map<string, number>()),
     ),
     errors: fragments.flatMap((fragment) => fragment.summary.errors).slice(0, MAX_REPORTED_ERRORS),
+    untrustedTradingDates: Object.fromEntries(
+      [...fragments.flatMap((fragment) => Object.entries(fragment.summary.untrustedTradingDates ?? {}))
+        .reduce((dates, [date, reasons]) => {
+          const current = dates.get(date) ?? new Set<string>();
+          for (const reason of reasons) current.add(reason);
+          dates.set(date, current);
+          return dates;
+        }, new Map<string, Set<string>>()).entries()]
+        .map(([date, reasons]) => [date, [...reasons]]),
+    ),
     aggregationCounts: {
       oneMinute: oneMinute.length,
       fiveMinute: fiveMinute.length,
