@@ -86,7 +86,7 @@ function fixtureImport(): HistoricalCsvImport {
   };
 }
 
-test("stores and reloads date/timeframe partitions without duplicating idempotent rows", async () => {
+test("stores and reloads date/timeframe partitions and the committed source manifest", async () => {
   const directory = await mkdtemp("/tmp/levelstory-index-");
   const path = join(directory, "history.sqlite");
   const store = await HistoricalIndexStore.createAtomic(path);
@@ -101,11 +101,42 @@ test("stores and reloads date/timeframe partitions without duplicating idempoten
   });
   store.writeImport(imported, imported.contentFingerprint);
   store.writeImport(imported, imported.contentFingerprint);
+  store.writeManifest({
+    indexKey: "fixture-index",
+    source: "historical_databento_multicontract",
+    rootSymbol: "MES",
+    contentFingerprint: imported.contentFingerprint,
+    importerVersion: "fixture",
+    scheduleVersion: "fixture",
+    sessionCalendarVersion: "fixture",
+    summary: { fixture: true },
+    indexedAt: new Date().toISOString(),
+    committedAt: new Date().toISOString(),
+    files: [{
+      ordinal: 0,
+      filename: "fixture.csv",
+      contractSymbol: "MESU5",
+      objectPath: "uploads/fixture",
+      materializedPath: "/tmp/fixture.csv",
+      expectedCompression: "none",
+      contentFingerprint: imported.contentFingerprint,
+      sizeBytes: 12,
+      status: "accepted",
+      rejectionReason: null,
+    }],
+  });
   assert.equal(store.getPartitionCount(), 2);
   await store.commitAtomic();
 
   const reopened = HistoricalIndexStore.create(path);
   assert.equal(reopened.readMetadata()?.indexKey, "fixture-index");
+  assert.equal(reopened.readManifest()?.files[0]?.contractSymbol, "MESU5");
+  assert.deepEqual(reopened.validateCommittedManifest({
+    indexKey: "fixture-index",
+    contentFingerprint: imported.contentFingerprint,
+    importerVersion: "fixture",
+    scheduleVersion: "fixture",
+  }), []);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 1).map((candle) => candle.close), [100.5]);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 5).map((candle) => candle.close), [100.5]);
   reopened.close();

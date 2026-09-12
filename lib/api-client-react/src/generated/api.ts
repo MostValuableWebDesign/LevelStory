@@ -2307,6 +2307,77 @@ export function useGetHistoricalDataImportStatus<TData = Awaited<ReturnType<type
 
 
 
+export const getCancelHistoricalDataImportUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/historical-data/import/${jobId}/cancel`
+}
+
+/**
+ * @summary Cancel a queued or running historical import
+ */
+export const cancelHistoricalDataImport = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataImportJob> => {
+
+  return customFetch<HistoricalDataImportJob>(getCancelHistoricalDataImportUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelHistoricalDataImportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelHistoricalDataImport>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelHistoricalDataImport>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['cancelHistoricalDataImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelHistoricalDataImport>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  cancelHistoricalDataImport(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelHistoricalDataImportMutationResult = NonNullable<Awaited<ReturnType<typeof cancelHistoricalDataImport>>>
+
+    export type CancelHistoricalDataImportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a queued or running historical import
+ */
+export const useCancelHistoricalDataImport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelHistoricalDataImport>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelHistoricalDataImport>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getCancelHistoricalDataImportMutationOptions(options));
+    }
+
 export const getGetHistoricalEmaComparisonUrl = (params?: GetHistoricalEmaComparisonParams,) => {
   const normalizedParams = new URLSearchParams();
 

@@ -5,6 +5,9 @@ import type { HistoricalCsvImportSummary, HistoricalCsvImport } from "./historic
 import type { NormalizedCandle } from "./market-data-provider.js";
 import { tradingDateForTimestamp, type FuturesSessionCalendar } from "./session-calendar.js";
 
+export const HISTORICAL_INDEX_SCHEMA_VERSION = 3 as const;
+export const HISTORICAL_INDEX_MANIFEST_VERSION = 1 as const;
+
 export type HistoricalIndexMetadata = {
   indexKey: string;
   contentFingerprint: string;
@@ -12,6 +15,36 @@ export type HistoricalIndexMetadata = {
   importerVersion: string;
   scheduleVersion: string;
   indexedAt: string;
+  schemaVersion?: number;
+  sessionCalendarVersion?: string;
+};
+
+export type HistoricalIndexManifestFile = {
+  ordinal: number;
+  filename: string;
+  contractSymbol: string | null;
+  detectedContracts?: string[];
+  objectPath: string | null;
+  materializedPath: string | null;
+  expectedCompression: "none" | "zstd";
+  contentFingerprint: string | null;
+  sizeBytes: number | null;
+  status: "accepted" | "rejected";
+  rejectionReason: string | null;
+};
+
+export type HistoricalIndexManifest = {
+  indexKey: string;
+  source: string;
+  rootSymbol: string;
+  contentFingerprint: string;
+  importerVersion: string;
+  scheduleVersion: string;
+  sessionCalendarVersion: string;
+  summary: unknown;
+  indexedAt: string;
+  committedAt: string;
+  files: readonly HistoricalIndexManifestFile[];
 };
 
 type CandleRow = {
@@ -68,6 +101,37 @@ export class HistoricalIndexStore {
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS index_manifest (
+        index_key TEXT PRIMARY KEY NOT NULL,
+        manifest_version INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        root_symbol TEXT NOT NULL,
+        content_fingerprint TEXT NOT NULL,
+        importer_version TEXT NOT NULL,
+        schedule_version TEXT NOT NULL,
+        session_calendar_version TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state = 'committed'),
+        summary_json TEXT NOT NULL,
+        indexed_at TEXT NOT NULL,
+        committed_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS index_manifest_files (
+        index_key TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        contract_symbol TEXT,
+        detected_contracts_json TEXT,
+        object_path TEXT,
+        materialized_path TEXT,
+        expected_compression TEXT NOT NULL CHECK (expected_compression IN ('none', 'zstd')),
+        content_fingerprint TEXT,
+        size_bytes INTEGER,
+        status TEXT NOT NULL CHECK (status IN ('accepted', 'rejected')),
+        rejection_reason TEXT,
+        PRIMARY KEY (index_key, ordinal),
+        UNIQUE (index_key, filename),
+        FOREIGN KEY (index_key) REFERENCES index_manifest(index_key) ON DELETE CASCADE
+      );
       CREATE TABLE IF NOT EXISTS source_files (
         filename TEXT PRIMARY KEY NOT NULL,
         contract_symbol TEXT NOT NULL,
@@ -114,6 +178,11 @@ export class HistoricalIndexStore {
       CREATE INDEX IF NOT EXISTS candles_by_contract_time
         ON candles (contract_symbol, timeframe, open_time);
     `);
+    const manifestColumns = this.database.prepare("PRAGMA table_info(index_manifest_files)").all() as Array<{ name: string }>;
+    if (!manifestColumns.some((column) => column.name === "detected_contracts_json")) {
+      this.database.exec("ALTER TABLE index_manifest_files ADD COLUMN detected_contracts_json TEXT");
+    }
+    this.database.exec(`PRAGMA user_version = ${HISTORICAL_INDEX_SCHEMA_VERSION}`);
   }
 
   writeMetadata(metadata: HistoricalIndexMetadata): void {
@@ -127,6 +196,8 @@ export class HistoricalIndexStore {
       ["importerVersion", metadata.importerVersion],
       ["scheduleVersion", metadata.scheduleVersion],
       ["indexedAt", metadata.indexedAt],
+      ["schemaVersion", String(metadata.schemaVersion ?? HISTORICAL_INDEX_SCHEMA_VERSION)],
+      ["sessionCalendarVersion", metadata.sessionCalendarVersion ?? "unknown"],
     ];
     for (const [key, value] of entries) statement.run(key, value);
   }
@@ -148,7 +219,150 @@ export class HistoricalIndexStore {
       importerVersion,
       scheduleVersion,
       indexedAt,
+      schemaVersion: Number(values.get("schemaVersion") ?? HISTORICAL_INDEX_SCHEMA_VERSION),
+      sessionCalendarVersion: values.get("sessionCalendarVersion") ?? "unknown",
     };
+  }
+
+  writeManifest(manifest: HistoricalIndexManifest): void {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.prepare(`
+        INSERT OR REPLACE INTO index_manifest
+        (index_key, manifest_version, source, root_symbol, content_fingerprint,
+         importer_version, schedule_version, session_calendar_version, state,
+         summary_json, indexed_at, committed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?, ?)
+      `).run(
+        manifest.indexKey,
+        HISTORICAL_INDEX_MANIFEST_VERSION,
+        manifest.source,
+        manifest.rootSymbol,
+        manifest.contentFingerprint,
+        manifest.importerVersion,
+        manifest.scheduleVersion,
+        manifest.sessionCalendarVersion,
+        JSON.stringify(manifest.summary),
+        manifest.indexedAt,
+        manifest.committedAt,
+      );
+      this.database.prepare("DELETE FROM index_manifest_files WHERE index_key = ?").run(manifest.indexKey);
+      const statement = this.database.prepare(`
+        INSERT INTO index_manifest_files
+        (index_key, ordinal, filename, contract_symbol, detected_contracts_json, object_path, materialized_path,
+         expected_compression, content_fingerprint, size_bytes, status, rejection_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const file of manifest.files) {
+        statement.run(
+          manifest.indexKey,
+          file.ordinal,
+          file.filename,
+          file.contractSymbol,
+          file.detectedContracts ? JSON.stringify(file.detectedContracts) : null,
+          file.objectPath,
+          file.materializedPath,
+          file.expectedCompression,
+          file.contentFingerprint,
+          file.sizeBytes,
+          file.status,
+          file.rejectionReason,
+        );
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  readManifest(): HistoricalIndexManifest | null {
+    const row = this.database.prepare(`
+      SELECT index_key, manifest_version, source, root_symbol, content_fingerprint,
+             importer_version, schedule_version, session_calendar_version, state,
+             summary_json, indexed_at, committed_at
+      FROM index_manifest
+      LIMIT 1
+    `).get() as {
+      index_key: string;
+      manifest_version: number;
+      source: string;
+      root_symbol: string;
+      content_fingerprint: string;
+      importer_version: string;
+      schedule_version: string;
+      session_calendar_version: string;
+      state: string;
+      summary_json: string;
+      indexed_at: string;
+      committed_at: string;
+    } | undefined;
+    if (!row || row.manifest_version !== HISTORICAL_INDEX_MANIFEST_VERSION || row.state !== "committed") return null;
+    const rows = this.database.prepare(`
+      SELECT ordinal, filename, contract_symbol, detected_contracts_json, object_path, materialized_path,
+             expected_compression, content_fingerprint, size_bytes, status, rejection_reason
+      FROM index_manifest_files
+      WHERE index_key = ?
+      ORDER BY ordinal
+    `).all(row.index_key) as Array<{
+      ordinal: number;
+      filename: string;
+      contract_symbol: string | null;
+      detected_contracts_json: string | null;
+      object_path: string | null;
+      materialized_path: string | null;
+      expected_compression: "none" | "zstd";
+      content_fingerprint: string | null;
+      size_bytes: number | null;
+      status: "accepted" | "rejected";
+      rejection_reason: string | null;
+    }>;
+    const files: HistoricalIndexManifestFile[] = rows.map((file) => ({
+      ordinal: file.ordinal,
+      filename: file.filename,
+      contractSymbol: file.contract_symbol,
+      detectedContracts: file.detected_contracts_json ? JSON.parse(file.detected_contracts_json) as string[] : undefined,
+      objectPath: file.object_path,
+      materializedPath: file.materialized_path,
+      expectedCompression: file.expected_compression,
+      contentFingerprint: file.content_fingerprint,
+      sizeBytes: file.size_bytes,
+      status: file.status,
+      rejectionReason: file.rejection_reason,
+    }));
+    return {
+      indexKey: row.index_key,
+      source: row.source,
+      rootSymbol: row.root_symbol,
+      contentFingerprint: row.content_fingerprint,
+      importerVersion: row.importer_version,
+      scheduleVersion: row.schedule_version,
+      sessionCalendarVersion: row.session_calendar_version,
+      summary: JSON.parse(row.summary_json),
+      indexedAt: row.indexed_at,
+      committedAt: row.committed_at,
+      files,
+    };
+  }
+
+  validateCommittedManifest(expected?: {
+    indexKey?: string;
+    contentFingerprint?: string;
+    importerVersion?: string;
+    scheduleVersion?: string;
+  }): string[] {
+    const errors: string[] = [];
+    const integrity = this.database.prepare("PRAGMA integrity_check").get() as { integrity_check?: string };
+    if (integrity.integrity_check !== "ok") errors.push("SQLITE_INTEGRITY_CHECK_FAILED");
+    const manifest = this.readManifest();
+    if (!manifest) errors.push("COMMITTED_MANIFEST_MISSING_OR_INCOMPATIBLE");
+    if (manifest && expected) {
+      if (expected.indexKey && manifest.indexKey !== expected.indexKey) errors.push("MANIFEST_INDEX_KEY_MISMATCH");
+      if (expected.contentFingerprint && manifest.contentFingerprint !== expected.contentFingerprint) errors.push("MANIFEST_CONTENT_FINGERPRINT_MISMATCH");
+      if (expected.importerVersion && manifest.importerVersion !== expected.importerVersion) errors.push("MANIFEST_IMPORTER_VERSION_MISMATCH");
+      if (expected.scheduleVersion && manifest.scheduleVersion !== expected.scheduleVersion) errors.push("MANIFEST_SCHEDULE_VERSION_MISMATCH");
+    }
+    return errors;
   }
 
   writeSourceSummary(summary: HistoricalCsvImportSummary, contentFingerprint: string): void {

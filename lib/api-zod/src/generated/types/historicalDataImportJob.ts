@@ -16,11 +16,24 @@ export interface HistoricalDataImportJob {
   /** @minimum 0 */
   materializedFileCount: number;
   currentFilename: string | null;
+  currentContract: string | null;
+  currentTradingDate: string | null;
   /**
      * @minimum 0
      * @maximum 100
      */
   progress: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  phaseProgress: number;
+  /** @minimum 0 */
+  rowsProcessed: number;
+  /** @minimum 0 */
+  acceptedRows: number;
+  /** @minimum 0 */
+  rejectedRows: number;
   createdAt: string;
   startedAt: string | null;
   updatedAt: string;

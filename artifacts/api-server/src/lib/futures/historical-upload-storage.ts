@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
 import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createHash } from "node:crypto";
 import { signPrivateObjectUrl } from "../uploaded-chart-storage.js";
 
 const SAFE_PATH = /^\/objects\/uploads\/historical\/[a-f0-9-]+$/;
@@ -13,6 +14,8 @@ export type MaterializedHistoricalObject = {
   objectPath: string;
   originalFilename: string;
   expectedCompression: "none" | "zstd";
+  contentFingerprint: string;
+  sizeBytes: number;
 };
 
 export function isSafeHistoricalObjectPath(objectPath: string): boolean {
@@ -46,11 +49,17 @@ export async function materializeHistoricalObject(
   const directory = join(process.cwd(), ".cache", "historical-uploads");
   await mkdir(directory, { recursive: true });
   const outputPath = join(directory, `${objectPath.split("/").at(-1)}-${safeFilename}`);
-  await pipeline(Readable.fromWeb(response.body as globalThis.ReadableStream<Uint8Array>), createWriteStream(outputPath));
+  const hash = createHash("sha256");
+  const body = Readable.fromWeb(response.body as globalThis.ReadableStream<Uint8Array>);
+  body.on("data", (chunk: Buffer) => hash.update(chunk));
+  await pipeline(body, createWriteStream(outputPath));
+  const fileStats = await stat(outputPath);
   return {
     path: outputPath,
     objectPath,
     originalFilename: safeFilename,
     expectedCompression: safeFilename.toLowerCase().endsWith(".zst") ? "zstd" : "none",
+    contentFingerprint: hash.digest("hex"),
+    sizeBytes: fileStats.size,
   };
 }

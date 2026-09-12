@@ -837,6 +837,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /historical-data/import/{jobId}/cancel:
+    post:
+      operationId: cancelHistoricalDataImport
+      tags: [backtest]
+      summary: Cancel a queued or running historical import
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Historical import cancellation recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataImportJob"
+        "404":
+          description: Historical import job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Historical import is already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data/ema-comparison:
     get:
       operationId: getHistoricalEmaComparison
@@ -3088,7 +3117,19 @@ components:
             properties:
               objectPath: { type: string }
               originalFilename: { type: string }
-            required: [objectPath, originalFilename]
+              materializedPath: { type: string, nullable: true }
+              expectedCompression: { type: string, enum: [none, zstd] }
+              contentFingerprint: { type: string, nullable: true }
+              sizeBytes: { type: number, nullable: true }
+              state: { type: string, enum: [queued, materialized, accepted, rejected, failed] }
+              detectedContracts:
+                type: array
+                items: { type: string }
+              rowsProcessed: { type: number, minimum: 0 }
+              acceptedRows: { type: number, minimum: 0 }
+              rejectedRows: { type: number, minimum: 0 }
+              rejectionReason: { type: string, nullable: true }
+              required: [objectPath, originalFilename]
       required: [files]
     HistoricalDataImportResponse:
       type: object
@@ -3123,7 +3164,7 @@ components:
         jobId: { type: string }
         state:
           type: string
-          enum: [queued, materializing, indexing, ready, failed, cancelled]
+          enum: [queued, materializing, validating, indexing, aggregating, reconciling, committing, ready, failed, cancelled]
         files:
           type: array
           items:
@@ -3134,7 +3175,13 @@ components:
             required: [objectPath, originalFilename]
         materializedFileCount: { type: number, minimum: 0 }
         currentFilename: { type: string, nullable: true }
+        currentContract: { type: string, nullable: true }
+        currentTradingDate: { type: string, nullable: true }
         progress: { type: number, minimum: 0, maximum: 100 }
+        phaseProgress: { type: number, minimum: 0, maximum: 100 }
+        rowsProcessed: { type: number, minimum: 0 }
+        acceptedRows: { type: number, minimum: 0 }
+        rejectedRows: { type: number, minimum: 0 }
         createdAt: { type: string }
         startedAt: { type: string, nullable: true }
         updatedAt: { type: string }
@@ -3144,7 +3191,7 @@ components:
           allOf:
             - $ref: "#/components/schemas/HistoricalDataIndexStatus"
           nullable: true
-      required: [jobId, state, files, materializedFileCount, currentFilename, progress, createdAt, startedAt, updatedAt, completedAt, error, status]
+      required: [jobId, state, files, materializedFileCount, currentFilename, currentContract, currentTradingDate, progress, phaseProgress, rowsProcessed, acceptedRows, rejectedRows, createdAt, startedAt, updatedAt, completedAt, error, status]
     HistoricalEmaComparisonCandidate:
       type: object
       properties:

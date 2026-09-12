@@ -12,7 +12,11 @@ export type HistoricalDataImportJobState = typeof HistoricalDataImportJobState[k
 export const HistoricalDataImportJobState = {
   queued: 'queued',
   materializing: 'materializing',
+  validating: 'validating',
   indexing: 'indexing',
+  aggregating: 'aggregating',
+  reconciling: 'reconciling',
+  committing: 'committing',
   ready: 'ready',
   failed: 'failed',
   cancelled: 'cancelled',

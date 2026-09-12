@@ -23,6 +23,10 @@ const MINUTE = 60_000;
 const REQUIRED_HEADERS = ["ts_event", "open", "high", "low", "close", "volume", "symbol"] as const;
 const DEFAULT_FILENAME_PREFIX = "glbx-mdp3-";
 const MAX_REPORTED_ERRORS = 25;
+const MONTH_CODE_TO_NUMBER = {
+  F: 1, G: 2, H: 3, J: 4, K: 5, M: 6,
+  N: 7, Q: 8, U: 9, V: 10, X: 11, Z: 12,
+} as const;
 
 export type HistoricalAggregation = {
   intervalMinutes: 1 | 5 | 15 | 60;
@@ -86,6 +90,19 @@ export type HistoricalCsvImport = {
   oneHour: NormalizedCandle[];
   specification: FuturesContractSpecification;
   calendar: FuturesSessionCalendar;
+};
+
+export type HistoricalCsvBatchImport = {
+  imports: ReadonlyMap<string, HistoricalCsvImport>;
+  rejectedRows: Array<{ row: number; symbol: string | null; reason: string }>;
+};
+
+export type HistoricalCsvProgress = {
+  phase: "reading" | "coverage" | "aggregating";
+  rowsRead: number;
+  validRows: number;
+  rejectedRows: number;
+  percent: number;
 };
 
 type ParsedRow = {
@@ -558,6 +575,9 @@ export async function importHistoricalCsv(
     aggregations?: readonly (5 | 15 | 60)[];
     fastParse?: boolean;
     contentFingerprint?: string;
+    expectedSymbol?: string;
+    skipOtherSymbols?: boolean;
+    onProgress?: (progress: HistoricalCsvProgress) => void;
   } = {},
 ): Promise<HistoricalCsvImport> {
   unsupportedCompression(filePath);
@@ -647,6 +667,15 @@ export async function importHistoricalCsv(
     }
     summary.totalRows += 1;
     const row = summary.totalRows + 1;
+    if (summary.totalRows % 10_000 === 0) {
+      options.onProgress?.({
+        phase: "reading",
+        rowsRead: summary.totalRows,
+        validRows: summary.validRows,
+        rejectedRows: summary.rejectedRows,
+        percent: 0,
+      });
+    }
     if (!values || values.length !== headers.length) {
       reasonFor(summary, row, "MALFORMED_ROW");
       return;
@@ -666,12 +695,17 @@ export async function importHistoricalCsv(
       reasonFor(summary, row, "NON_MES_OUTRIGHT_SYMBOL");
       return;
     }
-    if (summary.detectedSymbol === null) summary.detectedSymbol = symbol;
+    if (options.expectedSymbol && symbol !== options.expectedSymbol) {
+      if (options.skipOtherSymbols) return;
+      reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
+      return;
+    }
+    if (summary.detectedSymbol === null) summary.detectedSymbol = options.expectedSymbol ?? symbol;
     if (filenameSymbol && symbol !== filenameSymbol) {
       reasonFor(summary, row, "FILENAME_SYMBOL_MISMATCH");
       return;
     }
-    if (symbol !== summary.detectedSymbol) {
+    if (!options.expectedSymbol && symbol !== summary.detectedSymbol) {
       reasonFor(summary, row, "MULTIPLE_OUTRIGHT_SYMBOLS");
       return;
     }
@@ -764,12 +798,26 @@ export async function importHistoricalCsv(
         coverageScope: "full_file" as const,
       }
     : countSessionAwareGaps(candles, calendar);
+  options.onProgress?.({
+    phase: "coverage",
+    rowsRead: summary.totalRows,
+    validRows: summary.validRows,
+    rejectedRows: summary.rejectedRows,
+    percent: 90,
+  });
   Object.assign(summary, gapReport);
   summary.availableTradingDates = [...tradingDates].sort();
   const aggregationSet = new Set(options.aggregations ?? [5, 15, 60]);
   const fiveMinute = aggregationSet.has(5) ? aggregate(candles, 5, specification) : [];
   const fifteenMinute = aggregationSet.has(15) ? aggregate(candles, 15, specification) : [];
   const oneHour = aggregationSet.has(60) ? aggregate(candles, 60, specification) : [];
+  options.onProgress?.({
+    phase: "aggregating",
+    rowsRead: summary.totalRows,
+    validRows: summary.validRows,
+    rejectedRows: summary.rejectedRows,
+    percent: 98,
+  });
   summary.aggregationCounts = {
     oneMinute: candles.length,
     fiveMinute: fiveMinute.length,
@@ -786,6 +834,88 @@ export async function importHistoricalCsv(
     specification,
     calendar,
   };
+}
+
+async function discoverHistoricalCsvSymbols(filePath: string): Promise<{
+  symbols: string[];
+  rejectedRows: Array<{ row: number; symbol: string | null; reason: string }>;
+}> {
+  unsupportedCompression(filePath);
+  const compressed = filePath.toLowerCase().endsWith(".zst");
+  const fileStream = createReadStream(filePath);
+  const decompressed = compressed ? fileStream.pipe(createZstdDecompress()) : fileStream;
+  const input = createInterface({ input: decompressed, crlfDelay: Infinity });
+  let headers: string[] | null = null;
+  let rowNumber = 0;
+  const symbols = new Set<string>();
+  const rejectedRows: Array<{ row: number; symbol: string | null; reason: string }> = [];
+  for await (const rawLine of input) {
+    const values = parseCsvLine(String(rawLine).trim());
+    if (!values || values.length === 0) continue;
+    if (!headers) {
+      headers = values.map((header) => header.toLowerCase());
+      if (!REQUIRED_HEADERS.every((header) => headers!.includes(header))) {
+        throw new Error(`CSV is missing required Databento columns: ${REQUIRED_HEADERS.filter((header) => !headers!.includes(header)).join(", ")}.`);
+      }
+      continue;
+    }
+    rowNumber += 1;
+    if (values.length !== headers.length) {
+      rejectedRows.push({ row: rowNumber + 1, symbol: null, reason: "MALFORMED_ROW" });
+      continue;
+    }
+    const record = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+    const symbol = record["symbol"]?.trim() || null;
+    if (!symbol || !outrightMesSymbol(symbol)) {
+      rejectedRows.push({
+        row: rowNumber + 1,
+        symbol,
+        reason: symbol?.includes("-") ? "CALENDAR_SPREAD_REJECTED" : "NON_MES_OUTRIGHT_SYMBOL",
+      });
+      continue;
+    }
+    symbols.add(symbol.toUpperCase());
+  }
+  if (!headers) throw new Error("CSV file is empty.");
+  return { symbols: [...symbols].sort(), rejectedRows };
+}
+
+/**
+ * Reads a Databento batch export twice: once to discover actual outright
+ * symbols, then once per symbol so each contract gets independent duplicate,
+ * ordering, coverage, and aggregation state. This deliberately avoids ever
+ * combining contracts under one replay identity.
+ */
+export async function importHistoricalCsvBatch(
+  filePath: string,
+  specification: FuturesContractSpecification,
+  options: {
+    analyzeCoverage?: boolean;
+    aggregations?: readonly (5 | 15 | 60)[];
+    fastParse?: boolean;
+    contentFingerprint?: string;
+  } = {},
+): Promise<HistoricalCsvBatchImport> {
+  const discovered = await discoverHistoricalCsvSymbols(filePath);
+  const imports = new Map<string, HistoricalCsvImport>();
+  for (const symbol of discovered.symbols) {
+    const identity = symbol.match(/^MES([FGHJKMNQUVXZ])(\d{1,2})$/i);
+    const imported = await importHistoricalCsv(filePath, {
+      ...specification,
+      fullContractSymbol: symbol,
+      contractMonth: identity
+        ? `${identity[2].length === 1 ? `202${identity[2]}` : `20${identity[2]}`}-${String(
+          MONTH_CODE_TO_NUMBER[identity[1].toUpperCase() as keyof typeof MONTH_CODE_TO_NUMBER],
+        ).padStart(2, "0")}`
+        : specification.contractMonth,
+    }, {
+      ...options,
+      expectedSymbol: symbol,
+      skipOtherSymbols: true,
+    });
+    imports.set(symbol, imported);
+  }
+  return { imports, rejectedRows: discovered.rejectedRows };
 }
 
 /**

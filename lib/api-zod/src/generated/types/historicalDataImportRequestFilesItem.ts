@@ -5,8 +5,24 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalDataImportRequestFilesItemExpectedCompression } from './historicalDataImportRequestFilesItemExpectedCompression';
+import type { HistoricalDataImportRequestFilesItemState } from './historicalDataImportRequestFilesItemState';
 
 export type HistoricalDataImportRequestFilesItem = {
-  objectPath: string;
-  originalFilename: string;
+  objectPath?: string;
+  originalFilename?: string;
+  materializedPath?: string | null;
+  expectedCompression?: HistoricalDataImportRequestFilesItemExpectedCompression;
+  contentFingerprint?: string | null;
+  sizeBytes?: number | null;
+  state?: HistoricalDataImportRequestFilesItemState;
+  detectedContracts?: string[];
+  /** @minimum 0 */
+  rowsProcessed?: number;
+  /** @minimum 0 */
+  acceptedRows?: number;
+  /** @minimum 0 */
+  rejectedRows?: number;
+  rejectionReason?: string | null;
+  required?: unknown;
 };

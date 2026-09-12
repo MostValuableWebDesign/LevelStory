@@ -175,6 +175,8 @@ export * from './historicalDataImportJobFilesItem';
 export * from './historicalDataImportJobState';
 export * from './historicalDataImportRequest';
 export * from './historicalDataImportRequestFilesItem';
+export * from './historicalDataImportRequestFilesItemExpectedCompression';
+export * from './historicalDataImportRequestFilesItemState';
 export * from './historicalDataImportResponse';
 export * from './historicalDataImportResponseState';
 export * from './historicalDataImportResponseSummary';

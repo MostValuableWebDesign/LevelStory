@@ -167,6 +167,25 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
 function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [lastJob, setLastJob] = useState<{
+    state?: string;
+    progress?: number;
+    phaseProgress?: number;
+    materializedFileCount?: number;
+    rowsProcessed?: number;
+    acceptedRows?: number;
+    rejectedRows?: number;
+    files?: Array<{
+      originalFilename?: string;
+      state?: string;
+      detectedContracts?: string[];
+      rowsProcessed?: number;
+      acceptedRows?: number;
+      rejectedRows?: number;
+      rejectionReason?: string | null;
+    }>;
+    error?: string | null;
+  } | null>(null);
   const [jobId, setJobId] = useState<string | null>(() => {
     try {
       return window.localStorage.getItem("levelstory:historical-import-job");
@@ -195,11 +214,24 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
           state?: string;
           progress?: number;
           materializedFileCount?: number;
-          files?: Array<unknown>;
           currentFilename?: string | null;
+          phaseProgress?: number;
+          rowsProcessed?: number;
+          acceptedRows?: number;
+          rejectedRows?: number;
+          files?: Array<{
+            originalFilename?: string;
+            state?: string;
+            detectedContracts?: string[];
+            rowsProcessed?: number;
+            acceptedRows?: number;
+            rejectedRows?: number;
+            rejectionReason?: string | null;
+          }>;
           error?: string | null;
         };
         if (!response.ok || cancelled) return;
+        setLastJob(body);
         if (body.state === "ready") {
           setMessage("Historical index committed and ready. The active library status has been refreshed.");
           setJobId(null);
@@ -207,10 +239,21 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         } else if (body.state === "failed") {
           setMessage(body.error ?? "Historical indexing failed. Review the rejected files and try again.");
           setJobId(null);
+        } else if (body.state === "cancelled") {
+          setMessage(body.error ?? "Historical import cancelled; the previous ready library was preserved.");
+          setJobId(null);
         } else {
-          const phase = body.state === "materializing" ? "Materializing" : "Indexing";
+          const phase = {
+            queued: "Queued",
+            materializing: "Materializing",
+            validating: "Validating",
+            indexing: "Indexing",
+            aggregating: "Aggregating",
+            reconciling: "Reconciling",
+            committing: "Committing",
+          }[body.state ?? ""] ?? "Processing";
           const current = body.currentFilename ? ` · ${body.currentFilename}` : "";
-          setMessage(`${phase} historical data · ${body.progress ?? 0}% · ${body.materializedFileCount ?? 0}/${body.files?.length ?? 0} files${current}`);
+          setMessage(`${phase} historical data · ${body.progress ?? 0}% · ${body.rowsProcessed?.toLocaleString() ?? 0} rows · ${body.materializedFileCount ?? 0}/${body.files?.length ?? 0} files${current}`);
         }
       } catch {
         if (!cancelled) setMessage("Import job is still running; retrying status…");
@@ -264,12 +307,29 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
       const importBody = await imported.json() as { error?: string; jobId?: string; requestedFileCount?: number };
       if (!imported.ok || !importBody.jobId) throw new Error(importBody.error ?? "Historical indexing could not start.");
       setJobId(importBody.jobId);
+      setLastJob({ state: "queued", progress: 0, files: uploaded.map((file) => ({ originalFilename: file.originalFilename, state: "queued" })) });
       setMessage(`Uploads complete. Import job queued for ${importBody.requestedFileCount ?? uploaded.length} files.`);
       setFiles([]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Historical upload failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const cancelImport = async () => {
+    if (!jobId) return;
+    try {
+      const response = await fetch(`/api/historical-data/import/${jobId}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "The import could not be cancelled.");
+      setMessage("Cancellation recorded. The previous ready library will remain active.");
+      setJobId(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The import could not be cancelled.");
     }
   };
 
@@ -293,12 +353,34 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
           className="field min-h-10 flex-1 text-xs"
           data-testid="input-historical-data-files"
         />
+        {jobId && <button type="button" onClick={() => void cancelImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-destructive/50 px-4 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-50" data-testid="button-cancel-historical-import">
+          <Square size={12} />Cancel import
+        </button>}
         <button type="button" onClick={() => void upload()} disabled={busy || Boolean(jobId) || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
           <Upload size={13} />{busy ? "Uploading…" : `Upload ${files.length || ""} files`}
         </button>
       </div>
       {files.length > 0 && <div className="px-4 pb-3 text-[11px] text-muted-foreground">{files.map((file) => file.name).join(" · ")}</div>}
       {message && <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground" role="status">{message}</div>}
+      {lastJob && <div className="border-t border-border px-4 py-4 text-[11px]" data-testid="historical-import-diagnostics">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="eyebrow text-muted-foreground">Durable import diagnostics</span>
+          <span className="mono text-muted-foreground">{lastJob.state ?? "unknown"} · {lastJob.progress ?? 0}% · phase {lastJob.phaseProgress ?? 0}%</span>
+        </div>
+        <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-3">
+          <span>Rows read <strong className="mono text-foreground">{(lastJob.rowsProcessed ?? 0).toLocaleString()}</strong></span>
+          <span>Accepted <strong className="mono text-foreground">{(lastJob.acceptedRows ?? 0).toLocaleString()}</strong></span>
+          <span>Rejected <strong className="mono text-foreground">{(lastJob.rejectedRows ?? 0).toLocaleString()}</strong></span>
+        </div>
+        {lastJob.files && lastJob.files.length > 0 && <div className="mt-3 space-y-1.5">
+          {lastJob.files.map((file, index) => <div key={`${file.originalFilename ?? "file"}-${index}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border border-border px-3 py-2">
+            <span className="mono text-foreground">{file.originalFilename ?? "Unnamed file"} <span className="text-muted-foreground">· {file.state ?? "unknown"}</span></span>
+            <span className="text-muted-foreground">{file.detectedContracts?.join(", ") || "No contract detected"} · {(file.acceptedRows ?? 0).toLocaleString()} accepted / {(file.rejectedRows ?? 0).toLocaleString()} rejected</span>
+            {file.rejectionReason && <span className="w-full text-destructive">{file.rejectionReason}</span>}
+          </div>)}
+        </div>}
+        {lastJob.error && <div className="mt-3 text-destructive" role="alert">{lastJob.error}</div>}
+      </div>}
     </Panel>
   );
 }

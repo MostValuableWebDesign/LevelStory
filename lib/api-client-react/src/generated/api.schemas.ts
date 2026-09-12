@@ -1852,9 +1852,42 @@ export interface HistoricalDataUploadUrl {
   acceptedExtensions: string[];
 }
 
+export type HistoricalDataImportRequestFilesItemExpectedCompression = typeof HistoricalDataImportRequestFilesItemExpectedCompression[keyof typeof HistoricalDataImportRequestFilesItemExpectedCompression];
+
+
+export const HistoricalDataImportRequestFilesItemExpectedCompression = {
+  none: 'none',
+  zstd: 'zstd',
+} as const;
+
+export type HistoricalDataImportRequestFilesItemState = typeof HistoricalDataImportRequestFilesItemState[keyof typeof HistoricalDataImportRequestFilesItemState];
+
+
+export const HistoricalDataImportRequestFilesItemState = {
+  queued: 'queued',
+  materialized: 'materialized',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  failed: 'failed',
+} as const;
+
 export type HistoricalDataImportRequestFilesItem = {
-  objectPath: string;
-  originalFilename: string;
+  objectPath?: string;
+  originalFilename?: string;
+  materializedPath?: string | null;
+  expectedCompression?: HistoricalDataImportRequestFilesItemExpectedCompression;
+  contentFingerprint?: string | null;
+  sizeBytes?: number | null;
+  state?: HistoricalDataImportRequestFilesItemState;
+  detectedContracts?: string[];
+  /** @minimum 0 */
+  rowsProcessed?: number;
+  /** @minimum 0 */
+  acceptedRows?: number;
+  /** @minimum 0 */
+  rejectedRows?: number;
+  rejectionReason?: string | null;
+  required?: unknown;
 };
 
 export interface HistoricalDataImportRequest {
@@ -1911,7 +1944,11 @@ export type HistoricalDataImportJobState = typeof HistoricalDataImportJobState[k
 export const HistoricalDataImportJobState = {
   queued: 'queued',
   materializing: 'materializing',
+  validating: 'validating',
   indexing: 'indexing',
+  aggregating: 'aggregating',
+  reconciling: 'reconciling',
+  committing: 'committing',
   ready: 'ready',
   failed: 'failed',
   cancelled: 'cancelled',
@@ -1929,11 +1966,24 @@ export interface HistoricalDataImportJob {
   /** @minimum 0 */
   materializedFileCount: number;
   currentFilename: string | null;
+  currentContract: string | null;
+  currentTradingDate: string | null;
   /**
      * @minimum 0
      * @maximum 100
      */
   progress: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  phaseProgress: number;
+  /** @minimum 0 */
+  rowsProcessed: number;
+  /** @minimum 0 */
+  acceptedRows: number;
+  /** @minimum 0 */
+  rejectedRows: number;
   createdAt: string;
   startedAt: string | null;
   updatedAt: string;
