@@ -247,7 +247,7 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   symbol: "MES",
   endDate: "2026-08-26",
   inSampleDays: 5,
-  outOfSampleDays: 2,
+  outOfSampleDays: 0,
   premarketAvailable: true,
   source: "historical_databento",
   reviewMode: "trades_only",
@@ -1306,20 +1306,28 @@ function ShadowEquityCurve({ replay }: { replay: ShadowAccountReplay }) {
 }
 
 function ShadowSegmentSummary({ replay }: { replay: ShadowAccountReplay }) {
-  const segments = [{ label: "In-sample", value: replay.inSample }, { label: "Out-of-sample", value: replay.outOfSample }];
+  const summary = {
+    enteredTrades: replay.enteredTrades,
+    openTrades: replay.openTrades,
+    wins: replay.wins,
+    losses: replay.losses,
+    expectancyPerTrade: replay.expectancyPerTrade,
+    netPnl: replay.realizedNetPnl,
+    winRate: replay.winRate,
+  };
   return <div className="border border-border bg-muted/12" data-testid="shadow-segment-summary">
-    <div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Period split</div><div className="mt-1 text-xs font-bold">Sample performance</div></div>
+    <div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Historical review</div><div className="mt-1 text-xs font-bold">Review-period performance</div></div>
     <div className="divide-y divide-border">
-      {segments.map(({ label, value }) => <div key={label} className="p-4">
-        <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">{label}</span><span className="mono text-[10px] text-muted-foreground">{value.enteredTrades} entered</span></div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
-          <div><span className="block text-muted-foreground">Net P/L</span><strong className={`mono ${value.netPnl < 0 ? "status-negative" : "status-positive"}`}>{formatAccountMoney(value.netPnl)}</strong></div>
-          <div><span className="block text-muted-foreground">Win rate</span><strong className="mono">{value.winRate.toFixed(2)}%</strong></div>
-          <div><span className="block text-muted-foreground">Wins / losses</span><strong className="mono">{value.wins} / {value.losses}</strong></div>
-           <div><span className="block text-muted-foreground">Open / unscored</span><strong className="mono">{value.openTrades} / {value.unscoredTrades}</strong></div>
-          <div><span className="block text-muted-foreground">Expectancy</span><strong className="mono">{formatAccountMoney(value.expectancyPerTrade)}</strong></div>
+      <div className="p-4">
+        <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">All selected historical sessions</span><span className="mono text-[10px] text-muted-foreground">{summary.enteredTrades} entered</span></div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+          <div><span className="block text-muted-foreground">Net P/L</span><strong className={`mono ${summary.netPnl < 0 ? "status-negative" : "status-positive"}`}>{formatAccountMoney(summary.netPnl)}</strong></div>
+          <div><span className="block text-muted-foreground">Win rate</span><strong className="mono">{summary.winRate.toFixed(2)}%</strong></div>
+          <div><span className="block text-muted-foreground">Wins / losses</span><strong className="mono">{summary.wins} / {summary.losses}</strong></div>
+          <div><span className="block text-muted-foreground">Open / unscored</span><strong className="mono">{summary.openTrades} / {replay.unscoredTrades}</strong></div>
+          <div><span className="block text-muted-foreground">Expectancy</span><strong className="mono">{formatAccountMoney(summary.expectancyPerTrade)}</strong></div>
         </div>
-      </div>)}
+      </div>
     </div>
   </div>;
 }
@@ -1350,7 +1358,7 @@ function ShadowLedger({ replay }: { replay: ShadowAccountReplay }) {
             <td className={`mono px-3 py-2.5 font-bold ${trade.netPnl === null ? "text-muted-foreground" : trade.netPnl < 0 ? "status-negative" : "status-positive"}`}>{trade.netPnl === null ? "—" : formatAccountMoney(trade.netPnl)}</td>
             <td className="mono px-3 py-2.5 font-bold">{formatAccountMoney(trade.runningBalance)}</td>
              <td className="max-w-[180px] truncate px-3 py-2.5 text-muted-foreground" title={trade.supportingConfluences.join(", ")}>{trade.supportingConfluences.length ? trade.supportingConfluences.join(", ") : "—"}</td>
-            <td className="px-3 py-2.5 text-muted-foreground">{trade.period === "in_sample" ? "In-sample" : "Out-of-sample"}</td>
+            <td className="px-3 py-2.5 text-muted-foreground">Historical review</td>
              <td className="px-3 py-2.5"><span className={`inline-flex border px-1.5 py-1 text-[9px] font-bold uppercase ${trade.status === "open" || trade.status === "unscored" ? "border-border text-muted-foreground" : trade.netPnl !== null && trade.netPnl < 0 ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.1)] text-[hsl(var(--positive))]"}`}>{trade.status}</span></td>
           </tr>)}
         </tbody>
@@ -1443,13 +1451,10 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
         <Field label="Data source"><div className="field mono">Historical Databento data</div></Field>
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
       </div>
-      <Field label={<span className="inline-flex items-center gap-1.5">Review-period end date · New York <InfoTip label="Review-period end date" text="The last requested trading date in the review period. Individual examples may be earlier because the period includes in-sample and holdout sessions." /></span>}>
+      <Field label={<span className="inline-flex items-center gap-1.5">Review-period end date · New York <InfoTip label="Review-period end date" text="The last requested trading date in the review period." /></span>}>
         <input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="In-sample days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
-        <Field label="Out-of-sample days"><select className="field mono" value={request.outOfSampleDays} onChange={(event) => update("outOfSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
-      </div>
+      <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
@@ -1529,7 +1534,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
             <div className="flex items-start justify-between gap-3"><div><div className={`eyebrow ${blocked ? "text-accent" : "text-muted-foreground"}`}>{blocked ? "Blocked candidate" : "Trade candidate"}</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${blocked ? "border-accent/50 bg-accent/10" : "border-accent/40 bg-accent/10"}`}>{blocked ? "Account blocked" : direction}</span></div>
              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div><span className="text-muted-foreground">Entry price</span><div className="mono mt-1">{formatTradePrice(candidate.entryTriggerPrice ?? audit.entryTriggerPrice)}</div></div><div><span className="text-muted-foreground">Exit price</span><div className="mono mt-1">{formatTradePrice(trade?.exitPrice)}</div></div><div><span className="text-muted-foreground">P/L</span><div className={`mono mt-1 font-semibold ${trade?.netPnl == null ? "text-muted-foreground" : trade.netPnl < 0 ? "status-negative" : "status-positive"}`}>{formatAccountMoney(trade?.netPnl)}</div></div><div><span className="text-muted-foreground">Grade</span><div className="mono mt-1">{candidate.setupGrade}</div></div><div><span className="text-muted-foreground">Primary edge</span><div className="mt-1 font-semibold">{edgeDisplayLabel(candidate.primaryEdge)}</div></div><div><span className="text-muted-foreground">Matched edges</span><div className="mt-1">{candidate.matchedEdges.length} · {candidate.supportingConfluences.length} confluences</div></div></div>
             {blocked && candidate.accountEntryBlock && <div className="mt-3 border border-accent/25 bg-accent/5 px-2.5 py-2 text-[10px] text-muted-foreground"><span className="font-bold text-foreground">ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION</span><div className="mt-1 mono">Blocked by {candidate.accountEntryBlock.blockingCandidateId} · {candidate.accountEntryBlock.blockingStatus}{candidate.accountEntryBlock.blockingRunnerActive ? " · runner active" : ""}</div></div>}
-             <div className="mt-3 mono text-[10px] text-muted-foreground">{candidate.period === "in_sample" ? "In-sample" : "Holdout"} · Entry {formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)} · Exit {formatReviewTime(trade?.exitTime ?? "")}</div>
+             <div className="mt-3 mono text-[10px] text-muted-foreground">Historical review · Entry {formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)} · Exit {formatReviewTime(trade?.exitTime ?? "")}</div>
          </button>;
        })}
     </div>
@@ -1605,10 +1610,10 @@ function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
 }
 
 function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
-  return <div className="border-t border-border bg-muted/20" data-testid="formula-development-sample">
+  return <div className="border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
-        <div className="eyebrow mb-2 text-muted-foreground">Example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} · {snapshot.period === "in_sample" ? "formula-development sample" : "holdout sample"} <InfoTip label="Dataset role" text="Formula-development examples are in-sample. Holdout examples are out-of-sample and are not used to tune the rule." /></div>
+        <div className="eyebrow mb-2 text-muted-foreground">Historical example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</div>
          <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{STRATEGY_TABS.find((item) => item.id === ((snapshot.machineEvidence.trade as CandidateTradeView | null)?.primaryEdge ?? snapshot.strategyKey))?.label ?? snapshot.machineLabel}</span></div>
          <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
          <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>

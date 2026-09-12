@@ -132,6 +132,12 @@ test("visual review separates chart analysis, deterministic generation, and read
 
 test("visual review generation is historical-only and fits all strategy settings", () => {
   assert.match(page, /Historical Databento data/);
+  assert.match(page, /<Field label="Review days">/);
+  assert.match(page, /outOfSampleDays: 0/);
+  assert.doesNotMatch(page, /In-sample days/);
+  assert.doesNotMatch(page, /Out-of-sample days/);
+  assert.doesNotMatch(page, /formula-development/);
+  assert.doesNotMatch(page, /holdout sample/);
   assert.doesNotMatch(page, /Simulated fixture data/);
   assert.doesNotMatch(page, /select-visual-review-source/);
   assert.doesNotMatch(page, /Seed/);
@@ -192,8 +198,8 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.doesNotMatch(page, /axisLabelX/);
   assert.doesNotMatch(page, /data-testid="additional-levels".*fib-/s);
   assert.match(page, /SnapshotHeaderContent/);
-  assert.match(page, /data-testid="formula-development-sample"/);
-  assert.match(page, /Example \{String\(index \+ 1\)\.padStart\(2, "0"\)/);
+  assert.match(page, /data-testid="historical-review-sample"/);
+  assert.match(page, /Historical example \{String\(index \+ 1\)\.padStart\(2, "0"\)/);
   assert.match(page, /reviewPeriod\.startDate/);
   assert.match(page, /reviewPeriod\.endDate/);
   assert.match(page, /Generate trade candidates/);
