@@ -1,0 +1,164 @@
+```text
+Fix the Visual Review historical-date picker so it makes selecting a specific indexed trading date fast, compact, and clear.
+
+Inspect the current implementation before changing it. Locate the newer custom date-picker code that renders:
+
+- Previous eligible date
+- Next eligible date
+- Latest indexed date
+- Today
+- Indexed-coverage validation
+
+Do not assume the older native `input type="date"` implementation is still authoritative.
+
+Required changes
+
+1. Fix the popover layout
+
+- Make the popup only as wide as its content.
+- Remove the large empty area to the right of the calendar.
+- Use a compact desktop width of approximately 340–420px.
+- Keep the complete popup inside the viewport.
+- Position it directly below the date field.
+- Prevent it from covering more of the strategy settings than necessary.
+- Use a responsive width on mobile: `min(calc(100vw - 24px), 400px)`.
+- Do not hard-code a large minimum width inherited from the form, popover, or dialog component.
+
+2. Improve month and year selection
+
+- Provide separate, clearly labeled Month and Year dropdowns.
+- Allow direct movement between every month and year in the indexed historical range.
+- Do not require repeatedly clicking previous-month arrows to reach an older date.
+- Fix overlapping or duplicated chevron icons.
+- Give the dropdown labels enough padding so their text and icons never collide.
+- Keep previous-month and next-month arrow buttons available as secondary navigation.
+- Display the complete current month and year clearly.
+
+3. Preserve quick eligible-date actions
+
+Keep these actions:
+
+- Previous eligible date
+- Next eligible date
+- Latest indexed date
+- Today, only when today is inside indexed coverage and eligible
+
+The previous/next buttons must navigate through eligible trading dates, not calendar days. Skip:
+
+- Weekends
+- Market holidays
+- Dates outside indexed coverage
+- Dates marked ineligible because scheduled-contract data is unavailable
+
+Disable a shortcut only when no valid destination exists.
+
+4. Handle manual input correctly
+
+Users must be able to type a date directly.
+
+After entry or blur:
+
+- Parse the date in New York trading-date terms.
+- If the date is eligible, accept it.
+- If it is inside coverage but ineligible, show the exact reason and offer the nearest previous and next eligible dates.
+- If it is before indexed coverage, do not retain it as the active value.
+- If it is after indexed coverage, do not retain it as the active value.
+- Restore the last valid selection or let the user choose “Latest indexed date.”
+- Never visually highlight an invalid date as though it were selected.
+- Do not silently substitute a different date without explaining it.
+
+For example, if `08/29/2026` is after indexed coverage, the input must not continue presenting it as the valid active review date.
+
+5. Make calendar states obvious
+
+Use distinct styles for:
+
+- Selected eligible date
+- Eligible date
+- Ineligible date
+- Outside-month date
+- Today
+- Keyboard-focused date
+
+Ineligible dates must be visibly disabled but still expose their reason through accessible text or a tooltip.
+
+Do not use nearly identical gray styling for outside-month, unavailable, and disabled dates.
+
+6. Accessibility and keyboard support
+
+Support:
+
+- Tab and Shift+Tab
+- Arrow-key movement between dates
+- Enter or Space to select
+- Escape to close
+- Page Up/Page Down to change months
+- An accessible label for month/year controls and navigation buttons
+- Focus returning to the date field after selection or dismissal
+
+Avoid automatically moving focus unexpectedly when eligibility data refreshes.
+
+7. Use indexed metadata consistently
+
+The picker must use the same authoritative eligible-date collection used by Visual Review generation.
+
+- Do not independently infer eligibility from weekdays.
+- Do not enable dates merely because they fall between the first and last indexed dates.
+- Refresh picker availability when historical-index metadata changes.
+- Preserve the selected date only if it remains eligible.
+- Keep date comparisons timezone-safe and based on `YYYY-MM-DD`, not browser-local UTC conversion.
+
+8. Avoid unrelated changes
+
+Do not modify:
+
+- Trading strategies
+- Candidate generation
+- Historical indexing
+- Rollover rules
+- P/L calculations
+- Shadow Account Replay
+- Broker or live-order behavior
+
+Testing
+
+Add focused tests covering:
+
+1. Compact popover without an oversized empty area.
+2. Direct month and year selection across the indexed range.
+3. Previous and next eligible-date navigation.
+4. Weekend and holiday skipping.
+5. Ineligible scheduled-contract dates.
+6. Before-coverage and after-coverage manual input.
+7. Invalid input not remaining selected.
+8. Latest-indexed-date behavior.
+9. Today enabled only when eligible.
+10. New York date handling without UTC date shifts.
+11. Keyboard selection and Escape dismissal.
+12. Focus restoration.
+13. Mobile viewport containment.
+14. No overlapping month/year chevrons.
+
+Verification
+
+Run only:
+
+- Frontend typecheck
+- Focused date-picker and Visual Review form tests
+- Frontend production build
+- `git diff --check`
+
+Do not run the complete API test suite.
+
+Final response
+
+Report:
+
+- Root cause of the oversized popup
+- Components and files changed
+- Final desktop and mobile sizing behavior
+- Manual invalid-date behavior
+- Eligible-date navigation behavior
+- Focused test results and exact pass counts
+- Any remaining limitations
+```
