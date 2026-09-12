@@ -81,7 +81,6 @@ import {
   formatCandleTime,
   formatInterval,
   formatPriceAxisValue,
-  formatDataSource,
   getCandleInspection,
   getDateLabel,
   getCandleDomain,
@@ -94,7 +93,6 @@ import {
   getPriceAxis,
   getSessionDomainSlotCount,
   getVolumeAxisTicks,
-  hasRepetitiveFixtureData,
   invalidRawCandleIndices,
   isVisualPresentationAnnotation,
   isDynamicIndicatorAnnotation,
@@ -250,7 +248,6 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   endDate: "2026-08-26",
   inSampleDays: 5,
   outOfSampleDays: 2,
-  seed: undefined,
   premarketAvailable: true,
   source: "historical_databento",
   reviewMode: "trades_only",
@@ -291,12 +288,6 @@ function storedEnabledStrategies(): NonNullable<VisualValidationRequest["enabled
   } catch {
     return { ...INITIAL_REQUEST.enabledStrategies! };
   }
-}
-
-function storedReviewSource(): VisualValidationRequest["source"] {
-  if (typeof window === "undefined") return "historical_databento";
-  const source = window.localStorage.getItem("levelstory.visualReviewSource");
-  return source === "simulated" || source === "historical_databento" ? source : "historical_databento";
 }
 
 function storedReviewSetId(): string {
@@ -475,8 +466,6 @@ function chartLevelOrder(annotation: VisualValidationAnnotation): number {
 export default function VisualReview() {
   const [request, setRequest] = useState<VisualValidationRequest>(() => ({
     ...INITIAL_REQUEST,
-    source: storedReviewSource(),
-    seed: storedReviewSource() === "simulated" ? 11 : undefined,
     earlyOrbMomentum: {
       ...INITIAL_REQUEST.earlyOrbMomentum!,
       enabled: storedEarlyOrbMomentumEnabled(),
@@ -625,14 +614,14 @@ export default function VisualReview() {
         : qualifiedCount > 0
           ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
           : "Replay completed, but this date window contains no risk-approved candidate-owned fills. Try a window with a qualifying trade.");
-    } else if (generationJob.status === "failed" && request.source === "historical_databento") {
+    } else if (generationJob.status === "failed") {
       const recovery = historicalRangeRecovery(generationJob.error);
       if (recovery && request.endDate === recovery.requestedEndDate) {
         setRequest((current) => ({ ...current, endDate: recovery.availableEndDate }));
         setMessage(`The saved review date ended before eligible MES history. The date was reset to ${recovery.availableEndDate}; retry generation.`);
       }
     }
-  }, [generationJob, request.endDate, request.source]);
+  }, [generationJob, request.endDate]);
 
   const currentSet = setQuery.data?.stale ? null : setQuery.data;
   const data = generationActive
@@ -916,7 +905,7 @@ export default function VisualReview() {
           <PageIntro
             eyebrow="Phase 12 / human-machine alignment"
             title="Look before you trust."
-             description="A causal visual review room for checking whether deterministic setup rules tell the same story as the candles. Compare simulated fixtures or actual historical MES candles, inspect one decision at a time, then leave a human judgment."
+             description="A causal visual review room for checking whether deterministic setup rules tell the same story as actual historical MES candles, inspect one decision at a time, then leave a human judgment."
             action={<ShadowBadge />}
           />
 
@@ -959,7 +948,7 @@ export default function VisualReview() {
                    <div className="visual-review-chart-column min-w-0 space-y-5">
                      <Panel>
                        <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
-                       <CausalChart snapshot={activeSnapshot} source={data.source} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
+                       <CausalChart snapshot={activeSnapshot} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
                          setLockedEntryCandle(candle);
                          if (!candle) return;
                          const entryIndex = activeSnapshot.reviewCandles.findIndex((item) => item.openTime === candle.openTime && item.closeTime === candle.closeTime);
@@ -1018,7 +1007,6 @@ export default function VisualReview() {
              <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
                <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
-                 if (typeof window !== "undefined" && next.source) window.localStorage.setItem("levelstory.visualReviewSource", next.source);
                  if (typeof window !== "undefined") {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
@@ -1421,11 +1409,6 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
 
 function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
-  const updateSource = (source: VisualValidationRequest["source"]) => setRequest({
-    ...request,
-    source,
-    seed: source === "simulated" ? (request.seed ?? 11) : undefined,
-  });
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
     enabled: true,
@@ -1456,23 +1439,9 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
-      <Field label={<span className="inline-flex items-center gap-1.5">Data source <InfoTip label="Data source" text="Historical Databento is the default and uses indexed MES contract candles. Simulated fixtures are available only as an explicit test option." /></span>}>
-        <select
-          className="field"
-          value={request.source ?? "historical_databento"}
-          onChange={(event) => updateSource(event.target.value as "simulated" | "historical_databento")}
-          data-testid="select-visual-review-source"
-        >
-          <option value="historical_databento">Historical Databento data</option>
-          <option value="simulated">Simulated fixture data · testing only</option>
-        </select>
-      </Field>
       <div className="grid grid-cols-2 gap-3">
+        <Field label="Data source"><div className="field mono">Historical Databento data</div></Field>
         <Field label="Symbol"><select className="field mono" value={request.symbol} onChange={(event) => update("symbol", event.target.value as "MES")}><option value="MES">MES</option></select></Field>
-        <Field label={<span className="inline-flex items-center gap-1.5">Seed <InfoTip label="Seed" text="Seeds affect simulated fixture generation only. Historical mode is immutable, so this control is disabled." /></span>}>
-          <input className="field mono" type="number" min="0" max="1000000" value={request.seed ?? ""} disabled={request.source === "historical_databento"} aria-describedby="visual-review-seed-help" onChange={(event) => update("seed", event.target.value === "" ? undefined : Number(event.target.value))} />
-          <span id="visual-review-seed-help" className="mt-1 block text-[10px] text-muted-foreground">{request.source === "historical_databento" ? "Not used for historical candles." : "Used to reproduce the same fixture set."}</span>
-        </Field>
       </div>
       <Field label={<span className="inline-flex items-center gap-1.5">Review-period end date · New York <InfoTip label="Review-period end date" text="The last requested trading date in the review period. Individual examples may be earlier because the period includes in-sample and holdout sessions." /></span>}>
         <input required className="field mono" type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} />
@@ -1484,7 +1453,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
-         <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+          <div className="space-y-2">
            {VISIBLE_STRATEGY_SETTINGS.map((strategy) => {
              const enabled = enabledStrategies[strategy.id] !== false;
              return <div key={strategy.id} className="border border-border bg-muted/20 p-3" data-testid={`strategy-setting-${strategy.id}`}>
@@ -1514,7 +1483,6 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
              </div>;
            })}
          </div>
-         <p className="border-t border-border pt-3 text-[10px] leading-4 text-muted-foreground">The Early ORB cutoff and one-tick distance are server-validated constants. Every enabled strategy is evaluated independently; these switches apply only to Visual Review and its read-only Shadow Account Replay.</p>
        </fieldset>
       {message && <div className={`flex items-start gap-2 border p-3 text-xs ${hasError ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status"><Info size={14} className="mt-0.5 shrink-0" />{message}</div>}
        <div className="grid gap-2 sm:grid-cols-2">
@@ -1525,7 +1493,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
          <RotateCcw size={15} />Regenerate fresh
        </button>
        </div>
-       <LockedNote>{request.source === "historical_databento" ? "Historical mode reads the existing indexed MES contract candles only. It never rebuilds the index, connects to a broker, creates orders, or produces live execution." : "Generation replays deterministic data only. No broker connection, order creation, or live execution path exists here."}</LockedNote>
+        <LockedNote>Historical mode reads the existing indexed MES contract candles only. It never rebuilds the index, connects to a broker, creates orders, or produces live execution.</LockedNote>
     </form>
   </Panel>;
 }
@@ -1697,7 +1665,7 @@ function CausalTag() {
   return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
 }
 
-function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; source: string; expanded: boolean; lockedEntryCandle: SessionCandle | null; teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
+function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; expanded: boolean; lockedEntryCandle: SessionCandle | null; teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
   const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(requestedPremarket);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1747,19 +1715,17 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
     ).premarketCandles
     : [];
   const chartCandles = selection.regularCandles;
-  const repetitive = hasRepetitiveFixtureData(chartCandles);
   const invalidIndices = invalidRawCandleIndices(chartCandles);
-  const historical = source === "historical_databento" || source === "historical_databento_multicontract";
   const windowLabel = sessionView === "primary"
     ? "Primary trade window · 9:30 AM–1:00 PM ET"
     : "Full regular session · 9:30 AM–4:00 PM ET";
-  const sourceLabel = `${windowLabel} · ${historical ? "Historical Databento" : "Simulated fixture data"}`;
+  const sourceLabel = `${windowLabel} · Historical Databento`;
   return <div ref={frameRef} className={`chart-frame border-t border-border p-3 sm:p-5 ${isFullscreen ? "visual-review-chart-fullscreen" : ""}`} data-testid="visual-review-chart">
     <div className="mb-4 flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <div className="eyebrow text-muted-foreground">Source / immutable candle bytes</div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-2 border border-accent/45 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.1em]" data-testid="chart-data-source"><span className="h-1.5 w-1.5 rounded-full bg-accent" />{formatDataSource(source, snapshot.contractSymbol)}</span>
+          <span className="inline-flex items-center gap-2 border border-accent/45 bg-accent/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.1em]" data-testid="chart-data-source"><span className="h-1.5 w-1.5 rounded-full bg-accent" />Historical Databento data — {snapshot.contractSymbol}</span>
           <span className="mono text-[10px] text-muted-foreground" data-testid="chart-window-count">{selection.regularCandles.length} regular candles shown{showPremarket ? ` · ${premarketCandles.length} premarket` : ""} · raw OHLCV</span>
         </div>
         <div className="mt-2 text-xs font-semibold tracking-[-.01em]" data-testid="primary-trade-window-label">{sourceLabel}</div>
@@ -1785,7 +1751,6 @@ function CausalChart({ snapshot, source, expanded, lockedEntryCandle, teaching, 
         </div>
       </div>
     </div>
-     {repetitive && source === "simulated" && <div className="mb-4 flex items-start gap-2 border border-accent/35 bg-accent/8 p-3 text-[11px] leading-4 text-muted-foreground" role="status" data-testid="repetitive-fixture-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-accent" /><span><strong className="text-foreground">Repetitive simulated fixture data.</strong> The raw candles contain repeated or unusually narrow-body shapes; values are rendered unchanged.</span></div>}
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
       <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}

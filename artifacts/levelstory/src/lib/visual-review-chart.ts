@@ -1213,27 +1213,6 @@ export function layoutEventRail(
   };
 }
 
-export function hasRepetitiveFixtureData(candles: readonly VisualValidationCandle[]): boolean {
-  if (candles.length < 6) return false;
-  let longestRun = 1;
-  let currentRun = 1;
-  for (let index = 1; index < candles.length; index += 1) {
-    const previous = candles[index - 1];
-    const current = candles[index];
-    const same = previous.open === current.open
-      && previous.high === current.high
-      && previous.low === current.low
-      && previous.close === current.close;
-    currentRun = same ? currentRun + 1 : 1;
-    longestRun = Math.max(longestRun, currentRun);
-  }
-  const narrowBodyCount = candles.filter((candle) => {
-    const range = candle.high - candle.low;
-    return range > 0 && Math.abs(candle.close - candle.open) / range <= 0.08;
-  }).length;
-  return longestRun >= 3 || narrowBodyCount / candles.length >= 0.8;
-}
-
 export function formatCandleTime(value: string, timeZone: "America/New_York" | "UTC"): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -1241,14 +1220,6 @@ export function formatCandleTime(value: string, timeZone: "America/New_York" | "
     timeStyle: "medium",
     hour12: false,
   }).format(new Date(value));
-}
-
-export function formatDataSource(source: string, contractSymbol?: string): string {
-  if (source === "simulated") return "Simulated fixture data";
-  if (source === "historical_databento" || source === "historical_databento_multicontract") {
-    return `Historical Databento data${contractSymbol ? ` — ${contractSymbol}` : ""}`;
-  }
-  return source;
 }
 
 export function isPrimaryLevel(annotation: VisualValidationAnnotation): boolean {

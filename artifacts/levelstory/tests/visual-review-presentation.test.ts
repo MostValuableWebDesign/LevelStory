@@ -130,6 +130,18 @@ test("visual review separates chart analysis, deterministic generation, and read
   assert.match(page, /open=\{true\} onToggleOpen=\{\(\) => undefined\}/);
 });
 
+test("visual review generation is historical-only and fits all strategy settings", () => {
+  assert.match(page, /Historical Databento data/);
+  assert.doesNotMatch(page, /Simulated fixture data/);
+  assert.doesNotMatch(page, /select-visual-review-source/);
+  assert.doesNotMatch(page, /Seed/);
+  assert.doesNotMatch(page, /input type="number" min="0" max="1000000"/);
+  assert.doesNotMatch(page, /Early ORB cutoff and one-tick distance/);
+  assert.doesNotMatch(page, /max-h-\[520px\]/);
+  assert.doesNotMatch(page, /overflow-y-auto pr-1/);
+  assert.doesNotMatch(page, /repetitive-fixture-warning/);
+});
+
 test("Generate only shows the no-candidate state after generation finishes", () => {
   assert.match(page, /const generationFinished = generationJob\?\.status === "completed" \|\| generationJob\?\.status === "partial";/);
   assert.match(page, /!activeSnapshot && <Panel><EmptyReview \/>/);

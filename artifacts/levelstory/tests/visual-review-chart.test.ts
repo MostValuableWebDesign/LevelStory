@@ -18,7 +18,6 @@ import {
   getCandleSlotIndex,
   formatAxisDate,
   formatInterval,
-  formatDataSource,
   getCandleInspection,
   getFixedTimeAxisTicks,
   getPriceAxis,
@@ -30,7 +29,6 @@ import {
   findConsolidationZones,
   getSessionDomainSlotCount,
   hasExactCandleAnchor,
-  hasRepetitiveFixtureData,
   findCandleIndexAtTimestamp,
   invalidRawCandleIndices,
   isOpeningRangeCompleteAtEvaluation,
@@ -397,20 +395,12 @@ test("event markers resolve only exact candle timestamps", () => {
   assert.equal(findCandleIndexAtTimestamp(candles, new Date(baseTime + 1).toISOString()), -1);
 });
 
-test("raw integrity and repetitive-fixture checks do not rewrite candles", () => {
-  const repeated = Array.from({ length: 6 }, () => makeCandle(0));
-  assert.equal(hasRepetitiveFixtureData(repeated), true);
+test("raw integrity checks do not rewrite candles", () => {
   const invalid = makeCandle(0, { high: 99, low: 100 });
   assert.deepEqual(invalidRawCandleIndices([makeCandle(0), invalid]), [1]);
   assert.equal(invalid.open, 100);
   assert.equal(invalid.high, 99);
   assert.equal(invalid.low, 100);
-});
-
-test("source labels distinguish simulation from historical Databento data", () => {
-  assert.equal(formatDataSource("simulated"), "Simulated fixture data");
-  assert.equal(formatDataSource("historical_databento", "MESU6"), "Historical Databento data — MESU6");
-  assert.equal(formatDataSource("historical_databento_multicontract", "MESU6"), "Historical Databento data — MESU6");
 });
 
 test("only completed exact five-minute candles enter the execution chart", () => {
