@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { Worker } from "node:worker_threads";
@@ -26,20 +26,23 @@ import {
 import type { CausalReplayDataset, BacktestGapReport, IntrabarBar } from "../phase9.js";
 import type { SimulatedFuturesCandle } from "./simulated-feed.js";
 import type { NormalizedCandle } from "./market-data-provider.js";
+import { HistoricalIndexStore } from "./historical-index-store.js";
 
 const DAY = 86_400_000;
-const CONTRACT_FILE = /\.((?:MES)[FGHJKMNQUVXZ]\d{1,2})(?:_\d+)?\.csv$/i;
-const SPREAD_FILE = /\.MES[A-Z]\d{1,2}-MES[A-Z]\d{1,2}(?:_\d+)?\.csv$/i;
-const COMPRESSED_CSV_FILE = /\.csv\.(?:zst|gz|zip)$/i;
+const CONTRACT_FILE = /\.((?:MES)[FGHJKMNQUVXZ]\d{1,2})(?:_\d+)?\.csv(?:\.zst)?$/i;
+const SPREAD_FILE = /\.MES[A-Z]\d{1,2}-MES[A-Z]\d{1,2}(?:_\d+)?\.csv(?:\.zst)?$/i;
+const COMPRESSED_CSV_FILE = /\.csv\.(?:gz|zip)$/i;
 const execFileAsync = promisify(execFile);
 
 export const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as const;
-export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V1" as const;
+export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V2" as const;
 export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v4" as const;
 export const MES_SUPPORTED_START_DATE = "2021-09-12" as const;
 export const MES_SUPPORTED_END_DATE = "2026-09-11" as const;
-export const MES_ROLLOVER_SCHEDULE_SOURCE =
-  "CME Group Equity Index Roll Dates, https://www.cmegroup.com/trading/equity-index/rolldates.html" as const;
+export const MES_ROLLOVER_SCHEDULE_SOURCES = [
+  "https://www.cmegroup.com/trading/equity-index/rolldates.html",
+  "https://www.cmegroup.com/notices/electronic-trading/2022/04/20220418.html",
+] as const;
 export const MES_ROLLOVER_SCHEDULE_VERIFIED_ON = "2026-09-12" as const;
 
 const MONTH_CODES = ["F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"] as const;
@@ -61,24 +64,24 @@ export const MES_ROLLOVER_SCHEDULE = [
   { effectiveDate: "2021-09-12", contractSymbol: "MESZ1" },
   { effectiveDate: "2021-12-09", contractSymbol: "MESH2" },
   { effectiveDate: "2022-03-10", contractSymbol: "MESM2" },
-  { effectiveDate: "2022-06-09", contractSymbol: "MESU2" },
-  { effectiveDate: "2022-09-08", contractSymbol: "MESZ2" },
-  { effectiveDate: "2022-12-08", contractSymbol: "MESH3" },
-  { effectiveDate: "2023-03-09", contractSymbol: "MESM3" },
-  { effectiveDate: "2023-06-08", contractSymbol: "MESU3" },
-  { effectiveDate: "2023-09-14", contractSymbol: "MESZ3" },
-  { effectiveDate: "2023-12-14", contractSymbol: "MESH4" },
-  { effectiveDate: "2024-03-14", contractSymbol: "MESM4" },
-  { effectiveDate: "2024-06-13", contractSymbol: "MESU4" },
-  { effectiveDate: "2024-09-12", contractSymbol: "MESZ4" },
-  { effectiveDate: "2024-12-12", contractSymbol: "MESH5" },
-  { effectiveDate: "2025-03-13", contractSymbol: "MESM5" },
-  { effectiveDate: "2025-06-12", contractSymbol: "MESU5" },
-  { effectiveDate: "2025-09-11", contractSymbol: "MESZ5" },
-  { effectiveDate: "2025-12-11", contractSymbol: "MESH6" },
-  { effectiveDate: "2026-03-12", contractSymbol: "MESM6" },
-  { effectiveDate: "2026-06-11", contractSymbol: "MESU6" },
-  { effectiveDate: "2026-09-10", contractSymbol: "MESZ6" },
+  { effectiveDate: "2022-06-13", contractSymbol: "MESU2" },
+  { effectiveDate: "2022-09-12", contractSymbol: "MESZ2" },
+  { effectiveDate: "2022-12-12", contractSymbol: "MESH3" },
+  { effectiveDate: "2023-03-13", contractSymbol: "MESM3" },
+  { effectiveDate: "2023-06-12", contractSymbol: "MESU3" },
+  { effectiveDate: "2023-09-11", contractSymbol: "MESZ3" },
+  { effectiveDate: "2023-12-11", contractSymbol: "MESH4" },
+  { effectiveDate: "2024-03-11", contractSymbol: "MESM4" },
+  { effectiveDate: "2024-06-10", contractSymbol: "MESU4" },
+  { effectiveDate: "2024-09-09", contractSymbol: "MESZ4" },
+  { effectiveDate: "2024-12-09", contractSymbol: "MESH5" },
+  { effectiveDate: "2025-03-10", contractSymbol: "MESM5" },
+  { effectiveDate: "2025-06-09", contractSymbol: "MESU5" },
+  { effectiveDate: "2025-09-08", contractSymbol: "MESZ5" },
+  { effectiveDate: "2025-12-08", contractSymbol: "MESH6" },
+  { effectiveDate: "2026-03-09", contractSymbol: "MESM6" },
+  { effectiveDate: "2026-06-08", contractSymbol: "MESU6" },
+  { effectiveDate: "2026-09-14", contractSymbol: "MESZ6" },
 ] as const;
 
 export type MesContractIdentity = {
@@ -95,6 +98,7 @@ export type RolloverBoundary = {
   fromContractSymbol: string | null;
   toContractSymbol: string;
   scheduleVersion: typeof MES_ROLLOVER_SCHEDULE_VERSION;
+  sources: readonly string[];
 };
 
 export type MultiContractFileSummary = {
@@ -275,6 +279,7 @@ export type HistoricalMultiContractImport = {
   summary: HistoricalMultiContractImportSummary;
   contentFingerprint: string;
   contracts: ReadonlyMap<string, HistoricalCsvImport>;
+  storage?: HistoricalIndexStore;
   specification: FuturesContractSpecification;
   calendar: FuturesSessionCalendar;
 };
@@ -333,7 +338,7 @@ export function validateMesRolloverSchedule(
   if (schedule[0]!.effectiveDate > MES_SUPPORTED_START_DATE) {
     throw new Error(`MES rollover schedule does not cover supported start ${MES_SUPPORTED_START_DATE}.`);
   }
-  if (schedule.at(-1)!.effectiveDate > MES_SUPPORTED_END_DATE) {
+  if (!schedule.some((entry) => entry.effectiveDate <= MES_SUPPORTED_END_DATE)) {
     throw new Error(`MES rollover schedule does not cover supported end ${MES_SUPPORTED_END_DATE}.`);
   }
 }
@@ -382,12 +387,14 @@ export function buildRolloverBoundaries(): RolloverBoundary[] {
     fromContractSymbol: MES_ROLLOVER_SCHEDULE[index - 1]?.contractSymbol ?? null,
     toContractSymbol: item.contractSymbol,
     scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+    sources: MES_ROLLOVER_SCHEDULE_SOURCES,
   }));
 }
 
 function assetDirectories(): string[] {
   return [
     join(process.cwd(), "attached_assets"),
+    join(process.cwd(), ".cache", "historical-uploads"),
     join(process.cwd(), "..", "attached_assets"),
     join(process.cwd(), "..", "..", "attached_assets"),
   ];
@@ -416,7 +423,7 @@ async function resolveMultiContractFiles(): Promise<{
     try {
       const listing = await execFileAsync("unzip", ["-Z1", archive]);
       for (const file of listing.stdout.split(/\r?\n/).map((item) => basename(item.trim())).filter(Boolean)) {
-        if (file.endsWith(".csv")) allNames.add(file);
+        if (file.endsWith(".csv") || file.endsWith(".csv.zst")) allNames.add(file);
       }
       break;
     } catch {
@@ -426,7 +433,7 @@ async function resolveMultiContractFiles(): Promise<{
   }
   const rejectedFiles: Array<{ filename: string; reason: string }> = [];
   const candidates = [...allNames]
-    .filter((file) => file.endsWith(".csv") || COMPRESSED_CSV_FILE.test(file))
+    .filter((file) => file.endsWith(".csv") || file.endsWith(".csv.zst") || COMPRESSED_CSV_FILE.test(file))
     .filter((file) => file.startsWith("glbx-mdp3-"))
     .sort();
   const byContract = new Map<string, Array<{ filename: string; path: string }>>();
@@ -646,11 +653,13 @@ export function multiContractImportToReplayDataset(
       throw new Error(`No MES contract is scheduled for eligible date ${item.tradingDate}.`);
     }
     const contract = imported.contracts.get(item.contractSymbol);
-    if (!contract) throw new Error(`Rollover schedule selects ${item.contractSymbol}, but that contract file is unavailable.`);
-    const calendar = contract.calendar;
-    if (!oneMinuteByContractDate.has(item.contractSymbol)) {
+    if (!imported.storage && !contract) {
+      throw new Error(`Rollover schedule selects ${item.contractSymbol}, but that contract file is unavailable.`);
+    }
+    const calendar = contract?.calendar ?? imported.calendar;
+    if (!imported.storage && !oneMinuteByContractDate.has(item.contractSymbol)) {
       const oneMinuteByDate = new Map<string, NormalizedCandle[]>();
-      for (const candle of contract.oneMinute) {
+      for (const candle of contract!.oneMinute) {
         const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
         if (!selectedDateSet.has(tradingDate)) continue;
         const dateCandles = oneMinuteByDate.get(tradingDate) ?? [];
@@ -659,7 +668,7 @@ export function multiContractImportToReplayDataset(
       }
       oneMinuteByContractDate.set(item.contractSymbol, oneMinuteByDate);
       const fiveMinuteByDate = new Map<string, SimulatedFuturesCandle[]>();
-      for (const candle of contract.fiveMinute) {
+      for (const candle of contract!.fiveMinute) {
         const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
         if (!selectedDateSet.has(tradingDate) || !candle.isComplete) continue;
         const dateCandles = fiveMinuteByDate.get(tradingDate) ?? [];
@@ -668,12 +677,18 @@ export function multiContractImportToReplayDataset(
       }
       fiveMinuteByContractDate.set(item.contractSymbol, fiveMinuteByDate);
     }
-    const selected = oneMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
+    const selected = imported.storage
+      ? imported.storage.getCandles(item.contractSymbol, item.tradingDate, 1)
+      : oneMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
     if (!selected.length) {
       throw new Error(`Scheduled contract ${item.contractSymbol} has no eligible one-minute candles for ${item.tradingDate}.`);
     }
     if (selected.length) {
-      const regularFiveMinute = fiveMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
+      const regularFiveMinute = imported.storage
+        ? imported.storage.getCandles(item.contractSymbol, item.tradingDate, 5)
+          .filter((candle) => candle.isComplete)
+          .map(toReplayCandle)
+        : fiveMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
       if (!regularFiveMinute.length) {
         throw new Error(`Scheduled contract ${item.contractSymbol} has no completed replay candles for ${item.tradingDate}.`);
       }
@@ -716,20 +731,13 @@ export function multiContractImportToReplayDataset(
   };
 }
 
-const INDEX_CACHE_PATH = join(process.cwd(), ".cache", "levelstory-multi-contract-index.json");
+const INDEX_CACHE_PATH = join(process.cwd(), ".cache", "levelstory-multi-contract-index.sqlite");
 
 type MultiContractIdentity = {
   resolved: Awaited<ReturnType<typeof resolveMultiContractFiles>>;
   fingerprints: string[];
   contentFingerprint: string;
   indexKey: string;
-};
-
-type PersistedMultiContractIndex = {
-  indexKey: string;
-  contentFingerprint: string;
-  summary: HistoricalMultiContractImportSummary;
-  contracts: Array<{ contractSymbol: string; imported: HistoricalCsvImport }>;
 };
 
 let cachedImport: { indexKey: string; value: HistoricalMultiContractImport } | null = null;
@@ -1052,55 +1060,37 @@ function indexStatusFromSummary(
 }
 
 async function readPersistedIndex(identity: MultiContractIdentity): Promise<HistoricalMultiContractImport | null> {
+  let store: HistoricalIndexStore | null = null;
   try {
-    const raw = await readFile(INDEX_CACHE_PATH, "utf8");
-    const persisted = JSON.parse(raw) as PersistedMultiContractIndex;
-    if (persisted.indexKey !== identity.indexKey || !Array.isArray(persisted.contracts)) return null;
-    assertMultiContractCoverageReconciles(persisted.summary);
-    const fingerprintValidation = validateMultiContractContentFingerprint({
-      contentFingerprint: persisted.contentFingerprint,
-      files: persisted.summary.files,
-    });
-    if (!fingerprintValidation.valid || persisted.contentFingerprint !== identity.contentFingerprint) return null;
-    const base = getFuturesContractSpecification("MES");
-    const contracts = new Map<string, HistoricalCsvImport>();
-    for (const item of persisted.contracts) {
-      if (!item?.contractSymbol || !item.imported?.summary) return null;
-      contracts.set(item.contractSymbol, {
-        ...item.imported,
-        specification: contractSpecificationForMesSymbol(item.contractSymbol),
-        calendar: sessionCalendarForContract(contractSpecificationForMesSymbol(item.contractSymbol)),
-      });
+    store = HistoricalIndexStore.create(INDEX_CACHE_PATH);
+    const metadata = store.readMetadata();
+    if (!metadata || metadata.indexKey !== identity.indexKey) {
+      store.close();
+      return null;
     }
+    const summary = metadata.summary as HistoricalMultiContractImportSummary;
+    assertMultiContractCoverageReconciles(summary);
+    const fingerprintValidation = validateMultiContractContentFingerprint({
+      contentFingerprint: metadata.contentFingerprint,
+      files: summary.files,
+    });
+    if (!fingerprintValidation.valid || metadata.contentFingerprint !== identity.contentFingerprint) {
+      store.close();
+      return null;
+    }
+    const base = getFuturesContractSpecification("MES");
     return {
-      summary: persisted.summary,
-      contentFingerprint: persisted.contentFingerprint,
-      contracts,
+      summary,
+      contentFingerprint: metadata.contentFingerprint,
+      contracts: new Map(),
+      storage: store,
       specification: base,
       calendar: sessionCalendarForContract(base),
     };
   } catch {
+    store?.close();
     return null;
   }
-}
-
-async function persistIndex(
-  identity: MultiContractIdentity,
-  value: HistoricalMultiContractImport,
-): Promise<void> {
-  await mkdir(join(process.cwd(), ".cache"), { recursive: true });
-  const temporary = `${INDEX_CACHE_PATH}.${process.pid}.tmp`;
-  const serialized: PersistedMultiContractIndex = {
-    indexKey: identity.indexKey,
-    contentFingerprint: identity.contentFingerprint,
-    summary: value.summary,
-    contracts: [...value.contracts.entries()].map(([contractSymbol, imported]) => ({
-      contractSymbol,
-      imported,
-    })),
-  };
-  await writeFile(temporary, JSON.stringify(serialized), "utf8");
-  await rename(temporary, INDEX_CACHE_PATH);
 }
 
 async function buildMultiContractIndex(identity: MultiContractIdentity): Promise<HistoricalMultiContractImport> {
@@ -1123,6 +1113,8 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
   }
 
   const base = getFuturesContractSpecification("MES");
+  const stagedStore = await HistoricalIndexStore.createAtomic(INDEX_CACHE_PATH);
+  try {
   const importedContracts = new Map<string, HistoricalCsvImport>();
   const fragmentImports = new Map<string, HistoricalCsvImport>();
   const fragmentsByContract = new Map<string, Array<{
@@ -1144,7 +1136,7 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
         contractSpecificationForMesSymbol(contractSymbol),
         fragment.fingerprint,
       );
-      fragmentImports.set(fragment.file.filename, imported);
+      fragmentImports.set(fragment.file.filename, summaryOnlyHistoricalImport(imported));
       importedFragments.push(imported);
       indexedFragments += 1;
       updateIndexStatus({
@@ -1153,7 +1145,9 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
         message: `Indexed ${indexedFragments} of ${identity.resolved.accepted.length} MES contract files.`,
       });
     }
-    importedContracts.set(contractSymbol, mergeHistoricalCsvImports(importedFragments));
+    const merged = mergeHistoricalCsvImports(importedFragments);
+    stagedStore.writeImport(merged, merged.contentFingerprint);
+    importedContracts.set(contractSymbol, summaryOnlyHistoricalImport(merged));
   }
 
   const aggregate = aggregateSummaries([...importedContracts.values()].map((item) => item.summary));
@@ -1244,14 +1238,26 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
     indexedAt,
   };
   assertMultiContractCoverageReconciles(summary);
-  const value: HistoricalMultiContractImport = {
+  const valueWithoutStorage: HistoricalMultiContractImport = {
     summary,
     contentFingerprint: identity.contentFingerprint,
-    contracts: importedContracts,
+    contracts: new Map(),
     specification: base,
     calendar: sessionCalendarForContract(base),
   };
-  await persistIndex(identity, value);
+  stagedStore.writeMetadata({
+    indexKey: identity.indexKey,
+    contentFingerprint: identity.contentFingerprint,
+    summary: valueWithoutStorage.summary,
+    importerVersion: MULTI_CONTRACT_IMPORTER_VERSION,
+    scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
+    indexedAt: valueWithoutStorage.summary.indexedAt,
+  });
+  await stagedStore.commitAtomic();
+  const value: HistoricalMultiContractImport = {
+    ...valueWithoutStorage,
+    storage: HistoricalIndexStore.create(INDEX_CACHE_PATH),
+  };
   updateIndexStatus({
     state: "ready",
     indexKey: identity.indexKey,
@@ -1265,6 +1271,20 @@ async function buildMultiContractIndex(identity: MultiContractIdentity): Promise
     error: null,
   });
   return value;
+  } catch (error) {
+    await stagedStore.abortAtomic();
+    throw error;
+  }
+}
+
+function summaryOnlyHistoricalImport(imported: HistoricalCsvImport): HistoricalCsvImport {
+  return {
+    ...imported,
+    oneMinute: [],
+    fiveMinute: [],
+    fifteenMinute: [],
+    oneHour: [],
+  };
 }
 
 async function importOneContractForIndex(

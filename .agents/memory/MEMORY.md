@@ -70,3 +70,4 @@
 - [Causal dynamic target ratchet](causal-dynamic-target-ratchet.md) — evaluate indicator proposals after candle exits and apply only monotonic, non-crossing results from the next candle.
 - [Replay cursor identity](replay-cursor-identity.md) — merge partial and completed snapshots by the expected E boundary, not observed completion evidence.
 - [Account-wide position arbitration](account-position-arbitration.md) — historical and Shadow Replay share one chronological active-position gate; blocked candidates remain evidence, never P/L.
+- [Historical Zstandard import](historical-zstd-import.md) — stream .csv.zst through decompression, hash compressed bytes, and preserve the suffix for contract discovery.

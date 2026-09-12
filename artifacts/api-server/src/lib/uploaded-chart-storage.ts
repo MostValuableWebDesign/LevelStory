@@ -25,14 +25,11 @@ export function newUploadedChartObjectPath(): string {
   return `/objects/uploads/chart/${randomUUID()}`;
 }
 
-export async function signUploadedChartObjectUrl(
+export async function signPrivateObjectUrl(
   objectPath: string,
   method: "GET" | "PUT",
   ttlSec = 900,
 ): Promise<string> {
-  if (!isSafeUploadedChartObjectPath(objectPath)) {
-    throw new Error("Invalid uploaded chart object path.");
-  }
   const objectName = objectPath.slice("/objects/".length);
   const { bucketName } = parseObjectPath(`${privateObjectDir()}/${objectName}`);
   const signed = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`, {
@@ -50,6 +47,17 @@ export async function signUploadedChartObjectUrl(
   const body = await signed.json() as { signed_url?: string };
   if (!body.signed_url) throw new Error("Private object URL signer returned no URL.");
   return body.signed_url;
+}
+
+export async function signUploadedChartObjectUrl(
+  objectPath: string,
+  method: "GET" | "PUT",
+  ttlSec = 900,
+): Promise<string> {
+  if (!isSafeUploadedChartObjectPath(objectPath)) {
+    throw new Error("Invalid uploaded chart object path.");
+  }
+  return signPrivateObjectUrl(objectPath, method, ttlSec);
 }
 
 export async function readUploadedChartObject(objectPath: string): Promise<{

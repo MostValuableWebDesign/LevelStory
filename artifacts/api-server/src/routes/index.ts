@@ -8,6 +8,7 @@ import visualValidationRouter from "./visual-validation";
 import authRouter from "./auth";
 import governanceRouter from "./governance";
 import uploadedChartRouter from "./uploaded-chart";
+import historicalDataUploadRouter from "./historical-data-upload";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(backtestRouter);
 router.use(visualValidationRouter);
 router.use(governanceRouter);
 router.use(uploadedChartRouter);
+router.use(historicalDataUploadRouter);
 
 export default router;

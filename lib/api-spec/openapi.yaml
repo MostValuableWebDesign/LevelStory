@@ -766,6 +766,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoricalDataIndexStatus"
+  /historical-data/uploads/request-url:
+    post:
+      operationId: requestHistoricalDataUploadUrl
+      tags: [backtest]
+      summary: Request a direct upload URL for historical MES data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HistoricalDataUploadRequest"
+      responses:
+        "200":
+          description: Direct object-storage upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataUploadUrl"
+        "400":
+          description: Invalid historical upload metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /historical-data/import:
+    post:
+      operationId: importHistoricalDataUploads
+      tags: [backtest]
+      summary: Materialize uploaded MES files and rebuild the historical index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HistoricalDataImportRequest"
+      responses:
+        "202":
+          description: Historical index imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalDataImportResponse"
+        "422":
+          description: Historical upload could not be imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data/ema-comparison:
     get:
       operationId: getHistoricalEmaComparison
@@ -2988,6 +3036,55 @@ components:
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
       required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
+    HistoricalDataUploadRequest:
+      type: object
+      properties:
+        originalFilename: { type: string, minLength: 1, maxLength: 255 }
+        mimeType: { type: string, maxLength: 100 }
+        sizeBytes: { type: number, minimum: 1, maximum: 536870912 }
+      required: [originalFilename, mimeType, sizeBytes]
+    HistoricalDataUploadUrl:
+      type: object
+      properties:
+        uploadUrl: { type: string }
+        objectPath: { type: string }
+        maxBytes: { type: number }
+        acceptedExtensions:
+          type: array
+          items: { type: string }
+      required: [uploadUrl, objectPath, maxBytes, acceptedExtensions]
+    HistoricalDataImportRequest:
+      type: object
+      properties:
+        files:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            properties:
+              objectPath: { type: string }
+              originalFilename: { type: string }
+            required: [objectPath, originalFilename]
+      required: [files]
+    HistoricalDataImportResponse:
+      type: object
+      properties:
+        state: { type: string, enum: [ready] }
+        filesMaterialized: { type: number, minimum: 1 }
+        status:
+          $ref: "#/components/schemas/HistoricalDataIndexStatus"
+        summary:
+          type: object
+          properties:
+            acceptedContracts:
+              type: array
+              items: { type: string }
+            eligibleTradingDateCount: { type: number, minimum: 0 }
+            ineligibleScheduledDateCount: { type: number, minimum: 0 }
+            fullRangeReady: { type: boolean }
+          required: [acceptedContracts, eligibleTradingDateCount, ineligibleScheduledDateCount, fullRangeReady]
+      required: [state, filesMaterialized, status, summary]
     HistoricalEmaComparisonCandidate:
       type: object
       properties:

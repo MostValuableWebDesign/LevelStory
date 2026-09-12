@@ -13942,6 +13942,109 @@ export const GetHistoricalDataIndexStatusResponse = zod.object({
 
 
 /**
+ * @summary Request a direct upload URL for historical MES data
+ */
+export const requestHistoricalDataUploadUrlBodyOriginalFilenameMax = 255;
+
+export const requestHistoricalDataUploadUrlBodyMimeTypeMax = 100;
+
+export const requestHistoricalDataUploadUrlBodySizeBytesMax = 536870912;
+
+
+
+export const RequestHistoricalDataUploadUrlBody = zod.object({
+  "originalFilename": zod.string().min(1).max(requestHistoricalDataUploadUrlBodyOriginalFilenameMax),
+  "mimeType": zod.string().max(requestHistoricalDataUploadUrlBodyMimeTypeMax),
+  "sizeBytes": zod.number().min(1).max(requestHistoricalDataUploadUrlBodySizeBytesMax)
+})
+
+export const RequestHistoricalDataUploadUrlResponse = zod.object({
+  "uploadUrl": zod.string(),
+  "objectPath": zod.string(),
+  "maxBytes": zod.number(),
+  "acceptedExtensions": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Materialize uploaded MES files and rebuild the historical index
+ */
+export const importHistoricalDataUploadsBodyFilesMax = 100;
+
+
+
+export const ImportHistoricalDataUploadsBody = zod.object({
+  "files": zod.array(zod.object({
+  "objectPath": zod.string(),
+  "originalFilename": zod.string()
+})).min(1).max(importHistoricalDataUploadsBodyFilesMax)
+})
+
+
+export const importHistoricalDataUploadsResponseStatusProgressMin = 0;
+export const importHistoricalDataUploadsResponseStatusProgressMax = 100;
+
+export const importHistoricalDataUploadsResponseStatusDiscoveredFileCountMin = 0;
+
+export const importHistoricalDataUploadsResponseStatusIndexedFileCountMin = 0;
+
+export const importHistoricalDataUploadsResponseStatusEligibleTradingDateCountMin = 0;
+
+export const importHistoricalDataUploadsResponseStatusIneligibleTradingDateCountMin = 0;
+
+export const importHistoricalDataUploadsResponseStatusMergedFileCountMin = 0;
+
+
+export const importHistoricalDataUploadsResponseSummaryEligibleTradingDateCountMin = 0;
+
+export const importHistoricalDataUploadsResponseSummaryIneligibleScheduledDateCountMin = 0;
+
+
+
+export const ImportHistoricalDataUploadsResponse = zod.object({
+  "state": zod.enum(['ready']),
+  "filesMaterialized": zod.number().min(1),
+  "status": zod.object({
+  "state": zod.enum(['not_started', 'indexing', 'ready', 'failed']),
+  "indexKey": zod.string().nullable(),
+  "progress": zod.number().min(importHistoricalDataUploadsResponseStatusProgressMin).max(importHistoricalDataUploadsResponseStatusProgressMax),
+  "discoveredFileCount": zod.number().min(importHistoricalDataUploadsResponseStatusDiscoveredFileCountMin),
+  "indexedFileCount": zod.number().min(importHistoricalDataUploadsResponseStatusIndexedFileCountMin),
+  "requestedStartDate": zod.string(),
+  "requestedEndDate": zod.string(),
+  "indexedStartDate": zod.string().nullable(),
+  "indexedEndDate": zod.string().nullable(),
+  "scheduleVersion": zod.string(),
+  "importerVersion": zod.string(),
+  "discoveredContracts": zod.array(zod.string()),
+  "acceptedContracts": zod.array(zod.string()),
+  "missingScheduledContracts": zod.array(zod.string()),
+  "eligibleTradingDateCount": zod.number().min(importHistoricalDataUploadsResponseStatusEligibleTradingDateCountMin),
+  "ineligibleTradingDateCount": zod.number().min(importHistoricalDataUploadsResponseStatusIneligibleTradingDateCountMin),
+  "mergedFileCount": zod.number().min(importHistoricalDataUploadsResponseStatusMergedFileCountMin),
+  "filesMergedPerContract": zod.array(zod.object({
+  "contractSymbol": zod.string(),
+  "fragmentCount": zod.number().min(1)
+})),
+  "rejectedFiles": zod.array(zod.object({
+  "filename": zod.string(),
+  "reason": zod.string()
+})),
+  "fullRangeReady": zod.boolean(),
+  "message": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),
+  "summary": zod.object({
+  "acceptedContracts": zod.array(zod.string()),
+  "eligibleTradingDateCount": zod.number().min(importHistoricalDataUploadsResponseSummaryEligibleTradingDateCountMin),
+  "ineligibleScheduledDateCount": zod.number().min(importHistoricalDataUploadsResponseSummaryIneligibleScheduledDateCountMin),
+  "fullRangeReady": zod.boolean()
+})
+})
+
+
+/**
  * Returns candidate MES timestamps and up to three selected comparisons. This is an audit report, not a broker-equivalence claim.
  * @summary Compare independently calculated EMA values at uploaded-history timestamps
  */

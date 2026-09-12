@@ -1830,6 +1830,65 @@ export interface HistoricalDataIndexStatus {
   updatedAt: string;
 }
 
+export interface HistoricalDataUploadRequest {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  originalFilename: string;
+  /** @maxLength 100 */
+  mimeType: string;
+  /**
+     * @minimum 1
+     * @maximum 536870912
+     */
+  sizeBytes: number;
+}
+
+export interface HistoricalDataUploadUrl {
+  uploadUrl: string;
+  objectPath: string;
+  maxBytes: number;
+  acceptedExtensions: string[];
+}
+
+export type HistoricalDataImportRequestFilesItem = {
+  objectPath: string;
+  originalFilename: string;
+};
+
+export interface HistoricalDataImportRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  files: HistoricalDataImportRequestFilesItem[];
+}
+
+export type HistoricalDataImportResponseState = typeof HistoricalDataImportResponseState[keyof typeof HistoricalDataImportResponseState];
+
+
+export const HistoricalDataImportResponseState = {
+  ready: 'ready',
+} as const;
+
+export type HistoricalDataImportResponseSummary = {
+  acceptedContracts: string[];
+  /** @minimum 0 */
+  eligibleTradingDateCount: number;
+  /** @minimum 0 */
+  ineligibleScheduledDateCount: number;
+  fullRangeReady: boolean;
+};
+
+export interface HistoricalDataImportResponse {
+  state: HistoricalDataImportResponseState;
+  /** @minimum 1 */
+  filesMaterialized: number;
+  status: HistoricalDataIndexStatus;
+  summary: HistoricalDataImportResponseSummary;
+}
+
 export interface HistoricalEmaComparisonCandidate {
   timestamp: string;
   contract: string;

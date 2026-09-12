@@ -50,7 +50,11 @@ import type {
   GetVisualValidationSetParams,
   GovernanceReasonInput,
   HealthStatus,
+  HistoricalDataImportRequest,
+  HistoricalDataImportResponse,
   HistoricalDataIndexStatus,
+  HistoricalDataUploadRequest,
+  HistoricalDataUploadUrl,
   HistoricalEmaComparisonReport,
   HistoricalImportSummary,
   JournalEntry,
@@ -2082,6 +2086,148 @@ export function useGetHistoricalDataIndexStatus<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getRequestHistoricalDataUploadUrlUrl = () => {
+
+
+
+
+  return `/api/historical-data/uploads/request-url`
+}
+
+/**
+ * @summary Request a direct upload URL for historical MES data
+ */
+export const requestHistoricalDataUploadUrl = async (historicalDataUploadRequest: HistoricalDataUploadRequest, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataUploadUrl> => {
+
+  return customFetch<HistoricalDataUploadUrl>(getRequestHistoricalDataUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(historicalDataUploadRequest)
+  }
+);}
+
+
+
+
+
+export const getRequestHistoricalDataUploadUrlMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>, TError,{data: BodyType<HistoricalDataUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>, TError,{data: BodyType<HistoricalDataUploadRequest>}, TContext> => {
+
+const mutationKey = ['requestHistoricalDataUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>, {data: BodyType<HistoricalDataUploadRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestHistoricalDataUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestHistoricalDataUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>>
+    export type RequestHistoricalDataUploadUrlMutationBody = BodyType<HistoricalDataUploadRequest>
+    export type RequestHistoricalDataUploadUrlMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Request a direct upload URL for historical MES data
+ */
+export const useRequestHistoricalDataUploadUrl = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>, TError,{data: BodyType<HistoricalDataUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestHistoricalDataUploadUrl>>,
+        TError,
+        {data: BodyType<HistoricalDataUploadRequest>},
+        TContext
+      > => {
+      return useMutation(getRequestHistoricalDataUploadUrlMutationOptions(options));
+    }
+
+export const getImportHistoricalDataUploadsUrl = () => {
+
+
+
+
+  return `/api/historical-data/import`
+}
+
+/**
+ * @summary Materialize uploaded MES files and rebuild the historical index
+ */
+export const importHistoricalDataUploads = async (historicalDataImportRequest: HistoricalDataImportRequest, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalDataImportResponse> => {
+
+  return customFetch<HistoricalDataImportResponse>(getImportHistoricalDataUploadsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(historicalDataImportRequest)
+  }
+);}
+
+
+
+
+
+export const getImportHistoricalDataUploadsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHistoricalDataUploads>>, TError,{data: BodyType<HistoricalDataImportRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importHistoricalDataUploads>>, TError,{data: BodyType<HistoricalDataImportRequest>}, TContext> => {
+
+const mutationKey = ['importHistoricalDataUploads'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importHistoricalDataUploads>>, {data: BodyType<HistoricalDataImportRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importHistoricalDataUploads(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportHistoricalDataUploadsMutationResult = NonNullable<Awaited<ReturnType<typeof importHistoricalDataUploads>>>
+    export type ImportHistoricalDataUploadsMutationBody = BodyType<HistoricalDataImportRequest>
+    export type ImportHistoricalDataUploadsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Materialize uploaded MES files and rebuild the historical index
+ */
+export const useImportHistoricalDataUploads = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHistoricalDataUploads>>, TError,{data: BodyType<HistoricalDataImportRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importHistoricalDataUploads>>,
+        TError,
+        {data: BodyType<HistoricalDataImportRequest>},
+        TContext
+      > => {
+      return useMutation(getImportHistoricalDataUploadsMutationOptions(options));
+    }
 
 export const getGetHistoricalEmaComparisonUrl = (params?: GetHistoricalEmaComparisonParams,) => {
   const normalizedParams = new URLSearchParams();

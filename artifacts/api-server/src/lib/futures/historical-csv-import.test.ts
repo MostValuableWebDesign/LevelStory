@@ -3,6 +3,7 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { zstdCompressSync } from "node:zlib";
 import { getFuturesContractSpecification } from "./contracts.js";
 import {
   getHistoricalCsvFingerprint,
@@ -300,7 +301,7 @@ test("rejects conflicting same-timestamp rows across fragments", async () => {
   });
 });
 
-test("rejects non-minute-aligned timestamps and compressed zstd inputs", async () => {
+test("rejects non-minute-aligned timestamps and streams compressed zstd inputs", async () => {
   await withCsv([row(Date.parse("2026-08-26T13:30:30.000Z"), 0)], async (path) => {
     const imported = await importHistoricalCsv(path, specification);
     assert.equal(imported.summary.rejectionReasons.MISALIGNED_MINUTE_TIMESTAMP, 1);
@@ -309,11 +310,11 @@ test("rejects non-minute-aligned timestamps and compressed zstd inputs", async (
   const directory = await mkdtemp(join(tmpdir(), "levelstory-zst-"));
   const path = join(directory, "historical.csv.zst");
   try {
-    await writeFile(path, "not a csv");
-    await assert.rejects(
-      importHistoricalCsv(path, specification),
-      /Unsupported historical CSV compression: \.zst/,
-    );
+    const csv = ["ts_event,rtype,publisher_id,instrument_id,open,high,low,close,volume,symbol", row(Date.parse("2026-08-26T13:30:00.000Z"), 0)].join("\n");
+    await writeFile(path, zstdCompressSync(Buffer.from(csv)));
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.validRows, 1);
+    assert.equal(imported.summary.detectedSymbol, "MESU6");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

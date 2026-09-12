@@ -21,7 +21,7 @@ import type {
   WalkForwardEdgeStatus,
   WalkForwardReport,
 } from "@workspace/api-client-react";
-import { BarChart3, Check, CheckCircle2, CircleX, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
+import { BarChart3, Check, CheckCircle2, CircleX, Database, FileCheck2, LockKeyhole, Play, RefreshCw, ShieldCheck, Square, Upload } from "lucide-react";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, ShadowBadge } from "@/components/levelstory-ui";
 import {
@@ -162,6 +162,90 @@ function HistoricalImportResults({ data, isLoading, isError }: { data?: Historic
         </div>}
     </div>
   </Panel>;
+}
+
+function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const upload = async () => {
+    if (!files.length) {
+      setMessage("Choose one or more .csv or .csv.zst files first.");
+      return;
+    }
+    setBusy(true);
+    setMessage(`Preparing ${files.length} historical file${files.length === 1 ? "" : "s"}…`);
+    try {
+      const uploaded: Array<{ objectPath: string; originalFilename: string }> = [];
+      for (const file of files) {
+        const request = await fetch("/api/historical-data/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            originalFilename: file.name,
+            mimeType: file.type || (file.name.toLowerCase().endsWith(".zst") ? "application/zstd" : "text/csv"),
+            sizeBytes: file.size,
+          }),
+        });
+        const requestBody = await request.json() as { uploadUrl?: string; objectPath?: string; error?: string };
+        if (!request.ok || !requestBody.uploadUrl || !requestBody.objectPath) throw new Error(requestBody.error ?? "Could not prepare the historical upload.");
+        const stored = await fetch(requestBody.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!stored.ok) throw new Error(`Object storage rejected ${file.name}.`);
+        uploaded.push({ objectPath: requestBody.objectPath, originalFilename: file.name });
+        setMessage(`Uploaded ${uploaded.length} of ${files.length}; starting validation…`);
+      }
+      const imported = await fetch("/api/historical-data/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ files: uploaded }),
+      });
+      const importBody = await imported.json() as { error?: string; status?: { message?: string } };
+      if (!imported.ok) throw new Error(importBody.error ?? "Historical indexing could not start.");
+      setMessage(importBody.status?.message ?? "Historical indexing started. Refresh the lifecycle panel for progress.");
+      setFiles([]);
+      onImported();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Historical upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel className="mb-5" data-testid="panel-historical-data-upload">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+        <div>
+          <div className="eyebrow text-muted-foreground">Historical data library</div>
+          <div className="mt-1 font-semibold">Upload MES Databento files</div>
+          <div className="mt-1 max-w-2xl text-xs text-muted-foreground">Add outright quarterly contract files or fragments. Calendar spreads, unsupported schemas, malformed rows, and conflicting timestamps are rejected before the library is marked ready.</div>
+        </div>
+        <Upload size={16} aria-hidden="true" />
+      </div>
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <input
+          type="file"
+          multiple
+          accept=".csv,.csv.zst,text/csv,application/zstd"
+          onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+          disabled={busy}
+          className="field min-h-10 flex-1 text-xs"
+          data-testid="input-historical-data-files"
+        />
+        <button type="button" onClick={() => void upload()} disabled={busy || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
+          <Upload size={13} />{busy ? "Uploading…" : `Upload ${files.length || ""} files`}
+        </button>
+      </div>
+      {files.length > 0 && <div className="px-4 pb-3 text-[11px] text-muted-foreground">{files.map((file) => file.name).join(" · ")}</div>}
+      {message && <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground" role="status">{message}</div>}
+    </Panel>
+  );
 }
 
 function HistoricalEmaComparisonPanel({ report, isLoading, isError, selectedTimestamps, onToggle }: {
@@ -736,6 +820,7 @@ export default function Backtest() {
     <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
+         {source === MULTI_CONTRACT_SOURCE && <HistoricalDataUploadPanel onImported={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} />}
          {source !== "simulated" && <div className="mb-5 space-y-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /><HistoricalEmaComparisonPanel report={emaComparison.data} isLoading={emaComparison.isLoading || emaComparison.isFetching} isError={emaComparison.isError} selectedTimestamps={selectedEmaTimestamps} onToggle={(timestamp) => setSelectedEmaTimestamps((current) => current.includes(timestamp) ? current.filter((item) => item !== timestamp) : current.length < 3 ? [...current, timestamp] : current)} /></div>}
          {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div>{multiContractIndex.data && <div className="grid border-t border-border sm:grid-cols-2 lg:grid-cols-4" data-testid="historical-index-coverage"><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Requested coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.requestedStartDate} → {multiContractIndex.data.requestedEndDate}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Indexed coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.indexedStartDate ?? "—"} → {multiContractIndex.data.indexedEndDate ?? "—"}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Eligible / ineligible dates</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.eligibleTradingDateCount.toLocaleString()} / {multiContractIndex.data.ineligibleTradingDateCount.toLocaleString()}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Readiness</div><div className={`mt-1 font-semibold ${multiContractIndex.data.fullRangeReady ? "status-positive" : "status-negative"}`}>{multiContractIndex.data.fullRangeReady ? "Full requested range ready" : "Range has blocked dates"}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Schedule / importer</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.scheduleVersion} · {multiContractIndex.data.importerVersion}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mt-1 text-[11px] text-muted-foreground">{multiContractIndex.data.acceptedContracts.length} accepted of {multiContractIndex.data.discoveredContracts.length} discovered · {multiContractIndex.data.missingScheduledContracts.length} missing scheduled</div></div><div className="px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Merged source fragments</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">{multiContractIndex.data.filesMergedPerContract.map((item) => <span key={item.contractSymbol} className="mono">{item.contractSymbol}: {item.fragmentCount}</span>)}{multiContractIndex.data.filesMergedPerContract.length === 0 && <span>—</span>}</div></div>{multiContractIndex.data.rejectedFiles.length > 0 && <div className="border-t border-border px-4 py-3 text-[11px] text-destructive sm:col-span-2 lg:col-span-4"><div className="eyebrow">Rejected source files</div><div className="mt-1">{multiContractIndex.data.rejectedFiles.map((file) => `${file.filename} (${file.reason})`).join(" · ")}</div></div>}</div>}</Panel>}
         <Panel className="mb-5" accent>
