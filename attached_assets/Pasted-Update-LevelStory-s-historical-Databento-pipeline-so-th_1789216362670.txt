@@ -1,0 +1,114 @@
+Update LevelStory’s historical Databento pipeline so the app can upload, index, retain, and look up approximately five years of MES OHLCV-1m data.
+
+Important scope clarification:
+I do NOT want to replay all five years in one run. Keep the existing single-run, batch-size, and requested-date safety limits. The five-year history is a searchable data library from which Visual Review and backtests load only the requested dates.
+
+Read the current repository before making changes. Preserve existing strategy logic, trade generation, execution modeling, P/L calculations, and single-active-trade behavior.
+
+1. Correct the governed MES rollover schedule
+
+- Audit the explicit MES quarterly rollover schedule against authoritative CME equity-index roll dates.
+- CME changed the lead-month rollover convention beginning with the June 2022 roll, so do not continue applying the former Thursday convention to later contracts.
+- Use official CME sources:
+  - https://www.cmegroup.com/trading/equity-index/rolldates.html
+  - https://www.cmegroup.com/notices/electronic-trading/2022/04/20220418.html
+- Define explicit, versioned, immutable boundaries for the supported historical period.
+- On every requested trading date, select exactly one scheduled outright MES contract.
+- Never combine two contracts on the same trading date.
+- Never use a calendar spread.
+- Record the schedule version, selected contract, previous contract, effective roll date, and source in replay provenance.
+- Add authoritative boundary tests covering the session before, day of, and session after every rollover.
+- Specifically verify the September 2026 boundary; dates before the official September 14, 2026 roll must not be assigned prematurely to MESZ6.
+
+2. Replace the monolithic in-memory JSON index
+
+The current implementation retains all imported contracts and candle arrays in memory and serializes the complete history into one JSON file. Replace this with persistent, partitioned historical storage.
+
+Requirements:
+
+- Partition indexed candles by at least:
+  - root symbol
+  - contract symbol
+  - trading date
+  - timeframe/schema
+- Use a durable queryable store appropriate for the existing application, such as SQLite or another already-supported local database mechanism.
+- Create indexes for efficient lookup by trading date, contract, and timestamp.
+- Stream or process uploaded data incrementally.
+- Do not retain the complete five-year candle history in memory.
+- Commit partitions incrementally and atomically.
+- A failed import must not corrupt an already-ready index.
+- Support restart/resume or safe reprocessing after interruption.
+- Preserve source fingerprints, importer version, schedule version, file identity, row counts, coverage, rejected-row evidence, and import timestamps.
+- Re-uploading identical files must be idempotent and must not duplicate candles.
+- Changed source files must invalidate and rebuild only affected partitions when practical.
+- Conflicting duplicate timestamps must be rejected or quarantined with explicit diagnostics.
+- Visual Review and backtests must query only the contract/date partitions required by the request.
+
+3. Add an application upload/import workflow
+
+Add a historical-data import control to the appropriate administrative or historical-data area of the app.
+
+It must:
+
+- Accept Databento MES OHLCV-1m files covering multiple quarterly contracts and multiple file fragments.
+- Support ordinary `.csv` and Databento `.csv.zst` input.
+- Do not rely on one hardcoded ZIP filename or manually placing files in `attached_assets`.
+- If ZIP upload is supported, discover its contents generically and safely.
+- Reject unsupported schemas, calendar spreads, non-MES instruments, malformed symbols, unsafe archive paths, and invalid OHLCV rows.
+- Never load an entire compressed file into memory before parsing.
+- Display:
+  - files discovered
+  - files accepted and rejected
+  - compression/schema detection
+  - contracts discovered
+  - rows processed
+  - duplicate/conflicting rows
+  - earliest and latest indexed timestamps
+  - indexed trading-date coverage
+  - missing dates and contracts
+  - current progress
+  - ready, incomplete, or failed status
+- Provide actionable error messages instead of a generic import failure.
+- Do not mark the historical library ready until persisted data and coverage checks succeed.
+
+4. Preserve small-range lookup and replay behavior
+
+- Keep the existing 22-session single-run, 60-date batch, and continuous-range safety limits unless a separate requirement explicitly changes them.
+- These limits must not restrict how much history can be stored.
+- A request for a particular date or small date range must load only its necessary partitions.
+- Date lookup must transparently resolve the correct scheduled quarterly contract.
+- If the scheduled contract or requested date is missing, fail closed and identify the exact missing date, expected contract, and reason.
+- Do not silently substitute another contract or simulated data.
+- Preserve the selected dates in chronological order.
+- Continue returning combined P/L and analytics across the dates selected for that particular run.
+
+5. Verification
+
+Add tests for:
+
+- All official rollover boundaries across the five-year supported period.
+- Multiple fragments belonging to one quarterly contract.
+- Plain CSV and streaming `.csv.zst` ingestion.
+- Generic archive/file names.
+- Interrupted and resumed imports.
+- Idempotent re-import.
+- Conflicting duplicate timestamps.
+- Missing quarterly contracts.
+- Missing individual trading dates.
+- Lookup near every rollover boundary.
+- Lookup of dates from the beginning, middle, and end of the five-year archive.
+- Confirming that a small lookup does not load the complete archive into memory.
+- Confirming that replay results use only the scheduled contract for each selected date.
+- Confirming that existing replay limits remain enforced independently of stored coverage.
+- An end-to-end fixture representing all required quarterly contracts and five years of date coverage. It may use reduced synthetic candles per date, but it must exercise the complete schedule and storage/query path.
+- At least one realistic large-file import test or benchmark that records peak memory and demonstrates bounded-memory ingestion.
+
+Run and report:
+
+- API typecheck
+- Frontend typecheck
+- Focused importer, storage, rollover, replay, route, and UI tests
+- Production builds
+- `git diff --check`
+
+Do not claim completion based only on unit tests or UI status. Demonstrate that a five-year historical library can be indexed persistently and that dates from different years can be retrieved and replayed without loading the entire archive.
