@@ -1,0 +1,249 @@
+Copy and paste this prompt:
+
+```text
+Review and fix LevelStory’s historical Databento pipeline so it can reliably upload, index, retain, and query approximately five years of MES OHLCV-1m data.
+
+Important scope clarification:
+- Five years of data is a historical lookup library.
+- Do not automatically replay the entire five-year range.
+- Replays must load only the dates selected by the user.
+- Keep this historical, modeled, read-only, and disconnected from broker or live-order functionality.
+- Preserve existing causal replay, session-calendar, rollover, and execution behavior unless a change is required for this fix.
+
+Inspect the current implementation before making changes, especially:
+
+- artifacts/api-server/src/lib/futures/historical-upload-storage.ts
+- artifacts/api-server/src/routes/historical-data-upload.ts
+- artifacts/api-server/src/lib/futures/historical-csv-import.ts
+- artifacts/api-server/src/lib/futures/historical-index-store.ts
+- artifacts/api-server/src/lib/futures/multi-contract-replay.ts
+- artifacts/api-server/src/lib/futures/multi-contract-index-worker.ts
+- artifacts/api-server/src/routes/backtest.ts
+- artifacts/levelstory/src/pages/backtest.tsx
+- Existing historical upload, import, storage, rollover, and replay tests
+
+Implement the following fixes.
+
+1. Make uploaded libraries durable across API restarts
+
+Currently, uploaded files are materialized with UUID-prefixed physical filenames, while normal source discovery expects filenames beginning with `glbx-mdp3-`. The explicit original filename metadata is available during the import job but is not reliably rediscovered after restart.
+
+Fix this by persisting an authoritative source manifest containing, at minimum:
+
+- Original Databento filename
+- Materialized physical path or stable object-storage reference
+- Object path
+- Expected compression
+- Contract symbol or detected symbols
+- Content fingerprint
+- File size
+- Importer version
+- Rollover schedule version
+- Index key
+- Import status
+
+After an API restart:
+
+- Load the committed SQLite index and its source manifest directly.
+- Do not require the physical materialized filename to start with `glbx-mdp3-`.
+- `/historical-data/status` must report the same committed library.
+- Selected-date replay must find the committed library without re-uploading or rebuilding it.
+- Do not accidentally rediscover an old fixture or replace the active uploaded library.
+- Validate that manifest files and fingerprints still match before using them.
+- Fail with a clear diagnostic if committed source files or index metadata are missing or incompatible.
+
+Commit the SQLite index and source manifest atomically or provide equivalent protection against partially committed libraries.
+
+2. Support normal multi-contract Databento batch exports
+
+Continue supporting individually named quarterly contract files and fragments such as:
+
+`glbx-mdp3-....ohlcv-1m.MESU5.csv.zst`
+
+Also support a Databento OHLCV-1m batch file whose filename does not identify one contract and whose `symbol` column contains multiple outright quarterly MES contracts.
+
+For a multi-symbol file:
+
+- Stream rows and group/index them by their actual `symbol` value.
+- Accept valid quarterly MES outright symbols.
+- Reject calendar spreads.
+- Reject ES and other non-MES instruments.
+- Reject malformed or unsupported symbols with explicit diagnostics.
+- Do not reject an otherwise valid file merely because it contains multiple quarterly MES outright symbols.
+- Detect duplicate timestamps within the same contract.
+- Accept identical duplicates deterministically.
+- Reject conflicting OHLCV values for the same contract and timestamp.
+- Never combine candles from different contracts under one symbol.
+- Preserve provenance back to the original source file.
+
+If a Databento export cannot be interpreted safely, return a precise error explaining whether the user must export with the symbol field or split by instrument. Do not use the generic `UNKNOWN_OR_MALFORMED_CONTRACT` message for every unsupported layout.
+
+3. Make ingestion bounded-memory
+
+The importer currently streams file input but retains the complete file in candle arrays and timestamp maps before writing it to SQLite. Fragment merging creates additional full-contract copies.
+
+Refactor indexing so five-year ingestion uses bounded batches:
+
+- Parse `.csv` and `.csv.zst` as streams.
+- Write validated rows into a staging SQLite database in bounded transactions.
+- Partition by contract symbol, trading date, and timeframe.
+- Do not retain a complete file, contract, or five-year dataset in memory.
+- Use a database uniqueness constraint for contract plus timestamp plus timeframe.
+- Compare duplicate values before accepting or rejecting them.
+- Aggregate 5-minute candles causally from the indexed 1-minute rows, partition by partition.
+- Only generate other timeframes if they are actually required by an existing consumer.
+- Avoid transferring complete candle arrays from a worker to the parent process.
+- Preserve atomic replacement: the existing ready library must remain usable if a new import fails.
+- Clean up abandoned staging indexes safely.
+
+Use an explicit, documented batch size and expose batch/file progress.
+
+4. Persist and resume background jobs
+
+Do not keep historical import jobs only in an in-memory `Map`.
+
+Persist job state and checkpoints, including:
+
+- Job ID and state
+- Source manifest
+- Completed files or partitions
+- Current file
+- Rows processed
+- Rows accepted and rejected
+- Current contract and trading date when available
+- Overall progress
+- Error
+- Created, started, updated, and completed timestamps
+- Staging index location
+- Target index key
+
+After an API restart:
+
+- A completed job must remain queryable.
+- A queued or interrupted job must resume safely.
+- It is acceptable to resume at a completed-file or completed-partition boundary.
+- If a partially processed file cannot resume from its byte offset, roll back that file’s incomplete transaction and restart only that file.
+- Do not duplicate rows when resuming.
+- Do not restart already completed files.
+- Do not expose stale jobs as actively running.
+
+Add cancellation support if the existing job model advertises a `cancelled` state. Cancellation must preserve the previously committed historical library.
+
+5. Report real indexing progress
+
+Connect internal indexing progress to the persisted background job.
+
+The UI should show meaningful progress through:
+
+- Uploading
+- Materializing
+- Validating
+- Indexing 1-minute rows
+- Building required aggregates
+- Validating coverage
+- Atomically committing
+- Ready or failed
+
+Do not leave the progress display at 25% for the entire indexing operation.
+
+6. Preserve selected-date lookup behavior
+
+Keep the good existing design where replay reads only requested SQLite partitions.
+
+Confirm that:
+
+- Selecting one date queries only that date and scheduled contract.
+- Selecting several dates queries only those dates.
+- No endpoint loads or replays all five years unless the user explicitly selects a range requiring those dates.
+- The correct scheduled quarterly MES contract is used for each selected trading date.
+- Missing scheduled-contract data blocks only affected dates and produces a clear reason.
+- Inactive contract rows cannot leak into the active continuous replay.
+- Coverage totals reconcile exactly.
+
+7. Improve upload guidance and diagnostics
+
+Update the Historical Data Library panel to explain accepted Databento inputs:
+
+- Schema: OHLCV-1m
+- Instrument: MES
+- The symbol column must be included.
+- Either individual quarterly contracts or a multi-contract batch export is accepted.
+- `.csv` and `.csv.zst` are accepted.
+- Calendar spreads and non-MES instruments are rejected.
+- Uploading five years builds a library; it does not run a five-year replay.
+
+Display:
+
+- Original filename
+- Detected contracts
+- Accepted and rejected row counts
+- Earliest and latest dates
+- Missing scheduled contracts
+- Eligible and ineligible dates
+- Clear rejection reasons
+- Whether the committed library will survive restart
+- Importer, database-schema, and rollover-schedule versions
+
+8. Versioning and compatibility
+
+Bump the historical importer/index schema version because storage and discovery semantics are changing.
+
+Handle an old incompatible index explicitly:
+
+- Detect its version.
+- Mark it as regeneration required.
+- Do not silently use stale data.
+- Do not silently delete the previous ready library before a replacement succeeds.
+
+Tests required
+
+Add focused deterministic tests for:
+
+1. Uploading UUID-prefixed files and reopening the committed index after simulated process restart.
+2. `/historical-data/status` returning the uploaded library after restart.
+3. Selected-date replay succeeding after restart without source re-upload.
+4. A generic Databento filename containing multiple quarterly MES symbols.
+5. Separating rows correctly by contract.
+6. Rejecting spreads and non-MES rows without rejecting valid MES rows.
+7. Identical duplicate and conflicting duplicate behavior.
+8. Bounded batch insertion using generated data large enough to cross multiple batches.
+9. Import interruption and resume without duplicate rows.
+10. Failure during replacement preserving the previous ready index.
+11. Progress advancing during indexing instead of remaining at 25%.
+12. One-date and several-date replay querying only requested partitions.
+13. Correct rollover selection immediately before, on, and after every configured boundary.
+14. Clear handling of missing scheduled-contract files.
+15. Coverage reconciliation.
+16. UI status polling and restart-safe job recovery.
+
+Do not run a real five-year import as part of this task. Use generated fixtures representing multiple years, contracts, partitions, and batches while keeping the test runtime limited.
+
+Verification
+
+Run only:
+
+- API typecheck
+- Frontend typecheck
+- Focused historical CSV/import/index/upload/replay/route tests
+- Focused frontend tests for the upload and progress panel
+- Frontend production build if the affected UI requires it
+- `git diff --check`
+
+Do not run the complete long API suite or a real five-year replay.
+
+Final response
+
+Report:
+
+- Root causes found
+- Files changed
+- Persistence design
+- Multi-symbol import behavior
+- Memory-batching design and batch size
+- Resume and cancellation behavior
+- Focused tests and exact pass counts
+- Commands run
+- Any remaining limitations
+
+Do not claim five-year readiness unless the restart/reopen, multi-contract input, bounded-memory ingestion, and selected-date replay tests all pass.
+```
