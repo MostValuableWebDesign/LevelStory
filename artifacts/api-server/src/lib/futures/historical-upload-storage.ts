@@ -6,6 +6,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createHash } from "node:crypto";
 import { signPrivateObjectUrl } from "../uploaded-chart-storage.js";
+import { historicalDataPath } from "./historical-storage-paths.js";
 
 export const MAX_HISTORICAL_UPLOAD_BYTES = 512 * 1024 * 1024;
 const SAFE_PATH = /^\/objects\/uploads\/historical\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -48,7 +49,7 @@ export async function materializeHistoricalObject(
   if (!safeFilename || safeFilename === "." || safeFilename === "..") {
     throw new Error("Historical upload filename is invalid.");
   }
-  const directory = join(process.cwd(), ".cache", "historical-uploads");
+  const directory = historicalDataPath("historical-uploads");
   await mkdir(directory, { recursive: true });
   const outputPath = join(directory, `${objectPath.split("/").at(-1)}-${safeFilename}`);
   const temporaryPath = `${outputPath}.${process.pid}.${randomUUID()}.tmp`;

@@ -2,7 +2,7 @@
  * The single-run replay ceiling is intentionally shared by the API and the
  * LevelStory form. Batch validation has its own, larger partition limit.
  */
-export const MAX_BACKTEST_SESSIONS = 22 as const;
+export const MAX_BACKTEST_SESSIONS = 10 as const;
 
 /** MES contract constants shared by API validation, replay, and LevelStory. */
 export const MES_TICK_SIZE = 0.25 as const;

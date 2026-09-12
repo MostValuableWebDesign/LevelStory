@@ -11,9 +11,7 @@ import {
   historicalDateReason,
   latestEligibleDate,
   monthSelection,
-  relativeEligibleDate,
   resolveOpeningMonth,
-  restoreLastEligibleDate,
   sortedEligibleDates,
   yearSelection,
 } from "@/lib/historical-date-picker";
@@ -111,14 +109,8 @@ export function HistoricalDatePicker({
   };
 
   const nearestEligibleHint = (dateValue: string): string => {
-    if (!knownEligibleDates || dateValue < effectiveMin || dateValue > effectiveMax) return "";
-    const previous = relativeEligibleDate(dateValue, -1, knownEligibleDates);
-    const next = relativeEligibleDate(dateValue, 1, knownEligibleDates);
-    const choices = [
-      previous ? `previous eligible date ${formatDateForDisplay(previous)}` : null,
-      next ? `next eligible date ${formatDateForDisplay(next)}` : null,
-    ].filter(Boolean);
-    return choices.length ? ` Choose the ${choices.join(" or ")}.` : " Choose Latest indexed date.";
+    if (dateValue < effectiveMin || dateValue > effectiveMax) return "";
+    return "";
   };
 
   const commit = (nextValue: string, close = true): boolean => {
@@ -148,29 +140,32 @@ export function HistoricalDatePicker({
   };
 
   const moveToRelativeDate = (direction: -1 | 1) => {
-    if (!knownEligibleDates) {
-      setError("Eligible trading-date metadata is still loading.");
-      return;
-    }
-    const current = parseDateText(draft) ?? parseDateText(value) ?? latestEligibleDate(knownEligibleDates) ?? effectiveMax;
-    const next = relativeEligibleDate(current, direction, knownEligibleDates);
-    if (next) commit(next);
+    const current = canonicalToDate(parseDateText(draft) ?? parseDateText(value) ?? effectiveMax);
+    if (!current) return;
+    current.setDate(current.getDate() + direction);
+    commit(dateToCanonical(current));
   };
 
-  const latestIndexedDate = latestEligibleDate(knownEligibleDates);
+  const latestIndexedDate = effectiveMax ?? latestEligibleDate(knownEligibleDates);
   const today = todayInNewYork();
-  const canChooseToday = Boolean(knownEligibleDates?.includes(today));
+  const canChooseToday = !reasonForDate(today);
   const selectedDate = canonicalToDate(value);
-  const selectedDateIsEligible = selectedDate
-    ? !reasonForDate(dateToCanonical(selectedDate))
-    : false;
+  const selectedDateIsEligible = Boolean(selectedDate);
   const navigationDate = parseDateText(draft) ?? value;
-  const previousEligibleDate = knownEligibleDates
-    ? relativeEligibleDate(navigationDate, -1, knownEligibleDates)
-    : null;
-  const nextEligibleDate = knownEligibleDates
-    ? relativeEligibleDate(navigationDate, 1, knownEligibleDates)
-    : null;
+  const previousEligibleDate = (() => {
+    const date = canonicalToDate(navigationDate);
+    if (!date) return null;
+    date.setDate(date.getDate() - 1);
+    const candidate = dateToCanonical(date);
+    return reasonForDate(candidate) ? null : candidate;
+  })();
+  const nextEligibleDate = (() => {
+    const date = canonicalToDate(navigationDate);
+    if (!date) return null;
+    date.setDate(date.getDate() + 1);
+    const candidate = dateToCanonical(date);
+    return reasonForDate(candidate) ? null : candidate;
+  })();
   const currentMonth = clampDisplayMonth(displayMonth, effectiveMin, effectiveMax);
   const currentMonthKey = currentMonth.getMonth().toString();
 
@@ -186,24 +181,10 @@ export function HistoricalDatePicker({
   };
 
   useEffect(() => {
-    const restoredValue = knownEligibleDates && !knownEligibleDates.includes(value)
-      ? restoreLastEligibleDate(lastValidValue, knownEligibleDates)
-      : value;
-    setDraft(formatDateForDisplay(restoredValue));
-    if (!knownEligibleDates || knownEligibleDates.includes(value)) {
-      setLastValidValue(value);
-      setError(null);
-    }
-  }, [knownEligibleDates, value]);
-
-  useEffect(() => {
-    if (!knownEligibleDates || knownEligibleDates.includes(value)) return;
-    const fallback = restoreLastEligibleDate(lastValidValue, knownEligibleDates);
-    setDraft(formatDateForDisplay(fallback));
-    setError(`${reasonForDate(value) ?? "The selected date is no longer eligible."}${fallback ? "" : " Choose Latest indexed date."}`);
-  // The picker should react to metadata refreshes without changing focus or silently selecting a replacement.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [knownEligibleDates]);
+    setDraft(formatDateForDisplay(value));
+    setLastValidValue(value);
+    setError(null);
+  }, [value]);
 
   useEffect(() => {
     if (!open) synchronizeDisplayMonth();
@@ -254,10 +235,8 @@ export function HistoricalDatePicker({
                 return;
               }
               const parsed = parseDateText(draft);
-              if (!parsed || !commit(parsed, false)) {
-                setDraft(formatDateForDisplay(
-                  restoreLastEligibleDate(lastValidValue, knownEligibleDates),
-                ));
+                if (!parsed || !commit(parsed, false)) {
+                 setDraft(formatDateForDisplay(lastValidValue));
               }
             }}
             onKeyDown={(event) => {
@@ -330,7 +309,7 @@ export function HistoricalDatePicker({
                 <div className="sr-only" aria-live="polite">Showing {monthLabel(currentMonth)}</div>
                 <Calendar
                   mode="single"
-                  selected={selectedDateIsEligible ? selectedDate ?? undefined : undefined}
+                   selected={selectedDateIsEligible ? selectedDate ?? undefined : undefined}
                   month={currentMonth}
                   onMonthChange={(nextMonth) => setDisplayMonth(clampDisplayMonth(nextMonth, effectiveMin, effectiveMax))}
                   onSelect={chooseDate}
@@ -338,15 +317,6 @@ export function HistoricalDatePicker({
                   toMonth={maxMonth}
                   captionLayout="label"
                   disabled={(date) => Boolean(reasonForDate(dateToCanonical(date)))}
-                  modifiers={{
-                    eligible: (date) => Boolean(knownEligibleDates?.includes(dateToCanonical(date))),
-                    ineligible: (date) => Boolean(
-                      knownEligibleDates
-                      && dateToCanonical(date) >= effectiveMin
-                      && dateToCanonical(date) <= effectiveMax
-                      && !knownEligibleDates.includes(dateToCanonical(date)),
-                    ),
-                  }}
                   className="mx-auto"
                   components={{
                     DayButton: (props) => (
@@ -360,13 +330,13 @@ export function HistoricalDatePicker({
                 />
               </div>
               <p className="px-3 pb-1 text-[10px] leading-4 text-muted-foreground" id={`${label.replaceAll(" ", "-")}-help`}>
-                <span className="font-semibold text-foreground">Bold</span> dates are eligible. Struck-through dates are inside coverage but unavailable for the scheduled contract.
+                 Dates remain selectable across weekends, holidays, missing sessions, and contract transitions. Availability is resolved after selection.
               </p>
               <div className="grid grid-cols-2 gap-1 border-t border-border px-3 pt-2">
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Previous eligible date" onClick={() => moveToRelativeDate(-1)} disabled={!previousEligibleDate}>
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Previous calendar date" onClick={() => moveToRelativeDate(-1)} disabled={!previousEligibleDate}>
                   <ChevronLeft size={12} aria-hidden="true" /> Previous
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Next eligible date" onClick={() => moveToRelativeDate(1)} disabled={!nextEligibleDate}>
+                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Next calendar date" onClick={() => moveToRelativeDate(1)} disabled={!nextEligibleDate}>
                   Next <ChevronRight size={12} aria-hidden="true" />
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Latest indexed date" onClick={() => latestIndexedDate && commit(latestIndexedDate)} disabled={!latestIndexedDate}>

@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdir, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { historicalDataPath } from "./historical-storage-paths.js";
 
 export type HistoricalImportPhase =
   | "queued"
@@ -56,7 +57,7 @@ export type PersistedHistoricalImportJob = {
   heartbeatAt: string | null;
 };
 
-const defaultPath = join(process.cwd(), ".cache", "historical-import-jobs.sqlite");
+const defaultPath = historicalDataPath("historical-import-jobs.sqlite");
 export const HISTORICAL_IMPORT_JOB_SCHEMA_VERSION = 2 as const;
 
 export class HistoricalImportJobStore {

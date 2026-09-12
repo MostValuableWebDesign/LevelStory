@@ -1,18 +1,15 @@
-import { readdir, stat, unlink } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { Worker } from "node:worker_threads";
 import { promisify } from "node:util";
 import { basename, join } from "node:path";
-import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
 import {
   getFuturesContractSpecification,
   type FuturesContractSpecification,
 } from "./contracts.js";
 import {
   getHistoricalCsvFingerprint,
-  importHistoricalCsv,
+  aggregate,
   importHistoricalCsvBatch,
   mergeHistoricalCsvImports,
   countSessionAwareGaps,
@@ -30,6 +27,8 @@ import type { CausalReplayDataset, BacktestGapReport, IntrabarBar } from "../pha
 import type { SimulatedFuturesCandle } from "./simulated-feed.js";
 import type { NormalizedCandle } from "./market-data-provider.js";
 import { HistoricalIndexStore, type HistoricalIndexManifestFile } from "./historical-index-store.js";
+import { historicalDataPath } from "./historical-storage-paths.js";
+import { HistoricalNoDataError, MAX_HISTORICAL_SESSIONS } from "./historical-session-range.js";
 
 const DAY = 86_400_000;
 const CONTRACT_FILE = /\.((?:MES)[FGHJKMNQUVXZ]\d{1,2})(?:_\d+)?\.csv(?:\.zst)?$/i;
@@ -404,7 +403,7 @@ export function buildRolloverBoundaries(): RolloverBoundary[] {
 function assetDirectories(): string[] {
   return [
     join(process.cwd(), "attached_assets"),
-    join(process.cwd(), ".cache", "historical-uploads"),
+    historicalDataPath("historical-uploads"),
     join(process.cwd(), "..", "attached_assets"),
     join(process.cwd(), "..", "..", "attached_assets"),
   ];
@@ -685,13 +684,30 @@ function selectedDatesInRange(dates: string[], startDate: string, endDate: strin
   const requested = dates.filter((date) => date >= startDate && date <= endDate);
   if (requested.length < count) {
     const availableRange = dates.length
-      ? `Available eligible history spans ${dates[0]} through ${dates.at(-1)}.`
-      : "The ready index contains no eligible history.";
+      ? `Available stored history spans ${dates[0]} through ${dates.at(-1)}.`
+      : "The ready index contains no stored history.";
     throw new Error(
-      `Multi-contract historical range ${startDate} through ${endDate} contains ${requested.length} eligible trading dates; ${count} are required. ${availableRange}`,
+      `Multi-contract historical range ${startDate} through ${endDate} contains ${requested.length} stored trading dates; ${count} are required. ${availableRange}`,
     );
   }
   return requested.slice(-count);
+}
+
+export function resolveStoredHistoricalDates(
+  imported: HistoricalMultiContractImport,
+  startDate: string | undefined,
+  endDate: string,
+): string[] {
+  const observedDates = (imported.summary.allObservedTradingDates
+    ?? [...imported.contracts.values()].flatMap((contract) => contract.summary.availableTradingDates))
+    .filter((date) => (!startDate || date >= startDate) && date <= endDate)
+    .sort();
+  return observedDates.filter((tradingDate) => {
+    const contractSymbol = scheduledMesContractForDate(tradingDate);
+    if (!contractSymbol) return false;
+    if (imported.storage) return imported.storage.getCandles(contractSymbol, tradingDate, 1).length > 0;
+    return imported.contracts.get(contractSymbol)?.summary.availableTradingDates.includes(tradingDate) ?? false;
+  });
 }
 
 function toReplayCandle(candle: SimulatedFuturesCandle | HistoricalCsvImport["oneMinute"][number]): SimulatedFuturesCandle {
@@ -726,35 +742,32 @@ function selectedGapReport(
 
 export function multiContractImportToReplayDataset(
   imported: HistoricalMultiContractImport,
-  startDate: string,
+  startDate: string | undefined,
   endDate: string,
   inSampleDays: number,
   outOfSampleDays: number,
   selectedDatesOverride?: readonly string[],
 ): CausalReplayDataset {
-  const eligibleDates = imported.summary.eligibleTradingDates;
-  const requestedDates = eligibleDates.filter((date) => date >= startDate && date <= endDate);
+  const requestedDates = resolveStoredHistoricalDates(imported, startDate, endDate);
   const requiredDates = inSampleDays + outOfSampleDays;
-  const exactDates = selectedDatesOverride ? [...new Set(selectedDatesOverride)].sort() : null;
-  if (exactDates) {
-    const eligibilityByDate = new Map(
-      (imported.summary.ineligibleDates ?? []).map((item) => [item.tradingDate, item]),
-    );
-    const unavailable = exactDates.filter((date) => !requestedDates.includes(date));
-    if (unavailable.length) {
-      const details = unavailable.map((date) => {
-        const reason = eligibilityByDate.get(date)?.reason ?? "DATE_OUTSIDE_ELIGIBLE_HISTORY";
-        return `${date} (${reason})`;
-      });
-      throw new Error(`Selected historical dates are not eligible: ${details.join(", ")}.`);
-    }
-    if (exactDates.length < requiredDates) {
-      throw new Error(`Historical range contains ${exactDates.length} eligible selected trading dates; ${requiredDates} are required.`);
-    }
+  if (requiredDates > MAX_HISTORICAL_SESSIONS || (startDate && requestedDates.length > MAX_HISTORICAL_SESSIONS)) {
+    throw new Error(`Historical range resolves to ${requestedDates.length} stored trading sessions; shorten the range to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
+  }
+  const exactDates = selectedDatesOverride
+    ? [...new Set(selectedDatesOverride)].filter((date) => requestedDates.includes(date)).sort()
+    : null;
+  if (requestedDates.length === 0 || (exactDates && exactDates.length === 0)) {
+    throw new HistoricalNoDataError(`No historical data available${startDate ? ` between ${startDate} and` : " before"} ${endDate}.`);
+  }
+  if (exactDates && exactDates.length < requiredDates) {
+    throw new Error(`Historical range contains ${exactDates.length} stored trading sessions; ${requiredDates} are required.`);
+  }
+  if (!exactDates && requestedDates.length < requiredDates) {
+    throw new Error(`Historical range contains ${requestedDates.length} stored trading sessions; ${requiredDates} are required.`);
   }
   const selectedDates = exactDates ?? selectedDatesInRange(
-    eligibleDates,
-    startDate,
+    requestedDates,
+    startDate ?? requestedDates[0] ?? endDate,
     endDate,
     requiredDates,
   );
@@ -836,10 +849,11 @@ export function multiContractImportToReplayDataset(
     contractMonth: "multi-contract",
     inSampleDates: selectedDates.slice(0, inSampleDays),
     outOfSampleDates: selectedDates.slice(-outOfSampleDays),
-    requestedStartDate: startDate,
+    requestedStartDate: startDate ?? selectedDates[0] ?? endDate,
     requestedEndDate: endDate,
     selectedDates,
-    excludedDates: eligibleDates.filter((date) => date >= startDate && date <= endDate && !selectedDateSet.has(date)),
+    excludedDates: requestedDates.filter((date) =>
+      (!startDate || date >= startDate) && date <= endDate && !selectedDateSet.has(date)),
     source: MULTI_CONTRACT_SOURCE,
     contentFingerprint: imported.contentFingerprint,
     quotesAvailable: false,
@@ -852,9 +866,8 @@ export function multiContractImportToReplayDataset(
   };
 }
 
-const HISTORICAL_DATA_DIR = process.env.LEVELSTORY_HISTORICAL_DATA_DIR?.trim()
-  || join(process.cwd(), ".cache");
-const INDEX_CACHE_PATH = join(HISTORICAL_DATA_DIR, "levelstory-multi-contract-index.sqlite");
+const HISTORICAL_DATA_DIR = historicalDataPath();
+const INDEX_CACHE_PATH = historicalDataPath("levelstory-multi-contract-index.sqlite");
 
 type MultiContractIdentity = {
   resolved: Awaited<ReturnType<typeof resolveMultiContractFiles>>;
@@ -1340,42 +1353,64 @@ async function buildMultiContractIndex(
   }>>();
   for (const [index, file] of identity.resolved.accepted.entries()) {
     if (signal?.aborted) throw new Error("Historical index build was cancelled.");
-    if (file.contractSymbol === MULTI_SYMBOL_SOURCE) {
-      const batch = await importHistoricalCsvBatch(
-        file.path,
-        base,
-          {
-            analyzeCoverage: true,
-            aggregations: [5],
-            fastParse: true,
-            contentFingerprint: identity.fingerprints[index],
-            onProgress: (progress) => {
-              const fileBase = Math.round((index / Math.max(1, identity.resolved.accepted.length)) * 90);
-              const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
-              const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
-              updateIndexStatus({
-                progress: overall,
-                message: `Indexing ${file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
-              });
-              onProgress?.({ ...progress, percent: overall });
-            },
-          },
-      );
-      for (const [contractSymbol, imported] of batch.imports.entries()) {
-        const fragments = fragmentsByContract.get(contractSymbol) ?? [];
-        fragments.push({
-          file: { ...file, contractSymbol },
-          fingerprint: identity.fingerprints[index]!,
+    const streamBuffers = new Map<string, NormalizedCandle[]>();
+    const batch = await importHistoricalCsvBatch(file.path, file.contractSymbol === MULTI_SYMBOL_SOURCE
+      ? base
+      : contractSpecificationForMesSymbol(file.contractSymbol), {
+      analyzeCoverage: true,
+      aggregations: [5],
+      fastParse: true,
+      retainCandles: false,
+      signal,
+      contentFingerprint: identity.fingerprints[index],
+      onBatch: ({ contractSymbol, candles }) => {
+        const contract = contractSpecificationForMesSymbol(contractSymbol);
+        stagedStore.writeCandleBatch(contractSymbol, candles, 1, sessionCalendarForContract(contract), signal);
+        const previous = streamBuffers.get(contractSymbol) ?? [];
+        const buffer = [...previous];
+        for (const candle of candles) {
+          const bucket = Math.floor(candle.openTime / (5 * 60_000));
+          if (buffer.length && Math.floor(buffer[0]!.openTime / (5 * 60_000)) !== bucket) {
+            const fiveMinute = aggregate(buffer, 5, contract);
+            if (fiveMinute.length) {
+              stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
+            }
+            buffer.length = 0;
+          }
+          buffer.push(candle);
+        }
+        streamBuffers.set(contractSymbol, buffer);
+      },
+      onProgress: (progress) => {
+        const fileBase = Math.round((index / Math.max(1, identity.resolved.accepted.length)) * 90);
+        const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
+        const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
+        updateIndexStatus({
+          progress: overall,
+          message: `Indexing ${file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
         });
-        fragmentsByContract.set(contractSymbol, fragments);
-        parsedFragments.set(`${file.filename}::${contractSymbol}`, imported);
-        fragmentImports.set(`${file.filename}::${contractSymbol}`, summaryOnlyHistoricalImport(imported));
+        onProgress?.({ ...progress, percent: overall });
+      },
+    });
+    for (const [contractSymbol, imported] of batch.imports.entries()) {
+      const contract = contractSpecificationForMesSymbol(contractSymbol);
+      const buffer = streamBuffers.get(contractSymbol) ?? [];
+      if (buffer.length) {
+        const fiveMinute = aggregate(buffer, 5, contract);
+        if (fiveMinute.length) {
+          stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
+        }
       }
-      continue;
+      stagedStore.writeSourceSummary(imported.summary, identity.fingerprints[index]!);
+      const fragments = fragmentsByContract.get(contractSymbol) ?? [];
+      fragments.push({
+        file: { ...file, contractSymbol },
+        fingerprint: identity.fingerprints[index]!,
+      });
+      fragmentsByContract.set(contractSymbol, fragments);
+      parsedFragments.set(`${file.filename}::${contractSymbol}`, summaryOnlyHistoricalImport(imported));
+      fragmentImports.set(`${file.filename}::${contractSymbol}`, summaryOnlyHistoricalImport(imported));
     }
-    const fragments = fragmentsByContract.get(file.contractSymbol) ?? [];
-    fragments.push({ file, fingerprint: identity.fingerprints[index]! });
-    fragmentsByContract.set(file.contractSymbol, fragments);
   }
   let indexedFragments = 0;
   for (const [contractSymbol, fragments] of [...fragmentsByContract.entries()]
@@ -1383,22 +1418,8 @@ async function buildMultiContractIndex(
     const importedFragments: HistoricalCsvImport[] = [];
     for (const fragment of fragments) {
       if (signal?.aborted) throw new Error("Historical index build was cancelled.");
-      const preParsed = parsedFragments.get(`${fragment.file.filename}::${contractSymbol}`);
-      const imported = preParsed ?? await importOneContractForIndex(
-          fragment.file.path,
-          contractSpecificationForMesSymbol(contractSymbol),
-          fragment.fingerprint,
-          (progress) => {
-            const fileBase = Math.round((indexedFragments / Math.max(1, identity.resolved.accepted.length)) * 90);
-            const fileWidth = Math.max(1, Math.round(90 / Math.max(1, identity.resolved.accepted.length)));
-            const overall = Math.min(89, fileBase + Math.round((progress.percent / 100) * fileWidth));
-            updateIndexStatus({
-              progress: overall,
-              message: `Indexing ${fragment.file.filename}: ${progress.rowsRead.toLocaleString()} rows read.`,
-            });
-            onProgress?.({ ...progress, percent: overall });
-          },
-        );
+       const imported = parsedFragments.get(`${fragment.file.filename}::${contractSymbol}`);
+       if (!imported) continue;
        fragmentImports.set(
          `${fragment.file.filename}::${contractSymbol}`,
          summaryOnlyHistoricalImport(imported),
@@ -1416,7 +1437,7 @@ async function buildMultiContractIndex(
     importedContracts.set(contractSymbol, summaryOnlyHistoricalImport(merged));
   }
 
-  const aggregate = aggregateSummaries([...importedContracts.values()].map((item) => item.summary));
+  const summaryAggregate = aggregateSummaries([...importedContracts.values()].map((item) => item.summary));
   const allObservedTradingDates = [...new Set(
     [...importedContracts.values()].flatMap((item) => item.summary.availableTradingDates),
   )].sort();
@@ -1470,7 +1491,7 @@ async function buildMultiContractIndex(
     filename: `${fileSummaries.length} outright MES contract files`,
     detectedSymbol: "MES",
     coverageScope: "multi_contract",
-    ...aggregate,
+    ...summaryAggregate,
     scheduleVersion: MES_ROLLOVER_SCHEDULE_VERSION,
     acceptedContracts,
     inactiveContracts,
@@ -1600,109 +1621,6 @@ function summaryOnlyHistoricalImport(imported: HistoricalCsvImport): HistoricalC
     fifteenMinute: [],
     oneHour: [],
   };
-}
-
-async function readWorkerCandleFile(
-  dataPath: string,
-  summary: HistoricalCsvImportSummary,
-  specification: FuturesContractSpecification,
-  fingerprint: string,
-): Promise<HistoricalCsvImport> {
-  const oneMinute: NormalizedCandle[] = [];
-  try {
-    const input = createInterface({ input: createReadStream(dataPath), crlfDelay: Infinity });
-    for await (const line of input) {
-      if (!String(line).trim()) continue;
-      oneMinute.push(JSON.parse(String(line)) as NormalizedCandle);
-    }
-    return mergeHistoricalCsvImports([{
-      summary,
-      contentFingerprint: fingerprint,
-      oneMinute,
-      fiveMinute: [],
-      fifteenMinute: [],
-      oneHour: [],
-      specification,
-      calendar: sessionCalendarForContract(specification),
-    }]);
-  } finally {
-    await unlink(dataPath).catch(() => undefined);
-  }
-}
-
-async function importOneContractForIndex(
-  filePath: string,
-  specification: FuturesContractSpecification,
-  fingerprint: string,
-  onProgress?: (progress: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number }) => void,
-  signal?: AbortSignal,
-): Promise<HistoricalCsvImport> {
-  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
-  // The source-module path is used by unit tests, where the worker entry is
-  // intentionally not compiled. The deployed bundle always uses the worker.
-  if (import.meta.url.endsWith(".ts")) {
-    return importHistoricalCsv(filePath, specification, {
-      analyzeCoverage: true,
-      aggregations: [5],
-      fastParse: true,
-      contentFingerprint: fingerprint,
-      onProgress,
-    });
-  }
-  return new Promise((resolve, reject) => {
-    let worker: Worker;
-    try {
-      worker = new Worker(new URL("./lib/futures/multi-contract-index-worker.mjs", import.meta.url), {
-        workerData: { filePath, specification, fingerprint },
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-    let settled = false;
-    const abort = () => finish(() => reject(new Error("Historical index build was cancelled.")));
-    const finish = (callback: () => void): void => {
-      if (settled) return;
-      settled = true;
-      callback();
-      void worker.terminate();
-    };
-    worker.on("message", (message: {
-      type?: "progress" | "result";
-      ok?: boolean;
-      summary?: HistoricalCsvImportSummary;
-      fingerprint?: string;
-      dataPath?: string;
-      progress?: { phase: string; rowsRead: number; validRows: number; rejectedRows: number; percent: number };
-      error?: string;
-    }) => {
-      if (message.type === "progress") {
-        if (message.progress) onProgress?.(message.progress);
-        return;
-      }
-      finish(() => {
-        if (!message.ok || !message.summary) {
-          reject(new Error(message.error ?? "Historical CSV indexing failed."));
-          return;
-        }
-        if (!message.dataPath) {
-          reject(new Error("Historical index worker did not return its persisted batch path."));
-          return;
-        }
-        void readWorkerCandleFile(
-          message.dataPath,
-          message.summary,
-          specification,
-          message.fingerprint ?? fingerprint,
-        ).then(resolve, reject);
-      });
-    });
-    signal?.addEventListener("abort", abort, { once: true });
-    worker.once("error", (error) => finish(() => reject(error)));
-    worker.once("exit", (code) => {
-      if (code !== 0) finish(() => reject(new Error(`Historical index worker exited with code ${code}.`)));
-    });
-  });
 }
 
 function startIndexing(

@@ -17,6 +17,7 @@ import type { FuturesContractSpecification } from "./contracts.js";
 import type { NormalizedCandle } from "./market-data-provider.js";
 import type { CausalReplayDataset } from "../phase9.js";
 import type { SimulatedFuturesCandle } from "./simulated-feed.js";
+import { HistoricalNoDataError, MAX_HISTORICAL_SESSIONS } from "./historical-session-range.js";
 import { boundedCsvPath } from "../security.js";
 
 const MINUTE = 60_000;
@@ -102,6 +103,11 @@ export type HistoricalCsvBatchImport = {
   rejectedRows: Array<{ row: number; symbol: string | null; reason: string }>;
   rowsRead?: number;
   flushCount?: number;
+};
+
+export type HistoricalCsvCandleBatch = {
+  contractSymbol: string;
+  candles: readonly NormalizedCandle[];
 };
 
 export type HistoricalCsvProgress = {
@@ -254,7 +260,7 @@ function outrightMesSymbol(value: string): boolean {
   return /^MES[A-Z]\d{1,2}$/.test(value);
 }
 
-function aggregate(
+export function aggregate(
   candles: readonly NormalizedCandle[],
   intervalMinutes: 5 | 15 | 60,
   specification: FuturesContractSpecification,
@@ -557,22 +563,29 @@ function toReplayCandle(candle: NormalizedCandle): SimulatedFuturesCandle {
 
 export function historicalImportToReplayDataset(
   imported: HistoricalCsvImport,
-  startDate: string,
+  startDate: string | undefined,
   endDate: string,
   inSampleDays: number,
   outOfSampleDays: number,
   selectedDatesOverride?: readonly string[],
 ): CausalReplayDataset {
-  const requestedDates = imported.summary.availableTradingDates.filter((date) => date >= startDate && date <= endDate);
+  const requestedDates = imported.summary.availableTradingDates.filter((date) =>
+    (!startDate || date >= startDate) && date <= endDate);
   const requiredDates = inSampleDays + outOfSampleDays;
+  if (requiredDates > MAX_HISTORICAL_SESSIONS || (startDate && requestedDates.length > MAX_HISTORICAL_SESSIONS)) {
+    throw new Error(`Historical range resolves to ${requestedDates.length} stored trading sessions; shorten the range to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
+  }
   const exactDates = selectedDatesOverride
     ? [...new Set(selectedDatesOverride)].filter((date) => requestedDates.includes(date)).sort()
     : null;
+  if (requestedDates.length === 0 || (exactDates && exactDates.length === 0)) {
+    throw new HistoricalNoDataError(`No historical data available${startDate ? ` between ${startDate} and` : " before"} ${endDate}.`);
+  }
   if (exactDates && exactDates.length < requiredDates) {
-    throw new Error(`Historical range contains ${exactDates.length} selected trading dates; ${requiredDates} are required.`);
+    throw new Error(`Historical range contains ${exactDates.length} stored trading sessions; ${requiredDates} are required.`);
   }
   if (!exactDates && requestedDates.length < requiredDates) {
-    throw new Error(`Historical range contains ${requestedDates.length} trading dates; ${requiredDates} are required.`);
+    throw new Error(`Historical range contains ${requestedDates.length} stored trading sessions; ${requiredDates} are required.`);
   }
   // Use the latest exact N+M available dates ending on or before endDate.
   // Earlier available dates remain explicitly excluded rather than silently
@@ -598,7 +611,7 @@ export function historicalImportToReplayDataset(
     contractMonth: imported.specification.contractMonth,
     inSampleDates: availableDates.slice(0, inSampleDays),
     outOfSampleDates: availableDates.slice(-outOfSampleDays),
-    requestedStartDate: startDate,
+    requestedStartDate: startDate ?? availableDates[0] ?? endDate,
     requestedEndDate: endDate,
     selectedDates: availableDates,
     excludedDates: requestedDates.filter((date) => !selectedDates.has(date)),
@@ -928,7 +941,7 @@ type BatchImportState = {
   specification: FuturesContractSpecification;
   calendar: FuturesSessionCalendar;
   candles: NormalizedCandle[];
-  candleByTimestamp: Map<number, NormalizedCandle>;
+  lastCandle: NormalizedCandle | null;
   tradingDates: Set<string>;
   previousTimestamp: number | null;
   fastDateCache: Map<number, string>;
@@ -1003,6 +1016,10 @@ export async function importHistoricalCsvBatch(
     fastParse?: boolean;
     contentFingerprint?: string;
     onProgress?: (progress: HistoricalCsvProgress) => void;
+    onBatch?: (batch: HistoricalCsvCandleBatch) => void | Promise<void>;
+    batchSize?: number;
+    retainCandles?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<HistoricalCsvBatchImport> {
   unsupportedCompression(filePath);
@@ -1014,6 +1031,8 @@ export async function importHistoricalCsvBatch(
   const contentHash = createHash("sha256");
   fileStream.on("data", (chunk) => contentHash.update(chunk));
   const states = new Map<string, BatchImportState>();
+  const pending = new Map<string, NormalizedCandle[]>();
+  let flushCount = 0;
   const rejectedRows: Array<{ row: number; symbol: string | null; reason: string }> = [];
   let headers: string[] | null = null;
   let rowsRead = 0;
@@ -1028,7 +1047,7 @@ export async function importHistoricalCsvBatch(
       specification: contract,
       calendar: sessionCalendarForContract(contract),
       candles: [],
-      candleByTimestamp: new Map(),
+      lastCandle: null,
       tradingDates: new Set(),
       previousTimestamp: null,
       fastDateCache: new Map(),
@@ -1048,6 +1067,7 @@ export async function importHistoricalCsvBatch(
   };
 
   for await (const rawLine of input) {
+    if (options.signal?.aborted) throw new Error("Historical CSV import was cancelled.");
     const line = String(rawLine).trim();
     if (!line) continue;
     const values = parseCsvLine(line);
@@ -1141,7 +1161,7 @@ export async function importHistoricalCsvBatch(
       intervalMinutes: 1,
       quality: { valid: true, codes: ["MISSING_BID_ASK"] },
     };
-    const existing = state.candleByTimestamp.get(parsedTimestamp);
+    const existing = state.lastCandle?.timestamp === parsedTimestamp ? state.lastCandle : undefined;
     if (existing) {
       if (candleValuesEqual(existing, candle)) {
         state.summary.duplicateRowsRemoved += 1;
@@ -1151,8 +1171,16 @@ export async function importHistoricalCsvBatch(
       continue;
     }
     state.previousTimestamp = parsedTimestamp;
-    state.candleByTimestamp.set(parsedTimestamp, candle);
-    state.candles.push(candle);
+    state.lastCandle = candle;
+    if (options.retainCandles !== false) state.candles.push(candle);
+    const batch = pending.get(validSymbol) ?? [];
+    batch.push(candle);
+    pending.set(validSymbol, batch);
+    if (batch.length >= (options.batchSize ?? 10_000) && options.onBatch) {
+      await options.onBatch({ contractSymbol: validSymbol, candles: batch });
+      flushCount += 1;
+      pending.set(validSymbol, []);
+    }
     state.summary.validRows += 1;
     state.summary.earliestTimestamp ??= new Date(parsedTimestamp).toISOString();
     state.summary.latestTimestamp = new Date(parsedTimestamp).toISOString();
@@ -1164,6 +1192,14 @@ export async function importHistoricalCsvBatch(
     else if (overnightOwnerDate(parsedTimestamp, state.calendar)) state.summary.overnightCandleCount += 1;
   }
   if (!headers) throw new Error("CSV file is empty.");
+  if (options.onBatch) {
+    for (const [contractSymbol, batch] of pending) {
+      if (!batch.length) continue;
+      if (options.signal?.aborted) throw new Error("Historical CSV import was cancelled.");
+      await options.onBatch({ contractSymbol, candles: batch });
+      flushCount += 1;
+    }
+  }
   const contentFingerprint = options.contentFingerprint ?? contentHash.digest("hex");
   const imports = new Map<string, HistoricalCsvImport>();
   for (const [symbol, state] of [...states.entries()].sort(([first], [second]) => first.localeCompare(second))) {
@@ -1173,7 +1209,7 @@ export async function importHistoricalCsvBatch(
       contentFingerprint,
     }));
   }
-  return { imports, rejectedRows, rowsRead, flushCount: Math.max(1, Math.ceil(rowsRead / 10_000)) };
+  return { imports, rejectedRows, rowsRead, flushCount };
 }
 
 /**

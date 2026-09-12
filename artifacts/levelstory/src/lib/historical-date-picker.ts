@@ -48,10 +48,9 @@ export function resolveOpeningMonth({
   maxDate: string;
   today: string;
 }): Date {
-  const eligible = new Set(eligibleDates ?? []);
   const candidates = [
-    value && (!eligibleDates || eligible.has(value)) ? value : null,
-    lastValidValue && (!eligibleDates || eligible.has(lastValidValue)) ? lastValidValue : null,
+    value,
+    lastValidValue,
     latestEligibleDate(eligibleDates),
     maxDate,
     today,
@@ -88,9 +87,7 @@ export function historicalDateReason(
 ): string | null {
   if (minDate && dateValue < minDate) return "Before the indexed historical coverage.";
   if (maxDate && dateValue > maxDate) return "After the indexed historical coverage.";
-  if (!eligibleDates) return "Indexed eligible-date metadata is still loading.";
-  return disabledDateReasons?.get(dateValue)
-    ?? (eligibleDates.includes(dateValue) ? null : "This date is not an eligible indexed trading date.");
+  return null;
 }
 
 export function restoreLastEligibleDate(

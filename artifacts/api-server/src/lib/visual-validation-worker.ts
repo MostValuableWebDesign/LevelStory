@@ -44,13 +44,12 @@ try {
   if (!imported) {
     throw new Error("Historical Databento visual review is unavailable because the ready multi-contract index was not found. Load the existing historical index before generating a review set.");
   }
-  const firstEligibleDate = imported.summary.eligibleTradingDates[0];
-  if (!firstEligibleDate) {
-    throw new Error("Historical Databento visual review is unavailable because the ready index contains no eligible MES trading dates.");
+  if (!imported.summary.allObservedTradingDates.length) {
+    throw new Error("No historical data available in the ready MES index.");
   }
   const dataset = multiContractImportToReplayDataset(
     imported,
-    firstEligibleDate,
+    undefined,
     request.endDate,
     request.inSampleDays,
     request.outOfSampleDays,

@@ -199,7 +199,7 @@ test("selects contract-local candles on each rollover date without blending", ()
    assert.equal(dataset.contractSchedule?.boundaries.length, MES_ROLLOVER_SCHEDULE.length);
 });
 
-test("rejects an explicit sparse sample when one requested date is ineligible", () => {
+test("rejects an explicit sparse sample when fewer stored sessions remain", () => {
   const date = "2025-09-05";
   const specification = contractSpecificationForMesSymbol("MESU5");
   const calendar = sessionCalendarForContract(specification);
@@ -246,11 +246,11 @@ test("rejects an explicit sparse sample when one requested date is ineligible", 
   } as unknown as HistoricalMultiContractImport;
   assert.throws(
     () => multiContractImportToReplayDataset(imported, date, "2025-09-12", 1, 1, [date, "2025-09-12"]),
-    /not eligible.*2025-09-12/i,
+    /contains 1 stored trading sessions; 2 are required/i,
   );
 });
 
-test("explains when a requested range does not overlap eligible history", () => {
+test("explains when a requested range has no stored history", () => {
   const imported = {
     summary: {
       eligibleTradingDates: ["2025-08-27", "2025-08-28"],
@@ -261,7 +261,7 @@ test("explains when a requested range does not overlap eligible history", () => 
 
   assert.throws(
     () => multiContractImportToReplayDataset(imported, "2025-08-26", "2025-08-26", 5, 2),
-    /range 2025-08-26 through 2025-08-26 contains 0 eligible trading dates; 7 are required.*2025-08-27 through 2025-08-28/i,
+    /No historical data available between 2025-08-26 and 2025-08-26/i,
   );
 });
 

@@ -16,17 +16,17 @@ import {
 const eligibleDates = ["2026-10-08", "2026-10-09", "2026-10-13"];
 const pickerSource = readFileSync(new URL("../src/components/historical-date-picker.tsx", import.meta.url), "utf8");
 
-test("Saturday cannot be selected from authoritative eligible dates", () => {
-  assert.equal(historicalDateReason("2026-10-10", eligibleDates, "2026-10-01", "2026-10-31"), "This date is not an eligible indexed trading date.");
+test("Saturday remains selectable inside indexed coverage", () => {
+  assert.equal(historicalDateReason("2026-10-10", eligibleDates, "2026-10-01", "2026-10-31"), null);
 });
 
-test("holiday or other ineligible date cannot be selected", () => {
-  assert.equal(historicalDateReason("2026-10-12", eligibleDates, "2026-10-01", "2026-10-31"), "This date is not an eligible indexed trading date.");
+test("holiday or other unavailable date remains selectable", () => {
+  assert.equal(historicalDateReason("2026-10-12", eligibleDates, "2026-10-01", "2026-10-31"), null);
 });
 
-test("exact supplied disabled reason is returned", () => {
+test("availability reasons are resolved after selection", () => {
   const reasons = new Map([["2026-10-12", "Insufficient regular-session coverage."]]);
-  assert.equal(historicalDateReason("2026-10-12", eligibleDates, "2026-10-01", "2026-10-31", reasons), "Insufficient regular-session coverage.");
+  assert.equal(historicalDateReason("2026-10-12", eligibleDates, "2026-10-01", "2026-10-31", reasons), null);
 });
 
 test("previous returns the nearest earlier eligible date", () => {
@@ -42,7 +42,7 @@ test("previous and next return null at their boundaries", () => {
   assert.equal(relativeEligibleDate("2026-10-13", 1, eligibleDates), null);
 });
 
-test("navigation has no calendar-day fallback while metadata is unavailable", () => {
+test("eligible metadata is optional for calendar selection", () => {
   assert.equal(latestEligibleDate(undefined), null);
 });
 
@@ -76,7 +76,7 @@ test("popover has a responsive maximum width around 400px", () => {
 
 test("footer controls use a compact grid", () => {
   assert.match(pickerSource, /grid grid-cols-2 gap-1 border-t/);
-  assert.match(pickerSource, /aria-label="Previous eligible date"/);
+  assert.match(pickerSource, /aria-label="Previous calendar date"/);
   assert.match(pickerSource, /aria-label="Latest indexed date"/);
 });
 

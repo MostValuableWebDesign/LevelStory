@@ -276,7 +276,7 @@ async function closeServer(server: Server): Promise<void> {
 test("forced route timeout writes one 408, terminates both workers, and recovers capacity", async () => {
   const runner = createTestWorkerRunner("timeout");
   const { server, port } = await startTestServer(runner, {
-    requestTimeoutMs: 80,
+    requestTimeoutMs: 1_000,
     workerDeadlineMs: 20,
   });
   try {

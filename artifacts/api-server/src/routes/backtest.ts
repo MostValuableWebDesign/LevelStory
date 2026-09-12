@@ -61,6 +61,7 @@ import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
 import { activeShadowStrategySnapshot } from "../lib/active-shadow-strategy.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
+import { HistoricalNoDataError } from "../lib/futures/historical-session-range.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
 import type { NormalizedCandle } from "../lib/futures/market-data-provider.js";
 import {
@@ -288,6 +289,9 @@ function validateBacktestRange(request: { source?: string; startDate?: string; e
 }
 
 function validateBatchRequest(request: BatchBacktestRequest): string | null {
+  if (request.selectedDates && request.selectedDates.length > MAX_BACKTEST_SESSIONS) {
+    return `A batch may include at most ${MAX_BACKTEST_SESSIONS} stored trading sessions.`;
+  }
   if (request.selectedDates && request.selectedDates.length > BATCH_BACKTEST_MAX_PARTITIONS) {
     return `A batch may include at most ${BATCH_BACKTEST_MAX_PARTITIONS} selected trading dates.`;
   }
@@ -558,6 +562,10 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     }
     const request = parsed.data;
     const selectedDates = [...request.selectedDates];
+    if (selectedDates.length > MAX_BACKTEST_SESSIONS) {
+      res.status(422).json({ error: `An edge-validation pilot may include at most ${MAX_BACKTEST_SESSIONS} stored trading sessions.` });
+      return;
+    }
     if (selectedDates.some((date, index) => date !== [...selectedDates].sort()[index])) {
       res.status(400).json({ error: "Phase 3 dates must be sorted chronologically." });
       return;
@@ -971,7 +979,7 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
         : multiContract
           ? multiContractImportToReplayDataset(
               multiContract,
-              parsed.data.startDate ?? MES_SUPPORTED_START_DATE,
+            parsed.data.startDate,
               parsed.data.endDate,
               parsed.data.inSampleDays,
               parsed.data.outOfSampleDays,
@@ -1033,13 +1041,17 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       const requestAborted = error instanceof BacktestRequestAbortedError
         || (deadline.signal.aborted && !timedOut);
       if (requestAborted || !canWriteResponse(res)) return;
-      const message = error instanceof HistoricalBacktestValidationError
+      const message = error instanceof HistoricalBacktestValidationError || error instanceof HistoricalNoDataError
         ? error.message
         : timedOut
         ? "Backtest timed out. Reduce the historical range and try again."
         : "Unable to run the causal backtest with the supplied constraints.";
       req.log?.warn({ error: error instanceof Error ? error.message : "unknown" }, "Rejected backtest request");
-      res.status(error instanceof HistoricalBacktestValidationError ? error.statusCode : timedOut ? 408 : 500).json({ error: message });
+      res.status(
+        error instanceof HistoricalBacktestValidationError || error instanceof HistoricalNoDataError
+          ? error.statusCode
+          : timedOut ? 408 : 500,
+      ).json({ error: message });
     } finally {
       if (counted) activeBacktests -= 1;
       deadline.dispose();

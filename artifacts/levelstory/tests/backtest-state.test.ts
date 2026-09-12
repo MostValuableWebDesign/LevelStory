@@ -66,11 +66,11 @@ test("coverage labels stay dynamic and accessible without color", () => {
 test("single-run session limits constrain both fields and reject overages", () => {
   assert.deepEqual(getBacktestSessionLimits(5, 2), {
     requested: 7,
-    remaining: 15,
-    maxInSampleDays: 20,
-    maxOutOfSampleDays: 17,
+    remaining: 3,
+    maxInSampleDays: 8,
+    maxOutOfSampleDays: 5,
     error: null,
   });
-  assert.equal(getBacktestSessionLimits(21, 2).error, "This single run requests 23 sessions; the maximum is 22.");
+  assert.equal(getBacktestSessionLimits(9, 2).error, "This single run requests 11 sessions; the maximum is 10.");
   assert.equal(getBacktestSessionLimits(21, 2).maxOutOfSampleDays, 1);
 });

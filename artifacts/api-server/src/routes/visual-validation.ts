@@ -39,6 +39,8 @@ import {
 } from "../lib/visual-validation-generation-jobs.js";
 import { buildShadowAccountReplay } from "../lib/shadow-account-replay.js";
 import { GetShadowAccountReplayQueryParams, GetShadowAccountReplayResponse } from "@workspace/api-zod";
+import { HistoricalNoDataError } from "../lib/futures/historical-session-range.js";
+import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
 
 const defaultRequest = {
   symbol: "MES" as const,
@@ -53,6 +55,13 @@ const defaultRequest = {
 
 function isoOptional(value: string | Date | undefined): string | undefined {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function historicalSessionLimitError(request: Pick<VisualValidationRequest, "inSampleDays" | "outOfSampleDays">): string | null {
+  const requested = request.inSampleDays + request.outOfSampleDays;
+  return requested > MAX_BACKTEST_SESSIONS
+    ? `Visual Review may include at most ${MAX_BACKTEST_SESSIONS} stored trading sessions.`
+    : null;
 }
 
 const historicalGenerationInFlight = new Map<
@@ -142,6 +151,11 @@ export function createVisualValidationRouter(): IRouter {
       ...(parsed.data.seed !== undefined ? { seed: parsed.data.seed } : {}),
        ...(parsed.data.reviewMode ? { reviewMode: parsed.data.reviewMode } : {}),
     };
+    const sessionLimitError = historicalSessionLimitError(request);
+    if (sessionLimitError) {
+      res.status(422).json({ error: sessionLimitError });
+      return;
+    }
     try {
       const built = request.source === "historical_databento"
         ? await buildHistoricalVisualValidationSetOnce(request)
@@ -154,7 +168,7 @@ export function createVisualValidationRouter(): IRouter {
       }, "Visual-validation generation failed");
       const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
-      res.status(unavailable ? 503 : 500).json({ error: detail });
+      res.status(error instanceof HistoricalNoDataError ? error.statusCode : unavailable ? 503 : 500).json({ error: detail });
     }
   });
 
@@ -169,6 +183,11 @@ export function createVisualValidationRouter(): IRouter {
         ...parsed.data,
         premarketAvailable: parsed.data.premarketAvailable ?? true,
       };
+      const sessionLimitError = historicalSessionLimitError(request);
+      if (sessionLimitError) {
+        res.status(422).json({ error: sessionLimitError });
+        return;
+      }
       const built = request.source === "historical_databento"
         ? await buildHistoricalVisualValidationSetOnce(request)
         : buildVisualValidationSet(request);
@@ -180,7 +199,7 @@ export function createVisualValidationRouter(): IRouter {
       }, "Visual-validation generation failed");
       const detail = error instanceof Error ? error.message : "Unable to generate the visual-validation set.";
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
-      res.status(unavailable ? 503 : 500).json({ error: detail });
+      res.status(error instanceof HistoricalNoDataError ? error.statusCode : unavailable ? 503 : 500).json({ error: detail });
     }
   });
 
@@ -210,6 +229,11 @@ export function createVisualValidationRouter(): IRouter {
     const parsed = StartVisualValidationGenerationJobBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const sessionLimitError = historicalSessionLimitError(parsed.data);
+    if (sessionLimitError) {
+      res.status(422).json({ error: sessionLimitError });
       return;
     }
     const job = await startVisualValidationGenerationJob(parsed.data);

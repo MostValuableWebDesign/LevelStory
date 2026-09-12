@@ -75,6 +75,16 @@ export class HistoricalIndexStore {
 
   static create(path: string): HistoricalIndexStore {
     const database = new DatabaseSync(path);
+    const existingVersion = Number(
+      (database.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version ?? 0,
+    );
+    if (existingVersion > 0 && existingVersion !== HISTORICAL_INDEX_SCHEMA_VERSION) {
+      database.close();
+      throw new Error(
+        `Historical index schema ${existingVersion} is incompatible with supported schema ${HISTORICAL_INDEX_SCHEMA_VERSION}; `
+        + "regeneration is required and the existing index was preserved.",
+      );
+    }
     const store = new HistoricalIndexStore(database, path);
     store.initialize();
     return store;
@@ -187,9 +197,6 @@ export class HistoricalIndexStore {
     const manifestColumns = this.database.prepare("PRAGMA table_info(index_manifest_files)").all() as Array<{ name: string }>;
     if (!manifestColumns.some((column) => column.name === "detected_contracts_json")) {
       this.database.exec("ALTER TABLE index_manifest_files ADD COLUMN detected_contracts_json TEXT");
-    }
-    if (existingVersion > 0 && existingVersion < HISTORICAL_INDEX_SCHEMA_VERSION) {
-      this.database.exec("DELETE FROM index_metadata; DELETE FROM index_manifest; DELETE FROM index_manifest_files; DELETE FROM source_files; DELETE FROM candle_partitions; DELETE FROM candles;");
     }
     this.database.exec(`PRAGMA user_version = ${HISTORICAL_INDEX_SCHEMA_VERSION}`);
   }
@@ -394,6 +401,115 @@ export class HistoricalIndexStore {
       summary.duplicateRowsRemoved,
       new Date().toISOString(),
     );
+  }
+
+  /**
+   * Append one bounded parser batch without materializing the source file.
+   * Partition counts are recomputed only for dates touched by this batch, so
+   * repeated batches remain idempotent without deleting prior partitions.
+   */
+  writeCandleBatch(
+    contractSymbol: string,
+    candles: readonly NormalizedCandle[],
+    timeframe: Timeframe,
+    calendar: FuturesSessionCalendar,
+    signal?: AbortSignal,
+  ): number {
+    if (!candles.length) return 0;
+    if (signal?.aborted) throw new Error("Historical index write was cancelled.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const candleStatement = this.database.prepare(`
+        INSERT OR REPLACE INTO candles
+        (contract_symbol, trading_date, timeframe, open_time, close_time, open, high, low, close,
+         volume, bid, ask, bid_size, ask_size, is_complete, quality_codes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const existingStatement = this.database.prepare(`
+        SELECT open_time, close_time, open, high, low, close, volume, bid, ask, bid_size, ask_size,
+               is_complete, quality_codes
+        FROM candles
+        WHERE contract_symbol = ? AND trading_date = ? AND timeframe = ? AND open_time = ?
+      `);
+      const touchedDates = new Set<string>();
+      const partitionStatement = this.database.prepare(`
+        INSERT OR IGNORE INTO candle_partitions
+        (contract_symbol, trading_date, timeframe, candle_count)
+        VALUES (?, ?, ?, 0)
+      `);
+      for (const candle of candles) {
+        if (signal?.aborted) throw new Error("Historical index write was cancelled.");
+        if (candle.contractSymbol !== contractSymbol) {
+          throw new Error(
+            `Historical index partition contract mismatch: partition=${contractSymbol}, candle=${candle.contractSymbol}.`,
+          );
+        }
+        touchedDates.add(tradingDateForTimestamp(candle.openTime, calendar));
+      }
+      for (const tradingDate of touchedDates) {
+        partitionStatement.run(contractSymbol, tradingDate, timeframe);
+      }
+      for (const candle of candles) {
+        if (candle.contractSymbol !== contractSymbol) {
+          throw new Error(
+            `Historical index partition contract mismatch: partition=${contractSymbol}, candle=${candle.contractSymbol}.`,
+          );
+        }
+        const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
+        touchedDates.add(tradingDate);
+        const existing = existingStatement.get(contractSymbol, tradingDate, timeframe, candle.openTime) as
+          Partial<CandleRow> | undefined;
+        if (existing && (
+          existing.close_time !== candle.closeTime
+          || existing.open !== candle.open
+          || existing.high !== candle.high
+          || existing.low !== candle.low
+          || existing.close !== candle.close
+          || (existing.volume ?? null) !== (candle.volume ?? null)
+        )) {
+          throw new Error(
+            `Conflicting historical candle at ${contractSymbol} ${tradingDate} ${candle.openTime}.`,
+          );
+        }
+        candleStatement.run(
+          contractSymbol,
+          tradingDate,
+          timeframe,
+          candle.openTime,
+          candle.closeTime,
+          candle.open,
+          candle.high,
+          candle.low,
+          candle.close,
+          candle.volume,
+          candle.bid,
+          candle.ask,
+          candle.bidSize,
+          candle.askSize,
+          candle.isComplete ? 1 : 0,
+          JSON.stringify(candle.quality.codes),
+        );
+      }
+      const updatePartitionStatement = this.database.prepare(`
+        INSERT OR REPLACE INTO candle_partitions
+        (contract_symbol, trading_date, timeframe, candle_count)
+        VALUES (?, ?, ?, ?)
+      `);
+      const countStatement = this.database.prepare(`
+        SELECT COUNT(*) AS count
+        FROM candles
+        WHERE contract_symbol = ? AND trading_date = ? AND timeframe = ?
+      `);
+      for (const tradingDate of touchedDates) {
+        const row = countStatement.get(contractSymbol, tradingDate, timeframe) as { count?: number };
+        updatePartitionStatement.run(contractSymbol, tradingDate, timeframe, Number(row.count ?? 0));
+      }
+      this.database.exec("COMMIT");
+      return 1;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   writeImport(imported: HistoricalCsvImport, contentFingerprint: string): void {

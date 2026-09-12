@@ -247,7 +247,7 @@ test("does not classify the Friday-to-Monday closure as unexpected overnight los
   });
 });
 
-test("actual historical source reconciles selected 5 plus 2 and 20 plus 2 ranges", async () => {
+test("actual historical source reconciles selected 5 plus 2 and rejects more than 10 sessions", async () => {
   const assetsDirectory = (
     await Promise.all([
       join(process.cwd(), "attached_assets"),
@@ -267,8 +267,10 @@ test("actual historical source reconciles selected 5 plus 2 and 20 plus 2 ranges
     .find((entry) => entry.endsWith(".csv") && entry.includes("MESU6"));
   assert.ok(filename, "The uploaded MESU6 CSV fixture is required for this coverage test.");
   const imported = await importHistoricalCsv(join(assetsDirectory, filename), specification);
-  for (const [inSampleDays, outOfSampleDays] of [[5, 2], [20, 2]]) {
-    const dataset = historicalImportToReplayDataset(imported, "2025-08-27", "2026-08-26", inSampleDays, outOfSampleDays);
+  const recentStart = imported.summary.availableTradingDates.at(-7)!;
+  const recentEnd = imported.summary.availableTradingDates.at(-1)!;
+  for (const [inSampleDays, outOfSampleDays] of [[5, 2]]) {
+    const dataset = historicalImportToReplayDataset(imported, recentStart, recentEnd, inSampleDays, outOfSampleDays);
     const gapReport = dataset.gapReport!;
     assert.equal(dataset.selectedDates?.length, inSampleDays + outOfSampleDays);
     assert.equal(
@@ -290,6 +292,10 @@ test("actual historical source reconciles selected 5 plus 2 and 20 plus 2 ranges
     );
     assert.ok(gapReport.missingMinuteGaps >= gapReport.unexpectedMissingMinutes);
   }
+  assert.throws(
+    () => historicalImportToReplayDataset(imported, imported.summary.availableTradingDates[0]!, recentEnd, 1, 1),
+    /at most 10 sessions/i,
+  );
 });
 
 test("merges overlapping fragments deterministically and retains all aggregate intervals", async () => {
@@ -367,7 +373,10 @@ test("demultiplexes interleaved outright MES symbols in one streaming pass", asy
     genericRow(start + 60_000, "MESH6", 1),
     genericRow(start + 60_000, "MESM6", 11),
   ], false, async (path) => {
-    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    const batch = await importHistoricalCsvBatch(path, specification, {
+      aggregations: [5],
+      onBatch: () => undefined,
+    });
     assert.deepEqual([...batch.imports.keys()], ["MESH6", "MESM6"]);
     assert.equal(batch.imports.get("MESH6")?.summary.validRows, 2);
     assert.equal(batch.imports.get("MESM6")?.summary.validRows, 2);
@@ -386,7 +395,10 @@ test("keeps duplicate and conflict diagnostics at contract/date scope", async ()
     genericRow(first, "MESM6", 10),
     genericRow(second, "MESM6", 11),
   ], false, async (path) => {
-    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    const batch = await importHistoricalCsvBatch(path, specification, {
+      aggregations: [5],
+      onBatch: () => undefined,
+    });
     const mesh = batch.imports.get("MESH6")!;
     const mesm = batch.imports.get("MESM6")!;
     assert.equal(mesh.summary.duplicateRowsRemoved, 1);
@@ -402,10 +414,13 @@ test("demultiplexes compressed generic Databento files without rereading per sym
     genericRow(start, "MESH6", 0),
     genericRow(start, "MESM6", 10),
   ], true, async (path) => {
-    const batch = await importHistoricalCsvBatch(path, specification, { aggregations: [5] });
+    const batch = await importHistoricalCsvBatch(path, specification, {
+      aggregations: [5],
+      onBatch: () => undefined,
+    });
     assert.equal(batch.imports.size, 2);
     assert.equal(batch.rowsRead, 2);
-    assert.equal(batch.flushCount, 1);
+    assert.equal(batch.flushCount, 2);
   });
 });
 
