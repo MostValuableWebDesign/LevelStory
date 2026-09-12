@@ -1,0 +1,202 @@
+```text
+Update LevelStory so its historical Databento pipeline can correctly import and replay five years of MES OHLCV-1m data.
+
+Target dataset
+
+- Dataset: CME Globex MDP 3.0
+- Product: MES
+- Schema: OHLCV-1m
+- Encoding: CSV
+- Compression: none
+- Files split by instrument
+- Decimal prices
+- ISO 8601 timestamps
+- Symbol field included
+- Intended range: 2021-09-12 through 2026-09-11
+
+Current limitations to address
+
+LevelStory’s multi-contract rollover schedule currently begins with MESU5 on 2025-08-27 and ends with MESU6. Earlier data cannot be assigned to the correct active contract. The importer also assumes a narrow set of filenames and may reject multiple file fragments belonging to the same contract as duplicates.
+
+Requirements
+
+1. Extend multi-contract coverage
+
+Support the complete set of quarterly MES contracts needed for the requested period, approximately MESZ1 through MESZ6, using the H, M, U, and Z quarterly contract cycle.
+
+Do not guess rollover dates. Create a verified, explicit, versioned schedule containing the effective trading date for every contract transition covering the entire requested range.
+
+The schedule must:
+
+- Cover every trading date from 2021-09-12 through 2026-09-11.
+- Map each date to exactly one active outright MES contract.
+- Include MESZ6 for the September 2026 transition where applicable.
+- Reject gaps, overlaps, duplicate effective dates, malformed symbols, and non-monotonic transitions.
+- Remain a deterministic research input rather than silently changing according to the current date.
+
+2. Generalize file discovery
+
+Update the existing historical multi-contract discovery pipeline to recognize any valid outright MES quarterly file matching the existing Databento naming convention.
+
+Continue rejecting:
+
+- Calendar spreads
+- Non-MES products
+- Malformed contract symbols
+- Files whose internal symbol does not match the filename
+- Mixed-symbol CSV files
+
+Do not hardcode discovery to MESU6 or the current five-contract set.
+
+3. Support file fragments safely
+
+If Databento produces multiple CSV files for the same contract, merge them deterministically instead of treating every additional fragment as a duplicate.
+
+During merging:
+
+- Sort records by `ts_event`.
+- Remove exact duplicate rows deterministically.
+- Reject conflicting records with the same contract and timestamp but different OHLCV values.
+- Preserve each source filename and content hash in the composite fingerprint.
+- Do not silently discard a fragment.
+- Continue supporting a single CSV per contract.
+
+4. Validate the input format
+
+Each CSV must require:
+
+- `ts_event`
+- `open`
+- `high`
+- `low`
+- `close`
+- `volume`
+- `symbol`
+
+Validate:
+
+- ISO 8601 timestamps
+- Decimal numeric OHLCV values
+- Valid OHLC relationships
+- Outright MES symbols
+- One-minute chronological alignment
+- Duplicate and missing intervals
+- Contract/date compatibility
+
+Uncompressed `.csv` is the required input. Return a clear unsupported-compression error for `.zst` files rather than attempting to parse them as text.
+
+5. Build a scalable historical index
+
+Do not require the complete five-year dataset to remain in memory.
+
+Build or extend the persistent historical index so it can:
+
+- Index each contract independently.
+- Load only the contracts and dates needed for a requested review.
+- Aggregate one-minute data into causal 5-minute, 15-minute, and hourly candles.
+- Preserve one-minute bars for intrabar event-order evaluation.
+- Reuse a valid existing index.
+- Rebuild when the schedule version, importer version, source files, or source fingerprints change.
+- Report indexing progress and failures.
+
+6. Select the correct contract causally
+
+For every requested trading date:
+
+- Resolve the active contract from the versioned schedule.
+- Read candles only from that contract.
+- Never substitute an inactive or missing contract silently.
+- Never combine two contracts into one candle.
+- Reset active-position state at a contract boundary according to the existing governed behavior.
+- Record the active contract and applicable rollover boundary in audit evidence.
+
+If the scheduled contract file or requested date is unavailable, mark that date ineligible and explain why.
+
+7. Preserve existing strategy behavior
+
+Do not change:
+
+- ORB directional-trend logic
+- Patience-candle qualification
+- Four-tick entry confirmation
+- Stop-management formulas
+- Target selection
+- Breakeven and runner rules
+- Single-active-trade behavior
+- Candidate promotion or P/L formulas
+
+This change is limited to historical data ingestion, contract scheduling, indexing, date selection, and associated audit evidence.
+
+8. Historical review and combined replay
+
+Ensure Visual Review and Shadow Account Replay can select dates anywhere inside the supported five-year range.
+
+Combined replay must:
+
+- Process all selected dates chronologically.
+- Use the correct contract for each date.
+- Combine entered-trade P/L and analytics across dates.
+- Preserve per-date, per-contract, and per-trade evidence.
+- Exclude ineligible dates and blocked/rejected candidates from entered-trade P/L.
+- Display included dates, excluded dates, active contracts, rollover boundaries, missing data, and gap diagnostics.
+
+9. User-facing status
+
+Update the historical-data status UI to show:
+
+- Requested coverage range
+- Indexed coverage range
+- Contracts discovered
+- Contracts accepted
+- Missing scheduled contracts
+- Eligible and ineligible trading dates
+- Files merged per contract
+- Rejected spreads/files and reasons
+- Current schedule version
+- Current importer/index version
+- Indexing progress
+- Whether the full five-year range is ready for replay
+
+10. Tests
+
+Add deterministic tests covering:
+
+- The complete five-year schedule with no gaps or overlaps.
+- Every quarterly rollover boundary.
+- Dates immediately before and after each rollover.
+- MESZ1 through MESZ6 discovery.
+- Calendar-spread rejection.
+- One file per contract.
+- Multiple fragments for one contract.
+- Duplicate-row removal.
+- Conflicting duplicate rejection.
+- Mixed-symbol rejection.
+- Unsupported `.zst` rejection.
+- Missing scheduled contract behavior.
+- Missing trading-date behavior.
+- Five-year index persistence and invalidation.
+- Cross-contract date-range replay.
+- Position-state handling at rollover boundaries.
+- Combined P/L across multiple years.
+- No strategy-formula regression.
+
+Verification
+
+- Run API typecheck.
+- Run historical CSV importer tests.
+- Run multi-contract index and replay tests.
+- Run Phase 9 and Visual Review integration tests.
+- Run Shadow Account Replay tests.
+- Run frontend typecheck and production build.
+- Run `git diff --check`.
+
+Report:
+
+- Exact files changed.
+- The final supported date range.
+- The complete contract schedule added.
+- Import/index performance characteristics.
+- Test results.
+- Any missing Databento files or coverage limitations.
+- Confirmation that strategy and trade-management formulas were not changed.
+```
