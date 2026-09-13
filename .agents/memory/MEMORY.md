@@ -78,3 +78,4 @@
 - [Historical cancellation recovery](historical-cancellation-recovery.md) — expose resume only after worker cleanup; distinguish checkpoint resume from safe source-backed restart.
 - [Historical import throughput](historical-import-throughput.md) — large imports use bounded larger batches and batch-level conflict checks while committed SQLite stays fully synchronous.
 - [SQLite partition updates](foreign-key-partition-updates.md) — never use replace semantics for candle partitions with cascading child rows; update in place or candles are deleted.
+- [Historical index storage authority](historical-index-storage-authority.md) — workspace cache snapshots can be stale or incompatible; only the configured current SQLite manifest is authoritative after restart.

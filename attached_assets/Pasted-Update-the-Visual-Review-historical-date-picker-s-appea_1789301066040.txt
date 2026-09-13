@@ -1,0 +1,135 @@
+Update the Visual Review historical date picker’s appearance and layout. This is a presentation change only—do not change date-selection, historical-data, or 10-session logic.
+
+Primary files to inspect
+
+- `artifacts/levelstory/src/components/historical-date-picker.tsx`
+- `artifacts/levelstory/src/components/ui/calendar.tsx`
+- `artifacts/levelstory/tests/historical-date-picker.test.ts`
+
+Requirements
+
+1. Remove the footer action buttons completely
+
+Remove these four buttons and their surrounding footer container:
+
+- Previous
+- Next
+- Latest
+- Today
+
+Also remove component code, imports, computed values, and tests used only by those buttons. Keep the small left/right month-navigation arrows in the calendar header.
+
+2. Make the calendar resemble the supplied reference
+
+Use the uploaded calendar as the visual direction:
+
+- Clean, spacious white/card background.
+- Centered month-and-year caption.
+- Previous-month arrow on the left of the caption.
+- Next-month arrow on the right.
+- Thin divider underneath the calendar header.
+- Seven evenly spaced weekday columns.
+- Seven evenly spaced date columns.
+- Larger, comfortable day hit areas.
+- Clear selected-date circle or rounded highlight using LevelStory’s accent color.
+- Subtle hover and keyboard-focus states.
+- Muted outside-month dates, or hide outside-month dates if that produces the cleaner reference appearance.
+- Continue using existing LevelStory design tokens rather than introducing unrelated colors.
+
+3. Use the full available middle section
+
+The current calendar is constrained to a narrow gray column centered inside a much wider popover, leaving excessive blank white space.
+
+Change the layout so:
+
+- The calendar fills the available width of the popover beneath the month/year controls.
+- Remove the narrow gray calendar background.
+- Remove `mx-auto` or fixed cell sizing that causes the calendar to occupy only the center portion.
+- Make the calendar month, table, header row, week rows, and seven-column grid use `width: 100%`.
+- Distribute all seven weekday and date columns evenly across the panel.
+- Day buttons should expand within their cells while retaining an appropriate maximum size.
+- The selected-day highlight must remain centered in its column.
+- Avoid unused white space on either side of the calendar.
+- Keep the popup approximately its current overall width; make its contents use that width instead of making the popup unnecessarily larger.
+
+4. Preserve fast month/year selection
+
+Keep the existing Month and Year dropdowns at the top because they allow fast navigation across five years.
+
+Visually refine them so they feel connected to the calendar:
+
+- Keep them in one two-column row on desktop.
+- Use consistent heights, borders, spacing, and typography.
+- Add appropriate spacing or a divider between the dropdown row and calendar.
+- Changing either dropdown must continue updating the displayed calendar immediately.
+- The calendar’s centered caption and arrows should reflect the selected dropdown month and year.
+
+5. Simplify supporting text
+
+Keep the availability explanation, but make it visually secondary and compact:
+
+“Dates remain selectable even when stored data is unavailable. Availability is checked after selection.”
+
+Place it below the calendar without creating a large footer section.
+
+6. Preserve existing behavior
+
+Do not change:
+
+- Manual MM/DD/YYYY or YYYY-MM-DD entry.
+- Month and year selection behavior.
+- Calendar-day selection.
+- Stored historical-date highlighting.
+- Weekends and holidays remaining selectable.
+- Missing-data dates remaining selectable.
+- Escape-key handling and focus restoration.
+- New York date handling.
+- The maximum of 10 sessions enforced elsewhere.
+- Any historical import, indexing, replay, or strategy logic.
+
+7. Responsive behavior
+
+- The popup must remain inside the viewport.
+- On narrow screens, retain the existing responsive maximum width.
+- The seven calendar columns must fit without horizontal scrolling.
+- Month/year controls may stack only when required on very narrow screens.
+- Day buttons must remain touch-friendly.
+- No text, arrows, or dates may overlap.
+
+8. Update focused tests
+
+Update the focused date-picker tests to verify:
+
+- The four footer buttons no longer exist.
+- Month and Year dropdowns still exist.
+- Calendar caption navigation arrows remain.
+- The calendar uses the full available width.
+- The seven date columns are evenly distributed.
+- The narrow centered `mx-auto` calendar treatment is removed.
+- The compact availability message remains.
+- Mobile viewport containment remains.
+- Existing date parsing, selection, focus, and month/year helper tests continue passing.
+
+If the current tests only search source text, add a focused rendered interaction test if the existing frontend test environment supports it. Do not introduce a new heavyweight test framework solely for this change.
+
+Verification
+
+Run only:
+
+- Focused historical date and date-picker tests.
+- Frontend typecheck.
+- Frontend production build if reasonably quick.
+- `git diff --check`.
+
+Do not run historical imports, five-year scans, strategy replays, or the complete API suite.
+
+Deliverable
+
+Report:
+
+- Files changed.
+- Footer controls removed.
+- How the calendar now fills the panel.
+- Confirmation that month/year dropdowns and header arrows remain.
+- Confirmation that no date-selection or historical-data behavior changed.
+- Focused verification results.

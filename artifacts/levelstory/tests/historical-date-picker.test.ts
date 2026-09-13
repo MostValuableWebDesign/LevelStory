@@ -15,6 +15,7 @@ import {
 
 const eligibleDates = ["2026-10-08", "2026-10-09", "2026-10-13"];
 const pickerSource = readFileSync(new URL("../src/components/historical-date-picker.tsx", import.meta.url), "utf8");
+const calendarSource = readFileSync(new URL("../src/components/ui/calendar.tsx", import.meta.url), "utf8");
 
 test("Saturday remains selectable inside indexed coverage", () => {
   assert.equal(historicalDateReason("2026-10-10", eligibleDates, "2026-10-01", "2026-10-31"), null);
@@ -66,7 +67,7 @@ test("month and year can be selected directly", () => {
 
 test("month and year controls use a separate calendar caption", () => {
   assert.match(pickerSource, /captionLayout="label"/);
-  assert.match(pickerSource, /className="mx-auto"/);
+  assert.doesNotMatch(pickerSource, /className="mx-auto"/);
 });
 
 test("popover has a responsive maximum width around 400px", () => {
@@ -74,10 +75,23 @@ test("popover has a responsive maximum width around 400px", () => {
   assert.match(pickerSource, /max-w-\[calc\(100vw-1\.5rem\)\]/);
 });
 
-test("footer controls use a compact grid", () => {
-  assert.match(pickerSource, /grid grid-cols-2 gap-1 border-t/);
-  assert.match(pickerSource, /aria-label="Previous calendar date"/);
-  assert.match(pickerSource, /aria-label="Latest indexed date"/);
+test("footer date action controls are removed", () => {
+  assert.doesNotMatch(pickerSource, /Previous calendar date|Next calendar date|Latest indexed date|aria-label="Today"/);
+  assert.doesNotMatch(pickerSource, /grid grid-cols-2 gap-1 border-t/);
+});
+
+test("calendar keeps header arrows and uses the full seven-column width", () => {
+  assert.match(calendarSource, /root: cn\('w-full'/);
+  assert.match(calendarSource, /table: 'w-full border-collapse'/);
+  assert.match(calendarSource, /weekdays: cn\('flex'/);
+  assert.match(calendarSource, /day: cn\([\s\S]*flex-1/);
+  assert.match(calendarSource, /ChevronLeftIcon/);
+  assert.match(calendarSource, /ChevronRightIcon/);
+  assert.doesNotMatch(calendarSource, /root: cn\('w-fit'/);
+});
+
+test("availability message stays compact and secondary", () => {
+  assert.match(pickerSource, /Dates remain selectable even when stored data is unavailable\. Availability is checked after selection\./);
 });
 
 test("mobile viewport containment is explicit", () => {

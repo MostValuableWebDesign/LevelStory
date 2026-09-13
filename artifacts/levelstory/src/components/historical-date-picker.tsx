@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CalendarDays } from "lucide-react";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { canonicalToDate, dateToCanonical, formatDateForDisplay, parseDateText } from "@/lib/historical-date";
@@ -9,7 +8,6 @@ import {
   CALENDAR_MONTHS,
   clampDisplayMonth,
   historicalDateReason,
-  latestEligibleDate,
   monthSelection,
   resolveOpeningMonth,
   sortedEligibleDates,
@@ -143,33 +141,9 @@ export function HistoricalDatePicker({
     commit(dateToCanonical(date));
   };
 
-  const moveToRelativeDate = (direction: -1 | 1) => {
-    const current = canonicalToDate(parseDateText(draft) ?? parseDateText(value) ?? effectiveMax);
-    if (!current) return;
-    current.setDate(current.getDate() + direction);
-    commit(dateToCanonical(current));
-  };
-
-  const latestIndexedDate = latestEligibleDate(knownEligibleDates);
   const today = todayInNewYork();
-  const canChooseToday = !reasonForDate(today);
   const selectedDate = canonicalToDate(value);
   const selectedDateIsEligible = Boolean(selectedDate);
-  const navigationDate = parseDateText(draft) ?? value;
-  const previousEligibleDate = (() => {
-    const date = canonicalToDate(navigationDate);
-    if (!date) return null;
-    date.setDate(date.getDate() - 1);
-    const candidate = dateToCanonical(date);
-    return reasonForDate(candidate) ? null : candidate;
-  })();
-  const nextEligibleDate = (() => {
-    const date = canonicalToDate(navigationDate);
-    if (!date) return null;
-    date.setDate(date.getDate() + 1);
-    const candidate = dateToCanonical(date);
-    return reasonForDate(candidate) ? null : candidate;
-  })();
   const currentMonth = clampDisplayMonth(displayMonth, effectiveMin, effectiveMax);
   const currentMonthKey = currentMonth.getMonth().toString();
 
@@ -272,10 +246,10 @@ export function HistoricalDatePicker({
               align="start"
               side="bottom"
               sideOffset={6}
-              className="w-[min(400px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] p-2"
+               className="w-[min(400px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] overflow-hidden p-0"
               onOpenAutoFocus={(event) => event.preventDefault()}
             >
-              <div className="mb-1 grid grid-cols-2 gap-2 border-b border-border px-2 pb-2">
+               <div className="grid grid-cols-2 gap-2 border-b border-border px-3 pb-3 pt-3">
                 <label className="space-y-1 text-[10px] font-bold uppercase tracking-[.08em] text-muted-foreground">
                   <span>Month</span>
                   <select
@@ -309,7 +283,7 @@ export function HistoricalDatePicker({
                   </select>
                 </label>
               </div>
-              <div className="relative">
+               <div className="relative px-1">
                 <div className="sr-only" aria-live="polite">Showing {monthLabel(currentMonth)}</div>
                 <Calendar
                   mode="single"
@@ -326,7 +300,6 @@ export function HistoricalDatePicker({
                        .filter((date): date is Date => Boolean(date)),
                    }}
                   disabled={(date) => Boolean(reasonForDate(dateToCanonical(date)))}
-                  className="mx-auto"
                   components={{
                     DayButton: (props) => (
                       <DatePickerDayButton
@@ -338,36 +311,15 @@ export function HistoricalDatePicker({
                   aria-label={`${label} calendar showing ${monthLabel(currentMonth)}`}
                 />
               </div>
-              <p className="px-3 pb-1 text-[10px] leading-4 text-muted-foreground" id={`${label.replaceAll(" ", "-")}-help`}>
-                 Dates remain selectable across weekends, holidays, missing sessions, and contract transitions. Availability is resolved after selection.
+               <p className="px-3 pb-3 pt-1 text-[10px] leading-4 text-muted-foreground" id={`${label.replaceAll(" ", "-")}-help`}>
+                 Dates remain selectable even when stored data is unavailable. Availability is checked after selection.
               </p>
-              <div className="grid grid-cols-2 gap-1 border-t border-border px-3 pt-2">
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Previous calendar date" onClick={() => moveToRelativeDate(-1)} disabled={!previousEligibleDate}>
-                  <ChevronLeft size={12} aria-hidden="true" /> Previous
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Next calendar date" onClick={() => moveToRelativeDate(1)} disabled={!nextEligibleDate}>
-                  Next <ChevronRight size={12} aria-hidden="true" />
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Latest indexed date" onClick={() => latestIndexedDate && commit(latestIndexedDate)} disabled={!latestIndexedDate}>
-                  Latest
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 min-w-0 px-2 text-[10px]" aria-label="Today" onClick={() => commit(today)} disabled={!canChooseToday}>
-                  Today
-                </Button>
-              </div>
           </PopoverContent>
         </Popover>
         </div>
       {error && (
         <div className="space-y-1" role="alert">
           <p className="text-[10px] text-negative">{error}</p>
-          {(previousEligibleDate || nextEligibleDate || latestIndexedDate) && (
-            <div className="flex flex-wrap gap-1">
-              {previousEligibleDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(previousEligibleDate)}>Use previous {formatDateForDisplay(previousEligibleDate)}</button>}
-              {nextEligibleDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(nextEligibleDate)}>Use next {formatDateForDisplay(nextEligibleDate)}</button>}
-              {latestIndexedDate && <button type="button" className="text-[10px] font-semibold text-primary underline underline-offset-2" onClick={() => commit(latestIndexedDate)}>Use latest indexed date</button>}
-            </div>
-          )}
         </div>
       )}
       {!knownEligibleDates && <p className="text-[10px] text-muted-foreground">Waiting for indexed-date metadata.</p>}
