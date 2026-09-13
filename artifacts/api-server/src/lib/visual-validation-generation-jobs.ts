@@ -96,6 +96,15 @@ function cleanRequest(request: VisualValidationRequest): VisualValidationRequest
   return deterministicRequest;
 }
 
+export function generationElapsedMs(
+  startedAt: number | null,
+  completedAt: number | null,
+  now: number,
+): number {
+  if (startedAt === null) return 0;
+  return Math.max(0, (completedAt ?? now) - startedAt);
+}
+
 async function cacheMetadataForRequest(request: VisualValidationRequest): Promise<VisualValidationCacheMetadata> {
   if ((request.source ?? "historical_databento") === "historical_databento") {
     const imported = await getReadyHistoricalMultiContractIndex();
@@ -136,9 +145,11 @@ function pruneJobs(): void {
 }
 
 function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGenerationJob {
-  const elapsedMs = job.startedAt === null
-    ? 0
-    : Math.max(0, (job.completedAt ?? Date.now()) - job.startedAt);
+  const now = Date.now();
+  const elapsedMs = generationElapsedMs(job.startedAt, job.completedAt, now);
+  const estimatedRemainingMs = job.status === "running"
+    ? estimateRemainingMs(elapsedMs, job.completedUnits, job.totalUnits)
+    : null;
   return {
     jobId: job.jobId,
     status: job.status,
@@ -149,7 +160,7 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
     completedSessions: job.completedSessions,
     totalSessions: job.totalSessions,
     elapsedMs,
-    estimatedRemainingMs: job.status === "running" ? job.estimatedRemainingMs : null,
+    estimatedRemainingMs,
     message: job.message,
     error: job.error,
     reviewSetId: job.reviewSetId,
@@ -170,24 +181,21 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
   };
 }
 
-export function monotonicRemainingEstimate(
+export function estimateRemainingMs(
   elapsedMs: number,
   completedUnits: number,
   totalUnits: number,
-  previousEstimateMs: number | null,
 ): number | null {
-  if (completedUnits < 20 || elapsedMs < 2_000 || totalUnits <= completedUnits) return previousEstimateMs;
-  const estimate = Math.max(0, Math.round((elapsedMs / completedUnits) * (totalUnits - completedUnits)));
-  return previousEstimateMs === null ? estimate : Math.min(previousEstimateMs, estimate);
+  if (completedUnits < 20 || elapsedMs < 2_000 || totalUnits <= completedUnits) return null;
+  return Math.max(0, Math.round((elapsedMs / completedUnits) * (totalUnits - completedUnits)));
 }
 
 function updateEstimate(job: JobRecord): void {
   if (job.status !== "running" || job.startedAt === null) return;
-  job.estimatedRemainingMs = monotonicRemainingEstimate(
-    Math.max(0, Date.now() - job.startedAt),
+  job.estimatedRemainingMs = estimateRemainingMs(
+    generationElapsedMs(job.startedAt, null, Date.now()),
     job.completedUnits,
     job.totalUnits,
-    job.estimatedRemainingMs,
   );
 }
 

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  estimateRemainingMs,
+  generationElapsedMs,
   getVisualValidationGenerationJob,
-  monotonicRemainingEstimate,
   startVisualValidationGenerationJob,
 } from "./visual-validation-generation-jobs.js";
 import { getVisualValidationSet } from "./visual-validation-store.js";
@@ -57,13 +58,26 @@ test("visual-validation generation jobs reuse active work and publish completion
   assert.equal(cached.percent, 100);
 });
 
-test("remaining-time estimates never increase while progress is unchanged", () => {
-  const first = monotonicRemainingEstimate(10_000, 20, 100, null);
-  assert.ok(first);
-  const later = monotonicRemainingEstimate(30_000, 20, 100, first);
-  assert.equal(later, first);
-  const progressed = monotonicRemainingEstimate(30_000, 60, 100, later);
-  assert.ok(progressed !== null && progressed <= first);
+test("elapsed time is zero before start and freezes at completion", () => {
+  assert.equal(generationElapsedMs(null, null, 50_000), 0);
+  assert.equal(generationElapsedMs(10_000, null, 13_250), 3_250);
+  assert.equal(generationElapsedMs(10_000, 12_000, 50_000), 2_000);
+  assert.equal(generationElapsedMs(12_000, 10_000, 50_000), 0);
+});
+
+test("remaining-time estimates use live elapsed time when progress stalls", () => {
+  const first = estimateRemainingMs(10_000, 20, 100);
+  assert.equal(first, 40_000);
+  const later = estimateRemainingMs(30_000, 20, 100);
+  assert.equal(later, 120_000);
+  const progressed = estimateRemainingMs(30_000, 60, 100);
+  assert.equal(progressed, 20_000);
+});
+
+test("remaining-time estimates stay unavailable until the projection has evidence", () => {
+  assert.equal(estimateRemainingMs(1_999, 20, 100), null);
+  assert.equal(estimateRemainingMs(2_000, 19, 100), null);
+  assert.equal(estimateRemainingMs(2_000, 20, 20), null);
 });
 
 test("fresh regeneration bypasses only the compatible derived result and preserves the old set", async () => {
