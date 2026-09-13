@@ -204,6 +204,9 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /storedSessionsThroughDate/);
   assert.match(page, /Only \$\{storedSessions\} stored trading session/);
   assert.match(page, /disabled=\{storedSessions !== null && value > maxReviewDays\}/);
+  assert.match(page, /latestSelectableDate/);
+  assert.match(page, /current\.endDate === INITIAL_REQUEST\.endDate/);
+  assert.match(page, /if \(!latestSelectableDate \|\| reviewSetRequested \|\| localSet\) return/);
   assert.match(page, /minDate=\{historicalIndex\?\.state === "ready" \? historicalIndex\.indexedStartDate : null\}/);
   assert.match(page, /maxDate=\{historicalIndex\?\.state === "ready" \? historicalIndex\.indexedEndDate : null\}/);
   assert.match(page, /reviewPeriod\.startDate/);

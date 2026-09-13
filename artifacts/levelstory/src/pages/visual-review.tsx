@@ -521,6 +521,9 @@ export default function VisualReview() {
       staleTime: 30_000,
     },
   });
+  const latestSelectableDate = historicalIndex.data?.state === "ready"
+    ? historicalIndex.data.indexedEndDate ?? historicalIndex.data.availableTradingDates.at(-1) ?? null
+    : null;
   const storedSessions = storedSessionsThroughDate(historicalIndex.data, request.endDate);
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
@@ -599,6 +602,13 @@ export default function VisualReview() {
       }
     }
   }, [generationJobId, generationQuery.error, generationQuery.isError, startGeneration]);
+
+  useEffect(() => {
+    if (!latestSelectableDate || reviewSetRequested || localSet) return;
+    setRequest((current) => current.endDate === INITIAL_REQUEST.endDate
+      ? { ...current, endDate: latestSelectableDate }
+      : current);
+  }, [latestSelectableDate, localSet, reviewSetRequested]);
 
   useEffect(() => {
     if (localSet || generationActive) return;
