@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   estimateRemainingMs,
+  estimateTotalDurationMs,
   generationElapsedMs,
   getVisualValidationGenerationJob,
   startVisualValidationGenerationJob,
@@ -66,18 +67,23 @@ test("elapsed time is zero before start and freezes at completion", () => {
 });
 
 test("remaining-time estimates use live elapsed time when progress stalls", () => {
-  const first = estimateRemainingMs(10_000, 20, 100);
-  assert.equal(first, 40_000);
-  const later = estimateRemainingMs(30_000, 20, 100);
-  assert.equal(later, 120_000);
-  const progressed = estimateRemainingMs(30_000, 60, 100);
-  assert.equal(progressed, 20_000);
+  const total = estimateTotalDurationMs(10_000, 20, 100, null);
+  assert.equal(total, 50_000);
+  assert.equal(estimateRemainingMs(10_000, total), 40_000);
+  assert.equal(estimateRemainingMs(30_000, total), 20_000);
+});
+
+test("remaining-time estimates stay anchored as later phases report progress", () => {
+  const total = estimateTotalDurationMs(10_000, 20, 100, null);
+  assert.equal(estimateTotalDurationMs(30_000, 60, 100, total), total);
+  assert.equal(estimateRemainingMs(30_000, total), 20_000);
+  assert.equal(estimateRemainingMs(49_999, total), 1);
 });
 
 test("remaining-time estimates stay unavailable until the projection has evidence", () => {
-  assert.equal(estimateRemainingMs(1_999, 20, 100), null);
-  assert.equal(estimateRemainingMs(2_000, 19, 100), null);
-  assert.equal(estimateRemainingMs(2_000, 20, 20), null);
+  assert.equal(estimateTotalDurationMs(1_999, 20, 100, null), null);
+  assert.equal(estimateTotalDurationMs(2_000, 19, 100, null), null);
+  assert.equal(estimateTotalDurationMs(2_000, 20, 20, null), null);
 });
 
 test("fresh regeneration bypasses only the compatible derived result and preserves the old set", async () => {

@@ -65,6 +65,7 @@ type JobRecord = CandidateGenerationJob & {
   generationOrigin: "cached" | "fresh";
   startedAt: number | null;
   completedAt: number | null;
+  estimatedTotalMs: number | null;
 };
 
 const JOB_TTL_MS = 30 * 60_000;
@@ -147,8 +148,16 @@ function pruneJobs(): void {
 function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGenerationJob {
   const now = Date.now();
   const elapsedMs = generationElapsedMs(job.startedAt, job.completedAt, now);
+  if (job.status === "running" && job.estimatedTotalMs === null) {
+    job.estimatedTotalMs = estimateTotalDurationMs(
+      elapsedMs,
+      job.completedUnits,
+      job.totalUnits,
+      null,
+    );
+  }
   const estimatedRemainingMs = job.status === "running"
-    ? estimateRemainingMs(elapsedMs, job.completedUnits, job.totalUnits)
+    ? estimateRemainingMs(elapsedMs, job.estimatedTotalMs)
     : null;
   return {
     jobId: job.jobId,
@@ -181,22 +190,35 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
   };
 }
 
-export function estimateRemainingMs(
+export function estimateTotalDurationMs(
   elapsedMs: number,
   completedUnits: number,
   totalUnits: number,
+  previousEstimateMs: number | null,
 ): number | null {
+  if (previousEstimateMs !== null) return previousEstimateMs;
   if (completedUnits < 20 || elapsedMs < 2_000 || totalUnits <= completedUnits) return null;
-  return Math.max(0, Math.round((elapsedMs / completedUnits) * (totalUnits - completedUnits)));
+  return Math.max(elapsedMs, Math.round((elapsedMs / completedUnits) * totalUnits));
+}
+
+export function estimateRemainingMs(
+  elapsedMs: number,
+  estimatedTotalMs: number | null,
+): number | null {
+  if (estimatedTotalMs === null) return null;
+  return Math.max(0, estimatedTotalMs - elapsedMs);
 }
 
 function updateEstimate(job: JobRecord): void {
   if (job.status !== "running" || job.startedAt === null) return;
-  job.estimatedRemainingMs = estimateRemainingMs(
-    generationElapsedMs(job.startedAt, null, Date.now()),
+  const elapsedMs = generationElapsedMs(job.startedAt, null, Date.now());
+  job.estimatedTotalMs = estimateTotalDurationMs(
+    elapsedMs,
     job.completedUnits,
     job.totalUnits,
+    job.estimatedTotalMs,
   );
+  job.estimatedRemainingMs = estimateRemainingMs(elapsedMs, job.estimatedTotalMs);
 }
 
 function updateJob(job: JobRecord, update: Partial<Omit<VisualValidationWorkerProgress, "phase">> & {
@@ -340,6 +362,7 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       estimatedRemainingMs: null,
       startedAt: null,
       completedAt: null,
+      estimatedTotalMs: null,
     };
     jobs.set(job.jobId, job);
     activeByRequest.set(key, job.jobId);
