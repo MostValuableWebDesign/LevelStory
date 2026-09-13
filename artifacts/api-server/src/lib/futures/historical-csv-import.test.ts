@@ -248,6 +248,18 @@ test("does not classify the Friday-to-Monday closure as unexpected overnight los
   });
 });
 
+test("counts one daily maintenance window once when a source resumes after settlement", async () => {
+  const beforeMaintenance = Date.parse("2026-08-24T19:59:00.000Z");
+  const afterMaintenance = Date.parse("2026-08-24T22:00:00.000Z");
+  await withCsv([row(beforeMaintenance, 0), row(afterMaintenance, 1)], async (path) => {
+    const imported = await importHistoricalCsv(path, specification);
+    assert.equal(imported.summary.missingMinuteGaps, 120);
+    assert.equal(imported.summary.maintenanceGapMinutes, 120);
+    assert.equal(imported.summary.weekendHolidayClosedMinutes, 0);
+    assert.equal(imported.summary.unexpectedMissingMinutes, 0);
+  });
+});
+
 test("actual historical source reconciles selected 5 plus 2 and rejects more than 10 sessions", async () => {
   const assetsDirectory = (
     await Promise.all([

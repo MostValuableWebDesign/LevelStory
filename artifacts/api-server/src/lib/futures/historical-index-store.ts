@@ -125,6 +125,9 @@ export class HistoricalIndexStore {
     const database = new DatabaseSync(temporaryPath);
     const store = new HistoricalIndexStore(database, path);
     store.initialize();
+    // Checkpoints and atomic replacement preserve process-crash recovery; NORMAL
+    // synchronous mode avoids an fsync for every large staging transaction.
+    database.exec("PRAGMA synchronous = NORMAL;");
     store.temporaryPath = temporaryPath;
     return store;
   }
@@ -532,19 +535,13 @@ export class HistoricalIndexStore {
     if (signal?.aborted) throw new Error("Historical index write was cancelled.");
     this.database.exec("BEGIN IMMEDIATE");
     try {
+      const touchedDates = new Set<string>();
       const candleStatement = this.database.prepare(`
         INSERT OR REPLACE INTO candles
         (contract_symbol, trading_date, timeframe, open_time, close_time, open, high, low, close,
          volume, bid, ask, bid_size, ask_size, is_complete, quality_codes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      const existingStatement = this.database.prepare(`
-        SELECT open_time, close_time, open, high, low, close, volume, bid, ask, bid_size, ask_size,
-               is_complete, quality_codes
-        FROM candles
-        WHERE contract_symbol = ? AND trading_date = ? AND timeframe = ? AND open_time = ?
-      `);
-      const touchedDates = new Set<string>();
       const partitionStatement = this.database.prepare(`
         INSERT OR IGNORE INTO candle_partitions
         (contract_symbol, trading_date, timeframe, candle_count)
@@ -562,6 +559,19 @@ export class HistoricalIndexStore {
       for (const tradingDate of touchedDates) {
         partitionStatement.run(contractSymbol, tradingDate, timeframe);
       }
+      const existingByKey = new Map<string, Partial<CandleRow>>();
+      if (touchedDates.size > 0) {
+        const datePlaceholders = [...touchedDates].map(() => "?").join(", ");
+        const existingRows = this.database.prepare(`
+          SELECT trading_date, open_time, close_time, open, high, low, close, volume, bid, ask, bid_size,
+                 ask_size, is_complete, quality_codes
+          FROM candles
+          WHERE contract_symbol = ? AND timeframe = ? AND trading_date IN (${datePlaceholders})
+        `).all(contractSymbol, timeframe, ...touchedDates) as Array<Partial<CandleRow> & { trading_date: string }>;
+        for (const existing of existingRows) {
+          existingByKey.set(`${existing.trading_date}:${existing.open_time}`, existing);
+        }
+      }
       for (const candle of candles) {
         if (candle.contractSymbol !== contractSymbol) {
           throw new Error(
@@ -570,8 +580,7 @@ export class HistoricalIndexStore {
         }
         const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
         touchedDates.add(tradingDate);
-        const existing = existingStatement.get(contractSymbol, tradingDate, timeframe, candle.openTime) as
-          Partial<CandleRow> | undefined;
+        const existing = existingByKey.get(`${tradingDate}:${candle.openTime}`);
         if (existing && (
           existing.close_time !== candle.closeTime
           || existing.open !== candle.open
@@ -604,9 +613,11 @@ export class HistoricalIndexStore {
         );
       }
       const updatePartitionStatement = this.database.prepare(`
-        INSERT OR REPLACE INTO candle_partitions
+        INSERT INTO candle_partitions
         (contract_symbol, trading_date, timeframe, candle_count)
         VALUES (?, ?, ?, ?)
+        ON CONFLICT(contract_symbol, trading_date, timeframe)
+        DO UPDATE SET candle_count = excluded.candle_count
       `);
       const countStatement = this.database.prepare(`
         SELECT COUNT(*) AS count

@@ -76,3 +76,5 @@
 - [Stored-date availability](stored-date-availability.md) — persisted candle presence controls replay availability; rollover eligibility remains preference and diagnostics only.
 - [Historical import resume counters](historical-import-resume-counters.md) — rebuild totals from verified completed files when reparsing a partial file; never add stale partial counters.
 - [Historical cancellation recovery](historical-cancellation-recovery.md) — expose resume only after worker cleanup; distinguish checkpoint resume from safe source-backed restart.
+- [Historical import throughput](historical-import-throughput.md) — large imports use bounded larger batches and batch-level conflict checks while committed SQLite stays fully synchronous.
+- [SQLite partition updates](foreign-key-partition-updates.md) — never use replace semantics for candle partitions with cascading child rows; update in place or candles are deleted.

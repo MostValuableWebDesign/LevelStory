@@ -1064,7 +1064,7 @@ function addStreamingGapCandle(
         if (isTradingDate(gapDate, calendar)) {
           for (const maintenance of calendar.maintenanceClosures.default ?? []) {
             maintenanceMinutesInGap += overlapMinutes(gapStart, gapEnd, {
-              openTime: newYorkTimeToUtc(previousCalendarDate(gapDate), maintenance.start),
+                openTime: newYorkTimeToUtc(gapDate, maintenance.start),
               closeTime: newYorkTimeToUtc(gapDate, maintenance.end),
             });
           }
@@ -1080,7 +1080,11 @@ function addStreamingGapCandle(
       }
       const classified = regularMinutesInGap + earlyMinutesInGap + overnightMinutesInGap + maintenanceMinutesInGap;
       if (classified > missing) {
-        throw new Error("Historical gap classification overlapped its missing-minute interval.");
+        throw new Error(
+          `Historical gap classification overlapped its missing-minute interval (${new Date(gapStart).toISOString()}–${new Date(gapEnd).toISOString()}, `
+          + `missing=${missing}, regular=${regularMinutesInGap}, early=${earlyMinutesInGap}, overnight=${overnightMinutesInGap}, `
+          + `maintenance=${maintenanceMinutesInGap}).`,
+        );
       }
       state.missingMinuteGaps += missing;
       state.missingGapSegments += 1;

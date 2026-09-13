@@ -36,6 +36,7 @@ import { historicalDataPath } from "./historical-storage-paths.js";
 import { HistoricalNoDataError, MAX_HISTORICAL_SESSIONS } from "./historical-session-range.js";
 
 const DAY = 86_400_000;
+const HISTORICAL_INDEX_PARSER_BATCH_SIZE = 5_000;
 const CONTRACT_FILE = /\.((?:MES)[FGHJKMNQUVXZ]\d{1,2})(?:_\d+)?\.csv(?:\.zst)?$/i;
 const SPREAD_FILE = /\.MES[A-Z]\d{1,2}-MES[A-Z]\d{1,2}(?:_\d+)?\.csv(?:\.zst)?$/i;
 
@@ -1503,12 +1504,28 @@ async function buildMultiContractIndex(
       continue;
     }
     const streamBuffers = new Map<string, NormalizedCandle[]>();
+    const pendingFiveMinute = new Map<string, NormalizedCandle[]>();
     const lastTradingDateByContract = new Map<string, string>();
     let latestBatchContract: string | null = null;
     let latestBatchTradingDate: string | null = null;
     const fileBaseRows = checkpointRows;
     const fileBaseAcceptedRows = checkpointAcceptedRows;
     const fileBaseRejectedRows = checkpointRejectedRows;
+    const flushPendingFiveMinute = (
+      contractSymbol: string,
+      contract: FuturesContractSpecification,
+      force = false,
+    ): void => {
+      const pending = pendingFiveMinute.get(contractSymbol) ?? [];
+      if (!pending.length || (!force && pending.length < HISTORICAL_INDEX_PARSER_BATCH_SIZE / 5)) return;
+      stagedStore.writeCandleBatch(
+        contractSymbol,
+        pending.splice(0),
+        5,
+        sessionCalendarForContract(contract),
+        signal,
+      );
+    };
     const flushBuffer = (
       contractSymbol: string,
       contract: FuturesContractSpecification,
@@ -1517,11 +1534,16 @@ async function buildMultiContractIndex(
       if (!buffer.length) return;
       const fiveMinute = aggregate(buffer, 5, contract);
       if (fiveMinute.length) {
-        stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
+        const pending = pendingFiveMinute.get(contractSymbol) ?? [];
+        pending.push(...fiveMinute);
+        pendingFiveMinute.set(contractSymbol, pending);
+        flushPendingFiveMinute(contractSymbol, contract);
       }
       buffer.length = 0;
     };
     const completeDate = (contractSymbol: string, tradingDate: string): void => {
+      const contract = contractSpecificationForMesSymbol(contractSymbol);
+      flushPendingFiveMinute(contractSymbol, contract, true);
       completedPartitions.add(`${contractSymbol}:1:${tradingDate}`);
       completedPartitions.add(`${contractSymbol}:5:${tradingDate}`);
     };
@@ -1530,6 +1552,7 @@ async function buildMultiContractIndex(
       : contractSpecificationForMesSymbol(file.contractSymbol), {
       analyzeCoverage: true,
       aggregations: [5],
+      batchSize: HISTORICAL_INDEX_PARSER_BATCH_SIZE,
       fastParse: true,
       retainCandles: false,
       signal,
@@ -1546,7 +1569,7 @@ async function buildMultiContractIndex(
             `${contractSymbol}:1:${tradingDateForTimestamp(candle.openTime, calendar)}`,
          ));
          stagedStore.writeCandleBatch(contractSymbol, writableCandles, 1, calendar, signal);
-         const buffer = streamBuffers.get(contractSymbol) ?? [];
+       const buffer = streamBuffers.get(contractSymbol) ?? [];
          for (const candle of writableCandles) {
            const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
            const previousDate = lastTradingDateByContract.get(contractSymbol);
@@ -1600,6 +1623,7 @@ async function buildMultiContractIndex(
       const buffer = streamBuffers.get(contractSymbol) ?? [];
        flushBuffer(contractSymbol, contract, buffer);
       const finalDate = lastTradingDateByContract.get(contractSymbol);
+       flushPendingFiveMinute(contractSymbol, contract, true);
       if (finalDate) {
          completeDate(contractSymbol, finalDate);
       }
