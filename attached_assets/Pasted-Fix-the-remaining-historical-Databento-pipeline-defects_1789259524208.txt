@@ -1,0 +1,319 @@
+Fix the remaining historical Databento pipeline defects in LevelStory.
+
+Repository:
+https://github.com/MostValuableWebDesign/LevelStory.git
+
+Before changing anything:
+
+1. Pull the latest `main`.
+2. Inspect the current implementation and tests.
+3. Preserve the existing bounded streaming, persistent SQLite library, atomic replacement, stored-date selection, metadata-only replay access, and 10-session server limit.
+4. Do not run a five-year import or five-year strategy scan.
+5. Do not modify unrelated trading-strategy behavior.
+
+Primary requirement
+
+LevelStory must:
+
+- Upload and permanently index one five-year Databento MES OHLCV-1m CSV or CSV.ZST file.
+- Keep it as a persistent historical data library.
+- Query only user-selected periods for analysis.
+- Process no more than 10 distinct stored trading sessions per Visual Review, backtest, batch, or replay request.
+- Use actual stored candle presence as the date-availability authority.
+- Support safe cancellation and resumption of a long import.
+- Never report a successful import if rows or trading dates were dropped.
+
+Implement the following fixes.
+
+1. Fix the critical cross-date batch data-loss bug
+
+Primary file:
+
+`artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+
+Current defective sequence inside the `importHistoricalCsvBatch(...).onBatch` callback:
+
+1. Iterate through every candle in the incoming batch.
+2. Detect trading-date transitions.
+3. Add previous dates to `completedPartitions`.
+4. Filter the same batch using `completedPartitions`.
+5. Write only the candles that remain.
+
+Because a 10,000-row batch can contain several trading dates, dates detected as completed can be filtered out before their candles are written to SQLite.
+
+Required processing order:
+
+1. At callback entry, take an immutable snapshot of partitions that were already completed before this batch:
+   `previouslyCompletedPartitions`.
+2. Filter only against that preexisting snapshot.
+3. Never filter current-batch candles using partition markers created while processing the current batch.
+4. Write all non-previously-completed one-minute candles from the batch.
+5. Incrementally aggregate and write their five-minute candles.
+6. Detect which trading dates became fully closed by encountering a later date.
+7. Flush all remaining five-minute state belonging to each closed date.
+8. Commit the corresponding one-minute and five-minute SQLite writes.
+9. Only after successful writes and aggregation, add:
+   - `<contract>:1:<trading-date>`
+   - `<contract>:5:<trading-date>`
+   to `completedPartitions`.
+10. Persist the checkpoint only after those partition writes are committed.
+
+Do not mark a trading date complete merely because a later date was encountered before the current batch has been written.
+
+Handle batch boundaries correctly:
+
+- One trading date may span two or more parser batches.
+- One parser batch may contain multiple trading dates.
+- A five-minute bucket may span the boundary between parser batches.
+- The final date for a contract must not be marked complete until the end-of-file buffer has been flushed successfully.
+- Interleaved contract symbols must maintain independent date and aggregation state.
+- Resuming must skip only partitions that were verified complete before the interrupted run.
+
+Do not solve this by retaining the complete file in memory or changing `retainCandles: false`.
+
+2. Make checkpoint data accurately represent committed work
+
+Relevant files:
+
+- `artifacts/api-server/src/lib/futures/multi-contract-replay.ts`
+- `artifacts/api-server/src/lib/futures/historical-index-store.ts`
+
+Requirements:
+
+- Checkpoint only after a safe SQLite transaction boundary.
+- `completedPartitions` must contain only fully committed one-minute and five-minute partitions.
+- Never record a five-minute partition as complete when its final aggregation bucket is still buffered.
+- Store accurate cumulative:
+  - rows processed;
+  - accepted rows;
+  - rejected rows;
+  - completed partitions;
+  - completed source files;
+  - current file;
+  - current contract;
+  - current trading date;
+  - staging database path;
+  - source fingerprint.
+- Progress after resume must not reset, double-count, or exceed the source totals.
+- Repeated resume attempts must remain idempotent.
+- A source fingerprint mismatch must discard the incompatible staging index without touching the previously committed library.
+
+If safe byte-offset resume is unavailable for CSV.ZST, reparsing the compressed stream is acceptable, but already verified partitions must be skipped without losing, duplicating, or reaggregating their stored candles.
+
+3. Eliminate the cancel/resume race condition
+
+Relevant files:
+
+- `artifacts/api-server/src/routes/historical-data-upload.ts`
+- `artifacts/api-server/src/lib/futures/historical-import-job-store.ts`
+- `artifacts/levelstory/src/pages/backtest.tsx`
+
+Current problem:
+
+The cancel route immediately changes the job to `cancelled_resumable` and exposes Resume while the previous importer may still be running. Pressing Resume immediately can encounter the existing `runningJobs` entry and fail to launch a replacement run. The old aborted run can then alter the resumed job’s state.
+
+Required state flow:
+
+`running → cancelling → cancelled_resumable → queued → running`
+
+Cancellation requirements:
+
+- The cancel route sets the state to `cancelling`.
+- Abort the active controller.
+- Do not expose or enable Resume while state is `cancelling`.
+- The active importer must:
+  - stop at the next safe boundary;
+  - roll back any incomplete transaction;
+  - write or retain the last verified checkpoint;
+  - call `preserveAtomic()` or equivalent;
+  - close the staging database;
+  - remove itself from `runningJobs`;
+  - then atomically change the job to `cancelled_resumable`.
+- Only then should the Resume button become available.
+- The cancel endpoint must not claim that a resumable checkpoint exists before preservation is confirmed.
+
+Resume requirements:
+
+- Resume only from `cancelled_resumable` or a verified recoverable `paused` state.
+- Verify that `stagingIndexPath` exists and contains a compatible readable checkpoint.
+- Verify the source fingerprint.
+- Atomically claim the job so only one importer can resume it.
+- Do not allow duplicate workers for the same job.
+- If the previous worker is still stopping, return `409` with a clear “cancellation still in progress” message.
+- The UI should continue polling during `cancelling`.
+- Resume must continue from the retained staging index and preserve the previous committed library until successful replacement.
+
+Normalize cancellation detection. Do not depend on an exact comparison with only:
+
+`Historical import was cancelled.`
+
+Handle cancellation errors generated by both the CSV importer and index builder, preferably with a typed cancellation error rather than string matching.
+
+4. Stop silently truncating backtest selections to 10 sessions
+
+Primary file:
+
+`artifacts/levelstory/src/pages/backtest.tsx`
+
+Current behavior:
+
+`availableBatchDates` ends with:
+
+`.slice(-MAX_BACKTEST_SESSIONS)`
+
+This silently changes a range containing more than 10 stored dates into its final 10 dates. The user is not told that the requested period was changed, and the server never receives the excessive range.
+
+Required behavior:
+
+- Remove the silent `.slice(-MAX_BACKTEST_SESSIONS)`.
+- Resolve all distinct stored dates inside the selected calendar range.
+- Display the resolved stored-session count.
+- If the count is 0, show a no-data message.
+- If the count is 1 where the operation requires at least 2, show the existing minimum-session validation.
+- If the count exceeds 10:
+  - disable submission;
+  - show a clear message such as:
+    “This range contains 11 stored trading sessions. Select a range containing no more than 10.”
+  - do not silently select the latest 10.
+- Send the exact user-selected stored dates to the server.
+- Keep the server-side limit authoritative in case a client bypasses the UI.
+
+Update any remaining text that says “eligible scheduled dates” when it is actually counting stored dates.
+
+5. Add pipeline-level regression tests
+
+The existing low-level `preserveAtomic()` test is not sufficient.
+
+Add small deterministic fixtures. Do not use five years of data.
+
+Required tests:
+
+A. Cross-date parser batch
+
+- Use a deliberately small configurable batch size.
+- Put at least three trading dates in one parser batch.
+- Verify every valid one-minute candle from all three dates is stored.
+- Verify every expected five-minute candle is stored.
+- Verify no date is marked complete before its writes are committed.
+
+B. Date spanning batches
+
+- Split one trading date across at least two parser batches.
+- Verify the date is not completed after the first partial batch.
+- Verify its five-minute aggregation remains correct across the boundary.
+
+C. Multiple dates and contracts
+
+- Interleave at least two MES contract symbols.
+- Verify independent buffers, partitions, summaries, and candle counts.
+
+D. Cancellation and resume
+
+- Cancel after at least one completed partition and while another partition is incomplete.
+- Verify the staging file still exists.
+- Verify the committed production index remains unchanged.
+- Verify Resume skips only completed partitions.
+- Verify the incomplete partition is processed fully.
+- Verify final one-minute and five-minute contents exactly match an uninterrupted import.
+
+E. Immediate resume protection
+
+- Request cancellation.
+- Attempt Resume while state is `cancelling`.
+- Verify Resume is rejected or deferred safely.
+- Verify no duplicate worker starts.
+- Verify Resume succeeds after the job becomes `cancelled_resumable`.
+
+F. Idempotency
+
+- Resume the same checkpoint more than once.
+- Verify there are no duplicate candles, partitions, summaries, or row totals.
+
+G. Fingerprint mismatch
+
+- Change the source fingerprint after checkpoint creation.
+- Verify the stale staging index is rejected or discarded.
+- Verify the previous committed library remains intact.
+
+H. Session limit
+
+- Exactly 10 distinct stored sessions succeeds.
+- 11 distinct stored sessions receives a clear validation error.
+- The frontend does not silently truncate 11 sessions to 10.
+- A broad calendar range containing only 10 stored sessions succeeds.
+- Missing calendar dates do not count toward the maximum.
+- Duplicate dates are normalized before the server enforces the limit.
+
+6. Preserve completed behavior
+
+Do not regress:
+
+- Streaming ingestion with bounded memory.
+- `retainCandles: false`.
+- Direct one-minute SQLite batch writes.
+- Incremental five-minute aggregation.
+- Persistent uploaded files, SQLite indexes, and import-job records.
+- Atomic replacement of a committed library.
+- Metadata-only routine status and ready-index access.
+- Full source hashing only during import validation or explicit maintenance.
+- Actual stored candle presence as the replay-availability authority.
+- Scheduled-contract preference with deterministic stored fallback.
+- Visual Review’s use of all stored dates.
+- Missing-date no-data responses.
+- Server-side maximum of 10 distinct stored sessions.
+
+Verification limits
+
+Do not run a five-year import or full repository test suite.
+
+Run only:
+
+1. API typecheck.
+2. Frontend typecheck.
+3. Historical CSV importer tests.
+4. Historical index-store tests.
+5. Multi-contract replay tests.
+6. Historical upload-route tests.
+7. Focused backtest route and UI selection tests.
+8. `git diff --check`.
+
+Use only small generated fixtures. Include a fixture whose row count crosses a configured batch boundary and contains several dates.
+
+Final response
+
+Report:
+
+- Exact files changed.
+- The precise cause of the cross-date data-loss bug.
+- The corrected write/complete/checkpoint ordering.
+- How partial five-minute buckets are handled across batches.
+- The cancellation state transitions.
+- How immediate cancel-then-resume is prevented.
+- How verified partitions are skipped during resume.
+- Confirmation that ranges over 10 sessions are rejected rather than truncated.
+- Focused test and typecheck results.
+- Any remaining limitations.
+
+Do not claim that a real five-year import was tested.
+
+
+8:31 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
