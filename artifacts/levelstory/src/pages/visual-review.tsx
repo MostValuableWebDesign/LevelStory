@@ -1709,12 +1709,6 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewWindow", sessionView);
   }, [sessionView]);
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || typeof window === "undefined") return;
-    const timer = window.setTimeout(() => frame.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
-    return () => window.clearTimeout(timer);
-  }, [snapshot.snapshotId]);
   const toggleFullscreen = () => {
     if (document.fullscreenElement === frameRef.current) {
       void document.exitFullscreen();
