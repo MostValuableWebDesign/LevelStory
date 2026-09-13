@@ -108,7 +108,17 @@ export type HistoricalCsvBatchImport = {
 export type HistoricalCsvCandleBatch = {
   contractSymbol: string;
   candles: readonly NormalizedCandle[];
+  rowsRead: number;
+  validRows: number;
+  rejectedRows: number;
 };
+
+export class HistoricalImportCancelledError extends Error {
+  constructor(message = "Historical import was cancelled.") {
+    super(message);
+    this.name = "HistoricalImportCancelledError";
+  }
+}
 
 export type HistoricalCsvProgress = {
   phase: "reading" | "coverage" | "aggregating";
@@ -1307,7 +1317,7 @@ export async function importHistoricalCsvBatch(
   };
 
   for await (const rawLine of input) {
-    if (options.signal?.aborted) throw new Error("Historical CSV import was cancelled.");
+    if (options.signal?.aborted) throw new HistoricalImportCancelledError();
     const line = String(rawLine).trim();
     if (!line) continue;
     const values = parseCsvLine(line);
@@ -1429,7 +1439,13 @@ export async function importHistoricalCsvBatch(
     batch.push(candle);
     pending.set(validSymbol, batch);
     if (batch.length >= (options.batchSize ?? 10_000) && options.onBatch) {
-      await options.onBatch({ contractSymbol: validSymbol, candles: batch });
+      await options.onBatch({
+        contractSymbol: validSymbol,
+        candles: batch,
+        rowsRead,
+        validRows: [...states.values()].reduce((sum, item) => sum + item.summary.validRows, 0) + 1,
+        rejectedRows: rejectedRows.length,
+      });
       flushCount += 1;
       pending.set(validSymbol, []);
     }
@@ -1447,8 +1463,14 @@ export async function importHistoricalCsvBatch(
   if (options.onBatch) {
     for (const [contractSymbol, batch] of pending) {
       if (!batch.length) continue;
-      if (options.signal?.aborted) throw new Error("Historical CSV import was cancelled.");
-      await options.onBatch({ contractSymbol, candles: batch });
+      if (options.signal?.aborted) throw new HistoricalImportCancelledError();
+      await options.onBatch({
+        contractSymbol,
+        candles: batch,
+        rowsRead,
+        validRows: [...states.values()].reduce((sum, item) => sum + item.summary.validRows, 0),
+        rejectedRows: rejectedRows.length,
+      });
       flushCount += 1;
     }
   }

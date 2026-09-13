@@ -13,6 +13,7 @@ import {
   importHistoricalCsvBatch,
   mergeHistoricalCsvImportSummaries,
   countSessionAwareGaps,
+  HistoricalImportCancelledError,
   type HistoricalCsvImport,
   type HistoricalCsvImportSummary,
 } from "./historical-csv-import.js";
@@ -1377,7 +1378,7 @@ async function buildMultiContractIndex(
     checkpoint?: HistoricalIndexCheckpoint | null;
   },
 ): Promise<HistoricalMultiContractImport> {
-  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
+  if (signal?.aborted) throw new HistoricalImportCancelledError("Historical index build was cancelled.");
   const persisted = await readPersistedIndex(identity);
   if (persisted) {
     updateIndexStatus({
@@ -1458,12 +1459,20 @@ async function buildMultiContractIndex(
       resumeNote: "Plain CSV offsets are not persisted until a parser boundary is verified; .zst resumes at the next incomplete file.",
     });
   };
-  let checkpointRows = checkpoint?.rowsProcessed ?? 0;
-  let checkpointAcceptedRows = checkpoint?.acceptedRows ?? 0;
-  let checkpointRejectedRows = checkpoint?.rejectedRows ?? 0;
   const completedCheckpointFiles = [...completedFiles.values()];
+  const verifiedCheckpointTotals = completedCheckpointFiles.reduce(
+    (totals, file) => ({
+      rows: totals.rows + file.summary.totalRows,
+      accepted: totals.accepted + file.summary.validRows,
+      rejected: totals.rejected + file.summary.rejectedRows,
+    }),
+    { rows: 0, accepted: 0, rejected: 0 },
+  );
+  let checkpointRows = verifiedCheckpointTotals.rows;
+  let checkpointAcceptedRows = verifiedCheckpointTotals.accepted;
+  let checkpointRejectedRows = verifiedCheckpointTotals.rejected;
   for (const [index, file] of identity.resolved.accepted.entries()) {
-    if (signal?.aborted) throw new Error("Historical index build was cancelled.");
+    if (signal?.aborted) throw new HistoricalImportCancelledError("Historical index build was cancelled.");
     const fileCompleted = file.contractSymbol === MULTI_SYMBOL_SOURCE
       ? completedCheckpointFiles.filter((candidate) => candidate.path === file.path && candidate.fingerprint === identity.fingerprints[index])
       : completedCheckpointFiles.filter((candidate) =>
@@ -1493,6 +1502,25 @@ async function buildMultiContractIndex(
     const lastTradingDateByContract = new Map<string, string>();
     let latestBatchContract: string | null = null;
     let latestBatchTradingDate: string | null = null;
+    const fileBaseRows = checkpointRows;
+    const fileBaseAcceptedRows = checkpointAcceptedRows;
+    const fileBaseRejectedRows = checkpointRejectedRows;
+    const flushBuffer = (
+      contractSymbol: string,
+      contract: FuturesContractSpecification,
+      buffer: NormalizedCandle[],
+    ): void => {
+      if (!buffer.length) return;
+      const fiveMinute = aggregate(buffer, 5, contract);
+      if (fiveMinute.length) {
+        stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
+      }
+      buffer.length = 0;
+    };
+    const completeDate = (contractSymbol: string, tradingDate: string): void => {
+      completedPartitions.add(`${contractSymbol}:1:${tradingDate}`);
+      completedPartitions.add(`${contractSymbol}:5:${tradingDate}`);
+    };
     const batch = await importHistoricalCsvBatch(file.path, file.contractSymbol === MULTI_SYMBOL_SOURCE
       ? base
       : contractSpecificationForMesSymbol(file.contractSymbol), {
@@ -1502,40 +1530,32 @@ async function buildMultiContractIndex(
       retainCandles: false,
       signal,
       contentFingerprint: identity.fingerprints[index],
-      onBatch: ({ contractSymbol, candles }) => {
+       onBatch: ({ contractSymbol, candles, rowsRead, validRows, rejectedRows }) => {
         const contract = contractSpecificationForMesSymbol(contractSymbol);
+         const calendar = sessionCalendarForContract(contract);
+         const previouslyCompletedPartitions = new Set(completedPartitions);
         latestBatchContract = contractSymbol;
         latestBatchTradingDate = candles.at(-1)
-          ? tradingDateForTimestamp(candles.at(-1)!.openTime, sessionCalendarForContract(contract))
+           ? tradingDateForTimestamp(candles.at(-1)!.openTime, calendar)
           : latestBatchTradingDate;
-        for (const candle of candles) {
-           const tradingDate = tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(contract));
+         const writableCandles = candles.filter((candle) => !previouslyCompletedPartitions.has(
+            `${contractSymbol}:1:${tradingDateForTimestamp(candle.openTime, calendar)}`,
+         ));
+         stagedStore.writeCandleBatch(contractSymbol, writableCandles, 1, calendar, signal);
+         const buffer = streamBuffers.get(contractSymbol) ?? [];
+         for (const candle of writableCandles) {
+           const tradingDate = tradingDateForTimestamp(candle.openTime, calendar);
            const previousDate = lastTradingDateByContract.get(contractSymbol);
            if (previousDate && previousDate !== tradingDate) {
-             completedPartitions.add(`${contractSymbol}:1:${previousDate}`);
-             completedPartitions.add(`${contractSymbol}:5:${previousDate}`);
+             flushBuffer(contractSymbol, contract, buffer);
+             completeDate(contractSymbol, previousDate);
            }
-           lastTradingDateByContract.set(contractSymbol, tradingDate);
-        }
-         const writableCandles = candles.filter((candle) => !completedPartitions.has(
-           `${contractSymbol}:1:${tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(contract))}`,
-         ));
-         stagedStore.writeCandleBatch(contractSymbol, writableCandles, 1, sessionCalendarForContract(contract), signal);
-        const previous = streamBuffers.get(contractSymbol) ?? [];
-        const buffer = [...previous];
-         for (const candle of writableCandles) {
           const bucket = Math.floor(candle.openTime / (5 * 60_000));
           if (buffer.length && Math.floor(buffer[0]!.openTime / (5 * 60_000)) !== bucket) {
-            const fiveMinute = aggregate(buffer, 5, contract);
-            if (fiveMinute.length) {
-              stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
-              for (const candle of fiveMinute) {
-                completedPartitions.add(`${contractSymbol}:5:${tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(contract))}`);
-              }
-            }
-            buffer.length = 0;
+             flushBuffer(contractSymbol, contract, buffer);
           }
           buffer.push(candle);
+           lastTradingDateByContract.set(contractSymbol, tradingDate);
         }
         streamBuffers.set(contractSymbol, buffer);
          writeCheckpoint(
@@ -1544,9 +1564,9 @@ async function buildMultiContractIndex(
            latestBatchTradingDate,
            null,
            [...completedFiles.values()],
-           checkpointRows,
-           checkpointAcceptedRows,
-           checkpointRejectedRows,
+            fileBaseRows + rowsRead,
+            fileBaseAcceptedRows + validRows,
+            fileBaseRejectedRows + rejectedRows,
          );
       },
       onProgress: (progress) => {
@@ -1560,7 +1580,9 @@ async function buildMultiContractIndex(
         onProgress?.({
           ...progress,
           percent: overall,
-          rowsRead: checkpointRows + progress.rowsRead,
+           rowsRead: fileBaseRows + progress.rowsRead,
+           validRows: fileBaseAcceptedRows + progress.validRows,
+           rejectedRows: fileBaseRejectedRows + progress.rejectedRows,
           currentFile: file.filename,
           currentContract: latestBatchContract ?? (file.contractSymbol === MULTI_SYMBOL_SOURCE ? undefined : file.contractSymbol),
           currentTradingDate: latestBatchTradingDate ?? undefined,
@@ -1572,19 +1594,10 @@ async function buildMultiContractIndex(
     for (const [contractSymbol, imported] of batch.imports.entries()) {
       const contract = contractSpecificationForMesSymbol(contractSymbol);
       const buffer = streamBuffers.get(contractSymbol) ?? [];
-      if (buffer.length) {
-        const fiveMinute = aggregate(buffer, 5, contract);
-        if (fiveMinute.length) {
-          stagedStore.writeCandleBatch(contractSymbol, fiveMinute, 5, sessionCalendarForContract(contract), signal);
-          for (const candle of fiveMinute) {
-            completedPartitions.add(`${contractSymbol}:5:${tradingDateForTimestamp(candle.openTime, sessionCalendarForContract(contract))}`);
-          }
-        }
-      }
+       flushBuffer(contractSymbol, contract, buffer);
       const finalDate = lastTradingDateByContract.get(contractSymbol);
       if (finalDate) {
-        completedPartitions.add(`${contractSymbol}:1:${finalDate}`);
-        completedPartitions.add(`${contractSymbol}:5:${finalDate}`);
+         completeDate(contractSymbol, finalDate);
       }
       stagedStore.writeSourceSummary(imported.summary, identity.fingerprints[index]!);
       const fragments = fragmentsByContract.get(contractSymbol) ?? [];
@@ -1603,9 +1616,9 @@ async function buildMultiContractIndex(
         summary: imported.summary,
       });
     }
-    checkpointRows += batch.rowsRead ?? 0;
-    checkpointAcceptedRows += [...batch.imports.values()].reduce((sum, item) => sum + item.summary.validRows, 0);
-    checkpointRejectedRows += [...batch.imports.values()].reduce((sum, item) => sum + item.summary.rejectedRows, 0);
+     checkpointRows = fileBaseRows + (batch.rowsRead ?? 0);
+     checkpointAcceptedRows = fileBaseAcceptedRows + [...batch.imports.values()].reduce((sum, item) => sum + item.summary.validRows, 0);
+     checkpointRejectedRows = fileBaseRejectedRows + [...batch.imports.values()].reduce((sum, item) => sum + item.summary.rejectedRows, 0);
     writeCheckpoint(
       file.filename,
       file.contractSymbol,
@@ -1625,7 +1638,7 @@ async function buildMultiContractIndex(
     .sort(([first], [second]) => compareMesContractSymbols(first, second))) {
     const importedFragments: HistoricalCsvImport[] = [];
     for (const fragment of fragments) {
-      if (signal?.aborted) throw new Error("Historical index build was cancelled.");
+      if (signal?.aborted) throw new HistoricalImportCancelledError("Historical index build was cancelled.");
        const imported = parsedFragments.get(`${fragment.file.filename}::${contractSymbol}`);
        if (!imported) continue;
        fragmentImports.set(
@@ -1806,7 +1819,7 @@ async function buildMultiContractIndex(
     committedAt: new Date().toISOString(),
     files: manifestFiles,
   });
-  if (signal?.aborted) throw new Error("Historical index build was cancelled.");
+  if (signal?.aborted) throw new HistoricalImportCancelledError("Historical index build was cancelled.");
   await stagedStore.commitAtomic();
   const value: HistoricalMultiContractImport = {
     ...valueWithoutStorage,

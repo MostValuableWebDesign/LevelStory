@@ -245,7 +245,8 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
           setJobId(null);
         } else {
           const phase = {
-            queued: "Queued",
+             queued: "Queued",
+             cancelling: "Cancelling",
             materializing: "Materializing",
             validating: "Validating",
             indexing: "Indexing",
@@ -325,11 +326,10 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         method: "POST",
         credentials: "include",
       });
-      const body = await response.json() as { error?: string };
+       const body = await response.json() as { state?: string; error?: string };
       if (!response.ok) throw new Error(body.error ?? "The import could not be cancelled.");
-       setLastJob({ jobId, state: "cancelled_resumable", error: "Import paused at the last verified checkpoint; resume to continue." });
-       setMessage("Cancellation recorded. The previous ready library will remain active. Resume is available from the last verified checkpoint.");
-      setJobId(null);
+       setLastJob((current) => ({ ...current, jobId, state: body.state ?? "cancelling", error: body.error ?? "Cancellation is still in progress." }));
+       setMessage("Cancellation requested. Waiting for the active importer to preserve its last verified checkpoint.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The import could not be cancelled.");
     }
@@ -949,12 +949,22 @@ export default function Backtest() {
     const dates = historicalImport.data?.allObservedTradingDates
       ?? historicalImport.data?.availableTradingDates
       ?? [];
-    return dates.filter((date) => date >= startDate && date <= endDate).sort().slice(-MAX_BACKTEST_SESSIONS);
+    return [...new Set(dates.filter((date) => date >= startDate && date <= endDate))].sort();
   }, [endDate, historicalImport.data?.allObservedTradingDates, historicalImport.data?.availableTradingDates, startDate]);
   const batchRequest = {
     ...request,
     ...(availableBatchDates.length >= 2 ? { selectedDates: availableBatchDates } : {}),
   };
+  const storedSessionLimitError = source !== "simulated" && availableBatchDates.length > MAX_BACKTEST_SESSIONS
+    ? `This range contains ${availableBatchDates.length} stored trading sessions. Select a range containing no more than ${MAX_BACKTEST_SESSIONS}.`
+    : null;
+  const storedSessionAvailabilityMessage = source !== "simulated" && !historicalImport.isLoading
+    ? availableBatchDates.length === 0
+      ? "No stored trading sessions are available in this range."
+      : availableBatchDates.length === 1
+        ? "This range contains 1 stored trading session; at least 2 are required for a qualification batch."
+        : null
+    : null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -974,7 +984,7 @@ export default function Backtest() {
     hasImport: Boolean(historicalImport.data),
   });
   const historicalReady = historicalReadiness.ready;
-  const canSubmitSingleRun = historicalReady && !sessionLimits.error && !run.isPending && !startBatch.isPending && !batchActive;
+  const canSubmitSingleRun = historicalReady && !sessionLimits.error && !storedSessionLimitError && !run.isPending && !startBatch.isPending && !batchActive;
   const historicalIndexMessage = multiContractIndex.data?.message
     ?? (multiContractIndex.isLoading ? "Checking historical MES index…" : null);
 
@@ -1004,16 +1014,16 @@ export default function Backtest() {
              <label className="space-y-1.5 text-xs"><span className="eyebrow text-muted-foreground">Round-trip fee override</span><input type="number" min="0" step="0.01" placeholder="contract default" value={commissionPerContract} onChange={(event) => setCommissionPerContract(event.target.value)} className="field mono w-full" data-testid="input-ohlcv-fee" /></label>
              <div className="flex flex-col items-end gap-2 sm:col-span-2 lg:col-span-2 lg:flex-row">
                 <button type="submit" disabled={!canSubmitSingleRun} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" data-testid="button-run-backtest"><Play size={14} className={run.isPending ? "animate-pulse" : ""} />{run.isPending ? "Replaying..." : !historicalReady ? "Waiting for history…" : "Run causal backtest"}</button>
-                <button type="button" onClick={submitBatch} disabled={!historicalReady || sessionLimits.error !== null || startBatch.isPending || batchActive || availableBatchDates.length < 2} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : availableBatchDates.length < 2 ? "Need 2 eligible sessions" : `Run ${availableBatchDates.length}-session funnel`}</button>
+                <button type="button" onClick={submitBatch} disabled={!historicalReady || sessionLimits.error !== null || storedSessionLimitError !== null || startBatch.isPending || batchActive || availableBatchDates.length < 2} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-accent bg-accent/10 px-4 text-xs font-bold text-foreground transition-colors hover:bg-accent/20 disabled:opacity-50" data-testid="button-run-batch"><BarChart3 size={14} className={startBatch.isPending ? "animate-pulse" : ""} />{startBatch.isPending ? "Queueing batch…" : storedSessionLimitError ? "Select fewer stored sessions" : availableBatchDates.length < 2 ? "Need 2 stored sessions" : `Run ${availableBatchDates.length}-session funnel`}</button>
              </div>
              <div className="sm:col-span-2 lg:col-span-4" aria-live="polite">
                <div className={`text-[11px] ${sessionLimits.error ? "text-destructive" : "text-muted-foreground"}`} data-testid="backtest-session-limit">
-                 {sessionLimits.error ?? `Single-run sessions requested: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.requested : "—"} / ${MAX_BACKTEST_SESSIONS}. Remaining capacity: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.remaining : "—"}.`}
+                 {storedSessionLimitError ?? storedSessionAvailabilityMessage ?? sessionLimits.error ?? `Single-run sessions requested: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.requested : "—"} / ${MAX_BACKTEST_SESSIONS}. Remaining capacity: ${Number.isFinite(sessionLimits.requested) ? sessionLimits.remaining : "—"}.`}
                </div>
                <div className="mt-1 text-[11px] text-muted-foreground">The qualification batch is separate and may include up to {MAX_BACKTEST_SESSIONS} selected stored dates; it uses the same historical session ceiling as a single run.</div>
              </div>
           </form>
-             <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Eligible scheduled dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
+             <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">The final {outOfSampleDays || "—"} trading days are held out and never used for threshold selection. Historical runs use completed candles only, with an immediate-next-candle trigger and adverse-first OHLCV barriers. Contract economics remain month-specific. Stored dates in this window: <strong className="text-foreground">{availableBatchDates.length}</strong>.</div>
         </Panel>
 
         {run.isPending && <Panel><div className="p-8 text-center text-sm text-muted-foreground" data-testid="status-backtest-loading">Backtest running. Historical runs may take approximately one minute on the current compute plan. Repeated identical runs use the cached result.</div></Panel>}

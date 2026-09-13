@@ -14065,7 +14065,7 @@ export const getHistoricalDataImportStatusResponseStatusOneMergedFileCountMin = 
 
 export const GetHistoricalDataImportStatusResponse = zod.object({
   "jobId": zod.string(),
-  "state": zod.enum(['queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing', 'ready', 'failed', 'cancelled']),
+  "state": zod.enum(['queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing', 'cancelling', 'paused', 'cancelled_resumable', 'ready', 'failed', 'cancelled']),
   "files": zod.array(zod.object({
   "objectPath": zod.string(),
   "originalFilename": zod.string()
@@ -14174,7 +14174,7 @@ export const cancelHistoricalDataImportResponseStatusOneMergedFileCountMin = 0;
 
 export const CancelHistoricalDataImportResponse = zod.object({
   "jobId": zod.string(),
-  "state": zod.enum(['queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing', 'ready', 'failed', 'cancelled']),
+  "state": zod.enum(['queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing', 'cancelling', 'paused', 'cancelled_resumable', 'ready', 'failed', 'cancelled']),
   "files": zod.array(zod.object({
   "objectPath": zod.string(),
   "originalFilename": zod.string()
