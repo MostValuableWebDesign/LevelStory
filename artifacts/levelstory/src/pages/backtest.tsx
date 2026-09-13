@@ -240,7 +240,7 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         } else if (body.state === "failed") {
           setMessage(body.error ?? "Historical indexing failed. Review the rejected files and try again.");
           setJobId(null);
-        } else if (body.state === "cancelled" || body.state === "cancelled_resumable" || body.state === "paused") {
+        } else if (body.state === "cancelled" || body.state === "cancelled_resumable" || body.state === "cancelled_restartable" || body.state === "paused") {
           setMessage(body.error ?? "Historical import paused; the previous ready library was preserved.");
           setJobId(null);
         } else {
@@ -338,6 +338,7 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
   const resumeImport = async () => {
     const resumableJobId = lastJob?.jobId;
     if (!resumableJobId) return;
+    const restarting = lastJob?.state === "cancelled_restartable";
     try {
       const response = await fetch(`/api/historical-data/import/${resumableJobId}/resume`, {
         method: "POST",
@@ -347,7 +348,9 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
       if (!response.ok) throw new Error(body.error ?? "The import could not be resumed.");
       setJobId(resumableJobId);
       setLastJob((current) => ({ ...current, jobId: resumableJobId, state: body.state ?? "queued" }));
-      setMessage("Import resumed from the last verified checkpoint.");
+      setMessage(body.state === "queued" && restarting
+         ? "Import restarted using the retained uploaded source files."
+         : "Import resumed from the last verified checkpoint.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The import could not be resumed.");
     }
@@ -376,8 +379,8 @@ function HistoricalDataUploadPanel({ onImported }: { onImported: () => void }) {
         {jobId && <button type="button" onClick={() => void cancelImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-destructive/50 px-4 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-50" data-testid="button-cancel-historical-import">
           <Square size={12} />Cancel import
         </button>}
-        {lastJob?.state === "cancelled_resumable" && lastJob.jobId && <button type="button" onClick={() => void resumeImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-accent px-4 text-xs font-bold text-accent hover:bg-accent/10 disabled:opacity-50" data-testid="button-resume-historical-import">
-          <Play size={12} />Resume import
+        {(lastJob?.state === "cancelled_resumable" || lastJob?.state === "cancelled_restartable") && lastJob.jobId && <button type="button" onClick={() => void resumeImport()} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 border border-accent px-4 text-xs font-bold text-accent hover:bg-accent/10 disabled:opacity-50" data-testid="button-resume-historical-import">
+          <Play size={12} />{lastJob.state === "cancelled_restartable" ? "Restart import" : "Resume import"}
         </button>}
         <button type="button" onClick={() => void upload()} disabled={busy || Boolean(jobId) || files.length === 0} className="inline-flex h-10 items-center justify-center gap-2 border border-accent bg-accent/10 px-4 text-xs font-bold hover:bg-accent/20 disabled:opacity-50" data-testid="button-upload-historical-data">
           <Upload size={13} />{busy ? "Uploading…" : `Upload ${files.length || ""} files`}

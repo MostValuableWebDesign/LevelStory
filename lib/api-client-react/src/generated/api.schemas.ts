@@ -1999,6 +1999,7 @@ export const HistoricalDataImportJobState = {
   cancelling: 'cancelling',
   paused: 'paused',
   cancelled_resumable: 'cancelled_resumable',
+  cancelled_restartable: 'cancelled_restartable',
   ready: 'ready',
   failed: 'failed',
   cancelled: 'cancelled',

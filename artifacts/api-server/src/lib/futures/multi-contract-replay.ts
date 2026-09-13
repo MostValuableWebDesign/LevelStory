@@ -790,11 +790,11 @@ export function multiContractImportToReplayDataset(
   const requestedDates = resolveStoredHistoricalDates(imported, startDate, endDate);
   const requiredDates = inSampleDays + outOfSampleDays;
   if (requiredDates > MAX_HISTORICAL_SESSIONS || (startDate && requestedDates.length > MAX_HISTORICAL_SESSIONS)) {
-    throw new Error(`Historical range resolves to ${requestedDates.length} stored trading sessions; shorten the range to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
+    throw new Error(`This period contains ${requestedDates.length} stored trading sessions. Select no more than ${MAX_HISTORICAL_SESSIONS}.`);
   }
   const explicitDates = selectedDatesOverride ? [...new Set(selectedDatesOverride)].sort() : null;
   if (explicitDates && explicitDates.length > MAX_HISTORICAL_SESSIONS) {
-    throw new Error(`The request contains ${explicitDates.length} stored trading sessions; shorten it to at most ${MAX_HISTORICAL_SESSIONS} sessions.`);
+    throw new Error(`This period contains ${explicitDates.length} stored trading sessions. Select no more than ${MAX_HISTORICAL_SESSIONS}.`);
   }
   const missingExplicitDates = explicitDates?.filter((date) => !requestedDates.includes(date)) ?? [];
   if (missingExplicitDates.length) {
@@ -807,13 +807,17 @@ export function multiContractImportToReplayDataset(
     ? explicitDates.filter((date) => requestedDates.includes(date))
     : null;
   if (requestedDates.length === 0 || (exactDates && exactDates.length === 0)) {
-    throw new HistoricalNoDataError(`No historical data available${startDate ? ` between ${startDate} and` : " before"} ${endDate}.`);
+    throw new HistoricalNoDataError("No stored historical data is available for the selected period.");
   }
   if (exactDates && exactDates.length < requiredDates) {
-    throw new Error(`Historical range contains ${exactDates.length} stored trading sessions; ${requiredDates} are required.`);
+    throw new Error(exactDates.length === 1 && requiredDates === 2
+      ? "This period contains 1 stored trading session; at least 2 are required."
+      : `This period contains ${exactDates.length} stored trading sessions; ${requiredDates} are required.`);
   }
   if (!exactDates && requestedDates.length < requiredDates) {
-    throw new Error(`Historical range contains ${requestedDates.length} stored trading sessions; ${requiredDates} are required.`);
+    throw new Error(requestedDates.length === 1 && requiredDates === 2
+      ? "This period contains 1 stored trading session; at least 2 are required."
+      : `This period contains ${requestedDates.length} stored trading sessions; ${requiredDates} are required.`);
   }
   const selectedDates = exactDates ?? selectedDatesInRange(
     requestedDates,

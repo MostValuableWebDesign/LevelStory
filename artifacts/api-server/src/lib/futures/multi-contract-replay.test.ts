@@ -282,7 +282,7 @@ test("explains when a requested range has no stored history", () => {
 
   assert.throws(
     () => multiContractImportToReplayDataset(imported, "2025-08-26", "2025-08-26", 5, 2),
-    /No historical data available between 2025-08-26 and 2025-08-26/i,
+    /No stored historical data is available for the selected period/i,
   );
 });
 

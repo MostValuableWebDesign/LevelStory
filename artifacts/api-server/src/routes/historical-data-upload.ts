@@ -57,7 +57,7 @@ const ACTIVE_IMPORT_STATES = [
   "committing",
   "cancelling",
 ] as const;
-const RESUMABLE_IMPORT_STATES = ["paused", "cancelled_resumable"] as const;
+const RECOVERABLE_IMPORT_STATES = ["paused", "cancelled_resumable", "cancelled_restartable"] as const;
 const LEASE_OWNER = `api-${process.pid}`;
 const LEASE_MS = 5 * 60_000;
 
@@ -85,6 +85,37 @@ function updateJob(jobId: string, patch: Partial<PersistedHistoricalImportJob>):
   return importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, patch) ?? getJob(jobId)!;
 }
 
+async function hasResumableCheckpoint(job: PersistedHistoricalImportJob): Promise<boolean> {
+  if (!job.stagingIndexPath || !job.sourceFingerprint) return false;
+  let staging: HistoricalIndexStore | null = null;
+  try {
+    await stat(job.stagingIndexPath);
+    staging = HistoricalIndexStore.create(job.stagingIndexPath);
+    const checkpoint = staging.readCheckpoint();
+    return Boolean(checkpoint && checkpoint.sourceFingerprint === job.sourceFingerprint);
+  } catch {
+    return false;
+  } finally {
+    staging?.close();
+  }
+}
+
+async function finalizeCancellation(jobId: string): Promise<void> {
+  const current = getJob(jobId);
+  if (!current || current.state !== "cancelling") return;
+  const resumable = await hasResumableCheckpoint(current);
+  importJobStore.updateIfState(jobId, ["cancelling"], {
+    state: resumable ? "cancelled_resumable" : "cancelled_restartable",
+    completedAt: null,
+    stagingIndexPath: resumable ? current.stagingIndexPath : null,
+    sourceOffset: resumable ? current.sourceOffset : null,
+    completedPartitions: resumable ? current.completedPartitions : [],
+    error: resumable
+      ? "Import paused at the last verified checkpoint; resume to continue without replacing the ready library."
+      : "Import stopped before a verified index checkpoint; restart the import using the retained uploaded source files.",
+  });
+}
+
 async function runImportJob(jobId: string): Promise<void> {
   if (runningJobs.has(jobId)) return;
   runningJobs.add(jobId);
@@ -105,9 +136,11 @@ async function runImportJob(jobId: string): Promise<void> {
   })) {
     runningJobs.delete(jobId);
     jobControllers.delete(jobId);
+    await finalizeCancellation(jobId);
     return;
   }
   const materialized: HistoricalIndexSourceFile[] = [];
+  let cancellationRequested = false;
   try {
     const job = getJob(jobId)!;
     for (const [fileIndex, file] of job.files.entries()) {
@@ -209,24 +242,31 @@ async function runImportJob(jobId: string): Promise<void> {
     if (!completed) return;
   } catch (error) {
     const completedAt = new Date().toISOString();
-    const cancelled = getJob(jobId)?.state === "cancelling"
+    cancellationRequested = getJob(jobId)?.state === "cancelling"
       || controller.signal.aborted
       || error instanceof HistoricalImportCancelledError;
     const current = getJob(jobId);
-    if (!current || ["ready", "failed", "cancelled", "cancelled_resumable", "paused"].includes(current.state)) {
-      jobControllers.delete(jobId);
-      runningJobs.delete(jobId);
+    if (!current || ["ready", "failed", "cancelled", "cancelled_resumable", "cancelled_restartable", "paused"].includes(current.state)) {
       return;
     }
-    importJobStore.updateIfState(jobId, [...ACTIVE_IMPORT_STATES, "cancelling"], {
-      state: cancelled ? "cancelled_resumable" : "failed",
-      error: cancelled ? "Import paused at the last verified checkpoint; resume to continue without replacing the ready library." : error instanceof Error ? error.message : "Historical import failed.",
-      completedAt,
-      progress: cancelled ? current.progress : 0,
-    });
+    if (cancellationRequested) {
+      importJobStore.updateIfState(jobId, ["cancelling"], {
+        error: "Cancellation accepted; waiting for the importer to close and preserve its last verified state.",
+        completedAt: null,
+        progress: current.progress,
+      });
+    } else {
+      importJobStore.updateIfState(jobId, ACTIVE_IMPORT_STATES, {
+        state: "failed",
+        error: error instanceof Error ? error.message : "Historical import failed.",
+        completedAt,
+        progress: 0,
+      });
+    }
   } finally {
     jobControllers.delete(jobId);
     runningJobs.delete(jobId);
+    if (cancellationRequested) await finalizeCancellation(jobId);
   }
 }
 
@@ -377,11 +417,8 @@ router.post("/historical-data/import/:jobId/cancel", requireRole("reviewer"), as
     return;
   }
   if (!runningJobs.has(jobId)) {
-    const resumable = importJobStore.updateIfState(jobId, ["cancelling"], {
-      state: "cancelled_resumable",
-      error: "Import paused at the last verified checkpoint; resume to continue without replacing the ready library.",
-    });
-    res.json(jobResponse(resumable ?? getJob(jobId)!));
+    await finalizeCancellation(jobId);
+    res.json(jobResponse(getJob(jobId)!));
     return;
   }
   res.json(jobResponse(cancelling));
@@ -394,26 +431,38 @@ router.post("/historical-data/import/:jobId/resume", requireRole("reviewer"), as
     res.status(409).json({ error: "Cancellation is still in progress; wait for the importer to stop before resuming." });
     return;
   }
-  if (current && !current.stagingIndexPath) {
-    res.status(409).json({ error: "No verified resumable staging checkpoint exists for this import." });
+  if (current?.state === "cancelled_resumable" && !(await hasResumableCheckpoint(current))) {
+    res.status(409).json({ error: "The retained staging checkpoint is missing or does not match the import source fingerprint." });
     return;
   }
-  if (current?.stagingIndexPath) {
-    try {
-      await stat(current.stagingIndexPath);
-      const staging = HistoricalIndexStore.create(current.stagingIndexPath);
-      const checkpoint = staging.readCheckpoint();
-      staging.close();
-      if (!checkpoint || (current.sourceFingerprint && checkpoint.sourceFingerprint !== current.sourceFingerprint)) {
-        res.status(409).json({ error: "The retained staging checkpoint is missing or does not match the import source fingerprint." });
-        return;
-      }
-    } catch {
-      res.status(409).json({ error: "The retained staging checkpoint is not readable; the committed library was left unchanged." });
+  if (current?.state === "cancelled_restartable") {
+    const restarted = importJobStore.updateIfState(jobId, RECOVERABLE_IMPORT_STATES, {
+      state: "queued",
+      completedAt: null,
+      error: null,
+      stagingIndexPath: null,
+      sourceOffset: null,
+      completedPartitions: [],
+      leaseOwner: null,
+      leaseUntil: null,
+      heartbeatAt: null,
+    });
+    if (!restarted) {
+      const existing = getJob(jobId);
+      res.status(existing ? 409 : 404).json({
+        error: existing ? `Historical import is not resumable from state ${existing.state}.` : "Historical import job was not found in durable job storage.",
+      });
       return;
     }
+    void runImportJob(jobId);
+    if (!runningJobs.has(jobId)) {
+      res.status(503).json({ error: "The import restart could not acquire a worker; try again." });
+      return;
+    }
+    res.json(jobResponse(restarted));
+    return;
   }
-  const resumed = importJobStore.updateIfState(jobId, RESUMABLE_IMPORT_STATES, {
+  const resumed = importJobStore.updateIfState(jobId, RECOVERABLE_IMPORT_STATES, {
     state: "queued",
     completedAt: null,
     error: null,
@@ -429,6 +478,14 @@ router.post("/historical-data/import/:jobId/resume", requireRole("reviewer"), as
     return;
   }
   void runImportJob(jobId);
+  if (!runningJobs.has(jobId)) {
+    importJobStore.updateIfState(jobId, ["queued"], {
+      state: "cancelled_restartable",
+      error: "The import worker could not be started; restart is available from the retained uploaded source files.",
+    });
+    res.status(503).json({ error: "The import worker could not be started; restart is available." });
+    return;
+  }
   res.json(jobResponse(resumed));
 });
 

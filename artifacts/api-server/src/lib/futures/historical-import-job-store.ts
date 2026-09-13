@@ -14,6 +14,7 @@ export type HistoricalImportPhase =
   | "cancelling"
   | "paused"
   | "cancelled_resumable"
+  | "cancelled_restartable"
   | "ready"
   | "failed"
   | "cancelled";
@@ -243,7 +244,7 @@ export class HistoricalImportJobStore {
   listActive(): PersistedHistoricalImportJob[] {
     return (this.database.prepare(`
       SELECT * FROM import_jobs
-      WHERE state IN ('queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing')
+      WHERE state IN ('queued', 'materializing', 'validating', 'indexing', 'aggregating', 'reconciling', 'committing', 'cancelling')
       ORDER BY created_at
     `).all() as JobRow[]).map(rowToJob);
   }

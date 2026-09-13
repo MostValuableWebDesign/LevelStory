@@ -3172,7 +3172,7 @@ components:
         jobId: { type: string }
         state:
           type: string
-          enum: [queued, materializing, validating, indexing, aggregating, reconciling, committing, cancelling, paused, cancelled_resumable, ready, failed, cancelled]
+          enum: [queued, materializing, validating, indexing, aggregating, reconciling, committing, cancelling, paused, cancelled_resumable, cancelled_restartable, ready, failed, cancelled]
         files:
           type: array
           items:
