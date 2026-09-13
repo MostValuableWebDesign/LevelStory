@@ -1491,7 +1491,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           value={request.endDate}
           onChange={(value) => update("endDate", value)}
            minDate={historicalIndex?.state === "ready" ? historicalIndex.indexedStartDate : null}
-          maxDate={null}
+           maxDate={historicalIndex?.state === "ready" ? historicalIndex.indexedEndDate : null}
            availableDates={historicalIndex?.state === "ready" ? historicalIndex.availableTradingDates : undefined}
         />
       </Field>
