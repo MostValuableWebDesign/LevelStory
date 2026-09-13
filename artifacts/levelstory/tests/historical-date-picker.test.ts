@@ -90,6 +90,10 @@ test("calendar keeps header arrows and uses the full seven-column width", () => 
   assert.doesNotMatch(calendarSource, /root: cn\('w-fit'/);
 });
 
+test("calendar reserves a fixed six-week layout across months", () => {
+  assert.match(pickerSource, /month=\{currentMonth\}\s+fixedWeeks/);
+});
+
 test("availability message stays compact and secondary", () => {
   assert.match(pickerSource, /Dates remain selectable even when stored data is unavailable\. Availability is checked after selection\./);
 });

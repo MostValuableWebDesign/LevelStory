@@ -289,6 +289,7 @@ export function HistoricalDatePicker({
                   mode="single"
                    selected={selectedDateIsEligible ? selectedDate ?? undefined : undefined}
                   month={currentMonth}
+                   fixedWeeks
                   onMonthChange={(nextMonth) => setDisplayMonth(clampDisplayMonth(nextMonth, effectiveMin, effectiveMax))}
                   onSelect={chooseDate}
                   fromMonth={minMonth}
