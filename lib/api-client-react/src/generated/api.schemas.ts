@@ -4361,7 +4361,8 @@ export interface VisualValidationRequest {
      */
   inSampleDays: number;
   /**
-     * @minimum 1
+     * Visual Review may inspect a historical window without a holdout partition.
+     * @minimum 0
      * @maximum 10
      */
   outOfSampleDays: number;

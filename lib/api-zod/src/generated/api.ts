@@ -7440,7 +7440,8 @@ export const getVisualValidationSetResponseRequestEndDateRegExp = new RegExp('^\
 export const getVisualValidationSetResponseRequestInSampleDaysDefault = 5;
 export const getVisualValidationSetResponseRequestInSampleDaysMax = 10;
 
-export const getVisualValidationSetResponseRequestOutOfSampleDaysDefault = 2;
+export const getVisualValidationSetResponseRequestOutOfSampleDaysDefault = 0;
+export const getVisualValidationSetResponseRequestOutOfSampleDaysMin = 0;
 export const getVisualValidationSetResponseRequestOutOfSampleDaysMax = 10;
 
 export const getVisualValidationSetResponseRequestSeedDefault = 11;
@@ -7560,7 +7561,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "symbol": zod.enum(['MES']).default(getVisualValidationSetResponseRequestSymbolDefault),
   "endDate": zod.string().regex(getVisualValidationSetResponseRequestEndDateRegExp).default(getVisualValidationSetResponseRequestEndDateDefault),
   "inSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestInSampleDaysMax).default(getVisualValidationSetResponseRequestInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(getVisualValidationSetResponseRequestOutOfSampleDaysMin).max(getVisualValidationSetResponseRequestOutOfSampleDaysMax).default(getVisualValidationSetResponseRequestOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(getVisualValidationSetResponseRequestSeedMin).max(getVisualValidationSetResponseRequestSeedMax).default(getVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -8462,7 +8463,8 @@ export const createVisualValidationSetBodyEndDateRegExp = new RegExp('^\\d{4}-\\
 export const createVisualValidationSetBodyInSampleDaysDefault = 5;
 export const createVisualValidationSetBodyInSampleDaysMax = 10;
 
-export const createVisualValidationSetBodyOutOfSampleDaysDefault = 2;
+export const createVisualValidationSetBodyOutOfSampleDaysDefault = 0;
+export const createVisualValidationSetBodyOutOfSampleDaysMin = 0;
 export const createVisualValidationSetBodyOutOfSampleDaysMax = 10;
 
 export const createVisualValidationSetBodySeedDefault = 11;
@@ -8489,7 +8491,7 @@ export const CreateVisualValidationSetBody = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetBodySymbolDefault),
   "endDate": zod.string().regex(createVisualValidationSetBodyEndDateRegExp).default(createVisualValidationSetBodyEndDateDefault),
   "inSampleDays": zod.number().min(1).max(createVisualValidationSetBodyInSampleDaysMax).default(createVisualValidationSetBodyInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(createVisualValidationSetBodyOutOfSampleDaysMin).max(createVisualValidationSetBodyOutOfSampleDaysMax).default(createVisualValidationSetBodyOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(createVisualValidationSetBodySeedMin).max(createVisualValidationSetBodySeedMax).default(createVisualValidationSetBodySeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -8524,7 +8526,8 @@ export const createVisualValidationSetResponseRequestEndDateRegExp = new RegExp(
 export const createVisualValidationSetResponseRequestInSampleDaysDefault = 5;
 export const createVisualValidationSetResponseRequestInSampleDaysMax = 10;
 
-export const createVisualValidationSetResponseRequestOutOfSampleDaysDefault = 2;
+export const createVisualValidationSetResponseRequestOutOfSampleDaysDefault = 0;
+export const createVisualValidationSetResponseRequestOutOfSampleDaysMin = 0;
 export const createVisualValidationSetResponseRequestOutOfSampleDaysMax = 10;
 
 export const createVisualValidationSetResponseRequestSeedDefault = 11;
@@ -8644,7 +8647,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "symbol": zod.enum(['MES']).default(createVisualValidationSetResponseRequestSymbolDefault),
   "endDate": zod.string().regex(createVisualValidationSetResponseRequestEndDateRegExp).default(createVisualValidationSetResponseRequestEndDateDefault),
   "inSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestInSampleDaysMax).default(createVisualValidationSetResponseRequestInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(createVisualValidationSetResponseRequestOutOfSampleDaysMin).max(createVisualValidationSetResponseRequestOutOfSampleDaysMax).default(createVisualValidationSetResponseRequestOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(createVisualValidationSetResponseRequestSeedMin).max(createVisualValidationSetResponseRequestSeedMax).default(createVisualValidationSetResponseRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(createVisualValidationSetResponseRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(createVisualValidationSetResponseRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -10219,7 +10222,8 @@ export const startVisualValidationGenerationJobBodyEndDateRegExp = new RegExp('^
 export const startVisualValidationGenerationJobBodyInSampleDaysDefault = 5;
 export const startVisualValidationGenerationJobBodyInSampleDaysMax = 10;
 
-export const startVisualValidationGenerationJobBodyOutOfSampleDaysDefault = 2;
+export const startVisualValidationGenerationJobBodyOutOfSampleDaysDefault = 0;
+export const startVisualValidationGenerationJobBodyOutOfSampleDaysMin = 0;
 export const startVisualValidationGenerationJobBodyOutOfSampleDaysMax = 10;
 
 export const startVisualValidationGenerationJobBodySeedDefault = 11;
@@ -10246,7 +10250,7 @@ export const StartVisualValidationGenerationJobBody = zod.object({
   "symbol": zod.enum(['MES']).default(startVisualValidationGenerationJobBodySymbolDefault),
   "endDate": zod.string().regex(startVisualValidationGenerationJobBodyEndDateRegExp).default(startVisualValidationGenerationJobBodyEndDateDefault),
   "inSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobBodyInSampleDaysMax).default(startVisualValidationGenerationJobBodyInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobBodyOutOfSampleDaysMax).default(startVisualValidationGenerationJobBodyOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(startVisualValidationGenerationJobBodyOutOfSampleDaysMin).max(startVisualValidationGenerationJobBodyOutOfSampleDaysMax).default(startVisualValidationGenerationJobBodyOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(startVisualValidationGenerationJobBodySeedMin).max(startVisualValidationGenerationJobBodySeedMax).default(startVisualValidationGenerationJobBodySeedDefault),
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobBodyPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobBodySourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -10297,7 +10301,8 @@ export const startVisualValidationGenerationJobResponseResultRequestEndDateRegEx
 export const startVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
 export const startVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
 
-export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 0;
+export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin = 0;
 export const startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
 
 export const startVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
@@ -10432,7 +10437,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "symbol": zod.enum(['MES']).default(startVisualValidationGenerationJobResponseResultRequestSymbolDefault),
   "endDate": zod.string().regex(startVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(startVisualValidationGenerationJobResponseResultRequestEndDateDefault),
   "inSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(startVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin).max(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(startVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(startVisualValidationGenerationJobResponseResultRequestSeedMin).max(startVisualValidationGenerationJobResponseResultRequestSeedMax).default(startVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(startVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(startVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -11365,7 +11370,8 @@ export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateR
 export const getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
 export const getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
 
-export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 0;
+export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin = 0;
 export const getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
 
 export const getLatestVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
@@ -11500,7 +11506,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "symbol": zod.enum(['MES']).default(getLatestVisualValidationGenerationJobResponseResultRequestSymbolDefault),
   "endDate": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(getLatestVisualValidationGenerationJobResponseResultRequestEndDateDefault),
   "inSampleDays": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(getLatestVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin).max(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getLatestVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(getLatestVisualValidationGenerationJobResponseResultRequestSeedMin).max(getLatestVisualValidationGenerationJobResponseResultRequestSeedMax).default(getLatestVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getLatestVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getLatestVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
@@ -12440,7 +12446,8 @@ export const getVisualValidationGenerationJobResponseResultRequestEndDateRegExp 
 export const getVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault = 5;
 export const getVisualValidationGenerationJobResponseResultRequestInSampleDaysMax = 10;
 
-export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 2;
+export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault = 0;
+export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin = 0;
 export const getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax = 10;
 
 export const getVisualValidationGenerationJobResponseResultRequestSeedDefault = 11;
@@ -12575,7 +12582,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "symbol": zod.enum(['MES']).default(getVisualValidationGenerationJobResponseResultRequestSymbolDefault),
   "endDate": zod.string().regex(getVisualValidationGenerationJobResponseResultRequestEndDateRegExp).default(getVisualValidationGenerationJobResponseResultRequestEndDateDefault),
   "inSampleDays": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestInSampleDaysMax).default(getVisualValidationGenerationJobResponseResultRequestInSampleDaysDefault),
-  "outOfSampleDays": zod.number().min(1).max(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault),
+  "outOfSampleDays": zod.number().min(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMin).max(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysMax).default(getVisualValidationGenerationJobResponseResultRequestOutOfSampleDaysDefault).describe('Visual Review may inspect a historical window without a holdout partition.'),
   "seed": zod.number().min(getVisualValidationGenerationJobResponseResultRequestSeedMin).max(getVisualValidationGenerationJobResponseResultRequestSeedMax).default(getVisualValidationGenerationJobResponseResultRequestSeedDefault),
   "premarketAvailable": zod.boolean().default(getVisualValidationGenerationJobResponseResultRequestPremarketAvailableDefault),
   "source": zod.enum(['simulated', 'historical_databento']).default(getVisualValidationGenerationJobResponseResultRequestSourceDefault).describe('Historical Databento is the default; simulated fixtures are an explicit testing option.'),
