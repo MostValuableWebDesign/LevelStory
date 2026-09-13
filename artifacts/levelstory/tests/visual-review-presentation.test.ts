@@ -201,6 +201,9 @@ test("visual review presentation retains human-only shading and semantic level c
   assert.match(page, /data-testid="historical-review-sample"/);
   assert.doesNotMatch(page, /scrollIntoView/);
   assert.match(page, /Historical example \{String\(index \+ 1\)\.padStart\(2, "0"\)/);
+  assert.match(page, /storedSessionsThroughDate/);
+  assert.match(page, /Only \$\{storedSessions\} stored trading session/);
+  assert.match(page, /disabled=\{storedSessions !== null && value > maxReviewDays\}/);
   assert.match(page, /reviewPeriod\.startDate/);
   assert.match(page, /reviewPeriod\.endDate/);
   assert.match(page, /Generate trade candidates/);

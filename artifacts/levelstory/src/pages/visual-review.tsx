@@ -269,6 +269,11 @@ const INITIAL_REQUEST: VisualValidationRequest = {
   },
 };
 
+function storedSessionsThroughDate(index: HistoricalDataIndexStatus | undefined, endDate: string): number | null {
+  if (!index || index.state !== "ready") return null;
+  return index.availableTradingDates.filter((date) => date <= endDate).length;
+}
+
 const EARLY_ORB_MOMENTUM_STORAGE_KEY = "levelstory.visualReview.earlyOrbMomentumEnabled";
 const ENABLED_STRATEGIES_STORAGE_KEY = "levelstory.visualReview.enabledStrategies";
 
@@ -516,6 +521,7 @@ export default function VisualReview() {
       staleTime: 30_000,
     },
   });
+  const storedSessions = storedSessionsThroughDate(historicalIndex.data, request.endDate);
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
   const setQuery = useGetVisualValidationSet(
     pinnedReviewSetId ? { reviewSetId: pinnedReviewSetId } : undefined,
@@ -788,6 +794,20 @@ export default function VisualReview() {
 
   const startReviewSetGeneration = (regenerateFresh = false) => {
     if (!confirmDiscardReview()) return;
+    if (storedSessions === 0) {
+      setMessage(`No stored trading sessions are available on or before ${request.endDate}. Select a later review-period end date.`);
+      return;
+    }
+    const adjustedDays = storedSessions !== null && request.inSampleDays > storedSessions
+      ? Math.min(10, storedSessions)
+      : request.inSampleDays;
+    const generationRequest = adjustedDays === request.inSampleDays
+      ? request
+      : { ...request, inSampleDays: adjustedDays };
+    if (storedSessions !== null && request.inSampleDays > storedSessions) {
+      setRequest(generationRequest);
+      setMessage(`Only ${storedSessions} stored trading session${storedSessions === 1 ? "" : "s"} are available through ${request.endDate}; generating with ${adjustedDays}.`);
+    }
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setActiveVisualReviewTab("generate");
     setReviewSetRequested(true);
@@ -797,7 +817,7 @@ export default function VisualReview() {
     setMessage("");
     setReport(null);
     setLocalSet(null);
-    startGeneration.mutate({ data: { ...request, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
+    startGeneration.mutate({ data: { ...generationRequest, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
         setGenerationJobId(job.jobId);
         if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
@@ -1430,6 +1450,8 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
 
 function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
+  const storedSessions = storedSessionsThroughDate(historicalIndex, request.endDate);
+  const maxReviewDays = storedSessions === null ? 10 : Math.min(10, storedSessions);
   const hasError = ["could not", "not saved", "unable to save", "unavailable", "not found", "invalid", "requires", "must include", "timed out"].some((term) => message.toLowerCase().includes(term));
   const earlyOrb = request.earlyOrbMomentum ?? {
     enabled: true,
@@ -1473,7 +1495,18 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
            availableDates={historicalIndex?.state === "ready" ? historicalIndex.availableTradingDates : undefined}
         />
       </Field>
-      <Field label="Review days"><select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value}>{value} sessions</option>)}</select></Field>
+       <Field label="Review days">
+         <select className="field mono" value={request.inSampleDays} onChange={(event) => update("inSampleDays", Number(event.target.value))} aria-describedby="visual-review-session-availability">
+           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => <option key={value} value={value} disabled={storedSessions !== null && value > maxReviewDays}>{value} sessions</option>)}
+         </select>
+         <span id="visual-review-session-availability" className={`mt-1 block text-[10px] leading-4 ${storedSessions !== null && storedSessions < 1 ? "text-destructive" : "text-muted-foreground"}`}>
+           {storedSessions === null
+             ? "The stored-session limit will be checked when the index status is ready."
+             : storedSessions < 1
+               ? `No stored sessions are available on or before ${request.endDate}.`
+               : `${storedSessions} stored session${storedSessions === 1 ? "" : "s"} available on or before ${request.endDate}.`}
+         </span>
+       </Field>
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
