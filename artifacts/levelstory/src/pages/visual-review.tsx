@@ -252,11 +252,6 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
   { value: "false_positive_trade", label: "False-positive trade", detail: "The machine trade is not supported by the raw causal candle story." },
 ];
 
-type ReviewDisclosurePanel = "judgment";
-type ReviewDisclosureState = Record<ReviewDisclosurePanel, boolean>;
-const CLOSED_REVIEW_DISCLOSURES: ReviewDisclosureState = {
-  judgment: false,
-};
 const CANDLE_INSPECTOR_SESSION_KEY = "levelstory.visualReview.candleInspectorOpen";
 const LEVELS_INDICATORS_SESSION_KEY = "levelstory.visualReview.levelsIndicatorsOpen";
 
@@ -593,16 +588,12 @@ export default function VisualReview() {
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
   const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("generate");
   const [activeReviewDetailTab, setActiveReviewDetailTab] = useState<ReviewDetailTab>("overview");
-  const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const [reviewSetSettingsOpen, setReviewSetSettingsOpen] = useState(false);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
   const selectedSnapshotIdRef = useRef("");
   const reviewSaveAttemptRef = useRef(0);
-  const toggleReviewPanel = (panel: ReviewDisclosurePanel) => {
-    setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
-  };
   selectedSnapshotIdRef.current = selectedSnapshotId;
 
   const startGeneration = useStartVisualValidationGenerationJob();
@@ -727,7 +718,6 @@ export default function VisualReview() {
       setReviewStatus(null);
       setReviewNote("");
        setAnalysis(null);
-      setOpenReviewPanels(CLOSED_REVIEW_DISCLOSURES);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("levelstory.visualReviewSetId", generationJob.result.reviewSetId);
         window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
@@ -1235,7 +1225,7 @@ export default function VisualReview() {
                         <ChartEvidence snapshot={activeSnapshot} />
                       </section>}
                       {activeReviewDetailTab === "human-review" && <section id="review-detail-panel-human-review" role="tabpanel" aria-labelledby="review-detail-tab-human-review" data-testid="review-detail-panel-human-review" className="space-y-5">
-                         <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setReviewMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setReviewMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={reviewMessage} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setReviewMessage(""); }} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                         <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setReviewMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setReviewMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={reviewMessage} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setReviewMessage(""); }} authenticated={authenticated} />
                       </section>}
                       {activeReviewDetailTab === "evidence" && <section id="review-detail-panel-evidence" role="tabpanel" aria-labelledby="review-detail-tab-evidence" data-testid="review-detail-panel-evidence" className="space-y-5">
                         <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Evidence scope:</span> selected-trade machine evidence is shown above; the funnel and review outputs below describe the full immutable review set.</div>
@@ -3475,8 +3465,6 @@ function ReviewPanel({
   teaching,
   setTeaching,
   authenticated,
-  open,
-  onToggleOpen,
 }: {
   snapshot: VisualValidationSnapshot;
   status: Exclude<VisualValidationReviewStatus, "unreviewed"> | null;
@@ -3492,8 +3480,6 @@ function ReviewPanel({
   teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
   setTeaching: (teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null) => void;
   authenticated: boolean;
-  open: boolean;
-  onToggleOpen: () => void;
 }) {
   const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   const hasSavedReview = savedStatus !== null;
@@ -3555,8 +3541,14 @@ function ReviewPanel({
     }
   }, [snapshot.snapshotId, levelCandle?.openTime, levelCandle?.closeTime, levelToleranceTicks, selectedIndicator?.openTime, selectedIndicator?.closeTime, selectedIndicator?.vwap, selectedIndicator?.ema200, JSON.stringify(teaching?.qualifyingLevels)]);
   return <Panel accent>
-     <DisclosurePanelTitle panelId="human-judgment-content" eyebrow="Human judgment / explicit submission" title="Does the story hold?" right={<ClipboardCheck size={17} className="text-accent" />} open={open} onToggleOpen={onToggleOpen} />
-     {open && <div id="human-judgment-content">
+     <div className="flex items-start justify-between gap-4 px-5 pb-4 pt-5 sm:px-6">
+       <div>
+         <div className="eyebrow mb-1.5 text-muted-foreground">Human judgment / explicit submission</div>
+         <h2 className="text-[14px] font-bold tracking-tight">Does the story hold?</h2>
+       </div>
+       <ClipboardCheck size={17} className="shrink-0 text-accent" />
+     </div>
+     <div id="human-judgment-content">
      <div className="border-t border-border bg-accent/8 px-5 py-4 text-xs leading-5 sm:px-6"><strong>Separate the two voices.</strong><span className="ml-1 text-muted-foreground">The machine has labeled this sample. Your task is to judge the raw causal candle story.</span></div>
     <div className="space-y-4 border-t border-border p-5 sm:p-6">
       {!authenticated && <div className="border border-accent/35 bg-accent/10 px-3 py-3 text-xs leading-5"><strong>Log in to save reviews.</strong><span className="ml-1 text-muted-foreground">Review evidence is readable without an account, but saving requires an authenticated reviewer.</span><a className="ml-2 font-bold text-accent underline underline-offset-2" href={`/api/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Log in</a></div>}
@@ -3599,7 +3591,7 @@ function ReviewPanel({
           </span>
           {dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}
         </div>
-     </div></div>}
+     </div></div>
   </Panel>;
 }
 

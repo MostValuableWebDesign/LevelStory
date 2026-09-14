@@ -161,14 +161,11 @@ test("visual review requests a saved set after an auth redirect remount", () => 
   );
 });
 
-test("trade review panels collapse after generation and can be opened independently", () => {
-  assert.match(page, /CLOSED_REVIEW_DISCLOSURES/);
-  assert.match(page, /judgment: false/);
-  assert.match(page, /toggleReviewPanel\("judgment"\)/);
-  assert.match(page, /data-testid=\{`toggle-\$\{panelId\}`\}/);
+test("human judgment is always visible for the selected trade", () => {
   assert.match(page, /plain-language-summary-content/);
   assert.match(page, /human-judgment-content/);
-  assert.match(page, /activeVisualReviewTab === "account-impact"/);
+  assert.match(page, /<ReviewPanel snapshot=\{activeSnapshot\}/);
+  assert.doesNotMatch(page, /toggle-human-judgment-content/);
 });
 
 test("authoritative trade results always show the decision summary without an expand control", () => {
