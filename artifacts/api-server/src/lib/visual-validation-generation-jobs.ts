@@ -241,6 +241,10 @@ async function runJob(job: JobRecord): Promise<void> {
       ...job.cacheMetadata,
       generationOrigin: job.generationOrigin,
     });
+    if (stored.stale || stored.freshness?.reasons.length) {
+      const reasons = stored.freshness?.reasons.join(", ") || "unknown freshness mismatch";
+      throw new Error(`Fresh generation failed server freshness validation: ${reasons}`);
+    }
     job.result = stored;
     job.reviewSetId = stored.reviewSetId;
     job.completedAt = Date.now();

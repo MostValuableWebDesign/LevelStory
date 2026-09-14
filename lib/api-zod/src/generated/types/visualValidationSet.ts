@@ -9,6 +9,7 @@ import type { VisualValidationAccountReplayTrade } from './visualValidationAccou
 import type { VisualValidationCategoryCoverage } from './visualValidationCategoryCoverage';
 import type { VisualValidationRequest } from './visualValidationRequest';
 import type { VisualValidationReviewPeriod } from './visualValidationReviewPeriod';
+import type { VisualValidationSetFreshness } from './visualValidationSetFreshness';
 import type { VisualValidationSetFunnelDiagnostics } from './visualValidationSetFunnelDiagnostics';
 import type { VisualValidationSetGenerationOrigin } from './visualValidationSetGenerationOrigin';
 import type { VisualValidationSetSource } from './visualValidationSetSource';
@@ -35,6 +36,9 @@ export interface VisualValidationSet {
   formulaVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */
   sourceFingerprint: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheSourceFingerprint?: string;
+  freshness?: VisualValidationSetFreshness;
   generationOrigin: VisualValidationSetGenerationOrigin;
   /** @pattern ^[0-9a-f]{64}$ */
   cacheKey: string;

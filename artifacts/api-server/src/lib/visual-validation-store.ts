@@ -7,6 +7,8 @@ import type {
   VisualValidationSet,
   VisualValidationSnapshot,
   VisualValidationTeachingInput,
+  VisualValidationFreshness,
+  VisualValidationFreshnessReason,
 } from "./visual-validation.js";
 import {
   buildProposedRuleAnalysis,
@@ -75,33 +77,50 @@ function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualVali
   };
 }
 
-function currentVersionsMatch(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): boolean {
-  const expected = visualValidationCacheMetadata(set.request, set.sourceFingerprint, set.sessionCalendarVersion);
-  return set.cacheKeyVersion === expected.cacheKeyVersion
-    && set.strategyVersion === expected.strategyVersion
-    && set.formulaHash === expected.formulaHash
-    && set.formulaVersion === expected.formulaVersion
-    && set.candidateProjectionVersion === expected.candidateProjectionVersion
-    && set.executionManagementVersion === expected.executionManagementVersion
-    && set.snapshotProjectionVersion === expected.snapshotProjectionVersion
-    && set.chartProjectionVersion === expected.chartProjectionVersion
-    && set.sessionCalendarVersion === expected.sessionCalendarVersion;
+function freshnessFor(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): VisualValidationFreshness {
+  const expected = visualValidationCacheMetadata(
+    set.request,
+    set.cacheSourceFingerprint ?? set.sourceFingerprint,
+    set.sessionCalendarVersion,
+    set.processedDates,
+  );
+  const reasons: VisualValidationFreshnessReason[] = [];
+  if (set.buildId !== APPLICATION_BUILD_ID) reasons.push("build_mismatch");
+  if (set.cacheKeyVersion !== expected.cacheKeyVersion) reasons.push("cache_key_version_mismatch");
+  if (set.cacheKey !== expected.cacheKey) reasons.push("cache_key_mismatch");
+  if (set.strategyVersion !== expected.strategyVersion) reasons.push("strategy_version_mismatch");
+  if (set.formulaHash !== expected.formulaHash) reasons.push("formula_hash_mismatch");
+  if (set.formulaVersion !== expected.formulaVersion) reasons.push("formula_version_mismatch");
+  if (set.candidateProjectionVersion !== expected.candidateProjectionVersion) reasons.push("candidate_projection_mismatch");
+  if (set.executionManagementVersion !== expected.executionManagementVersion) reasons.push("execution_management_mismatch");
+  if (set.accountPositionStateVersion !== expected.accountPositionStateVersion) reasons.push("account_position_state_mismatch");
+  if (set.snapshotProjectionVersion !== expected.snapshotProjectionVersion) reasons.push("snapshot_projection_mismatch");
+  if (set.chartProjectionVersion !== expected.chartProjectionVersion) reasons.push("chart_projection_mismatch");
+  if (set.sessionCalendarVersion !== expected.sessionCalendarVersion) reasons.push("session_calendar_mismatch");
+  return {
+    status: reasons.length ? "stale" : "current",
+    reasons,
+    generatedBuildId: set.buildId,
+    currentServerBuildId: APPLICATION_BUILD_ID,
+  };
 }
 
 export function storeVisualValidationSet(
   set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">,
-  options: Partial<Pick<VisualValidationSet, "generationOrigin" | "cacheKey" | "cacheKeyVersion" | "strategyVersion" | "formulaHash" | "formulaVersion" | "candidateProjectionVersion" | "executionManagementVersion" | "snapshotProjectionVersion" | "chartProjectionVersion" | "sessionCalendarVersion">> & { publishAsLatest?: boolean } = {},
+  options: Partial<Pick<VisualValidationSet, "generationOrigin" | "cacheSourceFingerprint" | "cacheKey" | "cacheKeyVersion" | "strategyVersion" | "formulaHash" | "formulaVersion" | "candidateProjectionVersion" | "executionManagementVersion" | "accountPositionStateVersion" | "snapshotProjectionVersion" | "chartProjectionVersion" | "sessionCalendarVersion">> & { publishAsLatest?: boolean } = {},
 ): VisualValidationSet {
   prune();
   const { publishAsLatest = true, ...metadataOptions } = options;
+  const freshness = freshnessFor({ ...set, ...metadataOptions });
   const stored: StoredVisualValidationSet = {
     set: {
       ...set,
-       ...metadataOptions,
+      ...metadataOptions,
       reviewSetId: randomUUID(),
       createdAt: new Date().toISOString(),
       currentBuildId: APPLICATION_BUILD_ID,
-       stale: set.buildId !== APPLICATION_BUILD_ID || !currentVersionsMatch({ ...set, ...options }),
+      freshness,
+      stale: freshness.status === "stale",
     },
     reviews: new Map(),
     reviewHistory: [],

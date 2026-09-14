@@ -61,6 +61,7 @@ import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 import { UploadedChartAnalysis } from "@/components/uploaded-chart-analysis";
 import { HistoricalDatePicker } from "@/components/historical-date-picker";
+import { buildReviewQueue, type ReviewQueueItem } from "@/lib/visual-review-queue";
 
 const FRONTEND_BUILD_ID = import.meta.env.VITE_LEVELSTORY_BUILD_ID ?? "local-development";
 const TRADE_TARGET_LEGEND_ID = "trade-target-exit";
@@ -359,8 +360,36 @@ function requestedPremarket(): boolean {
 }
 
 function formatReviewTime(value: string): string {
-  if (!value) return "—";
-  return value.replace("T", " ").replace("Z", " UTC");
+  const date = new Date(value);
+  if (!value || !Number.isFinite(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function formatReviewDate(value: string): string {
+  const date = new Date(`${value}T12:00:00-05:00`);
+  if (!value || !Number.isFinite(date.getTime())) return value || "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatUtcTime(value: string): string {
+  const date = new Date(value);
+  if (!value || !Number.isFinite(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    dateStyle: "medium",
+    timeStyle: "medium",
+    timeZoneName: "short",
+  }).format(date);
 }
 
 function formatReplayTime(value: string): string {
@@ -422,6 +451,30 @@ function historicalRangeRecovery(error: string | null): { requestedEndDate: stri
 function apiErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object" || !("status" in error) || typeof error.status !== "number") return null;
   return error.status;
+}
+
+function freshnessReasonLabel(reason: string): string {
+  return ({
+    build_mismatch: "server build changed",
+    cache_key_version_mismatch: "cache-key version changed",
+    cache_key_mismatch: "request/source cache identity changed",
+    strategy_version_mismatch: "strategy engine changed",
+    formula_hash_mismatch: "formula configuration changed",
+    formula_version_mismatch: "formula version changed",
+    candidate_projection_mismatch: "candidate projection changed",
+    execution_management_mismatch: "execution management changed",
+    account_position_state_mismatch: "account-position state changed",
+    snapshot_projection_mismatch: "snapshot projection changed",
+    chart_projection_mismatch: "chart projection changed",
+    session_calendar_mismatch: "session calendar changed",
+  } as Record<string, string>)[reason] ?? reason.replaceAll("_", " ");
+}
+
+function freshnessMessage(data: VisualValidationSet): string {
+  const reasons = data.freshness?.reasons ?? [];
+  return reasons.length
+    ? reasons.map(freshnessReasonLabel).join(" · ")
+    : "The server reported incompatible replay or projection metadata.";
 }
 
 function annotationTone(color: VisualValidationAnnotation["color"]): string {
@@ -624,7 +677,7 @@ export default function VisualReview() {
   useEffect(() => {
     if (localSet || generationActive) return;
     if (setQuery.data?.stale) {
-      setMessage("The saved review set is stale under the current replay or projection versions. Generate fresh to create a new immutable set; existing reviews remain preserved.");
+      setMessage(`The saved review set is stale because ${freshnessMessage(setQuery.data)}. Generate fresh to create a new immutable set; existing reviews remain preserved.`);
       return;
     }
     if (reviewSetId && !loadLatestReviewSet && setQuery.isError && apiErrorStatus(setQuery.error) === 404) {
@@ -669,20 +722,20 @@ export default function VisualReview() {
     : localSet ?? (freshGenerationRequested ? null : currentSet);
   const coverage = data?.categoryCoverage ?? [];
   const snapshots = data?.snapshots ?? [];
-  const strategySnapshots = useMemo(
-    () => (selectedStrategyKey
-      ? snapshots.filter((snapshot) => snapshot.category === "qualified_trade" && snapshot.strategyKey === selectedStrategyKey)
-      : snapshots.filter((snapshot) => snapshot.category === "qualified_trade")),
-    [selectedStrategyKey, snapshots],
+  const queueModel = useMemo(
+    () => buildReviewQueue(data, selectedStrategyKey),
+    [data, selectedStrategyKey],
   );
   const availableCategories = useMemo(() => coverage
-    .filter((item) => item.available && strategySnapshots.some((snapshot) => snapshot.category === item.category) && TRADE_CATEGORY_VALUES.has(item.category))
-    .map((item) => item.category), [coverage, strategySnapshots]);
+    .filter((item) => item.available && queueModel.items.some(({ snapshot }) => snapshot.category === item.category) && TRADE_CATEGORY_VALUES.has(item.category))
+    .map((item) => item.category), [coverage, queueModel.items]);
   const categorySnapshots = useMemo(
-    () => strategySnapshots.filter((snapshot) => snapshot.category === selectedCategory),
-    [selectedCategory, strategySnapshots],
+    () => queueModel.items
+      .filter(({ snapshot }) => snapshot.category === selectedCategory)
+      .map(({ snapshot }) => snapshot),
+    [queueModel.items, selectedCategory],
   );
-  const reviewQueue = strategySnapshots;
+  const reviewQueue = queueModel.items.map(({ snapshot }) => snapshot);
   const activeSnapshot = reviewQueue.find((snapshot) => snapshot.snapshotId === selectedSnapshotId)
     ?? categorySnapshots[0]
     ?? reviewQueue[0];
@@ -965,7 +1018,7 @@ export default function VisualReview() {
            ? "Teaching example saved permanently. The active formula has not changed."
            : `${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
         if (moveNext) {
-          const next = categorySnapshots[categorySnapshots.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
+          const next = reviewQueue[reviewQueue.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
           if (next) setSelectedSnapshotId(next.snapshotId);
         }
       },
@@ -1025,6 +1078,7 @@ export default function VisualReview() {
                       <CoverageRail
                         data={data}
                         loading={setQuery.isLoading}
+                        queueItems={queueModel.items}
                         selectedStrategyKey={selectedStrategyKey}
                         selectedCategory={selectedCategory}
                         selectedSnapshot={activeSnapshot}
@@ -1155,10 +1209,11 @@ export default function VisualReview() {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-                 }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} data={data} settingsExpanded={reviewSetSettingsOpen} onToggleSettings={() => setReviewSetSettingsOpen((current) => !current)} />
+                 }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} data={data} settingsExpanded={reviewSetSettingsOpen} onToggleSettings={() => setReviewSetSettingsOpen((current) => !current)} generationJob={generationJob} onRetryGeneration={retryGeneration} />
                 {!data && <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}
+                  queueItems={queueModel.items}
                  selectedStrategyKey={selectedStrategyKey}
                  selectedCategory={selectedCategory}
                  selectedSnapshot={activeSnapshot}
@@ -1187,7 +1242,8 @@ export default function VisualReview() {
                </Panel>
              ) : <Panel accent><QueryError onRetry={() => setQuery.refetch()} message="The visual-validation set could not be loaded." /></Panel> : data ? (
                <>
-                 {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
+                  {data.stale && <div className="flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">{freshnessMessage(data)}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
+                  {!data.stale && data.currentBuildId !== FRONTEND_BUILD_ID && <div className="flex flex-col gap-2 border border-accent/45 bg-accent/10 px-4 py-3 text-xs" role="alert" data-testid="frontend-backend-build-mismatch"><strong>Frontend and API builds differ.</strong><span className="text-muted-foreground">The review set is server-compatible, but this page is running a different frontend build. Refresh the page; if the mismatch persists, restart the web and API workflows. Regenerating will not fix a deployment mismatch.</span></div>}
                   {!activeSnapshot && <Panel><EmptyReview /></Panel>}
                </>
               ) : generationFinished ? <Panel><EmptyReview /></Panel> : null}
@@ -1557,7 +1613,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex, data, settingsExpanded, onToggleSettings }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus; data?: VisualValidationSet | null; settingsExpanded: boolean; onToggleSettings: () => void }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex, data, settingsExpanded, onToggleSettings, generationJob, onRetryGeneration }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus; data?: VisualValidationSet | null; settingsExpanded: boolean; onToggleSettings: () => void; generationJob: VisualValidationGenerationJob | null; onRetryGeneration: () => void }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const storedSessions = storedSessionsThroughDate(historicalIndex, request.endDate);
   const maxReviewDays = storedSessions === null ? 10 : Math.min(10, storedSessions);
@@ -1588,6 +1644,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
       }
     }
   };
+  if (pending && !data) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
   if (data && !settingsExpanded) {
     return <Panel accent>
       <PanelTitle
@@ -1692,7 +1749,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration, showSnapshotHeader = true }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void; showSnapshotHeader?: boolean }) {
+function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration, showSnapshotHeader = true }: { data?: VisualValidationSet | null; loading: boolean; queueItems: ReviewQueueItem[]; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void; showSnapshotHeader?: boolean }) {
   const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const candidateListRef = useRef<HTMLDivElement>(null);
   const [mobileNavigatorOpen, setMobileNavigatorOpen] = useState(false);
@@ -1706,7 +1763,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
     if (rowBounds.top < listBounds.top) list.scrollTop -= listBounds.top - rowBounds.top;
     if (rowBounds.bottom > listBounds.bottom) list.scrollTop += rowBounds.bottom - listBounds.bottom;
   }, [selectedSnapshot?.snapshotId]);
-  if (generationActive) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
+  if (generationActive) return null;
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) {
     if (generationJob) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
@@ -1721,17 +1778,18 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
        </div>
      </Panel>;
   }
-   const candidates = selectedStrategyKey
-     ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
-     : data.tradeCandidates;
-   const edgeCount = (strategy: StrategyId) => data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(strategy) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(strategy))).length;
-   const groupedCandidates = candidates.reduce((groups, candidate) => {
+   const allReviewableItems = buildReviewQueue(data, null).items;
+   const candidates = queueItems.map((item) => item.candidate);
+   const edgeCount = (strategy: StrategyId) => buildReviewQueue(data, strategy).items.length;
+   const groupedCandidates = queueItems.reduce((groups, item) => {
+     const candidate = item.candidate;
      const existing = groups.get(candidate.tradingDate) ?? [];
-     existing.push(candidate);
+     existing.push(item);
      groups.set(candidate.tradingDate, existing);
      return groups;
-   }, new Map<string, typeof candidates>());
+   }, new Map<string, ReviewQueueItem[]>());
    const selectedCount = candidates.length;
+   const unreviewableCount = buildReviewQueue(data, selectedStrategyKey).unreviewableCandidates.length;
    return <Panel className="visual-review-candidate-panel">
      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
       <button type="button" className="visual-review-mobile-navigator-trigger" aria-expanded={mobileNavigatorOpen} aria-controls="visual-review-candidate-controls" onClick={() => setMobileNavigatorOpen((current) => !current)} data-testid="button-toggle-trade-navigator">
@@ -1740,20 +1798,19 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
       </button>
       <div id="visual-review-candidate-controls" className={`visual-review-candidate-controls ${mobileNavigatorOpen ? "is-open" : ""}`}>
         <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
-          <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} unique candidate{selectedCount === 1 ? "" : "s"}</span></label>
+          <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} selectable trade{selectedCount === 1 ? "" : "s"}</span></label>
           <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
-            <option value="">All strategies · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</option>
+            <option value="">All strategies · {allReviewableItems.length}</option>
             {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
           </select>
-          <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates in the active filter. A candidate matching multiple strategies is counted once.</p>
+          <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique, reviewable candidates. A candidate matching multiple strategies is counted once.</p>
+          {unreviewableCount > 0 && <p className="mt-2 border border-accent/30 bg-accent/10 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground" role="status" data-testid="unreviewable-candidate-warning">{unreviewableCount} candidate{unreviewableCount === 1 ? "" : "s"} are retained in the review set but have no reviewable snapshot and cannot be selected.</p>}
         </div>
         <div ref={candidateListRef} className="trade-candidate-list border-t border-border" data-testid="trade-candidate-list">
           {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
-            <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{tradingDate}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
+            <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{formatReviewDate(tradingDate)}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
             <div className="divide-y divide-border">
-              {dateCandidates.map((candidate) => {
-                const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
-                if (!snapshot) return null;
+              {dateCandidates.map(({ candidate, snapshot }) => {
                 const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
                 const direction = candidate.direction === "short" ? "Short" : "Long";
                 const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
@@ -1762,11 +1819,11 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
                 return <button type="button" key={candidate.candidateId} ref={(node) => { rowRefs.current[candidate.snapshotId] = node; }} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`trade-candidate-row ${selected ? "is-selected" : ""}`} aria-current={selected ? "true" : undefined} aria-label={`${snapshot.tradingDate}, ${formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}, ${direction}, ${edgeDisplayLabel(candidate.primaryEdge)}, ${reviewStatus}`} data-testid="button-trade-candidate">
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
-                      <span className="mono truncate text-[11px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
-                      <span className="shrink-0 text-[10px] font-bold">{direction}</span>
+                      <span className="mono truncate text-[13px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
+                      <span className="shrink-0 text-[12px] font-bold">{direction}</span>
                     </span>
-                    <span className="mt-1 block break-words text-[10px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] text-muted-foreground">
+                    <span className="mt-1 block break-words text-[13px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                       <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatAccountMoney(trade?.netPnl)}</span>
                       <span>Grade {candidate.setupGrade}</span>
                       <span className={snapshot.review.status === "unreviewed" ? "" : "text-foreground"}>{reviewStatus}</span>
@@ -1777,7 +1834,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
               })}
             </div>
           </section>)}
-          {selectedCount === 0 && <div className="p-4 text-xs text-muted-foreground" data-testid="empty-trade-filter">No candidates match this strategy filter.</div>}
+           {selectedCount === 0 && <div className="p-4 text-xs text-muted-foreground" data-testid="empty-trade-filter">No selectable trades match this strategy filter.</div>}
         </div>
       </div>
      {showSnapshotHeader && selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
@@ -1844,14 +1901,15 @@ function GenerationProgressPanel({ job: serverJob, onRetry }: { job: VisualValid
 
 function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
   const prefix = (value: string) => value.slice(0, 12);
-  const stale = data.stale || data.currentBuildId !== FRONTEND_BUILD_ID;
+  const stale = data.stale;
+  const frontendBuildMismatch = data.currentBuildId !== FRONTEND_BUILD_ID;
   return <div className="mb-5 grid gap-px border border-border bg-border text-[10px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7" data-testid="review-set-diagnostics">
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Build</div><div className="mono mt-1 break-all text-foreground" title={data.buildId}>{data.buildId}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula</div><div className="mono mt-1 text-foreground" title={data.formulaHash}>{data.formulaVersion} · {prefix(data.formulaHash)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 text-foreground" title={data.sourceFingerprint}>{prefix(data.sourceFingerprint)}…</div></div>
-    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Created</div><div className="mono mt-1 text-foreground">{formatReviewTime(data.createdAt)}</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Created</div><div className="mono mt-1 text-foreground">{formatReviewTime(data.createdAt)}</div><div className="mono mt-1 text-[9px] text-muted-foreground">UTC {formatUtcTime(data.createdAt)}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Review set</div><div className="mono mt-1 text-foreground" title={data.reviewSetId}>{prefix(data.reviewSetId)}…</div></div>
-    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Freshness</div><div className={`mt-1 font-bold ${stale ? "text-destructive" : "text-[hsl(var(--positive))]"}`}>{stale ? "stale" : "current"}</div><div className="mono mt-1 break-all text-muted-foreground" title={data.currentBuildId}>current {prefix(data.currentBuildId)}…</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Freshness</div><div className={`mt-1 font-bold ${stale ? "text-destructive" : "text-[hsl(var(--positive))]"}`}>{stale ? "stale" : "current"}</div><div className="mt-1 leading-4 text-muted-foreground">{stale ? freshnessMessage(data) : frontendBuildMismatch ? "Server current; frontend deployment differs." : "All server compatibility checks passed."}</div><div className="mono mt-1 break-all text-muted-foreground" title={data.currentBuildId}>server {prefix(data.currentBuildId)}…</div><div className="mono mt-1 break-all text-muted-foreground" title={FRONTEND_BUILD_ID}>frontend {prefix(FRONTEND_BUILD_ID)}…</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Default selection</div><div className="mt-1 leading-4 text-foreground">{data.defaultSelectionReason}</div></div>
   </div>;
 }
@@ -1865,7 +1923,7 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
       <div className="min-w-0">
         <div className="eyebrow mb-2 text-muted-foreground">Historical example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</div>
          <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{strategyLabel}</span><span className="border border-border bg-card px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{trade?.direction === "short" ? "Short" : "Long"}</span></div>
-         <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
+         <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Date</span> <span className="mono">{formatReviewDate(snapshot.tradingDate)}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
          <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -1874,9 +1932,9 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
       </div>
     </div>
     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
-       <Metric label="Review-period end" value={request.endDate} sub="New York trading date" />
-      <Metric label="Evaluation cursor" value={snapshot.evaluationCursor.newYork} sub={snapshot.evaluationCursor.utc} />
-      <Metric label="Review cursor" value={snapshot.reviewCursor.newYork} sub={snapshot.reviewCursor.utc} />
+       <Metric label="Review-period end" value={formatReviewDate(request.endDate)} sub="New York trading date" />
+      <Metric label="Evaluation cursor" value={snapshot.evaluationCursor.newYork} sub={`UTC ${formatUtcTime(snapshot.evaluationCursor.closeTime)}`} />
+      <Metric label="Review cursor" value={snapshot.reviewCursor.newYork} sub={`UTC ${formatUtcTime(snapshot.reviewCursor.closeTime)}`} />
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
@@ -1894,7 +1952,7 @@ function SelectedTradeSummary({ snapshot }: { snapshot: VisualValidationSnapshot
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <div className="eyebrow text-muted-foreground">Selected trade · machine-owned result</div>
-        <div className="mt-1 text-[11px] font-semibold">Candidate {snapshot.tradingDate} · {snapshot.contractSymbol}</div>
+        <div className="mt-1 text-[11px] font-semibold">Candidate {formatReviewDate(snapshot.tradingDate)} · {snapshot.contractSymbol}</div>
       </div>
       <span className={`border px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${resultTone(result)}`}>{result}</span>
     </div>
@@ -1913,6 +1971,14 @@ function SnapshotProvenance({ snapshot }: { snapshot: VisualValidationSnapshot }
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Occurrence identity</div><div className="mono mt-1 break-all text-foreground">{snapshot.occurrenceId ?? `audit:${snapshot.machineEvidence.audit && typeof snapshot.machineEvidence.audit === "object" && "id" in snapshot.machineEvidence.audit ? String(snapshot.machineEvidence.audit.id) : "unavailable"}`}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 break-all text-foreground">{snapshot.sourceFingerprint ?? "derived from visible source candles"}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
+    <details className="bg-card px-4 py-3 sm:col-span-3">
+      <summary className="cursor-pointer font-semibold text-muted-foreground">Original UTC timestamps</summary>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <span className="mono text-muted-foreground">Evaluation open: {formatUtcTime(snapshot.evaluationCursor.openTime)}</span>
+        <span className="mono text-muted-foreground">Evaluation close: {formatUtcTime(snapshot.evaluationCursor.closeTime)}</span>
+        <span className="mono text-muted-foreground">Review close: {formatUtcTime(snapshot.reviewCursor.closeTime)}</span>
+      </div>
+    </details>
   </div>;
 }
 

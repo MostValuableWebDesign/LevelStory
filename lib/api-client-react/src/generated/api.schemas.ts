@@ -5341,6 +5341,39 @@ export interface VisualValidationReviewPeriod {
   endDate: string;
 }
 
+export type VisualValidationSetFreshnessStatus = typeof VisualValidationSetFreshnessStatus[keyof typeof VisualValidationSetFreshnessStatus];
+
+
+export const VisualValidationSetFreshnessStatus = {
+  current: 'current',
+  stale: 'stale',
+} as const;
+
+export type VisualValidationSetFreshnessReasonsItem = typeof VisualValidationSetFreshnessReasonsItem[keyof typeof VisualValidationSetFreshnessReasonsItem];
+
+
+export const VisualValidationSetFreshnessReasonsItem = {
+  build_mismatch: 'build_mismatch',
+  cache_key_version_mismatch: 'cache_key_version_mismatch',
+  cache_key_mismatch: 'cache_key_mismatch',
+  strategy_version_mismatch: 'strategy_version_mismatch',
+  formula_hash_mismatch: 'formula_hash_mismatch',
+  formula_version_mismatch: 'formula_version_mismatch',
+  candidate_projection_mismatch: 'candidate_projection_mismatch',
+  execution_management_mismatch: 'execution_management_mismatch',
+  account_position_state_mismatch: 'account_position_state_mismatch',
+  snapshot_projection_mismatch: 'snapshot_projection_mismatch',
+  chart_projection_mismatch: 'chart_projection_mismatch',
+  session_calendar_mismatch: 'session_calendar_mismatch',
+} as const;
+
+export type VisualValidationSetFreshness = {
+  status: VisualValidationSetFreshnessStatus;
+  reasons: VisualValidationSetFreshnessReasonsItem[];
+  generatedBuildId: string;
+  currentServerBuildId: string;
+};
+
 export type VisualValidationSetGenerationOrigin = typeof VisualValidationSetGenerationOrigin[keyof typeof VisualValidationSetGenerationOrigin];
 
 
@@ -5414,6 +5447,9 @@ export interface VisualValidationSet {
   formulaVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */
   sourceFingerprint: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  cacheSourceFingerprint?: string;
+  freshness?: VisualValidationSetFreshness;
   generationOrigin: VisualValidationSetGenerationOrigin;
   /** @pattern ^[0-9a-f]{64}$ */
   cacheKey: string;

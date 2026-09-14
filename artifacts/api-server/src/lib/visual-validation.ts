@@ -317,6 +317,27 @@ export type VisualValidationReviewPeriod = {
   endDate: string;
 };
 
+export type VisualValidationFreshnessReason =
+  | "build_mismatch"
+  | "cache_key_version_mismatch"
+  | "cache_key_mismatch"
+  | "strategy_version_mismatch"
+  | "formula_hash_mismatch"
+  | "formula_version_mismatch"
+  | "candidate_projection_mismatch"
+  | "execution_management_mismatch"
+  | "account_position_state_mismatch"
+  | "snapshot_projection_mismatch"
+  | "chart_projection_mismatch"
+  | "session_calendar_mismatch";
+
+export type VisualValidationFreshness = {
+  status: "current" | "stale";
+  reasons: VisualValidationFreshnessReason[];
+  generatedBuildId: string;
+  currentServerBuildId: string;
+};
+
 export type VisualValidationSet = {
   reviewSetId: string;
   createdAt: string;
@@ -326,6 +347,8 @@ export type VisualValidationSet = {
   formulaHash: string;
   formulaVersion: string;
   sourceFingerprint: string;
+  cacheSourceFingerprint?: string;
+  freshness?: VisualValidationFreshness;
   generationOrigin: "cached" | "fresh";
   cacheKey: string;
   cacheKeyVersion: string;

@@ -82,3 +82,4 @@
 - [Historical index storage authority](historical-index-storage-authority.md) — workspace cache snapshots can be stale or incompatible; only the configured current SQLite manifest is authoritative after restart.
 - [Canonical historical fragments](canonical-historical-fragments.md) — prefer one complete non-overlapping Databento fragment set per contract during full-index restores.
 - [Historical index startup race](historical-index-startup-race.md) — after restore or restart, load the committed manifest once before retrying a worker generation.
+- [Visual Review queue authority](visual-review-queue-authority.md) — joined candidate/snapshot projection owns selectable counts and navigation; missing snapshots stay explicit diagnostics.

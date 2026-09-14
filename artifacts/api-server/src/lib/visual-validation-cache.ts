@@ -16,6 +16,7 @@ export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projectio
 export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v7-orb-trend-epochs-account-single-active-trade";
 
 export type VisualValidationCacheMetadata = {
+  cacheSourceFingerprint: string;
   cacheKey: string;
   cacheKeyVersion: string;
   strategyVersion: string;
@@ -102,6 +103,7 @@ export function visualValidationCacheMetadata(
     governedThresholds: effectiveConfig,
   };
   return {
+    cacheSourceFingerprint: sourceFingerprint,
     cacheKey: digest(cacheInput),
     cacheKeyVersion: VISUAL_VALIDATION_CACHE_KEY_VERSION,
     strategyVersion,

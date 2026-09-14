@@ -37,7 +37,7 @@ test("Stage 3 makes the chart workspace dominant and groups supporting informati
   assert.match(page, /data-testid="selected-trade-summary"/);
   assert.equal([...page.matchAll(/data-testid="selected-trade-summary"/g)].length, 1);
   assert.match(styles, /\.chart-plot-shell \{/);
-  assert.match(styles, /min-height: clamp\(420px, 48vw, 600px\)/);
+  assert.match(styles, /min-height: clamp\(390px, 42vw, 560px\)/);
   assert.match(page, /data-testid="review-supporting-tabs"/);
   for (const tab of ["overview", "human-review", "evidence", "technical-details"]) {
     assert.match(page, new RegExp(`review-detail-tab-${tab}`));
@@ -67,7 +67,7 @@ test("Stage 4 keeps the candidate navigator responsive and keyboard accessible",
 });
 
 test("visual review browses one stable queue across dates and categories", () => {
-  assert.match(page, /const reviewQueue = strategySnapshots/);
+  assert.match(page, /const reviewQueue = queueModel\.items\.map/);
   assert.match(page, /selectedSnapshotIndex=\{reviewQueue\.findIndex/);
   assert.match(page, /selectedSnapshotTotal=\{reviewQueue\.length\}/);
   assert.match(page, /moveSnapshot\(reviewQueue, activeSnapshot/);

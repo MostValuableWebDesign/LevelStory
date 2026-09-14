@@ -4881,6 +4881,19 @@ components:
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         formulaVersion: { type: string }
         sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+        cacheSourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+        freshness:
+          type: object
+          properties:
+            status: { type: string, enum: [current, stale] }
+            reasons:
+              type: array
+              items:
+                type: string
+                enum: [build_mismatch, cache_key_version_mismatch, cache_key_mismatch, strategy_version_mismatch, formula_hash_mismatch, formula_version_mismatch, candidate_projection_mismatch, execution_management_mismatch, account_position_state_mismatch, snapshot_projection_mismatch, chart_projection_mismatch, session_calendar_mismatch]
+            generatedBuildId: { type: string }
+            currentServerBuildId: { type: string }
+          required: [status, reasons, generatedBuildId, currentServerBuildId]
         generationOrigin: { type: string, enum: [cached, fresh] }
         cacheKey: { type: string, pattern: '^[0-9a-f]{64}$' }
         cacheKeyVersion: { type: string }

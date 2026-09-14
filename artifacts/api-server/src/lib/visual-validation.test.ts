@@ -118,8 +118,13 @@ test("visual-validation sets expose build, formula, source, and freshness proven
   assert.match(set.formulaHash, /^[0-9a-f]{64}$/);
   assert.match(set.sourceFingerprint, /^[0-9a-f]{64}$/);
 
-  const stored = storeVisualValidationSet({ ...set, buildId: "previous-build" });
+  const current = storeVisualValidationSet(set, { publishAsLatest: false });
+  assert.equal(current.freshness?.status, "current");
+  assert.deepEqual(current.freshness?.reasons, []);
+  const stored = storeVisualValidationSet({ ...set, buildId: "previous-build" }, { publishAsLatest: false });
   assert.equal(stored.stale, true);
+  assert.equal(stored.freshness?.status, "stale");
+  assert.deepEqual(stored.freshness?.reasons, ["build_mismatch"]);
   assert.equal(stored.currentBuildId, set.currentBuildId);
 });
 

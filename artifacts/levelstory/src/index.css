@@ -402,6 +402,9 @@
     border-radius: .75rem;
     box-shadow: 0 1px 0 hsl(var(--foreground) / .025), 0 6px 18px hsl(var(--foreground) / .035);
   }
+  .visual-review-page .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1rem;
+  }
   .visual-review-header h1 {
     letter-spacing: -.04em;
   }
@@ -732,12 +735,12 @@
     scroll-margin-top: 1rem;
   }
   .chart-plot-shell {
-    min-height: clamp(420px, 48vw, 600px);
+    min-height: clamp(390px, 42vw, 560px);
     max-height: 600px;
   }
   .chart-plot-shell .visual-review-svg {
     height: 100%;
-    min-height: clamp(420px, 48vw, 600px);
+    min-height: clamp(390px, 42vw, 560px);
     max-height: 600px;
   }
   .visual-review-chart-fullscreen {
@@ -779,7 +782,7 @@
     align-items: center;
     justify-content: space-between;
     gap: .55rem;
-    margin-bottom: 1rem;
+    margin-bottom: .65rem;
     border-block: 1px solid hsl(var(--border));
     background: hsl(var(--muted) / .2);
     padding: .55rem;
@@ -899,12 +902,49 @@
     }
   }
   @media (max-width: 639px) {
+    .visual-review-page .visual-review-header {
+      padding-block: .8rem;
+    }
+    .visual-review-page .chart-frame {
+      padding: .75rem;
+    }
+    .visual-review-page .chart-frame > .mb-4 {
+      margin-bottom: .6rem;
+      padding-bottom: .6rem;
+    }
+    .chart-toolbar {
+      align-items: stretch;
+      gap: .35rem;
+      padding: .4rem;
+    }
+    .chart-toolbar-group {
+      width: 100%;
+      gap: .3rem;
+    }
+    .chart-toolbar-group + .chart-toolbar-group {
+      border-left: 0;
+      border-top: 1px solid hsl(var(--border));
+      padding-left: 0;
+      padding-top: .35rem;
+    }
+    .chart-toolbar .field {
+      min-width: 0;
+    }
+    .chart-control {
+      min-height: 1.85rem;
+      padding-inline: .45rem;
+      font-size: 8px;
+    }
+    .chart-plot-shell,
+    .chart-plot-shell .visual-review-svg {
+      min-height: 340px;
+    }
     .trade-candidate-list {
       max-height: 420px;
     }
     .trade-candidate-row {
-      min-height: 72px;
-      padding: .75rem .65rem;
+      min-height: 68px;
+      padding: .6rem .65rem;
     }
   }
   .status-strip {
