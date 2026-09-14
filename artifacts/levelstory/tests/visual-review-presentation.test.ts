@@ -48,6 +48,24 @@ test("Stage 3 makes the chart workspace dominant and groups supporting informati
   assert.match(page, /Technical scope:/);
 });
 
+test("Stage 4 keeps the candidate navigator responsive and keyboard accessible", () => {
+  assert.match(page, /data-testid="button-toggle-trade-navigator"/);
+  assert.match(page, /aria-expanded=\{mobileNavigatorOpen\}/);
+  assert.match(page, /aria-controls="visual-review-candidate-controls"/);
+  assert.match(page, /aria-label=\{`\$\{snapshot\.tradingDate\}/);
+  assert.match(page, /tabIndex=\{selected \? 0 : -1\}/);
+  assert.match(page, /handleReviewDetailTabKeyDown/);
+  assert.match(page, /requestAnimationFrame\(\(\) => document\.getElementById\(`review-detail-tab-\$\{nextTab\.id\}`\)\?\.focus\(\)\)/);
+  assert.match(page, /const rowRefs = useRef/);
+  assert.ok(page.indexOf("const rowRefs = useRef") < page.indexOf("if (generationActive) return"));
+  assert.match(styles, /top: 4\.5rem/);
+  assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1279px\)/);
+  assert.match(styles, /@media \(max-width: 767px\)/);
+  assert.match(styles, /\.visual-review-candidate-controls\.is-open/);
+  assert.match(styles, /overflow-x: clip/);
+  assert.match(styles, /\.levelstory-trade-marker-halo/);
+});
+
 test("visual review browses one stable queue across dates and categories", () => {
   assert.match(page, /const reviewQueue = strategySnapshots/);
   assert.match(page, /selectedSnapshotIndex=\{reviewQueue\.findIndex/);

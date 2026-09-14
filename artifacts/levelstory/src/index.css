@@ -396,6 +396,7 @@
   }
   .visual-review-page {
     font-variant-numeric: tabular-nums;
+    overflow-x: clip;
   }
   .visual-review-page .surface {
     border-radius: .75rem;
@@ -637,11 +638,17 @@
   }
   .visual-review-trade-rail {
     position: sticky;
-    top: 1rem;
+    top: 4.5rem;
     min-width: 0;
-    max-height: calc(100dvh - 2rem);
+    max-height: calc(100dvh - 5.5rem);
     overflow: auto;
     scrollbar-width: thin;
+  }
+  .visual-review-mobile-navigator-trigger {
+    display: none;
+  }
+  .visual-review-candidate-controls {
+    display: block;
   }
   .visual-review-candidate-panel {
     overflow: hidden;
@@ -846,7 +853,22 @@
       max-height: none;
     }
   }
-  @media (max-width: 1279px) {
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .visual-review-workspace {
+      grid-template-columns: minmax(220px, 27vw) minmax(0, 1fr);
+      gap: .9rem;
+    }
+    .visual-review-trade-rail {
+      position: sticky;
+      top: 4.5rem;
+      max-height: calc(100dvh - 5.5rem);
+      overflow: auto;
+    }
+    .trade-candidate-list {
+      max-height: min(58dvh, 560px);
+    }
+  }
+  @media (max-width: 767px) {
     .visual-review-workspace {
       grid-template-columns: 1fr;
     }
@@ -854,6 +876,23 @@
       position: static;
       max-height: none;
       overflow: visible;
+    }
+    .visual-review-mobile-navigator-trigger {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      border-top: 1px solid hsl(var(--border));
+      background: hsl(var(--muted) / .2);
+      padding: .75rem;
+      text-align: left;
+    }
+    .visual-review-candidate-controls {
+      display: none;
+    }
+    .visual-review-candidate-controls.is-open {
+      display: block;
     }
     .trade-candidate-list {
       max-height: min(48dvh, 520px);
@@ -995,6 +1034,14 @@
 @media (prefers-reduced-motion: reduce) {
   .levelstory-selected-pulse {
     animation: none;
+  }
+  .skeleton,
+  .appear,
+  .levelstory-trade-marker,
+  .levelstory-trade-marker-halo,
+  .metric-cell::before {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
