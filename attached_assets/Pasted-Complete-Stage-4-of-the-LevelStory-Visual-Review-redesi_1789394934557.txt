@@ -1,0 +1,84 @@
+Complete Stage 4 of the LevelStory Visual Review redesign: responsive polish, accessibility, and end-to-end verification.
+
+Preserve the accepted design and all functionality from Stages 1–3. Do not introduce another redesign or new trading features.
+
+RESPONSIVE BEHAVIOR
+
+Desktop:
+- Maintain the trade navigator beside the chart.
+- Keep trade identity and Previous/Next convenient while reviewing.
+- Prevent overlapping sticky headers or obscured controls.
+
+Tablet:
+- Narrow or collapse the navigator while retaining clear access to trade selection.
+- Keep the chart readable rather than squeezing every panel into columns.
+
+Mobile:
+- Use a single-column workspace with an accessible trade selector or trade-list drawer.
+- Keep current trade identity and Previous/Next easy to reach.
+- Preserve all chart, review, and evidence controls.
+- Avoid horizontal page overflow.
+- Keep chart-specific pan/zoom and fullscreen usable.
+
+Check representative widths around 1440px, 1024px, 768px, and 390px, plus a typical laptop height.
+
+ACCESSIBILITY AND POLISH
+
+Verify:
+- Semantic buttons, tabs, disclosures, and form labels.
+- Visible keyboard focus and logical focus order.
+- Accessible contrast.
+- Status labels and symbols in addition to color.
+- No essential information available only on hover.
+- Appropriate touch targets.
+- Reduced-motion support.
+- Long strategy names, large values, and missing data do not break layouts.
+- Drawers/dialogs manage focus correctly and return it to their trigger.
+
+Correct spacing, overflow, excessive blank areas, text wrapping, and chart-control collisions.
+
+REGRESSION CHECKLIST
+
+Verify the actual application, not just screenshots or source-text tests:
+
+Generation:
+- Empty, running, completed, zero-candidate, failed, partial, cached, and stale states.
+- Both loading indicators start together.
+- Active-job ETA messaging remains visible.
+- Existing non-increasing ETA behavior is preserved.
+- Retry and refresh/resume behavior remain intact.
+
+Trade navigation:
+- Cross-date and cross-strategy selection.
+- Correct filtered counts and queue position.
+- First/last boundaries.
+- Rapid selections never mix data from different trades.
+- Unsaved-review protection on every selection path.
+- Stable list scrolling and accessible chart navigation.
+
+Review and chart:
+- All chart controls, markers, causal boundaries, and candle locking.
+- Correct authoritative prices, P/L, quantities, grades, and results.
+- Review submission, saved status, error handling, and teaching controls.
+- Exports, review ledger, and supporting panels.
+- Chart Analysis and Account Impact remain functional.
+
+Use saved results and isolated fixtures first. Do not rebuild the historical index or launch broad replays merely to validate styling.
+
+DELIVERY
+
+Run frontend type checking and relevant behavioral tests. Fix failures introduced by this redesign.
+
+Rebuild and restart the preview where needed. Verify the actual preview URL serves the final build, not stale assets.
+
+Provide:
+1. A concise summary of the completed redesign.
+2. Files changed.
+3. Exact checks run and their results.
+4. Any unverified behavior or remaining limitations.
+5. Desktop and mobile screenshots using generated trades.
+6. Confirmation that each original capability remains accessible.
+
+Do not declare completion if interactions were not checked. Clearly distinguish verified behavior from assumptions.
+
+The acceptance goal: a trader can select, inspect, judge, and advance through trades without repeatedly hunting for the chart, navigation, or review controls.

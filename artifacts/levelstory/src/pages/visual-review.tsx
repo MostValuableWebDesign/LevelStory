@@ -888,7 +888,26 @@ export default function VisualReview() {
         ? VISUAL_REVIEW_TABS.length - 1
         : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + VISUAL_REVIEW_TABS.length) % VISUAL_REVIEW_TABS.length;
     const nextTab = VISUAL_REVIEW_TABS[nextIndex];
-    if (nextTab) setActiveVisualReviewTab(nextTab.id);
+    if (nextTab) {
+      setActiveVisualReviewTab(nextTab.id);
+      window.requestAnimationFrame(() => document.getElementById(`visual-review-tab-${nextTab.id}`)?.focus());
+    }
+  };
+
+  const handleReviewDetailTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const currentIndex = REVIEW_DETAIL_TABS.findIndex((tab) => tab.id === activeReviewDetailTab);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? REVIEW_DETAIL_TABS.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + REVIEW_DETAIL_TABS.length) % REVIEW_DETAIL_TABS.length;
+    const nextTab = REVIEW_DETAIL_TABS[nextIndex];
+    if (nextTab) {
+      setActiveReviewDetailTab(nextTab.id);
+      window.requestAnimationFrame(() => document.getElementById(`review-detail-tab-${nextTab.id}`)?.focus());
+    }
   };
 
   const submitGeneration = (event: FormEvent) => {
@@ -1086,7 +1105,9 @@ export default function VisualReview() {
                             aria-selected={selected}
                             aria-controls={`review-detail-panel-${tab.id}`}
                             id={`review-detail-tab-${tab.id}`}
+                            tabIndex={selected ? 0 : -1}
                             onClick={() => setActiveReviewDetailTab(tab.id)}
+                            onKeyDown={handleReviewDetailTabKeyDown}
                             className={`min-w-0 border px-3 py-2 text-left transition ${selected ? "border-primary bg-primary text-primary-foreground" : "border-transparent text-muted-foreground hover:border-border hover:bg-card"}`}
                             data-testid={`review-detail-tab-${tab.id}`}
                           >
@@ -1672,6 +1693,19 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
 }
 
 function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration, showSnapshotHeader = true }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void; showSnapshotHeader?: boolean }) {
+  const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const candidateListRef = useRef<HTMLDivElement>(null);
+  const [mobileNavigatorOpen, setMobileNavigatorOpen] = useState(false);
+  useEffect(() => {
+    if (!selectedSnapshot) return;
+    const row = rowRefs.current[selectedSnapshot.snapshotId];
+    const list = candidateListRef.current;
+    if (!row || !list) return;
+    const listBounds = list.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+    if (rowBounds.top < listBounds.top) list.scrollTop -= listBounds.top - rowBounds.top;
+    if (rowBounds.bottom > listBounds.bottom) list.scrollTop += rowBounds.bottom - listBounds.bottom;
+  }, [selectedSnapshot?.snapshotId]);
   if (generationActive) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) {
@@ -1697,61 +1731,55 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
      groups.set(candidate.tradingDate, existing);
      return groups;
    }, new Map<string, typeof candidates>());
-   const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-   const candidateListRef = useRef<HTMLDivElement>(null);
-   useEffect(() => {
-     if (!selectedSnapshot) return;
-     const row = rowRefs.current[selectedSnapshot.snapshotId];
-     const list = candidateListRef.current;
-     if (!row || !list) return;
-     const listBounds = list.getBoundingClientRect();
-     const rowBounds = row.getBoundingClientRect();
-     if (rowBounds.top < listBounds.top) list.scrollTop -= listBounds.top - rowBounds.top;
-     if (rowBounds.bottom > listBounds.bottom) list.scrollTop += rowBounds.bottom - listBounds.bottom;
-   }, [selectedSnapshot?.snapshotId]);
    const selectedCount = candidates.length;
    return <Panel className="visual-review-candidate-panel">
      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
-     <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
-       <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} unique candidate{selectedCount === 1 ? "" : "s"}</span></label>
-       <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
-         <option value="">All strategies · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</option>
-         {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
-       </select>
-       <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates in the active filter. A candidate matching multiple strategies is counted once.</p>
-     </div>
-     <div ref={candidateListRef} className="trade-candidate-list border-t border-border" data-testid="trade-candidate-list">
-       {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
-         <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{tradingDate}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
-         <div className="divide-y divide-border">
-           {dateCandidates.map((candidate) => {
-             const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
-             if (!snapshot) return null;
-             const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
-             const direction = candidate.direction === "short" ? "Short" : "Long";
-             const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
-             const selected = selectedSnapshot?.snapshotId === candidate.snapshotId;
-             const reviewStatus = snapshot.review.status === "unreviewed" ? "Not reviewed" : snapshot.review.status.replaceAll("_", " ");
-             return <button type="button" key={candidate.candidateId} ref={(node) => { rowRefs.current[candidate.snapshotId] = node; }} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`trade-candidate-row ${selected ? "is-selected" : ""}`} aria-current={selected ? "true" : undefined} data-testid="button-trade-candidate">
-               <span className="min-w-0 flex-1">
-                 <span className="flex items-center justify-between gap-2">
-                   <span className="mono truncate text-[11px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
-                   <span className="shrink-0 text-[10px] font-bold">{direction}</span>
-                 </span>
-                 <span className="mt-1 block truncate text-[10px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
-                 <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] text-muted-foreground">
-                   <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatAccountMoney(trade?.netPnl)}</span>
-                   <span>Grade {candidate.setupGrade}</span>
-                   <span className={snapshot.review.status === "unreviewed" ? "" : "text-foreground"}>{reviewStatus}</span>
-                   {blocked && <span className="text-accent">Account blocked</span>}
-                 </span>
-               </span>
-             </button>;
-           })}
-         </div>
-       </section>)}
-       {selectedCount === 0 && <div className="p-4 text-xs text-muted-foreground" data-testid="empty-trade-filter">No candidates match this strategy filter.</div>}
-     </div>
+      <button type="button" className="visual-review-mobile-navigator-trigger" aria-expanded={mobileNavigatorOpen} aria-controls="visual-review-candidate-controls" onClick={() => setMobileNavigatorOpen((current) => !current)} data-testid="button-toggle-trade-navigator">
+        <span><span className="eyebrow block text-muted-foreground">Trade selector</span><span className="mt-1 block text-xs font-semibold">{selectedSnapshot ? `${selectedSnapshot.tradingDate} · ${formatReviewTime((selectedSnapshot.machineEvidence.trade as CandidateTradeView | null)?.entryTime ?? "")}` : "Choose a candidate"}</span></span>
+        <ChevronDown size={16} className={`transition-transform ${mobileNavigatorOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      <div id="visual-review-candidate-controls" className={`visual-review-candidate-controls ${mobileNavigatorOpen ? "is-open" : ""}`}>
+        <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
+          <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} unique candidate{selectedCount === 1 ? "" : "s"}</span></label>
+          <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
+            <option value="">All strategies · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</option>
+            {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
+          </select>
+          <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates in the active filter. A candidate matching multiple strategies is counted once.</p>
+        </div>
+        <div ref={candidateListRef} className="trade-candidate-list border-t border-border" data-testid="trade-candidate-list">
+          {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
+            <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{tradingDate}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
+            <div className="divide-y divide-border">
+              {dateCandidates.map((candidate) => {
+                const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
+                if (!snapshot) return null;
+                const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
+                const direction = candidate.direction === "short" ? "Short" : "Long";
+                const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
+                const selected = selectedSnapshot?.snapshotId === candidate.snapshotId;
+                const reviewStatus = snapshot.review.status === "unreviewed" ? "Not reviewed" : snapshot.review.status.replaceAll("_", " ");
+                return <button type="button" key={candidate.candidateId} ref={(node) => { rowRefs.current[candidate.snapshotId] = node; }} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`trade-candidate-row ${selected ? "is-selected" : ""}`} aria-current={selected ? "true" : undefined} aria-label={`${snapshot.tradingDate}, ${formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}, ${direction}, ${edgeDisplayLabel(candidate.primaryEdge)}, ${reviewStatus}`} data-testid="button-trade-candidate">
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="mono truncate text-[11px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
+                      <span className="shrink-0 text-[10px] font-bold">{direction}</span>
+                    </span>
+                    <span className="mt-1 block break-words text-[10px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] text-muted-foreground">
+                      <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatAccountMoney(trade?.netPnl)}</span>
+                      <span>Grade {candidate.setupGrade}</span>
+                      <span className={snapshot.review.status === "unreviewed" ? "" : "text-foreground"}>{reviewStatus}</span>
+                      {blocked && <span className="text-accent">Account blocked</span>}
+                    </span>
+                  </span>
+                </button>;
+              })}
+            </div>
+          </section>)}
+          {selectedCount === 0 && <div className="p-4 text-xs text-muted-foreground" data-testid="empty-trade-filter">No candidates match this strategy filter.</div>}
+        </div>
+      </div>
      {showSnapshotHeader && selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
    </Panel>;
 }
