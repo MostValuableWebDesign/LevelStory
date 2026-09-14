@@ -404,3 +404,11 @@ test("removed position-management details are not rendered in the inspector", ()
   assert.doesNotMatch(page, /One-contract management/);
   assert.doesNotMatch(page, /data-testid="exit-legs-table"/);
 });
+
+test("generation panel takes precedence immediately while the start request is pending", () => {
+  assert.match(page, /generationJob: VisualValidationGenerationJob \| null = startGeneration.isPending \? null/);
+  const rail = page.slice(page.indexOf("function CoverageRail("), page.indexOf("const GENERATION_PHASE_ANNOUNCEMENTS"));
+  assert.ok(rail.indexOf("if (generationActive)") < rail.indexOf("if (loading && !data)"));
+  assert.match(page, /Preparing generation…/);
+  assert.match(page, /Estimating time remaining…/);
+});

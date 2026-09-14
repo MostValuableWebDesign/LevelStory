@@ -105,6 +105,12 @@ try {
     report,
     (snapshots, totalSnapshots) => {
       const snapshotCount = snapshots.length;
+      emitProgress({
+        phase: "building_snapshots",
+        completedUnits: 90 + (totalSnapshots > 0 ? Math.floor(snapshotCount / totalSnapshots * 9) : 0),
+        completedSessions: totalSessions, totalSessions,
+        message: `Building chart review snapshots ${snapshotCount} of ${totalSnapshots}`,
+      });
       if (snapshotCount !== 1 && snapshotCount !== totalSnapshots && snapshotCount % 5 !== 0) return;
       parentPort!.postMessage({
         type: "partial",

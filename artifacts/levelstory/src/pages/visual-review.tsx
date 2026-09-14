@@ -328,7 +328,8 @@ function formatDuration(milliseconds: number): string {
 }
 
 function formatEstimate(milliseconds: number | null): string | null {
-  if (milliseconds === null || milliseconds < 1000) return null;
+  if (milliseconds === null) return "Estimating time remaining…";
+  if (milliseconds < 1000) return "Finishing generation…";
   return `About ${formatDuration(milliseconds)} remaining`;
 }
 
@@ -547,7 +548,7 @@ export default function VisualReview() {
   );
   const recordReview = useRecordVisualValidationReview();
   const analyzeRule = useAnalyzeVisualValidationTeaching();
-  const generationJob: VisualValidationGenerationJob | null = generationQuery.data ?? startGeneration.data ?? null;
+  const generationJob: VisualValidationGenerationJob | null = startGeneration.isPending ? null : generationQuery.data ?? startGeneration.data ?? null;
   const generationActive = startGeneration.isPending
     || generationJob?.status === "queued"
     || generationJob?.status === "running"
@@ -1073,6 +1074,7 @@ export default function VisualReview() {
                  onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
                  onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
                  generationJob={generationJob}
+                 generationActive={Boolean(generationActive)}
                  onRetryGeneration={retryGeneration}
                />
              </div>
@@ -1565,7 +1567,8 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, onRetryGeneration }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; onRetryGeneration: () => void }) {
+function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void }) {
+  if (generationActive) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) {
     if (generationJob) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
@@ -1614,7 +1617,12 @@ const GENERATION_PHASE_ANNOUNCEMENTS: Record<VisualValidationGenerationJob["phas
   completed: "Trade candidates ready",
 };
 
-function GenerationProgressPanel({ job, onRetry }: { job: VisualValidationGenerationJob; onRetry: () => void }) {
+function GenerationProgressPanel({ job: serverJob, onRetry }: { job: VisualValidationGenerationJob | null; onRetry: () => void }) {
+  const job = serverJob ?? {
+    status: "queued", phase: "preparing", percent: 0, estimatedRemainingMs: null,
+    completedSessions: 0, totalSessions: 0, elapsedMs: 0,
+    message: "Preparing generation…", error: null,
+  } as const;
   const active = job.status === "queued" || job.status === "running";
   const percent = Math.max(0, Math.min(100, Math.round(job.percent)));
   const radius = 62;
@@ -1642,7 +1650,7 @@ function GenerationProgressPanel({ job, onRetry }: { job: VisualValidationGenera
       </div>
       <div className="mt-6 min-h-[72px]">
         <div className="text-sm font-bold">{job.status === "completed" ? "Trade candidates ready" : job.message}</div>
-        <div className="mt-2 text-xs text-muted-foreground">{job.completedSessions} of {job.totalSessions} sessions completed</div>
+        <div className="mt-2 text-xs text-muted-foreground">{job.totalSessions > 0 ? `${job.completedSessions} of ${job.totalSessions} sessions completed` : "Preparing trading sessions"}</div>
         <div className="mt-1 mono text-[10px] text-muted-foreground">Elapsed: {formatDuration(job.elapsedMs)}</div>
         {estimate && active && <div className="mt-1 mono text-[10px] text-muted-foreground">{estimate}</div>}
       </div>
