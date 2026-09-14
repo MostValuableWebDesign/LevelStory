@@ -23,6 +23,9 @@ import type {
 import { canonicalStrategyId, isStrategyId } from "./strategy/taxonomy.js";
 import { buildCandidateConfiguration, compareCandidate, PROPOSAL_VALIDATOR_VERSION } from "./proposal-validator.js";
 import { refreshActiveShadowStrategy } from "./active-shadow-strategy.js";
+import { resolveActiveShadowStrategy } from "./active-shadow-strategy.js";
+import { FIXED_FORMULA_VERSION } from "./formula-hash.js";
+import { DEFAULT_STRATEGY_CONFIG, strategyConfig, type StrategyConfig } from "./strategy/config.js";
 import { DEFAULT_LEVEL_TOLERANCE_TICKS } from "@workspace/api-spec/constants";
 
 export const PROPOSAL_STATUSES = [
@@ -50,6 +53,43 @@ export class GovernanceError extends Error {
 
 function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+type GovernanceParentPin = {
+  strategyKey: "MES_SHADOW";
+  versionId: string | null;
+  formulaVersion: string;
+  formulaHash: string;
+  configFingerprint: string;
+  configSnapshot: StrategyConfig;
+};
+
+function parentPinFromProposal(proposal: AdvisoryRuleProposal): GovernanceParentPin | null {
+  const payload = proposal.proposalPayload as { governanceParent?: Partial<GovernanceParentPin> } | null;
+  const pin = payload?.governanceParent;
+  if (!pin || pin.strategyKey !== "MES_SHADOW" || typeof pin.formulaVersion !== "string"
+    || typeof pin.formulaHash !== "string" || typeof pin.configFingerprint !== "string"
+    || (pin.versionId !== null && typeof pin.versionId !== "string")
+    || typeof pin.configSnapshot !== "object" || pin.configSnapshot === null) return null;
+  return pin as GovernanceParentPin;
+}
+
+function parentPinForActive(active: Awaited<ReturnType<typeof resolveActiveShadowStrategy>>): GovernanceParentPin {
+  return {
+    strategyKey: "MES_SHADOW",
+    versionId: active.versionId,
+    formulaVersion: active.formulaVersion,
+    formulaHash: active.formulaHash,
+    configFingerprint: hashJson(active.config),
+    configSnapshot: active.config,
+  };
+}
+
+function sameParent(left: GovernanceParentPin, right: GovernanceParentPin): boolean {
+  return left.versionId === right.versionId
+    && left.formulaVersion === right.formulaVersion
+    && left.formulaHash === right.formulaHash
+    && left.configFingerprint === right.configFingerprint;
 }
 
 export function visualReviewRequestFingerprint(value: unknown): string {
@@ -506,6 +546,20 @@ export async function createProposal(args: {
   if (!strategyKey || !isStrategyId(strategyKey)) {
     throw new GovernanceError(400, "A proposal must link to exactly one canonical strategy.");
   }
+  const activeParent = await resolveActiveShadowStrategy();
+  const governanceParent = parentPinForActive(activeParent);
+  let normalizedDiff;
+  try {
+    normalizedDiff = buildCandidateConfiguration(args.proposalPayload.ruleDiff, activeParent.config).normalizedDiff;
+  } catch (error) {
+    throw new GovernanceError(400, error instanceof Error ? error.message : "Invalid typed deterministic rule change.");
+  }
+  const proposalPayload = {
+    ...args.proposalPayload,
+    governanceParent,
+    runtimeStrategyKey: "MES_SHADOW",
+    canonicalStrategyKey: strategyKey,
+  };
   const [created] = await db.insert(advisoryRuleProposalsTable).values({
     id: randomUUID(),
     strategyKey,
@@ -518,7 +572,7 @@ export async function createProposal(args: {
     plainLanguageSummary: args.hypothesis.trim().slice(0, 2000),
     currentRule: textValue(args.proposalPayload.currentRule, "Current deterministic formula"),
     proposedRule: textValue(args.proposalPayload.proposedRule, args.hypothesis),
-    deterministicRuleDiff: args.proposalPayload.ruleDiff ?? args.proposalPayload,
+    deterministicRuleDiff: normalizedDiff,
     affectedRuleIds: textArray(args.proposalPayload.affectedRuleIds),
     expectedBehaviorChange: textValue(args.proposalPayload.expectedBehaviorChange, args.hypothesis),
     risks: args.proposalPayload.risks ?? ["Overfitting risk must be evaluated on holdout data."],
@@ -531,7 +585,7 @@ export async function createProposal(args: {
       .map((item) => item.id),
     sourceFormulaVersion: teachings[0]?.formulaVersion ?? "unknown",
     candidateFormulaVersion: null,
-    proposalPayload: args.proposalPayload,
+    proposalPayload,
     idempotencyKey: args.idempotencyKey,
   }).returning();
   await audit(created.id, args.actor.id, "created", null, "draft", null, args.idempotencyKey);
@@ -576,9 +630,13 @@ async function requireCurrentPassedValidation(proposal: AdvisoryRuleProposal, ca
   if (!proposal.validationRunId) throw new GovernanceError(409, "Revalidation required.");
   const [run] = await db.select().from(proposalValidationRunsTable).where(eq(proposalValidationRunsTable.id, proposal.validationRunId));
   const metrics = (run?.afterMetrics ?? {}) as { performanceMetricsAvailable?: boolean };
+  const parentPin = parentPinFromProposal(proposal);
+  const activeParent = await resolveActiveShadowStrategy();
+  const parentStillCurrent = parentPin !== null && sameParent(parentPin, parentPinForActive(activeParent));
   if (!run || run.status !== "passed"
     || run.validatorVersion !== PROPOSAL_VALIDATOR_VERSION
     || metrics.performanceMetricsAvailable !== true
+    || !parentStillCurrent
     || !run.candidateFormulaHash
     || (candidateFormulaHash !== undefined && run.candidateFormulaHash !== candidateFormulaHash)
     || !run.sourceFingerprint
@@ -607,12 +665,14 @@ async function runValidation(runId: string, proposalId: string, workerId: string
       .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate) || a.selectedCandleTimestamp.localeCompare(b.selectedCandleTimestamp) || a.id.localeCompare(b.id));
     if (!matchingExamples.length) throw new Error("No persisted teaching evidence matches this canonical strategy.");
     if (matchingExamples.some((item) => canonicalStrategyId(item.setupClassification) !== proposal.strategyKey)) throw new Error("Every teaching example must belong to the proposal's canonical strategy.");
-    const [activeParent] = await db.select({ configSnapshot: strategyVersionsTable.configSnapshot, formulaHash: strategyVersionsTable.formulaHash })
-      .from(strategyVersionsTable)
-      .where(and(eq(strategyVersionsTable.strategyKey, "MES_SHADOW"), eq(strategyVersionsTable.status, "active")))
-      .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1);
+    const parentPin = parentPinFromProposal(proposal);
+    if (!parentPin) throw new Error("This proposal has no pinned parent strategy. Recreate it before validation.");
+    const activeParent = await resolveActiveShadowStrategy();
+    if (!sameParent(parentPin, parentPinForActive(activeParent))) {
+      throw new Error("The active parent strategy changed before validation started. Revalidation is required.");
+    }
     await db.update(proposalValidationRunsTable).set({ progressStage: "focused_comparison", progressPercent: 35, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
-    const result = compareCandidate(matchingExamples, proposal.deterministicRuleDiff, (activeParent?.configSnapshot ?? {}) as Record<string, unknown>);
+    const result = compareCandidate(matchingExamples, proposal.deterministicRuleDiff, activeParent.config);
     await db.update(proposalValidationRunsTable).set({ progressStage: "holdout_comparison", progressPercent: 75, heartbeatAt: new Date() }).where(eq(proposalValidationRunsTable.id, runId));
     const formulaFingerprint = hashJson([result.parentFormulaHash, result.candidateFormulaHash]);
     const passed = result.performanceMetricsAvailable && result.conflicts.length === 0 && result.regressions.length === 0 && result.holdoutCompleted && result.holdoutPassed && result.noFutureData && result.immediateNextEntryCompliant && result.entryBufferCompliant;
@@ -631,7 +691,7 @@ async function runValidation(runId: string, proposalId: string, workerId: string
       parentFormulaHash: result.parentFormulaHash,
       candidateFormulaHash: result.candidateFormulaHash,
       validatorVersion: PROPOSAL_VALIDATOR_VERSION,
-      validationConfigFingerprint: hashJson({ validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", strategyKey: proposal.strategyKey }),
+      validationConfigFingerprint: hashJson({ validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", strategyKey: proposal.strategyKey, parent: parentPin }),
       holdoutCompleted: result.holdoutCompleted ? 1 : 0,
       heartbeatAt: new Date(),
       completedAt: new Date(),
@@ -681,13 +741,34 @@ export async function requestValidation(args: {
   idempotencyKey: string;
   requestFingerprint?: string;
 }): Promise<ProposalValidationRun> {
-  const proposal = await getProposal(args.id);
+  let proposal = await getProposal(args.id);
+  let parentPin = parentPinFromProposal(proposal);
+  const activeParent = await resolveActiveShadowStrategy();
+  const currentParentPin = parentPinForActive(activeParent);
+  if (!parentPin) {
+    parentPin = currentParentPin;
+    const nextPayload = {
+      ...(proposal.proposalPayload as Record<string, unknown>),
+      governanceParent: parentPin,
+      runtimeStrategyKey: "MES_SHADOW",
+      canonicalStrategyKey: proposal.strategyKey,
+    };
+    const [updated] = await db.update(advisoryRuleProposalsTable)
+      .set({ proposalPayload: nextPayload, updatedAt: new Date() })
+      .where(eq(advisoryRuleProposalsTable.id, proposal.id))
+      .returning();
+    if (updated) proposal = updated;
+  }
+  if (!parentPin || !sameParent(parentPin, currentParentPin)) {
+    throw new GovernanceError(409, "The active parent strategy changed. Recreate or revalidate this proposal against the current version.");
+  }
   const allEvidence = await db.select().from(teachingExamplesTable);
   const evidence = allEvidence.filter((item) => item.status === "submitted" && canonicalStrategyId(item.setupClassification) === proposal.strategyKey);
   const fingerprint = args.requestFingerprint ?? hashJson({
     proposalId: args.id,
     validatorVersion: PROPOSAL_VALIDATOR_VERSION,
     diff: proposal.deterministicRuleDiff,
+    parent: parentPin,
     sourceTeachingIds: proposal.sourceTeachingIds,
     evidence: evidence.map((item) => [item.id, item.formulaHash, item.sourceFingerprint, item.calendarFingerprint]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
     validationConfig: { validatorVersion: PROPOSAL_VALIDATOR_VERSION, mode: "focused_then_holdout", range: "bounded_default", calendarVersion: "America/New_York:contract-local" },
@@ -710,6 +791,7 @@ export async function requestValidation(args: {
     evidenceIds: evidence.map((item) => item.id),
     requestedBy: args.actor.id,
     validatorVersion: PROPOSAL_VALIDATOR_VERSION,
+    validationConfigFingerprint: hashJson({ validatorVersion: PROPOSAL_VALIDATOR_VERSION, parent: parentPin }),
   }).returning();
   await db.update(advisoryRuleProposalsTable).set({ status: "validation_pending", validationRunId: run.id, updatedAt: new Date() })
     .where(and(eq(advisoryRuleProposalsTable.id, args.id), eq(advisoryRuleProposalsTable.status, proposal.status)));
@@ -756,18 +838,38 @@ export async function publishCandidate(id: string, actor: GovernanceActor, idemp
       || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.calendarFingerprint) {
       throw new GovernanceError(409, "Revalidation required.");
     }
+    const parentPin = parentPinFromProposal(proposal);
+    const [current] = await tx.select().from(strategyVersionsTable)
+      .where(and(eq(strategyVersionsTable.strategyKey, "MES_SHADOW"), eq(strategyVersionsTable.status, "active")))
+      .orderBy(desc(strategyVersionsTable.versionNumber)).limit(1).for("update");
+    const currentParent: GovernanceParentPin = current
+      ? {
+        strategyKey: "MES_SHADOW",
+        versionId: current.id,
+        formulaVersion: current.formulaVersion,
+        formulaHash: current.formulaHash,
+        configFingerprint: hashJson(current.configSnapshot),
+        configSnapshot: strategyConfig(current.configSnapshot as Record<string, unknown>),
+      }
+      : parentPinForActive(await resolveActiveShadowStrategy());
+    if (!parentPin || !sameParent(parentPin, currentParent)) {
+      throw new GovernanceError(409, "The active parent strategy changed after validation. Revalidation is required.");
+    }
     const [existing] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.proposalId, id));
     if (existing) return { proposal, version: existing };
-    const [current] = await tx.select().from(strategyVersionsTable).where(eq(strategyVersionsTable.strategyKey, "MES_SHADOW")).orderBy(desc(strategyVersionsTable.versionNumber)).limit(1).for("update");
-    const parentConfig = current?.configSnapshot ?? {};
+    const parentConfig = current?.configSnapshot ?? DEFAULT_STRATEGY_CONFIG;
     const candidateConfig = buildCandidateConfiguration(proposal.deterministicRuleDiff, parentConfig as Record<string, unknown>).candidate;
+    const candidateFormulaHash = hashJson(candidateConfig);
+    if (run.candidateFormulaHash !== candidateFormulaHash) {
+      throw new GovernanceError(409, "The candidate configuration no longer matches the validated parent. Revalidation is required.");
+    }
     const [version] = await tx.insert(strategyVersionsTable).values({
       id: randomUUID(), strategyKey: "MES_SHADOW", versionNumber: (current?.versionNumber ?? 0) + 1,
-      status: "candidate", proposalId: id, parentVersionId: current?.id ?? null, formulaVersion: "advisory-candidate",
-      formulaHash: hashJson(candidateConfig), configSnapshot: candidateConfig, ruleDiff: proposal.deterministicRuleDiff,
+      status: "candidate", proposalId: id, parentVersionId: current?.id ?? null, formulaVersion: FIXED_FORMULA_VERSION,
+      formulaHash: candidateFormulaHash, configSnapshot: candidateConfig, ruleDiff: proposal.deterministicRuleDiff,
       evidenceIds: proposal.sourceTeachingIds, validationRunId: proposal.validationRunId, publishedBy: actor.id, createdBy: actor.id,
     }).returning();
-    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "candidate", candidateVersionId: version.id, updatedAt: new Date() }).where(and(eq(advisoryRuleProposalsTable.id, id), eq(advisoryRuleProposalsTable.status, "approved"))).returning();
+    const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "candidate", candidateVersionId: version.id, candidateFormulaVersion: FIXED_FORMULA_VERSION, updatedAt: new Date() }).where(and(eq(advisoryRuleProposalsTable.id, id), eq(advisoryRuleProposalsTable.status, "approved"))).returning();
     if (!updated) throw new GovernanceError(409, "Proposal changed before publication completed.");
     await tx.insert(ruleProposalAuditEventsTable).values({ id: randomUUID(), proposalId: id, actorId: actor.id, action: "published_candidate", fromStatus: "approved", toStatus: "candidate", reason: null, idempotencyKey, metadata: { versionId: version.id } });
     return { proposal: updated, version };
@@ -794,8 +896,17 @@ export async function activateCandidate(id: string, actor: GovernanceActor, idem
       || run.validatorVersion !== PROPOSAL_VALIDATOR_VERSION
       || (run.afterMetrics as { performanceMetricsAvailable?: boolean } | null)?.performanceMetricsAvailable !== true
       || run.holdoutCompleted !== 1 || !run.sourceFingerprint || !run.candidateFormulaHash
-      || run.candidateFormulaHash !== version.formulaHash) throw new GovernanceError(409, "Revalidation required.");
-    const active = await tx.select().from(strategyVersionsTable).where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active"))).for("update");
+      || run.candidateFormulaHash !== version.formulaHash
+      || version.formulaVersion !== FIXED_FORMULA_VERSION
+      || hashJson(version.configSnapshot) !== version.formulaHash) throw new GovernanceError(409, "Revalidation required.");
+    const parentPin = parentPinFromProposal(proposal);
+    const active = await tx.select().from(strategyVersionsTable)
+      .where(and(eq(strategyVersionsTable.strategyKey, version.strategyKey), eq(strategyVersionsTable.status, "active"))).for("update");
+    if (!parentPin || version.parentVersionId !== parentPin.versionId
+      || active.length !== (parentPin.versionId ? 1 : 0)
+      || (parentPin.versionId && active[0]?.id !== parentPin.versionId)) {
+      throw new GovernanceError(409, "The active parent strategy changed after validation. Revalidation is required.");
+    }
     for (const previous of active) await tx.update(strategyVersionsTable).set({ status: "retired", retiredAt: new Date() }).where(eq(strategyVersionsTable.id, previous.id));
     await tx.update(strategyVersionsTable).set({ status: "active", activatedBy: actor.id, activatedAt: new Date() }).where(eq(strategyVersionsTable.id, version.id));
     const [updated] = await tx.update(advisoryRuleProposalsTable).set({ status: "active", updatedAt: new Date() }).where(and(eq(advisoryRuleProposalsTable.id, id), eq(advisoryRuleProposalsTable.status, "candidate"))).returning();

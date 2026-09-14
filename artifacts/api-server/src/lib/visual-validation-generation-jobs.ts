@@ -24,6 +24,7 @@ import {
 } from "./futures/multi-contract-replay.js";
 import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 import { createVisualValidationFixtures } from "./visual-validation-fixtures.js";
+import { resolveActiveShadowStrategy } from "./active-shadow-strategy.js";
 
 export type CandidateGenerationPhase =
   | "preparing"
@@ -89,6 +90,14 @@ function requestKey(request: VisualValidationRequest): string {
     reviewMode: request.reviewMode ?? "trades_only",
     earlyOrbMomentum: request.earlyOrbMomentum,
     enabledStrategies: request.enabledStrategies,
+    governedStrategy: request.governedStrategy
+      ? {
+        versionId: request.governedStrategy.versionId,
+        versionNumber: request.governedStrategy.versionNumber,
+        formulaVersion: request.governedStrategy.formulaVersion,
+        formulaHash: request.governedStrategy.formulaHash,
+      }
+      : null,
   });
 }
 
@@ -298,7 +307,18 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
   const pending = pendingStarts.get(baseKey);
   if (pending) return pending;
   const start = (async (): Promise<CandidateGenerationJob> => {
-    const deterministicRequest = cleanRequest(request);
+    const active = await resolveActiveShadowStrategy();
+    const deterministicRequest = cleanRequest({
+      ...request,
+      governedStrategy: {
+        strategyKey: active.strategyKey,
+        versionId: active.versionId,
+        versionNumber: active.versionNumber,
+        formulaVersion: active.formulaVersion,
+        formulaHash: active.formulaHash,
+        config: active.config,
+      },
+    });
     const metadata = await cacheMetadataForRequest(deterministicRequest);
     const key = metadata.cacheKey;
     const activeJobId = activeByRequest.get(key);

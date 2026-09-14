@@ -3,17 +3,58 @@ import { DEFAULT_STRATEGY_CONFIG, strategyConfig, type StrategyConfig } from "./
 import type { TeachingExample } from "@workspace/db";
 import { createMarketSnapshot } from "./market-data.js";
 
-export const PROPOSAL_VALIDATOR_VERSION = "candidate-validation-v3";
+export const PROPOSAL_VALIDATOR_VERSION = "candidate-validation-v4";
 
 type RuleField = keyof StrategyConfig;
 export type DeterministicRuleDiff = { field: RuleField; value: number | boolean };
 
-const ALLOWED_FIELDS = new Set<RuleField>([
-  "patienceEntryBufferTicks",
-  "earlyOrbMomentumContinuationEnabled",
-  "earlyOrbMomentumEligibilityCutoffMinutes",
-  "earlyOrbMomentumMinimumCloseDistanceTicks",
-]);
+export type RuleFieldDefinition = {
+  field: RuleField;
+  label: string;
+  valueType: "boolean" | "integer";
+  units: string;
+  minimum?: number;
+  maximum?: number;
+  fixedValue?: number;
+  explanation: string;
+};
+
+export const RULE_FIELD_DEFINITIONS: readonly RuleFieldDefinition[] = [
+  {
+    field: "patienceEntryBufferTicks",
+    label: "Patience entry confirmation buffer",
+    valueType: "integer",
+    units: "MES ticks",
+    fixedValue: 4,
+    explanation: "The governed confirmation buffer is fixed at four MES ticks (1.00 index point).",
+  },
+  {
+    field: "earlyOrbMomentumContinuationEnabled",
+    label: "Early ORB Momentum continuation",
+    valueType: "boolean",
+    units: "enabled / disabled",
+    explanation: "Controls whether the Early ORB Momentum continuation edge can qualify a candidate.",
+  },
+  {
+    field: "earlyOrbMomentumEligibilityCutoffMinutes",
+    label: "Early ORB Momentum P-open cutoff",
+    valueType: "integer",
+    units: "ET minutes after midnight",
+    minimum: 0,
+    maximum: 1440,
+    explanation: "Limits Early ORB Momentum patience opens to the configured session-time boundary.",
+  },
+  {
+    field: "earlyOrbMomentumMinimumCloseDistanceTicks",
+    label: "Early ORB Momentum minimum close distance",
+    valueType: "integer",
+    units: "MES ticks",
+    minimum: 1,
+    explanation: "Requires the confirming close to clear the relevant ORB boundary by at least this many MES ticks.",
+  },
+] as const;
+
+const RULE_FIELDS = new Map(RULE_FIELD_DEFINITIONS.map((definition) => [definition.field, definition]));
 
 export type ComparisonMetrics = {
   sampleCount: number;
@@ -69,14 +110,42 @@ export function buildCandidateConfiguration(diff: unknown, parentInput: Partial<
   const parent = strategyConfig(parentInput);
   const raw = Array.isArray(diff) ? diff : typeof diff === "object" && diff !== null && "field" in diff ? [diff] : [];
   if (!raw.length) throw new Error("A typed deterministicRuleDiff is required.");
+  const seenFields = new Set<string>();
   const normalizedDiff: DeterministicRuleDiff[] = raw.map((item) => {
     if (typeof item !== "object" || item === null || typeof (item as { field?: unknown }).field !== "string") {
       throw new Error("Each deterministic rule change must include a field and value.");
     }
-    const field = (item as { field: string }).field as RuleField;
+    const fieldName = (item as { field: string }).field;
+    const field = fieldName as RuleField;
     const value = (item as { value?: unknown }).value;
-    if (!ALLOWED_FIELDS.has(field) || (typeof value !== "number" && typeof value !== "boolean") || !Number.isFinite(value as number)) {
-      throw new Error(`Unknown or invalid deterministic rule field: ${String(field)}.`);
+    const unknownKeys = Object.keys(item as Record<string, unknown>).filter((key) => key !== "field" && key !== "value");
+    if (unknownKeys.length > 0) {
+      throw new Error(`Unknown deterministic rule field property: ${unknownKeys.join(", ")}.`);
+    }
+    const definition = RULE_FIELDS.get(field);
+    if (!definition) {
+      throw new Error(`Unknown deterministic rule field: ${fieldName}.`);
+    }
+    if (seenFields.has(fieldName)) {
+      throw new Error(`Duplicate deterministic rule field: ${fieldName}.`);
+    }
+    seenFields.add(fieldName);
+    if (definition.valueType === "boolean" && typeof value !== "boolean") {
+      throw new Error(`${fieldName} must be a boolean; numeric strings and coercion are not accepted.`);
+    }
+    if (definition.valueType === "integer" && (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value))) {
+      throw new Error(`${fieldName} must be a finite integer; numeric strings and decimals are not accepted.`);
+    }
+    if (typeof value === "number") {
+      if (definition.minimum !== undefined && value < definition.minimum) {
+        throw new Error(`${fieldName} must be at least ${definition.minimum}.`);
+      }
+      if (definition.maximum !== undefined && value > definition.maximum) {
+        throw new Error(`${fieldName} must be at most ${definition.maximum}.`);
+      }
+      if (definition.fixedValue !== undefined && value !== definition.fixedValue) {
+        throw new Error(`${fieldName} must be exactly ${definition.fixedValue} for the governed formula.`);
+      }
     }
     return { field, value } as DeterministicRuleDiff;
   });

@@ -62,10 +62,11 @@ export function visualValidationCacheMetadata(
   sessionCalendarVersion = DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion,
   processedDates: readonly string[] = [],
 ): VisualValidationCacheMetadata {
-  const active = activeShadowStrategySnapshot();
+  const active = request.governedStrategy ?? activeShadowStrategySnapshot();
   const earlyOrbMomentum = normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum);
   const enabledStrategies = normalizeVisualReviewStrategyToggles(request.enabledStrategies, earlyOrbMomentum);
-  const effectiveConfig = strategyConfigForVisualReview(active.config, earlyOrbMomentum);
+  const effectiveConfig = request.governedStrategy?.config
+    ?? strategyConfigForVisualReview(active.config, earlyOrbMomentum);
   const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, effectiveConfig);
   const strategyVersion = active.versionId
     ? `${active.strategyKey}:${active.versionId}:${active.versionNumber ?? "unknown"}`

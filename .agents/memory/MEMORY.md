@@ -86,3 +86,4 @@
 - [Historical index startup race](historical-index-startup-race.md) — after restore or restart, load the committed manifest once before retrying a worker generation.
 - [Visual Review queue authority](visual-review-queue-authority.md) — joined candidate/snapshot projection owns selectable counts and navigation; missing snapshots stay explicit diagnostics.
 - [Durable human review recovery](durable-human-review-recovery.md) — persist the first reviewed set payload with reviewer-scoped revisions so restart and cache eviction can rehydrate exact review state.
+- [Governed replay pinning](governed-replay-pinning.md) — resolve strategy identity/config once per generation and carry that immutable pin through cache, workers, snapshots, and provenance.

@@ -63,7 +63,7 @@ import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
-import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds } from "./strategy/config.js";
+import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds, type StrategyConfig } from "./strategy/config.js";
 import {
   activeAccountPositionFromTrade,
   accountEntryBlockFor,
@@ -225,6 +225,8 @@ export type BacktestRequest = ReplayDatasetOptions & {
   visualReviewEarlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
   /** Visual Review-only strategy switches; disabled strategies cannot create candidates or positions. */
   visualReviewEnabledStrategies?: Partial<VisualReviewStrategyToggles>;
+  /** Internal server-owned override used to pin a replay to one strategy version. */
+  strategyConfigOverride?: StrategyConfig;
 };
 
 export type CandidateCausalIdentity = {
@@ -5072,7 +5074,9 @@ export function runCausalBacktest(
 ): BacktestReport {
   const specification = getFuturesContractSpecification(request.symbol);
   const activeStrategy = activeShadowStrategySnapshot();
-  const replayStrategyConfig = request.visualReviewEarlyOrbMomentum
+  const replayStrategyConfig = request.strategyConfigOverride
+    ? request.strategyConfigOverride
+    : request.visualReviewEarlyOrbMomentum
     ? strategyConfigForVisualReview(
       activeStrategy.config,
       normalizeVisualReviewEarlyOrbMomentum(request.visualReviewEarlyOrbMomentum),

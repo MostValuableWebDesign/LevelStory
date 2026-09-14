@@ -72,6 +72,7 @@ try {
     executionMode: "ohlcv_modeled",
     visualReviewEarlyOrbMomentum: request.earlyOrbMomentum,
     visualReviewEnabledStrategies: request.enabledStrategies,
+    strategyConfigOverride: request.governedStrategy?.config,
   }, undefined, dataset, ({ completedSessions: completed, totalSessions: total }) => {
     emitProgress({
       phase: "replaying_sessions",

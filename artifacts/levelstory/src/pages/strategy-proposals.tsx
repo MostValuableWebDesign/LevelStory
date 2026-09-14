@@ -27,6 +27,10 @@ type Proposal = {
   supportingExampleIds?: string[];
   conflictingExampleIds?: string[];
   sourceTeachingIds: string[];
+  deterministicRuleDiff?: Array<{ field: string; value: number | boolean }>;
+  proposalPayload?: {
+    governanceParent?: { configSnapshot?: Record<string, unknown>; versionId?: string | null; formulaHash?: string };
+  };
   validationRunId: string | null;
   candidateVersionId: string | null;
   rejectionReason: string | null;
@@ -36,7 +40,57 @@ type Proposal = {
 };
 type ValidationRun = { id: string; status: string; progressStage?: string; progressPercent?: number; warnings: string[]; conflicts: string[]; regressions: string[]; beforeMetrics?: Record<string, unknown> | null; afterMetrics?: Record<string, unknown> | null; errorMessage?: string | null; completedAt?: string | null };
 type Detail = { proposal: Proposal; auditEvents: Array<{ id: string; actorId: string; action: string; fromStatus: string | null; toStatus: string | null; reason: string | null; createdAt: string }>; validationRuns: ValidationRun[]; strategyVersion: Record<string, unknown> | null };
-type ActiveStrategy = { formulaVersion: string; formulaHash: string; versionNumber: number | null; activatedAt: string | null; activatedBy: string | null; source: string };
+type ActiveStrategy = { formulaVersion: string; formulaHash: string; versionNumber: number | null; versionId?: string | null; activatedAt: string | null; activatedBy: string | null; source: string; config?: Record<string, unknown> };
+
+type StrategySetting = {
+  field: string;
+  label: string;
+  units: string;
+  explanation: string;
+  type: "boolean" | "number";
+  min?: number;
+  max?: number;
+  step?: number;
+};
+
+const STRATEGY_SETTINGS: readonly StrategySetting[] = [
+  {
+    field: "patienceEntryBufferTicks",
+    label: "Patience entry confirmation buffer",
+    units: "MES ticks",
+    type: "number",
+    min: 4,
+    max: 4,
+    step: 1,
+    explanation: "Fixed at four MES ticks (1.00 index point) by the governed formula.",
+  },
+  {
+    field: "earlyOrbMomentumContinuationEnabled",
+    label: "Early ORB Momentum continuation",
+    units: "enabled / disabled",
+    type: "boolean",
+    explanation: "Controls whether the Early ORB Momentum continuation edge can qualify a candidate.",
+  },
+  {
+    field: "earlyOrbMomentumEligibilityCutoffMinutes",
+    label: "Early ORB Momentum P-open cutoff",
+    units: "ET minutes after midnight",
+    type: "number",
+    min: 0,
+    max: 1440,
+    step: 1,
+    explanation: "Limits Early ORB Momentum patience opens to the configured session-time boundary.",
+  },
+  {
+    field: "earlyOrbMomentumMinimumCloseDistanceTicks",
+    label: "Early ORB Momentum minimum close distance",
+    units: "MES ticks",
+    type: "number",
+    min: 1,
+    step: 1,
+    explanation: "Requires the confirming close to clear the relevant ORB boundary by at least this many MES ticks.",
+  },
+] as const;
 
 const TRADING_EDGES = [
   "ORB Pullback Continuation",
@@ -147,7 +201,25 @@ export default function StrategyProposals() {
       const proposal = await api<Proposal>("/strategy-proposals", {
         method: "POST",
         headers: { "Idempotency-Key": `proposal:${crypto.randomUUID()}` },
-       body: JSON.stringify({ title: String(form.get("title")), hypothesis: String(form.get("hypothesis")), rationale: String(form.get("rationale")), sourceTeachingIds, proposalPayload: { mode: "shadow_only", source: "human_teaching", ruleDiff: [{ field: String(form.get("ruleField") || "patienceEntryBufferTicks"), value: (() => { const raw = String(form.get("ruleValue") ?? ""); return raw === "true" ? true : raw === "false" ? false : Number(raw); })() }] } }),
+        body: JSON.stringify({
+          title: String(form.get("title")),
+          hypothesis: String(form.get("hypothesis")),
+          rationale: String(form.get("rationale")),
+          sourceTeachingIds,
+          proposalPayload: {
+            mode: "shadow_only",
+            source: "human_teaching",
+            ruleDiff: STRATEGY_SETTINGS
+              .filter((setting) => form.get(`change_${setting.field}`) === "on")
+              .map((setting) => {
+                const raw = String(form.get(`value_${setting.field}`) ?? "");
+                return {
+                  field: setting.field,
+                  value: setting.type === "boolean" ? raw === "true" : Number(raw),
+                };
+              }),
+          },
+        }),
       });
       setShowCreate(false);
       setMessage("Draft proposal created. Validation is still required.");
@@ -181,16 +253,16 @@ export default function StrategyProposals() {
             {loading ? <div className="flex items-center gap-2 border-t border-border px-5 py-8 text-xs text-muted-foreground"><LoaderCircle size={14} className="animate-spin" />Loading governance records…</div> : proposals.length === 0 ? <div className="border-t border-border px-5 py-10 text-center text-xs leading-5 text-muted-foreground">{teachings.length ? "No proposals yet. Turn structured teaching into a draft for review." : "Persist a valid teaching example in Visual Review before creating a proposal."}</div> : <div className="divide-y divide-border border-t border-border">{proposals.map((item) => <button key={item.id} type="button" onClick={() => void selectProposal(item.id)} className={`w-full px-5 py-4 text-left transition hover:bg-muted/40 ${selectedId === item.id ? "bg-accent/10" : ""}`}><div className="flex items-start justify-between gap-3"><span className="min-w-0 text-xs font-bold leading-5">{item.title}</span><StatusPill status={item.status} /></div><span className="mono mt-2 block text-[9px] text-muted-foreground">{item.sourceTeachingIds.length} evidence source{item.sourceTeachingIds.length === 1 ? "" : "s"} · updated {new Date(item.updatedAt).toLocaleDateString()}</span></button>)}</div>}
           </Panel>
           <div className="space-y-5">
-            {detail ? <ProposalDetail detail={detail} latestRun={latestRun} onAction={runAction} teachings={teachings} /> : <Panel accent><div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><GitPullRequest size={24} className="mb-4 text-accent" /><h2 className="display text-xl font-bold">No proposal selected.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Select a proposal or create one from a persisted teaching example.</p></div></Panel>}
+            {detail ? <ProposalDetail detail={detail} latestRun={latestRun} onAction={runAction} teachings={teachings} activeStrategy={activeStrategy} /> : <Panel accent><div className="flex min-h-[360px] flex-col items-center justify-center px-8 text-center"><GitPullRequest size={24} className="mb-4 text-accent" /><h2 className="display text-xl font-bold">No proposal selected.</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Select a proposal or create one from a persisted teaching example.</p></div></Panel>}
           </div>
         </div>
       </div>
     </main>
-    {showCreate && <CreateProposalModal teachings={teachings} pending={creating} onClose={() => setShowCreate(false)} onSubmit={create} />}
+     {showCreate && <CreateProposalModal teachings={teachings} activeStrategy={activeStrategy} pending={creating} onClose={() => setShowCreate(false)} onSubmit={create} />}
   </LevelStoryShell>;
 }
 
-function ProposalDetail({ detail, latestRun, onAction, teachings }: { detail: Detail; latestRun?: ValidationRun; onAction: (action: string, reason?: string) => void; teachings: TeachingExample[] }) {
+function ProposalDetail({ detail, latestRun, onAction, teachings, activeStrategy }: { detail: Detail; latestRun?: ValidationRun; onAction: (action: string, reason?: string) => void; teachings: TeachingExample[]; activeStrategy: ActiveStrategy | null }) {
   const { proposal } = detail;
   const sources = useMemo(() => teachings.filter((item) => proposal.sourceTeachingIds.includes(item.id)), [proposal.sourceTeachingIds, teachings]);
   const [reason, setReason] = useState("");
@@ -201,7 +273,7 @@ function ProposalDetail({ detail, latestRun, onAction, teachings }: { detail: De
     <Panel>
       <div className="border-b border-border px-5 py-5 sm:px-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="eyebrow text-muted-foreground">Advisory proposal / {proposal.id.slice(0, 8)}</div><h2 className="display mt-1 text-2xl font-bold">{proposal.title}</h2></div><StatusPill status={proposal.status} /></div><p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">{proposal.hypothesis}</p></div>
       <div className="grid gap-4 border-b border-border px-5 py-5 sm:grid-cols-3 sm:px-6"><InfoCell label="Created by" value={proposal.createdBy} icon={<UserRound size={13} />} /><InfoCell label="Evidence sources" value={`${sources.length} immutable example${sources.length === 1 ? "" : "s"}`} icon={<ShieldCheck size={13} />} /><InfoCell label="Executable impact" value="None until separately activated" icon={<LockKeyhole size={13} />} /></div>
-       <div className="space-y-5 px-5 py-5 sm:px-6"><div><div className="eyebrow text-muted-foreground">Plain-language proposal</div><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{proposal.plainLanguageSummary || proposal.hypothesis}</p></div><div className="grid gap-4 md:grid-cols-2"><RuleCell label="Current rule" value={proposal.currentRule || "Current deterministic formula"} /><RuleCell label="Proposed rule" value={proposal.proposedRule || proposal.hypothesis} /></div><div className="grid gap-3 sm:grid-cols-3"><InfoCell label="Source formula" value={proposal.sourceFormulaVersion || "Recorded in evidence"} icon={<GitPullRequest size={13} />} /><InfoCell label="Supporting examples" value={String(proposal.supportingExampleIds?.length ?? sources.length)} icon={<CheckCircle2 size={13} />} /><InfoCell label="Conflicting examples" value={String(proposal.conflictingExampleIds?.length ?? 0)} icon={<AlertTriangle size={13} />} /></div><div><div className="eyebrow text-muted-foreground">Rationale</div><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{proposal.rationale}</p></div>{proposal.clarificationRequest && <div className="border border-[hsl(var(--warning)/.35)] bg-[hsl(var(--warning)/.08)] px-3 py-3 text-xs leading-5"><strong>Clarification requested:</strong> {proposal.clarificationRequest}</div>}{proposal.rejectionReason && <div className="border border-destructive/30 bg-destructive/8 px-3 py-3 text-xs leading-5"><strong>Rejected:</strong> {proposal.rejectionReason}</div>}</div>
+        <div className="space-y-5 px-5 py-5 sm:px-6"><div><div className="eyebrow text-muted-foreground">Plain-language proposal</div><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{proposal.plainLanguageSummary || proposal.hypothesis}</p></div><div className="grid gap-4 md:grid-cols-2"><RuleCell label="Current rule" value={proposal.currentRule || "Current deterministic formula"} /><RuleCell label="Proposed rule" value={proposal.proposedRule || proposal.hypothesis} /></div><ConfigurationDiff proposal={proposal} activeStrategy={activeStrategy} /><div className="grid gap-3 sm:grid-cols-3"><InfoCell label="Source formula" value={proposal.sourceFormulaVersion || "Recorded in evidence"} icon={<GitPullRequest size={13} />} /><InfoCell label="Supporting examples" value={String(proposal.supportingExampleIds?.length ?? sources.length)} icon={<CheckCircle2 size={13} />} /><InfoCell label="Conflicting examples" value={String(proposal.conflictingExampleIds?.length ?? 0)} icon={<AlertTriangle size={13} />} /></div><div><div className="eyebrow text-muted-foreground">Rationale</div><p className="mt-2 whitespace-pre-wrap text-xs leading-5">{proposal.rationale}</p></div>{proposal.clarificationRequest && <div className="border border-[hsl(var(--warning)/.35)] bg-[hsl(var(--warning)/.08)] px-3 py-3 text-xs leading-5"><strong>Clarification requested:</strong> {proposal.clarificationRequest}</div>}{proposal.rejectionReason && <div className="border border-destructive/30 bg-destructive/8 px-3 py-3 text-xs leading-5"><strong>Rejected:</strong> {proposal.rejectionReason}</div>}</div>
       <div className="flex flex-wrap gap-2 border-t border-border px-5 py-4 sm:px-6">
         {canValidate && <ActionButton icon={<RotateCcw size={13} />} onClick={() => onAction("validate")}>Queue validation</ActionButton>}
         {canApprove && <ActionButton icon={<CheckCircle2 size={13} />} onClick={() => onAction("approve", reason || "Approved after required validation passed.")}>Approve</ActionButton>}
@@ -229,8 +301,15 @@ function ProposalDetail({ detail, latestRun, onAction, teachings }: { detail: De
   </div>;
 }
 
-function CreateProposalModal({ teachings, pending, onClose, onSubmit }: { teachings: TeachingExample[]; pending: boolean; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {
-   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 p-4"><div className="w-full max-w-2xl border border-border bg-card shadow-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><div className="eyebrow text-muted-foreground">New advisory proposal</div><h2 className="mt-1 text-base font-bold">Keep the hypothesis separate from execution.</h2></div><button type="button" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close proposal form">×</button></div><form onSubmit={onSubmit} className="space-y-4 px-5 py-5"><Field name="title" label="Proposal title" placeholder="e.g. Review 8-tick continuation confirmation" required /><Field name="hypothesis" label="Hypothesis" placeholder="What deterministic boundary should be investigated?" required /><label className="block"><span className="eyebrow block text-muted-foreground">Rationale</span><textarea name="rationale" required rows={4} className="field mt-1.5 resize-none" placeholder="Describe the causal evidence and why it deserves validation." /></label><div className="grid gap-3 sm:grid-cols-[1fr_180px]"><label className="block"><span className="eyebrow block text-muted-foreground">Typed rule</span><select name="ruleField" className="field mt-1.5"><option value="patienceEntryBufferTicks">Patience entry buffer (fixed at 8)</option><option value="earlyOrbMomentumContinuationEnabled">Enable Early ORB Momentum (true/false)</option><option value="earlyOrbMomentumEligibilityCutoffMinutes">Early ORB P open cutoff (ET minutes)</option><option value="earlyOrbMomentumMinimumCloseDistanceTicks">Early ORB minimum ORB distance (ticks)</option></select></label><Field name="ruleValue" label="Candidate value" placeholder="8, 630, 1, or true" required /></div><label className="block"><span className="eyebrow block text-muted-foreground">Source teaching examples</span><select name="sourceTeachingIds" multiple required className="field mt-1.5 h-28">{teachings.map((teaching) => <option key={teaching.id} value={teaching.id}>{teaching.judgment.replaceAll("_", " ")} · revision {teaching.revision} · {teaching.id.slice(0, 10)}</option>)}</select><span className="mt-1 block text-[10px] text-muted-foreground">Hold Ctrl/Cmd to select independent examples.</span></label><div className="flex items-center justify-between gap-3 border-t border-border pt-4"><span className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Creating a draft never changes the active Shadow Mode formula.</span><div className="flex gap-2"><button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase">Cancel</button><button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-[10px] font-bold uppercase text-primary-foreground disabled:opacity-50">{pending && <LoaderCircle size={13} className="animate-spin" />}Create draft</button></div></div></form></div></div>;
+function ConfigurationDiff({ proposal, activeStrategy }: { proposal: Proposal; activeStrategy: ActiveStrategy | null }) {
+  const diff = proposal.deterministicRuleDiff ?? [];
+  const pinnedConfig = proposal.proposalPayload?.governanceParent?.configSnapshot ?? activeStrategy?.config ?? {};
+  return <div className="border border-border bg-muted/15 px-4 py-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="eyebrow text-muted-foreground">Exact typed configuration diff</div><p className="mt-1 text-[10px] text-muted-foreground">The before value is pinned to the parent configuration captured for this proposal. Free-text hypotheses remain non-executable.</p></div><span className="mono text-[9px] text-muted-foreground">{diff.length} typed change{diff.length === 1 ? "" : "s"}</span></div>{diff.length ? <div className="mt-3 divide-y divide-border/70 border-t border-border/70">{diff.map((change) => { const setting = STRATEGY_SETTINGS.find((item) => item.field === change.field); const before = pinnedConfig[change.field]; return <div key={change.field} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_120px_24px_120px] sm:items-center"><div><div className="text-xs font-bold">{setting?.label ?? change.field}</div><div className="mt-1 text-[10px] text-muted-foreground">{setting?.explanation ?? "Unknown setting; validation will reject it."}</div></div><div><div className="eyebrow text-muted-foreground">Current</div><div className="mono mt-1 text-[10px]">{String(before ?? "—")}</div></div><div className="hidden text-center text-muted-foreground sm:block">→</div><div><div className="eyebrow text-muted-foreground">Proposed</div><div className="mono mt-1 text-[10px] text-accent-foreground">{String(change.value)}{setting ? ` ${setting.units}` : ""}</div></div></div>; })}</div> : <div className="mt-3 border-t border-border/70 pt-3 text-xs text-destructive">No typed executable change was supplied.</div>}</div>;
+}
+
+function CreateProposalModal({ teachings, activeStrategy, pending, onClose, onSubmit }: { teachings: TeachingExample[]; activeStrategy: ActiveStrategy | null; pending: boolean; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {
+  const config = activeStrategy?.config ?? {};
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-foreground/35 p-4"><div className="mx-auto my-4 w-full max-w-3xl border border-border bg-card shadow-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><div className="eyebrow text-muted-foreground">New advisory proposal</div><h2 className="mt-1 text-base font-bold">Keep the hypothesis separate from execution.</h2></div><button type="button" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close proposal form">×</button></div><form onSubmit={onSubmit} className="space-y-4 px-5 py-5"><Field name="title" label="Proposal title" placeholder="e.g. Review Early ORB continuation eligibility" required /><Field name="hypothesis" label="Unsupported hypothesis / teaching context" placeholder="Describe the causal boundary to investigate. This text is not executable." required /><label className="block"><span className="eyebrow block text-muted-foreground">Rationale</span><textarea name="rationale" required rows={4} className="field mt-1.5 resize-none" placeholder="Describe the causal evidence and why it deserves validation." /></label><div className="border border-border bg-muted/15 px-4 py-4"><div className="flex items-start gap-2"><ShieldCheck size={14} className="mt-0.5 text-accent" /><div><div className="eyebrow text-muted-foreground">Supported executable settings</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Select one or more typed changes. Values are validated again on the server; unknown fields, numeric strings, decimals, and out-of-range values are rejected.</p></div></div><div className="mt-4 space-y-3">{STRATEGY_SETTINGS.map((setting) => { const current = config[setting.field]; const fallback = setting.type === "boolean" ? false : setting.field === "patienceEntryBufferTicks" ? 4 : setting.field === "earlyOrbMomentumEligibilityCutoffMinutes" ? 630 : 1; return <div key={setting.field} className="grid gap-3 border-t border-border/70 pt-3 md:grid-cols-[auto_minmax(0,1fr)_170px] md:items-start"><label className="flex items-center gap-2 pt-2 text-[11px] font-bold"><input type="checkbox" name={`change_${setting.field}`} className="h-3.5 w-3.5 accent-[hsl(var(--accent))]" />Change</label><div><div className="text-xs font-bold">{setting.label}</div><div className="mt-1 text-[10px] leading-4 text-muted-foreground">{setting.explanation}</div><div className="mono mt-1 text-[9px] text-muted-foreground">Current: {String(current ?? fallback)} {setting.units}{setting.min !== undefined ? ` · valid ${setting.min}${setting.max !== undefined ? `–${setting.max}` : "+"}` : ""}</div></div><label className="block"><span className="eyebrow block text-muted-foreground">Proposed value</span>{setting.type === "boolean" ? <select name={`value_${setting.field}`} defaultValue={String(current ?? fallback)} className="field mt-1.5"><option value="true">Enabled</option><option value="false">Disabled</option></select> : <input type="number" name={`value_${setting.field}`} defaultValue={String(current ?? fallback)} min={setting.min} max={setting.max} step={setting.step} disabled={setting.field === "patienceEntryBufferTicks"} className="field mt-1.5 disabled:cursor-not-allowed disabled:opacity-60" />}<span className="mt-1 block text-[9px] text-muted-foreground">{setting.units}</span></label></div>; })}</div></div><label className="block"><span className="eyebrow block text-muted-foreground">Source teaching examples</span><select name="sourceTeachingIds" multiple required className="field mt-1.5 h-28">{teachings.map((teaching) => <option key={teaching.id} value={teaching.id}>{teaching.judgment.replaceAll("_", " ")} · revision {teaching.revision} · {teaching.id.slice(0, 10)}</option>)}</select><span className="mt-1 block text-[10px] text-muted-foreground">Hold Ctrl/Cmd to select independent examples.</span></label><div className="flex items-center justify-between gap-3 border-t border-border pt-4"><span className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Reviewer creates evidence-backed drafts. Approver validates and approves. Activator alone changes Shadow Mode. The proposal owner cannot approve or activate their own proposal.</span><div className="flex gap-2"><button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-2 text-[10px] font-bold uppercase">Cancel</button><button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-[10px] font-bold uppercase text-primary-foreground disabled:opacity-50">{pending && <LoaderCircle size={13} className="animate-spin" />}Create draft</button></div></div></form></div></div>;
 }
 
 function Field({ name, label, placeholder, required }: { name: string; label: string; placeholder: string; required?: boolean }) {

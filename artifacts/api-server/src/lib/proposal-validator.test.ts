@@ -57,8 +57,8 @@ test("typed candidate comparison reports a governed no-op for the fixed buffer",
 
 test("candidate construction rejects free-form and unknown rule changes", () => {
   assert.throws(() => buildCandidateConfiguration({ mode: "execute arbitrary text" }), /typed deterministicRuleDiff/);
-  assert.throws(() => buildCandidateConfiguration([{ field: "notAFormulaField", value: 1 }]), /Unknown or invalid/);
-   assert.throws(() => buildCandidateConfiguration([{ field: "patienceEntryBufferTicks", value: 2 }]), /exactly four MES ticks/);
+   assert.throws(() => buildCandidateConfiguration([{ field: "notAFormulaField", value: 1 }]), /Unknown deterministic rule field/);
+    assert.throws(() => buildCandidateConfiguration([{ field: "patienceEntryBufferTicks", value: 2 }]), /exactly 4/);
 });
 
 test("candidate preserves non-default parent settings while changing only the typed rule", () => {
@@ -70,4 +70,53 @@ test("candidate preserves non-default parent settings while changing only the ty
    assert.equal(candidate.phase4BreakoutVolumeRatio, 1.9);
     assert.equal(parent.patienceEntryBufferTicks, 4);
     assert.equal(candidate.patienceEntryBufferTicks, 4);
+});
+
+test("typed rule validation rejects coercion, non-finite values, decimals, and duplicate fields", () => {
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumContinuationEnabled", value: "false" }]),
+    /must be a boolean/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumEligibilityCutoffMinutes", value: "630" }]),
+    /finite integer/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumEligibilityCutoffMinutes", value: Number.NaN }]),
+    /finite integer/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumEligibilityCutoffMinutes", value: 630.5 }]),
+    /finite integer/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([
+      { field: "earlyOrbMomentumMinimumCloseDistanceTicks", value: 1 },
+      { field: "earlyOrbMomentumMinimumCloseDistanceTicks", value: 2 },
+    ]),
+    /Duplicate deterministic rule field/,
+  );
+});
+
+test("typed rule validation enforces executable bounds and rejects unknown fields", () => {
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumEligibilityCutoffMinutes", value: -1 }]),
+    /at least 0/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumEligibilityCutoffMinutes", value: 1441 }]),
+    /at most 1440/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumMinimumCloseDistanceTicks", value: 0 }]),
+    /at least 1/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "unknownField", value: 1 }]),
+    /Unknown deterministic rule field/,
+  );
+  assert.throws(
+    () => buildCandidateConfiguration([{ field: "earlyOrbMomentumMinimumCloseDistanceTicks", value: 1, unit: "points" }]),
+    /Unknown deterministic rule field property/,
+  );
 });

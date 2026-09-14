@@ -80,6 +80,15 @@ export type VisualValidationTeachingJudgment = "missed_trade" | "false_positive_
 export type VisualValidationTeachingConfidence = "low" | "medium" | "high";
 export type VisualValidationTeachingSetup = StrategyId;
 
+export type GovernedStrategyPin = {
+  strategyKey: "MES_SHADOW";
+  versionId: string | null;
+  versionNumber: number | null;
+  formulaVersion: string;
+  formulaHash: string;
+  config: StrategyConfig;
+};
+
 export type VisualValidationRequest = {
   symbol: string;
   endDate: string;
@@ -92,6 +101,8 @@ export type VisualValidationRequest = {
   earlyOrbMomentum?: VisualReviewEarlyOrbMomentumSettings;
   enabledStrategies?: Partial<VisualReviewStrategyToggles>;
   regenerateFresh?: boolean;
+  /** Server-resolved identity/configuration captured once when a generation job starts. */
+  governedStrategy?: GovernedStrategyPin;
 };
 
 export function withGovernedVisualValidationRequest(request: VisualValidationRequest): VisualValidationRequest {
@@ -2571,10 +2582,11 @@ function buildMachineSnapshot(
 
 export function buildVisualValidationSet(request: VisualValidationRequest): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   request = withGovernedVisualValidationRequest(request);
-  const effectiveStrategyConfig = strategyConfigForVisualReview(
-    activeShadowStrategySnapshot().config,
-    normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
-  );
+  const effectiveStrategyConfig = request.governedStrategy?.config
+    ?? strategyConfigForVisualReview(
+      activeShadowStrategySnapshot().config,
+      normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
+    );
   const formulaHash = formulaConfigurationHash({ symbol: request.symbol }, effectiveStrategyConfig);
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
@@ -2664,10 +2676,11 @@ export function buildHistoricalVisualValidationSetFromReport(
   onSnapshot?: (snapshots: readonly VisualValidationSnapshot[], totalSnapshots: number) => void,
 ): Omit<VisualValidationSet, "reviewSetId" | "createdAt"> {
   request = withGovernedVisualValidationRequest(request);
-  const effectiveStrategyConfig = strategyConfigForVisualReview(
-    activeShadowStrategySnapshot().config,
-    normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
-  );
+  const effectiveStrategyConfig = request.governedStrategy?.config
+    ?? strategyConfigForVisualReview(
+      activeShadowStrategySnapshot().config,
+      normalizeVisualReviewEarlyOrbMomentum(request.earlyOrbMomentum),
+    );
   const fixtureReport: Pick<BacktestReport, "symbol" | "formulaHash" | "executionMode"> = {
     symbol: request.symbol,
     formulaHash: formulaConfigurationHash({ symbol: request.symbol }, effectiveStrategyConfig),
