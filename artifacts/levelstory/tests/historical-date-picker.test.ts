@@ -75,6 +75,11 @@ test("popover has a responsive maximum width around 400px", () => {
   assert.match(pickerSource, /max-w-\[calc\(100vw-1\.5rem\)\]/);
 });
 
+test("calendar stays below the date field instead of flipping to the top", () => {
+  assert.match(pickerSource, /side="bottom"/);
+  assert.match(pickerSource, /avoidCollisions=\{false\}/);
+});
+
 test("footer date action controls are removed", () => {
   assert.doesNotMatch(pickerSource, /Previous calendar date|Next calendar date|Latest indexed date|aria-label="Today"/);
   assert.doesNotMatch(pickerSource, /grid grid-cols-2 gap-1 border-t/);

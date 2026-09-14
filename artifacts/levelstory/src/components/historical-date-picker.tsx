@@ -246,6 +246,7 @@ export function HistoricalDatePicker({
               align="start"
               side="bottom"
               sideOffset={6}
+              avoidCollisions={false}
                className="w-[min(400px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] overflow-hidden p-0"
               onOpenAutoFocus={(event) => event.preventDefault()}
             >
