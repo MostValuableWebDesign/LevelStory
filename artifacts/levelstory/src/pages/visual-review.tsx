@@ -386,8 +386,12 @@ function formatUtcTime(value: string): string {
   if (!value || !Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "UTC",
-    dateStyle: "medium",
-    timeStyle: "medium",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
     timeZoneName: "short",
   }).format(date);
 }

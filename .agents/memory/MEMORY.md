@@ -58,6 +58,7 @@
 - [Runner breakeven boundary](runner-breakeven-boundary.md) — a target/1R candle only creates pending state; qualify on a later completed candle and apply the tighter stop from the following candle.
 - [Target-trade breakeven removal](strong-breakout-breakeven.md) — target-bound trades no longer use a shared nine-tick favorable-excursion trigger.
 - [Chart label contract](chart-label-contract.md) — off-screen primary references need edge labels; in-range chart labels stay limited to execution levels.
+- [Intl formatting constraints](intl-formatting-constraints.md) — date/time styles cannot be combined with a time-zone name in browser Intl formatting.
 - [Uploaded chart evidence safety](uploaded-chart-evidence-safety.md) — validate image bytes, freeze setup at entry cutoff, and keep pixel-derived exits unscored.
 - [Tolerant chart evidence parsing](tolerant-chart-evidence-parsing.md) — preserve unknown vision fields conservatively; never synthesize malformed candle or price evidence.
 - [Execution management](adaptive-execution-management.md) — candidate-owned MES management uses a fixed eight-tick P-extreme stop; account risk does not reject wide structural stops.
