@@ -571,8 +571,8 @@ export default function VisualReview() {
       EARLY_ORB_MOMENTUM_CONTINUATION: storedEarlyOrbMomentumEnabled(),
     },
   }));
-  const [reviewSetId, setReviewSetId] = useState(storedReviewSetId);
-  const [reviewSetRequested, setReviewSetRequested] = useState(false);
+  const [reviewSetId, setReviewSetId] = useState(() => storedReviewSetId());
+  const [reviewSetRequested, setReviewSetRequested] = useState(() => Boolean(storedReviewSetId()));
   const [localSet, setLocalSet] = useState<VisualValidationSet | null>(null);
   const [loadLatestReviewSet, setLoadLatestReviewSet] = useState(false);
   const [freshGenerationRequested, setFreshGenerationRequested] = useState(false);

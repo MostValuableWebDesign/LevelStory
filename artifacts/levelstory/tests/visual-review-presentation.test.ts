@@ -154,6 +154,13 @@ test("Visual Review keeps the Early ORB choice local, accessible, and captured p
   assert.doesNotMatch(page, /active governed Shadow strategy configuration/);
 });
 
+test("visual review requests a saved set after an auth redirect remount", () => {
+  assert.match(
+    page,
+    /const \[reviewSetRequested, setReviewSetRequested\] = useState\(\(\) => Boolean\(storedReviewSetId\(\)\)\);/,
+  );
+});
+
 test("trade review panels collapse after generation and can be opened independently", () => {
   assert.match(page, /CLOSED_REVIEW_DISCLOSURES/);
   assert.match(page, /summary: false/);
@@ -314,8 +321,8 @@ test("visual review clears an expired generation job and returns to generation c
   assert.match(page, /The previous visual-validation generation was interrupted or expired/);
 });
 
-test("visual review waits for an explicit generation action before loading saved trade data", () => {
-  assert.match(page, /const \[reviewSetRequested, setReviewSetRequested\] = useState\(false\)/);
+test("visual review restores a saved set after login or refresh without auto-generating a new one", () => {
+  assert.match(page, /const \[reviewSetRequested, setReviewSetRequested\] = useState\(\(\) => Boolean\(storedReviewSetId\(\)\)\)/);
   assert.match(page, /enabled: reviewSetRequested && !startGeneration\.isPending && !Boolean\(generationJobId\)/);
   assert.match(page, /enabled: reviewSetRequested && Boolean\(generationJobId\)/);
   assert.match(page, /const replayReviewSetId = reviewSetRequested \?/);
