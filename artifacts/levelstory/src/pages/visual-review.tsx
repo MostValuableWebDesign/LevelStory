@@ -1194,7 +1194,7 @@ export default function VisualReview() {
                         </div>
                         {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
                       </section>}
-                      {activeReviewDetailTab === "technical-details" && <section id="review-detail-panel-technical-details" role="tabpanel" aria-labelledby="review-detail-tab-technical-details" data-testid="review-detail-panel-technical-details" className="space-y-5">
+                      {activeReviewDetailTab === "technical-details" && <section id="review-detail-panel-technical-details" role="tabpanel" aria-labelledby="review-detail-tab-technical-details" data-testid="review-detail-panel-technical-details" className="technical-mono space-y-5">
                         <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Technical scope:</span> identifiers and audit values are preserved for reproducibility. Expand this section only when investigating a result.</div>
                         <SnapshotCursorDetails snapshot={activeSnapshot} request={data.request} />
                         <SnapshotProvenance snapshot={activeSnapshot} />
@@ -1651,29 +1651,23 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
   };
   if (pending && !data) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
   if (data && !settingsExpanded) {
-    return <Panel accent>
-      <PanelTitle
-        eyebrow="Generated review set"
-        title={`${data.symbol} · ${data.reviewPeriod.startDate} – ${data.reviewPeriod.endDate}`}
-        right={<span className="mono text-[10px] text-muted-foreground">{data.processedDates.length} sessions</span>}
-      />
-      <div className="review-set-summary-body border-t border-border" data-testid="review-set-summary">
-        <div className="grid gap-px border-b border-border bg-border sm:grid-cols-3">
-          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Symbol</div><div className="mono mt-1 text-sm font-bold">{data.symbol}</div></div>
-          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Date range</div><div className="mono mt-1 text-xs font-bold">{data.reviewPeriod.startDate} → {data.reviewPeriod.endDate}</div></div>
-          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Sessions</div><div className="mono mt-1 text-sm font-bold">{data.processedDates.length}</div></div>
+    return <Panel accent className="review-set-summary-compact">
+      <div className="review-set-summary-bar" data-testid="review-set-summary">
+        <div className="min-w-0">
+          <div className="eyebrow text-muted-foreground">Generated review set</div>
+          <h2 className="mt-1 text-base font-bold tracking-[-.02em]">{data.symbol} <span className="text-muted-foreground">·</span> {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</h2>
+          <div className="mt-1 text-[11px] text-muted-foreground">{data.generationOrigin === "cached" ? "Cached compatible result" : "Freshly generated result"} · immutable historical evidence</div>
         </div>
-        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-xs font-semibold">{data.generationOrigin === "cached" ? "Cached compatible result" : "Freshly generated result"}</div>
-            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">The generated set is immutable. Edit settings without losing the current results, or generate another set when ready.</p>
-          </div>
-          <form onSubmit={onSubmit} className="flex shrink-0 flex-wrap gap-2">
-            <button type="button" onClick={onToggleSettings} className="rounded-md border border-border bg-card px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted" data-testid="button-edit-review-settings">Edit settings</button>
-            <button type="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-primary-foreground hover:opacity-90 disabled:opacity-55" data-testid="button-generate-another-review-set">Generate</button>
-            <button type="button" disabled={pending} onClick={onRegenerateFresh} className="rounded-md border border-accent/55 bg-accent/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15 disabled:opacity-55" data-testid="button-regenerate-fresh-summary">Regenerate</button>
-          </form>
+        <div className="review-set-summary-metrics" aria-label="Generated review set summary">
+          <span><strong>{data.symbol}</strong><small>Symbol</small></span>
+          <span><strong>{data.processedDates.length}</strong><small>Sessions</small></span>
+          <span><strong>{data.tradeCandidates.length}</strong><small>Candidates</small></span>
         </div>
+        <form onSubmit={onSubmit} className="review-set-summary-actions">
+          <button type="button" onClick={onToggleSettings} className="rounded-md border border-border bg-card px-3 py-2 text-[10px] font-bold hover:bg-muted" data-testid="button-edit-review-settings">Edit settings</button>
+          <button type="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-[10px] font-bold text-primary-foreground hover:opacity-90 disabled:opacity-55" data-testid="button-generate-another-review-set">Generate</button>
+          <button type="button" disabled={pending} onClick={onRegenerateFresh} className="rounded-md border border-accent/55 bg-accent/10 px-3 py-2 text-[10px] font-bold hover:bg-accent/15 disabled:opacity-55" data-testid="button-regenerate-fresh-summary">Regenerate</button>
+        </form>
       </div>
     </Panel>;
   }
@@ -1809,7 +1803,10 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
             {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
           </select>
           <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique, reviewable candidates. A candidate matching multiple strategies is counted once.</p>
-          {unreviewableCount > 0 && <p className="mt-2 border border-accent/30 bg-accent/10 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground" role="status" data-testid="unreviewable-candidate-warning">{unreviewableCount} candidate{unreviewableCount === 1 ? "" : "s"} are retained in the review set but have no reviewable snapshot and cannot be selected.</p>}
+           {unreviewableCount > 0 && <details className="unreviewable-candidate-warning mt-2" role="status" data-testid="unreviewable-candidate-warning">
+             <summary>{unreviewableCount} candidate{unreviewableCount === 1 ? "" : "s"} retained without a reviewable snapshot</summary>
+             <p>These candidates remain in the immutable review set for auditability, but cannot be selected because no qualified chart snapshot is available.</p>
+           </details>}
         </div>
         <div ref={candidateListRef} className="trade-candidate-list border-t border-border" data-testid="trade-candidate-list">
           {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
@@ -1923,13 +1920,16 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
   const candidate = snapshot.machineEvidence.trade as CandidateTradeView | null;
   const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
   const strategyLabel = candidate?.primaryEdge ? edgeDisplayLabel(candidate.primaryEdge) : snapshot.machineLabel;
-  return <div className="border-t border-border bg-muted/20" data-testid="historical-review-sample">
+  return <div className="selected-trade-header border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
-        <div className="eyebrow mb-2 text-muted-foreground">Historical example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</div>
+         <div className="eyebrow mb-2 text-muted-foreground">Trade {String(index + 1).padStart(2, "0")} of {String(total).padStart(2, "0")}</div>
          <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{strategyLabel}</span><span className="border border-border bg-card px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{trade?.direction === "short" ? "Short" : "Long"}</span></div>
          <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Date</span> <span className="mono">{formatReviewDate(snapshot.tradingDate)}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
-         <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>
+          <details className="selection-reason-disclosure mt-2 max-w-3xl">
+            <summary>Why this candidate qualified</summary>
+            <p>{snapshot.selectionReason}</p>
+          </details>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <button type="button" onClick={onPrevious} disabled={index <= 0} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Previous sample"><ChevronLeft size={17} /></button>

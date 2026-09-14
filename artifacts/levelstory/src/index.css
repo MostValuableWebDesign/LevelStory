@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;650;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -1019,6 +1019,299 @@
 
 .levelstory-selected-pulse {
   animation: levelstory-selected-pulse .9s ease-in-out infinite;
+}
+
+/* Visual Review polish: keep the analytical page warm, readable, and chart-first
+   without changing the shared application shell or trading evidence colors. */
+@layer components {
+  .visual-review-page {
+    --background: 210 33% 97%;
+    --foreground: 216 54% 20%;
+    --border: 214 28% 87%;
+    --card: 0 0% 100%;
+    --card-foreground: 216 54% 20%;
+    --card-border: 214 28% 87%;
+    --muted: 214 30% 95%;
+    --muted-foreground: 216 19% 40%;
+    --primary: 228 79% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-border: hsl(228 79% 55%);
+    --secondary: 214 30% 95%;
+    --secondary-foreground: 216 54% 20%;
+    --accent: 39 92% 55%;
+    --accent-foreground: 216 54% 20%;
+    --ring: 228 79% 55%;
+    --positive: 159 88% 27%;
+    --negative: 353 60% 48%;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: hsl(var(--foreground));
+  }
+
+  .visual-review-page .display,
+  .visual-review-page .eyebrow,
+  .visual-review-page .mono:not(.technical-mono) {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: normal;
+  }
+
+  .visual-review-page .display {
+    font-weight: 700;
+  }
+
+  .visual-review-page .eyebrow {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    text-transform: none;
+  }
+
+  .visual-review-page .mono:not(.technical-mono) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .visual-review-page .technical-mono,
+  .visual-review-page .technical-mono .mono {
+    font-family: var(--app-font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: normal;
+  }
+
+  .visual-review-page .surface,
+  .visual-review-page .control-ribbon {
+    border-radius: .7rem;
+    box-shadow: 0 1px 2px hsl(216 54% 20% / .04), 0 8px 22px hsl(216 54% 20% / .045);
+  }
+
+  .visual-review-page .visual-review-header {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .visual-review-page .visual-review-header h1 {
+    font-size: clamp(1.75rem, 2.4vw, 2rem);
+    font-weight: 700;
+    letter-spacing: -.035em;
+  }
+
+  .visual-review-page .visual-review-header p {
+    max-width: 48rem;
+    font-size: .875rem;
+    line-height: 1.5;
+  }
+
+  .visual-review-page [data-testid="visual-review-tabs"] {
+    margin-bottom: 1rem;
+    border-radius: .7rem;
+    background: hsl(var(--card));
+  }
+
+  .visual-review-page [data-testid="visual-review-tabs"] > div {
+    padding: .5rem;
+  }
+
+  .visual-review-page .review-set-summary-compact {
+    border-radius: .7rem;
+  }
+
+  .visual-review-page .review-set-summary-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: .85rem 1rem;
+  }
+
+  .visual-review-page .review-set-summary-metrics {
+    display: flex;
+    align-items: stretch;
+    gap: .5rem;
+  }
+
+  .visual-review-page .review-set-summary-metrics span {
+    display: grid;
+    min-width: 4.5rem;
+    gap: .1rem;
+    border-left: 1px solid hsl(var(--border));
+    padding-left: .75rem;
+  }
+
+  .visual-review-page .review-set-summary-metrics strong {
+    font-size: .9rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .visual-review-page .review-set-summary-metrics small {
+    color: hsl(var(--muted-foreground));
+    font-size: .68rem;
+  }
+
+  .visual-review-page .review-set-summary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .4rem;
+  }
+
+  .visual-review-page .visual-review-workspace {
+    grid-template-columns: minmax(250px, 290px) minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .visual-review-page .visual-review-trade-rail {
+    top: 4rem;
+    max-height: calc(100dvh - 5rem);
+  }
+
+  .visual-review-page .trade-candidate-list {
+    max-height: min(62dvh, 680px);
+  }
+
+  .visual-review-page .trade-candidate-row {
+    min-height: 68px;
+    padding: .65rem .7rem;
+  }
+
+  .visual-review-page .trade-candidate-row.is-selected {
+    border-left-color: hsl(var(--primary));
+    background: hsl(228 100% 97%);
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / .18);
+  }
+
+  .visual-review-page .trade-candidate-row.is-selected:hover {
+    background: hsl(228 100% 95%);
+  }
+
+  .visual-review-page .selected-trade-header {
+    background: hsl(var(--card));
+  }
+
+  .visual-review-page .selected-trade-header > div:first-child {
+    padding-block: 1rem;
+  }
+
+  .visual-review-page .selection-reason-disclosure {
+    color: hsl(var(--muted-foreground));
+    font-size: .72rem;
+    line-height: 1.4;
+  }
+
+  .visual-review-page .selection-reason-disclosure summary,
+  .visual-review-page .unreviewable-candidate-warning summary {
+    cursor: pointer;
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+
+  .visual-review-page .selection-reason-disclosure p {
+    margin-top: .35rem;
+  }
+
+  .visual-review-page .unreviewable-candidate-warning {
+    border: 1px solid hsl(var(--accent) / .3);
+    background: hsl(var(--accent) / .1);
+    padding: .55rem .65rem;
+    color: hsl(var(--muted-foreground));
+    font-size: .68rem;
+    line-height: 1.45;
+  }
+
+  .visual-review-page .unreviewable-candidate-warning p {
+    padding-left: 1rem;
+  }
+
+  .visual-review-page .selected-trade-summary {
+    border-radius: .55rem;
+    background: hsl(var(--card));
+    padding: .7rem .85rem .85rem;
+  }
+
+  .visual-review-page .chart-frame {
+    border-radius: .7rem;
+    background: hsl(var(--card));
+    padding: .85rem 1rem 1rem;
+  }
+
+  .visual-review-page .chart-toolbar {
+    border: 1px solid hsl(var(--border));
+    border-radius: .55rem;
+    background: hsl(var(--muted) / .45);
+    padding: .4rem;
+  }
+
+  .visual-review-page .chart-control {
+    border-radius: .45rem;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: .72rem;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .visual-review-page .chart-plot-shell {
+    min-height: clamp(360px, 42vw, 520px);
+    max-height: 560px;
+  }
+
+  .visual-review-page .chart-plot-shell .visual-review-svg {
+    min-height: clamp(360px, 42vw, 520px);
+    max-height: 560px;
+  }
+
+  .visual-review-page .review-supporting-tabs {
+    border-radius: .7rem;
+    background: hsl(var(--card));
+  }
+
+  .visual-review-page .review-supporting-tabs [role="tab"] {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: normal;
+  }
+
+  @media (max-width: 900px) {
+    .visual-review-page .review-set-summary-bar {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .visual-review-page .review-set-summary-metrics {
+      grid-column: 1 / -1;
+      order: 3;
+    }
+
+    .visual-review-page .review-set-summary-actions {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .visual-review-page .review-set-summary-bar {
+      grid-template-columns: 1fr;
+      gap: .7rem;
+    }
+
+    .visual-review-page .review-set-summary-actions,
+    .visual-review-page .review-set-summary-metrics {
+      grid-column: auto;
+      grid-row: auto;
+      width: 100%;
+    }
+
+    .visual-review-page .review-set-summary-actions > * {
+      flex: 1 1 0;
+    }
+
+    .visual-review-page .review-set-summary-metrics span {
+      flex: 1 1 0;
+    }
+
+    .visual-review-page .selected-trade-header > div:first-child {
+      padding: .9rem;
+    }
+
+    .visual-review-page .chart-frame {
+      padding: .7rem;
+    }
+  }
 }
 
 @keyframes levelstory-trade-marker-pulse {
