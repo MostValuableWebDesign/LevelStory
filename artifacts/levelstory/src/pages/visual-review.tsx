@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
+  CandlestickChart,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -9,7 +10,10 @@ import {
   Download,
   FileSearch,
   Fingerprint,
+  FileSearch,
+  History,
   Info,
+  ListFilter,
   LoaderCircle,
   LockKeyhole,
   Maximize2,
@@ -19,6 +23,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  ShieldCheck,
   X,
   ZoomIn,
   ZoomOut,

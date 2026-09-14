@@ -1,0 +1,39 @@
+Polish the existing LevelStory Visual Review page. Inspect the current implementation first and preserve all trading calculations, causal boundaries, chart interactions, generation behavior, and review functionality.
+
+Keep the improved sans-serif typography and blue primary actions. Complete the design as a professional trader review workspace.
+
+1. Make chart inspection the primary activity:
+- Keep the trade queue visible beside the chart on desktop.
+- Place a compact selected-trade header and one concise metrics row immediately above the chart.
+- Reduce the confirmed-setup banner to a compact status summary with expandable explanation.
+- Make the candle inspector compact or collapsible.
+- Group secondary indicator values under an accessible “Levels and indicators” disclosure.
+- Keep all existing chart controls and evidence accessible.
+- Avoid excessive nested cards and repeated metadata.
+
+2. Add purposeful icons using the existing lucide-react dependency:
+- CandlestickChart for chart evidence.
+- SlidersHorizontal for generation settings.
+- ClipboardCheck for Human Review.
+- ListFilter for strategy filters.
+- History for review history.
+- ShieldCheck for causal integrity.
+- FileSearch for technical evidence.
+Use consistent 18–20px icons beside visible labels. Decorative icons should be hidden from assistive technology; icon-only controls need accessible names.
+
+Use small blue, teal, or violet tinted icon containers in major section headers. Reserve red and green for meaningful outcome/status information. Do not add stock trading photos, decorative price charts, or illustrations behind market data. An understated SVG illustration is appropriate only in empty states.
+
+3. Improve workflow:
+- Add a visible “Review this trade” action beside the selected trade header that opens and focuses Human Review.
+- Show saved review status in the header and queue.
+- Keep Previous/Next navigation readily accessible without jumping the page to the top.
+- Preserve the current filter and supporting tab when changing trades.
+
+4. Finish consistency:
+- Label totals as “11 total · 5 reviewable · 6 without snapshots,” using actual data.
+- Use one shared currency formatter: −$54.10 and +$87.15.
+- Apply consistent selected-row styling and readable focus indicators.
+- Use tabular numerals for prices and metrics.
+- Maintain readable chart labels after resizing.
+
+Verify at desktop and narrow widths, with zero, one, and multiple reviewable trades. Check keyboard access, expanded panels, fullscreen, filters, and trade navigation. Provide before/after screenshots and list the checks actually performed.
