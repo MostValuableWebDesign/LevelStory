@@ -66,6 +66,23 @@ test("Stage 4 keeps the candidate navigator responsive and keyboard accessible",
   assert.match(styles, /\.levelstory-trade-marker-halo/);
 });
 
+test("Visual Review keeps the chart-first review affordances explicit", () => {
+  assert.match(page, /data-testid="button-review-this-trade"/);
+  assert.match(page, /focusHumanReview/);
+  assert.match(page, /data-testid="selected-trade-saved-status"/);
+  assert.match(page, /totalCandidateCount/);
+  assert.match(page, /without snapshots/);
+  assert.match(page, /data-testid="chart-level-legend"/);
+  assert.match(page, /Levels and indicators/);
+  assert.match(page, /Confirmed setup/);
+  assert.match(page, /CandlestickChart/);
+  assert.match(page, /ListFilter/);
+  assert.match(page, /ShieldCheck/);
+  assert.match(page, /function formatCurrency/);
+  assert.match(page, /formatCurrency\(value, true\)/);
+  assert.match(styles, /\.visual-review-page :where\(button, summary, select, input, textarea\):focus-visible/);
+});
+
 test("visual review browses one stable queue across dates and categories", () => {
   assert.match(page, /const reviewQueue = queueModel\.items\.map/);
   assert.match(page, /selectedSnapshotIndex=\{reviewQueue\.findIndex/);

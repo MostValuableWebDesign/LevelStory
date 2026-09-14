@@ -10,7 +10,6 @@ import {
   Download,
   FileSearch,
   Fingerprint,
-  FileSearch,
   History,
   Info,
   ListFilter,
@@ -415,9 +414,14 @@ function formatReplayTime(value: string): string {
   }).format(date);
 }
 
-function formatAccountMoney(value: number | null | undefined): string {
+function formatCurrency(value: number | null | undefined, signed = false): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return `${value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const sign = signed ? (value < 0 ? "−" : value > 0 ? "+" : "") : value < 0 ? "−" : "";
+  return `${sign}$${Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatAccountMoney(value: number | null | undefined): string {
+  return formatCurrency(value);
 }
 
 function formatAccountPercent(value: number | null | undefined): string {
@@ -972,6 +976,14 @@ export default function VisualReview() {
     }
   };
 
+  const focusHumanReview = () => {
+    setActiveReviewDetailTab("human-review");
+    window.requestAnimationFrame(() => {
+      document.getElementById("review-detail-tab-human-review")?.focus();
+      document.getElementById("review-detail-panel-human-review")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  };
+
   const submitGeneration = (event: FormEvent) => {
     event.preventDefault();
     generateReviewSet();
@@ -1069,7 +1081,10 @@ export default function VisualReview() {
                      onKeyDown={handleVisualReviewTabKeyDown}
                      className={`min-w-0 rounded-sm border px-3 py-2.5 text-left transition sm:min-w-[180px] ${selected ? "border-primary bg-primary text-primary-foreground" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/55"}`}
                    >
-                     <span className="block text-[10px] font-bold uppercase tracking-[.08em]">{tab.label}</span>
+                   <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.08em]">
+                     {tab.id === "generate" ? <SlidersHorizontal size={18} aria-hidden="true" /> : tab.id === "chart-analysis" ? <CandlestickChart size={18} aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}
+                     {tab.label}
+                   </span>
                      <span className={`mt-0.5 block text-[10px] ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}>{tab.detail}</span>
                    </button>;
                  })}
@@ -1109,10 +1124,10 @@ export default function VisualReview() {
                       />
                     </aside>
                    <div className="visual-review-chart-column min-w-0 space-y-5">
-                      <SnapshotHeaderContent snapshot={activeSnapshot} request={data.request} index={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={reviewQueue.length} onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)} includeProvenance={false} />
+                       <SnapshotHeaderContent snapshot={activeSnapshot} request={data.request} index={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={reviewQueue.length} onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)} onReview={focusHumanReview} includeProvenance={false} />
                       <SelectedTradeSummary snapshot={activeSnapshot} />
                      <Panel>
-                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
+                       <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<span className="flex items-center gap-2"><CandlestickChart size={20} className="text-primary" aria-hidden="true" /><CausalTag /></span>} />
                        <CausalChart snapshot={activeSnapshot} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
                          setLockedEntryCandle(candle);
                          if (!candle) return;
@@ -1174,7 +1189,10 @@ export default function VisualReview() {
                             className={`min-w-0 border px-3 py-2 text-left transition ${selected ? "border-primary bg-primary text-primary-foreground" : "border-transparent text-muted-foreground hover:border-border hover:bg-card"}`}
                             data-testid={`review-detail-tab-${tab.id}`}
                           >
-                            <span className="block text-[10px] font-bold uppercase tracking-[.08em]">{tab.label}</span>
+                             <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.08em]">
+                               {tab.id === "overview" ? <CandlestickChart size={18} aria-hidden="true" /> : tab.id === "human-review" ? <ClipboardCheck size={18} aria-hidden="true" /> : tab.id === "evidence" ? <FileSearch size={18} aria-hidden="true" /> : <History size={18} aria-hidden="true" />}
+                               {tab.label}
+                             </span>
                             <span className={`mt-0.5 block text-[10px] ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}>{tab.detail}</span>
                           </button>;
                         })}
@@ -1389,7 +1407,7 @@ function ShadowReplayResults({ replay, metric }: { replay: ShadowAccountReplay; 
     </div>
     <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
       {metric("Ending realized balance", formatAccountMoney(replay.endingRealizedBalance), `Started at ${formatAccountMoney(replay.startingBalance)}`)}
-      {metric("Realized net P/L", formatAccountMoney(replay.realizedNetPnl), formatAccountPercent(replay.percentReturn), replay.realizedNetPnl < 0 ? "status-negative" : "status-positive")}
+      {metric("Realized net P/L", formatSignedMoney(replay.realizedNetPnl), formatAccountPercent(replay.percentReturn), replay.realizedNetPnl < 0 ? "status-negative" : "status-positive")}
       {metric("Return", formatAccountPercent(replay.percentReturn), "Fixed sizing · no compounding", replay.percentReturn < 0 ? "status-negative" : "status-positive")}
       {metric("Max drawdown", formatAccountMoney(replay.maxDrawdown), "Realized balance peak to trough", replay.maxDrawdown > 0 ? "status-negative" : undefined)}
     </div>
@@ -1400,10 +1418,10 @@ function ShadowReplayResults({ replay, metric }: { replay: ShadowAccountReplay; 
       {metric("Entered trades", formatAccountNumber(replay.enteredTrades, 0), `${replay.closedTrades} closed · ${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}
       {metric("Wins / losses", `${replay.wins} / ${replay.losses}`, `${replay.openTrades} open · ${replay.unscoredTrades} unscored`)}
       {metric("Win rate", `${replay.winRate.toFixed(2)}%`, "Closed trade basis")}
-      {metric("Average win", formatAccountMoney(replay.averageWin), "Per winning trade", "status-positive")}
-      {metric("Average loss", formatAccountMoney(replay.averageLoss), "Per losing trade", "status-negative")}
+      {metric("Average win", formatSignedMoney(replay.averageWin), "Per winning trade", "status-positive")}
+      {metric("Average loss", formatSignedMoney(replay.averageLoss), "Per losing trade", "status-negative")}
       {metric("Profit factor", replay.profitFactor === null ? "—" : formatAccountNumber(replay.profitFactor, 2), "Gross wins ÷ gross losses")}
-      {metric("Expectancy / trade", formatAccountMoney(replay.expectancyPerTrade), "Net expected value")}
+       {metric("Expectancy / trade", formatSignedMoney(replay.expectancyPerTrade), "Net expected value")}
       {metric("Max consecutive wins", formatAccountNumber(replay.maxConsecutiveWins, 0), "Closed sequence")}
       {metric("Max consecutive losses", formatAccountNumber(replay.maxConsecutiveLosses, 0), "Closed sequence")}
       {metric("Best trade", replay.bestTrade ? formatAccountMoney(replay.bestTrade.netPnl ?? 0) : "—", replay.bestTrade?.tradingDate ?? "No closed trades", "status-positive")}
@@ -1792,22 +1810,23 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
      groups.set(candidate.tradingDate, existing);
      return groups;
    }, new Map<string, ReviewQueueItem[]>());
-   const selectedCount = candidates.length;
-   const unreviewableCount = buildReviewQueue(data, selectedStrategyKey).unreviewableCandidates.length;
+    const selectedCount = candidates.length;
+    const unreviewableCount = buildReviewQueue(data, selectedStrategyKey).unreviewableCandidates.length;
+    const totalCandidateCount = selectedCount + unreviewableCount;
    return <Panel className="visual-review-candidate-panel">
-     <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
+      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="flex items-center gap-2 text-right text-[10px] text-muted-foreground"><ListFilter size={18} className="text-primary" aria-hidden="true" /><span className="mono" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span></span>} />
       <button type="button" className="visual-review-mobile-navigator-trigger" aria-expanded={mobileNavigatorOpen} aria-controls="visual-review-candidate-controls" onClick={() => setMobileNavigatorOpen((current) => !current)} data-testid="button-toggle-trade-navigator">
         <span><span className="eyebrow block text-muted-foreground">Trade selector</span><span className="mt-1 block text-xs font-semibold">{selectedSnapshot ? `${selectedSnapshot.tradingDate} · ${formatReviewTime((selectedSnapshot.machineEvidence.trade as CandidateTradeView | null)?.entryTime ?? "")}` : "Choose a candidate"}</span></span>
         <ChevronDown size={16} className={`transition-transform ${mobileNavigatorOpen ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
       <div id="visual-review-candidate-controls" className={`visual-review-candidate-controls ${mobileNavigatorOpen ? "is-open" : ""}`}>
         <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
-          <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} selectable trade{selectedCount === 1 ? "" : "s"}</span></label>
+           <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span className="inline-flex items-center gap-1.5"><ListFilter size={18} className="text-primary" aria-hidden="true" />Strategy filter</span><span className="mono normal-case tracking-normal">{totalCandidateCount} total · {selectedCount} reviewable · {unreviewableCount} without snapshots</span></label>
           <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
             <option value="">All strategies · {allReviewableItems.length}</option>
             {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
           </select>
-          <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique, reviewable candidates. A candidate matching multiple strategies is counted once.</p>
+           <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates. A candidate matching multiple strategies is counted once; missing snapshots remain visible as diagnostics.</p>
            {unreviewableCount > 0 && <details className="unreviewable-candidate-warning mt-2" role="status" data-testid="unreviewable-candidate-warning">
              <summary>{unreviewableCount} candidate{unreviewableCount === 1 ? "" : "s"} retained without a reviewable snapshot</summary>
              <p>These candidates remain in the immutable review set for auditability, but cannot be selected because no qualified chart snapshot is available.</p>
@@ -1831,7 +1850,7 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
                     </span>
                     <span className="mt-1 block break-words text-[13px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
-                      <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatAccountMoney(trade?.netPnl)}</span>
+                <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatSignedMoney(trade?.netPnl)}</span>
                       <span>Grade {candidate.setupGrade}</span>
                       <span className={snapshot.review.status === "unreviewed" ? "" : "text-foreground"}>{reviewStatus}</span>
                       {blocked && <span className="text-accent">Account blocked</span>}
@@ -1921,10 +1940,11 @@ function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
   </div>;
 }
 
-function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext, includeProvenance = true }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void; includeProvenance?: boolean }) {
+function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext, onReview, includeProvenance = true }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void; onReview?: () => void; includeProvenance?: boolean }) {
   const candidate = snapshot.machineEvidence.trade as CandidateTradeView | null;
   const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
   const strategyLabel = candidate?.primaryEdge ? edgeDisplayLabel(candidate.primaryEdge) : snapshot.machineLabel;
+  const savedStatus = snapshot.review.status === "unreviewed" ? null : snapshot.review.status;
   return <div className="selected-trade-header border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
@@ -1936,7 +1956,9 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
             <p>{snapshot.selectionReason}</p>
           </details>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+         {savedStatus && <span className="review-status-badge" data-testid="selected-trade-saved-status"><History size={13} aria-hidden="true" />Saved · {savedStatus.replaceAll("_", " ")}</span>}
+         {onReview && <button type="button" onClick={onReview} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-[10px] font-bold text-primary-foreground transition hover:opacity-90" data-testid="button-review-this-trade"><ClipboardCheck size={15} aria-hidden="true" />Review this trade</button>}
         <button type="button" onClick={onPrevious} disabled={index <= 0} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Previous sample"><ChevronLeft size={17} /></button>
         <button type="button" onClick={onNext} disabled={index < 0 || index >= total - 1} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted disabled:opacity-35" aria-label="Next sample"><ChevronRight size={17} /></button>
       </div>
@@ -2025,7 +2047,7 @@ function TradeNavigation({ index, total, onPrevious, onNext }: { index: number; 
 }
 
 function CausalTag() {
-  return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><LockKeyhole size={11} />Causal boundary enforced</span>;
+  return <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-[hsl(var(--positive)/.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[hsl(var(--positive))]"><ShieldCheck size={14} aria-hidden="true" />Causal boundary enforced</span>;
 }
 
 function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggleExpanded, onLockCandle }: { snapshot: VisualValidationSnapshot; expanded: boolean; lockedEntryCandle: SessionCandle | null; teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null; onToggleExpanded: () => void; onLockCandle: (candle: SessionCandle | null) => void }) {
@@ -2157,12 +2179,14 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
 function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnchor }) {
   const patience = anchor.relatedCandles.find((candle) => candle.role === "patience");
   const entry = anchor.relatedCandles.find((candle) => candle.role === "entry");
-  return <div className="mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3 sm:p-4" data-testid="category-anchor-banner">
+  return <div className="category-anchor-banner mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3" data-testid="category-anchor-banner">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><Check size={12} />Category found</div>
-        <div className="mt-1 text-sm font-bold">{anchor.label}</div>
-        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail || "The selected category resolves to an observed MES candle."}</p>
+        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><ShieldCheck size={16} aria-hidden="true" />Confirmed setup</div>
+        <details className="category-anchor-explanation mt-1">
+          <summary className="text-sm font-bold">{anchor.label} · {anchor.direction ?? "direction unavailable"}</summary>
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail || "The selected category resolves to an observed MES candle."}</p>
+        </details>
       </div>
       <div className="shrink-0 text-right">
         <div className="mono text-[11px] font-bold">{formatInterval(anchor.openTime, anchor.closeTime)}</div>
@@ -2660,7 +2684,9 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           </div>}
         </section>
          <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} crosshairPrice={pointerPosition?.price ?? null} />
-         <div ref={legendRef} className="mt-3 flex flex-wrap gap-1.5 border-y border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
+         <details className="chart-level-disclosure mt-3" open>
+          <summary className="flex cursor-pointer list-none items-center gap-2 border-y border-border py-2 text-[10px] font-bold text-muted-foreground"><CandlestickChart size={18} className="text-primary" aria-hidden="true" />Levels and indicators</summary>
+         <div ref={legendRef} className="flex flex-wrap gap-1.5 border-b border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
           {levelLegend.map((annotation) => {
             const structural = ["previous-session-high", "previous-session-low", "two-sessions-high", "two-sessions-low"].includes(annotation.id);
              const selected = focusedLevelId === annotation.id;
@@ -2716,7 +2742,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
                  <span>{label}</span>
                </button>;
              })}
-        </div>
+         </div>
+         </details>
         <div className="chart-plot-shell mt-3">
           <svg ref={interactionRef} viewBox={`${pan} 0 ${width / zoom} ${height}`} className="visual-review-svg" preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0} aria-label={`Causal annotated five-minute OHLCV chart for ${snapshot.categoryLabel}. ${sessionView === "primary" ? "Primary trade window from 9:30 AM to 1:00 PM ET." : "Full regular session from 9:30 AM to 4:00 PM ET."} Hover across the price plot or volume column to inspect the nearest candle and free-roaming crosshair price, or use the arrow keys to inspect an exact fixed five-minute slot. The right price gutter is not interactive.`} onPointerMove={handlePointerMove} onPointerLeave={() => { setPointerPosition(null); setHoveredSlot(null); }} onPointerDown={selectPointerSlot} onKeyDown={setIndexFromKeyboard}>
           <rect x={left} y={top} width={plotWidth} height={plotBottom - top} fill="transparent" pointerEvents="all" data-testid="chart-interaction-layer" />
@@ -2989,9 +3016,7 @@ function formatTradeTime(value: string | null | undefined): string {
 }
 
 function formatSignedMoney(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  const sign = value < 0 ? "−" : value > 0 ? "+" : "";
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
+  return formatCurrency(value, true);
 }
 
 function tradeExitExplanation(trade: TradeEvidenceView | null, open: boolean): string {
@@ -3239,7 +3264,7 @@ function formatTradePrice(value: number | null | undefined): string {
 }
 
 function formatTradeMoney(value: number | null | undefined, open: boolean): string {
-  return open || typeof value !== "number" || !Number.isFinite(value) ? "—" : `$${value.toFixed(2)}`;
+  return open ? "—" : formatCurrency(value, true);
 }
 
 function formatTargetUpdateTime(value: number | null | undefined): string {
