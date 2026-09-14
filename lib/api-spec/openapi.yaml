@@ -4881,7 +4881,7 @@ components:
         formulaHash: { type: string, pattern: '^[0-9a-f]{64}$' }
         formulaVersion: { type: string }
         sourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
-        cacheSourceFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+        cacheSourceFingerprint: { type: string }
         freshness:
           type: object
           properties:

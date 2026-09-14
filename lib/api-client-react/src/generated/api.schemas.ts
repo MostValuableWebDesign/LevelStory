@@ -5447,7 +5447,6 @@ export interface VisualValidationSet {
   formulaVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */
   sourceFingerprint: string;
-  /** @pattern ^[0-9a-f]{64}$ */
   cacheSourceFingerprint?: string;
   freshness?: VisualValidationSetFreshness;
   generationOrigin: VisualValidationSetGenerationOrigin;

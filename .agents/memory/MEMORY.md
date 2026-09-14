@@ -12,6 +12,7 @@
 - [Preview private paths](preview-private-paths.md) — SPA fallback can return index.html for protected-looking URLs; guard dev/preview middleware before fallback.
 - [Worker backtest boundary](worker-backtest-boundary.md) — CPU-bound runs need a separately bundled, parent-terminable worker; publish to cache only after success.
 - [Content digest cache identity](content-digest-cache-identity.md) — historical source cache identity must hash streamed bytes, not path, size, or modification time.
+- [Visual cache fingerprint contract](visual-cache-fingerprint-contract.md) — composite historical cache identities are opaque strings, not fixed-length hexadecimal digests.
 - [Walk-forward evidence](walk-forward-evidence.md) — chronological holdouts and independent cost cases must remain descriptive; never select a best sensitivity result.
 - [Bundled worker paths](bundled-worker-paths.md) — worker URLs resolve from the emitted bundle location, not the source module location; verify the dist tree after bundling.
 - [Persisted summary schema changes](persisted-summary-schema-changes.md) — bump the historical index cache version and validate persisted summaries when adding response metadata.

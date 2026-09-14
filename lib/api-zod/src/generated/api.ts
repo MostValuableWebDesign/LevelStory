@@ -7433,7 +7433,6 @@ export const getVisualValidationSetResponseCurrentBuildIdMax = 128;
 
 export const getVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
-export const getVisualValidationSetResponseCacheSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const getVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
@@ -7546,7 +7545,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "formulaHash": zod.string().regex(getVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getVisualValidationSetResponseSourceFingerprintRegExp),
-  "cacheSourceFingerprint": zod.string().regex(getVisualValidationSetResponseCacheSourceFingerprintRegExp).optional(),
+  "cacheSourceFingerprint": zod.string().optional(),
   "freshness": zod.object({
   "status": zod.enum(['current', 'stale']),
   "reasons": zod.array(zod.enum(['build_mismatch', 'cache_key_version_mismatch', 'cache_key_mismatch', 'strategy_version_mismatch', 'formula_hash_mismatch', 'formula_version_mismatch', 'candidate_projection_mismatch', 'execution_management_mismatch', 'account_position_state_mismatch', 'snapshot_projection_mismatch', 'chart_projection_mismatch', 'session_calendar_mismatch'])),
@@ -8527,7 +8526,6 @@ export const createVisualValidationSetResponseCurrentBuildIdMax = 128;
 
 export const createVisualValidationSetResponseFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
-export const createVisualValidationSetResponseCacheSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const createVisualValidationSetResponseRequestSymbolDefault = `MES`;
 export const createVisualValidationSetResponseRequestEndDateDefault = `2026-08-26`;
@@ -8640,7 +8638,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "formulaHash": zod.string().regex(createVisualValidationSetResponseFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(createVisualValidationSetResponseSourceFingerprintRegExp),
-  "cacheSourceFingerprint": zod.string().regex(createVisualValidationSetResponseCacheSourceFingerprintRegExp).optional(),
+  "cacheSourceFingerprint": zod.string().optional(),
   "freshness": zod.object({
   "status": zod.enum(['current', 'stale']),
   "reasons": zod.array(zod.enum(['build_mismatch', 'cache_key_version_mismatch', 'cache_key_mismatch', 'strategy_version_mismatch', 'formula_hash_mismatch', 'formula_version_mismatch', 'candidate_projection_mismatch', 'execution_management_mismatch', 'account_position_state_mismatch', 'snapshot_projection_mismatch', 'chart_projection_mismatch', 'session_calendar_mismatch'])),
@@ -10310,7 +10308,6 @@ export const startVisualValidationGenerationJobResponseResultCurrentBuildIdMax =
 
 export const startVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
-export const startVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const startVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const startVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
@@ -10438,7 +10435,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(startVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
-  "cacheSourceFingerprint": zod.string().regex(startVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp).optional(),
+  "cacheSourceFingerprint": zod.string().optional(),
   "freshness": zod.object({
   "status": zod.enum(['current', 'stale']),
   "reasons": zod.array(zod.enum(['build_mismatch', 'cache_key_version_mismatch', 'cache_key_mismatch', 'strategy_version_mismatch', 'formula_hash_mismatch', 'formula_version_mismatch', 'candidate_projection_mismatch', 'execution_management_mismatch', 'account_position_state_mismatch', 'snapshot_projection_mismatch', 'chart_projection_mismatch', 'session_calendar_mismatch'])),
@@ -11387,7 +11384,6 @@ export const getLatestVisualValidationGenerationJobResponseResultCurrentBuildIdM
 
 export const getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
-export const getLatestVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getLatestVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const getLatestVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
@@ -11515,7 +11511,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
-  "cacheSourceFingerprint": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp).optional(),
+  "cacheSourceFingerprint": zod.string().optional(),
   "freshness": zod.object({
   "status": zod.enum(['current', 'stale']),
   "reasons": zod.array(zod.enum(['build_mismatch', 'cache_key_version_mismatch', 'cache_key_mismatch', 'strategy_version_mismatch', 'formula_hash_mismatch', 'formula_version_mismatch', 'candidate_projection_mismatch', 'execution_management_mismatch', 'account_position_state_mismatch', 'snapshot_projection_mismatch', 'chart_projection_mismatch', 'session_calendar_mismatch'])),
@@ -12471,7 +12467,6 @@ export const getVisualValidationGenerationJobResponseResultCurrentBuildIdMax = 1
 
 export const getVisualValidationGenerationJobResponseResultFormulaHashRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
-export const getVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultCacheKeyRegExp = new RegExp('^[0-9a-f]{64}$');
 export const getVisualValidationGenerationJobResponseResultRequestSymbolDefault = `MES`;
 export const getVisualValidationGenerationJobResponseResultRequestEndDateDefault = `2026-08-26`;
@@ -12599,7 +12594,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "formulaHash": zod.string().regex(getVisualValidationGenerationJobResponseResultFormulaHashRegExp),
   "formulaVersion": zod.string(),
   "sourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultSourceFingerprintRegExp),
-  "cacheSourceFingerprint": zod.string().regex(getVisualValidationGenerationJobResponseResultCacheSourceFingerprintRegExp).optional(),
+  "cacheSourceFingerprint": zod.string().optional(),
   "freshness": zod.object({
   "status": zod.enum(['current', 'stale']),
   "reasons": zod.array(zod.enum(['build_mismatch', 'cache_key_version_mismatch', 'cache_key_mismatch', 'strategy_version_mismatch', 'formula_hash_mismatch', 'formula_version_mismatch', 'candidate_projection_mismatch', 'execution_management_mismatch', 'account_position_state_mismatch', 'snapshot_projection_mismatch', 'chart_projection_mismatch', 'session_calendar_mismatch'])),

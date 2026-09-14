@@ -38,6 +38,7 @@ import {
   startVisualValidationGenerationJob,
 } from "../lib/visual-validation-generation-jobs.js";
 import { buildShadowAccountReplay } from "../lib/shadow-account-replay.js";
+import { logger } from "../lib/logger.js";
 import { GetShadowAccountReplayQueryParams, GetShadowAccountReplayResponse } from "@workspace/api-zod";
 import { HistoricalNoDataError } from "../lib/futures/historical-session-range.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
@@ -246,7 +247,12 @@ export function createVisualValidationRouter(): IRouter {
       res.status(404).json({ error: "No visual-validation generation job is available." });
       return;
     }
-    res.json(GetLatestVisualValidationGenerationJobResponse.parse(job));
+    try {
+      res.json(GetLatestVisualValidationGenerationJobResponse.parse(job));
+    } catch (error) {
+      logger.error({ err: error, jobId: job.jobId, status: job.status, hasResult: Boolean(job.result) }, "Visual-validation generation response failed schema validation");
+      res.status(500).json({ error: "Visual-validation generation response is invalid." });
+    }
   });
 
   router.get("/backtest/visual-validation/generation-jobs/:jobId", (req, res): void => {
@@ -260,7 +266,12 @@ export function createVisualValidationRouter(): IRouter {
       res.status(404).json({ error: "Visual-validation generation job not found or expired." });
       return;
     }
-    res.json(GetVisualValidationGenerationJobResponse.parse(job));
+    try {
+      res.json(GetVisualValidationGenerationJobResponse.parse(job));
+    } catch (error) {
+      logger.error({ err: error, jobId: job.jobId, status: job.status, hasResult: Boolean(job.result) }, "Visual-validation generation response failed schema validation");
+      res.status(500).json({ error: "Visual-validation generation response is invalid." });
+    }
   });
 
   router.post("/backtest/visual-validation/reviews", reviewRateLimit, requireRole("reviewer"), async (req, res): Promise<void> => {
