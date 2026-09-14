@@ -494,6 +494,7 @@ export default function VisualReview() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewStatus, setReviewStatus] = useState<Exclude<VisualValidationReviewStatus, "unreviewed"> | null>(null);
+  const [reviewDraftSnapshotId, setReviewDraftSnapshotId] = useState("");
   const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
   const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
   const [message, setMessage] = useState("");
@@ -698,6 +699,7 @@ export default function VisualReview() {
 
   useEffect(() => {
     if (!activeSnapshot) {
+      setReviewDraftSnapshotId("");
       setSelectedSnapshotId("");
       setReviewNote("");
       setReviewStatus(null);
@@ -705,6 +707,7 @@ export default function VisualReview() {
       setTeachingDraft(null);
       return;
     }
+    setReviewDraftSnapshotId(activeSnapshot.snapshotId);
     setSelectedSnapshotId(activeSnapshot.snapshotId);
     setReviewNote(activeSnapshot.review.note ?? "");
     setReviewStatus(activeSnapshot.review.status === "unreviewed" ? null : activeSnapshot.review.status);
@@ -1061,7 +1064,7 @@ export default function VisualReview() {
                         onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
                       />
                       <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
-                     <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                      <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={setReviewStatus} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={setReviewNote} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                       <SnapshotProvenance snapshot={activeSnapshot} />
                    </div>
                  </div>
@@ -1075,7 +1078,13 @@ export default function VisualReview() {
                  </div>
            </section>}
 
-           {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
+             {activeVisualReviewTab === "generate" && data && <section className="order-3 space-y-5" data-testid="visual-review-supporting-details" aria-label="Review set supporting details">
+               <ReviewSetProvenance data={data} />
+               <ReviewSetDiagnostics data={data} />
+               {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
+             </section>}
+
+            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
               <div className={data ? "" : "grid items-start gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]"}>
                 <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
@@ -1116,9 +1125,6 @@ export default function VisualReview() {
              ) : <Panel accent><QueryError onRetry={() => setQuery.refetch()} message="The visual-validation set could not be loaded." /></Panel> : data ? (
                <>
                  {(data.stale || data.currentBuildId !== FRONTEND_BUILD_ID) && <div className="flex flex-col gap-3 border border-accent/45 bg-accent/10 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" role="alert"><div><strong>Stale review set — regenerate.</strong><span className="ml-2 text-muted-foreground">Generated build {data.buildId}; current build {data.currentBuildId}.</span></div><button type="button" onClick={generateReviewSet} className="shrink-0 rounded-md border border-accent/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15">Regenerate</button></div>}
-                 <ReviewSetProvenance data={data} />
-                 <ReviewSetDiagnostics data={data} />
-                 {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
                   {!activeSnapshot && <Panel><EmptyReview /></Panel>}
                </>
               ) : generationFinished ? <Panel><EmptyReview /></Panel> : null}
@@ -1639,37 +1645,73 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
        </div>
      </Panel>;
   }
-  const candidates = selectedStrategyKey
-    ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
-    : data.tradeCandidates;
-  const edgeCount = (strategy: StrategyId) => data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(strategy) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(strategy))).length;
+   const candidates = selectedStrategyKey
+     ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
+     : data.tradeCandidates;
+   const edgeCount = (strategy: StrategyId) => data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(strategy) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(strategy))).length;
+   const groupedCandidates = candidates.reduce((groups, candidate) => {
+     const existing = groups.get(candidate.tradingDate) ?? [];
+     existing.push(candidate);
+     groups.set(candidate.tradingDate, existing);
+     return groups;
+   }, new Map<string, typeof candidates>());
+   const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+   const candidateListRef = useRef<HTMLDivElement>(null);
+   useEffect(() => {
+     if (!selectedSnapshot) return;
+     const row = rowRefs.current[selectedSnapshot.snapshotId];
+     const list = candidateListRef.current;
+     if (!row || !list) return;
+     const listBounds = list.getBoundingClientRect();
+     const rowBounds = row.getBoundingClientRect();
+     if (rowBounds.top < listBounds.top) list.scrollTop -= listBounds.top - rowBounds.top;
+     if (rowBounds.bottom > listBounds.bottom) list.scrollTop += rowBounds.bottom - listBounds.bottom;
+   }, [selectedSnapshot?.snapshotId]);
+   const selectedCount = candidates.length;
    return <Panel className="visual-review-candidate-panel">
      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
-    <div className="flex flex-wrap gap-1 border-t border-border bg-muted/20 p-2" role="tablist" aria-label="Strategy review tabs">
-       <button type="button" onClick={() => onSelectStrategy(null)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === null} role="tab">All edges · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</button>
-      {STRATEGY_TABS.map((strategy) => {
-         const count = edgeCount(strategy.id);
-         return <button type="button" key={strategy.id} onClick={() => onSelectStrategy(strategy.id)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === strategy.id ? "bg-primary text-primary-foreground" : count ? "text-muted-foreground hover:bg-muted" : "cursor-not-allowed text-muted-foreground/50"}`} aria-selected={selectedStrategyKey === strategy.id} role="tab" disabled={!count}>{strategy.label} · {count}</button>;
-      })}
-    </div>
-     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2">
-       {candidates.map((candidate) => {
-         const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
-         if (!snapshot) return null;
-         const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
-         const audit = snapshot.machineEvidence.audit as CandidateAuditView;
-         const direction = candidate.direction === "short" ? "Short" : "Long";
-          const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
-          return <button type="button" key={candidate.candidateId} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`bg-card p-4 text-left transition hover:bg-muted/55 ${selectedSnapshot?.snapshotId === candidate.snapshotId ? "ring-1 ring-inset ring-accent" : ""}`} data-testid="button-trade-candidate">
-            <div className="flex items-start justify-between gap-3"><div><div className={`eyebrow ${blocked ? "text-accent" : "text-muted-foreground"}`}>{blocked ? "Blocked candidate" : "Trade candidate"}</div><div className="mt-1 text-sm font-bold">{candidate.tradingDate} · {candidate.contractSymbol}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${blocked ? "border-accent/50 bg-accent/10" : "border-accent/40 bg-accent/10"}`}>{blocked ? "Account blocked" : direction}</span></div>
-             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div><span className="text-muted-foreground">Entry price</span><div className="mono mt-1">{formatTradePrice(candidate.entryTriggerPrice ?? audit.entryTriggerPrice)}</div></div><div><span className="text-muted-foreground">Exit price</span><div className="mono mt-1">{formatTradePrice(trade?.exitPrice)}</div></div><div><span className="text-muted-foreground">P/L</span><div className={`mono mt-1 font-semibold ${trade?.netPnl == null ? "text-muted-foreground" : trade.netPnl < 0 ? "status-negative" : "status-positive"}`}>{formatAccountMoney(trade?.netPnl)}</div></div><div><span className="text-muted-foreground">Grade</span><div className="mono mt-1">{candidate.setupGrade}</div></div><div><span className="text-muted-foreground">Primary edge</span><div className="mt-1 font-semibold">{edgeDisplayLabel(candidate.primaryEdge)}</div></div><div><span className="text-muted-foreground">Matched edges</span><div className="mt-1">{candidate.matchedEdges.length} · {candidate.supportingConfluences.length} confluences</div></div></div>
-            {blocked && candidate.accountEntryBlock && <div className="mt-3 border border-accent/25 bg-accent/5 px-2.5 py-2 text-[10px] text-muted-foreground"><span className="font-bold text-foreground">ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION</span><div className="mt-1 mono">Blocked by {candidate.accountEntryBlock.blockingCandidateId} · {candidate.accountEntryBlock.blockingStatus}{candidate.accountEntryBlock.blockingRunnerActive ? " · runner active" : ""}</div></div>}
-             <div className="mt-3 mono text-[10px] text-muted-foreground">Historical review · Entry {formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)} · Exit {formatReviewTime(trade?.exitTime ?? "")}</div>
-         </button>;
-       })}
-    </div>
-      {showSnapshotHeader && selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
-  </Panel>;
+     <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
+       <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span>Strategy filter</span><span className="mono normal-case tracking-normal">{selectedCount} unique candidate{selectedCount === 1 ? "" : "s"}</span></label>
+       <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
+         <option value="">All strategies · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</option>
+         {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
+       </select>
+       <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates in the active filter. A candidate matching multiple strategies is counted once.</p>
+     </div>
+     <div ref={candidateListRef} className="trade-candidate-list border-t border-border" data-testid="trade-candidate-list">
+       {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
+         <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{tradingDate}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
+         <div className="divide-y divide-border">
+           {dateCandidates.map((candidate) => {
+             const snapshot = data.snapshots.find((item) => item.snapshotId === candidate.snapshotId);
+             if (!snapshot) return null;
+             const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
+             const direction = candidate.direction === "short" ? "Short" : "Long";
+             const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
+             const selected = selectedSnapshot?.snapshotId === candidate.snapshotId;
+             const reviewStatus = snapshot.review.status === "unreviewed" ? "Not reviewed" : snapshot.review.status.replaceAll("_", " ");
+             return <button type="button" key={candidate.candidateId} ref={(node) => { rowRefs.current[candidate.snapshotId] = node; }} onClick={() => onSelectSnapshot(candidate.snapshotId)} className={`trade-candidate-row ${selected ? "is-selected" : ""}`} aria-current={selected ? "true" : undefined} data-testid="button-trade-candidate">
+               <span className="min-w-0 flex-1">
+                 <span className="flex items-center justify-between gap-2">
+                   <span className="mono truncate text-[11px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
+                   <span className="shrink-0 text-[10px] font-bold">{direction}</span>
+                 </span>
+                 <span className="mt-1 block truncate text-[10px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
+                 <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] text-muted-foreground">
+                   <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatAccountMoney(trade?.netPnl)}</span>
+                   <span>Grade {candidate.setupGrade}</span>
+                   <span className={snapshot.review.status === "unreviewed" ? "" : "text-foreground"}>{reviewStatus}</span>
+                   {blocked && <span className="text-accent">Account blocked</span>}
+                 </span>
+               </span>
+             </button>;
+           })}
+         </div>
+       </section>)}
+       {selectedCount === 0 && <div className="p-4 text-xs text-muted-foreground" data-testid="empty-trade-filter">No candidates match this strategy filter.</div>}
+     </div>
+     {showSnapshotHeader && selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
+   </Panel>;
 }
 
 const GENERATION_PHASE_ANNOUNCEMENTS: Record<VisualValidationGenerationJob["phase"], string> = {
@@ -1745,12 +1787,16 @@ function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
 }
 
 function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext, includeProvenance = true }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void; includeProvenance?: boolean }) {
+  const candidate = snapshot.machineEvidence.trade as CandidateTradeView | null;
+  const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
+  const strategyLabel = candidate?.primaryEdge ? edgeDisplayLabel(candidate.primaryEdge) : snapshot.machineLabel;
+  const resultLabel = trade?.outcome?.replaceAll("_", " ") ?? "Unscored";
   return <div className="border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
         <div className="eyebrow mb-2 text-muted-foreground">Historical example {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</div>
-         <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{STRATEGY_TABS.find((item) => item.id === ((snapshot.machineEvidence.trade as CandidateTradeView | null)?.primaryEdge ?? snapshot.strategyKey))?.label ?? snapshot.machineLabel}</span></div>
-         <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Example date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
+         <div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-bold tracking-[-.045em]">Trade candidate</h2><span className="border border-accent/45 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{strategyLabel}</span><span className="border border-border bg-card px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em]">{trade?.direction === "short" ? "Short" : "Long"}</span></div>
+         <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Date</span> <span className="mono">{snapshot.tradingDate}</span> · <span className="font-semibold text-foreground">Contract</span> <span className="mono">{snapshot.contractSymbol}</span> · <span className={`font-semibold ${snapshot.entryWindow === "primary" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}`}>{snapshot.entryWindow === "primary" ? "Primary window" : "Outside primary window"}</span> · Formula evidence is machine-owned</p>
          <p className="mt-2 max-w-3xl text-[11px] leading-4 text-muted-foreground">{snapshot.selectionReason}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -1765,6 +1811,13 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
+     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-5" data-testid="selected-trade-result-summary">
+       <Metric label="Entry" value={formatTradePrice(trade?.entryPrice)} sub={formatReviewTime(trade?.entryTime ?? "")} />
+       <Metric label="Exit" value={formatTradePrice(trade?.exitPrice)} sub={formatReviewTime(trade?.exitTime ?? "")} />
+       <Metric label="Net P/L" value={formatTradeMoney(trade?.netPnl, !trade?.exitTime)} sub={trade?.audit?.exitReason ?? "No exit reason"} />
+       <Metric label="Quantity" value={trade?.contracts == null ? "—" : `${trade.contracts} contract${trade.contracts === 1 ? "" : "s"}`} sub={`Grade ${candidate?.setupGrade ?? "—"}`} />
+       <Metric label="Outcome" value={resultLabel} sub={snapshot.review.status === "unreviewed" ? "Human review pending" : `Review: ${snapshot.review.status.replaceAll("_", " ")}`} />
+     </div>
      {includeProvenance && <SnapshotProvenance snapshot={snapshot} />}
   </div>;
 }
