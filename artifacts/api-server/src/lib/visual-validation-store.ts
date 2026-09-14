@@ -1,3 +1,4 @@
+import { getLoadedHistoricalIndexIdentity } from "./futures/multi-contract-replay.js";
 import { randomUUID } from "node:crypto";
 import type {
   VisualValidationProposedRuleAnalysis,
@@ -77,11 +78,12 @@ function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualVali
   };
 }
 
-function freshnessFor(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">): VisualValidationFreshness {
+export function freshnessFor(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">, currentSource = getLoadedHistoricalIndexIdentity()): VisualValidationFreshness {
+  const historical = (set.request.source ?? "historical_databento") === "historical_databento";
   const expected = visualValidationCacheMetadata(
     set.request,
-    set.cacheSourceFingerprint ?? set.sourceFingerprint,
-    set.sessionCalendarVersion,
+    historical ? currentSource?.fingerprint ?? "historical-source-unavailable" : set.cacheSourceFingerprint ?? set.sourceFingerprint,
+    historical ? currentSource?.calendarVersion ?? set.sessionCalendarVersion : set.sessionCalendarVersion,
     set.processedDates,
   );
   const reasons: VisualValidationFreshnessReason[] = [];
@@ -142,8 +144,12 @@ export function getVisualValidationSet(reviewSetId: string): VisualValidationSet
   if (!stored) return null;
   stored.lastAccessedAt = Date.now();
   const clonedSet = structuredClone(stored.set);
+  const freshness = freshnessFor(clonedSet);
   return {
     ...clonedSet,
+    freshness,
+    stale: freshness.status === "stale",
+    currentBuildId: APPLICATION_BUILD_ID,
     snapshots: clonedSet.snapshots.map((snapshot) => hydratedSnapshot(snapshot, stored.reviews.get(snapshot.snapshotId))),
   };
 }

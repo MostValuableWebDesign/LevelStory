@@ -12,7 +12,7 @@ import {
   VisualValidationWorkerError,
   type VisualValidationWorkerProgress,
 } from "./visual-validation-worker-client.js";
-import { storeVisualValidationSet } from "./visual-validation-store.js";
+import { freshnessFor, storeVisualValidationSet } from "./visual-validation-store.js";
 import {
   simulatedVisualValidationSourceFingerprint,
   visualValidationCacheMetadata,
@@ -149,6 +149,7 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
   const now = Date.now();
   const elapsedMs = generationElapsedMs(job.startedAt, job.completedAt, now);
   updateEstimate(job);
+  const freshness = job.result ? freshnessFor(job.result) : null;
   const estimatedRemainingMs = job.status === "completed" ? 0
     : job.status === "running" ? job.estimatedRemainingMs : null;
   return {
@@ -169,6 +170,7 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
       ? {
           result: {
             ...job.result,
+            ...(freshness ? { freshness, stale: freshness.status === "stale" } : {}),
             generationOrigin: origin,
           },
         }

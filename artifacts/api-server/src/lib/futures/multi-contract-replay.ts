@@ -1984,6 +1984,14 @@ export async function getHistoricalMultiContractIndexStatus(
  * accessor never starts discovery or indexing, which keeps visual review
  * generation from rebuilding the historical source.
  */
+/** Identity of the active committed index; does not load, hash, or rebuild data. */
+export function getLoadedHistoricalIndexIdentity(): { fingerprint: string; calendarVersion: string } | null {
+  return cachedImport ? {
+    fingerprint: cachedImport.value.contentFingerprint,
+    calendarVersion: cachedImport.value.calendar.calendarVersion,
+  } : null;
+}
+
 export async function getReadyHistoricalMultiContractIndex(): Promise<HistoricalMultiContractImport | null> {
   if (cachedImport) return cachedImport.value;
   if (readyIndexLoad) return readyIndexLoad;

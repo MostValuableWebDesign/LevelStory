@@ -1,3 +1,4 @@
+import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,6 +25,7 @@ import {
   storeVisualValidationSet,
   analyzeVisualValidationTeaching,
   resolveObservedEntryCandle,
+  freshnessFor,
 } from "./visual-validation-store.js";
 import { analyzePullback, type BreakoutEvent } from "./strategy/phase4.js";
 import { strategyConfig } from "./strategy/config.js";
@@ -1403,4 +1405,18 @@ test("exit annotations expose explicit machine and human-only event markers", ()
       assert.ok(Date.parse(marker.openTime) > cursor);
     }
   }
+});
+
+
+test("historical freshness compares current source and calendar, failing closed when unavailable", () => {
+  const fixture = buildVisualValidationSet(request);
+  const historicalRequest = { ...fixture.request, source: "historical_databento" as const };
+  const metadata = visualValidationCacheMetadata(historicalRequest, "source-a", fixture.sessionCalendarVersion, fixture.processedDates);
+  const set = { ...fixture, request: historicalRequest, ...metadata };
+  const identity = { fingerprint: "source-a", calendarVersion: fixture.sessionCalendarVersion };
+  assert.deepEqual(freshnessFor(set, identity).reasons, []);
+  assert.ok(freshnessFor(set, { ...identity, fingerprint: "source-b" }).reasons.includes("cache_key_mismatch"));
+  assert.ok(freshnessFor(set, { ...identity, calendarVersion: "changed-calendar" }).reasons.includes("session_calendar_mismatch"));
+  assert.equal(freshnessFor(set, null).status, "stale");
+  assert.equal(set.cacheSourceFingerprint, "source-a");
 });
