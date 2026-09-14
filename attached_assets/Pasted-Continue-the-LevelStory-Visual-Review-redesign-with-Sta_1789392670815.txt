@@ -1,0 +1,74 @@
+Continue the LevelStory Visual Review redesign with Stage 2 only: compact trade selection and seamless navigation.
+
+Preserve the accepted Stage 1 layout and all previous guardrails. Inspect the current selection and review-state logic before changing it.
+
+TRADE NAVIGATOR
+
+Replace the oversized trade-card grid with compact selectable rows in the left navigation region.
+
+Show:
+- Trading date and entry time.
+- Contract and Long/Short label.
+- Strategy name.
+- Signed net P/L.
+- Existing grade and human-review status where available.
+
+Keep secondary details in the selected-trade workspace. Do not invent missing values.
+
+Use a blue-tinted background and clear accent for the selected row. P/L color must not double as the selection indicator.
+
+Group trades by date while preserving authoritative ordering. Use a bounded scroll region for long desktop lists without creating excessive nested scrolling.
+
+Retain strategy filtering and existing counting semantics. Replace the wall of long uppercase tabs with compact, accessible filters. Keep full strategy names accessible.
+
+Candidates can match multiple strategies. Do not make counts artificially additive or duplicate candidates. Clearly label the scope of counts.
+
+SELECTED-TRADE HEADER
+
+Keep these close to the chart:
+- Date, contract, direction, and strategy.
+- Trade X of Y for the active filtered queue.
+- Previous and Next buttons.
+- A compact authoritative result summary.
+
+Disable navigation correctly at the first and last trades.
+
+STATE AND INTERACTION REQUIREMENTS
+
+Use one authoritative selected-trade identity across the navigator, chart, analytics, evidence, and human-review form.
+
+Every selection path must:
+- Update dependent panels consistently.
+- Never pair a new trade title with the previous trade’s chart or result.
+- Preserve unsaved-review confirmation.
+- Avoid regenerating the set or reloading the page.
+- Preserve trade-list scroll position and keep the selected row visible.
+- Avoid jumping back to the setup form.
+
+Do not carry candle locks, unsaved teaching data, or other trade-specific state into a different trade.
+
+Preserve the current chart-window preference, but do not reuse a previous trade’s date-specific chart coordinates blindly.
+
+Keep current authoritative default selection behavior. When a filter excludes the selected trade, handle the transition deterministically through the existing review-protection flow.
+
+If adding keyboard trade navigation, avoid conflicts with chart arrow-key inspection and disable shortcuts in text inputs and dialogs.
+
+Keep Chart Analysis and Account Impact behavior intact.
+
+VALIDATION
+
+Use focused interaction tests or browser checks for:
+- Selecting trades across dates and strategies.
+- Rapid consecutive selections.
+- Filter changes and empty filtered results.
+- First/last trade boundaries.
+- Trade X of Y matching the actual queue.
+- Unsaved-review protection through every selection path.
+- No stale chart, result, review, or candle-lock state.
+- No unnecessary regeneration.
+
+Do not treat source-text assertions alone as proof that interactions work.
+
+Rebuild the preview and demonstrate selecting several trades without losing the chart or navigation context.
+
+Report changes, checks, limitations, and screenshots. Stop after Stage 2 for my review.
