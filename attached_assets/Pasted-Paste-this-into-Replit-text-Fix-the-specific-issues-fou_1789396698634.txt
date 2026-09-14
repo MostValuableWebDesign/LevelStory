@@ -1,0 +1,172 @@
+Paste this into Replit:
+
+```text
+Fix the specific issues found in the LevelStory Visual Review redesign. Preserve the accepted design direction and all existing functionality. Do not start another redesign.
+
+Inspect the latest code before editing. Start with:
+- artifacts/levelstory/src/pages/visual-review.tsx
+- artifacts/levelstory/src/index.css
+- Related candidate selection, freshness, build-version, and presentation tests.
+
+Briefly explain the causes and intended changes, then implement the fixes below.
+
+1. CORRECT CONTRADICTORY TRADE COUNTS
+
+The reviewed live page simultaneously displayed:
+- “7 unique candidates”
+- “All strategies · 3”
+- A date group labeled “7 trades”
+- Only three selectable trade rows
+- Navigation showing “Trade 1 of 3”
+
+Trace the relationship between tradeCandidates, snapshots, strategy filters, and the navigable review queue.
+
+Create one consistent source for:
+- Rendered trade rows.
+- Active-filter count.
+- Date-group counts.
+- All-strategies count.
+- Previous/Next navigation.
+- “Trade X of Y.”
+
+Count unique, navigable review items using authoritative identities. Preserve chronological ordering and candidate/snapshot ownership.
+
+If additional candidates lack reviewable snapshots, distinguish them explicitly from selectable trades. Do not silently discard them or imply they are available in the queue. If the mismatch originates upstream, report the cause rather than concealing it with labels.
+
+Strategy matches may overlap. Do not sum strategy counts or duplicate trades that match multiple strategies.
+
+Handle zero-item filters without showing a stale selected trade.
+
+2. FIX THE FALSE OR MISLEADING STALE-RESULT WARNING
+
+A freshly generated result immediately displayed:
+“Stale review set — regenerate.”
+
+The warning showed identical generated and current build IDs.
+
+Inspect:
+- Frontend build identity.
+- Backend build identity.
+- The review set’s stored versions.
+- Formula, source, projection, and cache compatibility checks.
+- The exact predicate responsible for the stale state.
+
+Do not disable freshness protection or force results to “current.”
+
+Correct the underlying mismatch where appropriate. Make the warning explain the actual reason:
+- Changed source data.
+- Changed formula/projection version.
+- Incompatible saved result.
+- Frontend/backend deployment mismatch.
+- Another verified cause.
+
+If the frontend and backend are running incompatible builds, give an appropriate refresh/restart instruction. Do not tell the user to repeatedly regenerate when regeneration cannot fix it.
+
+Keep complete diagnostic values available in Technical Details.
+
+A newly generated compatible set should not immediately show a stale warning. Intentionally stale fixtures must still be detected.
+
+3. BRING THE CHART HIGHER ON THE PAGE
+
+The completed workspace still stacks too much content before the plot.
+
+- Compress Generated Review Set into a concise summary strip with date range, symbol, session count, and existing actions.
+- Keep settings expandable without losing the current results.
+- Reduce the selected-trade header to essential identity and navigation.
+- Move detailed evaluation/review cursor timestamps and candle-count metadata into Technical Details.
+- Preserve a concise visible causal-boundary indicator.
+- Keep entry, exit, net P/L, quantity, and outcome in a compact summary.
+- Condense chart controls into logical toolbar groups.
+- Keep the candle inspector and event strip outside the plot, but reduce their default footprint.
+- Preserve access to every control and evidence field.
+
+At 1440×900, a meaningful portion of the actual candlestick plot should be visible in the initial completed review workspace without scrolling through technical metadata.
+
+Ensure generation progress is visible from the Generate action. Do not leave the user looking at the bottom of the setup form while the progress panel is off-screen.
+
+4. IMPROVE READABILITY
+
+Trade rows currently rely on 9–11px text.
+
+- Use approximately 13–14px for core trade information.
+- Use approximately 12px for secondary labels and status.
+- Give trade identity and P/L a clear visual hierarchy.
+- Preserve tabular numerals and signed financial values.
+- Maintain accessible contrast and visible keyboard focus.
+- Let long strategy names wrap sensibly rather than shrinking them.
+- Preserve the existing selection and financial-status colors.
+
+Keep the interface compact through better organization, not microscopic text.
+
+5. STANDARDIZE PRIMARY TIME DISPLAY
+
+Trade rows and summaries currently show full UTC timestamps with milliseconds while chart events use New York time.
+
+Use America/New_York consistently for primary trading timestamps:
+- Short date in the date-group heading.
+- Concise time such as “10:25 AM EDT” in the trade row.
+- Consistent entry/exit time formatting in the summary.
+
+Handle daylight saving time correctly. Do not use a fixed UTC offset.
+
+Keep original UTC timestamps accessible in Technical Details or an accessible disclosure. Do not change stored timestamps, candle boundaries, or trading-date semantics.
+
+6. REDUCE MOBILE SCROLLING
+
+The mobile layout stacks large metric blocks and multiple toolbar rows before reaching the chart.
+
+- Use a compact two-column metric grid where readable.
+- Condense secondary chart controls into an accessible disclosure.
+- Keep primary chart controls readily available.
+- Keep current trade identity and Previous/Next easy to reach near the chart.
+- Preserve the mobile trade selector.
+- Prevent horizontal page overflow and overlapping sticky controls.
+- Preserve chart-specific pan/zoom and fullscreen.
+
+Do not hide essential information or remove functionality to make the page shorter.
+
+SCOPE GUARDRAILS
+
+Do not change strategy rules, trade eligibility, grades, execution logic, stops, targets, fees, P/L calculations, account replay behavior, causal boundaries, or human-review submission semantics.
+
+Do not fabricate missing snapshots, relink unrelated candidates, or rebuild the historical index.
+
+Preserve:
+- Unsaved-review protection.
+- Synchronized trade/chart/result selection.
+- Generation progress and non-increasing ETA messaging.
+- Retry and resume behavior.
+- Chart tools, review submission, exports, and other evidence modes.
+
+VERIFICATION
+
+Use saved results and isolated fixtures first.
+
+Add focused behavioral coverage for:
+- Seven candidates with only three reviewable snapshots.
+- Multiple strategy matches without duplicate rows.
+- Correct filtered counts and date-group counts.
+- Empty filtered queues.
+- Navigation reaching exactly the displayed trades.
+- A newly generated compatible result.
+- Each genuine stale condition and frontend/backend build mismatch.
+- New York timestamp formatting across standard and daylight time.
+
+Run relevant type checks and tests. Existing presentation/chart tests passed during review, but that did not catch these issues; do not rely only on source-text assertions.
+
+Inspect the actual rendered page at desktop and mobile sizes. Verify trade selection, chart updates, and unsaved-review protection still work.
+
+Rebuild and restart the preview as needed. Confirm the preview serves the corrected frontend and backend builds.
+
+DELIVER
+
+Report:
+- Root causes found.
+- Files changed.
+- Exact checks run and results.
+- Any remaining limitations.
+- Before/after desktop and mobile screenshots.
+- Evidence that counts now agree and freshness warnings identify the actual problem.
+
+Do not mark the work complete based only on a successful build.
+```
