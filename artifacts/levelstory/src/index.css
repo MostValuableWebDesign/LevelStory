@@ -391,8 +391,18 @@
 
 @layer components {
   .cockpit-grid {
-    background-image: linear-gradient(hsl(var(--border) / 0.28) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / 0.28) 1px, transparent 1px);
-    background-size: 28px 28px;
+    background-image: none;
+    background-color: hsl(var(--background));
+  }
+  .visual-review-page {
+    font-variant-numeric: tabular-nums;
+  }
+  .visual-review-page .surface {
+    border-radius: .75rem;
+    box-shadow: 0 1px 0 hsl(var(--foreground) / .025), 0 6px 18px hsl(var(--foreground) / .035);
+  }
+  .visual-review-header h1 {
+    letter-spacing: -.04em;
   }
   .surface {
     background: hsl(var(--card));
@@ -619,7 +629,30 @@
     padding: .55rem .65rem;
   }
   .visual-review-workspace {
+    display: grid;
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    align-items: start;
+    gap: 1.25rem;
     width: 100%;
+  }
+  .visual-review-trade-rail {
+    position: sticky;
+    top: 1rem;
+    min-width: 0;
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    scrollbar-width: thin;
+  }
+  .visual-review-candidate-panel {
+    overflow: hidden;
+  }
+  .visual-review-candidate-panel > .flex.flex-wrap {
+    max-height: 11rem;
+    overflow: auto;
+    scrollbar-width: thin;
+  }
+  .review-set-summary-body {
+    overflow: hidden;
   }
   .visual-review-chart-column {
     min-width: 0;
@@ -694,6 +727,20 @@
       align-items: flex-start;
       flex-direction: column;
       gap: .2rem;
+    }
+  }
+  @media (max-width: 1279px) {
+    .visual-review-workspace {
+      grid-template-columns: 1fr;
+    }
+    .visual-review-trade-rail {
+      position: static;
+      max-height: none;
+      overflow: visible;
+    }
+    .visual-review-candidate-panel > .flex.flex-wrap {
+      max-height: none;
+      overflow: visible;
     }
   }
   .status-strip {

@@ -504,6 +504,7 @@ export default function VisualReview() {
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
   const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("generate");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
+  const [reviewSetSettingsOpen, setReviewSetSettingsOpen] = useState(false);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
@@ -944,20 +945,22 @@ export default function VisualReview() {
 
   return (
     <LevelStoryShell>
-      <div className="cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
+      <div className="visual-review-page cockpit-grid min-h-[calc(100dvh-62px)] px-4 py-5 sm:px-7 lg:px-9 lg:py-6">
          <div className="mx-auto flex max-w-[1560px] flex-col">
-          <PageIntro
-            eyebrow="Phase 12 / human-machine alignment"
-            title="Look before you trust."
-             description="A causal visual review room for checking whether deterministic setup rules tell the same story as actual historical MES candles, inspect one decision at a time, then leave a human judgment."
-            action={<ShadowBadge />}
-          />
+           <header className="visual-review-header mb-5 flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
+             <div>
+               <div className="eyebrow mb-1.5 text-muted-foreground">Phase 12 / human-machine alignment</div>
+               <h1 className="text-2xl font-bold tracking-[-.04em] text-foreground sm:text-[30px]">Visual Review</h1>
+               <p className="mt-1.5 max-w-2xl text-xs leading-5 text-muted-foreground">Inspect one deterministic MES trade at a time, compare it with the candles, and record a human judgment.</p>
+             </div>
+             <ShadowBadge />
+           </header>
 
-           <div className="mb-5 border border-border bg-card" data-testid="visual-review-tabs">
-             <div className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="mb-5 border border-border bg-card/95 shadow-[0_1px_0_hsl(var(--foreground)/.03)]" data-testid="visual-review-tabs">
+              <div className="flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between">
                <div>
-                 <div className="eyebrow text-muted-foreground">Visual Review workspace</div>
-                 <div className="mt-1 text-xs font-bold">Choose an evidence mode</div>
+                  <div className="eyebrow text-muted-foreground">Review workspace</div>
+                  <div className="mt-1 text-xs font-semibold">Choose a mode</div>
                </div>
                <div className="grid grid-cols-1 gap-1 sm:grid-cols-3" role="tablist" aria-label="Visual Review modes">
                  {VISUAL_REVIEW_TABS.map((tab) => {
@@ -989,7 +992,32 @@ export default function VisualReview() {
 
            {activeVisualReviewTab === "generate" && data && activeSnapshot && <section id="visual-review-panel-generate-evidence" aria-label="Generated replay chart evidence" className="order-2 space-y-5">
                  <div className={`visual-review-workspace ${workspaceExpanded ? "is-expanded" : ""}`} data-testid="visual-review-workspace">
+                    <aside className="visual-review-trade-rail" aria-label="Trade candidates">
+                      <CoverageRail
+                        data={data}
+                        loading={setQuery.isLoading}
+                        selectedStrategyKey={selectedStrategyKey}
+                        selectedCategory={selectedCategory}
+                        selectedSnapshot={activeSnapshot}
+                        selectedSnapshotIndex={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)}
+                        selectedSnapshotTotal={reviewQueue.length}
+                        onSelectStrategy={(key) => {
+                          if (!confirmDiscardReview()) return;
+                          setSelectedStrategyKey(key);
+                          setSelectedCategory(null);
+                          setSelectedSnapshotId("");
+                        }}
+                        onSelectSnapshot={selectSnapshot}
+                        onPrevious={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
+                        onNext={() => activeSnapshot && moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
+                        generationJob={generationJob}
+                        generationActive={Boolean(generationActive)}
+                        onRetryGeneration={retryGeneration}
+                        showSnapshotHeader={false}
+                      />
+                    </aside>
                    <div className="visual-review-chart-column min-w-0 space-y-5">
+                      <SnapshotHeaderContent snapshot={activeSnapshot} request={data.request} index={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={reviewQueue.length} onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)} includeProvenance={false} />
                      <Panel>
                        <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
                        <CausalChart snapshot={activeSnapshot} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
@@ -1035,6 +1063,7 @@ export default function VisualReview() {
                       />
                       <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
                      <ReviewPanel snapshot={activeSnapshot} status={reviewStatus} setStatus={setReviewStatus} note={reviewNote} setNote={setReviewNote} dirty={reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                      <SnapshotProvenance snapshot={activeSnapshot} />
                    </div>
                  </div>
                  <div className="grid items-start gap-5 md:grid-cols-2">
@@ -1048,15 +1077,15 @@ export default function VisualReview() {
            </section>}
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
-             <div className="grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
+              <div className={data ? "" : "grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]"}>
                 <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined") {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-                }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} />
-               <CoverageRail
+                 }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} data={data} settingsExpanded={reviewSetSettingsOpen} onToggleSettings={() => setReviewSetSettingsOpen((current) => !current)} />
+                {!data && <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}
                  selectedStrategyKey={selectedStrategyKey}
@@ -1076,7 +1105,7 @@ export default function VisualReview() {
                  generationJob={generationJob}
                  generationActive={Boolean(generationActive)}
                  onRetryGeneration={retryGeneration}
-               />
+                />}
              </div>
              {generationActive ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isLoading && !data ? <Panel><QuerySkeleton rows={6} /></Panel> : setQuery.isError && !data ? apiErrorStatus(setQuery.error) === 404 && reviewSetId ? (
                <Panel accent>
@@ -1460,7 +1489,7 @@ function ReviewSetProvenance({ data }: { data: VisualValidationSet }) {
   </Panel>;
 }
 
-function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus }) {
+function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pending, message, historicalIndex, data, settingsExpanded, onToggleSettings }: { request: VisualValidationRequest; setRequest: (next: VisualValidationRequest) => void; onSubmit: (event: FormEvent) => void; onRegenerateFresh: () => void; pending: boolean; message: string; historicalIndex?: HistoricalDataIndexStatus; data?: VisualValidationSet | null; settingsExpanded: boolean; onToggleSettings: () => void }) {
   const update = (key: keyof VisualValidationRequest, value: string | number | boolean | undefined) => setRequest({ ...request, [key]: value });
   const storedSessions = storedSessionsThroughDate(historicalIndex, request.endDate);
   const maxReviewDays = storedSessions === null ? 10 : Math.min(10, storedSessions);
@@ -1491,8 +1520,36 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
       }
     }
   };
+  if (data && !settingsExpanded) {
+    return <Panel accent>
+      <PanelTitle
+        eyebrow="Generated review set"
+        title={`${data.symbol} · ${data.reviewPeriod.startDate} – ${data.reviewPeriod.endDate}`}
+        right={<span className="mono text-[10px] text-muted-foreground">{data.processedDates.length} sessions</span>}
+      />
+      <div className="review-set-summary-body border-t border-border" data-testid="review-set-summary">
+        <div className="grid gap-px border-b border-border bg-border sm:grid-cols-3">
+          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Symbol</div><div className="mono mt-1 text-sm font-bold">{data.symbol}</div></div>
+          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Date range</div><div className="mono mt-1 text-xs font-bold">{data.reviewPeriod.startDate} → {data.reviewPeriod.endDate}</div></div>
+          <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Sessions</div><div className="mono mt-1 text-sm font-bold">{data.processedDates.length}</div></div>
+        </div>
+        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold">{data.generationOrigin === "cached" ? "Cached compatible result" : "Freshly generated result"}</div>
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">The generated set is immutable. Edit settings without losing the current results, or generate another set when ready.</p>
+          </div>
+          <form onSubmit={onSubmit} className="flex shrink-0 flex-wrap gap-2">
+            <button type="button" onClick={onToggleSettings} className="rounded-md border border-border bg-card px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted" data-testid="button-edit-review-settings">Edit settings</button>
+            <button type="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-primary-foreground hover:opacity-90 disabled:opacity-55" data-testid="button-generate-another-review-set">Generate</button>
+            <button type="button" disabled={pending} onClick={onRegenerateFresh} className="rounded-md border border-accent/55 bg-accent/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-accent/15 disabled:opacity-55" data-testid="button-regenerate-fresh-summary">Regenerate</button>
+          </form>
+        </div>
+      </div>
+    </Panel>;
+  }
   return <Panel accent>
     <PanelTitle eyebrow="Generate / deterministic replay" title="Build a review set" right={<SlidersHorizontal size={16} className="text-muted-foreground" />} />
+    {data && <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/20 px-5 py-2.5 text-[10px] text-muted-foreground sm:px-6"><span>Editing settings does not discard the generated review set.</span><button type="button" onClick={onToggleSettings} className="font-bold text-foreground underline underline-offset-2" data-testid="button-done-editing-review-settings">Done editing</button></div>}
     <form onSubmit={onSubmit} className="space-y-4 border-t border-border p-5 sm:p-6">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Data source"><div className="field mono">Historical Databento data</div></Field>
@@ -1567,7 +1624,7 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
   </Panel>;
 }
 
-function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void }) {
+function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, selectedSnapshot, selectedSnapshotIndex, selectedSnapshotTotal, onSelectStrategy, onSelectSnapshot, onPrevious, onNext, generationJob, generationActive, onRetryGeneration, showSnapshotHeader = true }: { data?: VisualValidationSet | null; loading: boolean; selectedStrategyKey: StrategyId | null; selectedCategory: VisualValidationCategory | null; selectedSnapshot?: VisualValidationSnapshot; selectedSnapshotIndex: number; selectedSnapshotTotal: number; onSelectStrategy: (key: StrategyId | null) => void; onSelectSnapshot: (snapshotId: string) => void; onPrevious: () => void; onNext: () => void; generationJob: VisualValidationGenerationJob | null; generationActive: boolean; onRetryGeneration: () => void; showSnapshotHeader?: boolean }) {
   if (generationActive) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) {
@@ -1578,7 +1635,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
     ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))
     : data.tradeCandidates;
   const edgeCount = (strategy: StrategyId) => data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(strategy) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(strategy))).length;
-  return <Panel>
+   return <Panel className="visual-review-candidate-panel">
      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="mono text-right text-[10px] text-muted-foreground" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span>} />
     <div className="flex flex-wrap gap-1 border-t border-border bg-muted/20 p-2" role="tablist" aria-label="Strategy review tabs">
        <button type="button" onClick={() => onSelectStrategy(null)} className={`rounded-sm px-3 py-2 text-[10px] font-bold uppercase ${selectedStrategyKey === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} aria-selected={selectedStrategyKey === null} role="tab">All edges · {data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length}</button>
@@ -1603,7 +1660,7 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
          </button>;
        })}
     </div>
-     {selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
+      {showSnapshotHeader && selectedSnapshot && <SnapshotHeaderContent snapshot={selectedSnapshot} request={data.request} index={selectedSnapshotIndex} total={selectedSnapshotTotal} onPrevious={onPrevious} onNext={onNext} />}
   </Panel>;
 }
 
@@ -1679,7 +1736,7 @@ function ReviewSetDiagnostics({ data }: { data: VisualValidationSet }) {
   </div>;
 }
 
-function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void }) {
+function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, onNext, includeProvenance = true }: { snapshot: VisualValidationSnapshot; request: VisualValidationRequest; index: number; total: number; onPrevious: () => void; onNext: () => void; includeProvenance?: boolean }) {
   return <div className="border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
@@ -1700,11 +1757,15 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
-    <div className="grid gap-px border-t border-border bg-border text-[10px] sm:grid-cols-3" data-testid="occurrence-provenance">
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Occurrence identity</div><div className="mono mt-1 break-all text-foreground">{snapshot.occurrenceId ?? `audit:${snapshot.machineEvidence.audit && typeof snapshot.machineEvidence.audit === "object" && "id" in snapshot.machineEvidence.audit ? String(snapshot.machineEvidence.audit.id) : "unavailable"}`}</div></div>
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 break-all text-foreground">{snapshot.sourceFingerprint ?? "derived from visible source candles"}</div></div>
-      <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
-    </div>
+     {includeProvenance && <SnapshotProvenance snapshot={snapshot} />}
+  </div>;
+}
+
+function SnapshotProvenance({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  return <div className="grid gap-px border border-border bg-border text-[10px]" data-testid="occurrence-provenance">
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Occurrence identity</div><div className="mono mt-1 break-all text-foreground">{snapshot.occurrenceId ?? `audit:${snapshot.machineEvidence.audit && typeof snapshot.machineEvidence.audit === "object" && "id" in snapshot.machineEvidence.audit ? String(snapshot.machineEvidence.audit.id) : "unavailable"}`}</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 break-all text-foreground">{snapshot.sourceFingerprint ?? "derived from visible source candles"}</div></div>
+    <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
   </div>;
 }
 

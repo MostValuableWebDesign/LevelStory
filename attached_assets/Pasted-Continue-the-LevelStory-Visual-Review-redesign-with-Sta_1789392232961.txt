@@ -1,0 +1,89 @@
+Continue the LevelStory Visual Review redesign with Stage 3 only: chart presentation and supporting-panel organization.
+
+Preserve the accepted Stage 1 and Stage 2 work, navigation behavior, and all functionality and data guardrails.
+
+CHART WORKSPACE
+
+Make the chart the dominant content area, with a comfortable desktop height of approximately 420–600px that adapts to the viewport.
+
+Organize existing controls into a compact toolbar:
+- Full-session/primary-window selection.
+- Premarket visibility.
+- Zoom, pan, and reset.
+- Expand and fullscreen.
+
+Keep the event strip and candle inspector outside the plotting area.
+
+Preserve all existing:
+- Candle hover and keyboard inspection.
+- Entry-candle locking.
+- Causal event navigation.
+- Overlays, markers, prices, and evidence.
+- Machine-visible versus human-only future-candle distinctions.
+- Evaluation and review cursors.
+- Default chart window.
+
+Improve annotation readability through spacing, callouts, grouped legends, or accessible disclosures. Do not remove evidence, change chart semantics, or move markers away from their true time/price coordinates.
+
+SELECTED-TRADE SUMMARY
+
+Place a compact authoritative summary near the chart:
+- Entry and exit price.
+- Net P/L.
+- Quantity.
+- Grade and outcome where available.
+- Entry/exit time and exit reason.
+
+Reuse existing values and formatting. Do not calculate a competing result or confuse candidate P/L with account replay P/L.
+
+Keep losses, breakeven trades, and open/unscored trades distinct. Show unavailable values honestly.
+
+Avoid duplicating the same oversized summary in several places.
+
+SUPPORTING INFORMATION
+
+Organize details below the chart into accessible local tabs or disclosure sections. These must remain distinct from the top-level Generate, Chart Analysis, and Account Impact modes.
+
+Overview:
+- Existing trade-at-a-glance information.
+- What happened, why it qualified, and how it ended.
+- Skipped target levels and existing execution details.
+
+Human Review:
+- All existing judgment controls, notes, teaching features, and explicit submission actions.
+- Clear unsaved, saving, saved, and error feedback.
+- Clear separation between human judgment and machine explanation.
+- No automatic submission when navigating or changing tabs.
+
+Evidence:
+- Existing qualification evidence, detection funnel, rejection gates, and diagnostics.
+- Explicit labels distinguishing whole-review-set metrics from selected-trade metrics.
+- Preserve original counts and denominators.
+
+Technical Details:
+- Replay provenance, build and formula versions, freshness, fingerprints, occurrence identifiers, and other audit metadata.
+- Preserve complete values and access to full identifiers.
+- Collapse by default.
+
+Keep stale-data warnings, failures, and required actions prominent even when technical details are collapsed.
+
+Retain the review ledger, exports, teaching patterns, and all other existing features in clearly labeled locations. Use the original control inventory to verify nothing has been lost.
+
+VALIDATION
+
+Verify:
+- All chart controls and fullscreen behavior.
+- Candle inspection, event selection, and entry locking.
+- Causal shading and marker placement.
+- Every former panel and control has an accessible destination.
+- Review submission, validation, and error recovery.
+- Panel data stays synchronized when changing trades.
+- Switching detail tabs does not lose unsaved input.
+- Whole-set and selected-trade metrics remain correctly labeled.
+- Exports and other evidence modes still work.
+
+Run relevant tests and type checks. Inspect the actual rendered workspace using existing results or isolated fixtures.
+
+Rebuild the preview, report checks and limitations, and provide screenshots showing the chart and supporting sections.
+
+Stop after Stage 3 for my review.
