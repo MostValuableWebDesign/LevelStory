@@ -155,6 +155,13 @@ const VISIBLE_STRATEGY_SETTINGS = STRATEGY_TABS.filter(
   (strategy) => strategy.id !== "PATIENCE_CANDLE_CONTINUATION",
 );
 type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
+type ReviewDetailTab = "overview" | "human-review" | "evidence" | "technical-details";
+const REVIEW_DETAIL_TABS: Array<{ id: ReviewDetailTab; label: string; detail: string }> = [
+  { id: "overview", label: "Overview", detail: "Selected trade result" },
+  { id: "human-review", label: "Human Review", detail: "Judgment and teaching" },
+  { id: "evidence", label: "Evidence", detail: "Funnel and outputs" },
+  { id: "technical-details", label: "Technical Details", detail: "Provenance and audit" },
+];
 const VISUAL_REVIEW_TABS: Array<{ id: VisualReviewTab; label: string; detail: string }> = [
   { id: "generate", label: "Generate", detail: "deterministic replay" },
   { id: "chart-analysis", label: "Chart Analysis", detail: "uploaded evidence" },
@@ -504,6 +511,7 @@ export default function VisualReview() {
   const [startingBalance, setStartingBalance] = useState("10000");
   const [contractsPerTrade, setContractsPerTrade] = useState("1");
   const [activeVisualReviewTab, setActiveVisualReviewTab] = useState<VisualReviewTab>("generate");
+  const [activeReviewDetailTab, setActiveReviewDetailTab] = useState<ReviewDetailTab>("overview");
   const [openReviewPanels, setOpenReviewPanels] = useState<ReviewDisclosureState>(CLOSED_REVIEW_DISCLOSURES);
   const [reviewSetSettingsOpen, setReviewSetSettingsOpen] = useState(false);
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
@@ -1020,6 +1028,7 @@ export default function VisualReview() {
                     </aside>
                    <div className="visual-review-chart-column min-w-0 space-y-5">
                       <SnapshotHeaderContent snapshot={activeSnapshot} request={data.request} index={reviewQueue.findIndex((item) => item.snapshotId === activeSnapshot.snapshotId)} total={reviewQueue.length} onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)} onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)} includeProvenance={false} />
+                      <SelectedTradeSummary snapshot={activeSnapshot} />
                      <Panel>
                        <PanelTitle eyebrow="Raw market evidence / causal only" title="Chart evidence" right={<CausalTag />} />
                        <CausalChart snapshot={activeSnapshot} expanded={workspaceExpanded} lockedEntryCandle={lockedEntryCandle} teaching={teachingDraft} onToggleExpanded={() => setWorkspaceExpanded((current) => !current)} onLockCandle={(candle) => {
@@ -1063,26 +1072,59 @@ export default function VisualReview() {
                         onPrevious={() => moveSnapshot(reviewQueue, activeSnapshot, -1, selectSnapshot)}
                         onNext={() => moveSnapshot(reviewQueue, activeSnapshot, 1, selectSnapshot)}
                       />
-                      <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
-                      <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={setReviewStatus} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={setReviewNote} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
-                      <SnapshotProvenance snapshot={activeSnapshot} />
                    </div>
                  </div>
-                 <div className="grid items-start gap-5 md:grid-cols-2">
-                   <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
-                   <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
-                     analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
-                       onSuccess: setAnalysis,
-                     });
-                   }} />
+                  <div className="review-supporting-tabs border border-border bg-card" data-testid="review-supporting-tabs">
+                    <div className="border-b border-border bg-muted/20 p-2">
+                      <div role="tablist" aria-label="Selected trade supporting information" className="grid gap-1 sm:grid-cols-4">
+                        {REVIEW_DETAIL_TABS.map((tab) => {
+                          const selected = activeReviewDetailTab === tab.id;
+                          return <button
+                            key={tab.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={selected}
+                            aria-controls={`review-detail-panel-${tab.id}`}
+                            id={`review-detail-tab-${tab.id}`}
+                            onClick={() => setActiveReviewDetailTab(tab.id)}
+                            className={`min-w-0 border px-3 py-2 text-left transition ${selected ? "border-primary bg-primary text-primary-foreground" : "border-transparent text-muted-foreground hover:border-border hover:bg-card"}`}
+                            data-testid={`review-detail-tab-${tab.id}`}
+                          >
+                            <span className="block text-[10px] font-bold uppercase tracking-[.08em]">{tab.label}</span>
+                            <span className={`mt-0.5 block text-[10px] ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}>{tab.detail}</span>
+                          </button>;
+                        })}
+                      </div>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      {activeReviewDetailTab === "overview" && <section id="review-detail-panel-overview" role="tabpanel" aria-labelledby="review-detail-tab-overview" data-testid="review-detail-panel-overview" className="space-y-5">
+                        <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
+                      </section>}
+                      {activeReviewDetailTab === "human-review" && <section id="review-detail-panel-human-review" role="tabpanel" aria-labelledby="review-detail-tab-human-review" data-testid="review-detail-panel-human-review" className="space-y-5">
+                        <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={setReviewStatus} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={setReviewNote} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                      </section>}
+                      {activeReviewDetailTab === "evidence" && <section id="review-detail-panel-evidence" role="tabpanel" aria-labelledby="review-detail-tab-evidence" data-testid="review-detail-panel-evidence" className="space-y-5">
+                        <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Evidence scope:</span> selected-trade machine evidence is shown above; the funnel and review outputs below describe the full immutable review set.</div>
+                        <div className="grid items-start gap-5 md:grid-cols-2">
+                          <DiscrepancyPanel report={report} open={reportOpen} setOpen={setReportOpen} pending={exportQuery.isFetching} onExport={exportReport} />
+                          <ProposedRulePanel analysis={analysis} pending={analyzeRule.isPending} onAnalyze={() => {
+                            analyzeRule.mutate({ data: { reviewSetId: data.reviewSetId, ...(activeSnapshot.review.teaching?.teachingId ? { teachingId: activeSnapshot.review.teaching.teachingId } : {}) } }, {
+                              onSuccess: setAnalysis,
+                            });
+                          }} />
+                        </div>
+                        {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
+                      </section>}
+                      {activeReviewDetailTab === "technical-details" && <section id="review-detail-panel-technical-details" role="tabpanel" aria-labelledby="review-detail-tab-technical-details" data-testid="review-detail-panel-technical-details" className="space-y-5">
+                        <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Technical scope:</span> identifiers and audit values are preserved for reproducibility. Expand this section only when investigating a result.</div>
+                        <SnapshotProvenance snapshot={activeSnapshot} />
+                        <TechnicalTradeInspector trade={activeSnapshot.machineEvidence.trade as TradeEvidenceView | null} />
+                        <ReviewSetProvenance data={data} />
+                        <ReviewSetDiagnostics data={data} />
+                      </section>}
+                    </div>
                  </div>
            </section>}
-
-             {activeVisualReviewTab === "generate" && data && <section className="order-3 space-y-5" data-testid="visual-review-supporting-details" aria-label="Review set supporting details">
-               <ReviewSetProvenance data={data} />
-               <ReviewSetDiagnostics data={data} />
-               {data.funnelDiagnostics && <FunnelDiagnostics data={data.funnelDiagnostics} />}
-             </section>}
 
             {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
               <div className={data ? "" : "grid items-start gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]"}>
@@ -1790,7 +1832,6 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
   const candidate = snapshot.machineEvidence.trade as CandidateTradeView | null;
   const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
   const strategyLabel = candidate?.primaryEdge ? edgeDisplayLabel(candidate.primaryEdge) : snapshot.machineLabel;
-  const resultLabel = trade?.outcome?.replaceAll("_", " ") ?? "Unscored";
   return <div className="border-t border-border bg-muted/20" data-testid="historical-review-sample">
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div className="min-w-0">
@@ -1811,15 +1852,32 @@ function SnapshotHeaderContent({ snapshot, request, index, total, onPrevious, on
        <Metric label="Machine candles" value={`${snapshot.machineCandles.length} candles`} sub={snapshot.futureCandleAccess ? "Future access detected" : "Future access: false"} />
         <Metric label="Review candles" value={`${snapshot.reviewCandles.length} candles`} sub={`${snapshot.coverage.find((item) => item.session === "primary")?.observedCandleCount ?? 0}/42 primary observed`} />
     </div>
-     <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-5" data-testid="selected-trade-result-summary">
-       <Metric label="Entry" value={formatTradePrice(trade?.entryPrice)} sub={formatReviewTime(trade?.entryTime ?? "")} />
-       <Metric label="Exit" value={formatTradePrice(trade?.exitPrice)} sub={formatReviewTime(trade?.exitTime ?? "")} />
-       <Metric label="Net P/L" value={formatTradeMoney(trade?.netPnl, !trade?.exitTime)} sub={trade?.audit?.exitReason ?? "No exit reason"} />
-       <Metric label="Quantity" value={trade?.contracts == null ? "—" : `${trade.contracts} contract${trade.contracts === 1 ? "" : "s"}`} sub={`Grade ${candidate?.setupGrade ?? "—"}`} />
-       <Metric label="Outcome" value={resultLabel} sub={snapshot.review.status === "unreviewed" ? "Human review pending" : `Review: ${snapshot.review.status.replaceAll("_", " ")}`} />
-     </div>
      {includeProvenance && <SnapshotProvenance snapshot={snapshot} />}
   </div>;
+}
+
+function SelectedTradeSummary({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  const candidate = snapshot.machineEvidence.trade as CandidateTradeView | null;
+  const trade = snapshot.machineEvidence.trade as TradeEvidenceView | null;
+  const open = trade?.outcome === "open" || trade?.exitTime === null || trade?.exitPrice == null;
+  const result = tradeResultLabel(trade, typeof snapshot.machineEvidence.audit === "object" && snapshot.machineEvidence.audit !== null ? snapshot.machineEvidence.audit as Record<string, unknown> : {});
+  const exitReason = typeof trade?.audit?.exitReason === "string" ? trade.audit.exitReason : "No exit reason";
+  return <section className="selected-trade-summary" data-testid="selected-trade-summary" aria-label="Selected trade summary">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <div className="eyebrow text-muted-foreground">Selected trade · machine-owned result</div>
+        <div className="mt-1 text-[11px] font-semibold">Candidate {snapshot.tradingDate} · {snapshot.contractSymbol}</div>
+      </div>
+      <span className={`border px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${resultTone(result)}`}>{result}</span>
+    </div>
+    <div className="mt-3 grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-5">
+      <Metric label="Entry" value={formatTradePrice(trade?.entryPrice)} sub={formatReviewTime(trade?.entryTime ?? "")} />
+      <Metric label="Exit" value={open ? "—" : formatTradePrice(trade?.exitPrice)} sub={open ? "Current / unscored" : formatReviewTime(trade?.exitTime ?? "")} />
+      <Metric label="Net P/L" value={formatTradeMoney(trade?.netPnl, open)} sub={exitReason} />
+      <Metric label="Quantity" value={trade?.contracts == null ? "—" : `${trade.contracts} contract${trade.contracts === 1 ? "" : "s"}`} sub={`Grade ${candidate?.setupGrade ?? "—"}`} />
+      <Metric label="Outcome" value={result} sub={snapshot.review.status === "unreviewed" ? "Human review pending" : `Review: ${snapshot.review.status.replaceAll("_", " ")}`} />
+    </div>
+  </section>;
 }
 
 function SnapshotProvenance({ snapshot }: { snapshot: VisualValidationSnapshot }) {
@@ -1866,6 +1924,8 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
   const [sessionView, setSessionView] = useState<SessionView>(requestedSessionView);
   const [showPremarket, setShowPremarket] = useState(requestedPremarket);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState(0);
   const frameRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === frameRef.current);
@@ -1882,6 +1942,10 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("levelstory.visualReviewWindow", sessionView);
   }, [sessionView]);
+  useEffect(() => {
+    setZoom(1);
+    setPan(0);
+  }, [sessionView, snapshot.snapshotId]);
   const toggleFullscreen = () => {
     if (document.fullscreenElement === frameRef.current) {
       void document.exitFullscreen();
@@ -1911,6 +1975,12 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
     ? "Primary trade window · 9:30 AM–1:00 PM ET"
     : "Full regular session · 9:30 AM–4:00 PM ET";
   const sourceLabel = `${windowLabel} · Historical Databento`;
+  const maxPan = CHART_WIDTH - CHART_WIDTH / zoom;
+  const updateZoom = (nextZoom: number) => {
+    const boundedZoom = Math.max(1, Math.min(3, Number(nextZoom.toFixed(2))));
+    setZoom(boundedZoom);
+    setPan((current) => Math.min(current, CHART_WIDTH - CHART_WIDTH / boundedZoom));
+  };
   return <div ref={frameRef} className={`chart-frame border-t border-border p-3 sm:p-5 ${isFullscreen ? "visual-review-chart-fullscreen" : ""}`} data-testid="visual-review-chart">
     <div className="mb-4 flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -1921,31 +1991,41 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
         </div>
         <div className="mt-2 text-xs font-semibold tracking-[-.01em]" data-testid="primary-trade-window-label">{sourceLabel}</div>
       </div>
-       <div className="flex flex-col items-start gap-2 sm:items-end">
-        <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <span className="eyebrow">Chart window</span>
-            <select className="field h-8 min-w-[190px] py-1 text-[10px]" value={sessionView} onChange={(event) => setSessionView(event.target.value as SessionView)} data-testid="select-session-view">
-              <option value="primary">Primary window: 9:30 AM–1:00 PM</option>
-              <option value="full_regular">Full regular session: 9:30 AM–4:00 PM</option>
-            </select>
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-[10px] text-muted-foreground">
-            <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showPremarket} onChange={(event) => setShowPremarket(event.target.checked)} data-testid="toggle-show-premarket" />
-            <span>Show premarket candles</span>
-          </label>
-           <div className="flex flex-wrap items-center gap-1 border-l border-border pl-2" role="group" aria-label="Chart view controls">
-             <button type="button" onClick={onToggleExpanded} className="chart-control" aria-label={expanded ? "Exit expanded chart" : "Expand chart"} data-testid="button-expand-chart">{expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{expanded ? "Exit" : "Expand"}</button>
-             <button type="button" onClick={toggleFullscreen} className="chart-control" aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} data-testid="button-fullscreen-chart">{isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</button>
-           </div>
-        </div>
-      </div>
     </div>
+     <div className="chart-toolbar" data-testid="chart-control-toolbar">
+       <div className="chart-toolbar-group" role="group" aria-label="Session controls">
+         <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+           <span className="eyebrow">Chart window</span>
+           <select className="field h-8 min-w-[190px] py-1 text-[10px]" value={sessionView} onChange={(event) => setSessionView(event.target.value as SessionView)} data-testid="select-session-view">
+             <option value="primary">Primary window: 9:30 AM–1:00 PM</option>
+             <option value="full_regular">Full regular session: 9:30 AM–4:00 PM</option>
+           </select>
+         </label>
+         <label className="flex cursor-pointer items-center gap-2 text-[10px] text-muted-foreground">
+           <input type="checkbox" className="accent-[hsl(var(--accent))]" checked={showPremarket} onChange={(event) => setShowPremarket(event.target.checked)} data-testid="toggle-show-premarket" />
+           <span>Premarket</span>
+         </label>
+       </div>
+       <div className="chart-toolbar-group" role="group" aria-label="Chart navigation controls">
+         <span className="eyebrow text-muted-foreground">Inspect</span>
+         <button type="button" onClick={() => updateZoom(zoom - .25)} disabled={zoom <= 1} className="chart-control" aria-label="Zoom out" data-testid="button-zoom-out"><ZoomOut size={13} />Zoom out</button>
+         <span className="mono min-w-[42px] text-center text-[10px] text-muted-foreground" aria-live="polite">{Math.round(zoom * 100)}%</span>
+         <button type="button" onClick={() => updateZoom(zoom + .25)} disabled={zoom >= 3} className="chart-control" aria-label="Zoom in" data-testid="button-zoom-in"><ZoomIn size={13} />Zoom in</button>
+         <button type="button" onClick={() => setPan((current) => Math.max(0, current - 80 / zoom))} disabled={pan <= 0} className="chart-control" aria-label="Pan chart left" data-testid="button-pan-left"><MoveLeft size={13} />Pan left</button>
+         <button type="button" onClick={() => setPan((current) => Math.min(maxPan, current + 80 / zoom))} disabled={pan >= maxPan} className="chart-control" aria-label="Pan chart right" data-testid="button-pan-right"><MoveRight size={13} />Pan right</button>
+         <button type="button" onClick={() => { setZoom(1); setPan(0); }} className="chart-control" aria-label="Reset chart view" data-testid="button-reset-chart"><RotateCcw size={13} />Reset</button>
+         {sessionView !== "primary" && <button type="button" onClick={() => setSessionView("primary")} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
+       </div>
+       <div className="chart-toolbar-group" role="group" aria-label="Chart presentation controls">
+         <span className="mono text-[10px] text-muted-foreground">MES · {snapshot.contractSymbol}</span>
+         <button type="button" onClick={onToggleExpanded} className="chart-control" aria-label={expanded ? "Exit expanded chart" : "Expand chart"} data-testid="button-expand-chart">{expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{expanded ? "Exit" : "Expand"}</button>
+         <button type="button" onClick={toggleFullscreen} className="chart-control" aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} data-testid="button-fullscreen-chart">{isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</button>
+       </div>
+     </div>
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
       <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}
-        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} onReturnPrimary={() => setSessionView("primary")} onLockCandle={onLockCandle} />
+        <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} zoom={zoom} pan={pan} onLockCandle={onLockCandle} />
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />up candle</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-[hsl(var(--negative))]" />down candle</span>
@@ -2098,7 +2178,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   focusOpenTime,
   lockedEntryCandle,
   teaching,
-  onReturnPrimary,
+   zoom,
+   pan,
   onLockCandle,
 }: {
   snapshot: VisualValidationSnapshot;
@@ -2109,7 +2190,8 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   focusOpenTime: string;
   lockedEntryCandle: SessionCandle | null;
   teaching: NonNullable<VisualValidationReviewRequest["teaching"]> | null;
-  onReturnPrimary: () => void;
+   zoom: number;
+   pan: number;
   onLockCandle: (candle: SessionCandle | null) => void;
 }) {
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
@@ -2118,8 +2200,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState(0);
   const legendRef = useRef<HTMLDivElement>(null);
   const interactionRef = useRef<SVGSVGElement>(null);
   const pointerFrameRef = useRef<number | null>(null);
@@ -2131,8 +2211,6 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
     setPointerPosition(null);
     setActiveLevelId(null);
     setSelectedLevelId(null);
-    setZoom(1);
-    setPan(0);
     const timer = window.setTimeout(() => interactionRef.current?.focus({ preventScroll: true }), 0);
     return () => window.clearTimeout(timer);
   }, [candles.length, focusOpenTime, sessionView, premarketCandles.length]);
@@ -2436,19 +2514,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
        selectLevel(id);
      }
    };
-  return <div className="relative w-full overflow-x-auto">
-     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y border-border py-2" data-testid="chart-navigation-controls">
-       <span className="eyebrow text-muted-foreground">Inspect / fixed timestamp slots</span>
-       <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Chart navigation controls">
-         <button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - .25).toFixed(2))))} disabled={zoom <= 1} className="chart-control" aria-label="Zoom out" data-testid="button-zoom-out"><ZoomOut size={13} />Zoom out</button>
-         <span className="mono min-w-[42px] text-center text-[10px] text-muted-foreground" aria-live="polite">{Math.round(zoom * 100)}%</span>
-         <button type="button" onClick={() => setZoom((current) => Math.min(3, Number((current + .25).toFixed(2))))} disabled={zoom >= 3} className="chart-control" aria-label="Zoom in" data-testid="button-zoom-in"><ZoomIn size={13} />Zoom in</button>
-         <button type="button" onClick={() => setPan((current) => Math.max(0, current - 80 / zoom))} disabled={pan <= 0} className="chart-control" aria-label="Pan chart left" data-testid="button-pan-left"><MoveLeft size={13} />Pan left</button>
-         <button type="button" onClick={() => setPan((current) => Math.min(width - width / zoom, current + 80 / zoom))} disabled={pan >= width - width / zoom} className="chart-control" aria-label="Pan chart right" data-testid="button-pan-right"><MoveRight size={13} />Pan right</button>
-         <button type="button" onClick={() => { setZoom(1); setPan(0); }} className="chart-control" aria-label="Reset chart view" data-testid="button-reset-chart"><RotateCcw size={13} />Reset</button>
-         {sessionView !== "primary" && <button type="button" onClick={onReturnPrimary} className="chart-control" aria-label="Return to primary trade window" data-testid="button-return-primary"><RotateCcw size={13} />Primary window</button>}
-       </div>
-     </div>
+   return <div className="relative w-full overflow-x-auto">
         <section className="event-strip" aria-label="Causal event strip" data-testid="event-strip">
           <div className="event-strip-heading">
             <div>

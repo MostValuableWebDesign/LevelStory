@@ -715,6 +715,24 @@
   .visual-review-chart-column {
     min-width: 0;
   }
+  .selected-trade-summary {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    padding: .8rem 1rem 1rem;
+    box-shadow: 0 1px 0 hsl(var(--foreground) / .025);
+  }
+  .review-supporting-tabs {
+    scroll-margin-top: 1rem;
+  }
+  .chart-plot-shell {
+    min-height: clamp(420px, 48vw, 600px);
+    max-height: 600px;
+  }
+  .chart-plot-shell .visual-review-svg {
+    height: 100%;
+    min-height: clamp(420px, 48vw, 600px);
+    max-height: 600px;
+  }
   .visual-review-chart-fullscreen {
     min-height: 100dvh;
     overflow: auto;
@@ -748,6 +766,28 @@
     text-transform: uppercase;
     transition: background-color .2s, border-color .2s, opacity .2s;
   }
+  .chart-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .55rem;
+    margin-bottom: 1rem;
+    border-block: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / .2);
+    padding: .55rem;
+  }
+  .chart-toolbar-group {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+  }
+  .chart-toolbar-group + .chart-toolbar-group {
+    border-left: 1px solid hsl(var(--border));
+    padding-left: .55rem;
+  }
   .chart-control:hover:not(:disabled) {
     border-color: hsl(var(--accent));
     background: hsl(var(--muted));
@@ -777,6 +817,20 @@
     .chart-control {
       flex: 1 1 auto;
     }
+    .chart-toolbar {
+      align-items: stretch;
+    }
+    .chart-toolbar-group,
+    .chart-toolbar-group + .chart-toolbar-group {
+      width: 100%;
+      border-left: 0;
+      border-top: 1px solid hsl(var(--border));
+      padding: .55rem 0 0;
+    }
+    .chart-toolbar-group:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
     .candle-inspector { padding: .7rem; }
     .inspector-ohlcv { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .inspector-meta { grid-template-columns: 1fr; }
@@ -785,6 +839,11 @@
       align-items: flex-start;
       flex-direction: column;
       gap: .2rem;
+    }
+    .chart-plot-shell,
+    .chart-plot-shell .visual-review-svg {
+      min-height: 360px;
+      max-height: none;
     }
   }
   @media (max-width: 1279px) {
