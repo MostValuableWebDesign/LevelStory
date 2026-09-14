@@ -1,0 +1,36 @@
+Audit and complete Human Review persistence before adding new strategy controls.
+
+Start with:
+- visual-review.tsx
+- visual-validation-store.ts
+- routes/visual-validation.ts
+- governance-store.ts
+- existing review/teaching database schemas and tests
+
+Current source concerns:
+- Ordinary review status and notes are stored in an expiring in-memory review-set map.
+- Structured teaching evidence is persisted separately.
+- The review endpoint mutates in-memory state before durable teaching persistence succeeds.
+
+Requirements:
+1. Persist every supported review judgment and note, including reviews without structured teaching.
+2. Associate reviews with authenticated reviewer identity, review-set identity, snapshot/candidate identity, and relevant evidence/formula version. Never attach an old review to changed evidence merely because a date or position in the list matches.
+3. Restore saved reviews after refresh, process restart, and in-memory eviction. Reuse existing durable schemas where suitable.
+4. Make review and teaching writes atomic where applicable. A failed database write must not appear saved in memory or the UI.
+5. Implement safe idempotent retries without truncation-based key collisions, duplicate teaching records, or lost revisions.
+6. Preserve revision history and handle concurrent edits explicitly.
+7. Show Draft, Saving, Saved, and Save failed states. Retain entered text after errors.
+8. “Save and next” must advance only after a successful save. Switching trades must not apply one trade’s draft or delayed response to another trade.
+9. Keep existing server-side reviewer authorization and causal evidence validation.
+
+Add focused tests for:
+- Ordinary judgment/note persistence.
+- Structured teaching persistence.
+- Refresh/restart/eviction recovery.
+- Database failure followed by retry.
+- Double submission and concurrent edits.
+- Switching trades during a pending save.
+- Unauthorized submission.
+- Mismatched or stale evidence identities.
+
+Run an authenticated browser test that saves a review, reloads, and verifies both the review form and queue status. Report separately what passed, what failed, and what could not be tested. Do not claim strategy behavior changes merely because feedback was saved.
