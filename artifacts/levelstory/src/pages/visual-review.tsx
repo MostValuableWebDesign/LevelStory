@@ -258,6 +258,19 @@ const CLOSED_REVIEW_DISCLOSURES: ReviewDisclosureState = {
   summary: false,
   judgment: false,
 };
+const CANDLE_INSPECTOR_SESSION_KEY = "levelstory.visualReview.candleInspectorOpen";
+const LEVELS_INDICATORS_SESSION_KEY = "levelstory.visualReview.levelsIndicatorsOpen";
+
+function storedSessionBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  return window.sessionStorage.getItem(key) === null
+    ? fallback
+    : window.sessionStorage.getItem(key) === "true";
+}
+
+function saveSessionBoolean(key: string, value: boolean): void {
+  if (typeof window !== "undefined") window.sessionStorage.setItem(key, String(value));
+}
 
 const INITIAL_REQUEST: VisualValidationRequest = {
   symbol: "MES",
@@ -572,7 +585,8 @@ export default function VisualReview() {
   const [reviewDraftSnapshotId, setReviewDraftSnapshotId] = useState("");
   const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
   const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
-  const [message, setMessage] = useState("");
+  const [generationMessage, setGenerationMessage] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [generationJobId, setGenerationJobId] = useState(storedGenerationJobId);
@@ -659,7 +673,7 @@ export default function VisualReview() {
   useEffect(() => {
     let active = true;
     const authError = new URLSearchParams(window.location.search).get("authError");
-    if (authError) setMessage("Login could not be completed. Please try Log in again.");
+    if (authError) setGenerationMessage("Login could not be completed. Please try Log in again.");
     fetch("/api/auth/user", { credentials: "include" })
       .then((response) => response.ok ? response.json() as Promise<{ user?: unknown }> : { user: null })
       .then((result) => { if (active) setAuthenticated(Boolean(result.user)); })
@@ -678,9 +692,9 @@ export default function VisualReview() {
         setReviewSetId("");
         setLocalSet(null);
         setFreshGenerationRequested(false);
-        setMessage("The previous visual-validation generation was interrupted or expired. Start a new generation.");
+        setGenerationMessage("The previous visual-validation generation was interrupted or expired. Start a new generation.");
       } else {
-        setMessage(apiErrorMessage(generationQuery.error) ?? "The saved generation job is no longer available. Start a new generation.");
+        setGenerationMessage(apiErrorMessage(generationQuery.error) ?? "The saved generation job is no longer available. Start a new generation.");
       }
     }
   }, [generationJobId, generationQuery.error, generationQuery.isError, startGeneration]);
@@ -695,14 +709,14 @@ export default function VisualReview() {
   useEffect(() => {
     if (localSet || generationActive) return;
     if (setQuery.data?.stale) {
-      setMessage(`The saved review set is stale because ${freshnessMessage(setQuery.data)}. Generate fresh to create a new immutable set; existing reviews remain preserved.`);
+      setGenerationMessage(`The saved review set is stale because ${freshnessMessage(setQuery.data)}. Generate fresh to create a new immutable set; existing reviews remain preserved.`);
       return;
     }
     if (reviewSetId && !loadLatestReviewSet && setQuery.isError && apiErrorStatus(setQuery.error) === 404) {
       clearStoredReviewSetSelection();
       setReviewSetId("");
       setLoadLatestReviewSet(true);
-      setMessage("The saved review set expired; switched to the latest available set.");
+      setGenerationMessage("The saved review set expired; switched to the latest available set.");
     }
   }, [generationActive, loadLatestReviewSet, localSet, reviewSetId, setQuery.data, setQuery.error, setQuery.isError]);
 
@@ -720,7 +734,7 @@ export default function VisualReview() {
         window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
       }
       const qualifiedCount = generationJob.result.snapshots.filter((snapshot) => snapshot.category === "qualified_trade").length;
-      setMessage(generationJob.status === "partial"
+       setGenerationMessage(generationJob.status === "partial"
         ? `${generationJob.message} ${qualifiedCount} previously completed trade candidate${qualifiedCount === 1 ? "" : "s"} remain available.`
         : qualifiedCount > 0
           ? `Generated ${qualifiedCount} authoritative trade candidate${qualifiedCount === 1 ? "" : "s"}.`
@@ -729,7 +743,7 @@ export default function VisualReview() {
       const recovery = historicalRangeRecovery(generationJob.error);
       if (recovery && request.endDate === recovery.requestedEndDate) {
         setRequest((current) => ({ ...current, endDate: recovery.availableEndDate }));
-        setMessage(`The saved review date ended before eligible MES history. The date was reset to ${recovery.availableEndDate}; retry generation.`);
+        setGenerationMessage(`The saved review date ended before eligible MES history. The date was reset to ${recovery.availableEndDate}; retry generation.`);
       }
     }
   }, [generationJob, request.endDate]);
@@ -890,7 +904,7 @@ export default function VisualReview() {
   const startReviewSetGeneration = (regenerateFresh = false) => {
     if (!confirmDiscardReview()) return;
     if (storedSessions === 0) {
-      setMessage(`No stored trading sessions are available on or before ${request.endDate}. Select a later review-period end date.`);
+      setGenerationMessage(`No stored trading sessions are available on or before ${request.endDate}. Select a later review-period end date.`);
       return;
     }
     const adjustedDays = storedSessions !== null && request.inSampleDays > storedSessions
@@ -901,7 +915,7 @@ export default function VisualReview() {
       : { ...request, inSampleDays: adjustedDays };
     if (storedSessions !== null && request.inSampleDays > storedSessions) {
       setRequest(generationRequest);
-      setMessage(`Only ${storedSessions} stored trading session${storedSessions === 1 ? "" : "s"} are available through ${request.endDate}; generating with ${adjustedDays}.`);
+      setGenerationMessage(`Only ${storedSessions} stored trading session${storedSessions === 1 ? "" : "s"} are available through ${request.endDate}; generating with ${adjustedDays}.`);
     }
     if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
     setActiveVisualReviewTab("generate");
@@ -909,16 +923,16 @@ export default function VisualReview() {
     setFreshGenerationRequested(regenerateFresh);
     setGenerationJobId("");
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
-    setMessage("");
+      setReviewMessage("");
     setReport(null);
     setLocalSet(null);
     startGeneration.mutate({ data: { ...generationRequest, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
         setGenerationJobId(job.jobId);
         if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
-        if (job.status === "failed") setMessage(job.error ?? "The deterministic set could not be generated.");
+        if (job.status === "failed") setGenerationMessage(job.error ?? "The deterministic set could not be generated.");
       },
-      onError: (error) => setMessage(apiErrorMessage(error) ?? "The generation job could not be started."),
+      onError: (error) => setGenerationMessage(apiErrorMessage(error) ?? "The generation job could not be started."),
     });
   };
 
@@ -1011,7 +1025,7 @@ export default function VisualReview() {
         ? { teaching: status === "false_positive_trade" ? { ...teachingDraft, judgment: "false_positive_trade" as const } : teachingDraft }
         : {}),
     };
-    setMessage("");
+    setReviewMessage("");
     setReviewSaveState("saving");
     recordReview.mutate({
       data: requestData,
@@ -1050,7 +1064,7 @@ export default function VisualReview() {
           confidence: saved.teaching.confidence,
           explanation: saved.teaching.explanation,
         } : teachingDraft);
-         setMessage(saved.teaching
+         setReviewMessage(saved.teaching
            ? "Teaching example saved permanently. The active formula has not changed."
            : `${wasAlreadySaved ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
         if (moveNext) {
@@ -1061,7 +1075,7 @@ export default function VisualReview() {
       onError: (error) => {
         if (attempt !== reviewSaveAttemptRef.current || selectedSnapshotIdRef.current !== snapshotId) return;
         setReviewSaveState("failed");
-        setMessage(`Unable to save this review: ${apiErrorMessage(error) ?? (error instanceof Error ? error.message : "The server rejected the submission.")}`);
+        setReviewMessage(`Unable to save this review: ${apiErrorMessage(error) ?? (error instanceof Error ? error.message : "The server rejected the submission.")}`);
       },
     });
   };
@@ -1222,7 +1236,7 @@ export default function VisualReview() {
                         <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
                       </section>}
                       {activeReviewDetailTab === "human-review" && <section id="review-detail-panel-human-review" role="tabpanel" aria-labelledby="review-detail-tab-human-review" data-testid="review-detail-panel-human-review" className="space-y-5">
-                        <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setMessage(""); }} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                         <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setReviewMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setReviewMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={reviewMessage} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setReviewMessage(""); }} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                       </section>}
                       {activeReviewDetailTab === "evidence" && <section id="review-detail-panel-evidence" role="tabpanel" aria-labelledby="review-detail-tab-evidence" data-testid="review-detail-panel-evidence" className="space-y-5">
                         <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Evidence scope:</span> selected-trade machine evidence is shown above; the funnel and review outputs below describe the full immutable review set.</div>
@@ -1256,7 +1270,7 @@ export default function VisualReview() {
                    if (next.earlyOrbMomentum) window.localStorage.setItem(EARLY_ORB_MOMENTUM_STORAGE_KEY, String(next.earlyOrbMomentum.enabled));
                    if (next.enabledStrategies) window.localStorage.setItem(ENABLED_STRATEGIES_STORAGE_KEY, JSON.stringify(next.enabledStrategies));
                  }
-                 }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={message} historicalIndex={historicalIndex.data} data={data} settingsExpanded={reviewSetSettingsOpen} onToggleSettings={() => setReviewSetSettingsOpen((current) => !current)} generationJob={generationJob} onRetryGeneration={retryGeneration} />
+                 }} onSubmit={submitGeneration} onRegenerateFresh={regenerateFreshReviewSet} pending={Boolean(generationBusy)} message={generationMessage} historicalIndex={historicalIndex.data} data={data} settingsExpanded={reviewSetSettingsOpen} onToggleSettings={() => setReviewSetSettingsOpen((current) => !current)} generationJob={generationJob} onRetryGeneration={retryGeneration} />
                 {!data && !generationActive && <CoverageRail
                  data={data}
                  loading={setQuery.isLoading}
@@ -2240,7 +2254,10 @@ function CandleInspector({
   onLockCandle: (candle: SessionCandle | null) => void;
   crosshairPrice: number | null;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => !storedSessionBoolean(CANDLE_INSPECTOR_SESSION_KEY, false));
+  useEffect(() => {
+    saveSessionBoolean(CANDLE_INSPECTOR_SESSION_KEY, !collapsed);
+  }, [collapsed]);
   const selectedLabel = selectedSlot == null ? "Select a five-minute candle" : `Fixed slot ${String(selectedSlot + 1).padStart(2, "0")}`;
   return <section className={`candle-inspector ${collapsed ? "is-collapsed" : ""}`} aria-label="Selected candle inspector" data-testid="candle-inspector">
     <div className="flex items-center justify-between gap-3">
@@ -2351,10 +2368,14 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+  const [levelsIndicatorsOpen, setLevelsIndicatorsOpen] = useState(() => storedSessionBoolean(LEVELS_INDICATORS_SESSION_KEY, false));
   const legendRef = useRef<HTMLDivElement>(null);
   const interactionRef = useRef<SVGSVGElement>(null);
   const pointerFrameRef = useRef<number | null>(null);
   const pendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  useEffect(() => {
+    saveSessionBoolean(LEVELS_INDICATORS_SESSION_KEY, levelsIndicatorsOpen);
+  }, [levelsIndicatorsOpen]);
   useEffect(() => {
     const focusedIndex = findCandleIndexAtTimestamp(candles, focusOpenTime);
     setSelectedSlot(focusedIndex >= 0 ? getCandleSlotIndex(candles[focusedIndex]!, sessionView) : null);
@@ -2703,7 +2724,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           </div>}
         </section>
          <CandleInspector inspection={activeDetails} selectedSlot={activeSlot} activeCandle={activeCandle} onLockCandle={onLockCandle} crosshairPrice={pointerPosition?.price ?? null} />
-         <details className="chart-level-disclosure mt-3" open>
+          <details className="chart-level-disclosure mt-3" open={levelsIndicatorsOpen} onToggle={(event) => setLevelsIndicatorsOpen(event.currentTarget.open)}>
           <summary className="flex cursor-pointer list-none items-center gap-2 border-y border-border py-2 text-[10px] font-bold text-muted-foreground"><CandlestickChart size={18} className="text-primary" aria-hidden="true" />Levels and indicators</summary>
          <div ref={legendRef} className="flex flex-wrap gap-1.5 border-b border-border py-2" data-testid="chart-level-legend" aria-label="Visible price-level legend">
           {levelLegend.map((annotation) => {

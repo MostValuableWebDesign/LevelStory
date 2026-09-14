@@ -9,6 +9,8 @@ import {
 import type { VisualValidationReview, VisualValidationSet, VisualValidationSnapshot } from "./visual-validation.js";
 import {
   GovernanceError,
+  loadVisualValidationReviews,
+  loadVisualValidationSet,
   persistVisualValidationReview,
 } from "./governance-store.js";
 
@@ -78,6 +80,7 @@ function review(reviewSetId: string, snapshotId: string, reviewId: string, revis
 
 test("durable visual reviews are idempotent and reject stale concurrent edits", async () => {
   const actor = { id: `visual-review-test-${randomUUID()}` };
+  const otherActor = { id: `visual-review-test-other-${randomUUID()}` };
   const reviewSetId = randomUUID();
   const snapshotId = `snapshot-${randomUUID()}`;
   const evidence = snapshot(reviewSetId, snapshotId);
@@ -103,6 +106,21 @@ test("durable visual reviews are idempotent and reject stale concurrent edits", 
       review: first,
       idempotencyKey: "review-retry-one",
     });
+    await persistVisualValidationReview({
+      ...base,
+      actor: otherActor,
+      review: review(reviewSetId, snapshotId, randomUUID(), 1, "incorrect"),
+      idempotencyKey: "review-other-one",
+      requestFingerprint: "request-other-one",
+    });
+    await db.update(visualValidationReviewsTable)
+      .set({ setPayload: null })
+      .where(and(
+        eq(visualValidationReviewsTable.reviewerId, actor.id),
+        eq(visualValidationReviewsTable.reviewSetId, reviewSetId),
+      ));
+    assert.ok(await loadVisualValidationSet(reviewSetId, actor.id), "reviewer access restores the shared set even when their row has no payload");
+    assert.equal((await loadVisualValidationReviews(reviewSetId, actor.id)).length, 1);
     const replay = await persistVisualValidationReview({
       ...base,
       review: { ...first, reviewedAt: new Date(Date.now() + 1000).toISOString() },
@@ -144,5 +162,6 @@ test("durable visual reviews are idempotent and reject stale concurrent edits", 
     assert.deepEqual(rows.map((row) => row.revision).sort(), [1, 2]);
   } finally {
     await db.delete(visualValidationReviewsTable).where(eq(visualValidationReviewsTable.reviewerId, actor.id));
+    await db.delete(visualValidationReviewsTable).where(eq(visualValidationReviewsTable.reviewerId, otherActor.id));
   }
 });

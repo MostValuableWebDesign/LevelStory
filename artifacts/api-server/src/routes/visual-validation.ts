@@ -143,23 +143,24 @@ export function createVisualValidationRouter(): IRouter {
     }
     const hasGenerationParams = ["symbol", "endDate", "inSampleDays", "outOfSampleDays", "seed", "reviewMode"]
       .some((key) => Object.prototype.hasOwnProperty.call(req.query, key));
-    if (parsed.data.reviewSetId || (!hasGenerationParams && getLatestVisualValidationSet())) {
+    const reviewerId = req.user?.id;
+    if (parsed.data.reviewSetId || (!hasGenerationParams && getLatestVisualValidationSet(reviewerId))) {
        let existing = parsed.data.reviewSetId
-        ? getVisualValidationSet(parsed.data.reviewSetId)
-        : getLatestVisualValidationSet();
-       if (!existing && parsed.data.reviewSetId && req.user?.id) {
-         const persistedSet = await loadVisualValidationSet(parsed.data.reviewSetId, req.user.id);
+        ? getVisualValidationSet(parsed.data.reviewSetId, reviewerId)
+        : getLatestVisualValidationSet(reviewerId);
+       if (!existing && parsed.data.reviewSetId && reviewerId) {
+         const persistedSet = await loadVisualValidationSet(parsed.data.reviewSetId, reviewerId);
          if (persistedSet) existing = restoreVisualValidationSet(persistedSet);
        }
       if (!existing) {
         res.status(404).json({ error: "Visual-validation set not found or expired." });
         return;
       }
-       if (req.user?.id) {
-         restoreVisualValidationReviews(existing.reviewSetId, await loadVisualValidationReviews(existing.reviewSetId, req.user.id));
+        if (reviewerId) {
+          restoreVisualValidationReviews(existing.reviewSetId, reviewerId, await loadVisualValidationReviews(existing.reviewSetId, reviewerId));
          existing = parsed.data.reviewSetId
-           ? getVisualValidationSet(parsed.data.reviewSetId)
-           : getLatestVisualValidationSet();
+            ? getVisualValidationSet(parsed.data.reviewSetId, reviewerId)
+            : getLatestVisualValidationSet(reviewerId);
        }
        if (!existing) {
          res.status(404).json({ error: "Visual-validation set not found or expired." });
@@ -329,7 +330,7 @@ export function createVisualValidationRouter(): IRouter {
       if (parsed.data.status === "false_positive_trade" && (!teaching || teaching.judgment !== "false_positive_trade")) {
         throw new Error("False-positive reviews require structured false-positive teaching evidence.");
       }
-      const activeSet = getVisualValidationSet(parsed.data.reviewSetId);
+      const activeSet = getVisualValidationSet(parsed.data.reviewSetId, req.user!.id);
       const snapshot = activeSet?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
       if (!activeSet || !snapshot) {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
@@ -345,6 +346,7 @@ export function createVisualValidationRouter(): IRouter {
         parsed.data.note ?? null,
         teaching,
          parsed.data.expectedRevision,
+         req.user!.id,
       );
       if (!review) {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
@@ -371,7 +373,7 @@ export function createVisualValidationRouter(): IRouter {
          requestFingerprint,
          expectedRevision: parsed.data.expectedRevision,
        });
-       applyVisualValidationReview(persisted);
+        applyVisualValidationReview(persisted, req.user!.id);
        res.json(RecordVisualValidationReviewResponse.parse(persisted));
     } catch (error) {
        const status = error instanceof GovernanceError ? error.status : 400;
@@ -379,13 +381,13 @@ export function createVisualValidationRouter(): IRouter {
     }
   });
 
-  router.post("/backtest/visual-validation/proposed-rule-analysis", reviewRateLimit, (req, res): void => {
+  router.post("/backtest/visual-validation/proposed-rule-analysis", reviewRateLimit, requireRole("reviewer"), (req, res): void => {
     const parsed = AnalyzeVisualValidationTeachingBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const analysis = analyzeVisualValidationTeaching(parsed.data.reviewSetId, parsed.data.teachingId);
+    const analysis = analyzeVisualValidationTeaching(parsed.data.reviewSetId, parsed.data.teachingId, req.user!.id);
     if (!analysis) {
       res.status(404).json({ error: "Visual-validation set not found or expired." });
       return;
@@ -393,13 +395,13 @@ export function createVisualValidationRouter(): IRouter {
     res.json(AnalyzeVisualValidationTeachingResponse.parse(analysis));
   });
 
-  router.get("/backtest/visual-validation/discrepancies", reviewRateLimit, (req, res): void => {
+  router.get("/backtest/visual-validation/discrepancies", reviewRateLimit, requireRole("reviewer"), (req, res): void => {
     const parsed = ExportVisualValidationDiscrepanciesQueryParams.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const report = buildVisualValidationDiscrepancyReport(parsed.data.reviewSetId);
+    const report = buildVisualValidationDiscrepancyReport(parsed.data.reviewSetId, req.user!.id);
     if (!report) {
       res.status(404).json({ error: "Visual-validation set not found or expired." });
       return;

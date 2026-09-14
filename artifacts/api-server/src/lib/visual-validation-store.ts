@@ -23,8 +23,8 @@ import {
 
 type StoredVisualValidationSet = {
   set: VisualValidationSet;
-  reviews: Map<string, VisualValidationReview>;
-  reviewHistory: VisualValidationReview[];
+  reviewsByReviewer: Map<string, Map<string, VisualValidationReview>>;
+  reviewHistoryByReviewer: Map<string, VisualValidationReview[]>;
   lastAccessedAt: number;
 };
 
@@ -53,41 +53,74 @@ const SET_TTL_MS = 30 * 60_000;
 const sets = new Map<string, StoredVisualValidationSet>();
 let latestSetId: string | null = null;
 
-function prune(): void {
-  const now = Date.now();
-  for (const [id, stored] of sets) {
-    if (now - stored.lastAccessedAt > SET_TTL_MS && stored.reviews.size === 0) {
-      sets.delete(id);
-      if (id === latestSetId) latestSetId = null;
-    }
-  }
-  while (sets.size > MAX_STORED_SETS) {
-    const oldest = [...sets.entries()]
-      .filter(([, stored]) => stored.reviews.size === 0)
-      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt)[0];
-    if (!oldest) return;
-    sets.delete(oldest[0]);
-    if (oldest[0] === latestSetId) latestSetId = null;
+function removeStoredSet(id: string): void {
+  sets.delete(id);
+  if (id === latestSetId) {
+    latestSetId = [...sets.entries()]
+      .sort((left, right) => right[1].lastAccessedAt - left[1].lastAccessedAt)[0]?.[0] ?? null;
   }
 }
 
-export function restoreVisualValidationReviews(reviewSetId: string, reviews: VisualValidationReview[]): void {
+function prune(): void {
+  const now = Date.now();
+  for (const [id, stored] of sets) {
+    if (now - stored.lastAccessedAt > SET_TTL_MS) removeStoredSet(id);
+  }
+  while (sets.size > MAX_STORED_SETS) {
+    const oldest = [...sets.entries()]
+      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt)[0];
+    if (!oldest) break;
+    removeStoredSet(oldest[0]);
+  }
+}
+
+function reviewerReviews(stored: StoredVisualValidationSet, reviewerId: string | undefined): Map<string, VisualValidationReview> {
+  if (!reviewerId) return new Map();
+  const existing = stored.reviewsByReviewer.get(reviewerId);
+  if (existing) return existing;
+  const created = new Map<string, VisualValidationReview>();
+  stored.reviewsByReviewer.set(reviewerId, created);
+  return created;
+}
+
+function reviewerHistory(stored: StoredVisualValidationSet, reviewerId: string | undefined): VisualValidationReview[] {
+  if (!reviewerId) return [];
+  const existing = stored.reviewHistoryByReviewer.get(reviewerId);
+  if (existing) return existing;
+  const created: VisualValidationReview[] = [];
+  stored.reviewHistoryByReviewer.set(reviewerId, created);
+  return created;
+}
+
+export function restoreVisualValidationReviews(reviewSetId: string, reviewerId: string, reviews: VisualValidationReview[]): void {
   const stored = sets.get(reviewSetId);
   if (!stored) return;
+  const scopedReviews = reviewerReviews(stored, reviewerId);
+  const history = reviewerHistory(stored, reviewerId);
+  const historyIds = new Set(history.map((review) => review.reviewId));
   for (const review of reviews) {
-    const current = stored.reviews.get(review.snapshotId);
+    if (!historyIds.has(review.reviewId)) {
+      history.push(structuredClone(review));
+      historyIds.add(review.reviewId);
+    }
+    const current = scopedReviews.get(review.snapshotId);
     if (!current || review.revision > current.revision) {
-      stored.reviews.set(review.snapshotId, structuredClone(review));
+      scopedReviews.set(review.snapshotId, structuredClone(review));
     }
   }
   stored.lastAccessedAt = Date.now();
 }
 
 export function restoreVisualValidationSet(set: VisualValidationSet): VisualValidationSet {
+  const immutableSet = structuredClone(set);
+  immutableSet.snapshots = immutableSet.snapshots.map((snapshot) => ({
+    ...snapshot,
+    review: { status: "unreviewed", note: null, reviewedAt: null, revision: 0 },
+  }));
   const restored: StoredVisualValidationSet = {
-    set: structuredClone(set),
-    reviews: new Map(),
-    reviewHistory: [],
+    set: immutableSet,
+    reviewsByReviewer: new Map(),
+    reviewHistoryByReviewer: new Map(),
     lastAccessedAt: Date.now(),
   };
   sets.set(set.reviewSetId, restored);
@@ -170,23 +203,24 @@ export function prepareVisualValidationReview(
   note: string | null,
   teachingInput?: VisualValidationTeachingInput,
   expectedRevision?: number,
+  reviewerId?: string,
 ): VisualValidationReview | null {
   prune();
   const stored = sets.get(reviewSetId);
   const snapshot = stored?.set.snapshots.find((item) => item.snapshotId === snapshotId);
   if (!stored || !snapshot) return null;
-  const previous = stored.reviews.get(snapshotId);
+  const previous = reviewerReviews(stored, reviewerId).get(snapshotId);
   if (expectedRevision !== undefined && expectedRevision !== (previous?.revision ?? 0)) {
     throw new Error("This review changed before your save completed. Reload the current review and try again.");
   }
   return buildReview(stored, snapshot, status, note, teachingInput, previous);
 }
 
-export function applyVisualValidationReview(review: VisualValidationReview): void {
+export function applyVisualValidationReview(review: VisualValidationReview, reviewerId?: string): void {
   const stored = sets.get(review.reviewSetId);
   if (!stored) return;
-  stored.reviews.set(review.snapshotId, structuredClone(review));
-  stored.reviewHistory.push(structuredClone(review));
+  reviewerReviews(stored, reviewerId).set(review.snapshotId, structuredClone(review));
+  reviewerHistory(stored, reviewerId).push(structuredClone(review));
   stored.lastAccessedAt = Date.now();
 }
 
@@ -236,8 +270,8 @@ export function storeVisualValidationSet(
       freshness,
       stale: freshness.status === "stale",
     },
-    reviews: new Map(),
-    reviewHistory: [],
+    reviewsByReviewer: new Map(),
+    reviewHistoryByReviewer: new Map(),
     lastAccessedAt: Date.now(),
   };
   sets.set(stored.set.reviewSetId, stored);
@@ -245,12 +279,12 @@ export function storeVisualValidationSet(
   return getVisualValidationSet(stored.set.reviewSetId)!;
 }
 
-export function getLatestVisualValidationSet(): VisualValidationSet | null {
+export function getLatestVisualValidationSet(reviewerId?: string): VisualValidationSet | null {
   prune();
-  return latestSetId ? getVisualValidationSet(latestSetId) : null;
+  return latestSetId ? getVisualValidationSet(latestSetId, reviewerId) : null;
 }
 
-export function getVisualValidationSet(reviewSetId: string): VisualValidationSet | null {
+export function getVisualValidationSet(reviewSetId: string, reviewerId?: string): VisualValidationSet | null {
   prune();
   const stored = sets.get(reviewSetId);
   if (!stored) return null;
@@ -262,7 +296,7 @@ export function getVisualValidationSet(reviewSetId: string): VisualValidationSet
     freshness,
     stale: freshness.status === "stale",
     currentBuildId: APPLICATION_BUILD_ID,
-    snapshots: clonedSet.snapshots.map((snapshot) => hydratedSnapshot(snapshot, stored.reviews.get(snapshot.snapshotId))),
+    snapshots: clonedSet.snapshots.map((snapshot) => hydratedSnapshot(snapshot, reviewerReviews(stored, reviewerId).get(snapshot.snapshotId))),
   };
 }
 
@@ -272,31 +306,33 @@ export function recordVisualValidationReview(
   status: Exclude<VisualValidationReviewStatus, "unreviewed">,
   note: string | null,
   teachingInput?: VisualValidationTeachingInput,
+  reviewerId?: string,
 ): VisualValidationReview | null {
-  const review = prepareVisualValidationReview(reviewSetId, snapshotId, status, note, teachingInput);
+  const review = prepareVisualValidationReview(reviewSetId, snapshotId, status, note, teachingInput, undefined, reviewerId);
   if (!review) return null;
-  applyVisualValidationReview(review);
+  applyVisualValidationReview(review, reviewerId);
   return review;
 }
 
 export function analyzeVisualValidationTeaching(
   reviewSetId: string,
   teachingId?: string,
+  reviewerId?: string,
 ): VisualValidationProposedRuleAnalysis | null {
   prune();
   const stored = sets.get(reviewSetId);
   if (!stored) return null;
   stored.lastAccessedAt = Date.now();
-  return buildProposedRuleAnalysis(reviewSetId, stored.set.formulaHash, stored.set.formulaVersion, [...stored.reviews.values()], teachingId);
+  return buildProposedRuleAnalysis(reviewSetId, stored.set.formulaHash, stored.set.formulaVersion, [...reviewerReviews(stored, reviewerId).values()], teachingId);
 }
 
-export function buildVisualValidationDiscrepancyReport(reviewSetId: string): VisualValidationDiscrepancyReport | null {
+export function buildVisualValidationDiscrepancyReport(reviewSetId: string, reviewerId?: string): VisualValidationDiscrepancyReport | null {
   prune();
   const stored = sets.get(reviewSetId);
   if (!stored) return null;
   stored.lastAccessedAt = Date.now();
   const reviews = stored.set.snapshots.flatMap((snapshot) => {
-    const review = stored.reviews.get(snapshot.snapshotId);
+    const review = reviewerReviews(stored, reviewerId).get(snapshot.snapshotId);
     if (!review) return [];
     return [{
       snapshotId: snapshot.snapshotId,
@@ -323,9 +359,9 @@ export function buildVisualValidationDiscrepancyReport(reviewSetId: string): Vis
     generatedAt: new Date().toISOString(),
     formulaHash: stored.set.formulaHash,
     totalSnapshots: stored.set.snapshots.length,
-    reviewedSnapshots: stored.reviews.size,
+      reviewedSnapshots: reviewerReviews(stored, reviewerId).size,
     reviews,
     discrepancies,
-    reviewHistory: structuredClone(stored.reviewHistory),
+    reviewHistory: structuredClone(reviewerHistory(stored, reviewerId)),
   };
 }

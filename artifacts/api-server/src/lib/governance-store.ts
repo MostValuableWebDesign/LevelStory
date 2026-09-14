@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   advisoryRuleProposalsTable,
   db,
@@ -284,23 +284,22 @@ export async function loadVisualValidationReviews(reviewSetId: string, reviewerI
   const rows = await db.select().from(visualValidationReviewsTable).where(and(
     eq(visualValidationReviewsTable.reviewSetId, reviewSetId),
     eq(visualValidationReviewsTable.reviewerId, reviewerId),
-  )).orderBy(desc(visualValidationReviewsTable.revision));
-  const latestBySnapshot = new Map<string, VisualValidationReview>();
-  for (const row of rows) {
-    if (!latestBySnapshot.has(row.snapshotId)) {
-      latestBySnapshot.set(row.snapshotId, row.reviewPayload as VisualValidationReview);
-    }
-  }
-  return [...latestBySnapshot.values()];
+  )).orderBy(asc(visualValidationReviewsTable.revision));
+  return rows.map((row) => row.reviewPayload as VisualValidationReview);
 }
 
 export async function loadVisualValidationSet(reviewSetId: string, reviewerId: string): Promise<VisualValidationSet | null> {
-  const rows = await db.select({ setPayload: visualValidationReviewsTable.setPayload })
+  const access = await db.select({ id: visualValidationReviewsTable.id })
     .from(visualValidationReviewsTable)
     .where(and(
       eq(visualValidationReviewsTable.reviewSetId, reviewSetId),
       eq(visualValidationReviewsTable.reviewerId, reviewerId),
     ))
+    .limit(1);
+  if (!access.length) return null;
+  const rows = await db.select({ setPayload: visualValidationReviewsTable.setPayload })
+    .from(visualValidationReviewsTable)
+    .where(eq(visualValidationReviewsTable.reviewSetId, reviewSetId))
     .orderBy(desc(visualValidationReviewsTable.revision));
   const payload = rows.find((row) => row.setPayload !== null)?.setPayload;
   return payload ? payload as VisualValidationSet : null;

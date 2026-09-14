@@ -27,6 +27,8 @@ import {
   resolveObservedEntryCandle,
   freshnessFor,
 } from "./visual-validation-store.js";
+
+const STORE_TEST_REVIEWER = "visual-validation-test-reviewer";
 import { analyzePullback, type BreakoutEvent } from "./strategy/phase4.js";
 import { strategyConfig } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
@@ -863,11 +865,11 @@ test("human reviews remain separate from immutable machine evidence", () => {
   const stored = storeVisualValidationSet(buildVisualValidationSet(request));
   const snapshot = stored.snapshots[0];
   assert.ok(snapshot);
-  const before = getVisualValidationSet(stored.reviewSetId);
+  const before = getVisualValidationSet(stored.reviewSetId, STORE_TEST_REVIEWER);
   assert.ok(before);
-  const review = recordVisualValidationReview(stored.reviewSetId, snapshot.snapshotId, "incorrect", "The level is not respected.");
+  const review = recordVisualValidationReview(stored.reviewSetId, snapshot.snapshotId, "incorrect", "The level is not respected.", undefined, STORE_TEST_REVIEWER);
   assert.ok(review);
-  const after = getVisualValidationSet(stored.reviewSetId);
+  const after = getVisualValidationSet(stored.reviewSetId, STORE_TEST_REVIEWER);
   assert.ok(after);
   const beforeSnapshot = before.snapshots.find((item) => item.snapshotId === snapshot.snapshotId);
   const afterSnapshot = after.snapshots.find((item) => item.snapshotId === snapshot.snapshotId);
@@ -880,13 +882,48 @@ test("human reviews remain separate from immutable machine evidence", () => {
   assert.equal(beforeSnapshot.review.status, "unreviewed");
 });
 
+test("human review state is isolated by reviewer and anonymous reads stay unreviewed", () => {
+  const stored = storeVisualValidationSet(buildVisualValidationSet(request));
+  const snapshot = stored.snapshots[0];
+  assert.ok(snapshot);
+  const reviewerA = "visual-reviewer-a";
+  const reviewerB = "visual-reviewer-b";
+  const reviewA = recordVisualValidationReview(stored.reviewSetId, snapshot.snapshotId, "incorrect", "Reviewer A", undefined, reviewerA);
+  const reviewB = recordVisualValidationReview(stored.reviewSetId, snapshot.snapshotId, "correct", "Reviewer B", undefined, reviewerB);
+  assert.equal(reviewA?.revision, 1);
+  assert.equal(reviewB?.revision, 1);
+  assert.equal(getVisualValidationSet(stored.reviewSetId)?.snapshots[0]?.review.status, "unreviewed");
+  assert.equal(getVisualValidationSet(stored.reviewSetId, reviewerA)?.snapshots[0]?.review.status, "incorrect");
+  assert.equal(getVisualValidationSet(stored.reviewSetId, reviewerB)?.snapshots[0]?.review.status, "correct");
+  assert.equal(buildVisualValidationDiscrepancyReport(stored.reviewSetId, reviewerA)?.reviews[0]?.note, "Reviewer A");
+  assert.equal(buildVisualValidationDiscrepancyReport(stored.reviewSetId, reviewerB)?.reviews[0]?.note, "Reviewer B");
+});
+
+test("visual-validation store prunes the least recently used set even when it has reviews", () => {
+  const setIds: string[] = [];
+  for (let index = 0; index < 7; index += 1) {
+    const stored = storeVisualValidationSet(buildVisualValidationSet({
+      ...request,
+      endDate: `2026-08-${String(10 + index).padStart(2, "0")}`,
+    }));
+    setIds.push(stored.reviewSetId);
+    if (index === 0) {
+      const snapshot = stored.snapshots[0];
+      assert.ok(snapshot);
+      recordVisualValidationReview(stored.reviewSetId, snapshot.snapshotId, "incorrect", "Reviewed before eviction", undefined, STORE_TEST_REVIEWER);
+    }
+  }
+  assert.equal(getVisualValidationSet(setIds[0]!, STORE_TEST_REVIEWER), null);
+  assert.ok(getVisualValidationSet(setIds.at(-1)!, STORE_TEST_REVIEWER));
+});
+
 test("review export contains the full ledger and filters discrepancies to incorrect or uncertain", () => {
   const stored = storeVisualValidationSet(buildVisualValidationSet(request));
   const [first, second] = stored.snapshots;
   assert.ok(first);
   assert.ok(second);
-  recordVisualValidationReview(stored.reviewSetId, first.snapshotId, "rule_needs_clarification", "Clarify the pullback tolerance.");
-  const report = buildVisualValidationDiscrepancyReport(stored.reviewSetId);
+  recordVisualValidationReview(stored.reviewSetId, first.snapshotId, "rule_needs_clarification", "Clarify the pullback tolerance.", undefined, STORE_TEST_REVIEWER);
+  const report = buildVisualValidationDiscrepancyReport(stored.reviewSetId, STORE_TEST_REVIEWER);
   assert.ok(report);
   assert.equal(report.reviewedSnapshots, 1);
   assert.equal(report.reviews.length, 1);
@@ -1231,20 +1268,20 @@ test("teaching revisions preserve immutable evidence and analysis stays advisory
   const secondTeaching = teachingInput(secondSnapshot, "short");
   const stored = storeVisualValidationSet({ ...baseSet, snapshots: [firstSnapshot, secondSnapshot] });
   const machineEvidenceBefore = structuredClone(firstSnapshot.machineEvidence);
-  const firstReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "incorrect", "Initial machine disagreement.");
+  const firstReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "incorrect", "Initial machine disagreement.", undefined, STORE_TEST_REVIEWER);
   assert.ok(firstReview);
-  const secondReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "missed_trade", null, firstTeaching);
+  const secondReview = recordVisualValidationReview(stored.reviewSetId, firstSnapshot.snapshotId, "missed_trade", null, firstTeaching, STORE_TEST_REVIEWER);
   assert.ok(secondReview?.teaching);
   assert.equal(secondReview?.revision, 2);
   assert.equal(secondReview?.supersedesReviewId, firstReview?.reviewId);
-  assert.deepEqual(getVisualValidationSet(stored.reviewSetId)?.snapshots[0]?.machineEvidence, machineEvidenceBefore);
-  recordVisualValidationReview(stored.reviewSetId, secondSnapshot.snapshotId, "rule_needs_clarification", "Second example needs review.", secondTeaching);
-  const analysis = analyzeVisualValidationTeaching(stored.reviewSetId);
+  assert.deepEqual(getVisualValidationSet(stored.reviewSetId, STORE_TEST_REVIEWER)?.snapshots[0]?.machineEvidence, machineEvidenceBefore);
+  recordVisualValidationReview(stored.reviewSetId, secondSnapshot.snapshotId, "rule_needs_clarification", "Second example needs review.", secondTeaching, STORE_TEST_REVIEWER);
+  const analysis = analyzeVisualValidationTeaching(stored.reviewSetId, undefined, STORE_TEST_REVIEWER);
   assert.ok(analysis);
   assert.equal(analysis?.status, "advisory");
   assert.equal(analysis?.approvalRequired, true);
   assert.equal(analysis?.activeFormulaHash, baseSet.formulaHash);
-  assert.equal(getVisualValidationSet(stored.reviewSetId)?.formulaHash, baseSet.formulaHash);
+  assert.equal(getVisualValidationSet(stored.reviewSetId, STORE_TEST_REVIEWER)?.formulaHash, baseSet.formulaHash);
 });
 
 function audit(overrides: Partial<BacktestAuditRecord> = {}): BacktestAuditRecord {

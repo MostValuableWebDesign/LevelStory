@@ -168,3 +168,17 @@ mtime_ms = 1789392561868
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/7dfaf96c-0488-4f19-a506-b5d50f579f01/b94cd3de-840e-4956-b033-7139580d3ee7"
 storage_version_token = "1789392602023794"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "KmcAQjFYmY4vPmlopiE_u"
+uri = "file://screenshots/visual-review-chart-first.jpg"
+type = "image"
+title = "LevelStory Visual Review chart-first preview"
+description = "Desktop preview of the Visual Review chart-first workspace after the reviewer-isolation and disclosure-default fixes."
+logical_id = "5ddefc32-764f-462c-939b-45527d1cc793"
+content_hash = "sha256:6aa6895d900fdd5d832538ef6f3796c65fac1e280d6f465bb577a1136a15777f"
+size = 132555
+mtime_ms = 1789418068567
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/5ddefc32-764f-462c-939b-45527d1cc793/5cbd9062-581e-43f2-939a-ef2d663ea1b9"
+storage_version_token = "1789418078912349"
+content_type = "image/jpeg"
