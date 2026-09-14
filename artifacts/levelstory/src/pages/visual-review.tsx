@@ -252,10 +252,9 @@ const REVIEW_OPTIONS: Array<{ value: Exclude<VisualValidationReviewStatus, "unre
   { value: "false_positive_trade", label: "False-positive trade", detail: "The machine trade is not supported by the raw causal candle story." },
 ];
 
-type ReviewDisclosurePanel = "summary" | "judgment";
+type ReviewDisclosurePanel = "judgment";
 type ReviewDisclosureState = Record<ReviewDisclosurePanel, boolean>;
 const CLOSED_REVIEW_DISCLOSURES: ReviewDisclosureState = {
-  summary: false,
   judgment: false,
 };
 const CANDLE_INSPECTOR_SESSION_KEY = "levelstory.visualReview.candleInspectorOpen";
@@ -1233,7 +1232,7 @@ export default function VisualReview() {
                     </div>
                     <div className="p-4 sm:p-5">
                       {activeReviewDetailTab === "overview" && <section id="review-detail-panel-overview" role="tabpanel" aria-labelledby="review-detail-tab-overview" data-testid="review-detail-panel-overview" className="space-y-5">
-                        <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
+                        <ChartEvidence snapshot={activeSnapshot} />
                       </section>}
                       {activeReviewDetailTab === "human-review" && <section id="review-detail-panel-human-review" role="tabpanel" aria-labelledby="review-detail-tab-human-review" data-testid="review-detail-panel-human-review" className="space-y-5">
                          <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setReviewMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setReviewMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={reviewMessage} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setReviewMessage(""); }} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
@@ -3259,7 +3258,7 @@ function DecisionSummary({
   </section>;
 }
 
-function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValidationSnapshot; open: boolean; onToggleOpen: () => void }) {
+function ChartEvidence({ snapshot }: { snapshot: VisualValidationSnapshot }) {
   const evidence = snapshot.machineEvidence;
   const market = typeof evidence.market === "object" && evidence.market !== null ? evidence.market as Record<string, unknown> : {};
   const audit = typeof evidence.audit === "object" && evidence.audit !== null ? evidence.audit as Record<string, unknown> : {};
@@ -3284,9 +3283,15 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
         : "The machine recorded market evidence without authorizing a modeled entry.";
   const strategyName = traderLabel((trade as CandidateTradeView | null)?.primaryEdge ?? snapshot.strategyKey);
     return <Panel data-testid="chart-evidence">
-       <DisclosurePanelTitle panelId="plain-language-summary-content" eyebrow="Trade analytics / read-only" title="Authoritative trade result" right={<span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Machine-owned</span>} open={open} onToggleOpen={onToggleOpen} />
+       <div className="flex items-start justify-between gap-4 px-5 pb-4 pt-5 sm:px-6">
+         <div>
+           <div className="eyebrow mb-1.5 text-muted-foreground">Trade analytics / read-only</div>
+           <h2 className="text-[14px] font-bold tracking-tight">Authoritative trade result</h2>
+         </div>
+         <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase text-muted-foreground"><Fingerprint size={13} />Machine-owned</span>
+       </div>
       <TradeAtAGlance trade={trade} audit={audit} strategyName={strategyName} />
-      {open && <div id="plain-language-summary-content">
+      <div id="plain-language-summary-content">
       <DecisionSummary snapshot={snapshot} trade={trade} audit={audit} strategyName={strategyName} behavior={behavior} qualification={qualification} />
       {earlyOrb && earlyOrb.strategy === "EARLY_ORB_MOMENTUM_CONTINUATION" && <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4" data-testid="early-orb-causal-evidence">
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Early ORB P/E</div><div className="mt-1 text-xs font-semibold">{safeValue(earlyOrb.direction)} · {earlyOrb.eImmediatelyAdjacent === true ? "adjacent E" : "missing adjacent E"}</div><div className="mono mt-1 text-[10px] text-muted-foreground">{formatReviewTime(typeof earlyOrb.pOpenTime === "number" ? new Date(earlyOrb.pOpenTime).toISOString() : "")} → {formatReviewTime(typeof earlyOrb.eOpenTime === "number" ? new Date(earlyOrb.eOpenTime).toISOString() : "")}</div></div>
@@ -3295,7 +3300,7 @@ function ChartEvidence({ snapshot, open, onToggleOpen }: { snapshot: VisualValid
         <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Confirmation</div><div className="mono mt-1 text-xs">{safeValue(earlyOrb.confirmationThreshold)}</div><div className="mt-1 text-[10px] text-muted-foreground">{safeValue(earlyOrb.eClose)} E close · {safeValue(earlyOrb.finalStrategyStop)} stop</div></div>
       </div>}
       <div className="border-t border-border px-5 py-4 text-xs text-muted-foreground sm:px-6">This is a machine explanation, not a human judgment. Compare it with the raw candles and use the review panel to record your call.</div>
-      </div>}
+      </div>
   </Panel>;
 }
 
