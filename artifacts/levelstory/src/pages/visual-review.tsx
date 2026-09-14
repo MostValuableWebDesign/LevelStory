@@ -58,7 +58,7 @@ import {
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
 import { LevelStoryShell } from "@/components/levelstory-shell";
-import { LockedNote, Panel, PanelTitle, PageIntro, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
+import { LockedNote, Panel, PanelTitle, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 import { UploadedChartAnalysis } from "@/components/uploaded-chart-analysis";
 import { HistoricalDatePicker } from "@/components/historical-date-picker";
 
@@ -953,7 +953,6 @@ export default function VisualReview() {
                <h1 className="text-2xl font-bold tracking-[-.04em] text-foreground sm:text-[30px]">Visual Review</h1>
                <p className="mt-1.5 max-w-2xl text-xs leading-5 text-muted-foreground">Inspect one deterministic MES trade at a time, compare it with the candles, and record a human judgment.</p>
              </div>
-             <ShadowBadge />
            </header>
 
             <div className="mb-5 border border-border bg-card/95 shadow-[0_1px_0_hsl(var(--foreground)/.03)]" data-testid="visual-review-tabs">
@@ -1077,7 +1076,7 @@ export default function VisualReview() {
            </section>}
 
            {activeVisualReviewTab === "generate" && <section id="visual-review-panel-generate" role="tabpanel" aria-labelledby="visual-review-tab-generate" tabIndex={0} className="order-1 space-y-5">
-              <div className={data ? "" : "grid gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]"}>
+              <div className={data ? "" : "grid items-start gap-5 xl:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]"}>
                 <GenerationPanel request={request} setRequest={(next) => {
                  setRequest(next);
                  if (typeof window !== "undefined") {
@@ -1629,7 +1628,16 @@ function CoverageRail({ data, loading, selectedStrategyKey, selectedCategory, se
   if (loading && !data) return <Panel><QuerySkeleton rows={5} /></Panel>;
   if (!data) {
     if (generationJob) return <GenerationProgressPanel job={generationJob} onRetry={onRetryGeneration} />;
-    return <Panel><div className="flex min-h-[300px] items-center justify-center p-6 text-sm text-muted-foreground">Generate a set to open the review room.</div></Panel>;
+     return <Panel>
+       <div className="p-5 sm:p-6" data-testid="visual-review-empty-workflow">
+         <div className="eyebrow text-muted-foreground">Review workflow</div>
+         <h2 className="mt-1 text-sm font-bold">Generate, inspect, decide.</h2>
+         <p className="mt-2 max-w-md text-xs leading-5 text-muted-foreground">A generated set will place the trade queue beside the selected chart. Review the machine result, add a human judgment when needed, then move to the next trade.</p>
+         <ol className="mt-5 grid gap-2 text-[10px] text-muted-foreground sm:grid-cols-3">
+           {["Generate a deterministic set", "Inspect the selected trade", "Record and advance"].map((step, index) => <li key={step} className="flex items-start gap-2 border border-border bg-muted/20 p-3"><span className="mono flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">{index + 1}</span><span className="pt-0.5 font-semibold text-foreground">{step}</span></li>)}
+         </ol>
+       </div>
+     </Panel>;
   }
   const candidates = selectedStrategyKey
     ? data.tradeCandidates.filter((candidate) => candidate.primaryEdge === canonicalEdgeForStrategy(selectedStrategyKey) || candidate.matchedEdges.includes(canonicalEdgeForStrategy(selectedStrategyKey)))

@@ -140,3 +140,31 @@ mtime_ms = 1787989176142
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/8ee672e4-b405-48b1-b204-30dab83f48ec/c01defdf-75c5-433b-9cc0-5981d7f24c63"
 storage_version_token = "1787989296484402"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "e7-NgWednypeHU6o-ADbE"
+uri = "file://screenshots/visual-review-stage1-desktop.jpg"
+type = "image"
+title = "Visual Review Stage 1 — desktop"
+description = "Verified 1440×900 screenshot of the completed Stage 1 Visual Review setup and empty workflow state."
+logical_id = "0857bea8-9ba4-46c5-92aa-3e7a51350f21"
+content_hash = "sha256:a271ce592a1d16d9c8a18cc1473366cc1139690fbf30820ac391f0afb569fac7"
+size = 101655
+mtime_ms = 1789392560380
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/0857bea8-9ba4-46c5-92aa-3e7a51350f21/211ac7ad-ba13-482c-8d16-851f25dbd0a2"
+storage_version_token = "1789392601515372"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ON9Q6-MVloe_AR0rB8BSC"
+uri = "file://screenshots/visual-review-stage1-mobile.jpg"
+type = "image"
+title = "Visual Review Stage 1 — mobile"
+description = "Verified 390×844 screenshot of the responsive Stage 1 Visual Review setup state."
+logical_id = "7dfaf96c-0488-4f19-a506-b5d50f579f01"
+content_hash = "sha256:da50485b402fec7fbd5504d5744f894c354d0c867ffd92dc76a3ecd0943b6553"
+size = 35000
+mtime_ms = 1789392561868
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:6da5875e-92fc-4a8b-a60a-863ad558d0ad/7dfaf96c-0488-4f19-a506-b5d50f579f01/b94cd3de-840e-4956-b033-7139580d3ee7"
+storage_version_token = "1789392602023794"
+content_type = "image/jpeg"
