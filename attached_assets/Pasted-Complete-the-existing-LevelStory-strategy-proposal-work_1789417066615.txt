@@ -1,0 +1,125 @@
+Complete the existing LevelStory strategy-proposal workflow so a supported typed strategy adjustment can be validated and activated in Shadow Mode without editing source code.
+
+Inspect the current implementation first, especially:
+- proposal-validator.ts
+- governance-store.ts
+- strategy-proposals.tsx
+- active-shadow-strategy.ts
+- visual-validation generation jobs
+- Phase 9 replay execution
+- strategy configuration schemas
+- proposal and strategy-version database tables
+
+Do not weaken the current governance gates. Do not create live or paper orders.
+
+Current blocking issue:
+proposal-validator.ts always returns performanceMetricsAvailable: false, while governance-store.ts requires true before approval, publication, or activation. This makes activation unreachable.
+
+1. Implement a real candidate execution replay
+
+For each proposal, execute the parent configuration and candidate configuration over the same pinned historical dataset.
+
+The replay must:
+- Use the same MES candles, contracts, session calendar, costs, slippage, risk rules, exit rules, and account-position rules for both configurations.
+- Use only complete causal candles available at each evaluation point.
+- Prevent future-data access.
+- Pin source fingerprint, calendar fingerprint, formula version, parent configuration, candidate configuration, date manifest, contracts, and replay engine version.
+- Include independent in-sample and holdout periods.
+- Never derive “performance” from teaching examples alone.
+- Fail closed if the historical dataset, source fingerprint, calendar, contract mapping, or engine version is unavailable or changed.
+
+2. Produce real performance metrics
+
+Set performanceMetricsAvailable to true only after both parent and candidate replays complete successfully.
+
+Calculate from completed replay trades:
+- Sample count.
+- Qualified trades.
+- Completed trades.
+- Trades added and removed.
+- Entry-time and direction changes.
+- Win rate.
+- Net P/L after configured costs.
+- Gross P/L.
+- Profit factor.
+- Maximum drawdown.
+- Average completed trade.
+- Stop, target, runner, and ambiguous same-candle outcomes.
+- In-sample metrics.
+- Holdout metrics.
+
+Do not return zero for unavailable metrics. Use null or “Not evaluated.”
+
+3. Enforce validation gates
+
+A proposal may pass only when:
+- Candidate replay completed.
+- Performance metrics are available.
+- Required holdout data exists.
+- Causal and no-future-data checks pass.
+- The four-tick MES entry-buffer invariant passes.
+- There are no unresolved conflicts or regressions.
+- Owner-defined fitness thresholds pass.
+- The active parent version still matches the proposal’s pinned parent.
+- Candidate formula and configuration hashes match the replayed version.
+
+If the active parent, source data, calendar, cost model, or replay engine changes, mark the result stale and require revalidation.
+
+4. Preserve typed configuration limits
+
+Only allow supported executable settings:
+- earlyOrbMomentumContinuationEnabled: boolean.
+- earlyOrbMomentumEligibilityCutoffMinutes: bounded integer.
+- earlyOrbMomentumMinimumCloseDistanceTicks: bounded integer.
+- patienceEntryBufferTicks remains fixed at exactly 4 and must not be editable.
+
+Reject:
+- Numeric strings.
+- NaN or infinity.
+- Decimal values for integer fields.
+- Duplicate fields.
+- Unknown fields.
+- Arbitrary executable rules supplied through free text.
+
+Free-text hypotheses remain advisory until separately implemented as a typed engine setting.
+
+5. Complete the interface
+
+On Strategy Proposals:
+- Show the pinned parent version and exact configuration.
+- Show a before/after configuration diff.
+- Display replay stage and monotonic progress.
+- Show in-sample and holdout metrics separately.
+- Clearly show unavailable, failed, stale, or incomplete states.
+- Disable Approve, Publish, and Activate until every backend gate passes.
+- Explain why an action is disabled.
+- Require the existing role separation and prevent proposal creators from approving or activating their own proposal.
+- Keep activation limited to future Shadow Mode evaluations and backtests.
+- Preserve explicit rollback to the prior valid version.
+
+6. Pin generation jobs
+
+When a Visual Review or backtest job starts:
+- Capture one active strategy version and configuration.
+- Use that same version for the entire job.
+- Include it in result provenance and cache identity.
+- Never change a running job after another proposal is activated.
+- Existing generated sets must remain immutable.
+- New jobs should use the newly activated version.
+
+Required tests:
+- Boolean Early ORB enable/disable changes qualification in the expected direction.
+- Cutoff and close-distance changes affect only their documented predicates.
+- The parent and candidate run over identical pinned dates and candles.
+- A successful candidate replay sets performanceMetricsAvailable=true.
+- Missing or partial replay keeps it false.
+- No holdout data prevents approval.
+- Changed parent/source/calendar/cost model forces revalidation.
+- Unauthorized approval or activation fails.
+- Proposal creator cannot approve or activate their own proposal.
+- Activation affects a new job but not an already running job.
+- Existing review sets remain unchanged.
+- Rollback restores the exact previous configuration.
+- Unknown or free-form executable changes fail closed.
+
+Run focused unit and integration tests before any broad historical replay. Then run one small deterministic historical acceptance replay and compare its parent and candidate trade ledgers row by row. Report actual results, remaining limitations, and any validation that was not run.

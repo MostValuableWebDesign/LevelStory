@@ -1,0 +1,79 @@
+Inspect the current LevelStory code before changing anything. Fix the remaining Visual Review and Human Review issues without changing trading calculations, strategy definitions, causal boundaries, or generated trade results.
+
+1. Fix reviewer isolation
+
+The database stores reviews by reviewerId, reviewSetId, and snapshotId, but the in-memory Visual Review store currently caches reviews by snapshotId only. This can expose one reviewer’s cached judgment to another reviewer or cause false revision conflicts.
+
+Refactor review hydration so every review is scoped to the authenticated reviewer.
+
+Preferred design:
+- Keep the immutable generated VisualValidationSet separate from user review state.
+- Do not mutate a shared review set with reviewer-specific reviews.
+- Hydrate a response for the requesting reviewer using a pure function, or use:
+  Map<reviewerId, Map<snapshotId, VisualValidationReview>>
+- Anonymous users must always receive unreviewed state.
+- Reviewer A must never receive Reviewer B’s status, note, teaching evidence, revision, or saved timestamp.
+- expectedRevision must compare against the requesting reviewer’s latest persisted revision.
+- Exports and discrepancy reports must also be reviewer-scoped.
+- Continue storing reviewer identity in the database.
+- Preserve transactional persistence and idempotent retries.
+
+2. Restore persisted data safely
+
+- After reload or process restart, load the authenticated reviewer’s saved reviews from PostgreSQL.
+- Reconstruct a persisted review set only for a reviewer who has access to it.
+- Do not let a previously cached reviewer determine another user’s response.
+- Keep generated machine evidence immutable.
+- Preserve review and teaching revision history.
+
+3. Bound the in-memory cache
+
+The current pruning logic avoids removing sets containing reviews, which can allow the cache to exceed MAX_STORED_SETS indefinitely.
+
+Because reviews and reviewed-set payloads are durable:
+- Apply a real size limit.
+- Evict the least recently used set when the limit is exceeded.
+- Ensure an authenticated reviewer can restore a reviewed set from durable storage.
+- Do not lose unsaved generation results silently; retain the documented expiration behavior for sets with no durable review.
+
+4. Improve chart-first layout
+
+The toolbar, confirmation panel, causal events, candle inspector, and indicators still push the price chart too far down.
+
+- Keep the compact confirmed-setup summary.
+- Default the Candle Inspector to collapsed.
+- Default “Levels and indicators” to collapsed.
+- Remember the user’s open/closed preference during the current browser session.
+- Keep causal events compact and horizontally scrollable.
+- Make the top of the candlestick plot visible much sooner on a standard laptop viewport.
+- Preserve all controls and data when sections are expanded.
+- Keep “Review this trade” opening the Human Review tab, focusing its tab, and scrolling the panel into view.
+- Do not place decorative imagery inside the price chart.
+
+5. Fix review message scope
+
+A message such as “Generated 5 authoritative trade candidates” should not appear as the status inside the Human Review form.
+
+Separate:
+- Generation messages.
+- Review draft/save messages.
+- Teaching validation messages.
+- Strategy proposal messages.
+
+Human Review should show only Draft, Saving, Saved, Save failed, validation feedback, or the saved judgment.
+
+Required tests:
+- Reviewer A saves a review; Reviewer B sees unreviewed.
+- Both reviewers save revision 1 independently.
+- Anonymous users see no reviewer-specific review.
+- Reviewer-specific reload and process-restart recovery.
+- Cache eviction followed by durable restoration.
+- Concurrent edits by the same reviewer produce one success and one 409 conflict.
+- Database failure leaves the form draft intact and does not mutate cached state.
+- Idempotent retry does not create another revision.
+- Exports include only the requesting reviewer’s records.
+- “Save and next” advances only after persistence succeeds.
+- Switching trades during a save cannot update the wrong trade.
+- Chart inspector and indicators begin collapsed and remain keyboard accessible.
+
+Run focused frontend and backend tests, type checking, and an authenticated browser test with two separate test users. Report the exact tests executed and include desktop screenshots showing the chart-first layout and a successfully restored saved review.
