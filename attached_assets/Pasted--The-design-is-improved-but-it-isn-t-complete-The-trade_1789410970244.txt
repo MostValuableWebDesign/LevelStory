@@ -1,0 +1,180 @@
+**The design is improved, but it isn’t complete.** The trade list is clearer, yet oversized panels and technical labels still dominate the chart.
+
+I checked local commit `9ea5306`. The code uses **Manrope, Space Grotesk, and DM Mono**. The robotic appearance mainly comes from applying DM Mono to everyday information, plus tiny uppercase labels with wide letter spacing.
+
+There’s also a version discrepancy: local code moves cursor metadata into Technical Details, but your screenshots still show it above the chart. The build-mismatch warning remains visible. Replit needs to verify the running build before judging completion.
+
+Paste this prompt:
+
+```text
+Complete the visual polish of LevelStory’s Visual Review page. Act as a senior product designer and frontend engineer creating a polished, readable financial application.
+
+Use the attached screenshots to identify the current problems. This is a focused typography, color, and layout refinement—not another functional redesign.
+
+The user specifically dislikes the robotic typography and dull appearance.
+
+1. VERIFY THE RUNNING VERSION FIRST
+
+Inspect the current checkout and preserve existing changes.
+
+The screenshots show cursor metadata above the chart and a frontend/API build mismatch. Recent local code already moves SnapshotCursorDetails into Technical Details.
+
+Verify which frontend and API builds the preview actually serves. Use the existing combined build command, pnpm run build:review, if present and appropriate, then restart the relevant serving workflows.
+
+Do not suppress the mismatch warning. Resolve the mismatch and verify the loaded assets.
+
+Do not reimplement a fix that is already present but not running.
+
+2. REPLACE THE ROBOTIC TYPOGRAPHY
+
+The current CSS imports Manrope, Space Grotesk, and DM Mono. Classes such as .mono and .eyebrow apply monospace typography broadly.
+
+Use Inter as the primary Visual Review interface font, with:
+Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif
+
+Use the same family for headings, buttons, trade rows, metrics, dates, and explanatory text. Prefer a locally bundled font using the existing asset/dependency approach, with a working fallback.
+
+Typography:
+- Page title: 28–32px, weight 650–700.
+- Section titles: 18–20px, weight 600–650.
+- Body and trade-row text: 14–15px.
+- Secondary text: 12–13px.
+- Important prices and P/L: 18–22px where appropriate.
+- Comfortable line height and normal letter spacing.
+
+Use tabular numerals for prices, P/L, quantities, and times:
+font-variant-numeric: tabular-nums;
+
+Financial numbers do not need a monospace font to align.
+
+Reserve monospace for copyable hashes, raw IDs, code, and technical diagnostics. Remove it from ordinary timestamps, prices, summaries, filters, and navigation.
+
+Replace excessive uppercase labels with sentence case. Remove wide tracking from everyday interface text. Do not simply change the body font while leaving nested .mono, .eyebrow, .display, and component-specific rules unchanged.
+
+Scope these changes to Visual Review and its components so unrelated pages do not regress.
+
+3. ADD PURPOSEFUL COLOR AND SURFACE CONTRAST
+
+Create a richer light interface using these starting tokens:
+- Page background: #F4F7FC
+- Main surfaces: #FFFFFF
+- Primary text: #172B4D
+- Secondary text: #52627A
+- Primary blue: #315BE8
+- Selected background: #EAF0FF
+- Positive: #087F5B
+- Positive background: #E8F7EF
+- Negative: #C43242
+- Negative background: #FFF0F2
+- Warning text: #945B08
+- Warning background: #FFF5DF
+
+Adjust values as needed to meet accessible contrast.
+
+Apply color intentionally:
+- Blue primary actions and selected navigation.
+- A blue accent and pale blue background for the active trade.
+- Green/red P/L text with explicit signs.
+- Small tinted outcome badges.
+- A restrained success tint in the selected result summary.
+- Amber only for actual warnings and shadow-mode messaging.
+- Clear white chart and content surfaces against the page background.
+
+Keep nonselected rows calm and readable. Avoid a rainbow of unrelated panel colors or making every winning row entirely green.
+
+Use subtle borders, modest shadows, and consistent 10–12px corners. Reduce the gray-on-gray appearance and excessive nested rectangles.
+
+Preserve chart candle, level, marker, and causal-shading meanings. Do not recolor trading evidence simply to match the interface palette.
+
+4. FINISH THE CHART-CENTERED LAYOUT
+
+The screenshots still require substantial scrolling before reaching the plot.
+
+Compress the generated review set into one compact summary strip:
+- Symbol.
+- Actual date range.
+- Session count.
+- Edit settings and existing generation actions.
+
+Do not repeat the same symbol, date range, and session count in multiple large blocks.
+
+Keep a compact selected-trade header with:
+- Date, contract, direction, and strategy.
+- Trade X of Y.
+- Previous/Next.
+
+Place a concise metrics row directly below it, then the chart toolbar and actual plot.
+
+Keep cursor timestamps, candle counts, hashes, and provenance in Technical Details. Preserve a small visible causal-boundary indicator.
+
+Condense the source-data banner and chart controls. Make the lengthy qualification explanation expandable while keeping its status and essential facts visible.
+
+Keep candle inspection and event navigation accessible outside the plot, but reduce their default vertical footprint. Preserve existing chart keyboard controls and entry locking.
+
+Avoid repeating the same full metrics table above and below the chart. Let Overview provide deeper explanation instead of another oversized copy of the summary.
+
+At 1440×900, a meaningful portion of the actual candlestick chart should be visible in the initial completed workspace.
+
+5. KEEP TRADE REVIEW EASY
+
+Preserve:
+- The shared authoritative review queue.
+- Accurate selectable counts.
+- Separate reporting of candidates without reviewable snapshots.
+- Date grouping and New York time formatting.
+- Synchronized trade selection, chart, result, and review state.
+- Unsaved-review protection.
+- Stable trade-list scrolling.
+- Correct first/last navigation boundaries.
+
+The screenshot reports six candidates without reviewable snapshots. Do not hide that information or fabricate snapshots. Present the count as a compact, expandable notice with the existing explanation.
+
+Make Previous/Next easy to reach while inspecting the chart. Do not introduce conflicting keyboard shortcuts.
+
+6. MOBILE AND ACCESSIBILITY
+
+At approximately 390px:
+- Use compact metric columns where readable.
+- Keep trade selection and navigation accessible.
+- Put secondary chart controls in an accessible disclosure.
+- Avoid stacking multiple large banners before the plot.
+- Prevent horizontal page overflow.
+- Preserve fullscreen and chart pan/zoom.
+
+Verify keyboard focus, readable contrast, reduced-motion behavior, and touch targets.
+
+Do not make essential information available only through hover.
+
+7. FUNCTIONAL GUARDRAILS
+
+Do not change trading rules, eligibility, grades, entry/exit logic, stops, targets, P/L, fees, quantities, source data, causal boundaries, API contracts, cache semantics, or human-review submission behavior.
+
+Preserve generation progress, visible ETA messaging, retries, refresh/resume, exports, teaching features, Chart Analysis, and Account Impact.
+
+Do not rebuild the historical index for design validation.
+
+8. VERIFY THE FINISHED RESULT
+
+Use saved results or isolated fixtures.
+
+Run relevant type checks and focused tests. Then inspect the actual rendered page with multiple trades, including positive, negative, and unavailable outcomes.
+
+Check computed styles to confirm:
+- Ordinary interface text actually uses the new sans-serif font.
+- Financial values retain aligned numerals.
+- Monospace remains only in technical contexts.
+- No nested CSS rule restores the old robotic appearance.
+
+Verify desktop and mobile layouts, trade navigation, chart controls, and unsaved-review protection.
+
+Confirm the preview serves the rebuilt frontend and API. A screenshot with an unresolved build mismatch is not final acceptance.
+
+Deliver:
+- Files changed.
+- Checks run and results.
+- Any remaining limitations.
+- Desktop and mobile screenshots of completed generated trades.
+- A brief explanation of the typography, color, and layout improvements.
+
+Implement the work, not just a design proposal.
+```
