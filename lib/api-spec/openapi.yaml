@@ -4629,8 +4629,9 @@ components:
             status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
             note: { type: ["string", "null"] }
             reviewedAt: { type: ["string", "null"], format: date-time }
+            revision: { type: number, minimum: 0 }
             teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
-          required: [status, note, reviewedAt]
+          required: [status, note, reviewedAt, revision]
       required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, strategyKey, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, entryWindow, selectionReason, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
     VisualValidationCategoryCoverage:
       type: object
@@ -4990,6 +4991,7 @@ components:
         snapshotId: { type: string }
         status: { $ref: "#/components/schemas/VisualValidationReviewStatus" }
         note: { type: ["string", "null"], maxLength: 2000 }
+        expectedRevision: { type: number, minimum: 0, description: "Revision currently visible to the reviewer. The server rejects stale concurrent edits." }
         teaching:
           type: object
           properties:

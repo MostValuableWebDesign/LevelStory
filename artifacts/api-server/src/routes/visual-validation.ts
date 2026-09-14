@@ -17,7 +17,14 @@ import {
 } from "@workspace/api-zod";
 import { requestRateLimit } from "../lib/security.js";
 import { requireRole } from "../middlewares/authMiddleware.js";
-import { persistTeachingEvidence } from "../lib/governance-store.js";
+import {
+  GovernanceError,
+  loadVisualValidationReviews,
+  loadVisualValidationSet,
+  persistVisualValidationReview,
+  visualReviewIdempotencyKey,
+  visualReviewRequestFingerprint,
+} from "../lib/governance-store.js";
 import {
   buildHistoricalVisualValidationSet,
   buildVisualValidationSet,
@@ -28,7 +35,11 @@ import {
   getLatestVisualValidationSet,
   getVisualValidationSet,
   analyzeVisualValidationTeaching,
+  applyVisualValidationReview,
+  prepareVisualValidationReview,
   recordVisualValidationReview,
+  restoreVisualValidationReviews,
+  restoreVisualValidationSet,
   storeVisualValidationSet,
 } from "../lib/visual-validation-store.js";
 import { DEFAULT_LEVEL_TOLERANCE_TICKS } from "@workspace/api-spec/constants";
@@ -133,13 +144,27 @@ export function createVisualValidationRouter(): IRouter {
     const hasGenerationParams = ["symbol", "endDate", "inSampleDays", "outOfSampleDays", "seed", "reviewMode"]
       .some((key) => Object.prototype.hasOwnProperty.call(req.query, key));
     if (parsed.data.reviewSetId || (!hasGenerationParams && getLatestVisualValidationSet())) {
-      const existing = parsed.data.reviewSetId
+       let existing = parsed.data.reviewSetId
         ? getVisualValidationSet(parsed.data.reviewSetId)
         : getLatestVisualValidationSet();
+       if (!existing && parsed.data.reviewSetId && req.user?.id) {
+         const persistedSet = await loadVisualValidationSet(parsed.data.reviewSetId, req.user.id);
+         if (persistedSet) existing = restoreVisualValidationSet(persistedSet);
+       }
       if (!existing) {
         res.status(404).json({ error: "Visual-validation set not found or expired." });
         return;
       }
+       if (req.user?.id) {
+         restoreVisualValidationReviews(existing.reviewSetId, await loadVisualValidationReviews(existing.reviewSetId, req.user.id));
+         existing = parsed.data.reviewSetId
+           ? getVisualValidationSet(parsed.data.reviewSetId)
+           : getLatestVisualValidationSet();
+       }
+       if (!existing) {
+         res.status(404).json({ error: "Visual-validation set not found or expired." });
+         return;
+       }
       res.json(GetVisualValidationSetResponse.parse(existing));
       return;
     }
@@ -306,19 +331,20 @@ export function createVisualValidationRouter(): IRouter {
       }
       const activeSet = getVisualValidationSet(parsed.data.reviewSetId);
       const snapshot = activeSet?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
-      if (!snapshot) {
+      if (!activeSet || !snapshot) {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
         return;
       }
       if (parsed.data.status === "false_positive_trade" && !snapshot.machineEvidence.trade) {
         throw new Error("A false-positive review must link to an exact machine-qualified trade.");
       }
-      const review = recordVisualValidationReview(
+       const review = prepareVisualValidationReview(
         parsed.data.reviewSetId,
         parsed.data.snapshotId,
         parsed.data.status,
         parsed.data.note ?? null,
         teaching,
+         parsed.data.expectedRevision,
       );
       if (!review) {
         res.status(404).json({ error: "Visual-validation set or snapshot not found." });
@@ -327,19 +353,29 @@ export function createVisualValidationRouter(): IRouter {
        if (parsed.data.status === "false_positive_trade" && (!review.teaching || !review.teaching.validation.valid)) {
          throw new Error("False-positive teaching evidence failed causal validation.");
        }
-       if (review.teaching) {
-         const key = req.header("Idempotency-Key") ?? `${parsed.data.reviewSetId}:${parsed.data.snapshotId}:${JSON.stringify(parsed.data.teaching)}`;
-         await persistTeachingEvidence({
-           actor: { id: req.user!.id },
-           reviewSetId: parsed.data.reviewSetId,
-           snapshot,
-           review,
-           idempotencyKey: key.slice(0, 200),
-         });
+       const suppliedIdempotencyKey = req.header("Idempotency-Key");
+       if (suppliedIdempotencyKey && (suppliedIdempotencyKey.length === 0 || suppliedIdempotencyKey.length > 200)) {
+         res.status(400).json({ error: "Idempotency-Key must be between 1 and 200 characters." });
+         return;
        }
-       res.json(RecordVisualValidationReviewResponse.parse(review));
+       const requestFingerprint = visualReviewRequestFingerprint(parsed.data);
+       const idempotencyKey = suppliedIdempotencyKey ?? visualReviewIdempotencyKey(parsed.data);
+       const persisted = await persistVisualValidationReview({
+         actor: { id: req.user!.id },
+         reviewSetId: parsed.data.reviewSetId,
+         snapshot,
+         set: activeSet,
+         review,
+         buildId: activeSet.buildId,
+         idempotencyKey,
+         requestFingerprint,
+         expectedRevision: parsed.data.expectedRevision,
+       });
+       applyVisualValidationReview(persisted);
+       res.json(RecordVisualValidationReviewResponse.parse(persisted));
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save this teaching judgment." });
+       const status = error instanceof GovernanceError ? error.status : 400;
+       res.status(status).json({ error: error instanceof Error ? error.message : "Unable to save this review." });
     }
   });
 

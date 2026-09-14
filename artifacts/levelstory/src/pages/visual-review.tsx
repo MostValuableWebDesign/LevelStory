@@ -161,6 +161,7 @@ const VISIBLE_STRATEGY_SETTINGS = STRATEGY_TABS.filter(
 );
 type VisualReviewTab = "chart-analysis" | "generate" | "account-impact";
 type ReviewDetailTab = "overview" | "human-review" | "evidence" | "technical-details";
+type ReviewSaveState = "draft" | "saving" | "saved" | "failed";
 const REVIEW_DETAIL_TABS: Array<{ id: ReviewDetailTab; label: string; detail: string }> = [
   { id: "overview", label: "Overview", detail: "Selected trade result" },
   { id: "human-review", label: "Human Review", detail: "Judgment and teaching" },
@@ -567,6 +568,7 @@ export default function VisualReview() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewStatus, setReviewStatus] = useState<Exclude<VisualValidationReviewStatus, "unreviewed"> | null>(null);
+  const [reviewSaveState, setReviewSaveState] = useState<ReviewSaveState>("draft");
   const [reviewDraftSnapshotId, setReviewDraftSnapshotId] = useState("");
   const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
   const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
@@ -583,9 +585,12 @@ export default function VisualReview() {
   const [report, setReport] = useState<VisualValidationDiscrepancyReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [analysis, setAnalysis] = useState<VisualValidationProposedRuleAnalysis | null>(null);
+  const selectedSnapshotIdRef = useRef("");
+  const reviewSaveAttemptRef = useRef(0);
   const toggleReviewPanel = (panel: ReviewDisclosurePanel) => {
     setOpenReviewPanels((current) => ({ ...current, [panel]: !current[panel] }));
   };
+  selectedSnapshotIdRef.current = selectedSnapshotId;
 
   const startGeneration = useStartVisualValidationGenerationJob();
   const historicalIndex = useGetHistoricalDataIndexStatus({
@@ -785,6 +790,7 @@ export default function VisualReview() {
     setSelectedSnapshotId(activeSnapshot.snapshotId);
     setReviewNote(activeSnapshot.review.note ?? "");
     setReviewStatus(activeSnapshot.review.status === "unreviewed" ? null : activeSnapshot.review.status);
+    setReviewSaveState(activeSnapshot.review.status === "unreviewed" ? "draft" : "saved");
     const savedTeaching = activeSnapshot.review.teaching;
     const savedEntry = savedTeaching ? activeSnapshot.reviewCandles.find((candle) => candle.openTime === savedTeaching.entryCandleOpenTime && candle.closeTime === savedTeaching.entryCandleCloseTime) : undefined;
     setLockedEntryCandle(savedEntry ? {
@@ -991,28 +997,37 @@ export default function VisualReview() {
 
   const saveReview = (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext = false) => {
     if (!data || !activeSnapshot) return;
+    const snapshotId = activeSnapshot.snapshotId;
+    const attempt = ++reviewSaveAttemptRef.current;
+    const expectedRevision = activeSnapshot.review.revision;
+    const wasAlreadySaved = activeSnapshot.review.status !== "unreviewed";
+    const requestData: VisualValidationReviewRequest = {
+      reviewSetId: data.reviewSetId,
+      snapshotId,
+      status,
+      note: reviewNote.trim() || null,
+      expectedRevision,
+      ...((status === "missed_trade" || status === "false_positive_trade" || status === "rule_needs_clarification") && teachingDraft
+        ? { teaching: status === "false_positive_trade" ? { ...teachingDraft, judgment: "false_positive_trade" as const } : teachingDraft }
+        : {}),
+    };
     setMessage("");
+    setReviewSaveState("saving");
     recordReview.mutate({
-      data: {
-        reviewSetId: data.reviewSetId,
-        snapshotId: activeSnapshot.snapshotId,
-        status,
-        note: reviewNote.trim() || null,
-        ...((status === "missed_trade" || status === "false_positive_trade" || status === "rule_needs_clarification") && teachingDraft
-          ? { teaching: status === "false_positive_trade" ? { ...teachingDraft, judgment: "false_positive_trade" as const } : teachingDraft }
-          : {}),
-      },
+      data: requestData,
     }, {
       onSuccess: (saved) => {
+        if (attempt !== reviewSaveAttemptRef.current || selectedSnapshotIdRef.current !== snapshotId) return;
         setLocalSet((current) => {
           const base = current ?? data;
           return {
             ...base,
             snapshots: base.snapshots.map((snapshot) => snapshot.snapshotId === saved.snapshotId
-              ? { ...snapshot, review: { status: saved.status, note: saved.note, reviewedAt: saved.reviewedAt, ...(saved.teaching ? { teaching: saved.teaching } : {}) } }
+              ? { ...snapshot, review: { status: saved.status, note: saved.note, reviewedAt: saved.reviewedAt, revision: saved.revision, ...(saved.teaching ? { teaching: saved.teaching } : {}) } }
               : snapshot),
           };
         });
+        setReviewSaveState("saved");
         if (saved.status !== "unreviewed") setReviewStatus(saved.status);
         setReviewNote(saved.note ?? "");
         setTeachingDraft(saved.teaching ? {
@@ -1037,13 +1052,17 @@ export default function VisualReview() {
         } : teachingDraft);
          setMessage(saved.teaching
            ? "Teaching example saved permanently. The active formula has not changed."
-           : `${savedStatus ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
+           : `${wasAlreadySaved ? "Updated" : "Submitted"} ${status.replaceAll("_", " ")} review.`);
         if (moveNext) {
-          const next = reviewQueue[reviewQueue.findIndex((snapshot) => snapshot.snapshotId === activeSnapshot.snapshotId) + 1];
+          const next = reviewQueue[reviewQueue.findIndex((snapshot) => snapshot.snapshotId === snapshotId) + 1];
           if (next) setSelectedSnapshotId(next.snapshotId);
         }
       },
-      onError: (error) => setMessage(`Unable to save this review: ${apiErrorMessage(error) ?? (error instanceof Error ? error.message : "The server rejected the submission.")}`),
+      onError: (error) => {
+        if (attempt !== reviewSaveAttemptRef.current || selectedSnapshotIdRef.current !== snapshotId) return;
+        setReviewSaveState("failed");
+        setMessage(`Unable to save this review: ${apiErrorMessage(error) ?? (error instanceof Error ? error.message : "The server rejected the submission.")}`);
+      },
     });
   };
 
@@ -1203,7 +1222,7 @@ export default function VisualReview() {
                         <ChartEvidence snapshot={activeSnapshot} open={openReviewPanels.summary} onToggleOpen={() => toggleReviewPanel("summary")} />
                       </section>}
                       {activeReviewDetailTab === "human-review" && <section id="review-detail-panel-human-review" role="tabpanel" aria-labelledby="review-detail-tab-human-review" data-testid="review-detail-panel-human-review" className="space-y-5">
-                        <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={setReviewStatus} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={setReviewNote} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={setTeachingDraft} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
+                        <ReviewPanel snapshot={activeSnapshot} status={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewStatus : savedStatus} setStatus={(next) => { setReviewStatus(next); setReviewSaveState("draft"); setMessage(""); }} note={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewNote : savedNote} setNote={(next) => { setReviewNote(next); setReviewSaveState("draft"); setMessage(""); }} dirty={reviewDraftSnapshotId === activeSnapshot.snapshotId && reviewDirty} pending={recordReview.isPending} saveState={reviewDraftSnapshotId === activeSnapshot.snapshotId ? reviewSaveState : "saved"} onSave={saveReview} message={message} lockedEntryCandle={reviewDraftSnapshotId === activeSnapshot.snapshotId ? lockedEntryCandle : null} teaching={reviewDraftSnapshotId === activeSnapshot.snapshotId ? teachingDraft : null} setTeaching={(next) => { setTeachingDraft(next); setReviewSaveState("draft"); setMessage(""); }} authenticated={authenticated} open={openReviewPanels.judgment} onToggleOpen={() => toggleReviewPanel("judgment")} />
                       </section>}
                       {activeReviewDetailTab === "evidence" && <section id="review-detail-panel-evidence" role="tabpanel" aria-labelledby="review-detail-tab-evidence" data-testid="review-detail-panel-evidence" className="space-y-5">
                         <div className="border border-border bg-muted/15 px-4 py-3 text-[10px] leading-4 text-muted-foreground"><span className="font-bold text-foreground">Evidence scope:</span> selected-trade machine evidence is shown above; the funnel and review outputs below describe the full immutable review set.</div>
@@ -3423,6 +3442,7 @@ function ReviewPanel({
   setNote,
   dirty,
   pending,
+  saveState,
   onSave,
   message,
   lockedEntryCandle,
@@ -3439,6 +3459,7 @@ function ReviewPanel({
   setNote: (note: string) => void;
   dirty: boolean;
   pending: boolean;
+  saveState: ReviewSaveState;
   onSave: (status: Exclude<VisualValidationReviewStatus, "unreviewed">, moveNext?: boolean) => void;
   message: string;
   lockedEntryCandle: SessionCandle | null;
@@ -3540,13 +3561,18 @@ function ReviewPanel({
        </div>}
        {status === "false_positive_trade" && <div className="border border-[hsl(var(--negative)/.35)] bg-[hsl(var(--negative)/.06)] p-3 text-[10px] leading-4 text-muted-foreground" data-testid="false-positive-guidance"><strong className="text-foreground">Machine trade locked.</strong> Explain which raw candle or causal rule disproves this exact trade. The formula remains unchanged.</div>}
       <label className="block"><span className="eyebrow mb-1.5 block text-muted-foreground">Reviewer note · optional</span><textarea maxLength={2000} rows={5} value={note} onChange={(event) => setNote(event.target.value)} className="field resize-none" placeholder="Name the exact candle, level, or rule ambiguity you observed." /><span className="mt-1 block text-right text-[10px] text-muted-foreground">{note.length} / 2000</span></label>
-       {message && <div className="border border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] p-3 text-xs text-[hsl(var(--positive))]" role="status">{message}</div>}
+        {message && <div className={`border p-3 text-xs ${saveState === "failed" ? "border-[hsl(var(--negative)/.35)] bg-[hsl(var(--negative)/.08)] text-[hsl(var(--negative))]" : "border-[hsl(var(--positive)/.25)] bg-[hsl(var(--positive)/.08)] text-[hsl(var(--positive))]"}`} role="status">{message}</div>}
        <div className="flex flex-wrap gap-2">
          <button type="button" onClick={() => status && onSave(status)} disabled={pending || !status || !dirty} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-review">{pending ? <LoaderCircle size={13} className="animate-spin" /> : <ClipboardCheck size={13} />}{hasSavedReview ? "Update review" : "Submit review"}</button>
          <button type="button" onClick={() => status && onSave(status, true)} disabled={pending || !status || !dirty} className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.08em] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-submit-next">Submit & inspect next <ChevronRight size={13} /></button>
        </div>
         <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><LockKeyhole size={13} className="mt-0.5 shrink-0" />Selecting an option only creates a draft. {hasSavedReview ? "Update" : "Submit"} to persist it. Human judgments never mutate executable formula behavior.</div>
-       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">{hasSavedReview ? <span className="text-[hsl(var(--positive))]">Saved {savedStatus?.replaceAll("_", " ")} · {formatReviewTime(snapshot.review.reviewedAt ?? "")}</span> : <span className="text-muted-foreground">Not reviewed yet</span>}{dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[10px]">
+          <span className={saveState === "failed" ? "text-[hsl(var(--negative))]" : saveState === "saved" ? "text-[hsl(var(--positive))]" : "text-muted-foreground"}>
+            {saveState === "saving" ? "Saving…" : saveState === "failed" ? "Save failed — your draft is still here" : saveState === "saved" && hasSavedReview ? `Saved ${savedStatus?.replaceAll("_", " ")} · ${formatReviewTime(snapshot.review.reviewedAt ?? "")}` : "Draft"}
+          </span>
+          {dirty && <span className="font-semibold text-accent-foreground">Unsaved changes</span>}
+        </div>
      </div></div>}
   </Panel>;
 }

@@ -7478,6 +7478,8 @@ export const getVisualValidationSetResponseSnapshotsItemCoverageItemExpectedCand
 
 export const getVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const getVisualValidationSetResponseSnapshotsItemReviewRevisionMin = 0;
+
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
@@ -7748,6 +7750,7 @@ export const GetVisualValidationSetResponse = zod.object({
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
+  "revision": zod.number().min(getVisualValidationSetResponseSnapshotsItemReviewRevisionMin),
   "teaching": zod.object({
   "teachingId": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp),
   "machineTradeId": zod.string().regex(getVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
@@ -8571,6 +8574,8 @@ export const createVisualValidationSetResponseSnapshotsItemCoverageItemExpectedC
 
 export const createVisualValidationSetResponseSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const createVisualValidationSetResponseSnapshotsItemReviewRevisionMin = 0;
+
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const createVisualValidationSetResponseSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
@@ -8841,6 +8846,7 @@ export const CreateVisualValidationSetResponse = zod.object({
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
+  "revision": zod.number().min(createVisualValidationSetResponseSnapshotsItemReviewRevisionMin),
   "teaching": zod.object({
   "teachingId": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingTeachingIdRegExp),
   "machineTradeId": zod.string().regex(createVisualValidationSetResponseSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
@@ -10353,6 +10359,8 @@ export const startVisualValidationGenerationJobResponseResultSnapshotsItemCovera
 
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin = 0;
+
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
@@ -10638,6 +10646,7 @@ export const StartVisualValidationGenerationJobResponse = zod.object({
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
+  "revision": zod.number().min(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin),
   "teaching": zod.object({
   "teachingId": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
   "machineTradeId": zod.string().regex(startVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
@@ -11429,6 +11438,8 @@ export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCo
 
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin = 0;
+
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
@@ -11714,6 +11725,7 @@ export const GetLatestVisualValidationGenerationJobResponse = zod.object({
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
+  "revision": zod.number().min(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin),
   "teaching": zod.object({
   "teachingId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
   "machineTradeId": zod.string().regex(getLatestVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
@@ -12512,6 +12524,8 @@ export const getVisualValidationGenerationJobResponseResultSnapshotsItemCoverage
 
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemCoverageItemObservedCandleCountMin = 0;
 
+export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin = 0;
+
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingLevelToleranceTicksDefault = 12;
@@ -12797,6 +12811,7 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().nullable(),
   "reviewedAt": zod.coerce.date().nullable(),
+  "revision": zod.number().min(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewRevisionMin),
   "teaching": zod.object({
   "teachingId": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingTeachingIdRegExp),
   "machineTradeId": zod.string().regex(getVisualValidationGenerationJobResponseResultSnapshotsItemReviewTeachingMachineTradeIdRegExp).optional(),
@@ -13523,6 +13538,8 @@ export const GetVisualValidationGenerationJobResponse = zod.object({
 export const recordVisualValidationReviewBodyReviewSetIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewBodyNoteMax = 2000;
 
+export const recordVisualValidationReviewBodyExpectedRevisionMin = 0;
+
 export const recordVisualValidationReviewBodyTeachingMachineTradeIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const recordVisualValidationReviewBodyTeachingLevelToleranceTicksDefault = 12;
 export const recordVisualValidationReviewBodyTeachingQualifyingLevelIdMax = 120;
@@ -13542,6 +13559,7 @@ export const RecordVisualValidationReviewBody = zod.object({
   "snapshotId": zod.string(),
   "status": zod.enum(['unreviewed', 'correct', 'incorrect', 'uncertain', 'rule_needs_clarification', 'missed_trade', 'false_positive_trade']),
   "note": zod.string().max(recordVisualValidationReviewBodyNoteMax).nullish(),
+  "expectedRevision": zod.number().min(recordVisualValidationReviewBodyExpectedRevisionMin).optional().describe('Revision currently visible to the reviewer. The server rejects stale concurrent edits.'),
   "teaching": zod.object({
   "judgment": zod.enum(['missed_trade', 'false_positive_trade']),
   "machineTradeId": zod.string().regex(recordVisualValidationReviewBodyTeachingMachineTradeIdRegExp).optional(),

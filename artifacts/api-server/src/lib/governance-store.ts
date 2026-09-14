@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   advisoryRuleProposalsTable,
   db,
@@ -7,6 +7,7 @@ import {
   ruleProposalAuditEventsTable,
   strategyVersionsTable,
   teachingExamplesTable,
+  visualValidationReviewsTable,
   type AdvisoryRuleProposal,
   type ProposalValidationRun,
   type RuleProposalAuditEvent,
@@ -15,6 +16,7 @@ import {
 } from "@workspace/db";
 import type {
   VisualValidationReview,
+  VisualValidationSet,
   VisualValidationSnapshot,
   VisualValidationTeachingExample,
 } from "./visual-validation.js";
@@ -50,6 +52,14 @@ function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+export function visualReviewRequestFingerprint(value: unknown): string {
+  return hashJson(value);
+}
+
+export function visualReviewIdempotencyKey(value: unknown): string {
+  return `visual-review:${hashJson(value)}`;
+}
+
 function sourceFingerprint(snapshot: VisualValidationSnapshot): string {
   if (snapshot.sourceFingerprint) return snapshot.sourceFingerprint;
   return hashJson({
@@ -77,6 +87,183 @@ function textArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string").slice(0, 100)
     : [];
+}
+
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function persistVisualValidationReview(args: {
+  actor: GovernanceActor;
+  reviewSetId: string;
+  snapshot: VisualValidationSnapshot;
+  set: VisualValidationSet;
+  review: VisualValidationReview;
+  buildId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  expectedRevision?: number;
+}): Promise<VisualValidationReview> {
+  return db.transaction(async (tx: DbTransaction) => {
+    const lockKey = `${args.actor.id}:${args.reviewSetId}:${args.snapshot.snapshotId}`;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
+
+    const [replayed] = await tx.select().from(visualValidationReviewsTable).where(and(
+      eq(visualValidationReviewsTable.reviewerId, args.actor.id),
+      eq(visualValidationReviewsTable.idempotencyKey, args.idempotencyKey),
+    ));
+    if (replayed) {
+      if (replayed.requestFingerprint !== args.requestFingerprint) {
+        throw new GovernanceError(409, "This idempotency key was already used for a different review.");
+      }
+      return replayed.reviewPayload as VisualValidationReview;
+    }
+
+    const [current] = await tx.select().from(visualValidationReviewsTable).where(and(
+      eq(visualValidationReviewsTable.reviewerId, args.actor.id),
+      eq(visualValidationReviewsTable.reviewSetId, args.reviewSetId),
+      eq(visualValidationReviewsTable.snapshotId, args.snapshot.snapshotId),
+    )).orderBy(desc(visualValidationReviewsTable.revision)).limit(1).for("update");
+    const currentRevision = current?.revision ?? 0;
+    if (args.expectedRevision !== undefined && args.expectedRevision !== currentRevision) {
+      throw new GovernanceError(409, "This review changed before your save completed. Reload the current review and try again.");
+    }
+    if (args.review.revision !== currentRevision + 1) {
+      throw new GovernanceError(409, "This review is stale. Reload the current review and try again.");
+    }
+
+    await tx.insert(visualValidationReviewsTable).values({
+      id: args.review.reviewId,
+      reviewSetId: args.reviewSetId,
+      snapshotId: args.snapshot.snapshotId,
+      reviewerId: args.actor.id,
+      status: args.review.status,
+      note: args.review.note,
+      candidateId: args.snapshot.machineEvidence.trade?.candidateId ?? null,
+      signalOccurrenceId: args.snapshot.machineEvidence.trade?.signalOccurrenceId ?? args.snapshot.occurrenceId ?? null,
+      machineTradeId: args.snapshot.machineEvidence.trade?.id ?? null,
+      symbol: args.snapshot.symbol,
+      contract: args.snapshot.contractSymbol,
+      tradingDate: args.snapshot.tradingDate,
+      sourceFingerprint: sourceFingerprint(args.snapshot),
+      formulaVersion: args.snapshot.formulaVersion,
+      formulaHash: args.snapshot.formulaHash,
+      buildId: args.buildId,
+      evidenceIdentity: {
+        snapshotId: args.snapshot.snapshotId,
+        candidateId: args.snapshot.machineEvidence.trade?.candidateId ?? null,
+        signalOccurrenceId: args.snapshot.machineEvidence.trade?.signalOccurrenceId ?? args.snapshot.occurrenceId ?? null,
+        machineTradeId: args.snapshot.machineEvidence.trade?.id ?? null,
+        contractSymbol: args.snapshot.contractSymbol,
+        tradingDate: args.snapshot.tradingDate,
+        evaluationCloseTime: args.snapshot.evaluationCursor.closeTime,
+      },
+      reviewPayload: args.review,
+      setPayload: current ? null : args.set,
+      supersedesReviewId: current?.id ?? null,
+      revision: args.review.revision,
+      idempotencyKey: args.idempotencyKey,
+      requestFingerprint: args.requestFingerprint,
+    });
+
+    const teaching = args.review.teaching;
+    if (teaching) {
+      const [previousTeaching] = await tx.select({ id: teachingExamplesTable.id, revision: teachingExamplesTable.revision })
+        .from(teachingExamplesTable)
+        .where(and(
+          eq(teachingExamplesTable.reviewerId, args.actor.id),
+          eq(teachingExamplesTable.reviewSetId, args.reviewSetId),
+          eq(teachingExamplesTable.snapshotId, args.snapshot.snapshotId),
+        ))
+        .orderBy(desc(teachingExamplesTable.revision))
+        .limit(1)
+        .for("update");
+      await tx.insert(teachingExamplesTable).values({
+        id: teaching.teachingId,
+        reviewSetId: args.reviewSetId,
+        snapshotId: args.snapshot.snapshotId,
+        reviewId: args.review.reviewId,
+        reviewerId: args.actor.id,
+        status: "submitted",
+        judgment: teaching.judgment,
+        symbol: args.snapshot.symbol,
+        contract: args.snapshot.contractSymbol,
+        tradingDate: args.snapshot.tradingDate,
+        dataPartition: args.snapshot.period === "out_of_sample" ? "holdout" : "in_sample",
+        selectedCandleTimestamp: teaching.entryCandleOpenTime,
+        levelCandleTimestamp: teaching.levelCandleOpenTime ?? teaching.patienceCandleOpenTime,
+        patienceCandleTimestamp: teaching.patienceCandleOpenTime || null,
+        direction: teaching.direction,
+        entryBufferTicks: teaching.entryBufferTicks,
+        levelToleranceTicks: teaching.levelToleranceTicks ?? DEFAULT_LEVEL_TOLERANCE_TICKS,
+        qualifyingLevelId: teaching.qualifyingLevels?.[0]?.levelId ?? teaching.qualifyingLevelId ?? teaching.validation.levelInteractions[0]?.levelId ?? null,
+        qualifyingLevelValue: teaching.validation.levelInteractions[0]?.levelPrice != null ? String(teaching.validation.levelInteractions[0].levelPrice) : null,
+        qualifyingLevelRangeLow: teaching.validation.levelInteractions[0]?.levelRangeLow != null ? String(teaching.validation.levelInteractions[0].levelRangeLow) : null,
+        qualifyingLevelRangeHigh: teaching.validation.levelInteractions[0]?.levelRangeHigh != null ? String(teaching.validation.levelInteractions[0].levelRangeHigh) : null,
+        qualifyingLevelDistanceTicks: teaching.validation.levelInteractions[0]?.distanceTicks ?? null,
+        consolidationMetadata: {
+          levelCandleOpenTime: teaching.levelCandleOpenTime ?? teaching.patienceCandleOpenTime,
+          patienceCandleOpenTime: teaching.patienceCandleOpenTime,
+          elapsedMinutes: teaching.levelCandleOpenTime
+            ? Math.round((Date.parse(teaching.patienceCandleOpenTime) - Date.parse(teaching.levelCandleOpenTime)) / 60_000)
+            : 0,
+          candlesStrictlyBetween: teaching.levelCandleOpenTime && teaching.levelCandleOpenTime !== teaching.patienceCandleOpenTime
+            ? Math.max(0, Math.round((Date.parse(teaching.patienceCandleOpenTime) - Date.parse(teaching.levelCandleOpenTime)) / (5 * 60_000)) - 1)
+            : 0,
+          maxCandles: 6,
+          maxDurationMinutes: 30,
+        },
+        indicatorSourceTimestamp: teaching.levelCandleOpenTime ?? teaching.patienceCandleOpenTime,
+        calculatedEntryPrice: Number.isFinite(teaching.calculatedEntryPrice) ? String(teaching.calculatedEntryPrice) : null,
+        setupClassification: teaching.setupType,
+        qualifyingLevels: teaching.qualifyingLevels ?? [],
+        qualifyingPullbackLevels: teaching.pullbackLevels,
+        qualifyingLevelType: teaching.qualifyingLevels?.map((level) => level.levelType).join(", ") || null,
+        confidence: teaching.confidence,
+        reviewerExplanation: teaching.explanation,
+        machineDecision: args.snapshot.machineEvidence.audit.decision,
+        machineRejectionReasons: args.snapshot.machineEvidence.audit.rejectionCategory
+          ? [args.snapshot.machineEvidence.audit.rejectionCategory]
+          : [],
+        calendarVersion: "America/New_York:contract-local",
+        evidenceSnapshot: teaching.machineEvidenceSnapshot,
+        causalValidation: teaching.validation,
+        formulaVersion: teaching.formulaVersion,
+        formulaHash: teaching.formulaHash,
+        sourceFingerprint: teaching.sourceFingerprint,
+        calendarFingerprint: calendarFingerprint(args.snapshot),
+        supersedesTeachingId: previousTeaching?.id ?? null,
+        revision: (previousTeaching?.revision ?? 0) + 1,
+        idempotencyKey: args.idempotencyKey,
+        outcomeSnapshot: args.snapshot.machineEvidence.trade,
+      });
+    }
+    return args.review;
+  });
+}
+
+export async function loadVisualValidationReviews(reviewSetId: string, reviewerId: string): Promise<VisualValidationReview[]> {
+  const rows = await db.select().from(visualValidationReviewsTable).where(and(
+    eq(visualValidationReviewsTable.reviewSetId, reviewSetId),
+    eq(visualValidationReviewsTable.reviewerId, reviewerId),
+  )).orderBy(desc(visualValidationReviewsTable.revision));
+  const latestBySnapshot = new Map<string, VisualValidationReview>();
+  for (const row of rows) {
+    if (!latestBySnapshot.has(row.snapshotId)) {
+      latestBySnapshot.set(row.snapshotId, row.reviewPayload as VisualValidationReview);
+    }
+  }
+  return [...latestBySnapshot.values()];
+}
+
+export async function loadVisualValidationSet(reviewSetId: string, reviewerId: string): Promise<VisualValidationSet | null> {
+  const rows = await db.select({ setPayload: visualValidationReviewsTable.setPayload })
+    .from(visualValidationReviewsTable)
+    .where(and(
+      eq(visualValidationReviewsTable.reviewSetId, reviewSetId),
+      eq(visualValidationReviewsTable.reviewerId, reviewerId),
+    ))
+    .orderBy(desc(visualValidationReviewsTable.revision));
+  const payload = rows.find((row) => row.setPayload !== null)?.setPayload;
+  return payload ? payload as VisualValidationSet : null;
 }
 
 export async function persistTeachingEvidence(args: {

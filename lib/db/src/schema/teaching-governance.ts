@@ -53,6 +53,37 @@ export const teachingExamplesTable = pgTable("levelstory_teaching_examples", {
   snapshotRevisionIndex: index("levelstory_teaching_snapshot_revision_idx").on(table.reviewSetId, table.snapshotId, table.revision),
 }));
 
+export const visualValidationReviewsTable = pgTable("levelstory_visual_validation_reviews", {
+  id: text("id").primaryKey(),
+  reviewSetId: text("review_set_id").notNull(),
+  snapshotId: text("snapshot_id").notNull(),
+  reviewerId: text("reviewer_id").notNull(),
+  status: text("status").notNull(),
+  note: text("note"),
+  candidateId: text("candidate_id"),
+  signalOccurrenceId: text("signal_occurrence_id"),
+  machineTradeId: text("machine_trade_id"),
+  symbol: text("symbol").notNull(),
+  contract: text("contract").notNull(),
+  tradingDate: text("trading_date").notNull(),
+  sourceFingerprint: text("source_fingerprint").notNull(),
+  formulaVersion: text("formula_version").notNull(),
+  formulaHash: text("formula_hash").notNull(),
+  buildId: text("build_id").notNull(),
+  evidenceIdentity: jsonb("evidence_identity").notNull(),
+  reviewPayload: jsonb("review_payload").notNull(),
+  setPayload: jsonb("set_payload"),
+  supersedesReviewId: text("supersedes_review_id"),
+  revision: integer("revision").notNull().default(1),
+  idempotencyKey: text("idempotency_key").notNull(),
+  requestFingerprint: text("request_fingerprint").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  reviewerIdempotencyUnique: unique("levelstory_visual_review_reviewer_idempotency_unique").on(table.reviewerId, table.idempotencyKey),
+  reviewerSnapshotRevisionUnique: unique("levelstory_visual_review_reviewer_snapshot_revision_unique").on(table.reviewerId, table.reviewSetId, table.snapshotId, table.revision),
+  snapshotRevisionIndex: index("levelstory_visual_review_snapshot_revision_idx").on(table.reviewSetId, table.snapshotId, table.revision),
+}));
+
 export const advisoryRuleProposalsTable = pgTable("levelstory_advisory_rule_proposals", {
   id: text("id").primaryKey(),
   strategyKey: text("strategy_key"),
@@ -164,14 +195,17 @@ export const proposalValidationRunsTable = pgTable("levelstory_proposal_validati
 }));
 
 export const insertTeachingExampleSchema = createInsertSchema(teachingExamplesTable).omit({ createdAt: true });
+export const insertVisualValidationReviewSchema = createInsertSchema(visualValidationReviewsTable).omit({ createdAt: true });
 export const insertAdvisoryRuleProposalSchema = createInsertSchema(advisoryRuleProposalsTable).omit({ createdAt: true, updatedAt: true });
 export const insertRuleProposalAuditEventSchema = createInsertSchema(ruleProposalAuditEventsTable).omit({ createdAt: true });
 export const insertStrategyVersionSchema = createInsertSchema(strategyVersionsTable).omit({ createdAt: true });
 export const insertProposalValidationRunSchema = createInsertSchema(proposalValidationRunsTable).omit({ createdAt: true });
 
 export type TeachingExample = typeof teachingExamplesTable.$inferSelect;
+export type VisualValidationReviewRecord = typeof visualValidationReviewsTable.$inferSelect;
 export type AdvisoryRuleProposal = typeof advisoryRuleProposalsTable.$inferSelect;
 export type RuleProposalAuditEvent = typeof ruleProposalAuditEventsTable.$inferSelect;
 export type StrategyVersion = typeof strategyVersionsTable.$inferSelect;
 export type ProposalValidationRun = typeof proposalValidationRunsTable.$inferSelect;
 export type InsertTeachingExample = z.infer<typeof insertTeachingExampleSchema>;
+export type InsertVisualValidationReview = z.infer<typeof insertVisualValidationReviewSchema>;

@@ -14,5 +14,7 @@ export type VisualValidationSnapshotReview = {
   note: string | null;
   /** @nullable */
   reviewedAt: Date | null;
+  /** @minimum 0 */
+  revision: number;
   teaching?: VisualValidationTeachingExample;
 };

@@ -260,6 +260,7 @@ export type VisualValidationSnapshot = {
     status: VisualValidationReviewStatus;
     note: string | null;
     reviewedAt: string | null;
+    revision: number;
   };
 };
 
@@ -2564,7 +2565,7 @@ function buildMachineSnapshot(
         majorLevels: evaluationSnapshot.majorLevels,
       },
     },
-    review: { status: "unreviewed", note: null, reviewedAt: null },
+    review: { status: "unreviewed", note: null, reviewedAt: null, revision: 0 },
   };
 }
 

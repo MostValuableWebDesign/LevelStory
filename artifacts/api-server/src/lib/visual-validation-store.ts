@@ -56,26 +56,138 @@ let latestSetId: string | null = null;
 function prune(): void {
   const now = Date.now();
   for (const [id, stored] of sets) {
-    if (now - stored.lastAccessedAt > SET_TTL_MS) {
+    if (now - stored.lastAccessedAt > SET_TTL_MS && stored.reviews.size === 0) {
       sets.delete(id);
       if (id === latestSetId) latestSetId = null;
     }
   }
   while (sets.size > MAX_STORED_SETS) {
-    const oldest = [...sets.entries()].sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt)[0];
+    const oldest = [...sets.entries()]
+      .filter(([, stored]) => stored.reviews.size === 0)
+      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt)[0];
     if (!oldest) return;
     sets.delete(oldest[0]);
     if (oldest[0] === latestSetId) latestSetId = null;
   }
 }
 
+export function restoreVisualValidationReviews(reviewSetId: string, reviews: VisualValidationReview[]): void {
+  const stored = sets.get(reviewSetId);
+  if (!stored) return;
+  for (const review of reviews) {
+    const current = stored.reviews.get(review.snapshotId);
+    if (!current || review.revision > current.revision) {
+      stored.reviews.set(review.snapshotId, structuredClone(review));
+    }
+  }
+  stored.lastAccessedAt = Date.now();
+}
+
+export function restoreVisualValidationSet(set: VisualValidationSet): VisualValidationSet {
+  const restored: StoredVisualValidationSet = {
+    set: structuredClone(set),
+    reviews: new Map(),
+    reviewHistory: [],
+    lastAccessedAt: Date.now(),
+  };
+  sets.set(set.reviewSetId, restored);
+  latestSetId = set.reviewSetId;
+  return getVisualValidationSet(set.reviewSetId)!;
+}
+
 function hydratedSnapshot(snapshot: VisualValidationSnapshot, review: VisualValidationReview | undefined): VisualValidationSnapshot {
   return {
     ...snapshot,
     review: review
-      ? { status: review.status, note: review.note, reviewedAt: review.reviewedAt, ...(review.teaching ? { teaching: review.teaching } : {}) }
-      : { status: "unreviewed", note: null, reviewedAt: null },
+      ? { status: review.status, note: review.note, reviewedAt: review.reviewedAt, revision: review.revision, ...(review.teaching ? { teaching: review.teaching } : {}) }
+      : { status: "unreviewed", note: null, reviewedAt: null, revision: 0 },
   };
+}
+
+function buildReview(
+  stored: StoredVisualValidationSet,
+  snapshot: VisualValidationSnapshot,
+  status: Exclude<VisualValidationReviewStatus, "unreviewed">,
+  note: string | null,
+  teachingInput: VisualValidationTeachingInput | undefined,
+  previous: VisualValidationReview | undefined,
+): VisualValidationReview {
+  if ((status === "missed_trade" || status === "false_positive_trade") && !teachingInput) throw new Error("A structured teaching form is required before submission.");
+  if (teachingInput && teachingInput.judgment !== "missed_trade" && teachingInput.judgment !== "false_positive_trade") {
+    throw new Error("Teaching judgment must be missed_trade or false_positive_trade.");
+  }
+  if (status === "missed_trade" && teachingInput?.judgment !== "missed_trade") {
+    throw new Error("Missed trade submissions must include a missed_trade teaching judgment.");
+  }
+  if (status === "false_positive_trade" && teachingInput?.judgment !== "false_positive_trade") {
+    throw new Error("False-positive submissions must include a false_positive_trade teaching judgment.");
+  }
+  const reviewId = randomUUID();
+  const teaching = teachingInput
+    ? createVisualValidationTeachingExample(snapshot, teachingInput, previous?.reviewId ?? null)
+    : undefined;
+  if (status === "missed_trade" && teaching && !teaching.validation.valid) {
+    throw new Error(`This missed-trade correction is invalid. Submit Rule needs clarification instead: ${teaching.validation.messages.join(" ")}`);
+  }
+  if (status === "false_positive_trade") {
+    const machineTrade = snapshot.machineEvidence.trade;
+    if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
+    if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
+    const observedEntryCandle = resolveObservedEntryCandle(snapshot, machineTrade);
+    const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? observedEntryCandle?.openTime ?? machineTrade.entryTime;
+    const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? observedEntryCandle?.closeTime ?? null;
+    if (
+      teaching.machineTradeId && teaching.machineTradeId !== machineTrade.id
+      || teaching.direction !== machineTrade.direction
+      || teaching.entryCandleOpenTime !== expectedEntryOpen
+      || (expectedEntryClose !== null && teaching.entryCandleCloseTime !== expectedEntryClose)
+      || snapshot.contractSymbol !== machineTrade.contractSymbol
+      || canonicalStrategyId(teaching.setupType) !== canonicalStrategyId(machineTrade.setupType)
+    ) {
+      throw new Error("False-positive teaching must match the exact machine trade identity, contract, strategy, direction, and entry interval.");
+    }
+    if (Math.abs(teaching.calculatedEntryPrice - machineTrade.entryPrice) > 0.01) {
+      throw new Error("False-positive teaching entry price must match the machine trade.");
+    }
+  }
+  return {
+    reviewId,
+    reviewSetId: stored.set.reviewSetId,
+    snapshotId: snapshot.snapshotId,
+    status,
+    note: note?.trim() ? note.trim().slice(0, 2000) : null,
+    reviewedAt: new Date().toISOString(),
+    ...(teaching ? { teaching } : {}),
+    supersedesReviewId: previous?.reviewId ?? null,
+    revision: (previous?.revision ?? 0) + 1,
+  };
+}
+
+export function prepareVisualValidationReview(
+  reviewSetId: string,
+  snapshotId: string,
+  status: Exclude<VisualValidationReviewStatus, "unreviewed">,
+  note: string | null,
+  teachingInput?: VisualValidationTeachingInput,
+  expectedRevision?: number,
+): VisualValidationReview | null {
+  prune();
+  const stored = sets.get(reviewSetId);
+  const snapshot = stored?.set.snapshots.find((item) => item.snapshotId === snapshotId);
+  if (!stored || !snapshot) return null;
+  const previous = stored.reviews.get(snapshotId);
+  if (expectedRevision !== undefined && expectedRevision !== (previous?.revision ?? 0)) {
+    throw new Error("This review changed before your save completed. Reload the current review and try again.");
+  }
+  return buildReview(stored, snapshot, status, note, teachingInput, previous);
+}
+
+export function applyVisualValidationReview(review: VisualValidationReview): void {
+  const stored = sets.get(review.reviewSetId);
+  if (!stored) return;
+  stored.reviews.set(review.snapshotId, structuredClone(review));
+  stored.reviewHistory.push(structuredClone(review));
+  stored.lastAccessedAt = Date.now();
 }
 
 export function freshnessFor(set: Omit<VisualValidationSet, "reviewSetId" | "createdAt">, currentSource = getLoadedHistoricalIndexIdentity()): VisualValidationFreshness {
@@ -161,63 +273,9 @@ export function recordVisualValidationReview(
   note: string | null,
   teachingInput?: VisualValidationTeachingInput,
 ): VisualValidationReview | null {
-  prune();
-  const stored = sets.get(reviewSetId);
-  const snapshot = stored?.set.snapshots.find((item) => item.snapshotId === snapshotId);
-  if (!stored || !snapshot) return null;
-  if ((status === "missed_trade" || status === "false_positive_trade") && !teachingInput) throw new Error("A structured teaching form is required before submission.");
-  if (teachingInput && teachingInput.judgment !== "missed_trade" && teachingInput.judgment !== "false_positive_trade") {
-    throw new Error("Teaching judgment must be missed_trade or false_positive_trade.");
-  }
-  if (status === "missed_trade" && teachingInput?.judgment !== "missed_trade") {
-    throw new Error("Missed trade submissions must include a missed_trade teaching judgment.");
-  }
-  if (status === "false_positive_trade" && teachingInput?.judgment !== "false_positive_trade") {
-    throw new Error("False-positive submissions must include a false_positive_trade teaching judgment.");
-  }
-  const previous = stored.reviews.get(snapshotId);
-  const reviewId = randomUUID();
-  const teaching = teachingInput
-    ? createVisualValidationTeachingExample(snapshot, teachingInput, previous?.reviewId ?? null)
-    : undefined;
-  if (status === "missed_trade" && teaching && !teaching.validation.valid) {
-    throw new Error(`This missed-trade correction is invalid. Submit Rule needs clarification instead: ${teaching.validation.messages.join(" ")}`);
-  }
-  if (status === "false_positive_trade") {
-    const machineTrade = snapshot.machineEvidence.trade;
-    if (!machineTrade) throw new Error("False-positive trade requires an exact machine trade in this snapshot.");
-    if (!teaching || !teaching.validation.valid) throw new Error("False-positive teaching evidence failed causal validation.");
-    const observedEntryCandle = resolveObservedEntryCandle(snapshot, machineTrade);
-    const expectedEntryOpen = machineTrade.audit?.triggerCandleOpenTime ?? observedEntryCandle?.openTime ?? machineTrade.entryTime;
-    const expectedEntryClose = machineTrade.audit?.triggerCandleCloseTime ?? observedEntryCandle?.closeTime ?? null;
-    if (
-      teaching.machineTradeId && teaching.machineTradeId !== machineTrade.id
-      || teaching.direction !== machineTrade.direction
-      || teaching.entryCandleOpenTime !== expectedEntryOpen
-      || (expectedEntryClose !== null && teaching.entryCandleCloseTime !== expectedEntryClose)
-      || stored.set.snapshots.find((candidate) => candidate.snapshotId === snapshotId)?.contractSymbol !== machineTrade.contractSymbol
-      || canonicalStrategyId(teaching.setupType) !== canonicalStrategyId(machineTrade.setupType)
-    ) {
-      throw new Error("False-positive teaching must match the exact machine trade identity, contract, strategy, direction, and entry interval.");
-    }
-    if (Math.abs(teaching.calculatedEntryPrice - machineTrade.entryPrice) > 0.01) {
-      throw new Error("False-positive teaching entry price must match the machine trade.");
-    }
-  }
-  const review: VisualValidationReview = {
-    reviewId,
-    reviewSetId,
-    snapshotId,
-    status,
-    note: note?.trim() ? note.trim().slice(0, 2000) : null,
-    reviewedAt: new Date().toISOString(),
-    ...(teaching ? { teaching } : {}),
-    supersedesReviewId: previous?.reviewId ?? null,
-    revision: (previous?.revision ?? 0) + 1,
-  };
-  stored.reviews.set(snapshotId, review);
-  stored.reviewHistory.push(structuredClone(review));
-  stored.lastAccessedAt = Date.now();
+  const review = prepareVisualValidationReview(reviewSetId, snapshotId, status, note, teachingInput);
+  if (!review) return null;
+  applyVisualValidationReview(review);
   return review;
 }
 

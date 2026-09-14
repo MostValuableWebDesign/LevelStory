@@ -4864,6 +4864,8 @@ export type VisualValidationSnapshotReview = {
   note: string | null;
   /** @nullable */
   reviewedAt: string | null;
+  /** @minimum 0 */
+  revision: number;
   teaching?: VisualValidationTeachingExample;
 };
 
@@ -5622,6 +5624,11 @@ export interface VisualValidationReviewRequest {
      * @nullable
      */
   note?: string | null;
+  /**
+     * Revision currently visible to the reviewer. The server rejects stale concurrent edits.
+     * @minimum 0
+     */
+  expectedRevision?: number;
   teaching?: VisualValidationReviewRequestTeaching;
 }
 

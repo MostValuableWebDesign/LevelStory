@@ -18,5 +18,10 @@ export interface VisualValidationReviewRequest {
      * @nullable
      */
   note?: string | null;
+  /**
+     * Revision currently visible to the reviewer. The server rejects stale concurrent edits.
+     * @minimum 0
+     */
+  expectedRevision?: number;
   teaching?: VisualValidationReviewRequestTeaching;
 }
