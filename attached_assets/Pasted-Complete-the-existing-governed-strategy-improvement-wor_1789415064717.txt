@@ -1,0 +1,37 @@
+Complete the existing governed strategy-improvement workflow so supported strategy settings can be changed through the UI without editing source code.
+
+Inspect and extend existing proposal, teaching, validation, strategy-version, activation, and rollback infrastructure. Do not create a parallel system.
+
+First report a capability map:
+- Which changes are currently supported by typed configuration.
+- Which require new engine implementation.
+- Which settings are actually consumed by Visual Review generation.
+- Which roles can propose, approve, and activate.
+
+The current proposal validator allows:
+- patienceEntryBufferTicks
+- earlyOrbMomentumContinuationEnabled
+- earlyOrbMomentumEligibilityCutoffMinutes
+- earlyOrbMomentumMinimumCloseDistanceTicks
+
+Fix type-specific validation: the boolean enablement field must accept true/false; numeric fields must enforce their actual finite-value, range, and integer requirements. Reject unknown fields and incompatible values without silent coercion.
+
+Build a clear workflow:
+Human Review → saved teaching evidence → proposed adjustment → validation results → authorized approval → shadow activation → rollback.
+
+Requirements:
+1. Provide labeled form controls for supported settings, with current value, proposed value, units, valid bounds, and a plain-language explanation.
+2. Attach the relevant saved teaching examples and allow a rationale.
+3. Show an exact before/after configuration diff.
+4. Clearly label unsupported free-text ideas as proposals requiring implementation. Never pretend arbitrary notes have become executable rules.
+5. Preserve existing role and separation-of-duty requirements; explain them clearly in the UI.
+6. Validate against the exact parent version and candidate configuration. Invalidate approval when either changes.
+7. Distinguish teaching-example qualification comparisons from full historical performance backtests. Existing validation reports performanceMetricsAvailable=false; do not present unavailable P/L, win rate, or drawdown as zero or as verified improvements.
+8. Verify the proposal’s strategy identity maps to the runtime configuration actually loaded by generation.
+9. Pin each generation job to one strategy version/configuration. Activation must affect subsequent jobs consistently, without changing a running job or historical review set.
+10. Include the configuration identity in result provenance and cache identity.
+11. Keep activation explicit, limited to shadow behavior, and auditable. Provide rollback to the prior valid version.
+
+Add integration tests proving that a supported configuration change alters the relevant engine behavior, new generation uses the activated version, existing results remain unchanged, and rollback restores the prior configuration. Also test boolean enable/disable, invalid values, stale validation, and unauthorized activation.
+
+Deliver a working UI flow and an honest list of remaining limitations. Do not describe this as automatic learning or guarantee improved trading performance.
