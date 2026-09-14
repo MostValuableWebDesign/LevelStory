@@ -1,0 +1,95 @@
+Act as a senior UX designer and frontend engineer redesigning LevelStory’s Visual Review page for a professional MES trader.
+
+Implement Stage 1 only: the layout and visual foundation. Use the attached screenshots as the current-state reference.
+
+OVERALL DESIGN GOAL
+
+Create a polished, chart-centered review workspace supporting this flow:
+
+Generate a review set → select a trade → inspect chart and result → record human judgment → advance to the next trade.
+
+Preserve every existing capability. Later stages will refine trade navigation, supporting panels, and responsive behavior.
+
+INSPECT FIRST
+
+Inspect the current implementation, beginning with:
+artifacts/levelstory/src/pages/visual-review.tsx
+
+Follow relevant child components, styles, chart code, and tests. Inventory existing panels and controls and identify where each will live. Briefly explain your implementation plan, then proceed.
+
+VISUAL FOUNDATION
+
+Use the existing styling system and component libraries.
+
+Create a restrained light theme:
+- Soft slate page background.
+- White panels.
+- Deep navy text.
+- Royal blue primary actions and selection.
+- Green/teal for positive results and successful states.
+- Red for negative results and errors.
+- Amber for warnings and shadow mode.
+
+Preserve established chart colors and meanings. Color must supplement text, not replace it.
+
+Use consistent spacing, subtle borders, approximately 10–12px panel corners, restrained shadows, readable text, and tabular numerals for financial values.
+
+Reduce the graph-paper background, oversized introductory content, tiny uppercase labels, repetitive borders, and unused gray grid areas.
+
+LAYOUT
+
+1. Keep Generate, Chart Analysis, and Account Impact as the existing top-level modes. Present them in a compact navigation bar.
+
+2. Use a compact Visual Review heading. Retain one clearly visible “Shadow mode — no live orders” indicator.
+
+3. Before generation:
+   - Show a focused setup area containing all existing fields, strategy toggles, descriptions, validation, and actions.
+   - Replace the enormous blank results panel with a concise explanation of the review workflow.
+
+4. During generation:
+   - Keep the progress panel prominent.
+   - Preserve synchronized loading indicators, percentage, completed sessions, elapsed time, ETA messaging, retries, and resume behavior.
+   - Do not change the estimation algorithm or introduce fake progress.
+
+5. After generation:
+   - Collapse setup into an expandable Review set summary.
+   - Show the actual generated date range, symbol, and session count.
+   - Keep Edit settings, Generate, and Regenerate accessible.
+   - Clearly distinguish the generated set’s settings from unsaved configuration edits.
+   - Do not discard results simply because settings are expanded.
+
+6. Create a desktop workspace with:
+   - A left trade-navigation region, approximately 280–340px wide where space permits.
+   - A substantially wider selected-trade/chart region.
+   - Supporting details below the chart.
+
+Move the chart ahead of long provenance and detection-funnel panels. Keep existing controls and supporting panels accessible while relocating them. Stage 2 will refine the trade rows and navigation; Stage 3 will reorganize the details.
+
+At 1440×900, the selected-trade header and a meaningful portion of the chart should be visible without scrolling past the full trade list or technical metadata.
+
+GUARDRAILS FOR ALL FOUR STAGES
+
+These are presentation and navigation changes only.
+
+Do not change trading rules, eligibility, grades, entry/exit logic, stops, targets, P/L, fees, quantities, account calculations, candidate identities, deduplication, causal boundaries, APIs, cache rules, or review submission semantics.
+
+Do not remove existing controls, replace real values with mock data, add live trading actions, or rebuild the historical index.
+
+Keep existing test IDs where practical. Preserve the other evidence modes.
+
+VALIDATION AND HANDOFF
+
+Check empty, generating, completed, and failed states.
+Verify setup controls, trade selection, and chart controls still work.
+Run relevant focused checks and frontend type checking.
+Inspect the rendered page using saved results or isolated fixtures.
+
+Rebuild/restart the preview as needed and verify it serves the new layout.
+
+Report:
+- What changed and files changed.
+- Checks run and any limitations.
+- A screenshot of the completed review layout.
+- What remains for Stage 2.
+
+Stop after Stage 1 for my review.
