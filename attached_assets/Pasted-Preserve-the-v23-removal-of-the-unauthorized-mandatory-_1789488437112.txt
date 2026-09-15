@@ -1,0 +1,79 @@
+Preserve the v23 removal of the unauthorized mandatory peak-retracement threshold. Do not loosen other strategy rules or change the four-tick immediate confirmation buffer.
+
+1. Resolve the account-position boundary test
+
+The Phase 9 test at phase9.test.ts:119 currently expects zero blocked candidates but receives one.
+
+Trace which candidate is blocked and why. Determine whether the implementation violates the intended account-position rules or the test incorrectly represents a scheduled contract boundary.
+
+Verify:
+- A full exit releases the position at the correct timestamp.
+- A partial exit does not release the remaining position.
+- A contract-symbol change alone does not bypass an active position.
+- Scheduled contract-boundary handling follows the existing documented policy.
+- Legitimate overlapping entries remain blocked.
+
+Fix the actual defect. Do not weaken the assertion simply to make the test pass. If the test is wrong, explain the governing rule and replace it with valid boundary fixtures.
+
+Then inspect all four account-blocked candidates in batch:
+ae130adc-378b-4bd2-bd67-0b89aa5d0dc1
+
+For each, report candidate ID, attempted entry time, blocking position ID, full-exit time, contract, and exact block reason. Verify each block against authoritative accepted positions.
+
+2. Strengthen batch aggregation tests
+
+The current aggregation regression uses empty trades, execution evidence, rejected signals, and orphan arrays.
+
+Add populated fixtures across at least two partitions and verify:
+- Finalized and open trades are retained.
+- Execution evidence, rejected signals, and orphan records survive.
+- Counts reconcile with the actual records.
+- Diagnostics include evidence from every partition.
+- Occurrence deduplication follows the intended identity rules.
+- Conflicting duplicate identities are detected rather than silently overwritten.
+- In-sample and out-of-sample attribution remains correct.
+
+Check that partition boundaries cannot accidentally bypass account-position rules. If positions cannot cross partitions by design, prove that with a focused test.
+
+3. Explain the orphan legacy modeled fill
+
+Trace the remaining orphan fill from its originating audit row through occurrence identity, candidate projection, and authoritative execution.
+
+Report:
+- Its identity, date, direction, and timestamps.
+- Why it has no corresponding authoritative candidate/trade.
+- Whether it is duplicate legacy evidence, invalid execution, or an unresolved projection defect.
+- Why retaining it outside authoritative trades is correct.
+
+Fix any genuine projection defect. Do not delete the orphan to make diagnostics clean or promote it without valid execution evidence.
+
+4. Reproduce a clean API typecheck
+
+A local checkout reports missing visualValidationReviewsTable exports and expectedRevision review-schema types.
+
+Check schema exports, generated clients, workspace dependency build order, and stale generated artifacts. Fix the underlying consistency issue without removing review concurrency protections, weakening types, or using “any” to hide errors.
+
+Report the exact build/typecheck commands and results.
+
+5. Verify the historical result
+
+Run focused tests first. After they pass, rerun the same 10-session replay with the original configuration:
+
+2022-08-10, 08-11, 08-12, 08-15, 08-16,
+08-17, 08-18, 08-19, 08-22, 08-23.
+
+Record the active strategy configuration, formula hash, and dataset identity.
+
+Reconcile detected candidates into rejected, account-blocked, entered, and any other explicit terminal dispositions. Reconcile entered trades into finalized and open outcomes. Keep audit-row counts separate from unique signals.
+
+Do not force the result to remain six trades. If it changes, explain each changed trade or candidate disposition.
+
+Deliver:
+- Root causes and fixes.
+- Focused test results and API typecheck result.
+- Replay batch ID and before/after counts.
+- Disposition of the four account-blocked candidates.
+- Explanation of the orphan fill.
+- Remaining gaps or unavailable validation.
+
+Do not declare completion based only on nonzero trades or passing selected tests. Demonstrate that authoritative trades follow the unchanged execution rules and reconcile across the complete batch.
