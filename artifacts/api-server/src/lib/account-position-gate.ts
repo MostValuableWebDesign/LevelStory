@@ -1,4 +1,4 @@
-export const ACCOUNT_POSITION_STATE_VERSION = "account-position-state-v2-authoritative-ambiguous-exits";
+export const ACCOUNT_POSITION_STATE_VERSION = "account-position-state-v3-strict-exit-boundary";
 
 export type AccountPositionStatus = "closed" | "open" | "unscored";
 
@@ -86,9 +86,10 @@ export function activeAccountPositionAt(
   if (positionEntryTimestamp > queryTimestamp) return false;
   const exitTimestamp = position.fullExitTime === null ? Number.NaN : Date.parse(position.fullExitTime);
   if (!Number.isFinite(exitTimestamp)) return true;
-  // A completed full exit is effective at its completed timestamp. If the
-  // timestamps are ambiguous or the exit is later, remain conservative.
-  return queryTimestamp < exitTimestamp;
+  // A completed full exit is only available for a later entry after its
+  // completed timestamp. Equal timestamps can describe the same completed
+  // candle, so remain conservative and keep the position active.
+  return queryTimestamp <= exitTimestamp;
 }
 
 export function accountEntryBlockFor(

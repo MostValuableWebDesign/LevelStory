@@ -2704,10 +2704,11 @@ export function buildHistoricalVisualValidationSetFromReport(
     if (!category) return [];
     const candidate = report.tradeCandidates?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
     const candidateRejection = report.rejectedCandidateSignals?.find((item) => item.signalOccurrenceId === occurrence.occurrenceId);
-    const authoritativeTrade = candidate
+    const accountBlocked = candidate?.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
+    const authoritativeTrade = candidate && !accountBlocked
       ? matchingTradeForOccurrence(occurrence, audit, report.tradeCandidates ?? [], report.trades)
       : null;
-    if (category === "qualified_trade" && (!candidate || !authoritativeTrade)) return [];
+    if (category === "qualified_trade" && (!candidate || (!authoritativeTrade && !accountBlocked))) return [];
     const trade = category === "qualified_trade"
       ? authoritativeTrade
       : candidate
@@ -2799,7 +2800,9 @@ export function buildHistoricalVisualValidationSetFromReport(
     ));
   const tradeCandidates = mergeVisualTradeCandidates([
     ...snapshotCandidates,
-    ...accountReplayTrades.map((entry) => entry.candidate),
+    ...accountReplayTrades
+      .filter((entry) => entry.candidate.accountEntryStatus !== "BLOCKED_ACTIVE_POSITION")
+      .map((entry) => entry.candidate),
     ...blockedHistoricalCandidates,
   ]);
   const funnelDiagnostics = report.dataset && report.contract

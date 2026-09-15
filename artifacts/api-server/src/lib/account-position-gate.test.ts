@@ -27,8 +27,8 @@ test("a full exit before a later candidate permits entry", () => {
   assert.equal(accountEntryBlockFor(position({ exitTime: "2026-08-25T13:59:00.000Z" }), entry), null);
 });
 
-test("a full exit at the candidate timestamp permits entry", () => {
-  assert.equal(accountEntryBlockFor(position({ exitTime: entry }), entry), null);
+test("a full exit at the candidate timestamp still blocks entry", () => {
+  assert.equal(accountEntryBlockFor(position({ exitTime: entry }), entry)?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
 });
 
 test("a later full exit blocks entry", () => {
@@ -74,7 +74,7 @@ test("an entry one millisecond after the query is not active", () => {
   );
 });
 
-test("an ambiguous but fully evidenced zero-quantity exit releases the gate", () => {
+test("an ambiguous but fully evidenced zero-quantity exit releases the gate after its timestamp", () => {
   const exitTime = "2026-08-25T14:20:00.000Z";
   const flatAmbiguous = position({
     status: "unscored",
@@ -83,7 +83,7 @@ test("an ambiguous but fully evidenced zero-quantity exit releases the gate", ()
     exitLegs: [{ kind: "full", quantity: 1, exitCandleCloseTime: exitTime }],
     remainingContracts: 0,
   });
-  assert.equal(accountEntryBlockFor(flatAmbiguous, "2026-08-25T14:20:00.000Z"), null);
+  assert.equal(accountEntryBlockFor(flatAmbiguous, "2026-08-25T14:20:00.000Z")?.reason, "ACCOUNT_ENTRY_BLOCKED_ACTIVE_POSITION");
   assert.equal(accountEntryBlockFor(flatAmbiguous, "2026-08-25T14:21:00.000Z"), null);
 });
 
