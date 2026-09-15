@@ -492,6 +492,25 @@ test("one pullback arm can rearm after confirmation without opening a second pul
   assert.equal(reduced.conflicts.length, 0);
 });
 
+test("repeated non-terminal level observations remain idempotent across replay cursors", () => {
+  const reduced = reducePullbackArmLifecycles([{
+    armId: "repeated-level-arm",
+    transitions: [
+      { from: null, to: "ARMED_AFTER_BREAKOUT", time: 0, reason: "breakout" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "PULLBACK_OBSERVED", time: 1, reason: "pullback" },
+      { from: "PULLBACK_OBSERVED", to: "LEVEL_INTERACTION_FOUND", time: 2, reason: "level at cursor 1" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 3, reason: "P1" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 4, reason: "E1" },
+      { from: "ARMED_AFTER_BREAKOUT", to: "LEVEL_INTERACTION_FOUND", time: 5, reason: "later level at cursor 2" },
+      { from: "LEVEL_INTERACTION_FOUND", to: "PATIENCE_ARMED", time: 6, reason: "P2" },
+      { from: "PATIENCE_ARMED", to: "SIGNAL_CONFIRMED", time: 7, reason: "E2" },
+    ],
+  }]);
+  assert.equal(reduced.records[0]?.state, "SIGNAL_CONFIRMED");
+  assert.equal(reduced.records[0]?.terminal, false);
+  assert.equal(reduced.conflicts.length, 0);
+});
+
 test("legacy CONSUMED confirmation does not make a pullback arm terminal", () => {
   const reduced = reducePullbackArmLifecycles([{
     armId: "legacy-consumed-arm",

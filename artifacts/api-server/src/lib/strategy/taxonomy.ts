@@ -85,9 +85,9 @@ export const STRATEGY_DEFINITIONS: readonly StrategyDefinition[] = [
   },
   {
     id: "PEAK_RETRACEMENT_REVERSAL",
-    name: "Peak Retracement Reversal",
-    description: "A greater-than-50% causal impulse retracement followed by a reversal patience candle and immediate confirmation.",
-    components: ["peak retracement", "reversal patience candle", "immediate entry candle"],
+    name: "Peak Reversal",
+    description: "A causal impulse reversal followed by a reversal patience candle and immediate confirmation.",
+    components: ["reversal context", "reversal patience candle", "immediate entry candle"],
     alertOnly: false,
   },
 ] as const;

@@ -5,6 +5,7 @@ import {
   evaluateConsolidationEntryGuard,
   detectReversalEvidence,
   evaluateBonusReversal,
+  evaluatePeakRetracementReversal,
   evaluateStrongBreakoutAfterConsolidation,
   evaluateExtendedNtzConsolidationBreakout,
   evaluateOrbBreakPullbackContinuation,
@@ -183,6 +184,24 @@ test("ORB continuation qualifies only when every mandatory rule passes", () => {
   assert.equal(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, true);
   assert.ok(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed));
+});
+
+test("peak reversal does not require a greater-than-50-percent retracement", () => {
+  const result = evaluatePeakRetracementReversal(baseContext({
+    fibonacci: {
+      ...baseContext().fibonacci,
+      direction: "bullish",
+      retracementPercent: 25,
+      classification: "shallow",
+    },
+    reversalPatience: {
+      ...patience("ENTRY_TRIGGERED", "bearish", "short"),
+      triggerCandle: { openTime: 3, closeTime: 4, open: 9.1, high: 9.2, low: 8.5, close: 8.6, isComplete: true },
+    },
+  }));
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.some((rule) => rule.key === "peakRetracement"), false);
+  assert.equal(result.rules.every((rule) => rule.passed), true);
 });
 
 test("early ORB momentum qualifies without pullback or trend evidence", () => {

@@ -4,6 +4,7 @@ import {
   buildSegments,
   buildQualificationFunnel,
   calculateBacktestMetrics,
+  historicalReplayDiagnostics,
   type BacktestGapReport,
   type BacktestReport,
   type BacktestRequest,
@@ -190,7 +191,7 @@ function createPartitions(
   return partitions;
 }
 
-function aggregateBatchReports(
+export function aggregateBatchReports(
   reports: readonly BacktestReport[],
   partitions: readonly BatchPartition[],
   selectedDates: readonly string[],
@@ -200,6 +201,38 @@ function aggregateBatchReports(
   if (!first) throw new Error("The batch produced no completed replay partitions.");
   const trades = reports.flatMap((report) => report.trades);
   const audit = reports.flatMap((report) => report.audit);
+  const candidateExecutionEvidence = reports.flatMap((report) => report.candidateExecutionEvidence ?? []);
+  const tradeCandidates = reports.flatMap((report) => report.tradeCandidates);
+  const rejectedCandidateSignals = reports.flatMap((report) => report.rejectedCandidateSignals);
+  const orphanModeledTrades = reports.flatMap((report) => report.orphanModeledTrades);
+  const occurrences = [...new Map(
+    reports
+      .flatMap((report) => report.occurrences)
+      .map((occurrence) => [occurrence.occurrenceId, occurrence]),
+  ).values()];
+  const executionSummary = {
+    detectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.detectedCandidateCount ?? 0), 0),
+    eligibleCandidateCount: reports.reduce((sum, report) => sum + report.executionSummary.eligibleCandidateCount, 0),
+    rejectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.rejectedCandidateCount ?? 0), 0),
+    accountEntryBlockedCandidateCount: reports.reduce((sum, report) => sum + report.executionSummary.accountEntryBlockedCandidateCount, 0),
+    accountPositionStateVersion: reports[0]?.executionSummary.accountPositionStateVersion ?? "unknown",
+    enteredTradeCount: trades.length,
+    finalizedTradeCount: trades.filter((trade) => trade.outcome !== "open").length,
+    openTradeCount: trades.filter((trade) => trade.outcome === "open").length,
+    ambiguousEntryCount: reports.reduce((sum, report) => sum + report.executionSummary.ambiguousEntryCount, 0),
+    unresolvedAmbiguousTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null).length,
+    conservativelyResolvedTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null && trade.outcome !== "open").length,
+    unscoredTradeCount: trades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
+    nonEnteredCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.nonEnteredCandidateCount ?? 0), 0),
+  };
+  const diagnostics = historicalReplayDiagnostics(
+    audit,
+    occurrences,
+    tradeCandidates,
+    trades,
+    rejectedCandidateSignals,
+    orphanModeledTrades,
+  );
   const funnel = buildQualificationFunnel(reports);
   const rejectionCount = funnel.candidates.filter((candidate) => candidate.primaryRejectionStage !== null).length;
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
@@ -237,11 +270,18 @@ function aggregateBatchReports(
       visibleCandleCloseTime: reports.at(-1)?.replay.visibleCandleCloseTime ?? null,
     },
     metrics: calculateBacktestMetrics(trades, rejectionCount, audit),
+    executionSummary,
     inSample: calculateBacktestMetrics(inSampleTrades, funnel.candidates.filter((candidate) => candidate.period === "in_sample" && candidate.primaryRejectionStage !== null).length, audit.filter((record) => record.period === "in_sample")),
     outOfSample: calculateBacktestMetrics(outOfSampleTrades, funnel.candidates.filter((candidate) => candidate.period === "out_of_sample" && candidate.primaryRejectionStage !== null).length, audit.filter((record) => record.period === "out_of_sample")),
     segments: buildSegments(trades, rejectionCount),
     trades,
+    candidateExecutionEvidence,
+    tradeCandidates,
+    rejectedCandidateSignals,
+    orphanModeledTrades,
     audit,
+    occurrences,
+    diagnostics,
     auditPage: {
       runId: BATCH_AUDIT_RUN_ID,
       page: 1,

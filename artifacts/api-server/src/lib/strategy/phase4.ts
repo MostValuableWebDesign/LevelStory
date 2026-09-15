@@ -323,6 +323,26 @@ export function reducePullbackArmLifecycles(
         continue;
       }
 
+      const validLevelRearm = transition.to === "LEVEL_INTERACTION_FOUND"
+        && (
+          state === "LEVEL_INTERACTION_FOUND"
+          || state === "PATIENCE_ARMED"
+          || state === "SIGNAL_CONFIRMED"
+        )
+        && (
+          transition.from === "ARMED_AFTER_BREAKOUT"
+          || transition.from === "PULLBACK_OBSERVED"
+          || transition.from === "LEVEL_INTERACTION_FOUND"
+        );
+      if (validLevelRearm) {
+        accepted.push(transition);
+        // Replay cursors can repeat the causal level-interaction path while
+        // the same non-terminal arm remains open. A later level interaction
+        // is also the valid start of another patience attempt on that arm.
+        state = "LEVEL_INTERACTION_FOUND";
+        continue;
+      }
+
       const validPatienceRearm = (state === "PATIENCE_ARMED" || state === "SIGNAL_CONFIRMED")
         && transition.from === "LEVEL_INTERACTION_FOUND"
         && transition.to === "PATIENCE_ARMED";

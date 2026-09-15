@@ -88,3 +88,4 @@
 - [Durable human review recovery](durable-human-review-recovery.md) — persist the first reviewed set payload with reviewer-scoped revisions so restart and cache eviction can rehydrate exact review state.
 - [Governed replay pinning](governed-replay-pinning.md) — resolve strategy identity/config once per generation and carry that immutable pin through cache, workers, snapshots, and provenance.
 - [Historical replay admission](historical-replay-admission.md) — admit one long replay at a time; reject conflicting requests instead of accumulating a user-visible queue.
+- [Replay lifecycle idempotence](replay-lifecycle-idempotence.md) — repeated replay cursors can re-emit later level observations with an earlier predecessor; reduce by arm identity and keep terminal states immutable.

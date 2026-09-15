@@ -485,12 +485,7 @@ export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEv
     : context.fibonacci.direction === "bearish"
       ? "long"
       : null;
-  const retracement = context.fibonacci.retracementPercent;
-  const deepRetracement = retracement !== null && retracement > 50;
   const rules: SetupRuleEvidence[] = [
-    rule("peakRetracement", "Deep retracement reversal evidence", deepRetracement, deepRetracement
-      ? `Causal retracement is ${retracement}%.`
-      : "A causal intraday impulse retracement greater than 50% is required."),
     rule("reversalDirection", "Reversal direction established", direction !== null, direction ? `Reversal direction is ${direction}.` : "A reversal direction is not established."),
     rule("validPatienceCandle", "Valid reversal patience candle formed", patience.patienceCandle !== null && patience.direction === direction && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.detail),

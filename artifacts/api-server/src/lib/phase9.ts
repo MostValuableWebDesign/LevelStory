@@ -1919,6 +1919,28 @@ export function historicalReplayDiagnostics(
       Math.max(lateInteractionsByArm.get(armId) ?? 0, record.latePullbackInteractions ?? 0),
     );
   }
+  const terminalBeforeConfirmation = (
+    occurrence: HistoricalOccurrence,
+    lifecycleRecord: HistoricalPullbackLifecycle["records"][number] | undefined,
+  ): boolean => {
+    if (!lifecycleRecord || !isTerminalPullbackArmState(lifecycleRecord.state)) return false;
+    const terminalTime = lifecycleRecord.transitions
+      .find((transition) => isTerminalPullbackArmState(transition.to))
+      ?.time ?? Number.NaN;
+    const confirmationTime = Date.parse(
+      occurrence.entryObservationTimestamp
+        ?? occurrence.entryTimestamp
+        ?? occurrence.eOpenTimestamp
+        ?? "",
+    );
+    // A later session/cutoff boundary is a valid terminal lifecycle event,
+    // not evidence that an earlier confirmed candidate was invalid.
+    return !(
+      Number.isFinite(terminalTime)
+      && Number.isFinite(confirmationTime)
+      && terminalTime > confirmationTime
+    );
+  };
   const terminalPullbackStates = new Set<PullbackArmState>([
     "STRUCTURALLY_INVALIDATED",
     "ORB_REENTRY_INVALIDATED",
@@ -1929,24 +1951,21 @@ export function historicalReplayDiagnostics(
     "CONTRACT_BOUNDARY_EXPIRED",
     "DATA_GAP_INVALIDATED",
   ]);
-  const confirmedArmIds = new Set(
-    confirmedPatience
-      .filter((occurrence) => occurrence.eligibilityArmId)
-      .map((occurrence) => occurrence.eligibilityArmId!),
-  );
-  for (const [armId, state] of pullbackArmStateById) {
-    if (terminalPullbackStates.has(state) && state !== "CONSUMED" && confirmedArmIds.has(armId)) {
-      pullbackInvariantViolations.push(`${armId}: a confirmed candidate is linked to a non-consumed terminal pullback arm.`);
+  for (const occurrence of confirmedPatience) {
+    const armId = occurrence.eligibilityArmId;
+    const lifecycleRecord = armId ? lifecycleByArm.get(armId) : undefined;
+    if (armId && terminalBeforeConfirmation(occurrence, lifecycleRecord)) {
+      pullbackInvariantViolations.push(`${armId}: a confirmed candidate is linked to a non-consumed terminal pullback arm before confirmation.`);
     }
   }
   for (const candidate of tradeCandidates) {
     const occurrence = canonicalPatience.find((item) => item.occurrenceId === candidate.signalOccurrenceId);
-    const state = occurrence?.eligibilityArmId
-      ? lifecycleByArm.get(occurrence.eligibilityArmId)?.state
+    const lifecycleRecord = occurrence?.eligibilityArmId
+      ? lifecycleByArm.get(occurrence.eligibilityArmId)
       : undefined;
-    if (state && isTerminalPullbackArmState(state) && state !== "CONSUMED") {
+    if (occurrence?.eligibilityArmId && terminalBeforeConfirmation(occurrence, lifecycleRecord)) {
       pullbackInvariantViolations.push(
-        `${candidate.signalOccurrenceId}: candidate ${candidate.candidateId} is linked to terminal arm state ${state}.`,
+        `${candidate.signalOccurrenceId}: candidate ${candidate.candidateId} is linked to a terminal arm state before confirmation.`,
       );
     }
   }
