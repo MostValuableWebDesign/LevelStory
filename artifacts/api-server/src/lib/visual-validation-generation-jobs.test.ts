@@ -4,6 +4,7 @@ import {
   generationElapsedMs,
   getVisualValidationGenerationJob,
   startVisualValidationGenerationJob,
+  VisualValidationGenerationBusyError,
 } from "./visual-validation-generation-jobs.js";
 import { getVisualValidationSet } from "./visual-validation-store.js";
 
@@ -63,6 +64,17 @@ test("elapsed time is zero before start and freezes at completion", () => {
   assert.equal(generationElapsedMs(10_000, null, 13_250), 3_250);
   assert.equal(generationElapsedMs(10_000, 12_000, 50_000), 2_000);
   assert.equal(generationElapsedMs(12_000, 10_000, 50_000), 0);
+});
+
+test("different historical replay requests are rejected instead of queued behind active work", async () => {
+  const firstPromise = startVisualValidationGenerationJob({ ...request, endDate: "2026-08-27" });
+  await assert.rejects(
+    () => startVisualValidationGenerationJob({ ...request, endDate: "2026-08-28" }),
+    (error: unknown) => error instanceof VisualValidationGenerationBusyError
+      && error.activeJobId === "starting",
+  );
+  const first = await firstPromise;
+  await waitForCompletion(first.jobId);
 });
 
 test("fresh regeneration bypasses only the compatible derived result and preserves the old set", async () => {

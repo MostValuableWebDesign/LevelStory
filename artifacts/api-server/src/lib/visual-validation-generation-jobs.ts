@@ -69,6 +69,16 @@ type JobRecord = CandidateGenerationJob & {
   completedAt: number | null;
 };
 
+export class VisualValidationGenerationBusyError extends Error {
+  readonly activeJobId: string;
+
+  constructor(activeJobId: string) {
+    super("Another historical replay is already running. This request was not queued; wait for it to finish before starting a different replay.");
+    this.name = "VisualValidationGenerationBusyError";
+    this.activeJobId = activeJobId;
+  }
+}
+
 const JOB_TTL_MS = 30 * 60_000;
 const MAX_JOBS = 12;
 const jobs = new Map<string, JobRecord>();
@@ -306,6 +316,10 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
   const baseKey = requestKey(request);
   const pending = pendingStarts.get(baseKey);
   if (pending) return pending;
+  const activeJob = [...jobs.values()].find((job) => job.status === "queued" || job.status === "running");
+  if (activeJob || pendingStarts.size > 0) {
+    throw new VisualValidationGenerationBusyError(activeJob?.jobId ?? "starting");
+  }
   const start = (async (): Promise<CandidateGenerationJob> => {
     const active = await resolveActiveShadowStrategy();
     const deterministicRequest = cleanRequest({
@@ -343,7 +357,7 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       strategyVersion: metadata.strategyVersion,
       formulaVersion: metadata.formulaVersion,
       snapshotProjectionVersion: metadata.snapshotProjectionVersion,
-      status: "queued",
+      status: "running",
       phase: "preparing",
       completedUnits: 0,
       totalUnits: 100,
@@ -351,11 +365,11 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       completedSessions: 0,
       totalSessions: 0,
       elapsedMs: 0,
-      message: "Queued for historical replay",
+      message: "Preparing historical replay",
       error: null,
       reviewSetId: null,
       estimatedRemainingMs: null,
-      startedAt: null,
+      startedAt: Date.now(),
       completedAt: null,
     };
     jobs.set(job.jobId, job);

@@ -47,6 +47,7 @@ import {
   getLatestVisualValidationGenerationJob,
   getVisualValidationGenerationJob,
   startVisualValidationGenerationJob,
+  VisualValidationGenerationBusyError,
 } from "../lib/visual-validation-generation-jobs.js";
 import { buildShadowAccountReplay } from "../lib/shadow-account-replay.js";
 import { logger } from "../lib/logger.js";
@@ -263,8 +264,16 @@ export function createVisualValidationRouter(): IRouter {
       res.status(422).json({ error: sessionLimitError });
       return;
     }
-    const job = await startVisualValidationGenerationJob(parsed.data);
-    res.json(StartVisualValidationGenerationJobResponse.parse(job));
+    try {
+      const job = await startVisualValidationGenerationJob(parsed.data);
+      res.json(StartVisualValidationGenerationJobResponse.parse(job));
+    } catch (error) {
+      if (error instanceof VisualValidationGenerationBusyError) {
+        res.status(409).json({ error: error.message, activeJobId: error.activeJobId });
+        return;
+      }
+      throw error;
+    }
   });
 
   router.get("/backtest/visual-validation/generation-jobs", (req, res): void => {
