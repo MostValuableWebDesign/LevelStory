@@ -642,22 +642,34 @@
   .visual-review-trade-rail {
     position: sticky;
     top: 4.5rem;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
     min-width: 0;
     max-height: calc(100dvh - 5.5rem);
-    overflow: auto;
+    overflow: hidden;
     scrollbar-width: thin;
   }
   .visual-review-mobile-navigator-trigger {
     display: none;
   }
   .visual-review-candidate-controls {
-    display: block;
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
   }
   .visual-review-candidate-panel {
+    display: flex;
+    min-height: 0;
+    max-height: calc(100dvh - 5rem);
+    flex-direction: column;
+    width: 100%;
     overflow: hidden;
   }
   .trade-candidate-list {
-    max-height: min(58dvh, 640px);
+    min-height: 0;
+    flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
@@ -879,6 +891,9 @@
       position: static;
       max-height: none;
       overflow: visible;
+    }
+    .visual-review-candidate-panel {
+      max-height: none;
     }
     .visual-review-mobile-navigator-trigger {
       display: flex;
@@ -1164,7 +1179,7 @@
   }
 
   .visual-review-page .trade-candidate-list {
-    max-height: min(62dvh, 680px);
+    max-height: none;
   }
 
   .visual-review-page .trade-candidate-row {
@@ -1180,6 +1195,12 @@
 
   .visual-review-page .trade-candidate-row.is-selected:hover {
     background: hsl(228 100% 95%);
+  }
+
+  @media (max-width: 767px) {
+    .visual-review-page .trade-candidate-list {
+      max-height: min(48dvh, 520px);
+    }
   }
 
   .visual-review-page .selected-trade-header {
