@@ -1,6 +1,8 @@
-/** Work-based estimate: time alone never advances progress or exhausts the ETA. */
-export function estimateWorkRemainingMs(elapsedMs: number, completedUnits: number, totalUnits: number, previousMs: number | null): number | null {
-  if (completedUnits < 20 || elapsedMs < 2000 || totalUnits <= completedUnits) return previousMs;
-  const remaining = Math.max(1000, Math.ceil(elapsedMs / completedUnits * (totalUnits - completedUnits)));
-  return previousMs === null ? remaining : Math.min(previousMs, remaining);
+/** Complete-run timings include loading, replay, snapshots and storage. */
+export function estimateRunDurationMs(samples: number[]): number | null {
+  const valid = samples.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  return valid.length ? Math.ceil(valid[Math.ceil(valid.length * 0.9) - 1]) : null;
+}
+export function remainingUntilDeadline(durationMs: number | null, elapsedMs: number): number | null {
+  return durationMs === null ? null : Math.max(0, durationMs - Math.max(0, elapsedMs));
 }

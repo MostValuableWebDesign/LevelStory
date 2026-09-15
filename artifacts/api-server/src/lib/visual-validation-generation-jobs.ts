@@ -1,4 +1,4 @@
-import { estimateWorkRemainingMs } from "./generation-estimate.js";
+import { estimateRunDurationMs, remainingUntilDeadline } from "./generation-estimate.js";
 import { randomUUID } from "node:crypto";
 import {
   buildHistoricalVisualValidationSet,
@@ -67,6 +67,7 @@ type JobRecord = CandidateGenerationJob & {
   generationOrigin: "cached" | "fresh";
   startedAt: number | null;
   completedAt: number | null;
+  estimatedDurationMs: number | null;
 };
 
 export class VisualValidationGenerationBusyError extends Error {
@@ -206,9 +207,11 @@ function publicJob(job: JobRecord, origin = job.generationOrigin): CandidateGene
 function updateEstimate(job: JobRecord): void {
   if (job.status !== "running" || job.startedAt === null) return;
   const elapsedMs = generationElapsedMs(job.startedAt, null, Date.now());
-  job.estimatedRemainingMs = estimateWorkRemainingMs(
-    elapsedMs, job.completedUnits, job.totalUnits, job.estimatedRemainingMs,
-  );
+  job.estimatedRemainingMs = remainingUntilDeadline(job.estimatedDurationMs, elapsedMs);
+}
+
+function timingKey(request: VisualValidationRequest): string {
+  return requestKey({ ...request, endDate: "" });
 }
 
 function updateJob(job: JobRecord, update: Partial<Omit<VisualValidationWorkerProgress, "phase">> & {
@@ -369,6 +372,13 @@ export async function startVisualValidationGenerationJob(request: VisualValidati
       error: null,
       reviewSetId: null,
       estimatedRemainingMs: null,
+      estimatedDurationMs: estimateRunDurationMs([...jobs.values()]
+        .filter((previous) => previous.status === "completed"
+          && previous.startedAt !== null && previous.completedAt !== null
+          && previous.formulaVersion === metadata.formulaVersion
+          && previous.snapshotProjectionVersion === metadata.snapshotProjectionVersion
+          && timingKey(previous.request) === timingKey(deterministicRequest))
+        .map((previous) => previous.completedAt! - previous.startedAt!)),
       startedAt: Date.now(),
       completedAt: null,
     };

@@ -62,6 +62,7 @@ try {
     totalSessions,
     message: `Loading ${totalSessions} trading session${totalSessions === 1 ? "" : "s"}`,
   });
+  parentPort.postMessage({ type: "partial", set: buildHistoricalVisualValidationPartialSet(request, dataset, []) });
   const report = runCausalBacktest({
     symbol: request.symbol,
     endDate: request.endDate,
@@ -81,10 +82,6 @@ try {
       totalSessions: total,
       message: `Replaying session ${Math.min(completed + 1, total)} of ${total}`,
     });
-  parentPort!.postMessage({
-    type: "partial",
-    set: buildHistoricalVisualValidationPartialSet(request, dataset, []),
-  });
   });
   emitProgress({
     phase: "building_ledger",

@@ -348,9 +348,9 @@ function formatDuration(milliseconds: number): string {
 }
 
 function formatEstimate(milliseconds: number | null): string | null {
-  if (milliseconds === null) return "Estimating time remaining…";
-  if (milliseconds < 1000) return "Finishing generation…";
-  return `About ${formatDuration(milliseconds)} remaining`;
+  if (milliseconds === null) return "Calibrating estimate from completed runs…";
+  if (milliseconds <= 0) return "Taking longer than estimated — generation is still running.";
+  return `About ${formatDuration(Math.ceil(milliseconds / 1000) * 1000)} remaining`;
 }
 
 function requestedReviewCategory(): VisualValidationCategory | null {
@@ -1906,11 +1906,26 @@ function GenerationProgressPanel({ job: serverJob, onRetry }: { job: VisualValid
     message: "Preparing generation…", error: null,
   } as const;
   const active = job.status === "queued" || job.status === "running";
+  const [clock, setClock] = useState(() => performance.now());
+  const receivedAt = useMemo(() => performance.now(), [serverJob]);
+  const countdown = useRef<{ jobId: string | undefined; deadline: number | null }>({ jobId: undefined, deadline: null });
+  const jobId = serverJob?.jobId;
+  if (countdown.current.jobId !== jobId) countdown.current = { jobId, deadline: null };
+  if (job.estimatedRemainingMs !== null) {
+    const deadline = receivedAt + job.estimatedRemainingMs;
+    countdown.current.deadline = Math.min(countdown.current.deadline ?? deadline, deadline);
+  }
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setClock(performance.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  const sinceUpdate = active ? Math.max(0, clock - receivedAt) : 0;
   const percent = Math.max(0, Math.min(100, Math.round(job.percent)));
   const radius = 62;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - percent / 100);
-  const estimate = formatEstimate(job.estimatedRemainingMs);
+  const estimate = formatEstimate(countdown.current.deadline === null ? null : Math.max(0, countdown.current.deadline - Math.max(clock, receivedAt)));
   return <Panel accent>
     <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-10 text-center sm:px-8" data-testid="visual-generation-progress-panel">
       <div
@@ -1933,7 +1948,7 @@ function GenerationProgressPanel({ job: serverJob, onRetry }: { job: VisualValid
       <div className="mt-6 min-h-[72px]">
         <div className="text-sm font-bold">{job.status === "completed" ? "Trade candidates ready" : job.message}</div>
         <div className="mt-2 text-xs text-muted-foreground">{job.totalSessions > 0 ? `${job.completedSessions} of ${job.totalSessions} sessions completed` : "Preparing trading sessions"}</div>
-        <div className="mt-1 mono text-[10px] text-muted-foreground">Elapsed: {formatDuration(job.elapsedMs)}</div>
+        <div className="mt-1 mono text-[10px] text-muted-foreground">Elapsed: {formatDuration(job.elapsedMs + sinceUpdate)}</div>
         {estimate && active && <div className="mt-1 mono text-[10px] text-muted-foreground">{estimate}</div>}
       </div>
       <div className="sr-only" aria-live="polite">{GENERATION_PHASE_ANNOUNCEMENTS[job.phase]}</div>
