@@ -3159,6 +3159,10 @@ export function buildHistoricalOccurrenceLedger(
         ? [value.strategyCandidate, ...value.secondaryStrategyMatches]
         : []),
     ])];
+    const canonicalPrimaryStrategy = canonicalStrategyId(primaryByEdge.strategyCandidate) ?? primaryByEdge.strategyCandidate;
+    const canonicalPrimaryEdge = canonicalStrategyId(primaryByEdge.primaryEdge ?? primaryByEdge.strategyCandidate)
+      ?? primaryByEdge.primaryEdge
+      ?? primaryByEdge.strategyCandidate;
     const merged = {
       ...primaryByEvidence,
       edgeQualified: existing.edgeQualified === true || value.edgeQualified === true,
@@ -3167,9 +3171,12 @@ export function buildHistoricalOccurrenceLedger(
       // Edge attribution is independent from confirmation-evidence selection.
       // A secondary audit may provide the better complete snapshot, but it
       // must not become the canonical edge solely because it was observed later.
-      strategyCandidate: primaryByEdge.strategyCandidate,
-      primaryEdge: primaryByEdge.primaryEdge ?? primaryByEdge.strategyCandidate,
-      secondaryStrategyMatches: matches.filter((match) => match !== primaryByEdge.strategyCandidate),
+      strategyCandidate: canonicalPrimaryStrategy,
+      primaryEdge: canonicalPrimaryEdge,
+      secondaryStrategyMatches: matches.filter((match) =>
+        match === "PATIENCE_CANDLE_CONTINUATION"
+        || (canonicalStrategyId(match) ?? match) !== canonicalPrimaryStrategy,
+      ),
       canonicalTrade: existing.canonicalTrade || value.canonicalTrade,
       identityInvariantViolations: [...new Set([
         ...existing.identityInvariantViolations,
@@ -3247,7 +3254,11 @@ export function buildHistoricalOccurrenceLedger(
     const auditKey = `${record.tradingDate}|${record.contractSymbol}|${cursor}|${record.direction ?? "unknown"}`;
     const secondary = (auditsAtCursor.get(auditKey) ?? [])
       .filter((candidate) => candidate.id !== record.id && candidate.decision === "SETUP QUALIFIED")
-      .map((candidate) => canonicalStrategyId(candidate.setupType) ?? candidate.setupType);
+      .map((candidate) =>
+        candidate.setupType === "PATIENCE_CANDLE_CONTINUATION"
+          ? candidate.setupType
+          : canonicalStrategyId(candidate.setupType) ?? candidate.setupType,
+      );
     for (const event of record.pullbackOccurrences ?? []) {
       const identity = [
         "pullback",
@@ -3314,7 +3325,11 @@ export function buildHistoricalOccurrenceLedger(
     for (const patience of record.patienceOccurrences ?? []) {
        const recordEdge = canonicalStrategyId(record.setupType) ?? record.setupType;
        const qualifiedEdges = record.decision === "SETUP QUALIFIED"
-         ? [recordEdge, ...secondary]
+         ? [
+           recordEdge,
+           ...(record.setupType === "PATIENCE_CANDLE_CONTINUATION" ? [record.setupType] : []),
+           ...secondary,
+         ]
          : secondary;
        const primaryEdge = qualifiedEdges[0] ?? recordEdge;
       const linkedEvents = linkedPullbackEvents(record, patience);
@@ -3796,6 +3811,11 @@ function isEarlyOrbOccurrence(occurrence: HistoricalOccurrence): boolean {
 
 function candidatePrimaryLevelRejection(occurrence: HistoricalOccurrence): { reasonCodes: string[]; details: string[] } | null {
   if (isEarlyOrbOccurrence(occurrence)) return null;
+  if (
+    occurrence.strategyCandidate === "PATIENCE_CANDLE_CONTINUATION"
+    || occurrence.secondaryStrategyMatches?.includes("PATIENCE_CANDLE_CONTINUATION")
+    || occurrence.matchedEdges?.includes("PATIENCE_CANDLE_CONTINUATION")
+  ) return null;
   if (canonicalStrategyId(occurrence.strategyCandidate) !== "ORB_PULLBACK_CONTINUATION") return null;
   const hasExecutablePrimaryLevel = occurrence.levelIdentifiers.some((level) =>
     !level.trim().toLowerCase().startsWith("fib")

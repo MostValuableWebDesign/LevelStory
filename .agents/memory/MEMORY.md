@@ -64,6 +64,7 @@
 - [Execution management](adaptive-execution-management.md) — candidate-owned MES management uses a fixed eight-tick P-extreme stop; account risk does not reject wide structural stops.
 - [Compact batch funnel](compact-batch-funnel.md) — use compact qualification batches for large historical blocker analysis; reconcile funnel counts with causal-ledger diagnostics.
 - [Strategy registration surfaces](strategy-registration-surfaces.md) — new strategy IDs must reach replay selection and dashboard performance allowlists, not just taxonomy and evaluators.
+- [Patience continuation ORB attribution](patience-orb-attribution.md) — ordinary patience-candle continuations are canonical ORB trades while raw patience evidence remains diagnostic.
 - [Patience entry hard gate](patience-entry-hard-gate.md) — executable setup and shadow fills require a completed patience candle followed by the immediately adjacent completed E confirmation.
 - [Phase 5 ambiguity projection](phase5-ambiguity-projection.md) — top-level patience analysis must preserve an occurrence's same-candle reversal ambiguity instead of falling back to entry triggered.
 - [Unlimited confirmed entries](unlimited-confirmed-entries.md) — evaluate every eligible Early ORB P→E sequence; do not cap confirmed entries per direction.

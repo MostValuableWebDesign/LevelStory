@@ -18,7 +18,7 @@ import {
 import { strategyConfig } from "./config.js";
 import type { DynamiteLevel, MajorLevel } from "./major-levels.js";
 import type { Candle } from "./types.js";
-import { STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
+import { canonicalStrategyId, STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
 
 const config = strategyConfig();
 
@@ -385,8 +385,9 @@ test("taxonomy exposes six strategies and separates components from outcomes", (
     "RUNNER_EXIT",
   ]);
   assert.deepEqual(strategyIdsIncludingLegacy("ORB_PULLBACK_CONTINUATION"), [
-    "ORB_PULLBACK_CONTINUATION", "ORB_BREAK_PULLBACK_CONTINUATION",
+    "ORB_PULLBACK_CONTINUATION", "ORB_BREAK_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION",
   ]);
+  assert.equal(canonicalStrategyId("PATIENCE_CANDLE_CONTINUATION"), "ORB_PULLBACK_CONTINUATION");
   assert.deepEqual(strategyIdsIncludingLegacy("CONSOLIDATION_BREAKOUT_CONTINUATION"), [
     "CONSOLIDATION_BREAKOUT_CONTINUATION", "STRONG_BREAKOUT_AFTER_CONSOLIDATION", "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
   ]);

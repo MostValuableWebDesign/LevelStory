@@ -1127,8 +1127,8 @@ test("a failed edge cannot become the canonical strategy for a confirmed P to E 
   ).find((occurrence) => occurrence.kind === "patience");
   assert.ok(patience);
   assert.equal(patience.edgeQualified, true);
-  assert.equal(patience.strategyCandidate, "PATIENCE_CANDLE_CONTINUATION");
-  assert.deepEqual(patience.matchedEdges, ["PATIENCE_CANDLE_CONTINUATION"]);
+  assert.equal(patience.strategyCandidate, "ORB_PULLBACK_CONTINUATION");
+  assert.deepEqual(patience.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
 });
 
 test("a confirmed sequence from only a failed edge is not projected as a trade candidate", () => {

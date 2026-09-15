@@ -36,7 +36,6 @@ export function summarizeDashboardEntries(
     "ORB_PULLBACK_CONTINUATION",
     "EARLY_ORB_MOMENTUM_CONTINUATION",
     "CONSOLIDATION_BREAKOUT_CONTINUATION",
-    "PATIENCE_CANDLE_CONTINUATION",
     "EQUIVALENT_CANDLE_REVERSAL",
   ];
   const setupPerformance: DashboardSetupPerformance[] = setupTypes.map((setupType) => {
@@ -77,6 +76,7 @@ export function summarizeDashboardEntries(
 function canonicalSetupType(value: string): string {
   if (value === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" || value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION") return "CONSOLIDATION_BREAKOUT_CONTINUATION";
   if (value === "ORB_BREAK_PULLBACK_CONTINUATION") return "ORB_PULLBACK_CONTINUATION";
+  if (value === "PATIENCE_CANDLE_CONTINUATION") return "ORB_PULLBACK_CONTINUATION";
   if (value === "BONUS_REVERSAL") return "EQUIVALENT_CANDLE_REVERSAL";
   return value;
 }

@@ -95,7 +95,7 @@ export const STRATEGY_DEFINITIONS: readonly StrategyDefinition[] = [
 export const STRATEGY_ID_SET = new Set<string>(STRATEGY_IDS);
 
 export const LEGACY_STRATEGY_IDS: Record<StrategyId, readonly string[]> = {
-  ORB_PULLBACK_CONTINUATION: ["ORB_BREAK_PULLBACK_CONTINUATION"],
+  ORB_PULLBACK_CONTINUATION: ["ORB_BREAK_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"],
   EARLY_ORB_MOMENTUM_CONTINUATION: [],
   CONSOLIDATION_BREAKOUT_CONTINUATION: ["STRONG_BREAKOUT_AFTER_CONSOLIDATION", "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"],
   PATIENCE_CANDLE_CONTINUATION: [],
@@ -116,6 +116,7 @@ export function strategyDefinition(strategyKey: string): StrategyDefinition | un
 }
 
 export function canonicalStrategyId(value: string): StrategyId | null {
+  if (value === "PATIENCE_CANDLE_CONTINUATION") return "ORB_PULLBACK_CONTINUATION";
   if (isStrategyId(value)) return value;
   if (value === "ORB_BREAK_PULLBACK_CONTINUATION") return "ORB_PULLBACK_CONTINUATION";
   if (value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION" || value === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT") return "CONSOLIDATION_BREAKOUT_CONTINUATION";
@@ -124,7 +125,7 @@ export function canonicalStrategyId(value: string): StrategyId | null {
 }
 
 export function setupTypeForStrategy(strategyKey: StrategyId): SetupType {
-  return strategyKey;
+  return canonicalStrategyId(strategyKey) ?? strategyKey;
 }
 
 export function isStrategyComponent(value: string): boolean {
