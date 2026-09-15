@@ -877,7 +877,7 @@
       position: sticky;
       top: 4.5rem;
       max-height: calc(100dvh - 5.5rem);
-      overflow: auto;
+      overflow: hidden;
     }
     .trade-candidate-list {
       max-height: min(58dvh, 560px);
