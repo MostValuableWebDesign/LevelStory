@@ -1,0 +1,91 @@
+Give Replit this prompt:
+
+```text
+Investigate and fix LevelStory’s zero-trade generation result and an unauthorized strategy requirement.
+
+Analyze the current code before editing. Preserve all unrelated strategy rules and functionality.
+
+Reported reproduction
+Run the same historical configuration covering these 10 sessions:
+2022-08-10, 2022-08-11, 2022-08-12, 2022-08-15, 2022-08-16,
+2022-08-17, 2022-08-18, 2022-08-19, 2022-08-22, 2022-08-23.
+
+Reported results:
+- 4,680 causal evaluations
+- 342 setup-qualified / risk-approved audit rows
+- 0 modeled entries
+- 0 generated trades
+- Four audit rows reportedly contained fill-observation timestamps
+
+Treat these as reported evidence to reproduce, not proof of a particular root cause. Qualified audit rows may represent repeated evaluations rather than unique executable signals. A fill-observation timestamp alone does not prove an eligible modeled fill.
+
+1. Remove the unauthorized peak-retracement requirement
+
+My strategy does NOT require peak retracement greater than 50%.
+
+Trace where this requirement originates: strategy predicates, shared helpers, defaults, governed configuration, validation, and rejection explanations.
+
+Remove this requirement wherever it acts as a mandatory eligibility gate in my strategy. Do not replace it with another percentage threshold. If it is merely diagnostic, ensure it cannot reject a trade and is not described as a required condition.
+
+Distinguish this specific peak-retracement rule from any separately defined impulse/pullback measurement. Do not silently remove unrelated rules because they also mention 50%. Identify any ambiguous separate requirement in your report.
+
+If persisted active strategy configuration contains the unauthorized rule, provide a compatible, versioned correction through the existing governance mechanism. Updating defaults alone must not leave the active strategy enforcing it. Preserve historical versions and previously generated evidence.
+
+Add focused tests proving that an otherwise valid setup is not rejected solely because this peak-retracement threshold is missing or unmet.
+
+2. Trace qualification through execution
+
+Trace the reported qualified rows through:
+audit evaluation → unique causal occurrence → signal ledger → execution eligibility → modeled fill → candidate projection → final trade list → review snapshot.
+
+For each unique occurrence, report its terminal disposition and exact reason:
+- rejected before execution
+- waiting for confirmation / no eligible fill
+- invalidated or expired
+- excluded by an existing account or position rule
+- deduplicated, with reference to the retained occurrence
+- executed and included
+- execution/projection inconsistency
+
+Inspect the four rows with fill-observation timestamps individually. Determine what those timestamps actually represent and whether their price, time, identity, and eligibility satisfy the existing execution rules.
+
+Fix verified identity, state, projection, or filtering defects. Do not turn every setup-qualified audit row into a trade. Do not manufacture fills or bypass legitimate execution gates.
+
+Preserve:
+- existing four-tick immediate confirmation rule
+- causal visibility and no future-data access
+- existing entry window
+- stop and target semantics
+- risk and position constraints
+- deterministic results
+- distinction between machine evidence and human review
+
+3. Correct misleading funnel accounting
+
+Distinguish evaluation rows, unique qualified occurrences, eligible execution signals, modeled fills, final trades, and reviewable snapshots.
+
+Every qualified occurrence must have a traceable terminal disposition. If qualified setups legitimately produce zero fills, show the actual execution reasons. If a valid executed occurrence disappears downstream, expose a reconciliation error with its identity.
+
+Do not describe broad breakout or continuation rejection totals as proof that those rules need loosening. Verify whether their reasons belong to the enabled strategy and whether counts overlap.
+
+4. Validate efficiently
+
+Start with focused tests covering:
+- removal of the unauthorized peak-retracement gate
+- valid qualified signal with eligible fill reaches the final trade list
+- qualification without eligible fill remains excluded with a reason
+- repeated evaluations do not create duplicate trades
+- legitimate invalidation and account constraints remain enforced
+- executed trade without a review snapshot is accounted for explicitly
+- active governed configuration no longer enforces the removed rule
+
+Then rerun the exact 10-session configuration and report:
+- code and active strategy version used
+- before/after stage counts with clear counting units
+- final trade count
+- disposition of each of the four reported timestamped rows
+- remaining rejection reasons
+- tests passed and anything not verified
+
+Do not claim success merely because trades now appear. Demonstrate that they follow the authorized strategy and reconcile from signal to final output. If historical data or the original configuration is unavailable, state exactly what could not be reproduced.
+```
