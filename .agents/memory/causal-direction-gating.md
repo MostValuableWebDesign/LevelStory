@@ -20,3 +20,9 @@ Epoch breakout quality metrics must be derived from completed candles at or befo
 **Why:** Contract-local replay indexes are not comparable with the global replay cursor across scheduled rollovers, and future candles can otherwise leak into epoch quality or continuation qualification.
 
 **How to apply:** Filter causal metric inputs by confirmation time and use an exclusive effective-exit boundary; clear the timestamp state when the scheduled contract changes.
+
+For reversal strategies, the executable direction and profit target must oppose the confirmed trend. A short target in a confirmed bearish trend, or a long target in a confirmed bullish trend, is continuation evidence and cannot be labeled as a reversal.
+
+**Why:** A visual-review candidate was labeled Peak Retracement Reversal even though its target followed the active trend; reversal attribution must describe counter-trend intent, not merely a Fibonacci-derived direction.
+
+**How to apply:** Require the counter-trend predicate before `PEAK_RETRACEMENT_REVERSAL` can qualify. Keep the v23 removal of the mandatory retracement-percentage threshold; counter-trend direction is an independent semantic gate.

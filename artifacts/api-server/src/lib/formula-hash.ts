@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23-no-peak-retracement-gate-orb-trend-epochs-account-single-active-trade-no-target-breakeven";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.1-countertrend-reversal-no-peak-retracement-threshold-orb-trend-epochs-account-single-active-trade-no-target-breakeven";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -37,6 +37,7 @@ export function formulaConfiguration(
         thresholdPercent: null,
         evidenceRole: "diagnostic-only",
       },
+      reversalDirectionRule: "reversal direction and target must oppose the confirmed trend",
       ohlcvAmbiguityRule: "adverse-first-stop",
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",

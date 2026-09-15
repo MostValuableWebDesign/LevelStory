@@ -485,8 +485,14 @@ export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEv
     : context.fibonacci.direction === "bearish"
       ? "long"
       : null;
+  const counterTrendDirection = direction !== null
+    && ((context.trend.direction === "bullish" && direction === "short")
+      || (context.trend.direction === "bearish" && direction === "long"));
   const rules: SetupRuleEvidence[] = [
     rule("reversalDirection", "Reversal direction established", direction !== null, direction ? `Reversal direction is ${direction}.` : "A reversal direction is not established."),
+    rule("counterTrendDirection", "Reversal direction is counter-trend", counterTrendDirection, counterTrendDirection
+      ? `The ${direction} reversal is opposite the confirmed ${context.trend.direction} trend.`
+      : `A peak retracement reversal must be counter-trend; the proposed ${direction ?? "unknown"} direction does not oppose the confirmed ${context.trend.direction} trend.`),
     rule("validPatienceCandle", "Valid reversal patience candle formed", patience.patienceCandle !== null && patience.direction === direction && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.detail),
     rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, patience, direction), strictNtzEntry(context, patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),

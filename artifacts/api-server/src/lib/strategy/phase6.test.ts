@@ -204,6 +204,29 @@ test("peak reversal does not require a greater-than-50-percent retracement", () 
   assert.equal(result.rules.every((rule) => rule.passed), true);
 });
 
+test("peak retracement reversal must be counter-trend", () => {
+  const result = evaluatePeakRetracementReversal(baseContext({
+    fibonacci: {
+      ...baseContext().fibonacci,
+      direction: "bullish",
+      retracementPercent: 25,
+      classification: "shallow",
+    },
+    trend: {
+      ...baseContext().trend,
+      direction: "bearish",
+      structure: "lower highs / lower lows",
+    },
+    reversalPatience: {
+      ...patience("ENTRY_TRIGGERED", "bearish", "short"),
+      triggerCandle: { openTime: 3, closeTime: 4, open: 9.1, high: 9.2, low: 8.5, close: 8.6, isComplete: true },
+    },
+  }));
+  assert.equal(result.rules.find((rule) => rule.key === "counterTrendDirection")?.passed, false);
+  assert.notEqual(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.mandatoryPassed, false);
+});
+
 test("early ORB momentum qualifies without pullback or trend evidence", () => {
   const result = evaluateEarlyOrbMomentumContinuation(baseContext({
     pullback: { ...baseContext().pullback, status: "pending", events: [] },
