@@ -5,11 +5,13 @@ import {
   buildQualificationFunnel,
   calculateBacktestMetrics,
   historicalReplayDiagnostics,
+  applyHistoricalAccountPositionGate,
   type BacktestGapReport,
   type BacktestReport,
   type BacktestRequest,
   type BacktestTrade,
   type CausalReplayDataset,
+  type HistoricalOccurrence,
   type QualificationFunnel,
 } from "./phase9.js";
 import { FIXED_FORMULA_VERSION } from "./formula-hash.js";
@@ -64,6 +66,40 @@ export type BatchRunnerOptions = {
 
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+function mergeBatchOccurrences(
+  reports: readonly BacktestReport[],
+): { occurrences: HistoricalOccurrence[]; conflicts: string[] } {
+  const byId = new Map<string, HistoricalOccurrence>();
+  const conflicts: string[] = [];
+  for (const occurrence of reports.flatMap((report) => report.occurrences)) {
+    const existing = byId.get(occurrence.occurrenceId);
+    if (!existing) {
+      byId.set(occurrence.occurrenceId, occurrence);
+      continue;
+    }
+    if (stableSerialize(existing) !== stableSerialize(occurrence)) {
+      conflicts.push(
+        `BATCH_DUPLICATE_OCCURRENCE_CONFLICT:${occurrence.occurrenceId}`,
+      );
+    }
+  }
+  return {
+    occurrences: [...byId.values()],
+    conflicts: [...new Set(conflicts)].sort(),
+  };
 }
 
 function abortIfNeeded(signal: AbortSignal): void {
@@ -199,22 +235,30 @@ export function aggregateBatchReports(
 ): BatchBacktestReport {
   const first = reports[0];
   if (!first) throw new Error("The batch produced no completed replay partitions.");
-  const trades = reports.flatMap((report) => report.trades);
   const audit = reports.flatMap((report) => report.audit);
   const candidateExecutionEvidence = reports.flatMap((report) => report.candidateExecutionEvidence ?? []);
-  const tradeCandidates = reports.flatMap((report) => report.tradeCandidates);
+  const partitionTrades = reports.flatMap((report) => report.trades);
+  const partitionCandidates = reports.flatMap((report) => report.tradeCandidates);
+  const schedule = partitions.find((partition) => partition.dataset.contractSchedule)?.dataset.contractSchedule;
+  const globalAccountGate = candidateExecutionEvidence.length > 0
+    ? applyHistoricalAccountPositionGate(partitionCandidates, candidateExecutionEvidence, {
+      resetAtContractBoundary: Boolean(schedule),
+      contractBoundaries: schedule?.boundaries,
+    })
+    : null;
+  const trades = globalAccountGate?.authoritativeTrades ?? partitionTrades;
+  const tradeCandidates = globalAccountGate?.candidates ?? partitionCandidates;
   const rejectedCandidateSignals = reports.flatMap((report) => report.rejectedCandidateSignals);
   const orphanModeledTrades = reports.flatMap((report) => report.orphanModeledTrades);
-  const occurrences = [...new Map(
-    reports
-      .flatMap((report) => report.occurrences)
-      .map((occurrence) => [occurrence.occurrenceId, occurrence]),
-  ).values()];
+  const mergedOccurrences = mergeBatchOccurrences(reports);
+  const occurrences = mergedOccurrences.occurrences;
   const executionSummary = {
     detectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.detectedCandidateCount ?? 0), 0),
     eligibleCandidateCount: reports.reduce((sum, report) => sum + report.executionSummary.eligibleCandidateCount, 0),
     rejectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.rejectedCandidateCount ?? 0), 0),
-    accountEntryBlockedCandidateCount: reports.reduce((sum, report) => sum + report.executionSummary.accountEntryBlockedCandidateCount, 0),
+    accountEntryBlockedCandidateCount: tradeCandidates.filter(
+      (candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION",
+    ).length,
     accountPositionStateVersion: reports[0]?.executionSummary.accountPositionStateVersion ?? "unknown",
     enteredTradeCount: trades.length,
     finalizedTradeCount: trades.filter((trade) => trade.outcome !== "open").length,
@@ -233,12 +277,19 @@ export function aggregateBatchReports(
     rejectedCandidateSignals,
     orphanModeledTrades,
   );
+  diagnostics.candidateInvariantViolations.push(...mergedOccurrences.conflicts);
   const funnel = buildQualificationFunnel(reports);
   const rejectionCount = funnel.candidates.filter((candidate) => candidate.primaryRejectionStage !== null).length;
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
   const selected = uniqueSorted(selectedDates);
   const activeContractByDate = partitions.map(({ tradingDate, contractSymbol }) => ({ tradingDate, contractSymbol }));
+  const assumptions = [
+    ...new Set(reports.flatMap((report) => report.assumptions)),
+  ].filter((assumption) => !/^Historical replay uses exactly \d+ selected available trading dates;/.test(assumption));
+  assumptions.push(
+    `Historical replay uses exactly ${selected.length} selected available trading dates; excluded dates are reported separately.`,
+  );
   const reportContract = {
     ...first.contract,
     fullContractSymbol: "MES multi-contract",
@@ -289,7 +340,7 @@ export function aggregateBatchReports(
       total: audit.length,
       hasMore: audit.length > 50,
     },
-    assumptions: [...new Set(reports.flatMap((report) => report.assumptions))],
+    assumptions,
     gapReport: combineGapReports(reports),
     batch: {
       totalPartitions: partitions.length,

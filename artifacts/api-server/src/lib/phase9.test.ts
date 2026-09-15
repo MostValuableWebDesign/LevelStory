@@ -110,14 +110,30 @@ test("authoritative account gating releases at the full-exit timestamp and reset
   const result = applyHistoricalAccountPositionGate(
     [first, sameTimestamp, rollover],
     [
-      gateTrade("first-exit", "MESU6", first.entryObservationTimestamp, "2026-08-25T14:30:00.000Z"),
+      gateTrade("first-exit", "MESU6", first.entryObservationTimestamp, "2026-08-25T14:35:00.000Z"),
       gateTrade("same-time", "MESU6", sameTimestamp.entryObservationTimestamp, "2026-08-25T14:35:00.000Z"),
       gateTrade("rollover", "MESZ6", rollover.entryObservationTimestamp, null, 2),
     ],
     { resetAtContractBoundary: true },
   );
-  assert.equal(result.blockedCandidateCount, 0);
-  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["first-exit", "same-time", "rollover"]);
+  assert.equal(result.blockedCandidateCount, 1);
+  assert.equal(result.candidates.find((candidate) => candidate.candidateId === "same-time")?.accountEntryBlock?.blockingCandidateId, "first-exit");
+  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["first-exit", "rollover"]);
+});
+
+test("a contract-symbol change alone does not bypass an active account position", () => {
+  const first = gateCandidate("active-before-rollover", "MESU6", "2026-08-25T14:00:00.000Z");
+  const changedContract = gateCandidate("changed-contract", "MESZ6", "2026-08-25T14:31:00.000Z");
+  const result = applyHistoricalAccountPositionGate(
+    [first, changedContract],
+    [
+      gateTrade("active-before-rollover", "MESU6", first.entryObservationTimestamp, "2026-08-25T14:35:00.000Z"),
+      gateTrade("changed-contract", "MESZ6", changedContract.entryObservationTimestamp, null),
+    ],
+  );
+  assert.equal(result.blockedCandidateCount, 1);
+  assert.equal(result.candidates.find((candidate) => candidate.candidateId === "changed-contract")?.accountEntryBlock?.blockingCandidateId, "active-before-rollover");
+  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["active-before-rollover"]);
 });
 
 test("ORB transition evidence is reconciled from accepted account positions, not blocked simulations", () => {
