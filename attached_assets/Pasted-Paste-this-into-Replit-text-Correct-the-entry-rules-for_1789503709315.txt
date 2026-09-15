@@ -1,0 +1,92 @@
+Paste this into Replit:
+
+```text
+Correct the entry rules for exactly these two LevelStory strategies:
+
+1. Strong Breakout After Consolidation
+2. Equivalent-Candle Reversal
+
+Strategy clarification:
+Neither strategy requires a patience candle. They must not inherit the patience-based P→E entry contract.
+
+Inspect their implementation and shared qualification/execution paths before editing, then implement the correction.
+
+Remove these requirements from these two strategies:
+- A required patience candle identified as P.
+- A required immediate next candle identified as E.
+- Rejection because confirmation did not occur on the candle immediately after P.
+- The four-MES-tick P→E confirmation buffer.
+- The requirement for a completed P/E pair.
+- Ambiguity rejection that exists solely because a P→E sequence cannot be established.
+
+Scope:
+Preserve these requirements for strategies that actually use patience-based entry. Do not remove shared safeguards globally.
+
+1. Establish each strategy’s own entry contract
+
+Trace the existing strategy-specific detection and entry conditions, including prior definitions, configuration, tests, and documentation.
+
+For Strong Breakout After Consolidation:
+Preserve the authorized consolidation structure and breakout conditions. Remove the dependency on a separate patience candle and its immediate confirmation candle.
+
+For Equivalent-Candle Reversal:
+Preserve the authorized equivalent-candle pattern, location/context, and reversal conditions. Do not require an additional patience candle or P→E confirmation sequence.
+
+Do not invent a replacement entry trigger, buffer, waiting period, or expiry rule. Removing the patience requirement does not authorize indefinite confirmation or automatic entry whenever a pattern is detected.
+
+If the existing authorized definitions do not establish the exact entry event and executable price for either strategy, show the missing decision and ask me before implementing that strategy’s execution change. Do not silently substitute candle-close entry or another threshold.
+
+2. Remove the dependency throughout the pipeline
+
+Inspect and update all affected paths:
+- Strategy qualification and rejection reasons.
+- Signal and occurrence identity.
+- Lifecycle validation.
+- Candidate projection.
+- Modeled execution.
+- Stop/risk management inputs.
+- Visual Review chart markers and explanations.
+- Audit, reconciliation, and generated API types where necessary.
+
+A valid signal from either strategy must not be rejected downstream because it lacks patienceTimestamp, P/E candle fields, a patience arm, or an immediate-E confirmation record.
+
+Use strategy-specific entry evidence and identities. Do not fabricate P/E fields or label a breakout or reversal candle as “patience” merely to satisfy shared validation.
+
+If stop placement currently depends on a patience candle, preserve an existing authorized strategy-specific stop rule. If none exists, flag that missing rule for my decision rather than inventing a stop.
+
+3. Preserve causal execution
+
+Removing P→E requirements does not remove:
+- No future-data access.
+- Required completed-candle evidence under each strategy’s own rules.
+- Existing entry-window restrictions.
+- Authorized stop, target, risk, and account-position rules.
+- Genuine ambiguity handling when OHLCV data cannot establish execution order.
+
+Only remove ambiguity checks tied specifically to the inapplicable patience sequence.
+
+Update formula/version identity and cache compatibility so old generated results cannot be reused under the new semantics. Follow the existing governed strategy activation process and preserve historical versions.
+
+4. Add focused regression tests
+
+Prove that:
+- Each strategy can qualify and produce a modeled trade without a patience candle when its own authorized entry conditions pass.
+- Neither strategy requires the four-tick P→E buffer.
+- Neither strategy requires an immediate E candle.
+- Invalid consolidation/breakout or equivalent-candle/reversal patterns still reject.
+- Missing strategy-specific execution or risk evidence still rejects explicitly.
+- Patience-based strategies retain their existing P→E behavior.
+- Candidate identity remains deterministic and repeated observations do not duplicate trades.
+- Visual Review explains the actual strategy-specific entry evidence.
+
+Run focused tests first, then replay representative historical examples for both affected strategies.
+
+Report:
+- The exact entry contract used for each strategy and where it came from.
+- Removed dependencies and affected files.
+- Formula/configuration version changes.
+- Before/after candidate and trade counts.
+- Tests passed and any validation not completed.
+
+Do not claim completion based only on removing a qualification check. Verify the corrected signals reach authoritative trades and Visual Review without any remaining patience-field dependency.
+```
