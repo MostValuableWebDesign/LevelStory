@@ -1,0 +1,130 @@
+Paste this into Replit:
+
+```text
+Fix the remaining direct-entry strategy defects in LevelStory. Inspect the current code first, explain the changes, then implement and verify them.
+
+Scope:
+1. Strong Breakout After Consolidation
+2. Equivalent-Candle Reversal
+3. Their shared candidate execution handling where necessary
+
+Preserve all unrelated strategy behavior.
+
+AUTHORIZED CONTRACTS
+
+Strong Breakout After Consolidation:
+- No patience candle or P→E confirmation requirement.
+- Freeze the consolidation range using the highest high and lowest low of its constituent candles.
+- Long entry threshold: frozen range high + 8 MES ticks.
+- Long stop: frozen range low − 8 MES ticks.
+- Short entry threshold: frozen range low − 8 MES ticks.
+- Short stop: frozen range high + 8 MES ticks.
+- Do not introduce an immediate-next-candle-only entry restriction.
+- Preserve existing consolidation detection measurements unless they conflict with the explicit no-patience contract.
+- Do not silently replace threshold entry with candle-close entry.
+
+Equivalent-Candle Reversal:
+- Two consecutive completed pattern candles.
+- Uptrend: exactly equal highs, producing a short reversal.
+- Downtrend: exactly equal lows, producing a long reversal.
+- Preserve the authorized existing body, wick, opposing-candle, and level-context measurements. Apply them to the same two candles.
+- Long entry: second pattern candle high + 8 ticks.
+- Long stop: second pattern candle low − 8 ticks.
+- Short entry: second pattern candle low − 8 ticks.
+- Short stop: second pattern candle high + 8 ticks.
+- Only the immediate next candle may trigger entry. If it misses the threshold, expire that pattern.
+- No separate patience candle or four-tick P→E gate.
+
+For both:
+- Use the instrument’s tick size.
+- Retain existing key-level/1R target-selection rules, slippage, fees, entry windows, risk controls, and account-wide position arbitration.
+- Do not add a peak-retracement percentage requirement.
+- Keep execution in historical/Shadow mode.
+
+FIX 1 — REMOVE THE REMAINING CONSOLIDATION PATIENCE DEPENDENCY
+
+Inspect evaluateStrongBreakoutAfterConsolidation in strategy/phase6.ts.
+
+The mandatory postBreakoutContext currently depends on:
+  hasQualifyingPullback(context.pullback)
+  OR
+  consolidation.detected && context.patience.eligibilityReason === "ntz consolidation"
+
+Remove the requirement for patience-derived eligibility. A valid consolidation breakout must not be rejected merely because no patience lifecycle exists.
+
+Trace other downstream checks for inherited patience fields, expiration, ambiguity, or lifecycle requirements. Keep genuine execution ambiguity checks, but do not let unrelated patience state control either direct strategy.
+
+FIX 2 — MAKE CONSOLIDATION QUALIFICATION AND ENTRY TIMING CONSISTENT
+
+The actual audit producer currently assigns directQualificationTimestamp to the evaluated candle’s close. The same-candle entry branch requires that timestamp to precede a threshold crossing inside the candle. These conditions cannot both hold.
+
+Tests that manually inject an earlier qualification timestamp do not verify the production path.
+
+Trace the actual detector → audit → occurrence → candidate → execution pipeline.
+
+Separate:
+- when the frozen consolidation setup becomes causally knowable;
+- when the entry threshold is reached;
+- when completed-bar evidence becomes observable.
+
+Never backdate qualification using information only available at candle close. Never automatically defer a missed entry to the following candle merely to generate a trade.
+
+If retained breakout-close/continuation requirements conflict with entry at the first eight-tick threshold crossing, present the exact conflict and ask me the minimum specific question needed to resolve it before changing that behavior. Do not invent a new setup expiry, unlimited validity, or re-entry policy.
+
+Complete the independent fixes while identifying any unresolved timing decision.
+
+FIX 3 — HANDLE ENTRY-CANDLE STOPS AND TARGETS
+
+Inspect candidateDrivenEntryTrade and the shared execution simulator.
+
+Direct entries currently use the entry candle’s close as entryTime and pass:
+  evaluateEntryCandleForExit: false
+
+This can skip a stop or target reached after entry within the trigger candle.
+
+Implement correct causal handling:
+- With ordered intrabar evidence, identify the actual threshold fill and evaluate subsequent stop/target events in chronological order.
+- Ignore stop/target touches that occurred before entry.
+- With OHLCV-only evidence, distinguish determinable ordering from genuinely ambiguous ordering.
+- Preserve or extend the existing ambiguity policy; do not assume a favorable path or silently ignore the trigger candle.
+- Keep fill time and observation time separate. Do not present an observation timestamp as an exact intrabar fill time.
+- Apply existing gap-fill and slippage policies consistently.
+- Feed the corrected execution timing into account-wide position arbitration.
+- Preserve behavior of unrelated patience-based strategies.
+
+REGRESSION TESTS
+
+Add focused tests covering:
+
+1. Consolidation qualifies without any patience candle, patience eligibility, or patience lifecycle.
+2. Long and short consolidation thresholds/stops use the same frozen range shown on the chart.
+3. Real detector-generated qualification timestamps reach the intended execution path; no fabricated earlier audit timestamps.
+4. Equivalent reversals retain exact equality, the existing pattern measurements, and second-candle stop geometry.
+5. Equivalent entry expires if the immediate next candle misses; later candles cannot revive that pattern.
+6. Entry followed by a stop within the same candle.
+7. Entry followed by a target within the same candle.
+8. A stop/target touch before entry does not count as an exit.
+9. Unresolvable OHLCV event ordering is explicitly ambiguous.
+10. Corrected timing preserves account-position blocking and existing full-exit boundary rules.
+11. Existing patience-based strategies retain their behavior.
+
+Include at least one production-path integration test per direct strategy, starting with real detection rather than a manually qualified audit fixture.
+
+VERSIONING AND VERIFICATION
+
+- Update the governed formula identity/cache version if execution semantics change.
+- Preserve historical results and their original formula provenance.
+- Run focused strategy/execution tests and relevant typechecks/builds first.
+- Then run a bounded historical replay if suitable data is available.
+- Do not optimize for a particular trade count or profitable outcome.
+- Distinguish passed checks, failures, skipped checks, and unavailable data.
+
+Report:
+- Files changed and what each fix addresses.
+- Any timing decision still requiring my authorization.
+- Verified entry/stop calculations for both directions.
+- Test results.
+- Replay results, if run, including ambiguous, rejected, account-blocked, and finalized candidates.
+
+Do not claim completion based only on hand-built ledger fixtures or passing helper tests.
+```
