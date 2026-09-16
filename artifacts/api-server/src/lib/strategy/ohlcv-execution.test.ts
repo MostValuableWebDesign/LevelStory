@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL,
   AMBIGUOUS_OHLCV_SEQUENCE_LABEL,
   BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL,
   BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL,
@@ -45,6 +46,39 @@ test("candidate entry observation does not evaluate exits inside the entry candl
   assert.equal(result.modeledFill, 100);
   assert.equal(result.exitReason, "manual");
   assert.equal(result.audit.exitCandle, null);
+});
+
+test("ordered intrabar evidence ignores pre-entry stop touches and exits after the fill", () => {
+  const start = 2_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(99, 103, 98, 102.5, start + 300_000),
+    evaluateEntryCandleForExit: true,
+    target: 102,
+    stop: 98.5,
+    orderedIntrabarPoints: [
+      { timestamp: start + 30_000, price: 98 },
+      { timestamp: start + 120_000, price: 100 },
+      { timestamp: start + 180_000, price: 102.25 },
+    ],
+  });
+  assert.equal(result.modeledFill, 100);
+  assert.equal(result.modeledFillTimestamp, start + 120_000);
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.audit.exitCandle?.openTime, start);
+});
+
+test("direct OHLC entry and barrier touches remain ambiguous without ordered evidence", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: candle(99, 102, 98, 101),
+    evaluateEntryCandleForExit: true,
+    target: 102,
+    stop: 98.5,
+  });
+  assert.equal(result.modeledFill, null);
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL));
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_OHLCV_SEQUENCE_LABEL));
 });
 
 test("ratchets a long EMA target lower only for the next candle", () => {

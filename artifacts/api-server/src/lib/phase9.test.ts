@@ -991,11 +991,11 @@ test("authorized direct strategies emit candidates without fabricated patience o
   assert.ok(occurrence);
   assert.equal(occurrence.patienceTimestamp, null);
   assert.equal(occurrence.pOpenTimestamp, null);
-  assert.equal(occurrence.eOpenTimestamp, new Date(1_200_000).toISOString());
+  assert.equal(occurrence.eOpenTimestamp, new Date(900_000).toISOString());
   assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
 });
 
-test("consolidation direct entry uses the breakout candle only with ordered causal evidence", () => {
+test("close-gated consolidation does not defer an unexecutable same-candle breakout", () => {
   const start = Date.parse("2026-08-25T14:05:00.000Z");
   const signal = {
     contractSymbol: "MESU26",
@@ -1045,16 +1045,16 @@ test("consolidation direct entry uses the breakout candle only with ordered caus
     .find((item) => item.directSignalOpenTimestamp !== undefined);
   assert.ok(occurrence);
   assert.equal(occurrence.eOpenTimestamp, signal.openTime && new Date(start).toISOString());
-  assert.equal(occurrence.directQualificationTimestamp, new Date(start + 60_000).toISOString());
+  assert.equal(occurrence.directQualificationTimestamp, new Date(start + 300_000).toISOString());
   assert.equal(occurrence.directThresholdCrossingTimestamp, new Date(start + 120_000).toISOString());
   const result = projectHistoricalTradeCandidates([occurrence], [], {
     dataset,
     specification: getFuturesContractSpecification("MES"),
     executionMode: "ohlcv_modeled",
   });
-  assert.equal(result.rejected.length, 0);
-  assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0]?.executionStatus, "ENTRY_AMBIGUOUS");
+  assert.equal(result.rejected.length, 1);
+  assert.equal(result.rejected[0]?.reasonCodes.includes("INVALID_CAUSAL_IDENTITY"), true);
+  assert.equal(result.candidates.length, 0);
   assert.equal(result.authoritativeTrades.length, 0);
 });
 

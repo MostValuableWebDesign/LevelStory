@@ -3520,7 +3520,7 @@ export function buildHistoricalOccurrenceLedger(
           ticks: dataset.ticks ?? [],
         })
         : null;
-      const executionCandle = sameCandleEvidence?.eligible
+      const executionCandle = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
         ? signalCandle
         : triggerCandle;
       if (signalCandle && executionCandle && threshold !== null) {
@@ -3561,10 +3561,10 @@ export function buildHistoricalOccurrenceLedger(
             ? directPatternTrend === "bullish" ? directPatternSecond.high : directPatternSecond.low
             : null,
           candidateShapeResult: true,
-           // The setup becomes knowable from completed causal evidence. Equivalent
-           // reversal uses the immediate next candle; consolidation may use the
-           // breakout candle only when ordered evidence proves qualification
-           // preceded its threshold crossing, otherwise it uses the next candle.
+            // The setup becomes knowable from completed causal evidence. Equivalent
+            // reversal uses the immediate next candle. Consolidation never
+            // substitutes that next candle when its breakout candle was not an
+            // executable same-candle entry under the close-gated contract.
            directQualificationTimestamp: record.directQualificationTimestamp ?? null,
            directThresholdCrossingTimestamp: sameCandleEvidence?.thresholdCrossingTimestamp !== null
              && sameCandleEvidence?.thresholdCrossingTimestamp !== undefined
