@@ -91,3 +91,4 @@
 - [Historical replay admission](historical-replay-admission.md) — admit one long replay at a time; reject conflicting requests instead of accumulating a user-visible queue.
 - [Replay lifecycle idempotence](replay-lifecycle-idempotence.md) — repeated replay cursors can re-emit later level observations with an earlier predecessor; reduce by arm identity and keep terminal states immutable.
 - [Direct strategy entry timing](direct-strategy-entry-timing.md) — the two authorized no-patience strategies qualify on completed setup evidence and execute only in the following completed candle.
+- [Ordered intrabar completeness](ordered-intrabar-completeness.md) — timestamped ticks override OHLC stop-first only when source coverage is explicitly verified; partial or equal-time evidence stays conservative.

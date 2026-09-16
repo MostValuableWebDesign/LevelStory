@@ -308,6 +308,12 @@ export type OhlcvExecutionInput = {
   orderedIntrabarPoints?: readonly OrderedIntrabarPoint[];
   /** Ordered tick observations after entry, used only when exact exit chronology is known. */
   orderedPostEntryPoints?: readonly OrderedIntrabarPoint[];
+  /**
+   * The caller has verified that the ordered points cover the complete
+   * competing-barrier sequence for the candles being simulated. A non-empty
+   * point array alone is not sufficient evidence to override OHLC ambiguity.
+   */
+  orderedIntrabarEvidenceComplete?: boolean;
   /** Explicit threshold-crossing timestamp, when already established causally. */
   entryFillTimestamp?: number | null;
   subsequentCompletedCandles?: readonly OhlcvCandle[];
@@ -522,6 +528,11 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       )
       .sort((first, second) => first.timestamp - second.timestamp)
     : [];
+  const orderedPostEntryPoints = [...(input.orderedPostEntryPoints ?? [])]
+    .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
+    .sort((first, second) => first.timestamp - second.timestamp);
+  const orderedExitPoints = orderedPostEntryPoints.length > 0 ? orderedPostEntryPoints : orderedPoints;
+  const orderedEvidenceComplete = input.orderedIntrabarEvidenceComplete === true;
   const subsequentCandles = [
     ...(input.subsequentCompletedCandles ?? []),
     ...(input.completedCandles ?? []),
@@ -570,7 +581,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const assumptions = [
     MODELED_OHLCV_FILL_LABEL,
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
-    "Stops are evaluated before targets when both are touched in one candle.",
+    orderedEvidenceComplete
+      ? "Complete ordered intrabar evidence selects the first timestamped executable event; equal timestamps remain adverse-first ambiguous."
+      : "Stops are evaluated before targets when both are touched in one candle.",
     ...(input.oneRProfitRule
       ? ["No eligible key-level target: 1R is the actual modeled fill-to-initial-stop distance; one contract exits fully at +1R, while multi-contract positions take one contract at +1R before trailing the remainder."]
       : []),
@@ -646,8 +659,15 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         && (input.direction === "long" ? point.price >= initialTarget : point.price <= initialTarget);
       return stopHit || targetHit;
     });
+    const firstExitTimestamp = firstExitIndex >= 0 ? postEntryPoints[firstExitIndex]!.timestamp : null;
+    const firstExitEndIndex = firstExitTimestamp === null
+      ? -1
+      : postEntryPoints.reduce(
+        (last, point, index) => point.timestamp === firstExitTimestamp ? index : last,
+        firstExitIndex,
+      );
     const path = firstExitIndex >= 0
-      ? postEntryPoints.slice(0, firstExitIndex + 1)
+      ? postEntryPoints.slice(0, firstExitEndIndex + 1)
       : postEntryPoints;
     const pathPrices = [modeledFill, ...path.map((point) => point.price)];
     triggerForExecution = {
@@ -729,7 +749,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const fees = feePerSide * qty * 2;
     const exitCandleOpenTime = typeof candle.openTime === "number" ? new Date(candle.openTime).toISOString() : undefined;
     const exitCandleCloseTime = typeof candle.closeTime === "number" ? new Date(candle.closeTime).toISOString() : undefined;
-    const orderedExitPoint = (input.orderedPostEntryPoints ?? [])
+    const orderedExitPoint = orderedExitPoints
       .filter((point) =>
         (modeledFillTimestamp === null
           || point.timestamp > modeledFillTimestamp)
@@ -778,32 +798,112 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
     const breakevenStopArmed = breakevenMode === "stop";
     const recoveryExitArmed = breakevenMode === "recovery";
-    const strategyHit = !breakevenStopArmed
-      && activeTrailingStop === null
-      && strategyStop !== null
-      && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
-    const catastropheHit = catastropheStop !== null
-      && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
-    const trailingHit = !breakevenStopArmed
-      && activeTrailingStop !== null
-      && (input.direction === "long" ? candle.low <= activeTrailingStop : candle.high >= activeTrailingStop);
-    const breakevenHit = breakevenStopArmed
-      && (input.direction === "long" ? candle.low <= modeledFill : candle.high >= modeledFill);
+    const candleOrderedPoints = orderedEvidenceComplete
+      ? orderedExitPoints.filter((point) =>
+        point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
+        && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
+        && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+      )
+      : [];
+    const orderedEvent = (() => {
+      type OrderedEvent = {
+        kind: "target" | "oneR" | "recovery" | "stop";
+        point: OrderedIntrabarPoint;
+        stopLevel?: "strategy" | "catastrophe" | "structure_trailing" | "breakeven";
+        ambiguous?: boolean;
+      };
+      const events = candleOrderedPoints.map((point): OrderedEvent | null => {
+        const target = !oneRProfitRule
+          && !targetHit
+          && effectiveTarget !== null
+          && (input.direction === "long" ? point.price >= effectiveTarget : point.price <= effectiveTarget);
+        const oneR = oneRProfitRule
+          && !oneRReached
+          && oneRPrice !== null
+          && (input.direction === "long" ? point.price >= oneRPrice : point.price <= oneRPrice);
+        const recovery = recoveryExitArmed
+          && (input.direction === "long" ? point.price >= modeledFill : point.price <= modeledFill);
+        const catastrophe = catastropheStop !== null
+          && (input.direction === "long" ? point.price <= catastropheStop : point.price >= catastropheStop);
+        const breakeven = breakevenStopArmed
+          && (input.direction === "long" ? point.price <= modeledFill : point.price >= modeledFill);
+        const trailing = !breakevenStopArmed
+          && activeTrailingStop !== null
+          && (input.direction === "long" ? point.price <= activeTrailingStop : point.price >= activeTrailingStop);
+        const strategy = !breakevenStopArmed
+          && activeTrailingStop === null
+          && strategyStop !== null
+          && (input.direction === "long" ? point.price <= strategyStop : point.price >= strategyStop);
+        const adverseLevel = catastrophe
+          ? "catastrophe"
+          : breakeven
+            ? "breakeven"
+            : trailing
+              ? "structure_trailing"
+              : strategy
+                ? "strategy"
+                : undefined;
+        const favorableKind = target ? "target" : oneR ? "oneR" : recovery ? "recovery" : null;
+        if (!adverseLevel && !favorableKind) return null;
+        return adverseLevel
+          ? { kind: "stop", point, stopLevel: adverseLevel, ambiguous: Boolean(favorableKind) }
+          : { kind: favorableKind!, point };
+      }).filter((event): event is OrderedEvent => event !== null);
+      for (let index = 0; index < events.length; index += 1) {
+        const event = events[index]!;
+        const sameTimestamp = events.filter((candidate) => candidate.point.timestamp === event.point.timestamp);
+        const hasAdverse = sameTimestamp.some((candidate) => candidate.kind === "stop");
+        const hasFavorable = sameTimestamp.some((candidate) => candidate.kind !== "stop");
+        if (hasAdverse && hasFavorable) {
+          const adverseEvent = sameTimestamp.find((candidate) => candidate.kind === "stop")!;
+          return { ...adverseEvent, ambiguous: true };
+        }
+        return event;
+      }
+      return null;
+    })();
+    const orderedStopLevel = orderedEvent?.kind === "stop" ? orderedEvent.stopLevel : null;
+    const orderedAmbiguousStop = orderedEvent?.kind === "stop" && orderedEvent.ambiguous === true;
+    const strategyHit = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedStopLevel === "strategy"
+      : !breakevenStopArmed
+        && activeTrailingStop === null
+        && strategyStop !== null
+        && (input.direction === "long" ? candle.low <= strategyStop : candle.high >= strategyStop);
+    const catastropheHit = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedStopLevel === "catastrophe"
+      : catastropheStop !== null
+        && (input.direction === "long" ? candle.low <= catastropheStop : candle.high >= catastropheStop);
+    const trailingHit = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedStopLevel === "structure_trailing"
+      : !breakevenStopArmed
+        && activeTrailingStop !== null
+        && (input.direction === "long" ? candle.low <= activeTrailingStop : candle.high >= activeTrailingStop);
+    const breakevenHit = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedStopLevel === "breakeven"
+      : breakevenStopArmed
+        && (input.direction === "long" ? candle.low <= modeledFill : candle.high >= modeledFill);
     const originalStopHit = strategyHit || catastropheHit || trailingHit;
-    const adverse = catastropheHit || breakevenHit || originalStopHit;
-    const favorable = effectiveTarget !== null
-      && (input.direction === "long" ? candle.high >= effectiveTarget : candle.low <= effectiveTarget);
+    const adverse = orderedAmbiguousStop || catastropheHit || breakevenHit || originalStopHit;
+    const favorable = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedEvent?.kind === "target"
+      : effectiveTarget !== null
+        && (input.direction === "long" ? candle.high >= effectiveTarget : candle.low <= effectiveTarget);
     const targetReachedInCandle = !oneRProfitRule && !targetHit && favorable;
-    const oneRReachedInCandle = oneRProfitRule
-      && !oneRReached
-      && oneRPrice !== null
-      && (input.direction === "long" ? candle.high >= oneRPrice : candle.low <= oneRPrice);
-    const recoveryReached = recoveryExitArmed
-      && (input.direction === "long"
-        ? candle.open <= modeledFill && candle.high >= modeledFill
-        : candle.open >= modeledFill && candle.low <= modeledFill);
+    const oneRReachedInCandle = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedEvent?.kind === "oneR"
+      : oneRProfitRule
+        && !oneRReached
+        && oneRPrice !== null
+        && (input.direction === "long" ? candle.high >= oneRPrice : candle.low <= oneRPrice);
+    const recoveryReached = orderedEvidenceComplete && candleOrderedPoints.length > 0
+      ? orderedEvent?.kind === "recovery"
+      : recoveryExitArmed
+        && (input.direction === "long"
+          ? candle.open <= modeledFill && candle.high >= modeledFill
+          : candle.open >= modeledFill && candle.low <= modeledFill);
     if (adverse) {
-      if (favorable || oneRReachedInCandle || recoveryReached) {
+      if (favorable || oneRReachedInCandle || recoveryReached || orderedAmbiguousStop) {
         eventLabels.push(AMBIGUOUS_STOP_FIRST_LABEL);
         ambiguityLabels.push(AMBIGUOUS_STOP_FIRST_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL);
       }
@@ -922,6 +1022,64 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           : null;
       }
       if (runnerQuantity === 0) break;
+    }
+    if (
+      orderedEvidenceComplete
+      && runnerQuantity > 0
+      && remaining > 0
+      && (targetReachedInCandle || oneRReachedInCandle)
+      && orderedEvent?.point
+    ) {
+      const runnerStopPoint = orderedExitPoints
+        .filter((point) =>
+          point.timestamp > orderedEvent.point.timestamp
+          && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
+          && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+        )
+        .find((point) => {
+          const catastrophe = catastropheStop !== null
+            && (input.direction === "long" ? point.price <= catastropheStop : point.price >= catastropheStop);
+          const trailing = trailingStopActive
+            && trailingStopPrice !== null
+            && (input.direction === "long" ? point.price <= trailingStopPrice : point.price >= trailingStopPrice);
+          const strategy = strategyStop !== null
+            && (input.direction === "long" ? point.price <= strategyStop : point.price >= strategyStop);
+          return catastrophe || trailing || strategy;
+        });
+      if (runnerStopPoint) {
+        const catastrophe = catastropheStop !== null
+          && (input.direction === "long" ? runnerStopPoint.price <= catastropheStop : runnerStopPoint.price >= catastropheStop);
+        const trailing = !catastrophe
+          && trailingStopActive
+          && trailingStopPrice !== null
+          && (input.direction === "long" ? runnerStopPoint.price <= trailingStopPrice : runnerStopPoint.price >= trailingStopPrice);
+        const level = catastrophe
+          ? { price: catastropheStop!, level: "catastrophe" as const }
+          : trailing
+            ? { price: trailingStopPrice!, level: "structure_trailing" as const }
+            : { price: strategyStop!, level: "strategy" as const };
+        resolvedStopPrice = tick(level.price, size);
+        resolvedStopLevel = level.level;
+        eventLabels.push(level.level === "catastrophe"
+          ? "CATASTROPHE_STOP_REACHED"
+          : level.level === "structure_trailing"
+            ? "STRUCTURE_TRAILING_STOP_REACHED"
+            : "STRATEGY_STOP_REACHED");
+        const fill = tick(
+          input.direction === "long"
+            ? resolvedStopPrice - (input.exitSlippageTicks ?? 0) * size
+            : resolvedStopPrice + (input.exitSlippageTicks ?? 0) * size,
+          size,
+        );
+        legs.push(makeLeg("runner", remaining, resolvedStopPrice, fill, "stop", candle));
+        remaining = 0;
+        runnerExited = true;
+        originalStopStillActive = level.level !== "structure_trailing";
+        exitPrice = fill;
+        exitCandle = candle;
+        exitReason = "stop";
+        break;
+      }
     }
     const activatedThisCandle = oneRReachedInCandle || targetReachedInCandle;
     if (!activatedThisCandle && (targetHit || oneRReached) && runnerQuantity > 0 && !structureTrailing) {

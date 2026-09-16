@@ -1253,6 +1253,42 @@ test("candidate execution carries configured slippage and exact ordered exit tim
   assert.match(trade.audit?.assumptions.join(" ") ?? "", /1 entry slippage tick/);
 });
 
+test("candidate projection uses the first complete ordered exit event before OHLC stop-first fallback", () => {
+  const occurrence = managedAttemptOccurrence({
+    armId: "ordered-candidate-exit-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  delete occurrence.eligibilityArmId;
+  delete occurrence.eligibilityArmState;
+  occurrence.management.targetPrice = 105;
+  occurrence.management.strategyStopPrice = 97;
+  occurrence.management.catastropheStopPrice = 96;
+  occurrence.targetLevelInputs = [{
+    id: "ordered-target-level",
+    type: "major resistance",
+    price: 105,
+  }];
+  const dataset = candidateProjectionDataset(occurrence, { high: 107, low: 96 }) as CausalReplayDataset & {
+    ticks: Array<{ timestamp: number; price: number; source: "tick" }>;
+  };
+  const entryClose = Date.parse(occurrence.entryObservationTimestamp);
+  dataset.orderedIntrabarEvidenceComplete = true;
+  dataset.ticks = [
+    { timestamp: entryClose + 60_000, price: 106, source: "tick" },
+    { timestamp: entryClose + 120_000, price: 97, source: "tick" },
+  ];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(trade.outcome, "target");
+  assert.equal(trade.audit?.modeledExitTimestamp, new Date(entryClose + 60_000).toISOString());
+});
+
 test("direct equivalent occurrences expire when the immediate trigger misses its threshold", () => {
   const start = Date.parse("2026-08-25T14:00:00.000Z");
   const dataset = {

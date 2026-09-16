@@ -156,6 +156,12 @@ export type CausalReplayDataset = {
   selectedDates?: readonly string[];
   excludedDates?: readonly string[];
   source?: "simulated" | "historical_databento" | "historical_databento_multicontract";
+  /**
+   * True only when the tick source is known to cover the complete competing
+   * barrier sequence for candidate execution. Presence of ticks alone is not
+   * sufficient to override OHLC ambiguity.
+   */
+  orderedIntrabarEvidenceComplete?: boolean;
   contentFingerprint?: string;
   quotesAvailable?: boolean;
   gapReport?: BacktestGapReport;
@@ -5200,6 +5206,7 @@ function candidateDrivenEntryTrade(
     orderedPostEntryPoints: (context.dataset.ticks ?? [])
       .filter((point) => point.timestamp > (direct ? entryOpenTime : entryCloseTime))
       .map((point) => ({ timestamp: point.timestamp, price: point.price })),
+    orderedIntrabarEvidenceComplete: context.dataset.orderedIntrabarEvidenceComplete === true,
     entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
     subsequentCompletedCandles: postEntry,
     contracts,

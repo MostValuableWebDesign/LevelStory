@@ -177,6 +177,7 @@ function partitionDataset(
     selectedDates: [tradingDate],
     excludedDates: [],
     source: dataset.source,
+    orderedIntrabarEvidenceComplete: dataset.orderedIntrabarEvidenceComplete,
     quotesAvailable: dataset.quotesAvailable,
     gapReport: dataset.gapReport,
     contractSchedule: dataset.contractSchedule

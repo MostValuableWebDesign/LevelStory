@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL,
   AMBIGUOUS_OHLCV_SEQUENCE_LABEL,
+  AMBIGUOUS_STOP_FIRST_LABEL,
   BREAKEVEN_RECOVERY_EXIT_ARMED_LABEL,
   BREAKEVEN_RECOVERY_EXIT_REACHED_LABEL,
   BREAKEVEN_STOP_ARMED_LABEL,
@@ -93,6 +94,116 @@ test("ordered post-entry evidence carries the exact exit timestamp and configure
   assert.equal(result.accounting.slippage, 2.5);
   assert.equal(result.accounting.netPnl, 2.5);
   assert.equal(result.audit.exitCandle?.closeTime, start + 600_000);
+});
+
+test("ordered long target-first evidence wins over a later OHLC stop touch", () => {
+  const start = 3_250_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 101, start + 600_000)],
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 101 },
+      { timestamp: start + 420_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.exitPrice, 101);
+  assert.equal(result.audit.modeledExitTimestamp, start + 360_000);
+});
+
+test("ordered long stop-first evidence wins over a later OHLC target touch", () => {
+  const start = 3_750_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 101, start + 600_000)],
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 99 },
+      { timestamp: start + 420_000, price: 101 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.exitPrice, 99);
+  assert.equal(result.audit.modeledExitTimestamp, start + 360_000);
+});
+
+test("ordered short target-first and stop-first evidence preserves chronology", () => {
+  const start = 4_250_000;
+  const targetFirst = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 99,
+    stop: 101,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 99, start + 600_000)],
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 99 },
+      { timestamp: start + 420_000, price: 101 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  const stopFirst = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 99,
+    stop: 101,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 99, start + 900_000)],
+    orderedPostEntryPoints: [
+      { timestamp: start + 660_000, price: 101 },
+      { timestamp: start + 720_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(targetFirst.exitReason, "target");
+  assert.equal(targetFirst.audit.modeledExitTimestamp, start + 360_000);
+  assert.equal(stopFirst.exitReason, "stop");
+  assert.equal(stopFirst.audit.modeledExitTimestamp, start + 660_000);
+});
+
+test("ordered entry-candle target-first evidence is resolved before OHLC stop-first fallback", () => {
+  const start = 4_750_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 102, 98, 100, start + 300_000),
+    evaluateEntryCandleForExit: true,
+    target: 101,
+    stop: 99,
+    orderedIntrabarPoints: [
+      { timestamp: start + 30_000, price: 100 },
+      { timestamp: start + 60_000, price: 101 },
+      { timestamp: start + 90_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.audit.modeledExitTimestamp, start + 60_000);
+});
+
+test("equal-timestamp ordered target and stop evidence remains conservatively ambiguous", () => {
+  const start = 5_250_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 100, start + 600_000)],
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 101 },
+      { timestamp: start + 360_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_OHLCV_SEQUENCE_LABEL));
 });
 
 test("configured slippage uses the adverse direction for short entries and exits", () => {
