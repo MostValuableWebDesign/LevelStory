@@ -34,6 +34,7 @@ import type {
   IndicatorReplayContext,
   ModeledExecutionLeg,
   DynamicTargetSource,
+  OrderedIntrabarPoint,
 } from "./strategy/ohlcv-execution.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
@@ -307,6 +308,7 @@ export type BacktestTrade = {
     triggerCandleOpenTime: string | null;
     triggerCandleCloseTime: string | null;
     modeledFillObservationTime: string | null;
+     modeledFillTimestamp?: string | null;
     exitCandleOpenTime: string | null;
     exitCandleCloseTime: string | null;
     assumptions: string[];
@@ -5068,7 +5070,6 @@ function candidateDrivenEntryTrade(
     ? new Date(entryCloseTimestamp).toISOString()
     : occurrence.entryObservationTimestamp;
   if (!entryObservationTimestamp) return undefined;
-  const entryTime = entryObservationTimestamp;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const contracts = config.executionManagementFixedContracts;
   const targetPlan = management.targetPlan;
@@ -5080,6 +5081,19 @@ function candidateDrivenEntryTrade(
     .sort((first, second) => first.openTime - second.openTime);
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
+  const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = direct
+    ? (context.dataset.ticks ?? [])
+      .filter((point) =>
+        point.timestamp >= entryOpenTime
+        && point.timestamp <= entryCloseTime
+        && Number.isFinite(point.price)
+        && Number.isFinite(point.timestamp),
+      )
+      .map((point) => ({ timestamp: point.timestamp, price: point.price }))
+    : [];
+  const explicitEntryFillTimestamp = occurrence.directThresholdCrossingTimestamp
+    ? Date.parse(occurrence.directThresholdCrossingTimestamp)
+    : null;
   const managementValidationReasons = candidateManagementValidationReasons(
     management,
     entryObservationTimestamp,
@@ -5114,7 +5128,9 @@ function candidateDrivenEntryTrade(
       entry: entryPrice,
       patienceCandle: patience as any,
       immediateTriggerCandle: entryCandle as any,
-      evaluateEntryCandleForExit: false,
+      evaluateEntryCandleForExit: direct,
+      orderedIntrabarPoints,
+      entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
       subsequentCompletedCandles: postEntry,
       contracts,
        targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
@@ -5160,6 +5176,10 @@ function candidateDrivenEntryTrade(
       },
     });
   }
+  const modeledFillTimestamp = modeled?.modeledFillTimestamp ?? null;
+  const entryTime = modeledFillTimestamp !== null
+    ? new Date(modeledFillTimestamp).toISOString()
+    : entryObservationTimestamp;
   const isOpen = missingContext || modeled?.exitPrice === null || !modeled?.legs.length;
   const outcome: BacktestTrade["outcome"] = missingContext
     ? "open"
@@ -5243,7 +5263,8 @@ function candidateDrivenEntryTrade(
        triggerCandleCloseTime: typeof entryCandle.closeTime === "number"
          ? new Date(entryCandle.closeTime).toISOString()
          : null,
-      modeledFillObservationTime: entryTime,
+     modeledFillObservationTime: entryObservationTimestamp,
+     modeledFillTimestamp: modeledFillTimestamp === null ? null : new Date(modeledFillTimestamp).toISOString(),
       exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [

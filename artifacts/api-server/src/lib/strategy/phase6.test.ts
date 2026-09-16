@@ -407,16 +407,30 @@ test("a pullback or patience candle without its strategy context cannot qualify"
   assert.notEqual(noContext.decision, "SETUP QUALIFIED");
 });
 
-test("consolidation breakout requires a strong breakout and shared patience sequence", () => {
-  const candles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
+test("consolidation breakout qualifies from direct breakout evidence without patience", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const candles = withCausalBaseline([
+    ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+    candle(breakoutOpenTime, 9.96, 12.1, 9.94, 12.0, 300),
+  ]);
   const noConsolidation = evaluateStrongBreakoutAfterConsolidation(baseContext());
   assert.notEqual(noConsolidation.decision, "SETUP QUALIFIED");
 
   const noPatience = evaluateStrongBreakoutAfterConsolidation(baseContext({
     candles,
-    patience: patience("PATIENCE_CANDLE_VALID"),
+    breakout: {
+      ...baseContext().breakout,
+      candleOpenTime: breakoutOpenTime,
+      time: breakoutOpenTime + 300_000,
+      closeLocationRatio: 0.95,
+      bodyRatio: 0.95,
+      volumeSupported: true,
+    },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
   }));
-  assert.notEqual(noPatience.decision, "SETUP QUALIFIED");
+  assert.equal(noPatience.decision, "SETUP QUALIFIED");
+  assert.equal(noPatience.rules.find((rule) => rule.key === "postBreakoutContext")?.passed, true);
 });
 
 test("consolidation breakout uses the active bearish ORB epoch and directional close location", () => {

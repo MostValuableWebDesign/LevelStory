@@ -420,8 +420,10 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
   const directionalCloseLocationRatio = direction === "short"
     ? 1 - (context.breakout.closeLocationRatio ?? 0.5)
     : context.breakout.closeLocationRatio ?? 0.5;
-  const postBreakoutContext = hasQualifyingPullback(context.pullback)
-    || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
+  // Strong Breakout After Consolidation is an authorized direct contract.
+  // Consolidation detection itself supplies the required post-breakout context;
+  // patience eligibility is diagnostic only and must not gate qualification.
+  const postBreakoutContext = hasQualifyingPullback(context.pullback) || consolidation.detected;
   const strongBreakoutThreshold = context.tickSize && context.tickSize > 0 && direction === "long" && typeof consolidation.frozenHigh === "number"
     ? consolidation.frozenHigh + 8 * context.tickSize
     : context.tickSize && context.tickSize > 0 && direction === "short" && typeof consolidation.frozenLow === "number"

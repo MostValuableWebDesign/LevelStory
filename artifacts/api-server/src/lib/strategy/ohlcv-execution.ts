@@ -12,6 +12,7 @@ import {
 export const MODELED_OHLCV_FILL_LABEL = "Modeled OHLCV Fill — Not a Quote-Based Fill";
 export const AMBIGUOUS_OHLCV_SEQUENCE_LABEL = "Ambiguous intrabar sequence — adverse-first policy applied";
 export const AMBIGUOUS_STOP_FIRST_LABEL = "AMBIGUOUS_STOP_FIRST";
+export const AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL = "AMBIGUOUS_ENTRY_EXIT_ORDER";
 export const AMBIGUOUS_RUNNER_SEQUENCE_LABEL = "AMBIGUOUS_RUNNER_SEQUENCE";
 export const PRIMARY_LEVEL_EXIT_ARMED_LABEL = "PRIMARY_LEVEL_EXIT_ARMED";
 export const PRIMARY_LEVEL_EXIT_REACHED_LABEL = "PRIMARY_LEVEL_EXIT_REACHED";
@@ -84,6 +85,7 @@ export type BreakevenCloseDisposition = "favorable" | "adverse" | "neutral";
 export function isExecutionAmbiguityLabel(label: string): boolean {
   return label === AMBIGUOUS_OHLCV_SEQUENCE_LABEL
     || label === AMBIGUOUS_STOP_FIRST_LABEL
+    || label === AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL
     || label === "AMBIGUOUS_ENTRY_INVALIDATION"
     || label === "AMBIGUOUS_RUNNER_RETRACE"
     || label === AMBIGUOUS_RUNNER_SEQUENCE_LABEL;
@@ -98,6 +100,11 @@ export type OhlcvCandle = {
   closeTime?: number;
   volume?: number;
   isComplete?: boolean;
+};
+
+export type OrderedIntrabarPoint = {
+  timestamp: number;
+  price: number;
 };
 
 export function buildIndicatorReplayContext(input: {
@@ -266,6 +273,8 @@ export type OhlcvExecutionAudit = {
 export type ModeledOhlcvExecution = {
   entryTrigger: number | null;
   modeledFill: number | null;
+  /** Exact threshold-crossing time when ordered intrabar evidence exists. */
+  modeledFillTimestamp: number | null;
   stopPrice: number | null;
   targetPrice: number | null;
   exitPrice: number | null;
@@ -283,7 +292,7 @@ export type ModeledExecutionAudit = OhlcvExecutionAudit;
 export type OhlcvExecutionInput = {
   direction: Direction;
   entry: number;
-  patienceCandle: OhlcvCandle;
+  patienceCandle?: OhlcvCandle | null;
   immediateTriggerCandle?: OhlcvCandle | null;
   /**
    * Candidate-driven entries are observed at the trigger close. Their
@@ -291,6 +300,10 @@ export type OhlcvExecutionInput = {
    * completed candle.
    */
   evaluateEntryCandleForExit?: boolean;
+  /** Ordered tick observations for the trigger candle, when available. */
+  orderedIntrabarPoints?: readonly OrderedIntrabarPoint[];
+  /** Explicit threshold-crossing timestamp, when already established causally. */
+  entryFillTimestamp?: number | null;
   subsequentCompletedCandles?: readonly OhlcvCandle[];
   /** Alias retained for callers that describe these simply as completed candles. */
   completedCandles?: readonly OhlcvCandle[];
@@ -416,7 +429,11 @@ function completedSwing(
   return null;
 }
 
-function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): ModeledOhlcvExecution {
+function emptyResult(
+  input: OhlcvExecutionInput,
+  labels: string[] = [],
+  ambiguityLabels: string[] = [],
+): ModeledOhlcvExecution {
   const noForwardLevelAtEntry = input.oneRProfitRule === true;
   const breakevenActivationBars = noForwardLevelAtEntry
     ? input.noLevelBreakevenActivationBars ?? BREAKEVEN_EVALUATION_BARS
@@ -427,11 +444,11 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
     "Historical OHLCV has no bid/ask; candle barriers are evaluated conservatively.",
   ];
   return {
-    entryTrigger: null, modeledFill: null, stopPrice: input.stopPrice ?? input.stop ?? null,
+    entryTrigger: null, modeledFill: null, modeledFillTimestamp: null, stopPrice: input.stopPrice ?? input.stop ?? null,
     targetPrice: initialTargetPrice, exitPrice: null, exitReason: "not filled",
     legs: [], accounting: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
     audit: {
-      eventLabels: labels, labels, ambiguityLabels: [], assumptions, entryCandle: null, exitCandle: null, targetHit: false,
+      eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
       catastropheStopPrice: input.catastropheStop ?? null,
@@ -469,7 +486,7 @@ function emptyResult(input: OhlcvExecutionInput, labels: string[] = []): Modeled
       effectiveTargetPrice: initialTargetPrice,
       targetUpdateLedger: [],
     },
-    ambiguityLabels: [], eventLabels: labels, assumptions,
+    ambiguityLabels, eventLabels: labels, assumptions,
   };
 }
 
@@ -486,9 +503,19 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   if (!Number.isInteger(quantity) || quantity < 0 || !Number.isInteger(targetQuantity) || targetQuantity < 0 || targetQuantity > quantity) {
     throw new Error("OHLCV quantities must be whole, non-negative, and target quantity cannot exceed total quantity.");
   }
-  validCandle(input.patienceCandle);
+  if (input.patienceCandle) validCandle(input.patienceCandle);
   const trigger = input.immediateTriggerCandle ?? null;
   if (trigger) validCandle(trigger);
+  const orderedPoints = trigger && input.orderedIntrabarPoints
+    ? input.orderedIntrabarPoints
+      .filter((point) =>
+        Number.isFinite(point.timestamp)
+        && Number.isFinite(point.price)
+        && point.timestamp >= (trigger.openTime ?? Number.NEGATIVE_INFINITY)
+        && point.timestamp <= (trigger.closeTime ?? Number.POSITIVE_INFINITY),
+      )
+      .sort((first, second) => first.timestamp - second.timestamp)
+    : [];
   const subsequentCandles = [
     ...(input.subsequentCompletedCandles ?? []),
     ...(input.completedCandles ?? []),
@@ -556,18 +583,81 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       noForwardLevelAtEntry ? [NO_FORWARD_LEVEL_1R_PLAN_LABEL] : [],
     );
   }
-  const modeledFill = tick(
+  const orderedEntryPoint = orderedPoints.length > 0
+    ? orderedPoints.find((point) =>
+      input.direction === "long" ? point.price >= entryReference : point.price <= entryReference,
+    ) ?? null
+    : null;
+  const entryTimestamp = orderedEntryPoint?.timestamp
+    ?? (typeof input.entryFillTimestamp === "number" && Number.isFinite(input.entryFillTimestamp)
+      ? input.entryFillTimestamp
+      : null);
+  const entryKnownAtOpen = input.direction === "long"
+    ? trigger.open >= entryReference
+    : trigger.open <= entryReference;
+  const triggerExitTouched = (initialStop !== null
+    && (input.direction === "long" ? trigger.low <= initialStop : trigger.high >= initialStop))
+    || (initialTarget !== null
+      && (input.direction === "long" ? trigger.high >= initialTarget : trigger.low <= initialTarget));
+  if (
+    input.evaluateEntryCandleForExit === true
+    && orderedPoints.length === 0
+    && !entryKnownAtOpen
+    && triggerExitTouched
+  ) {
+    return emptyResult(
+      input,
+      ["ENTRY_EXIT_ORDER_UNRESOLVED"],
+      [AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL, AMBIGUOUS_OHLCV_SEQUENCE_LABEL],
+    );
+  }
+  if (orderedPoints.length > 0 && orderedEntryPoint === null) {
+    return emptyResult(input, ["ENTRY_THRESHOLD_NOT_REACHED"]);
+  }
+  let modeledFill = tick(
     input.direction === "long"
       ? (trigger.open > entryReference ? trigger.open : entryReference) + (input.entrySlippageTicks ?? 0) * size
       : (trigger.open < entryReference ? trigger.open : entryReference) - (input.entrySlippageTicks ?? 0) * size,
     size,
   );
+  let triggerForExecution = trigger;
+  let modeledFillTimestamp: number | null = null;
+  if (orderedEntryPoint !== null) {
+    modeledFill = tick(
+      input.direction === "long"
+        ? orderedEntryPoint.price + (input.entrySlippageTicks ?? 0) * size
+        : orderedEntryPoint.price - (input.entrySlippageTicks ?? 0) * size,
+      size,
+    );
+    modeledFillTimestamp = entryTimestamp;
+    const postEntryPoints = orderedPoints.filter((point) =>
+      point.timestamp > orderedEntryPoint.timestamp,
+    );
+    const firstExitIndex = postEntryPoints.findIndex((point) => {
+      const stopHit = initialStop !== null
+        && (input.direction === "long" ? point.price <= initialStop : point.price >= initialStop);
+      const targetHit = initialTarget !== null
+        && (input.direction === "long" ? point.price >= initialTarget : point.price <= initialTarget);
+      return stopHit || targetHit;
+    });
+    const path = firstExitIndex >= 0
+      ? postEntryPoints.slice(0, firstExitIndex + 1)
+      : postEntryPoints;
+    const pathPrices = [modeledFill, ...path.map((point) => point.price)];
+    triggerForExecution = {
+      ...trigger,
+      open: modeledFill,
+      high: Math.max(...pathPrices),
+      low: Math.min(...pathPrices),
+      close: path.at(-1)?.price ?? modeledFill,
+    };
+  }
   const initialRiskPoints = initialStop === null ? null : Math.abs(modeledFill - initialStop);
   const oneRPrice = initialRiskPoints === null
     ? null
     : tick(input.direction === "long" ? modeledFill + initialRiskPoints : modeledFill - initialRiskPoints, size);
   const candles = [
-    ...(input.evaluateEntryCandleForExit === false ? [] : (trigger ? [trigger] : [])),
+    ...(input.evaluateEntryCandleForExit === false ? [] : [triggerForExecution]),
     ...subsequentCandles,
   ];
   const firstPostEntryCandleIndex = input.evaluateEntryCandleForExit === false || trigger === null ? 0 : 1;
@@ -1029,7 +1119,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     fees: money(a.fees + leg.fees), netPnl: money(a.netPnl + leg.netPnl),
   }), { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 });
   return {
-     entryTrigger: entryReference, modeledFill, stopPrice: resolvedStopPrice, targetPrice: effectiveTarget, exitPrice, exitReason, legs, accounting,
+     entryTrigger: entryReference, modeledFill, modeledFillTimestamp, stopPrice: resolvedStopPrice, targetPrice: effectiveTarget, exitPrice, exitReason, legs, accounting,
     audit: {
       eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, targetHit,
        runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
