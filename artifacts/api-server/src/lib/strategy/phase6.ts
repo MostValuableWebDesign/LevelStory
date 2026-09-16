@@ -938,19 +938,17 @@ export function isDoji(candle: Candle, bodyRatio = 0.1): boolean {
 }
 
 export function hasEquivalentOpposingCandles(candles: readonly Candle[], majorLevels: readonly MajorLevel[], config: StrategyConfig): boolean {
-  const recent = candles.slice(-6);
-  return recent.slice(1).some((second, index) => {
-    const first = recent[index];
-    if (sameDirection(first, second)) return false;
-    if (!nearMajorLevel(first, majorLevels, config) && !nearMajorLevel(second, majorLevels, config)) return false;
-    const firstRange = first.high - first.low;
-    const secondRange = second.high - second.low;
-    const firstBody = Math.abs(first.close - first.open);
-    const secondBody = Math.abs(second.close - second.open);
-    if (!firstRange || !secondRange || firstBody / firstRange < 0.7 || secondBody / secondRange < 0.7) return false;
-    if (Math.abs(firstBody - secondBody) / Math.max(firstBody, secondBody) > 0.15) return false;
-    return trendFacingWick(first) / firstRange <= 0.15 && trendFacingWick(second) / secondRange <= 0.15;
-  });
+  const first = candles.at(-2);
+  const second = candles.at(-1);
+  if (!first || !second || sameDirection(first, second)) return false;
+  if (!nearMajorLevel(first, majorLevels, config) && !nearMajorLevel(second, majorLevels, config)) return false;
+  const firstRange = first.high - first.low;
+  const secondRange = second.high - second.low;
+  const firstBody = Math.abs(first.close - first.open);
+  const secondBody = Math.abs(second.close - second.open);
+  if (!firstRange || !secondRange || firstBody / firstRange < 0.7 || secondBody / secondRange < 0.7) return false;
+  if (Math.abs(firstBody - secondBody) / Math.max(firstBody, secondBody) > 0.15) return false;
+  return trendFacingWick(first) / firstRange <= 0.15 && trendFacingWick(second) / secondRange <= 0.15;
 }
 
 function equivalentPatternDirection(

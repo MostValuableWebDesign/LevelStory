@@ -1,10 +1,10 @@
 ---
 name: Direct strategy entry timing
-description: The two authorized no-patience strategies qualify on completed setup evidence and execute only in the following completed candle.
+description: Equivalent reversal has a governed next-candle trigger; consolidation timing remains unresolved pending product authorization.
 ---
 
-The authorized Strong Breakout After Consolidation and Equivalent-Candle Reversal contracts must not retroactively fill inside the candle whose close makes the setup knowable. Their candidate-owned threshold observation belongs to the immediately following completed five-minute candle; patience and P/E identity fields remain null.
+Equivalent-Candle Reversal must not retroactively fill inside the second pattern candle whose close makes the setup knowable. Its candidate-owned threshold observation belongs to the immediately following completed five-minute candle; patience and P/E identity fields remain null. Strong Breakout After Consolidation currently preserves the existing following-candle observation for replay evidence, but that execution timing is unresolved and must not be treated as an authorized contract.
 
-**Why:** A completed breakout close or the second completed equivalent-pattern candle is causal evidence, not future permission to use an earlier intrabar crossing. Reusing the qualifying candle would create look-ahead and violate the specification's timing rule.
+**Why:** A completed equivalent-pattern candle is causal evidence, not future permission to use an earlier intrabar crossing. The review explicitly leaves consolidation timing open because close-based qualification can conflict with threshold crossing during the breakout candle.
 
-**How to apply:** Keep the direct strategy occurrence separate from patience lifecycle validation. Use the frozen consolidation range or second pattern candle for threshold/stop geometry, require the next adjacent candle for execution, and preserve all legacy P/E behavior for other strategies.
+**How to apply:** Keep direct occurrences separate from patience lifecycle validation. Use the frozen consolidation range or second pattern candle for threshold/stop geometry; require the next adjacent candle only for equivalent reversal; preserve consolidation timing as an explicit pending decision and keep legacy P/E behavior unchanged elsewhere.

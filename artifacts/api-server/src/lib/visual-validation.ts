@@ -530,9 +530,17 @@ function replayCandidateFromHistorical(
     ...(candidate.accountEntryStatus ? { accountEntryStatus: candidate.accountEntryStatus } : {}),
     ...(candidate.accountEntryBlock ? { accountEntryBlock: candidate.accountEntryBlock } : {}),
     causalEvidence: [
-      { kind: "level", timestamp: candidate.pOpenTimestamp, detail: "P candle / causal level context" },
-      { kind: "patience", timestamp: candidate.patienceTimestamp, detail: "Confirmed patience candle" },
-      { kind: "entry", timestamp: candidate.entryObservationTimestamp, detail: "Completed E close / entry observation" },
+      ...(candidate.patienceTimestamp === null
+        ? [{
+          kind: "level" as const,
+          timestamp: candidate.eOpenTimestamp,
+          detail: "Authorized direct setup evidence; no patience candle or P→E buffer.",
+        }]
+        : [
+          { kind: "level" as const, timestamp: candidate.pOpenTimestamp!, detail: "P candle / causal level context" },
+          { kind: "patience" as const, timestamp: candidate.patienceTimestamp, detail: "Confirmed patience candle" },
+        ]),
+      { kind: "entry" as const, timestamp: candidate.entryObservationTimestamp, detail: "Completed entry observation" },
     ],
   };
 }

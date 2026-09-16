@@ -995,6 +995,92 @@ test("authorized direct strategies emit candidates without fabricated patience o
   assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
 });
 
+test("equivalent direct reversals project both directions through candidate-owned execution", () => {
+  const makeFixture = (direction: "long" | "short") => {
+    const start = Date.parse("2026-08-25T14:00:00.000Z");
+    const candles = direction === "short"
+      ? [
+        { openTime: start, closeTime: start + 300_000, open: 100, high: 104, low: 99, close: 104, volume: 20, isComplete: true },
+        { openTime: start + 300_000, closeTime: start + 600_000, open: 104, high: 104, low: 99, close: 99.5, volume: 20, isComplete: true },
+        { openTime: start + 600_000, closeTime: start + 900_000, open: 99.5, high: 100, low: 96.75, close: 97.5, volume: 20, isComplete: true },
+        { openTime: start + 900_000, closeTime: start + 1_200_000, open: 97.5, high: 98, low: 94.5, close: 94.5, volume: 20, isComplete: true },
+      ]
+      : [
+        { openTime: start, closeTime: start + 300_000, open: 104, high: 104, low: 99, close: 99.5, volume: 20, isComplete: true },
+        { openTime: start + 300_000, closeTime: start + 600_000, open: 99.5, high: 104, low: 99, close: 104, volume: 20, isComplete: true },
+        { openTime: start + 600_000, closeTime: start + 900_000, open: 104, high: 106.25, low: 104, close: 106, volume: 20, isComplete: true },
+        { openTime: start + 900_000, closeTime: start + 1_200_000, open: 106, high: 110.5, low: 105, close: 110, volume: 20, isComplete: true },
+      ];
+    const audit = occurrenceAudit("EQUIVALENT_CANDLE_REVERSAL", {
+      id: `equivalent-${direction}`,
+      direction,
+      evaluatedCandleOpenTime: new Date(start + 300_000).toISOString(),
+      patienceOccurrences: [],
+      targetLevelInputs: [{
+        id: direction === "long" ? "major-resistance" : "major-support",
+        type: direction === "long" ? "major resistance" : "major support",
+        price: direction === "long" ? 110 : 95,
+      }],
+    });
+    const dataset = {
+      ...occurrenceDataset(),
+      candles: candles.map((candle) => ({ ...candle, contractSymbol: "MESU26" })),
+    } as unknown as CausalReplayDataset;
+    const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], [])
+      .find((item) => item.directSignalOpenTimestamp !== undefined);
+    assert.ok(occurrence);
+    assert.equal(occurrence.pOpenTimestamp, null);
+    assert.equal(occurrence.patienceCandle, null);
+    assert.equal(occurrence.directPatternFirstCandle?.openTime, start);
+    assert.equal(occurrence.directPatternSecondCandle?.openTime, start + 300_000);
+    const result = projectHistoricalTradeCandidates([occurrence], [], {
+      dataset,
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+    });
+    assert.equal(result.rejected.length, 0, `${direction}: ${JSON.stringify(result.rejected)}`);
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.authoritativeTrades.length, 1);
+    const candidate = result.candidates[0]!;
+    const expectedEntry = direction === "long" ? 106 : 97;
+    const expectedStop = direction === "long" ? 97 : 106;
+    assert.equal(candidate.pOpenTimestamp, null);
+    assert.equal(candidate.patienceTimestamp, null);
+    assert.equal(candidate.confirmationPrice, expectedEntry);
+    assert.equal(candidate.strategyStopPrice, expectedStop);
+    assert.equal(result.authoritativeTrades[0]?.entryPrice, expectedEntry);
+    assert.equal(result.authoritativeTrades[0]?.audit?.strategyStopPrice, expectedStop);
+  };
+  makeFixture("long");
+  makeFixture("short");
+});
+
+test("direct equivalent occurrences expire when the immediate trigger misses its threshold", () => {
+  const start = Date.parse("2026-08-25T14:00:00.000Z");
+  const dataset = {
+    ...occurrenceDataset(),
+    candles: [
+      { contractSymbol: "MESU26", openTime: start, closeTime: start + 300_000, open: 100, high: 104, low: 99, close: 103.75, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 300_000, closeTime: start + 600_000, open: 103.75, high: 104, low: 99, close: 99.25, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 600_000, closeTime: start + 900_000, open: 99.25, high: 100, low: 98, close: 99, volume: 20, isComplete: true },
+    ],
+  } as unknown as CausalReplayDataset;
+  const occurrence = buildHistoricalOccurrenceLedger(dataset, [occurrenceAudit("EQUIVALENT_CANDLE_REVERSAL", {
+    direction: "short",
+    evaluatedCandleOpenTime: new Date(start + 300_000).toISOString(),
+    patienceOccurrences: [],
+  })], []).find((item) => item.directSignalOpenTimestamp !== undefined);
+  assert.ok(occurrence);
+  assert.equal(occurrence.status, "ENTRY_CONFIRMATION_FAILED");
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritativeTrades.length, 0);
+});
+
 test("historical occurrence thresholds do not inherit a stale consolidation P to E", () => {
   const staleGuard = consolidationGuard({
     patienceOpenTime: new Date(0).toISOString(),

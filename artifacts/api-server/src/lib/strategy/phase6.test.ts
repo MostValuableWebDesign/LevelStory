@@ -839,14 +839,70 @@ test("Phase 6 uses the exact doji and equivalent-candle defaults", () => {
   assert.equal(hasEquivalentOpposingCandles([first, tooDifferent], [major(10)], config), false);
 });
 
+test("equivalent reversal applies exact matching and every body rule to the same adjacent pair", () => {
+  const first = candle(0, 9.75, 10, 9.75, 9.99);
+  const matchingSecond = candle(300_000, 9.99, 10, 9.75, 9.76);
+  const oneTickMismatch = candle(300_000, 9.99, 10.25, 9.75, 9.76);
+  const invalidBodySecond = candle(300_000, 9.99, 10, 9.75, 9.96);
+  assert.equal(detectReversalEvidence({
+    ...baseContext(),
+    candles: [first, matchingSecond],
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    levels: { ...baseContext().levels, majorLevels: [major(10)] },
+  }).reversalDirection, "short");
+  assert.equal(detectReversalEvidence({
+    ...baseContext(),
+    candles: [first, oneTickMismatch],
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    levels: { ...baseContext().levels, majorLevels: [major(10)] },
+  }).reversalDirection, null);
+  assert.equal(detectReversalEvidence({
+    ...baseContext(),
+    candles: [first, invalidBodySecond],
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    levels: { ...baseContext().levels, majorLevels: [major(10)] },
+  }).equivalentOpposingCandles, false);
+});
+
+test("an older equivalent pair cannot qualify a newer invalid pair", () => {
+  const first = candle(0, 9.75, 10, 9.75, 9.99);
+  const validSecond = candle(300_000, 9.99, 10, 9.75, 9.76);
+  const newerInvalid = candle(600_000, 9.76, 10.25, 9.75, 10.1);
+  const evidence = detectReversalEvidence({
+    ...baseContext(),
+    candles: [first, validSecond, newerInvalid],
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    levels: { ...baseContext().levels, majorLevels: [major(10)] },
+  });
+  assert.equal(evidence.equivalentOpposingCandles, false);
+  assert.equal(evidence.reversalDirection, null);
+});
+
+test("equivalent reversal supports both directions only from consecutive completed candles", () => {
+  const bullishFirst = candle(0, 99.75, 100, 99.75, 99.99);
+  const bullishSecond = candle(300_000, 99.99, 100, 99.75, 99.76);
+  const bearishFirst = candle(0, 100.5, 100.75, 100, 100.05);
+  const bearishSecond = candle(300_000, 100.05, 100.75, 100, 100.5);
+  const base = baseContext();
+  assert.equal(detectReversalEvidence({
+    ...base,
+    candles: [bullishFirst, bullishSecond],
+    trend: { direction: "bullish", structure: "higher highs / higher lows" },
+    levels: { ...base.levels, majorLevels: [major(100)] },
+  }).reversalDirection, "short");
+  assert.equal(detectReversalEvidence({
+    ...base,
+    candles: [bearishFirst, bearishSecond],
+    trend: { direction: "bearish", structure: "lower lows / lower highs" },
+    levels: { ...base.levels, majorLevels: [major(100.75)] },
+  }).reversalDirection, "long");
+});
+
 test("equivalent reversal ignores opposing-volume warnings", () => {
   const context = baseContext({
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
       candle(300_000, 10, 10.01, 9.79, 9.81),
-      candle(600_000, 10, 10.04, 9.96, 10.005),
-      candle(900_000, 10.005, 10.01, 9.8, 9.85),
-      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
     ],
     levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
@@ -856,7 +912,7 @@ test("equivalent reversal ignores opposing-volume warnings", () => {
   });
   const evidence = detectReversalEvidence(context);
   assert.equal(evidence.alert, true);
-  assert.equal(evidence.dojiAtMajorLevel, true);
+  assert.equal(evidence.dojiAtMajorLevel, false);
   assert.equal(evidence.equivalentOpposingCandles, true);
   assert.equal(evidence.failedBreakout, true);
   assert.equal(evidence.detail.includes("strong opposing volume"), false);
@@ -872,9 +928,6 @@ test("equivalent reversal qualifies after context, patience, and risk approval",
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
       candle(300_000, 10, 10.01, 9.79, 9.81),
-      candle(600_000, 10, 10.04, 9.96, 10.005),
-      candle(900_000, 10.005, 10.01, 9.8, 9.85),
-      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
     ],
     levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
@@ -894,9 +947,6 @@ test("reversal patience must carry the independently confirmed reversal directio
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
       candle(300_000, 10, 10.01, 9.79, 9.81),
-      candle(600_000, 10, 10.04, 9.96, 10.005),
-      candle(900_000, 10.005, 10.01, 9.8, 9.85),
-      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
     ],
     levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },
@@ -915,9 +965,6 @@ test("equivalent reversal owns a shared qualified sequence before generic patien
     candles: [
       candle(0, 9.8, 10.01, 9.79, 10),
       candle(300_000, 10, 10.01, 9.79, 9.81),
-      candle(600_000, 10, 10.04, 9.96, 10.005),
-      candle(900_000, 10.005, 10.01, 9.8, 9.85),
-      candle(1_200_000, 9.85, 10.04, 9.8, 9.855),
     ],
     levels: { ...baseContext().levels, ntzEvents: [{ type: "Failed breakout", time: 1, detail: "Failed." }] },
     fibonacci: { ...baseContext().fibonacci, classification: "deep" },

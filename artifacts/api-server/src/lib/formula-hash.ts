@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.3-countertrend-reversal-no-peak-retracement-threshold-orb-trend-epochs-account-single-active-trade-no-target-breakeven-patience-continuation-orb-attribution-authorized-direct-entry-stop-contracts";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.4-countertrend-reversal-no-peak-retracement-threshold-orb-trend-epochs-account-single-active-trade-no-target-breakeven-patience-continuation-orb-attribution-authorized-direct-entry-stop-contracts-direct-identity-equivalent-pair-validation";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;

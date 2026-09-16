@@ -768,12 +768,12 @@ export type HistoricalTradeCandidate = {
   qualifyingLevelIdentifiers: string[];
   qualifyingLevelValues: Record<string, number>;
   /** The P candle open; retained as physical identity evidence. */
-  pOpenTimestamp: string;
+  pOpenTimestamp: string | null;
   /** The immediate E candle open; retained as physical identity evidence. */
   eOpenTimestamp: string;
   /** The completed E candle close where threshold confirmation is observed. */
   entryObservationTimestamp: string;
-  patienceTimestamp: string;
+  patienceTimestamp: string | null;
   expectedEntryTimestamp: string;
   confirmationPrice: number | null;
   confirmationBufferTicks: number;
@@ -917,16 +917,38 @@ export function isValidCandidateManagementContext(candidate: HistoricalTradeCand
     && candidateManagementValidationReasons(context, candidate.entryObservationTimestamp).length === 0;
 }
 
+function isAuthorizedDirectStrategyOccurrence(occurrence: HistoricalOccurrence): boolean {
+  // A direct occurrence is explicitly marked by its completed setup timestamp.
+  // Some legacy fixtures retain a strategy label while still carrying the old
+  // patience contract; those must continue through the patience validator.
+  if (occurrence.directSignalOpenTimestamp === undefined) return false;
+  const strategy = canonicalStrategyId(occurrence.strategyCandidate) ?? occurrence.strategyCandidate;
+  const edge = canonicalStrategyId(occurrence.primaryEdge ?? "") ?? occurrence.primaryEdge;
+  return strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || strategy === "EQUIVALENT_CANDLE_REVERSAL"
+    || edge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || edge === "EQUIVALENT_CANDLE_REVERSAL";
+}
+
+function directCandleNumber(
+  candle: Record<string, number | boolean> | null | undefined,
+  key: string,
+): number | null {
+  const value = candle?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[] {
   const violations = [...(occurrence.identityInvariantViolations ?? [])];
+  const direct = isAuthorizedDirectStrategyOccurrence(occurrence);
   const requiredText = [
     ["sourceFingerprint", occurrence.sourceFingerprint],
     ["formulaHash", occurrence.formulaHash],
     ["contractSymbol", occurrence.contractSymbol],
     ["tradingDate", occurrence.tradingDate],
-    ["pOpenTimestamp", occurrence.pOpenTimestamp],
     ["eOpenTimestamp", occurrence.eOpenTimestamp],
     ["entryObservationTimestamp", occurrence.entryObservationTimestamp],
+    ...(direct ? [] : [["pOpenTimestamp", occurrence.pOpenTimestamp] as const]),
   ] as const;
   for (const [field, value] of requiredText) {
     if (typeof value !== "string" || value.trim().length === 0) {
@@ -960,12 +982,134 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
     violations.push("MISSING_OR_INVALID_direction");
   }
   for (const [field, value] of [
-    ["pOpenTimestamp", occurrence.pOpenTimestamp],
+    ...(direct ? [] : [["pOpenTimestamp", occurrence.pOpenTimestamp] as const]),
     ["eOpenTimestamp", occurrence.eOpenTimestamp],
     ["entryObservationTimestamp", occurrence.entryObservationTimestamp],
   ] as const) {
     if (typeof value === "string" && value.trim().length > 0 && !Number.isFinite(Date.parse(value))) {
       violations.push(`INVALID_${field}`);
+    }
+  }
+  if (direct) {
+    const directStrategy = canonicalStrategyId(occurrence.strategyCandidate) ?? occurrence.strategyCandidate;
+    if (occurrence.pOpenTimestamp !== null || occurrence.patienceTimestamp !== null || occurrence.patienceCandle !== null) {
+      violations.push("DIRECT_OCCURRENCE_HAS_PATIENCE_IDENTITY");
+    }
+    const signalOpen = Date.parse(occurrence.directSignalOpenTimestamp ?? "");
+    const entryOpen = Date.parse(occurrence.eOpenTimestamp ?? "");
+    const observation = Date.parse(occurrence.entryObservationTimestamp ?? "");
+    const entryCandle = occurrence.entryCandle;
+    const entryCandleOpen = directCandleNumber(entryCandle, "openTime");
+    const entryCandleClose = directCandleNumber(entryCandle, "closeTime");
+    if (!Number.isFinite(signalOpen)) violations.push("MISSING_OR_INVALID_directSignalOpenTimestamp");
+    if (directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
+      && (!Number.isFinite(entryOpen) || entryOpen !== signalOpen + 5 * 60_000)) {
+      violations.push("DIRECT_TRIGGER_NOT_IMMEDIATE_NEXT_CANDLE");
+    }
+    if (!entryCandle || entryCandleOpen !== entryOpen || entryCandleClose !== observation) {
+      violations.push("DIRECT_EXECUTION_EVIDENCE_MISMATCH");
+    }
+    const threshold = occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice;
+    const entryHigh = directCandleNumber(entryCandle, "high");
+    const entryLow = directCandleNumber(entryCandle, "low");
+    if (typeof threshold !== "number" || !Number.isFinite(threshold)) {
+      violations.push("MISSING_OR_INVALID_directEntryThreshold");
+    } else if (
+      (occurrence.direction === "long" && (entryHigh === null || entryHigh < threshold))
+      || (occurrence.direction === "short" && (entryLow === null || entryLow > threshold))
+    ) {
+      violations.push("DIRECT_ENTRY_THRESHOLD_NOT_REACHED");
+    }
+    const tickSize = getFuturesContractSpecification(
+      parseMesContractSymbol(occurrence.contractSymbol)?.rootSymbol ?? occurrence.contractSymbol,
+    ).tickSize;
+    if (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+      const high = occurrence.consolidationGuard?.consolidationZoneHigh;
+      const low = occurrence.consolidationGuard?.consolidationZoneLow;
+      if (typeof high !== "number" || typeof low !== "number") {
+        violations.push("MISSING_FROZEN_CONSOLIDATION_ZONE");
+      } else if (typeof threshold === "number") {
+        const expectedThreshold = occurrence.direction === "long" ? high + 8 * tickSize : low - 8 * tickSize;
+        if (Math.abs(threshold - expectedThreshold) > tickSize / 100) violations.push("DIRECT_CONSOLIDATION_THRESHOLD_MISMATCH");
+      }
+      const expectedStop = strategyStopPriceForOccurrence(occurrence);
+      if (expectedStop === null) violations.push("MISSING_DIRECT_CONSOLIDATION_STOP");
+      else if (occurrence.management?.strategyStopPrice !== null
+        && occurrence.management?.strategyStopPrice !== undefined
+        && Math.abs(occurrence.management.strategyStopPrice - expectedStop) > tickSize / 100) {
+        violations.push("DIRECT_CONSOLIDATION_STOP_MISMATCH");
+      }
+    } else if (directStrategy === "EQUIVALENT_CANDLE_REVERSAL") {
+      const first = occurrence.directPatternFirstCandle;
+      const second = occurrence.directPatternSecondCandle;
+      const firstOpen = directCandleNumber(first, "openTime");
+      const firstClose = directCandleNumber(first, "closeTime");
+      const secondOpen = directCandleNumber(second, "openTime");
+      const secondClose = directCandleNumber(second, "closeTime");
+      const firstHigh = directCandleNumber(first, "high");
+      const secondHigh = directCandleNumber(second, "high");
+      const firstLow = directCandleNumber(first, "low");
+      const secondLow = directCandleNumber(second, "low");
+      if (!first || !second || firstClose === null || secondOpen === null || firstClose !== secondOpen) {
+        violations.push("MISSING_OR_NONCONSECUTIVE_DIRECT_PATTERN");
+      }
+      if (secondClose === null || secondOpen !== signalOpen) violations.push("DIRECT_PATTERN_SIGNAL_MISMATCH");
+      if (firstHigh === null || secondHigh === null || firstLow === null || secondLow === null) {
+        violations.push("MISSING_DIRECT_PATTERN_EXTREMES");
+      } else {
+        const sameHigh = Math.round(firstHigh / tickSize) === Math.round(secondHigh / tickSize);
+        const sameLow = Math.round(firstLow / tickSize) === Math.round(secondLow / tickSize);
+        const expectedTrend = occurrence.directPatternTrend;
+        const firstOpen = directCandleNumber(first, "open");
+        const firstCloseValue = directCandleNumber(first, "close");
+        const secondOpenValue = directCandleNumber(second, "open");
+        const secondCloseValue = directCandleNumber(second, "close");
+        const firstRange = firstHigh - firstLow;
+        const secondRange = secondHigh - secondLow;
+        const firstBody = firstOpen !== null && firstCloseValue !== null ? Math.abs(firstCloseValue - firstOpen) : 0;
+        const secondBody = secondOpenValue !== null && secondCloseValue !== null ? Math.abs(secondCloseValue - secondOpenValue) : 0;
+        const firstBullish = firstOpen !== null && firstCloseValue !== null && firstCloseValue > firstOpen;
+        const secondBullish = secondOpenValue !== null && secondCloseValue !== null && secondCloseValue > secondOpenValue;
+        const firstFacingWick = firstOpen !== null && firstCloseValue !== null
+          ? firstBullish ? firstHigh - Math.max(firstOpen, firstCloseValue) : Math.min(firstOpen, firstCloseValue) - firstLow
+          : Number.POSITIVE_INFINITY;
+        const secondFacingWick = secondOpenValue !== null && secondCloseValue !== null
+          ? secondBullish ? secondHigh - Math.max(secondOpenValue, secondCloseValue) : Math.min(secondOpenValue, secondCloseValue) - secondLow
+          : Number.POSITIVE_INFINITY;
+        if (
+          !sameHigh && !sameLow
+          || (expectedTrend === "bullish" && !sameHigh)
+          || (expectedTrend === "bearish" && !sameLow)
+          || firstBullish === secondBullish
+          || firstRange <= 0 || secondRange <= 0
+          || firstBody / firstRange < 0.7 || secondBody / secondRange < 0.7
+          || Math.abs(firstBody - secondBody) / Math.max(firstBody, secondBody) > 0.15
+          || firstFacingWick / firstRange > 0.15
+          || secondFacingWick / secondRange > 0.15
+        ) {
+          violations.push("DIRECT_PATTERN_EXTREME_MISMATCH");
+        }
+        if (occurrence.directMatchingExtreme === null
+          || occurrence.directMatchingExtreme === undefined
+          || Math.abs(occurrence.directMatchingExtreme - (expectedTrend === "bullish" ? secondHigh : secondLow)) > tickSize / 100) {
+          violations.push("DIRECT_MATCHING_EXTREME_MISMATCH");
+        }
+        if (typeof threshold === "number") {
+          const expectedThreshold = occurrence.direction === "long"
+            ? secondHigh + 8 * tickSize
+            : secondLow - 8 * tickSize;
+          if (Math.abs(threshold - expectedThreshold) > tickSize / 100) {
+            violations.push("DIRECT_REVERSAL_THRESHOLD_MISMATCH");
+          }
+        }
+      }
+      const expectedStop = strategyStopPriceForOccurrence(occurrence);
+      if (expectedStop === null) violations.push("MISSING_DIRECT_REVERSAL_STOP");
+      else if (occurrence.management?.strategyStopPrice !== null
+        && occurrence.management?.strategyStopPrice !== undefined
+        && Math.abs(occurrence.management.strategyStopPrice - expectedStop) > tickSize / 100) {
+        violations.push("DIRECT_REVERSAL_STOP_MISMATCH");
+      }
     }
   }
   return [...new Set(violations)];
@@ -1091,6 +1235,12 @@ export type HistoricalOccurrence = {
   eOpenTimestamp: string | null;
   /** The completed E candle close where threshold confirmation is observed. */
   entryObservationTimestamp: string | null;
+  /** Direct-strategy evidence; null for patience-based occurrences. */
+  directSignalOpenTimestamp?: string | null;
+  directPatternFirstCandle?: Record<string, number | boolean> | null;
+  directPatternSecondCandle?: Record<string, number | boolean> | null;
+  directPatternTrend?: "bullish" | "bearish" | null;
+  directMatchingExtreme?: number | null;
   finalizedNtzHigh?: number | null;
   finalizedNtzLow?: number | null;
   finalizedNtzComplete?: boolean;
@@ -3298,6 +3448,14 @@ export function buildHistoricalOccurrenceLedger(
             ? pattern.at(-1)!.low - 8 * tickSize
             : null;
       if (signalCandle && triggerCandle && threshold !== null) {
+        const thresholdReached = record.direction === "long"
+          ? triggerCandle.high >= threshold
+          : triggerCandle.low <= threshold;
+        const directPatternFirst = directStrategy === "EQUIVALENT_CANDLE_REVERSAL" ? pattern.at(-2) : null;
+        const directPatternSecond = directStrategy === "EQUIVALENT_CANDLE_REVERSAL" ? pattern.at(-1) : null;
+        const directPatternTrend = directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
+          ? record.direction === "short" ? "bullish" : "bearish"
+          : null;
         const identity = [
           "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
           directStrategy, record.direction, triggerCandle.openTime,
@@ -3319,14 +3477,24 @@ export function buildHistoricalOccurrenceLedger(
           lTimestamp: null, lEventId: null, lInteractionType: null, lCandle: null,
           previousComparisonTimestamp: null,
           patienceTimestamp: null, patienceCandle: null,
+          directSignalOpenTimestamp: new Date(signalCandle.openTime).toISOString(),
+          directPatternFirstCandle: occurrenceCandle(directPatternFirst),
+          directPatternSecondCandle: occurrenceCandle(directPatternSecond),
+          directPatternTrend,
+          directMatchingExtreme: directPatternSecond
+            ? directPatternTrend === "bullish" ? directPatternSecond.high : directPatternSecond.low
+            : null,
           candidateShapeResult: true,
           // The setup becomes knowable when the signal/pattern candle closes.
-          // The following candle is the only authorized execution window.
+          // Equivalent reversal has an authorized immediate-next-candle window.
+          // Consolidation currently preserves the existing next-candle observation
+          // only as unresolved replay evidence; its execution timing still needs
+          // product authorization and is not treated as a finalized rule here.
           expectedEntryTimestamp: new Date(triggerCandle.openTime).toISOString(),
           confirmationThreshold: threshold,
           confirmationExcursion: record.direction === "long"
             ? triggerCandle.high - threshold : threshold - triggerCandle.low,
-          entryTimestamp: new Date(triggerCandle.openTime).toISOString(),
+          entryTimestamp: thresholdReached ? new Date(triggerCandle.openTime).toISOString() : null,
           entryCandle: occurrenceCandle(triggerCandle),
           levelIdentifiers: [], levelValues: {}, levelDistancesTicks: {},
           levelTolerancePoints: {}, levelToleranceTicks: {}, levelInteractionTypes: {},
@@ -3344,8 +3512,11 @@ export function buildHistoricalOccurrenceLedger(
           consolidationThresholds: record.consolidationThresholds,
           consolidationGuard: record.consolidationGuard,
           causalEvidence: causalEvidenceForAudit(record),
-          status: "SIGNAL_CONFIRMED",
-          reasonCode: "AUTHORIZED_DIRECT_STRATEGY_TRIGGER",
+          status: thresholdReached ? "SIGNAL_CONFIRMED" : "ENTRY_CONFIRMATION_FAILED",
+          signalStatus: thresholdReached ? "SIGNAL_CONFIRMED" : "ENTRY_CONFIRMATION_FAILED",
+          reasonCode: thresholdReached
+            ? "AUTHORIZED_DIRECT_STRATEGY_TRIGGER"
+            : "AUTHORIZED_DIRECT_STRATEGY_THRESHOLD_NOT_REACHED",
           evaluationCursor: new Date(signalCandle.closeTime).toISOString(),
           formulaVersion: FIXED_FORMULA_VERSION,
           formulaHash,
@@ -4055,6 +4226,14 @@ function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): numbe
     const low = occurrence.consolidationGuard?.consolidationZoneLow;
     if (occurrence.direction === "long" && typeof low === "number") return Number((low - 8 * tickSize).toFixed(10));
     if (occurrence.direction === "short" && typeof high === "number") return Number((high + 8 * tickSize).toFixed(10));
+  }
+  if (occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL") {
+    const secondHigh = directCandleNumber(occurrence.directPatternSecondCandle, "high");
+    const secondLow = directCandleNumber(occurrence.directPatternSecondCandle, "low");
+    if (occurrence.direction === "long" && secondLow !== null) return Number((secondLow - 8 * tickSize).toFixed(10));
+    if (occurrence.direction === "short" && secondHigh !== null) return Number((secondHigh + 8 * tickSize).toFixed(10));
+    return null;
   }
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
