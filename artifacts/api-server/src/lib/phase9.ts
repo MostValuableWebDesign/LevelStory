@@ -480,6 +480,8 @@ export type BacktestAuditRecord = {
   contractMonth: string;
   period: "in_sample" | "out_of_sample";
   evaluatedCandleOpenTime: string;
+  /** Explicit causal timestamp for a direct setup, when known before entry. */
+  directQualificationTimestamp?: string | null;
   setupType: string;
   direction: Direction | null;
   decision: string;
@@ -744,6 +746,7 @@ export type BacktestReport = {
   executionPolicy: {
     entryBufferTicks: number;
     immediateNextCandleOnly: true;
+    directConsolidationSameCandleRule?: "ordered qualification before threshold crossing";
     entrySlippageTicks: number;
     exitSlippageTicks: number;
     stopRule: string;
@@ -938,6 +941,43 @@ function directCandleNumber(
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function directThresholdCrossingTimestamp(input: {
+  candle: SimulatedFuturesCandle;
+  direction: Direction;
+  threshold: number;
+  ticks: readonly IntrabarPoint[];
+}): number | null {
+  const orderedTicks = input.ticks
+    .filter((tick) =>
+      tick.timestamp >= input.candle.openTime
+      && tick.timestamp <= input.candle.closeTime
+      && Number.isFinite(tick.price),
+    )
+    .sort((first, second) => first.timestamp - second.timestamp);
+  const crossing = orderedTicks.find((tick) =>
+    input.direction === "long" ? tick.price >= input.threshold : tick.price <= input.threshold,
+  );
+  return crossing?.timestamp ?? null;
+}
+
+function sameCandleConsolidationEvidence(input: {
+  candle: SimulatedFuturesCandle;
+  direction: Direction;
+  threshold: number;
+  qualificationTimestamp: string | null | undefined;
+  ticks: readonly IntrabarPoint[];
+}): { eligible: boolean; thresholdCrossingTimestamp: number | null } {
+  const qualificationTimestamp = Date.parse(input.qualificationTimestamp ?? "");
+  const thresholdCrossingTimestamp = directThresholdCrossingTimestamp(input);
+  return {
+    eligible: Number.isFinite(qualificationTimestamp)
+      && thresholdCrossingTimestamp !== null
+      && qualificationTimestamp >= input.candle.openTime
+      && qualificationTimestamp < thresholdCrossingTimestamp,
+    thresholdCrossingTimestamp,
+  };
+}
+
 function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[] {
   const violations = [...(occurrence.identityInvariantViolations ?? [])];
   const direct = isAuthorizedDirectStrategyOccurrence(occurrence);
@@ -998,6 +1038,8 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
     const signalOpen = Date.parse(occurrence.directSignalOpenTimestamp ?? "");
     const entryOpen = Date.parse(occurrence.eOpenTimestamp ?? "");
     const observation = Date.parse(occurrence.entryObservationTimestamp ?? "");
+    const qualification = Date.parse(occurrence.directQualificationTimestamp ?? "");
+    const thresholdCrossing = Date.parse(occurrence.directThresholdCrossingTimestamp ?? "");
     const entryCandle = occurrence.entryCandle;
     const entryCandleOpen = directCandleNumber(entryCandle, "openTime");
     const entryCandleClose = directCandleNumber(entryCandle, "closeTime");
@@ -1008,6 +1050,18 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
     }
     if (!entryCandle || entryCandleOpen !== entryOpen || entryCandleClose !== observation) {
       violations.push("DIRECT_EXECUTION_EVIDENCE_MISMATCH");
+    }
+    if (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION" && entryOpen === signalOpen) {
+      if (!Number.isFinite(qualification) || !Number.isFinite(thresholdCrossing)) {
+        violations.push("DIRECT_SAME_CANDLE_CAUSAL_ORDER_MISSING");
+      } else if (
+        qualification < signalOpen
+        || qualification >= thresholdCrossing
+        || entryCandleClose === null
+        || thresholdCrossing > entryCandleClose
+      ) {
+        violations.push("DIRECT_SAME_CANDLE_CAUSAL_ORDER_INVALID");
+      }
     }
     const threshold = occurrence.confirmationThreshold ?? occurrence.confirmationEntryPrice;
     const entryHigh = directCandleNumber(entryCandle, "high");
@@ -1237,6 +1291,9 @@ export type HistoricalOccurrence = {
   entryObservationTimestamp: string | null;
   /** Direct-strategy evidence; null for patience-based occurrences. */
   directSignalOpenTimestamp?: string | null;
+  /** Direct consolidation may use same-candle entry only with ordered causal evidence. */
+  directQualificationTimestamp?: string | null;
+  directThresholdCrossingTimestamp?: string | null;
   directPatternFirstCandle?: Record<string, number | boolean> | null;
   directPatternSecondCandle?: Record<string, number | boolean> | null;
   directPatternTrend?: "bullish" | "bearish" | null;
@@ -2739,6 +2796,9 @@ function auditForEvaluation(
     contractMonth,
     period,
     evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
+    directQualificationTimestamp: evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      ? new Date(candle.closeTime).toISOString()
+      : null,
     setupType: evaluation.setupType,
     direction: evaluation.direction,
     decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
@@ -3447,10 +3507,24 @@ export function buildHistoricalOccurrenceLedger(
           : record.direction === "short" && pattern.at(-1)
             ? pattern.at(-1)!.low - 8 * tickSize
             : null;
-      if (signalCandle && triggerCandle && threshold !== null) {
+      const sameCandleEvidence = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        && signalCandle
+        && threshold !== null
+        ? sameCandleConsolidationEvidence({
+          candle: signalCandle,
+          direction: record.direction,
+          threshold,
+          qualificationTimestamp: record.directQualificationTimestamp,
+          ticks: dataset.ticks ?? [],
+        })
+        : null;
+      const executionCandle = sameCandleEvidence?.eligible
+        ? signalCandle
+        : triggerCandle;
+      if (signalCandle && executionCandle && threshold !== null) {
         const thresholdReached = record.direction === "long"
-          ? triggerCandle.high >= threshold
-          : triggerCandle.low <= threshold;
+          ? executionCandle.high >= threshold
+          : executionCandle.low <= threshold;
         const directPatternFirst = directStrategy === "EQUIVALENT_CANDLE_REVERSAL" ? pattern.at(-2) : null;
         const directPatternSecond = directStrategy === "EQUIVALENT_CANDLE_REVERSAL" ? pattern.at(-1) : null;
         const directPatternTrend = directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
@@ -3458,7 +3532,7 @@ export function buildHistoricalOccurrenceLedger(
           : null;
         const identity = [
           "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
-          directStrategy, record.direction, triggerCandle.openTime,
+           directStrategy, record.direction, executionCandle.openTime,
         ].join("|");
         const directOccurrence = {
           occurrenceId: occurrenceId(identity),
@@ -3485,24 +3559,28 @@ export function buildHistoricalOccurrenceLedger(
             ? directPatternTrend === "bullish" ? directPatternSecond.high : directPatternSecond.low
             : null,
           candidateShapeResult: true,
-          // The setup becomes knowable when the signal/pattern candle closes.
-          // Equivalent reversal has an authorized immediate-next-candle window.
-          // Consolidation currently preserves the existing next-candle observation
-          // only as unresolved replay evidence; its execution timing still needs
-          // product authorization and is not treated as a finalized rule here.
-          expectedEntryTimestamp: new Date(triggerCandle.openTime).toISOString(),
+           // The setup becomes knowable from completed causal evidence. Equivalent
+           // reversal uses the immediate next candle; consolidation may use the
+           // breakout candle only when ordered evidence proves qualification
+           // preceded its threshold crossing, otherwise it uses the next candle.
+           directQualificationTimestamp: record.directQualificationTimestamp ?? null,
+           directThresholdCrossingTimestamp: sameCandleEvidence?.thresholdCrossingTimestamp !== null
+             && sameCandleEvidence?.thresholdCrossingTimestamp !== undefined
+             ? new Date(sameCandleEvidence.thresholdCrossingTimestamp).toISOString()
+             : null,
+           expectedEntryTimestamp: new Date(executionCandle.openTime).toISOString(),
           confirmationThreshold: threshold,
           confirmationExcursion: record.direction === "long"
-            ? triggerCandle.high - threshold : threshold - triggerCandle.low,
-          entryTimestamp: thresholdReached ? new Date(triggerCandle.openTime).toISOString() : null,
-          entryCandle: occurrenceCandle(triggerCandle),
+             ? executionCandle.high - threshold : threshold - executionCandle.low,
+           entryTimestamp: thresholdReached ? new Date(executionCandle.openTime).toISOString() : null,
+           entryCandle: occurrenceCandle(executionCandle),
           levelIdentifiers: [], levelValues: {}, levelDistancesTicks: {},
           levelTolerancePoints: {}, levelToleranceTicks: {}, levelInteractionTypes: {},
           targetLevelInputs: record.targetLevelInputs,
           targetLevelSnapshot: targetLevelSnapshotForAudit(record, fingerprint, formulaHash, null, record.evaluatedCandleOpenTime),
           pOpenTimestamp: null,
-          eOpenTimestamp: new Date(triggerCandle.openTime).toISOString(),
-          entryObservationTimestamp: new Date(triggerCandle.closeTime).toISOString(),
+           eOpenTimestamp: new Date(executionCandle.openTime).toISOString(),
+           entryObservationTimestamp: new Date(executionCandle.closeTime).toISOString(),
           finalizedNtzHigh: record.finalizedNtzHigh ?? null,
           finalizedNtzLow: record.finalizedNtzLow ?? null,
           finalizedNtzComplete: record.finalizedNtzComplete,
@@ -3514,8 +3592,10 @@ export function buildHistoricalOccurrenceLedger(
           causalEvidence: causalEvidenceForAudit(record),
           status: thresholdReached ? "SIGNAL_CONFIRMED" : "ENTRY_CONFIRMATION_FAILED",
           signalStatus: thresholdReached ? "SIGNAL_CONFIRMED" : "ENTRY_CONFIRMATION_FAILED",
-          reasonCode: thresholdReached
-            ? "AUTHORIZED_DIRECT_STRATEGY_TRIGGER"
+           reasonCode: thresholdReached
+             ? sameCandleEvidence?.eligible
+               ? "AUTHORIZED_DIRECT_CONSOLIDATION_SAME_CANDLE_TRIGGER"
+               : "AUTHORIZED_DIRECT_STRATEGY_TRIGGER"
             : "AUTHORIZED_DIRECT_STRATEGY_THRESHOLD_NOT_REACHED",
           evaluationCursor: new Date(signalCandle.closeTime).toISOString(),
           formulaVersion: FIXED_FORMULA_VERSION,
@@ -6271,6 +6351,7 @@ export function runCausalBacktest(
     executionPolicy: {
       entryBufferTicks,
       immediateNextCandleOnly: true,
+      directConsolidationSameCandleRule: "ordered qualification before threshold crossing",
       entrySlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       exitSlippageTicks: executionMode === "ohlcv_modeled" ? modeledSlippageTicks : 1,
       stopRule: executionMode === "ohlcv_modeled"

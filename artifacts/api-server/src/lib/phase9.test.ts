@@ -995,6 +995,69 @@ test("authorized direct strategies emit candidates without fabricated patience o
   assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
 });
 
+test("consolidation direct entry uses the breakout candle only with ordered causal evidence", () => {
+  const start = Date.parse("2026-08-25T14:05:00.000Z");
+  const signal = {
+    contractSymbol: "MESU26",
+    openTime: start,
+    closeTime: start + 300_000,
+    open: 101,
+    high: 104,
+    low: 100,
+    close: 104,
+    volume: 20,
+    isComplete: true,
+  };
+  const dataset = {
+    ...occurrenceDataset(),
+    candles: [
+      signal,
+      {
+        contractSymbol: "MESU26",
+        openTime: start + 300_000,
+        closeTime: start + 600_000,
+        open: 104,
+        high: 110.5,
+        low: 103.5,
+        close: 110,
+        volume: 20,
+        isComplete: true,
+      },
+    ],
+    ticks: [
+      { timestamp: start + 60_000, price: 102, source: "tick" as const },
+      { timestamp: start + 120_000, price: 103.25, source: "tick" as const },
+    ],
+  } as unknown as CausalReplayDataset;
+  const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    evaluatedCandleOpenTime: new Date(start).toISOString(),
+    directQualificationTimestamp: new Date(start + 60_000).toISOString(),
+    direction: "long",
+    targetLevelInputs: [{ id: "major-resistance", type: "major resistance", price: 110 }],
+    consolidationGuard: {
+      consolidationZoneHigh: 101,
+      consolidationZoneLow: 99,
+      effectiveEntryThreshold: 103,
+      executionEligible: true,
+    } as BacktestConsolidationGuardEvidence,
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], [])
+    .find((item) => item.directSignalOpenTimestamp !== undefined);
+  assert.ok(occurrence);
+  assert.equal(occurrence.eOpenTimestamp, signal.openTime && new Date(start).toISOString());
+  assert.equal(occurrence.directQualificationTimestamp, new Date(start + 60_000).toISOString());
+  assert.equal(occurrence.directThresholdCrossingTimestamp, new Date(start + 120_000).toISOString());
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(result.rejected.length, 0);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.authoritativeTrades.length, 1);
+  assert.equal(result.authoritativeTrades[0]?.entryTime, new Date(start + 300_000).toISOString());
+});
+
 test("equivalent direct reversals project both directions through candidate-owned execution", () => {
   const makeFixture = (direction: "long" | "short") => {
     const start = Date.parse("2026-08-25T14:00:00.000Z");
