@@ -310,6 +310,7 @@ export type BacktestTrade = {
     triggerCandleCloseTime: string | null;
     modeledFillObservationTime: string | null;
      modeledFillTimestamp?: string | null;
+     modeledExitTimestamp?: string | null;
     exitCandleOpenTime: string | null;
     exitCandleCloseTime: string | null;
     assumptions: string[];
@@ -871,7 +872,10 @@ function candidateManagementValidationReasons(
     else if (!Number.isFinite(context.targetPrice)) reasons.push("targetPrice_NOT_FINITE");
   }
   if (!Number.isInteger(context.contracts) || context.contracts <= 0) reasons.push("contracts");
-  if (context.sessionCloseTime === null || !Number.isFinite(Date.parse(context.sessionCloseTime))) {
+  // Direct strategies can remain open when the dataset ends before a regular
+  // session close; they do not need a fabricated management close timestamp.
+  if (context.patienceCandleOpenTime !== null
+    && (context.sessionCloseTime === null || !Number.isFinite(Date.parse(context.sessionCloseTime)))) {
     reasons.push("sessionCloseTime");
   }
   const frozenAt = Date.parse(context.frozenAt);
@@ -2052,21 +2056,22 @@ export function historicalReplayDiagnostics(
     const violations: string[] = [];
     const triggered = candidate.entryReachedThreshold === true;
     const modeled = candidate.executionStatus === "MODELED_TRADE_CREATED";
+    const managementRejected = candidate.executionStatus === "REJECTED_RISK_MANAGEMENT";
     const candidateTrades = authoritativeModeledTrades.filter((trade) => trade.candidateId === candidate.candidateId);
     const exactLinkedTrades = candidateTrades.filter((trade) =>
       trade.signalOccurrenceId === candidate.signalOccurrenceId);
-    if (triggered !== modeled) {
+    if (!managementRejected && triggered !== modeled) {
       violations.push(
         `${candidate.signalOccurrenceId}: entryReachedThreshold=${String(candidate.entryReachedThreshold)} does not match executionStatus=${candidate.executionStatus}.`,
       );
     }
     const accountBlocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
-    if (triggered && !accountBlocked && exactLinkedTrades.length !== 1) {
+    if (triggered && !managementRejected && !accountBlocked && exactLinkedTrades.length !== 1) {
       violations.push(
         `${candidate.signalOccurrenceId}: triggered candidate ${candidate.candidateId} has ${exactLinkedTrades.length} authoritative trades linked by candidateId and signalOccurrenceId; expected exactly one.`,
       );
     }
-    if ((!triggered || accountBlocked) && candidateTrades.length > 0) {
+    if ((!triggered || managementRejected || accountBlocked) && candidateTrades.length > 0) {
       violations.push(
         `${candidate.signalOccurrenceId}: ${accountBlocked ? "account-blocked" : "non-triggered"} candidate ${candidate.candidateId} has ${candidateTrades.length} authoritative modeled trades; expected none.`,
       );
@@ -4439,15 +4444,19 @@ function freezeCandidateManagementContext(
     ? null
     : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, contractTickSize);
   const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
-  const managementRejectionReason = targetPlan?.rejectionReason ?? null;
+  // A missing key-level target is not invalid management: the governed
+  // no-level 1R plan remains a complete executable plan. Only missing or
+  // geometrically contradictory management evidence is rejected below.
+  const managementRejectionReason = null;
   const primaryLossExitLevel = primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const catastropheStopPrice = management?.catastropheStopPrice ?? linkedTrade?.audit?.catastropheStopPrice ?? null;
   const targetPrice = targetPlan?.targetPrice ?? null;
   const hasTarget = targetPlan?.disposition === "KEY_LEVEL_SELECTED" && targetPrice !== null;
+  const requiresSessionClose = !isAuthorizedDirectStrategyOccurrence(occurrence);
   const missingEvidenceReasons = [
     ...(entryPrice === null ? ["entryPrice"] : []),
     ...(strategyStopPrice === null ? ["strategyStopPrice"] : []),
-    ...(management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
+    ...(requiresSessionClose && management?.sessionCloseTime == null ? ["sessionCloseTime"] : []),
   ];
   const context: CandidateManagementContext = {
     candidateId,
@@ -4672,6 +4681,8 @@ export function projectHistoricalTradeCandidates(
     specification: ReturnType<typeof getFuturesContractSpecification>;
     executionMode: BacktestRequest["executionMode"];
     lifecycle?: HistoricalPullbackLifecycle;
+    entrySlippageTicks?: number;
+    exitSlippageTicks?: number;
   },
 ): {
   candidates: HistoricalTradeCandidate[];
@@ -4861,10 +4872,13 @@ export function projectHistoricalTradeCandidates(
       patienceLow: numericCandleValue(occurrence.patienceCandle, "low"),
       entryHigh: numericCandleValue(occurrenceForExecution.entryCandle, "high"),
       entryLow: numericCandleValue(occurrenceForExecution.entryCandle, "low"),
-      entryReachedThreshold: entryDisposition.reached,
-       executionStatus: managementContext.managementRejectionReason && entryDisposition.reached
+       entryReachedThreshold: entryDisposition.reached,
+       executionStatus: managementContext.managementEvidenceStatus !== "complete"
          ? "REJECTED_RISK_MANAGEMENT"
          : entryDisposition.status,
+       executionReason: managementContext.managementEvidenceStatus !== "complete"
+         ? `Candidate management context is ${managementContext.managementEvidenceStatus}: ${managementContext.missingEvidenceReasons.join(", ") || "required management evidence is unavailable"}.`
+         : null,
       strategyStopPrice: strategyStopPriceForOccurrence(occurrenceForExecution),
       targetPlan: managementContext.targetPlan,
        targetDisposition: managementContext.targetPlan?.rejectionReason
@@ -4909,41 +4923,19 @@ export function projectHistoricalTradeCandidates(
       executionContext
       && candidate.executionStatus === "MODELED_TRADE_CREATED",
     );
-    if (!canSimulate || !executionContext || !isValidCandidateManagementContext(candidateWithOccurrenceIdentity)) {
-      if (canSimulate && executionContext) {
-        const candidateResult = candidateDrivenEntryTrade(
-          occurrenceForExecution,
-          candidateWithOccurrenceIdentity.candidateId,
-          candidateWithOccurrenceIdentity,
-          executionContext,
-        );
-        if (candidateResult?.kind === "NO_ESTABLISHED_FILL") {
-          candidates.push(applyCandidateDrivenDisposition(candidateWithOccurrenceIdentity, candidateResult));
-        } else if (candidateResult?.kind === "TRADE") {
-          const candidateTrade = candidateResult.trade;
-          const projectedTrade = {
-            ...candidateTrade,
-            armAttemptId: attemptId,
-            attemptOrdinal,
-            attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
-            causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
-            audit: candidateTrade.audit
-              ? {
-                ...candidateTrade.audit,
-                armAttemptId: attemptId,
-                attemptOrdinal,
-                attemptGrade: candidateWithOccurrenceIdentity.attemptGrade,
-                causalIdentity: candidateWithOccurrenceIdentity.causalIdentity,
-              }
-              : candidateTrade.audit,
-          };
-          candidateExecutionEvidence.push(projectedTrade);
-          authoritativeTrades.push(projectedTrade);
-          candidates.push(candidateWithOccurrenceIdentity);
-        }
-      } else {
-        candidates.push(candidateWithOccurrenceIdentity);
-      }
+    if (!canSimulate || !executionContext) {
+      candidates.push(candidateWithOccurrenceIdentity);
+      continue;
+    }
+    if (!isValidCandidateManagementContext(candidateWithOccurrenceIdentity)) {
+      candidates.push(applyCandidateDrivenDisposition(candidateWithOccurrenceIdentity, {
+        kind: "NO_ESTABLISHED_FILL",
+        executionStatus: "REJECTED_RISK_MANAGEMENT",
+        entryReachedThreshold: candidateWithOccurrenceIdentity.entryReachedThreshold,
+        executionReason: candidateWithOccurrenceIdentity.executionReason
+          ?? "Candidate management context is incomplete or invalid; no authoritative execution was created.",
+        executionAmbiguityLabel: null,
+      }));
       continue;
     }
     const candidateResult = candidateDrivenEntryTrade(
@@ -5121,7 +5113,13 @@ function candidateDrivenEntryTrade(
   occurrence: HistoricalOccurrence,
   candidateId: string,
   candidate: HistoricalTradeCandidate,
-  context: { dataset: CausalReplayDataset; specification: ReturnType<typeof getFuturesContractSpecification>; executionMode: BacktestRequest["executionMode"] },
+  context: {
+    dataset: CausalReplayDataset;
+    specification: ReturnType<typeof getFuturesContractSpecification>;
+    executionMode: BacktestRequest["executionMode"];
+    entrySlippageTicks?: number;
+    exitSlippageTicks?: number;
+  },
 ): CandidateDrivenExecutionResult | undefined {
   const entryOpenTimestamp = occurrence.eOpenTimestamp ? Date.parse(occurrence.eOpenTimestamp) : Number.NaN;
   const config = activeShadowStrategySnapshot().config;
@@ -5156,9 +5154,7 @@ function candidateDrivenEntryTrade(
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
-  const executionSpecification = Number.isFinite(context.specification?.tickSize)
-    ? context.specification
-    : getFuturesContractSpecification("MES");
+  const executionSpecification = context.specification;
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
   const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = direct
@@ -5174,18 +5170,9 @@ function candidateDrivenEntryTrade(
   const explicitEntryFillTimestamp = occurrence.directThresholdCrossingTimestamp
     ? Date.parse(occurrence.directThresholdCrossingTimestamp)
     : null;
-  const managementValidationReasons = candidateManagementValidationReasons(
-    management,
-    entryObservationTimestamp,
-  );
-  const missingContext = managementValidationReasons.length > 0;
-  const executionCalendar = executionSpecification.regularSessionHours
-    ? sessionCalendarForContract(executionSpecification)
-    : DEFAULT_FUTURES_SESSION_CALENDAR;
+  const executionCalendar = sessionCalendarForContract(executionSpecification);
   const regular = sessionWindow(tradingDate, "regular", executionCalendar);
-  const postEntry = missingContext
-    ? []
-    : contractCandles.filter((item) =>
+  const postEntry = contractCandles.filter((item) =>
       item.isComplete
       && item.openTime > entryOpenTime
       && item.closeTime > entryCloseTime
@@ -5193,7 +5180,7 @@ function candidateDrivenEntryTrade(
       && item.openTime >= regular.openTime
       && item.closeTime <= regular.closeTime,
     );
-  const sessionCloseCandle = !missingContext && regular
+  const sessionCloseCandle = regular
     ? contractCandles.filter((item) =>
       item.isComplete
       && item.openTime > entryOpenTime
@@ -5208,8 +5195,11 @@ function candidateDrivenEntryTrade(
     entry: entryPrice,
     patienceCandle: patience as any,
     immediateTriggerCandle: entryCandle as any,
-    evaluateEntryCandleForExit: direct && !missingContext,
+    evaluateEntryCandleForExit: direct,
     orderedIntrabarPoints,
+    orderedPostEntryPoints: (context.dataset.ticks ?? [])
+      .filter((point) => point.timestamp > (direct ? entryOpenTime : entryCloseTime))
+      .map((point) => ({ timestamp: point.timestamp, price: point.price })),
     entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
     subsequentCompletedCandles: postEntry,
     contracts,
@@ -5246,8 +5236,8 @@ function candidateDrivenEntryTrade(
     tickSize: executionSpecification.tickSize,
     tickValue: executionSpecification.dollarValuePerTick,
     pointMultiplier: executionSpecification.pointValue * executionSpecification.contractMultiplier,
-    entrySlippageTicks: 0,
-    exitSlippageTicks: 0,
+    entrySlippageTicks: context.entrySlippageTicks ?? 0,
+    exitSlippageTicks: context.exitSlippageTicks ?? 0,
     fees: {
       commission: executionSpecification.commissionPerContract,
       exchange: executionSpecification.exchangeFeePerContract ?? executionSpecification.exchangeAndRegulatoryFeesPerContract,
@@ -5271,10 +5261,8 @@ function candidateDrivenEntryTrade(
   const entryTime = modeledFillTimestamp !== null
     ? new Date(modeledFillTimestamp).toISOString()
     : entryObservationTimestamp;
-  const isOpen = missingContext || modeled?.exitPrice === null || !modeled?.legs.length;
-  const outcome: BacktestTrade["outcome"] = missingContext
-    ? "open"
-    : modeled?.exitReason === "target"
+  const isOpen = modeled?.exitPrice === null || !modeled?.legs.length;
+  const outcome: BacktestTrade["outcome"] = modeled?.exitReason === "target"
       ? "target"
       : modeled?.exitReason === "stop"
         ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
@@ -5305,7 +5293,11 @@ function candidateDrivenEntryTrade(
     setupType: occurrence.primaryEdge ?? occurrence.strategyCandidate,
     direction: occurrence.direction,
     entryTime,
-    exitTime: isOpen ? null : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
+    exitTime: isOpen
+      ? null
+      : modeled?.audit.modeledExitTimestamp !== null && modeled?.audit.modeledExitTimestamp !== undefined
+        ? new Date(modeled.audit.modeledExitTimestamp).toISOString()
+        : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     entryPrice: modeled.modeledFill,
     exitPrice: isOpen ? null : modeled?.exitPrice ?? null,
      contracts,
@@ -5358,6 +5350,9 @@ function candidateDrivenEntryTrade(
          : null,
      modeledFillObservationTime: entryObservationTimestamp,
      modeledFillTimestamp: modeledFillTimestamp === null ? null : new Date(modeledFillTimestamp).toISOString(),
+       modeledExitTimestamp: modeled?.audit.modeledExitTimestamp === null || modeled?.audit.modeledExitTimestamp === undefined
+         ? null
+         : new Date(modeled.audit.modeledExitTimestamp).toISOString(),
       exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [
@@ -5368,12 +5363,7 @@ function candidateDrivenEntryTrade(
        ...(primaryLossExitLevel
            ? [`Nearby ${primaryLossExitLevel.id} level retained as diagnostic evidence only; the frozen patience opposite-wick strategy stop remains authoritative.`]
            : []),
-        ...(missingContext
-          ? [`Management context unavailable or invalid: ${[...new Set([
-            ...management.missingEvidenceReasons,
-            ...managementValidationReasons,
-          ])].join(", ")}.`]
-          : []),
+         `Candidate execution used ${context.entrySlippageTicks ?? 0} entry slippage tick${(context.entrySlippageTicks ?? 0) === 1 ? "" : "s"} and ${context.exitSlippageTicks ?? 0} exit slippage tick${(context.exitSlippageTicks ?? 0) === 1 ? "" : "s"} per side.`,
         ...(modeled?.assumptions ?? []),
       ],
       eventLabels: ["CANDIDATE_DRIVEN_ENTRY", "OHLCV_CONFIRMATION_THRESHOLD", ...(modeled?.eventLabels ?? [])],
@@ -6029,7 +6019,11 @@ export function runCausalBacktest(
         setupType: selected.setupType,
         direction: selected.direction,
          entryTime: new Date(trigger.closeTime).toISOString(),
-          exitTime: isOpen ? null : new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
+           exitTime: isOpen
+             ? null
+             : modeled.audit.modeledExitTimestamp !== null && modeled.audit.modeledExitTimestamp !== undefined
+               ? new Date(modeled.audit.modeledExitTimestamp).toISOString()
+               : new Date(exitCandle.closeTime ?? trigger.closeTime).toISOString(),
         entryPrice: modeled.modeledFill,
           exitPrice: modeled.exitPrice,
          contracts,
@@ -6069,6 +6063,9 @@ export function runCausalBacktest(
            triggerCandleOpenTime: trigger.openTime === undefined ? null : new Date(trigger.openTime).toISOString(),
            triggerCandleCloseTime: trigger.closeTime === undefined ? null : new Date(trigger.closeTime).toISOString(),
            modeledFillObservationTime: trigger.closeTime === undefined ? null : new Date(trigger.closeTime).toISOString(),
+           modeledExitTimestamp: modeled.audit.modeledExitTimestamp === null || modeled.audit.modeledExitTimestamp === undefined
+             ? null
+             : new Date(modeled.audit.modeledExitTimestamp).toISOString(),
           exitCandleOpenTime: exitCandle.openTime === undefined ? null : new Date(exitCandle.openTime).toISOString(),
            exitCandleCloseTime: exitCandle.closeTime === undefined ? null : new Date(exitCandle.closeTime).toISOString(),
           assumptions: modeled.assumptions,
@@ -6353,6 +6350,8 @@ export function runCausalBacktest(
     specification,
     executionMode,
     lifecycle,
+    entrySlippageTicks: modeledSlippageTicks,
+    exitSlippageTicks: modeledSlippageTicks,
   });
   reconcileOrbTrendTransitionPositionEvidence(
     audit,

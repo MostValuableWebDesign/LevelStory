@@ -31,6 +31,7 @@ export type AccountEntryBlock = {
 type ExitLegEvidence = {
   kind?: "target" | "runner" | "full";
   quantity?: number;
+  exitTimestamp?: number | string;
   exitCandleCloseTime?: string;
 };
 
@@ -62,7 +63,9 @@ export function authoritativeFullExitTime(input: {
   const hasExitLeg = (input.exitLegs ?? []).some((leg) =>
     Number.isFinite(leg.quantity)
     && (leg.quantity ?? 0) > 0
-    && validTimestamp(leg.exitCandleCloseTime),
+    && (typeof leg.exitTimestamp === "number"
+      ? Number.isFinite(leg.exitTimestamp)
+      : validTimestamp(leg.exitTimestamp) || validTimestamp(leg.exitCandleCloseTime)),
   );
   return hasExitCandle && hasExitLeg ? input.exitTime : null;
 }

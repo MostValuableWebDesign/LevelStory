@@ -7,4 +7,4 @@ Use `missing` only when required management evidence is absent. Use `invalid` wh
 
 **Why:** Treating both states as missing hides whether a candidate lacks evidence or contains contradictory evidence, and can make downstream metrics and review misleading.
 
-**How to apply:** Preserve the confirmed candidate in both cases, but never simulate invalid management; leave its trade open with zero realized accounting and report the exact validation reasons.
+**How to apply:** Preserve the confirmed candidate in both cases, but reject missing or invalid management before authoritative simulation and account-position arbitration. Keep the candidate diagnostics and exact validation reasons; only complete valid fills may become trades.

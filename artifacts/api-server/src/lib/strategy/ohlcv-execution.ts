@@ -203,6 +203,8 @@ export type ModeledExecutionLeg = {
   fees: number;
   netPnl: number;
   exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close";
+  /** Exact ordered intrabar exit time when the source provides it. */
+  exitTimestamp?: number;
   exitCandleOpenTime?: string;
   exitCandleCloseTime?: string;
 };
@@ -222,6 +224,8 @@ export type OhlcvExecutionAudit = {
   assumptions: string[];
   entryCandle: OhlcvCandle | null;
   exitCandle: OhlcvCandle | null;
+  /** Exact ordered intrabar exit time; null means candle-close timing remains the policy. */
+  modeledExitTimestamp?: number | null;
   targetHit: boolean;
   runnerActivated: boolean;
   runnerExited: boolean;
@@ -302,6 +306,8 @@ export type OhlcvExecutionInput = {
   evaluateEntryCandleForExit?: boolean;
   /** Ordered tick observations for the trigger candle, when available. */
   orderedIntrabarPoints?: readonly OrderedIntrabarPoint[];
+  /** Ordered tick observations after entry, used only when exact exit chronology is known. */
+  orderedPostEntryPoints?: readonly OrderedIntrabarPoint[];
   /** Explicit threshold-crossing timestamp, when already established causally. */
   entryFillTimestamp?: number | null;
   subsequentCompletedCandles?: readonly OhlcvCandle[];
@@ -448,7 +454,7 @@ function emptyResult(
     targetPrice: initialTargetPrice, exitPrice: null, exitReason: "not filled",
     legs: [], accounting: { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 },
     audit: {
-      eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, targetHit: false,
+      eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, modeledExitTimestamp: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
       catastropheStopPrice: input.catastropheStop ?? null,
@@ -723,6 +729,25 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const fees = feePerSide * qty * 2;
     const exitCandleOpenTime = typeof candle.openTime === "number" ? new Date(candle.openTime).toISOString() : undefined;
     const exitCandleCloseTime = typeof candle.closeTime === "number" ? new Date(candle.closeTime).toISOString() : undefined;
+    const orderedExitPoint = (input.orderedPostEntryPoints ?? [])
+      .filter((point) =>
+        (modeledFillTimestamp === null
+          || point.timestamp > modeledFillTimestamp)
+        &&
+        (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
+        && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+      )
+      .sort((first, second) => first.timestamp - second.timestamp)
+      .find((point) => {
+        if (reason === "target") {
+          return input.direction === "long" ? point.price >= reference : point.price <= reference;
+        }
+        if (reason === "runner") {
+          return input.direction === "long" ? point.price <= reference : point.price >= reference;
+        }
+        if (reason === "session_close") return false;
+        return input.direction === "long" ? point.price <= reference : point.price >= reference;
+      });
     return {
       kind,
       quantity: qty,
@@ -733,6 +758,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       fees: money(fees),
       netPnl: money(gross - slip - fees),
       exitReason: reason,
+      ...(orderedExitPoint ? { exitTimestamp: orderedExitPoint.timestamp } : {}),
       ...(exitCandleOpenTime ? { exitCandleOpenTime } : {}),
       ...(exitCandleCloseTime ? { exitCandleCloseTime } : {}),
     };
@@ -1118,10 +1144,11 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     grossPnl: money(a.grossPnl + leg.grossPnl), slippage: money(a.slippage + leg.slippage),
     fees: money(a.fees + leg.fees), netPnl: money(a.netPnl + leg.netPnl),
   }), { grossPnl: 0, slippage: 0, fees: 0, netPnl: 0 });
+  const modeledExitTimestamp = legs.at(-1)?.exitTimestamp ?? null;
   return {
      entryTrigger: entryReference, modeledFill, modeledFillTimestamp, stopPrice: resolvedStopPrice, targetPrice: effectiveTarget, exitPrice, exitReason, legs, accounting,
-    audit: {
-      eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, targetHit,
+     audit: {
+       eventLabels, labels: eventLabels, ambiguityLabels, assumptions, entryCandle: trigger, exitCandle, modeledExitTimestamp, targetHit,
        runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
       strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
       catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),

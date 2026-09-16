@@ -68,6 +68,51 @@ test("ordered intrabar evidence ignores pre-entry stop touches and exits after t
   assert.equal(result.audit.exitCandle?.openTime, start);
 });
 
+test("ordered post-entry evidence carries the exact exit timestamp and configured slippage", () => {
+  const start = 3_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.5, 99.5, 100.25, start + 300_000),
+    target: 101,
+    stop: 99,
+    entrySlippageTicks: 1,
+    exitSlippageTicks: 1,
+    subsequentCompletedCandles: [
+      timedCandle(100.25, 101.5, 100, 101, start + 600_000),
+    ],
+    orderedPostEntryPoints: [
+      { timestamp: start + 420_000, price: 101, },
+    ],
+  });
+  assert.equal(result.exitReason, "target");
+  assert.equal(result.audit.modeledExitTimestamp, start + 420_000);
+  assert.equal(result.legs[0]?.exitTimestamp, start + 420_000);
+  assert.equal(result.modeledFill, 100.25);
+  assert.equal(result.exitPrice, 100.75);
+  assert.equal(result.accounting.grossPnl, 5);
+  assert.equal(result.accounting.slippage, 2.5);
+  assert.equal(result.accounting.netPnl, 2.5);
+  assert.equal(result.audit.exitCandle?.closeTime, start + 600_000);
+});
+
+test("configured slippage uses the adverse direction for short entries and exits", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: candle(100, 100.5, 99.5, 99.75),
+    target: 99,
+    stop: 101,
+    entrySlippageTicks: 1,
+    exitSlippageTicks: 1,
+    subsequentCompletedCandles: [candle(99.75, 99.5, 98.5, 99)],
+  });
+  assert.equal(result.modeledFill, 99.75);
+  assert.equal(result.exitPrice, 99.25);
+  assert.equal(result.accounting.grossPnl, 5);
+  assert.equal(result.accounting.slippage, 2.5);
+  assert.equal(result.accounting.netPnl, 2.5);
+});
+
 test("direct OHLC entry and barrier touches remain ambiguous without ordered evidence", () => {
   const result = simulateOhlcvExecution({
     ...base,

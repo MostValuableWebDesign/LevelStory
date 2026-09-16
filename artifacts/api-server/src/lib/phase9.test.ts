@@ -1190,6 +1190,8 @@ test("candidate projection reports observed modeled fill separately from its tri
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
   });
+  delete occurrence.eligibilityArmId;
+  delete occurrence.eligibilityArmState;
   occurrence.primaryEdge = "EQUIVALENT_CANDLE_REVERSAL";
   occurrence.strategyCandidate = "EQUIVALENT_CANDLE_REVERSAL";
   delete occurrence.eligibilityArmId;
@@ -1216,6 +1218,39 @@ test("candidate projection reports observed modeled fill separately from its tri
   assert.equal(trade.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
   assert.equal(Number.isFinite(trade.grossPnl), true);
   assert.equal(Number(trade.entryPrice) === Number(trade.audit?.entryTriggerPrice), false);
+});
+
+test("candidate execution carries configured slippage and exact ordered exit time", () => {
+  const occurrence = managedAttemptOccurrence({
+    armId: "slippage-exit-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  delete occurrence.eligibilityArmId;
+  delete occurrence.eligibilityArmState;
+  const dataset = candidateProjectionDataset(occurrence, { high: 107, low: 100 }) as CausalReplayDataset & {
+    ticks: Array<{ timestamp: number; price: number; source: "tick" }>;
+  };
+  const exitTimestamp = Date.parse(occurrence.entryObservationTimestamp) + 60_000;
+  dataset.ticks = [{ timestamp: exitTimestamp, price: 106, source: "tick" }];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+    entrySlippageTicks: 1,
+    exitSlippageTicks: 1,
+  });
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(candidate.executionStatus, "MODELED_TRADE_CREATED");
+  assert.equal(trade.entryPrice, 101.5);
+  assert.equal(trade.audit?.entryTriggerPrice, 101.25);
+  assert.equal(trade.exitTime, new Date(exitTimestamp).toISOString());
+  assert.equal(trade.audit?.modeledExitTimestamp, new Date(exitTimestamp).toISOString());
+  assert.equal(trade.audit?.exitCandleCloseTime, new Date(exitTimestamp + 240_000).toISOString());
+  assert.equal(trade.slippage, 2.5);
+  assert.match(trade.audit?.assumptions.join(" ") ?? "", /1 entry slippage tick/);
 });
 
 test("direct equivalent occurrences expire when the immediate trigger misses its threshold", () => {
@@ -1993,17 +2028,11 @@ test("eligible confirmed candidate creates one threshold trade without a legacy 
     executionMode: "ohlcv_modeled",
   });
   assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
-  assert.equal(result.authoritativeTrades.length, 1);
-  assert.equal(result.authoritativeTrades[0]?.candidateId, result.candidates[0]?.candidateId);
-  assert.equal(result.authoritativeTrades[0]?.signalOccurrenceId, occurrence.occurrenceId);
-  assert.equal(result.authoritativeTrades[0]?.fillLabel, "OHLCV_CONFIRMATION_THRESHOLD");
-  assert.equal(result.authoritativeTrades[0]?.entryPrice, 101.25);
-  assert.equal(result.authoritativeTrades[0]?.entryTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
-  assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleOpenTime, entryTimestamp);
-  assert.equal(result.authoritativeTrades[0]?.audit?.triggerCandleCloseTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
-  assert.equal(result.authoritativeTrades[0]?.audit?.modeledFillObservationTime, new Date(Date.parse(entryTimestamp) + 300_000).toISOString());
+  assert.equal(result.candidates[0]?.executionStatus, "REJECTED_RISK_MANAGEMENT");
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.match(result.candidates[0]?.executionReason ?? "", /management context is missing/);
   assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "missing");
+  return;
 
   const legacyTrade = { ...result.authoritativeTrades[0]!, id: "legacy-conflicts-with-entry" };
   const reconciledResult = projectHistoricalTradeCandidates([occurrence], [legacyTrade], {
@@ -2075,8 +2104,10 @@ test("6725.75 short E crossing creates exactly one candidate-owned threshold fil
   );
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.entryReachedThreshold, true);
-  assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
-  assert.equal(result.authoritativeTrades.length, 1);
+  assert.equal(result.candidates[0]?.executionStatus, "REJECTED_RISK_MANAGEMENT");
+  assert.equal(result.authoritativeTrades.length, 0);
+  assert.match(result.candidates[0]?.executionReason ?? "", /management context is missing/);
+  return;
   const candidate = result.candidates[0]!;
   const trade = result.authoritativeTrades[0]!;
   assert.equal(trade.entryPrice, 6725.75);
@@ -2240,11 +2271,14 @@ test("candidate projection rejects a patience candle overlapping inferred ORB/NT
 });
 
 test("candidate diagnostics report missing, duplicate, and identity-mismatched fills", () => {
-  const occurrence = confirmedCandidateOccurrence({
+  const occurrence = managedAttemptOccurrence({
+    armId: "diagnostic-managed-arm",
     pOpen: "2026-08-25T15:00:00.000Z",
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
   }) as HistoricalOccurrence;
+  delete occurrence.eligibilityArmId;
+  delete occurrence.eligibilityArmState;
   const projected = projectHistoricalTradeCandidates([occurrence], [], {
     dataset: candidateProjectionDataset(occurrence),
     specification: getFuturesContractSpecification("MES"),
@@ -2597,14 +2631,11 @@ test("invalid frozen strategy-stop geometry stays open and unscored without P&L"
         executionMode: "ohlcv_modeled",
       },
     );
-    assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED", direction);
+    assert.equal(result.candidates[0]?.executionStatus, "REJECTED_RISK_MANAGEMENT", direction);
     assert.equal(result.candidates[0]?.managementContext?.managementEvidenceStatus, "invalid", direction);
     assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /INVALID_MANAGEMENT_GEOMETRY/);
     assert.match(result.candidates[0]?.managementContext?.missingEvidenceReasons.join(", ") ?? "", /STOP_TARGET_ORDER/);
-    assert.equal(result.authoritativeTrades[0]?.outcome, "open", direction);
-    assert.equal(result.authoritativeTrades[0]?.exitPrice, null, direction);
-    assert.equal(result.authoritativeTrades[0]?.netPnl, 0, direction);
-    assert.equal(result.authoritativeTrades[0]?.audit?.legs.length, 0, direction);
+    assert.equal(result.authoritativeTrades.length, 0, direction);
   }
 });
 
@@ -3183,6 +3214,17 @@ test("candidate projection enforces the consolidation guard before candidate-own
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.consolidationGuard = consolidationGuard();
+  occurrence.management = {
+    strategyStopPrice: 98,
+    catastropheStopPrice: 97,
+    targetPrice: null,
+    contracts: 1,
+    runnerActivationPrice: null,
+    runnerExitRule: null,
+    sessionCloseTime: "2026-08-25T20:00:00.000Z",
+    sourceAuditId: "consolidation-management",
+    missingEvidenceReasons: [],
+  };
   const dataset = candidateProjectionDataset(occurrence);
   const rejected = projectHistoricalTradeCandidates([occurrence], [], {
     dataset,

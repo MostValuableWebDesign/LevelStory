@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.6-countertrend-reversal-no-peak-retracement-threshold-orb-trend-epochs-account-single-active-trade-no-target-breakeven-patience-continuation-orb-attribution-authorized-direct-entry-stop-contracts-direct-identity-equivalent-pair-validation-causal-close-gated-consolidation-execution-fill-time";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.7-countertrend-reversal-no-peak-retracement-threshold-orb-trend-epochs-account-single-active-trade-no-target-breakeven-patience-continuation-orb-attribution-authorized-direct-entry-stop-contracts-direct-identity-equivalent-pair-validation-causal-close-gated-consolidation-execution-fill-time-invalid-management-intrabar-exit-slippage";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -41,6 +41,9 @@ export function formulaConfiguration(
       reversalDirectionRule: "reversal direction and target must oppose the confirmed trend",
       patienceContinuationAttribution: "PATIENCE_CANDLE_CONTINUATION is classified under ORB_PULLBACK_CONTINUATION",
       ohlcvAmbiguityRule: "adverse-first-stop",
+      ohlcvIntrabarExitTimestamp: "ordered tick crossing when available; otherwise candle-close observation time",
+      candidateInvalidManagement: "reject before execution and account arbitration",
+      candidateSlippage: "use effective replay entry and exit slippage ticks exactly once",
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
       adaptiveManagement: {
