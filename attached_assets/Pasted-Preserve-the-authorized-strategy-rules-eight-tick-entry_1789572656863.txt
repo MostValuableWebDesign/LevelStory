@@ -1,0 +1,121 @@
+Preserve the authorized strategy rules, eight-tick entry/stop geometry, equivalent-candle detection measurements, target-selection rules, configured slippage, fees, account-position rules, and unrelated strategies.
+
+1. FIX EXIT SELECTION USING ORDERED EVIDENCE
+
+Current defect:
+The simulator chooses an exit using OHLC stop-first logic, then searches ordered ticks for the timestamp of that already-selected exit.
+
+This can select a stop even when ordered evidence proves the target occurred first.
+
+Reproduction:
+- Long entry: 100
+- Target: 102
+- Stop: 98
+- Subsequent candle: open 100, high 103, low 97, close 100
+- Ordered observations:
+  - timestamp 360000: price 102
+  - timestamp 480000: price 98
+
+Current result: stop at 480000, marked ambiguous.
+Expected result: target at 360000, provided the ordered evidence establishes the execution sequence.
+
+Correct the execution architecture:
+- Determine the first executable event from sufficient ordered evidence BEFORE selecting exit reason, price, quantity, or timestamp.
+- Do not select a stop from OHLC first and attach a timestamp afterward.
+- Process only events after the established entry.
+- Apply the stop and target that were effective at each event.
+- Preserve causal activation of trailing stops, breakeven rules, and dynamic targets.
+- After a full exit, ignore later events for that position.
+- After a partial exit, continue processing only the remaining quantity.
+- Apply existing fill, gap, slippage, and fee policies exactly once.
+
+Apply this consistently to the entry candle and subsequent candles.
+
+EVIDENCE QUALITY
+
+Do not treat any nonempty tick array as proof of a complete intrabar sequence.
+
+Inspect the data source’s ordering and coverage guarantees:
+- Validate timestamps and prices.
+- Establish whether the evidence is sufficient to resolve competing barriers.
+- Do not silently resolve equal-timestamp events without a reliable sequence.
+- With incomplete or genuinely ambiguous evidence, preserve the documented conservative OHLC policy and explicit uncertainty.
+- Do not invent precision or claim a known order when the source cannot establish it.
+
+PROPAGATION
+
+Carry the resolved event through:
+- Execution legs and remaining quantity.
+- Exit reason and modeled exit price.
+- Exact exit timestamp when established.
+- Separate candle-close observation time.
+- Authoritative trades and accounting.
+- Account-position arbitration.
+- Batch aggregation.
+- Visual Review and exports.
+
+Preserve the existing account boundary:
+- A candidate strictly after an established full exit may enter.
+- A candidate exactly at the full-exit timestamp remains blocked.
+- Partial exits do not release the account.
+- Unfilled or unresolved-entry candidates do not occupy the account.
+
+2. CONSOLIDATION TIMING IS STILL AN UNRESOLVED DECISION
+
+Do not claim Strong Breakout After Consolidation is complete while its production timing contract blocks entries.
+
+Before changing its close-based qualification, ask me:
+
+“Should Strong Breakout After Consolidation become eligible once the consolidation range is established, entering when price crosses eight ticks beyond the frozen range without waiting for the breakout candle to close?”
+
+Explain which existing breakout-close or continuation requirements would change.
+
+This prompt does not itself authorize that strategy change. Complete the independent execution-order fix while the decision is pending.
+
+Do not invent consolidation expiry, re-entry, or range-refresh rules.
+
+3. REQUIRED REGRESSION TESTS
+
+Add focused tests for:
+
+- Long: target first, stop later → target exit.
+- Long: stop first, target later → stop exit.
+- Short equivalents of both sequences.
+- Entry-candle and subsequent-candle ordering.
+- Barrier touches before entry are ignored.
+- Partial target followed by a stop affects only remaining quantity.
+- Full exit prevents later events from changing the result.
+- Trailing/breakeven/dynamic-target changes cannot apply retroactively.
+- Incomplete or equal-timestamp evidence remains uncertain when order cannot be established.
+- OHLC-only execution preserves its documented conservative policy.
+- Nonzero slippage and fees reconcile exactly.
+- Correct exit timing releases the account for a later candidate while preserving the exact-time boundary.
+- Batch and single-run arbitration agree.
+
+Include at least one integration test through candidate projection and account gating, not only simulator helper tests.
+
+Retain regression coverage for:
+- Equivalent-Candle Reversal’s exact matching and immediate-next-candle expiry.
+- Both strategies’ eight-tick price geometry.
+- No patience dependency for these two direct strategies.
+- Invalid-management rejection.
+- Unfilled candidates remaining outside authoritative positions.
+
+4. VERSIONING AND VERIFICATION
+
+Update the governed formula/cache identity because execution semantics are changing. Preserve old results with their original provenance.
+
+Run focused execution, strategy, account-gating, and aggregation tests, then relevant typechecks/builds.
+
+Run a bounded historical replay if suitable data is available, clearly identifying whether it contains ordered intrabar evidence or only OHLCV. Do not claim an OHLCV-only replay validates tick sequencing.
+
+Report:
+- Root cause and files changed.
+- The reproduction’s before/after result.
+- Tests passed, failed, or not run.
+- Evidence-coverage assumptions and limitations.
+- Formula/cache version.
+- Replay results if performed.
+- Consolidation timing as unresolved until I explicitly authorize the contract.
+
+Do not claim completion merely because existing tests pass.
