@@ -103,6 +103,23 @@ test("authoritative account gating keeps blocked candidates from becoming blocke
   assert.equal(result.candidates.find((candidate) => candidate.candidateId === "later")?.accountEntryBlock?.blockingCandidateId, "first");
 });
 
+test("account arbitration uses known fill chronology instead of candidate observation order", () => {
+  const earlierFill = gateCandidate("z-earlier-fill", "MESU6", "2026-08-25T14:00:00.000Z");
+  const laterFill = gateCandidate("a-later-fill", "MESU6", "2026-08-25T14:00:00.000Z");
+  const result = applyHistoricalAccountPositionGate(
+    [earlierFill, laterFill],
+    [
+      gateTrade("z-earlier-fill", "MESU6", "2026-08-25T14:05:00.000Z", "2026-08-25T14:30:00.000Z"),
+      gateTrade("a-later-fill", "MESU6", "2026-08-25T14:10:00.000Z", "2026-08-25T14:40:00.000Z"),
+    ],
+  );
+  assert.deepEqual(result.authoritativeTrades.map((trade) => trade.candidateId), ["z-earlier-fill"]);
+  assert.equal(
+    result.candidates.find((candidate) => candidate.candidateId === "a-later-fill")?.accountEntryBlock?.blockingCandidateId,
+    "z-earlier-fill",
+  );
+});
+
 test("authoritative account gating releases at the full-exit timestamp and resets at scheduled contract boundaries", () => {
   const first = gateCandidate("first-exit", "MESU6", "2026-08-25T14:00:00.000Z");
   const sameTimestamp = gateCandidate("same-time", "MESU6", "2026-08-25T14:30:00.000Z");
@@ -1116,6 +1133,89 @@ test("equivalent direct reversals project both directions through candidate-owne
   };
   makeFixture("long");
   makeFixture("short");
+});
+
+test("candidate projection keeps unresolved entry evidence out of account positions and preserves actual fills", () => {
+  const first = managedAttemptOccurrence({
+    armId: "ambiguous-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  first.primaryEdge = "EQUIVALENT_CANDLE_REVERSAL";
+  first.strategyCandidate = "EQUIVALENT_CANDLE_REVERSAL";
+  delete first.eligibilityArmId;
+  delete first.eligibilityArmState;
+  first.directPatternSecondCandle = { ...first.patienceCandle, low: 99, high: 101 };
+  first.entryCandle = { ...first.entryCandle, low: 97, high: 102 };
+  const second = managedAttemptOccurrence({
+    armId: "valid-arm",
+    pOpen: "2026-08-25T15:15:00.000Z",
+    eOpen: "2026-08-25T15:20:00.000Z",
+    eClose: "2026-08-25T15:25:00.000Z",
+  });
+  second.primaryEdge = "EQUIVALENT_CANDLE_REVERSAL";
+  second.strategyCandidate = "EQUIVALENT_CANDLE_REVERSAL";
+  delete second.eligibilityArmId;
+  delete second.eligibilityArmState;
+  second.directPatternSecondCandle = { ...second.patienceCandle, low: 99, high: 101 };
+
+  const firstDataset = candidateProjectionDataset(first);
+  const secondDataset = candidateProjectionDataset(second);
+  const dataset = {
+    ...firstDataset,
+    candles: [...firstDataset.candles, ...secondDataset.candles.slice(1)],
+  } as CausalReplayDataset;
+  const result = projectHistoricalTradeCandidates([first, second], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+
+  const ambiguous = result.candidates.find((candidate) => candidate.signalOccurrenceId === first.occurrenceId)!;
+  const valid = result.candidates.find((candidate) => candidate.signalOccurrenceId === second.occurrenceId)!;
+  assert.equal(ambiguous.executionStatus, "ENTRY_AMBIGUOUS");
+  assert.equal(ambiguous.entryReachedThreshold, null);
+  assert.equal(ambiguous.executionAmbiguityLabel, "AMBIGUOUS_ENTRY_EXIT_ORDER");
+  assert.equal(result.authoritativeTrades.some((trade) => trade.candidateId === ambiguous.candidateId), false);
+  assert.equal(valid.executionStatus, "MODELED_TRADE_CREATED");
+  assert.equal(valid.accountEntryStatus, "ENTERED");
+  assert.equal(result.authoritativeTrades.length, 1);
+});
+
+test("candidate projection reports observed modeled fill separately from its trigger threshold", () => {
+  const occurrence = managedAttemptOccurrence({
+    armId: "fill-price-arm",
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+  });
+  occurrence.primaryEdge = "EQUIVALENT_CANDLE_REVERSAL";
+  occurrence.strategyCandidate = "EQUIVALENT_CANDLE_REVERSAL";
+  delete occurrence.eligibilityArmId;
+  delete occurrence.eligibilityArmState;
+  occurrence.directPatternSecondCandle = { ...occurrence.patienceCandle, low: 99, high: 101 };
+  const dataset = candidateProjectionDataset(occurrence) as CausalReplayDataset & { ticks: Array<{ timestamp: number; price: number; source: "tick" }> };
+  dataset.ticks = [
+    { timestamp: Date.parse(occurrence.eOpenTimestamp) + 60_000, price: 101.5, source: "tick" },
+  ];
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const candidate = result.candidates[0]!;
+  const trade = result.authoritativeTrades[0]!;
+  const expectedFillTime = new Date(Date.parse(occurrence.eOpenTimestamp) + 60_000).toISOString();
+  assert.equal(candidate.confirmationPrice, 101.25);
+  assert.equal(trade.entryPrice, 101.5);
+  assert.equal(trade.audit?.entryTriggerPrice, 101.25);
+  assert.equal(trade.audit?.modeledFillPrice, 101.5);
+  assert.equal(trade.entryTime, expectedFillTime);
+  assert.equal(trade.audit?.modeledFillTimestamp, expectedFillTime);
+  assert.equal(trade.audit?.modeledFillObservationTime, occurrence.entryObservationTimestamp);
+  assert.equal(Number.isFinite(trade.grossPnl), true);
+  assert.equal(Number(trade.entryPrice) === Number(trade.audit?.entryTriggerPrice), false);
 });
 
 test("direct equivalent occurrences expire when the immediate trigger misses its threshold", () => {

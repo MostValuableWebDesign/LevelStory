@@ -7,6 +7,7 @@ import {
   type FuturesContractSpecification,
 } from "./futures/contracts.js";
 import {
+  DEFAULT_FUTURES_SESSION_CALENDAR,
   classifyFuturesSession,
   sessionCalendarForContract,
   sessionWindow,
@@ -800,6 +801,10 @@ export type HistoricalTradeCandidate = {
   armRetirementReason?: string | null;
   eligible: true;
   executionStatus: "MODELED_TRADE_CREATED" | "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "INSUFFICIENT_CANDLE_DATA" | "REJECTED_RISK_MANAGEMENT";
+  /** Why candidate-owned execution did not produce an established fill, when applicable. */
+  executionReason?: string | null;
+  /** Explicit ambiguity evidence for an unresolved entry ordering. */
+  executionAmbiguityLabel?: string | null;
   accountEntryStatus?: "ENTERED" | "BLOCKED_ACTIVE_POSITION";
   accountEntryBlock?: AccountEntryBlock;
   fillModelType: "OHLCV_CONFIRMATION_THRESHOLD";
@@ -2072,18 +2077,20 @@ export function historicalReplayDiagnostics(
           `${candidate.signalOccurrenceId}: trade ${trade.id} has mismatched signalOccurrenceId ${trade.signalOccurrenceId ?? "missing"}.`,
         );
       }
-      if (trade.entryPrice !== candidate.confirmationPrice
-        || trade.audit?.modeledFillPrice !== candidate.confirmationPrice
-        || trade.audit?.entryTriggerPrice !== candidate.confirmationPrice) {
+      const modeledFillTimestamp = trade.audit?.modeledFillTimestamp ?? null;
+      const expectedEntryTime = modeledFillTimestamp ?? candidate.entryObservationTimestamp;
+      if (trade.audit?.modeledFillPrice !== trade.entryPrice
+        || trade.audit?.entryTriggerPrice !== candidate.confirmationPrice
+        || trade.entryTime !== expectedEntryTime) {
         violations.push(
-          `${candidate.signalOccurrenceId}: trade ${trade.id} is not filled at candidate threshold ${candidate.confirmationPrice}.`,
+          `${candidate.signalOccurrenceId}: trade ${trade.id} does not reconcile its actual modeled fill, fill timestamp, and candidate trigger threshold.`,
         );
       }
       if (trade.audit?.triggerCandleOpenTime !== candidate.eOpenTimestamp
         || trade.audit?.modeledFillObservationTime !== candidate.entryObservationTimestamp
-        || trade.entryTime !== candidate.entryObservationTimestamp) {
+        || (trade.audit?.modeledFillTimestamp === null && trade.entryTime !== candidate.entryObservationTimestamp)) {
         violations.push(
-          `${candidate.signalOccurrenceId}: trade ${trade.id} does not preserve E-open identity and E-close fill observation.`,
+          `${candidate.signalOccurrenceId}: trade ${trade.id} does not preserve E-open identity and the separate E-close fill observation.`,
         );
       }
     }
@@ -4493,6 +4500,33 @@ type CandidateProjectionRecord = {
   candidate: HistoricalTradeCandidate;
 };
 
+type CandidateDrivenExecutionDisposition = {
+  kind: "NO_ESTABLISHED_FILL";
+  executionStatus: Extract<HistoricalTradeCandidate["executionStatus"], "ENTRY_NOT_REACHED" | "ENTRY_AMBIGUOUS" | "REJECTED_RISK_MANAGEMENT">;
+  entryReachedThreshold: boolean | null;
+  executionReason: string;
+  executionAmbiguityLabel: string | null;
+};
+
+type CandidateDrivenExecutionResult =
+  | { kind: "TRADE"; trade: BacktestTrade }
+  | CandidateDrivenExecutionDisposition;
+
+function applyCandidateDrivenDisposition(
+  candidate: HistoricalTradeCandidate,
+  disposition: CandidateDrivenExecutionDisposition,
+): HistoricalTradeCandidate {
+  return {
+    ...candidate,
+    executionStatus: disposition.executionStatus,
+    entryReachedThreshold: disposition.entryReachedThreshold,
+    executionReason: disposition.executionReason,
+    executionAmbiguityLabel: disposition.executionAmbiguityLabel,
+    accountEntryStatus: undefined,
+    accountEntryBlock: undefined,
+  };
+}
+
 function accountPositionForHistoricalTrade(trade: BacktestTrade, candidate: HistoricalTradeCandidate) {
   const ambiguous = Boolean(trade.ambiguityLabel || trade.audit?.ambiguityLabels?.length);
   const closed = !ambiguous && trade.exitTime !== null && trade.outcome !== "open";
@@ -4563,8 +4597,13 @@ export function applyHistoricalAccountPositionGate(
         Boolean(trade.candidateId && trade.signalOccurrenceId))
       .map((trade) => [trade.candidateId, trade]),
   );
+  const candidateEntryOrderingTime = (candidate: HistoricalTradeCandidate): number => {
+    const trade = tradeByCandidateId.get(candidate.candidateId);
+    const fillTime = trade ? Date.parse(trade.entryTime) : Number.NaN;
+    return Number.isFinite(fillTime) ? fillTime : Date.parse(candidate.entryObservationTimestamp);
+  };
   const orderedCandidates = [...candidates].sort((left, right) =>
-    Date.parse(left.entryObservationTimestamp) - Date.parse(right.entryObservationTimestamp)
+    candidateEntryOrderingTime(left) - candidateEntryOrderingTime(right)
     || left.candidateId.localeCompare(right.candidateId),
   );
   const updatedById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
@@ -4594,7 +4633,10 @@ export function applyHistoricalAccountPositionGate(
     if (candidate.executionStatus !== "MODELED_TRADE_CREATED" || candidate.entryReachedThreshold !== true) continue;
     const trade = tradeByCandidateId.get(candidate.candidateId);
     if (!trade) continue;
-    const entryTime = candidate.entryObservationTimestamp;
+    // Once an entry is established, account arbitration follows the actual
+    // fill event. Observation time remains candidate evidence and is not a
+    // substitute for known intrabar chronology.
+    const entryTime = trade.entryTime;
     const blockingPosition = activePositions.find((position) => accountEntryBlockFor(position, entryTime) !== null);
     if (blockingPosition) {
       const block = accountEntryBlockFor(blockingPosition, entryTime)!;
@@ -4868,15 +4910,17 @@ export function projectHistoricalTradeCandidates(
       && candidate.executionStatus === "MODELED_TRADE_CREATED",
     );
     if (!canSimulate || !executionContext || !isValidCandidateManagementContext(candidateWithOccurrenceIdentity)) {
-      candidates.push(candidateWithOccurrenceIdentity);
       if (canSimulate && executionContext) {
-        const candidateTrade = candidateDrivenEntryTrade(
+        const candidateResult = candidateDrivenEntryTrade(
           occurrenceForExecution,
           candidateWithOccurrenceIdentity.candidateId,
           candidateWithOccurrenceIdentity,
           executionContext,
         );
-        if (candidateTrade) {
+        if (candidateResult?.kind === "NO_ESTABLISHED_FILL") {
+          candidates.push(applyCandidateDrivenDisposition(candidateWithOccurrenceIdentity, candidateResult));
+        } else if (candidateResult?.kind === "TRADE") {
+          const candidateTrade = candidateResult.trade;
           const projectedTrade = {
             ...candidateTrade,
             armAttemptId: attemptId,
@@ -4895,20 +4939,28 @@ export function projectHistoricalTradeCandidates(
           };
           candidateExecutionEvidence.push(projectedTrade);
           authoritativeTrades.push(projectedTrade);
+          candidates.push(candidateWithOccurrenceIdentity);
         }
+      } else {
+        candidates.push(candidateWithOccurrenceIdentity);
       }
       continue;
     }
-    const candidateTrade = candidateDrivenEntryTrade(
+    const candidateResult = candidateDrivenEntryTrade(
       occurrenceForExecution,
       candidateWithOccurrenceIdentity.candidateId,
       candidateWithOccurrenceIdentity,
       executionContext,
     );
-    if (!candidateTrade) {
+    if (!candidateResult) {
       candidates.push(candidateWithOccurrenceIdentity);
       continue;
     }
+    if (candidateResult.kind === "NO_ESTABLISHED_FILL") {
+      candidates.push(applyCandidateDrivenDisposition(candidateWithOccurrenceIdentity, candidateResult));
+      continue;
+    }
+    const candidateTrade = candidateResult.trade;
     const projectedTrade = {
       ...candidateTrade,
       armAttemptId: attemptId,
@@ -5070,7 +5122,7 @@ function candidateDrivenEntryTrade(
   candidateId: string,
   candidate: HistoricalTradeCandidate,
   context: { dataset: CausalReplayDataset; specification: ReturnType<typeof getFuturesContractSpecification>; executionMode: BacktestRequest["executionMode"] },
-): BacktestTrade | undefined {
+): CandidateDrivenExecutionResult | undefined {
   const entryOpenTimestamp = occurrence.eOpenTimestamp ? Date.parse(occurrence.eOpenTimestamp) : Number.NaN;
   const config = activeShadowStrategySnapshot().config;
   if (
@@ -5104,6 +5156,9 @@ function candidateDrivenEntryTrade(
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
+  const executionSpecification = Number.isFinite(context.specification?.tickSize)
+    ? context.specification
+    : getFuturesContractSpecification("MES");
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
   const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = direct
@@ -5124,82 +5179,93 @@ function candidateDrivenEntryTrade(
     entryObservationTimestamp,
   );
   const missingContext = managementValidationReasons.length > 0;
-  const regular = !missingContext
-    ? sessionWindow(tradingDate, "regular", sessionCalendarForContract(context.specification))
-    : null;
-  const postEntry = contractCandles.filter((item) =>
-    item.isComplete
-    && item.openTime > entryOpenTime
-    && item.closeTime > entryCloseTime
-    && regular !== null
-    && item.openTime >= regular.openTime
-    && item.closeTime <= regular.closeTime,
-  );
-  const sessionCloseCandle = !missingContext
-    ? regular
-      ? contractCandles.filter((item) =>
-        item.isComplete
-        && item.openTime > entryOpenTime
-        && item.closeTime > entryCloseTime
-        && item.openTime >= regular.openTime
-        && item.closeTime <= regular.closeTime,
-      ).at(-1) ?? null
-      : null
+  const executionCalendar = executionSpecification.regularSessionHours
+    ? sessionCalendarForContract(executionSpecification)
+    : DEFAULT_FUTURES_SESSION_CALENDAR;
+  const regular = sessionWindow(tradingDate, "regular", executionCalendar);
+  const postEntry = missingContext
+    ? []
+    : contractCandles.filter((item) =>
+      item.isComplete
+      && item.openTime > entryOpenTime
+      && item.closeTime > entryCloseTime
+      && regular !== null
+      && item.openTime >= regular.openTime
+      && item.closeTime <= regular.closeTime,
+    );
+  const sessionCloseCandle = !missingContext && regular
+    ? contractCandles.filter((item) =>
+      item.isComplete
+      && item.openTime > entryOpenTime
+      && item.closeTime > entryCloseTime
+      && item.openTime >= regular.openTime
+      && item.closeTime <= regular.closeTime,
+    ).at(-1) ?? null
     : null;
   let modeled: ReturnType<typeof simulateOhlcvExecution> | null = null;
-  if (!missingContext) {
-    modeled = simulateOhlcvExecution({
-      direction: occurrence.direction,
-      entry: entryPrice,
-      patienceCandle: patience as any,
-      immediateTriggerCandle: entryCandle as any,
-      evaluateEntryCandleForExit: direct,
-      orderedIntrabarPoints,
-      entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
-      subsequentCompletedCandles: postEntry,
-      contracts,
-       targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
-      target: targetPrice,
-       dynamicTarget: targetPlan?.dynamicTargetSource
-         ? {
-           source: targetPlan.dynamicTargetSource,
-           indicatorCandles: contractCandles,
-           tradingDate,
-           initialIndicatorValue: targetPlan.selectedLevelPrice,
-           sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
-            replayContext: buildIndicatorReplayContext({
-              source: targetPlan.dynamicTargetSource,
-              candles: contractCandles,
-              tradingDate,
-              sessionCalendarVersion: sessionCalendarForContract(context.specification).calendarVersion,
-              candidateIdentity: `${candidateId}|${occurrence.occurrenceId}`,
-            }),
-         }
-         : undefined,
-       oneRProfitRule: targetPlan?.fallbackUsed === true,
-       targetIsOneR: targetPlan?.fallbackUsed === true,
-       structureTrailing: true,
-       trailingBufferTicks: management.runnerBufferTicks ?? 4,
-       noLevelBreakevenActivationBars: 6,
-      strategyStop: management.strategyStopPrice,
-      // Candidate-driven management deliberately ignores the legacy
-      // catastrophe barrier. Preserve that value in provenance below, but do
-      // not let it create a competing operative loss exit.
-      catastropheStop: null,
-      primaryLossExitLevel,
-      sessionCloseCandle: sessionCloseCandle as any,
-      tickSize: context.specification.tickSize,
-      tickValue: context.specification.dollarValuePerTick,
-      pointMultiplier: context.specification.pointValue * context.specification.contractMultiplier,
-      entrySlippageTicks: 0,
-      exitSlippageTicks: 0,
-      fees: {
-        commission: context.specification.commissionPerContract,
-        exchange: context.specification.exchangeFeePerContract ?? context.specification.exchangeAndRegulatoryFeesPerContract,
-        regulatory: context.specification.regulatoryFeePerContract,
-        clearing: context.specification.clearingFeePerContract,
-      },
-    });
+  modeled = simulateOhlcvExecution({
+    direction: occurrence.direction,
+    entry: entryPrice,
+    patienceCandle: patience as any,
+    immediateTriggerCandle: entryCandle as any,
+    evaluateEntryCandleForExit: direct && !missingContext,
+    orderedIntrabarPoints,
+    entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
+    subsequentCompletedCandles: postEntry,
+    contracts,
+    targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
+    target: targetPrice,
+    dynamicTarget: targetPlan?.dynamicTargetSource
+      ? {
+        source: targetPlan.dynamicTargetSource,
+        indicatorCandles: contractCandles,
+        tradingDate,
+        initialIndicatorValue: targetPlan.selectedLevelPrice,
+        sourceFingerprint: targetPlan.targetLevelSnapshot?.sourceFingerprint ?? null,
+        replayContext: buildIndicatorReplayContext({
+          source: targetPlan.dynamicTargetSource,
+          candles: contractCandles,
+          tradingDate,
+          sessionCalendarVersion: executionCalendar.calendarVersion,
+          candidateIdentity: `${candidateId}|${occurrence.occurrenceId}`,
+        }),
+      }
+      : undefined,
+    oneRProfitRule: targetPlan?.fallbackUsed === true,
+    targetIsOneR: targetPlan?.fallbackUsed === true,
+    structureTrailing: true,
+    trailingBufferTicks: management.runnerBufferTicks ?? 4,
+    noLevelBreakevenActivationBars: 6,
+    strategyStop: management.strategyStopPrice,
+    // Candidate-driven management deliberately ignores the legacy
+    // catastrophe barrier. Preserve that value in provenance below, but do
+    // not let it create a competing operative loss exit.
+    catastropheStop: null,
+    primaryLossExitLevel,
+    sessionCloseCandle: sessionCloseCandle as any,
+    tickSize: executionSpecification.tickSize,
+    tickValue: executionSpecification.dollarValuePerTick,
+    pointMultiplier: executionSpecification.pointValue * executionSpecification.contractMultiplier,
+    entrySlippageTicks: 0,
+    exitSlippageTicks: 0,
+    fees: {
+      commission: executionSpecification.commissionPerContract,
+      exchange: executionSpecification.exchangeFeePerContract ?? executionSpecification.exchangeAndRegulatoryFeesPerContract,
+      regulatory: executionSpecification.regulatoryFeePerContract,
+      clearing: executionSpecification.clearingFeePerContract,
+    },
+  });
+  if (modeled.modeledFill === null) {
+    const executionAmbiguityLabel = modeled.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
+    return {
+      kind: "NO_ESTABLISHED_FILL",
+      executionStatus: executionAmbiguityLabel === null ? "ENTRY_NOT_REACHED" : "ENTRY_AMBIGUOUS",
+      entryReachedThreshold: null,
+      executionReason: executionAmbiguityLabel
+        ? `Candidate threshold ordering could not establish a fill: ${executionAmbiguityLabel}.`
+        : "The candidate threshold was not established as a modeled fill.",
+      executionAmbiguityLabel,
+    };
   }
   const modeledFillTimestamp = modeled?.modeledFillTimestamp ?? null;
   const entryTime = modeledFillTimestamp !== null
@@ -5225,6 +5291,8 @@ function candidateDrivenEntryTrade(
   const ambiguityLabel = modeled?.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
   const accounting = modeled?.accounting ?? { grossPnl: 0, fees: 0, slippage: 0, netPnl: 0 };
   return {
+    kind: "TRADE",
+    trade: {
     id: `${candidateId}-ohlcv-confirmation`,
     causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
     signalOccurrenceId: occurrence.occurrenceId,
@@ -5238,7 +5306,7 @@ function candidateDrivenEntryTrade(
     direction: occurrence.direction,
     entryTime,
     exitTime: isOpen ? null : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
-    entryPrice,
+    entryPrice: modeled.modeledFill,
     exitPrice: isOpen ? null : modeled?.exitPrice ?? null,
      contracts,
     grossPnl: accounting.grossPnl,
@@ -5274,7 +5342,7 @@ function candidateDrivenEntryTrade(
     audit: {
       causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
       entryTriggerPrice: entryPrice,
-      modeledFillPrice: entryPrice,
+      modeledFillPrice: modeled.modeledFill,
        stopPrice: modeled?.stopPrice ?? management.strategyStopPrice,
       targetPrice,
       targetPlan,
@@ -5357,6 +5425,7 @@ function candidateDrivenEntryTrade(
       remainingQuantity: modeled?.audit.remainingQuantity ?? management.contracts,
       exitReason: modeled?.exitReason ?? "not filled",
       legs: modeled?.legs ?? [],
+    },
     },
   };
 }

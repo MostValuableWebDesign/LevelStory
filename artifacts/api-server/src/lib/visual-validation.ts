@@ -1393,12 +1393,12 @@ function isAuthoritativeCandidateTrade(
     && trade.direction === candidate.direction
     && trade.contractSymbol === candidate.contractSymbol
     && trade.tradingDate === candidate.tradingDate
-    && trade.entryPrice === candidate.confirmationPrice
+    && Number.isFinite(trade.entryPrice)
     && trade.audit?.entryTriggerPrice === candidate.confirmationPrice
-    && trade.audit?.modeledFillPrice === candidate.confirmationPrice
+    && trade.audit?.modeledFillPrice === trade.entryPrice
     && trade.audit?.triggerCandleOpenTime === candidate.eOpenTimestamp
     && trade.audit?.modeledFillObservationTime === candidate.entryObservationTimestamp
-    && trade.entryTime === candidate.entryObservationTimestamp;
+    && trade.entryTime === (trade.audit.modeledFillTimestamp ?? candidate.entryObservationTimestamp);
   return valid;
 }
 
@@ -2220,8 +2220,10 @@ function buildTradeEvents(
     || patienceClose === null
     || entryOpen !== patienceClose
   )) return [];
-  const fillTime = tradeAudit?.modeledFillObservationTime
-    ? Date.parse(tradeAudit.modeledFillObservationTime)
+  const fillTime = tradeAudit?.modeledFillTimestamp
+    ? Date.parse(tradeAudit.modeledFillTimestamp)
+    : tradeAudit?.modeledFillObservationTime
+      ? Date.parse(tradeAudit.modeledFillObservationTime)
     : Date.parse(trade.entryTime);
   const exitOpen = tradeAudit?.exitCandleOpenTime ? Date.parse(tradeAudit.exitCandleOpenTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
   const exitClose = tradeAudit?.exitCandleCloseTime ? Date.parse(tradeAudit.exitCandleCloseTime) : trade.exitTime ? Date.parse(trade.exitTime) : null;
@@ -2229,7 +2231,7 @@ function buildTradeEvents(
     && trade.signalOccurrenceId
     && (!occurrence || trade.signalOccurrenceId === occurrence.occurrenceId)
     && tradeAudit?.modeledFillPrice === trade.entryPrice
-    && tradeAudit?.entryTriggerPrice === trade.entryPrice
+    && tradeAudit?.entryTriggerPrice !== null
     && tradeAudit?.triggerCandleOpenTime
     && tradeAudit?.modeledFillObservationTime;
   if (!authoritativeFill) return [];
@@ -2245,7 +2247,7 @@ function buildTradeEvents(
       tradeAudit.entryTriggerPrice,
       trade.entryPrice,
       trade.contracts,
-      `Candidate ${trade.candidateId} filled once at the immediate E threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`,
+       `Candidate ${trade.candidateId} filled at the modeled execution price after the immediate E threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`,
       evaluationCloseTime,
     ),
   ];
