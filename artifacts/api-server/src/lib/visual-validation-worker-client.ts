@@ -1,6 +1,7 @@
 import { Worker } from "node:worker_threads";
 import type { VisualValidationRequest, VisualValidationSet } from "./visual-validation.js";
 import type { CausalReplayProgress } from "./phase9.js";
+import { getReadyHistoricalMultiContractIndex } from "./futures/multi-contract-replay.js";
 
 type WorkerMessage =
   | { type: "result"; set: Omit<VisualValidationSet, "reviewSetId" | "createdAt"> }
@@ -43,12 +44,18 @@ export class VisualValidationWorkerError extends Error {
   }
 }
 
-export function buildHistoricalVisualValidationSetInWorker(
+export async function buildHistoricalVisualValidationSetInWorker(
   request: VisualValidationRequest,
   timeoutMs: number,
   onProgress?: (progress: VisualValidationWorkerProgress) => void,
 ): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> {
-  return new Promise((resolve, reject) => {
+  // The worker has its own module graph and therefore cannot see the
+  // parent's in-memory ready-index cache. Load the committed manifest in
+  // the parent before starting it, then retry once if the worker races the
+  // first post-restore/readiness load.
+  await getReadyHistoricalMultiContractIndex();
+
+  const runWorker = (): Promise<Omit<VisualValidationSet, "reviewSetId" | "createdAt">> => new Promise((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let worker: WorkerLike | undefined;
@@ -110,4 +117,15 @@ export function buildHistoricalVisualValidationSetInWorker(
       finish(() => reject(error instanceof Error ? error : new VisualValidationWorkerError()));
     }
   });
+
+  try {
+    return await runWorker();
+  } catch (error) {
+    const readinessFailure = error instanceof VisualValidationWorkerError
+      && error.message.includes("ready multi-contract index was not found");
+    if (!readinessFailure) throw error;
+    const loaded = await getReadyHistoricalMultiContractIndex();
+    if (!loaded) throw error;
+    return runWorker();
+  }
 }
