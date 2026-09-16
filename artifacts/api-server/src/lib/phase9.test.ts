@@ -1031,7 +1031,7 @@ test("consolidation direct entry uses the breakout candle only with ordered caus
   } as unknown as CausalReplayDataset;
   const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
     evaluatedCandleOpenTime: new Date(start).toISOString(),
-    directQualificationTimestamp: new Date(start + 60_000).toISOString(),
+    directQualificationTimestamp: new Date(start + 300_000).toISOString(),
     direction: "long",
     targetLevelInputs: [{ id: "major-resistance", type: "major resistance", price: 110 }],
     consolidationGuard: {
@@ -1054,8 +1054,8 @@ test("consolidation direct entry uses the breakout candle only with ordered caus
   });
   assert.equal(result.rejected.length, 0);
   assert.equal(result.candidates.length, 1);
-  assert.equal(result.authoritativeTrades.length, 1);
-  assert.equal(result.authoritativeTrades[0]?.entryTime, new Date(start + 300_000).toISOString());
+  assert.equal(result.candidates[0]?.executionStatus, "ENTRY_AMBIGUOUS");
+  assert.equal(result.authoritativeTrades.length, 0);
 });
 
 test("equivalent direct reversals project both directions through candidate-owned execution", () => {

@@ -4273,10 +4273,35 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
     || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  const directConsolidation = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  const sameCandleConsolidation = directConsolidation
+    && occurrence.directSignalOpenTimestamp !== null
+    && occurrence.directSignalOpenTimestamp !== undefined
+    && occurrence.directSignalOpenTimestamp === occurrence.eOpenTimestamp;
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const entryHigh = numericCandleValue(occurrence.entryCandle, "high");
   const entryLow = numericCandleValue(occurrence.entryCandle, "low");
+  const entryCloseTime = numericCandleValue(occurrence.entryCandle, "closeTime");
+  const qualificationTime = occurrence.directQualificationTimestamp
+    ? Date.parse(occurrence.directQualificationTimestamp)
+    : Number.NaN;
+  // The production consolidation contract requires the breakout candle to
+  // close outside the frozen range. If that same candle is also the proposed
+  // entry candle, no causal entry exists: do not use intrabar threshold data
+  // to bypass the close gate and do not silently move the entry to the next
+  // candle.
+  if (
+    sameCandleConsolidation
+    && (
+      !Number.isFinite(qualificationTime)
+      || entryCloseTime === null
+      || qualificationTime >= entryCloseTime
+    )
+  ) {
+    return { status: "ENTRY_AMBIGUOUS", reached: null };
+  }
   const threshold = effectiveEntryThresholdForOccurrence(occurrence);
   if (
     (!direct && (patienceHigh === null || patienceLow === null))
