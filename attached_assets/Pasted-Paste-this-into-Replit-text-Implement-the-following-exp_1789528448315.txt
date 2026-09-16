@@ -1,0 +1,146 @@
+Paste this into Replit:
+
+```text
+Implement the following explicitly authorized entry and stop contracts for exactly two LevelStory strategies:
+
+1. Strong Breakout After Consolidation
+2. Equivalent-Candle Reversal
+
+These strategies do not require a patience candle or the patience-based four-tick P→E confirmation contract.
+
+Inspect the existing detection, execution, risk, target planning, and Visual Review paths before editing. Implement the rules below consistently throughout the pipeline.
+
+AUTHORIZED CONTRACT 1: Strong Breakout After Consolidation
+
+Use the consolidation zone highlighted in red on the chart.
+
+Freeze its boundaries from the candles that formed the zone:
+- Range high = highest wick high within the consolidation zone.
+- Range low = lowest wick low within the consolidation zone.
+- The subsequent breakout candle must not expand or redefine the frozen zone.
+
+Long:
+- Entry threshold = range high + 8 MES ticks.
+- Stop = range low − 8 MES ticks.
+
+Short:
+- Entry threshold = range low − 8 MES ticks.
+- Stop = range high + 8 MES ticks.
+
+Support both directions.
+MES tick size is 0.25 points, so 8 ticks = 2.00 points. Use the instrument tick-size configuration rather than hardcoding the conversion.
+
+Preserve the existing authorized consolidation-detection and breakout-close requirements. Do not add a separate patience candle, immediate-E requirement, or patience-derived buffer.
+
+Enforce causal timing: if breakout qualification depends on a completed candle’s close, do not retroactively fill at an earlier intrabar threshold crossing before the setup was knowable. If existing breakout-close qualification conflicts with the authorized threshold-entry timing, explain that specific conflict and ask for the remaining timing decision instead of inventing a rule.
+
+Preserve existing strategy-specific expiry/invalidation where applicable. Do not allow indefinite confirmation merely because the patience requirement was removed.
+
+AUTHORIZED CONTRACT 2: Equivalent-Candle Reversal
+
+Pattern:
+- Two consecutive pattern candles.
+- Following an upward trend: their wick highs must be equal in price; reversal direction is short.
+- Following a downward trend: their wick lows must be equal in price; reversal direction is long.
+- Equality is exact at the instrument’s tick precision, with zero ticks of tolerance.
+- Compare normalized integer tick prices to avoid floating-point artifacts.
+- Preserve the existing “mostly full body” measurements and other existing equivalent-candle detection measurements, except any high/low equality tolerance that conflicts with exact equality.
+- Preserve the existing causal trend/context definition.
+
+The two pattern candles must be complete before the following candle can trigger entry.
+
+Short reversal:
+- Entry threshold = second pattern candle’s low − 8 MES ticks.
+- Stop = second pattern candle’s high + 8 MES ticks.
+
+Long reversal:
+- Entry threshold = second pattern candle’s high + 8 MES ticks.
+- Stop = second pattern candle’s low − 8 MES ticks.
+
+Only the immediately following candle may trigger this entry.
+If it never reaches the entry threshold, the setup expires.
+Later candles cannot revive that expired setup. A new qualifying two-candle pattern may create a new setup.
+
+This is the equivalent-pattern strategy’s own next-candle trigger. Neither pattern candle is a patience candle. Do not apply the patience-based four-tick buffer or require a separate reversal patience candle.
+
+SHARED EXECUTION AND TARGET REQUIREMENTS
+
+For both strategies:
+- Retain the existing key-level/1R target-selection rules, including existing key-level eligibility, distance, priority, and target buffers.
+- Use each strategy’s newly authorized entry and stop as the inputs to risk and target calculations.
+- Preserve the existing slippage and fee model. Distinguish the entry threshold from the actual modeled fill price.
+- Preserve existing entry-window, risk, single-active-position, and causal-data restrictions.
+- Preserve genuine OHLCV ambiguity handling when entry/stop ordering cannot be established.
+- Remove only ambiguity checks that depend on an inapplicable patience sequence.
+- Preserve completed-bar processing without using future evidence to authorize an earlier fill.
+- Do not change other strategies’ patience-based behavior.
+
+If an existing risk limit rejects the wider consolidation stop, retain that rejection and explain it. Do not silently tighten the authorized stop or loosen the risk limit.
+
+IMPLEMENT THROUGHOUT THE PIPELINE
+
+Update:
+- Qualification and rejection explanations.
+- Strategy-specific signal identity and lifecycle.
+- Candidate projection and management validation.
+- Entry, stop, risk, and target calculations.
+- Modeled execution and account arbitration.
+- Chart markers, Visual Review, and audit/reconciliation evidence.
+- Types and schemas where required.
+
+Do not fabricate patienceTimestamp, P/E identities, or patience-arm records to satisfy shared validators. Model the actual pattern and trigger evidence.
+
+For consolidation evidence, retain the frozen zone’s identity, constituent candles, high/low, qualification time, entry threshold, and stop.
+
+For equivalent-candle evidence, retain both pattern candles, matching high/low, trend direction, the second candle’s extremes, the allowed next candle, entry threshold, stop, and expiry disposition.
+
+Prevent repeated observations of the same setup from creating duplicate trades.
+
+VERSIONING
+
+Update formula/version and cache compatibility for the changed execution semantics. Use the existing governed configuration process. Preserve historical versions and previously generated results.
+
+TESTS
+
+Add focused tests proving:
+
+Consolidation:
+- Long and short entries use the frozen range plus/minus 8 ticks.
+- Stops use the opposite range extreme plus/minus 8 ticks.
+- Wick extremes determine the range.
+- Breakout candles cannot expand the frozen zone.
+- No patience candle or four-tick P→E gate is required.
+- No fill occurs before the setup is causally qualified.
+
+Equivalent-candle reversal:
+- Exactly equal highs qualify for the short pattern when other conditions pass.
+- Exactly equal lows qualify for the long pattern when other conditions pass.
+- A one-tick mismatch rejects.
+- Existing full-body measurements remain enforced.
+- Entry and stop use the second pattern candle’s extremes with 8-tick buffers.
+- Only the immediately following candle can trigger.
+- An untouched threshold expires; later candles cannot revive it.
+- No additional patience candle is required.
+
+Shared:
+- Existing key-level/1R selection uses the new entry/stop geometry.
+- Risk limits and account-position blocking remain enforced.
+- Ambiguous execution retains its existing conservative treatment.
+- Patience-based strategies retain their current behavior.
+- Valid strategy-specific candidates reach authoritative trades and Visual Review without fabricated patience evidence.
+- Repeated observations do not duplicate trades.
+
+Run focused tests first, then representative historical examples for each strategy and direction.
+
+DELIVERABLE
+
+Report:
+- Exact implemented formulas and causal entry timing.
+- Existing body/context measurements retained.
+- Files and formula/configuration versions changed.
+- Test results.
+- Representative trade examples showing pattern/zone bounds, entry threshold, modeled fill, stop, target, and exit.
+- Any unresolved timing decision or validation that could not be completed.
+
+Do not claim completion based only on qualification counts. Verify execution and Visual Review use the same authorized strategy contract.
+```
