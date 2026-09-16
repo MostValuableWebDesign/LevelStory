@@ -1,0 +1,122 @@
+Preserve the authorized eight-tick entry/stop geometry for:
+- Strong Breakout After Consolidation
+- Equivalent-Candle Reversal
+
+Preserve exact equivalent-candle equality, existing authorized pattern measurements, its immediate-next-candle entry restriction, existing key-level/1R target rules, account-position rules, and unrelated strategies. Do not introduce patience requirements or peak-retracement thresholds.
+
+1. CONSOLIDATION TIMING — RESOLVE BEFORE CHANGING
+
+The current contract qualifies consolidation at breakout-candle close but requires qualification before the threshold crossing. Production entries therefore remain blocked.
+
+Ask me this exact question before changing that contract:
+
+“Should Strong Breakout After Consolidation become eligible once the consolidation range is established, entering when price crosses eight ticks beyond the frozen range without waiting for the breakout candle to close?”
+
+Explain which close-based or continuation requirements would change. This prompt does not itself authorize removing them.
+
+Do not invent expiry, re-entry, or range-refresh rules. Complete the independent fixes below while this decision is pending. Clearly report consolidation as incomplete until resolved.
+
+2. INVALID MANAGEMENT CONTEXT MUST NOT BYPASS EXECUTION CHECKS
+
+Inspect candidateDrivenEntryTrade and candidate projection.
+
+Currently, missing management context:
+- disables entry-candle exit evaluation;
+- removes subsequent execution candles;
+- can still produce an authoritative open trade.
+
+Fix this:
+- Validate required management inputs before authoritative execution.
+- Invalid or incomplete management context must produce explicit candidate diagnostics, not a normally executable position.
+- Do not bypass entry/exit ambiguity checks because management data is missing.
+- Such candidates must not occupy the account or block later valid entries.
+- Preserve the distinction between missing management data and a valid confirmed fill that genuinely remains open.
+- Do not substitute guessed stops, targets, contract specifications, or risk settings to make execution succeed.
+
+3. PRESERVE KNOWN INTRABAR EXIT TIMES
+
+The simulator identifies an ordered stop/target crossing but retains candle-close exit timing.
+
+Carry the actual established exit timestamp through:
+- execution legs;
+- the authoritative trade;
+- execution audit;
+- account-position arbitration;
+- batch aggregation;
+- Visual Review and exports where applicable.
+
+Keep exit-event time separate from candle-close observation time.
+
+Requirements:
+- A candidate after a known full exit may enter according to the existing account rule.
+- A candidate exactly at the full-exit timestamp remains blocked under the existing boundary rule.
+- Partial exits must not release the account while quantity remains open.
+- Without exact intrabar evidence, preserve the documented OHLCV timing policy and uncertainty.
+- Do not fabricate precise timestamps.
+- Preserve event ordering for entry, partial exits, full exits, and subsequent candidates.
+
+4. APPLY CONFIGURED SLIPPAGE
+
+Candidate-driven execution currently hardcodes:
+  entrySlippageTicks: 0
+  exitSlippageTicks: 0
+
+Trace the effective replay configuration and pass its authorized slippage settings through to execution.
+
+Verify:
+- Entry and exit slippage use the correct direction and instrument tick size.
+- Gap fills follow the existing execution policy.
+- Trigger threshold remains separate from modeled fill price.
+- Trade prices, gross P/L, fees, slippage, and net P/L reconcile.
+- Slippage is counted exactly once under the existing accounting convention.
+- The execution report accurately describes the settings actually applied.
+- Unrelated strategies retain their authorized behavior.
+
+REGRESSION TESTS
+
+Add integration tests covering:
+
+A. Missing management data:
+- No authoritative trade or account position.
+- Explicit diagnostic reason.
+- Later valid candidate remains eligible.
+- Valid filled-but-open trades still work.
+
+B. Intrabar exits:
+- Entry then full exit within one candle.
+- A later candidate after that exit can enter.
+- A candidate exactly at exit remains blocked.
+- A candidate before exit remains blocked.
+- Partial exit retains the active position.
+- Batch and single-run arbitration agree.
+- Unknown intrabar ordering remains explicitly uncertain.
+
+C. Slippage:
+- Nonzero configured entry and exit slippage for long and short trades.
+- Gap entry.
+- Actual fill differs from trigger threshold.
+- Exact accounting assertions, not merely “P/L is finite.”
+- Displayed and exported values match authoritative execution.
+
+D. Strategy preservation:
+- Equivalent-Candle Reversal keeps exact matching, the same two completed pattern candles, next-candle expiry, and second-candle eight-tick stop geometry.
+- Consolidation remains independent of patience state.
+- Existing patience-based strategies retain their behavior.
+
+Once I resolve consolidation timing, add a production detection → audit → occurrence → execution test using real generated timestamps. Do not fabricate an earlier qualification timestamp.
+
+VERSIONING AND VERIFICATION
+
+Update the governed formula/cache identity when execution semantics change. Preserve historical results with their original provenance.
+
+Run focused strategy, execution, account-gating, and aggregation tests, followed by relevant typechecks/builds. Run a bounded historical replay only after the applicable entry contract is resolved.
+
+Report:
+- Defects fixed and files changed.
+- Any unresolved strategy decision.
+- Tests passed, failed, or not run.
+- Formula/cache version changes.
+- Replay results if performed.
+- Unfilled, ambiguous, invalid-management, account-blocked, open, and finalized candidates separately.
+
+Do not claim completion solely because existing tests pass or because consolidation rejection is now documented.
