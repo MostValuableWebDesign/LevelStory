@@ -1,0 +1,127 @@
+Paste this into Replit:
+
+```text
+Fix the incomplete implementation of Strong Breakout After Consolidation and Equivalent-Candle Reversal in commit 8062a76.
+
+The current 123 passing Phase 6/Phase 9 tests do not prove that these strategies execute correctly. Inspect the findings below, fix the verified defects, and add end-to-end regression coverage.
+
+AUTHORIZED RULES
+
+Strong Breakout After Consolidation:
+- Long entry: frozen consolidation range high + 8 MES ticks.
+- Long stop: frozen consolidation range low − 8 ticks.
+- Short entry: frozen consolidation range low − 8 ticks.
+- Short stop: frozen consolidation range high + 8 ticks.
+- Range boundaries use the highest/lowest wicks of the candles forming the red consolidation zone.
+- Subsequent candles cannot expand the frozen zone.
+- No patience candle or patience-based four-tick P→E confirmation requirement.
+
+Equivalent-Candle Reversal:
+- Two consecutive completed pattern candles.
+- After an upward trend: exactly equal wick highs, reversal short.
+- After a downward trend: exactly equal wick lows, reversal long.
+- Compare prices at integer tick precision with zero-tick equality tolerance.
+- Preserve existing full-body, opposing-candle, and level/context measurements.
+- Short entry: second pattern candle’s low − 8 ticks.
+- Short stop: second pattern candle’s high + 8 ticks.
+- Long entry: second pattern candle’s high + 8 ticks.
+- Long stop: second pattern candle’s low − 8 ticks.
+- Only the immediately following candle can trigger entry. If it does not reach the threshold, the setup expires.
+- No additional patience candle.
+
+Both strategies retain existing key-level/1R target selection, risk limits, entry windows, fees/slippage, causal-data restrictions, and account-position rules.
+
+1. REMOVE THE REMAINING PATIENCE IDENTITY DEPENDENCY
+
+The new direct occurrences set pOpenTimestamp and patienceCandle to null, but candidateIdentityViolations still requires pOpenTimestamp.
+
+Introduce explicit strategy-specific evidence validation:
+- Consolidation validates its frozen zone, qualification time, direction, threshold, stop, and actual execution evidence.
+- Equivalent reversal validates both pattern candles, their adjacency, matching extremes, direction, and the permitted next-candle execution window.
+- Patience-based strategies retain their existing P/E validation.
+
+Do not fabricate patience fields or bypass identity validation globally.
+
+Trace downstream lifecycle, candidate management, target planning, execution, and Visual Review for any remaining mandatory patience dependency.
+
+2. IMPLEMENT THE EQUIVALENT-CANDLE STOP
+
+strategyStopPriceForOccurrence currently handles consolidation, then falls back to patience extremes. Equivalent-candle occurrences therefore receive a null stop.
+
+Persist the second pattern candle explicitly and derive its authorized eight-tick stop from that candle.
+
+Use the instrument tick size. Feed this stop and the authorized entry into the existing risk and key-level/1R target calculations.
+
+Missing or invalid pattern evidence must reject explicitly. Do not substitute the trigger candle, a patience candle, or a fabricated stop.
+
+3. APPLY ALL PATTERN CONDITIONS TO THE SAME PAIR
+
+Exact equality currently checks the latest two candles, while hasEquivalentOpposingCandles searches the last six.
+
+Ensure equality, full-body measurements, opposing directions, and existing level/context conditions all refer to the same two consecutive pattern candles.
+
+An older valid pair must not make a newer invalid pair qualify.
+
+Add tests for:
+- Exact matching highs and lows.
+- A one-tick mismatch.
+- Equal extremes with invalid bodies.
+- An older valid pair followed by a newer invalid pair.
+- Missing/nonconsecutive candles.
+- Both reversal directions.
+
+4. CORRECT CONSOLIDATION ENTRY TIMING
+
+The current implementation requires the breakout candle to reach the eight-tick threshold and then permits execution only on the following candle.
+
+That next-candle-only restriction was authorized for Equivalent-Candle Reversal, not consolidation. Do not describe it as an approved consolidation rule.
+
+Remove remaining dependencies on context.patience eligibility from consolidation qualification.
+
+Determine whether existing consolidation qualification becomes knowable before or only after the breakout close. If preserving a breakout-close requirement conflicts with entry when price reaches the range-plus-eight-tick threshold, present that exact timing conflict for my decision.
+
+Do not invent a confirmation candle, expiry window, retroactive fill, or unlimited waiting period. Complete independent fixes while that decision is pending, and leave consolidation timing explicitly unresolved until authorized.
+
+5. PRESERVE CAUSAL AND EXECUTION CORRECTNESS
+
+- Distinguish setup qualification, an armed entry, threshold reached, expiration, and actual modeled execution.
+- Do not mark a signal execution-confirmed merely because a following candle exists.
+- Do not use future candle data before its observation time.
+- Preserve genuine entry/stop ambiguity handling.
+- Preserve existing slippage behavior and distinguish threshold price from modeled fill.
+- Keep repeated observations of one setup from producing duplicate trades.
+- Preserve all other strategies’ behavior.
+
+6. TEST THE COMPLETE PATH
+
+Add tests that run:
+detection → occurrence ledger → candidate projection → modeled execution → stop/target management → Visual Review evidence.
+
+For each strategy and direction, verify:
+- Candidate acceptance without patience fields.
+- Exact eight-tick entry and stop formulas.
+- Existing key-level/1R selection uses the correct geometry.
+- Legitimate risk/account blocks still work.
+- No duplicate trades.
+- Chart markers and explanations reference the actual zone or pattern.
+- Equivalent reversal expires after its immediate next candle.
+- Untouched thresholds do not produce fills.
+- Ambiguous cases preserve the existing conservative behavior.
+
+Do not stop at asserting that an occurrence exists or a Phase 6 evaluation says SETUP QUALIFIED.
+
+VERSIONING AND DELIVERY
+
+Update formula/cache identity for corrected semantics through the existing governance process. Preserve historical versions.
+
+Run focused tests first. Then replay representative historical examples for both strategies and directions.
+
+Report:
+- Root causes and exact fixes.
+- Any consolidation timing decision still needed.
+- Entry threshold, modeled fill, stop, and target for representative trades.
+- Formula/version changes.
+- Tests passed, failed, or not run.
+
+Do not declare both strategies complete until their authorized contracts work through execution and Visual Review.
+```
