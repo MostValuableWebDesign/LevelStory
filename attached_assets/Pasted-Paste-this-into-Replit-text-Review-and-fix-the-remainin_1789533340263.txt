@@ -1,0 +1,162 @@
+Paste this into Replit:
+
+```text
+Review and fix the remaining direct-strategy execution defects in LevelStory. Inspect the current code before editing, explain the planned changes, then implement the independent fixes and run focused tests.
+
+Do not treat passing existing tests as proof that the complete strategy works.
+
+SCOPE AND PRESERVED RULES
+
+Strategies:
+- Strong Breakout After Consolidation
+- Equivalent-Candle Reversal
+
+Preserve:
+- Eight-tick entry and stop offsets for these two strategies.
+- Exact equal-price matching and existing authorized equivalent-candle body/wick/context measurements.
+- Immediate-next-candle-only entry for Equivalent-Candle Reversal.
+- Existing key-level/1R target selection, fees, slippage, entry windows, risk controls, and account-wide position rules.
+- All unrelated patience-based strategies.
+- Historical/Shadow execution only.
+
+Do not introduce a patience requirement or mandatory peak-retracement percentage.
+
+1. RESOLVE THE CONSOLIDATION TIMING CONTRACT
+
+Current behavior:
+- Qualification is timestamped at the breakout candle’s close.
+- Same-candle execution requires qualification before its threshold crossing.
+- The updated test expects rejection and zero trades.
+
+This prevents backdated execution but does not complete the requested strategy.
+
+The authorized price geometry is:
+- Long entry: frozen consolidation high + 8 ticks.
+- Long stop: frozen consolidation low − 8 ticks.
+- Short entry: frozen consolidation low − 8 ticks.
+- Short stop: frozen consolidation high + 8 ticks.
+- No patience candle.
+- No automatically imposed next-candle-only entry restriction.
+
+Before changing the close-based qualification requirement, ask me this specific question:
+
+“Should the setup become eligible once the consolidation range is established, with entry when price first crosses eight ticks beyond that frozen range, without waiting for the breakout candle to close?”
+
+Explain which existing breakout-close or continuation requirements would change. Do not infer my answer from this implementation prompt.
+
+Complete the independent fixes below while that decision is pending. Do not invent setup expiry, re-entry, or range-refresh rules. Preserve existing authorized behavior where defined and identify any remaining undefined requirement.
+
+2. DO NOT CREATE TRADES WITHOUT A CONFIRMED FILL
+
+Inspect simulateOhlcvExecution, candidateDrivenEntryTrade, candidate projection, and account arbitration.
+
+The simulator can return modeledFill: null for unresolved entry/exit ordering or an unfilled entry. The caller currently converts that result into an authoritative open trade with a threshold entry price.
+
+Fix the state propagation:
+- A confirmed fill is required before creating an authoritative position.
+- Unfilled candidates remain unfilled evidence.
+- Unresolved entry ordering remains explicitly ambiguous evidence.
+- Neither should create an authoritative trade or occupy the account.
+- An actual filled position without an exit may legitimately remain open.
+- Preserve the distinction between uncertain entry and uncertain exit after an established fill.
+- Preserve diagnostics instead of silently dropping evidence.
+- Reconcile candidate status, authoritative trades, ambiguity counts, open-position counts, and UI labels.
+
+3. USE EXECUTION TIME FOR ACCOUNT ARBITRATION
+
+The simulator now provides exact intrabar fill timestamps, but account gating still sorts and checks candidates using candle-close observation timestamps.
+
+Fix all relevant arbitration paths, including batch aggregation:
+- Use established fill timestamps when available.
+- Keep observation time separate.
+- Use the existing documented modeling policy when exact time is unavailable; do not fabricate intrabar precision.
+- Preserve the account-wide single-active-position rule.
+- Preserve the existing exact-full-exit-timestamp boundary rule.
+- Use established exit timestamps where available.
+- Handle indistinguishable event times deterministically without claiming unsupported ordering.
+- Do not let candidate ID ordering override known chronological fill order.
+
+4. REPORT THE ACTUAL MODELED FILL CONSISTENTLY
+
+The simulator may fill beyond the threshold because of gaps, observed crossing prices, or configured slippage. The returned trade currently reports the threshold as both entryPrice and modeledFillPrice.
+
+Separate and preserve:
+- Entry trigger threshold.
+- Actual modeled fill price.
+- Fill timestamp, when known.
+- Observation timestamp.
+
+Use the actual modeled fill consistently in authoritative trade reporting and execution accounting.
+
+Audit risk/R calculations and target planning for consistency with the existing authorized fill and target policies. Do not silently change those policies.
+
+Ensure slippage is not double-counted when reconciling displayed entry/exit prices with gross P/L, fees, slippage, and net P/L.
+
+Update Visual Review and exports where needed so they do not display the trigger threshold as an actual fill.
+
+5. VERSION THE CHANGED EXECUTION SEMANTICS
+
+Execution behavior changed while the governed formula identity remained v23.5.
+
+Inspect the repository’s formula/configuration identity mechanism:
+- Update the appropriate version/hash inputs.
+- Ensure old cached results cannot masquerade as results from the new execution rules.
+- Retain old results with their original provenance.
+- Keep frontend/API formula reporting consistent.
+
+REGRESSION COVERAGE
+
+Add tests that exercise the real integration paths, not only simulator helpers:
+
+A. Unresolved entry ordering:
+- Simulator returns no established fill.
+- Candidate is explicitly ambiguous.
+- No authoritative trade or account position is created.
+- A later valid candidate is not blocked by that unfilled candidate.
+
+B. Confirmed entry:
+- A filled trade without an exit remains legitimately open.
+- A stop or target after entry within the trigger candle is handled.
+- A barrier touch before entry does not exit a nonexistent position.
+
+C. Chronological arbitration:
+- Two candidates share a candle-close observation time but have different known fill times.
+- Earlier actual fill wins regardless of candidate ID.
+- Known full-exit timestamps preserve existing boundary behavior.
+- Batch and single-run arbitration agree.
+
+D. Fill-price reconciliation:
+- Threshold differs from actual modeled fill because of a gap or configured slippage.
+- Trade entryPrice, audit modeledFillPrice, displayed values, and accounting reconcile.
+- Trigger threshold remains separately visible.
+- Slippage is counted exactly once.
+
+E. Strategy preservation:
+- Equivalent-Candle Reversal works in both directions.
+- Exact equality and existing pattern measurements apply to the same two completed candles.
+- Entry uses only the immediate next candle.
+- Stops use the second pattern candle plus/minus eight ticks.
+- Consolidation has no patience dependency.
+- Unrelated patience strategies retain their existing behavior.
+
+F. After consolidation timing is explicitly resolved:
+- Add detection → audit → occurrence → execution tests using production-generated timestamps.
+- Verify frozen-range geometry and causal availability.
+- Do not fabricate earlier qualification timestamps to make tests pass.
+
+VERIFICATION AND DELIVERY
+
+Run focused strategy, execution, account-gating, and aggregation tests first, followed by relevant typechecks/builds.
+
+Run a bounded historical replay only after the applicable strategy contract is resolved and focused checks pass. Do not target a predetermined trade count or profitable outcome.
+
+Report:
+- Files changed and defects fixed.
+- Any unresolved authorization or strategy decision.
+- Tests passed, failed, or not run.
+- Formula/cache identity changes.
+- Replay results if performed.
+- Confirmed fills, unfilled candidates, ambiguous entries, blocked candidates, open positions, and finalized trades separately.
+
+Do not claim the consolidation strategy is complete while its production path still rejects every entry because of conflicting timing requirements.
+```
