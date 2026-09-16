@@ -3259,6 +3259,103 @@ export function buildHistoricalOccurrenceLedger(
           ? candidate.setupType
           : canonicalStrategyId(candidate.setupType) ?? candidate.setupType,
       );
+    // These two contracts are direct completed-bar signals.  Keep them in the
+    // same occurrence ledger for compatibility, but deliberately leave every
+    // P/E field absent; downstream candidate code branches on the strategy.
+    const directStrategy = canonicalStrategyId(record.setupType) ?? record.setupType;
+    if (record.decision === "SETUP QUALIFIED"
+      && (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        || directStrategy === "EQUIVALENT_CANDLE_REVERSAL")
+      && record.direction) {
+      const signalOpen = Date.parse(record.evaluatedCandleOpenTime);
+      const signalCandle = dataset.candles.find((candle) =>
+        candle.contractSymbol === record.contractSymbol && candle.openTime === signalOpen && candle.isComplete,
+      );
+      const triggerCandle = signalCandle
+        ? dataset.candles.find((candle) =>
+          candle.contractSymbol === record.contractSymbol
+          && candle.isComplete
+          && candle.openTime === signalCandle.openTime + 5 * 60_000,
+        )
+        : undefined;
+      const zone = record.consolidationGuard;
+      const tickSize = getFuturesContractSpecification(
+        parseMesContractSymbol(record.contractSymbol)?.rootSymbol ?? record.contractSymbol,
+      ).tickSize;
+      const pattern = dataset.candles
+        .filter((candle) => candle.contractSymbol === record.contractSymbol && candle.isComplete && candle.openTime <= signalOpen)
+        .sort((a, b) => a.openTime - b.openTime)
+        .slice(-2);
+      const threshold = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        ? record.direction === "long" && typeof zone?.consolidationZoneHigh === "number"
+          ? zone.consolidationZoneHigh + 8 * tickSize
+          : record.direction === "short" && typeof zone?.consolidationZoneLow === "number"
+            ? zone.consolidationZoneLow - 8 * tickSize
+            : null
+        : record.direction === "long" && pattern.at(-1)
+          ? pattern.at(-1)!.high + 8 * tickSize
+          : record.direction === "short" && pattern.at(-1)
+            ? pattern.at(-1)!.low - 8 * tickSize
+            : null;
+      if (signalCandle && triggerCandle && threshold !== null) {
+        const identity = [
+          "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
+          directStrategy, record.direction, triggerCandle.openTime,
+        ].join("|");
+        const directOccurrence = {
+          occurrenceId: occurrenceId(identity),
+          auditId: record.id,
+          kind: "patience",
+          canonicalOccurrence: true,
+          strategyCandidate: directStrategy,
+          edgeQualified: true,
+          primaryEdge: directStrategy,
+          matchedEdges: [directStrategy],
+          secondaryStrategyMatches: secondary,
+          tradingDate: record.tradingDate,
+          contractSymbol: record.contractSymbol,
+          contractMonth: record.contractMonth,
+          direction: record.direction,
+          lTimestamp: null, lEventId: null, lInteractionType: null, lCandle: null,
+          previousComparisonTimestamp: null,
+          patienceTimestamp: null, patienceCandle: null,
+          candidateShapeResult: true,
+          // The setup becomes knowable when the signal/pattern candle closes.
+          // The following candle is the only authorized execution window.
+          expectedEntryTimestamp: new Date(triggerCandle.openTime).toISOString(),
+          confirmationThreshold: threshold,
+          confirmationExcursion: record.direction === "long"
+            ? triggerCandle.high - threshold : threshold - triggerCandle.low,
+          entryTimestamp: new Date(triggerCandle.openTime).toISOString(),
+          entryCandle: occurrenceCandle(triggerCandle),
+          levelIdentifiers: [], levelValues: {}, levelDistancesTicks: {},
+          levelTolerancePoints: {}, levelToleranceTicks: {}, levelInteractionTypes: {},
+          targetLevelInputs: record.targetLevelInputs,
+          targetLevelSnapshot: targetLevelSnapshotForAudit(record, fingerprint, formulaHash, null, record.evaluatedCandleOpenTime),
+          pOpenTimestamp: null,
+          eOpenTimestamp: new Date(triggerCandle.openTime).toISOString(),
+          entryObservationTimestamp: new Date(triggerCandle.closeTime).toISOString(),
+          finalizedNtzHigh: record.finalizedNtzHigh ?? null,
+          finalizedNtzLow: record.finalizedNtzLow ?? null,
+          finalizedNtzComplete: record.finalizedNtzComplete,
+          identityInvariantViolations: [],
+          confirmationBufferTicks: 8,
+          nextObservedCandle: null,
+          consolidationThresholds: record.consolidationThresholds,
+          consolidationGuard: record.consolidationGuard,
+          causalEvidence: causalEvidenceForAudit(record),
+          status: "SIGNAL_CONFIRMED",
+          reasonCode: "AUTHORIZED_DIRECT_STRATEGY_TRIGGER",
+          evaluationCursor: new Date(signalCandle.closeTime).toISOString(),
+          formulaVersion: FIXED_FORMULA_VERSION,
+          formulaHash,
+          sourceFingerprint: fingerprint,
+          canonicalTrade: Boolean(trade),
+          supportingConfluences: [],
+        } as HistoricalOccurrence;
+        upsert(identity, directOccurrence);
+      }
+    }
     for (const event of record.pullbackOccurrences ?? []) {
       const identity = [
         "pullback",
@@ -3919,14 +4016,17 @@ function fillIsStrictlyOutsideConsolidation(
 }
 
 function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateEntryDisposition {
+  const direct = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const entryHigh = numericCandleValue(occurrence.entryCandle, "high");
   const entryLow = numericCandleValue(occurrence.entryCandle, "low");
   const threshold = effectiveEntryThresholdForOccurrence(occurrence);
   if (
-    patienceHigh === null
-    || patienceLow === null
+    (!direct && (patienceHigh === null || patienceLow === null))
     || entryHigh === null
     || entryLow === null
     || threshold === null
@@ -3945,14 +4045,25 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
 }
 
 function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): number | null {
+  const tickSize = getFuturesContractSpecification(
+    parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
+  ).tickSize;
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return null;
+  if (occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+    const high = occurrence.consolidationGuard?.consolidationZoneHigh;
+    const low = occurrence.consolidationGuard?.consolidationZoneLow;
+    if (occurrence.direction === "long" && typeof low === "number") return Number((low - 8 * tickSize).toFixed(10));
+    if (occurrence.direction === "short" && typeof high === "number") return Number((high + 8 * tickSize).toFixed(10));
+  }
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const management = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   if (occurrence.direction === "long" && patienceLow !== null) {
-    return initialStopForPatience("long", patienceLow, patienceHigh ?? patienceLow, management.stopBufferTicks, 0.25);
+    return initialStopForPatience("long", patienceLow, patienceHigh ?? patienceLow, management.stopBufferTicks, tickSize);
   }
   if (occurrence.direction === "short" && patienceHigh !== null) {
-    return initialStopForPatience("short", patienceLow ?? patienceHigh, patienceHigh, management.stopBufferTicks, 0.25);
+    return initialStopForPatience("short", patienceLow ?? patienceHigh, patienceHigh, management.stopBufferTicks, tickSize);
   }
   return null;
 }
@@ -4028,9 +4139,12 @@ function freezeCandidateManagementContext(
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
+  const contractTickSize = getFuturesContractSpecification(
+    parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
+  ).tickSize;
   const initialRiskTicks = strategyStopPrice === null
     ? null
-    : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, 0.25);
+    : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, contractTickSize);
   const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
   const managementRejectionReason = targetPlan?.rejectionReason ?? null;
   const primaryLossExitLevel = primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
@@ -4682,7 +4796,11 @@ function candidateDrivenEntryTrade(
   const entryCandle = occurrence.entryCandle;
   const entryPrice = effectiveEntryThresholdForOccurrence(occurrence);
   const disposition = candidateEntryDisposition(occurrence);
-  if (disposition.status !== "MODELED_TRADE_CREATED" || !patience || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
+  const direct = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  if (disposition.status !== "MODELED_TRADE_CREATED" || (!direct && !occurrence.patienceCandle) || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
   const period = periodForDate(tradingDate, context.dataset);
@@ -4861,7 +4979,7 @@ function candidateDrivenEntryTrade(
       catastropheStopPrice: management.catastropheStopPrice,
       stopLevel: modeled?.audit.stopLevel ?? null,
       patienceCandleOpenTime: occurrence.patienceTimestamp,
-      patienceCandleCloseTime: typeof patience.closeTime === "number" ? new Date(patience.closeTime).toISOString() : null,
+      patienceCandleCloseTime: typeof patience?.closeTime === "number" ? new Date(patience.closeTime).toISOString() : null,
       triggerCandleOpenTime: occurrence.eOpenTimestamp,
        triggerCandleCloseTime: typeof entryCandle.closeTime === "number"
          ? new Date(entryCandle.closeTime).toISOString()

@@ -856,6 +856,7 @@ export function createMarketSnapshot(
     riskApproved: true,
     config,
     orbTrend,
+    tickSize: specification.tickSize,
   };
   const preliminaryReversalEvidence = detectReversalEvidence(baseSetupContext);
   const reversalDirection: Direction | null = preliminaryReversalEvidence.directionalConfirmation
@@ -907,6 +908,7 @@ export function createMarketSnapshot(
     config,
     dynamiteLevels: dynamite,
     orbTrend,
+    tickSize: specification.tickSize,
   });
   const selectedEvaluation = setupAnalysis.evaluations.find((item) => item.setupType === setupAnalysis.primarySetup)
     ?? setupAnalysis.evaluations[0];

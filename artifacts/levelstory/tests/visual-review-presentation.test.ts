@@ -468,5 +468,5 @@ test("generation panel takes precedence immediately while the start request is p
   const rail = page.slice(page.indexOf("function CoverageRail("), page.indexOf("const GENERATION_PHASE_ANNOUNCEMENTS"));
   assert.ok(rail.indexOf("if (generationActive)") < rail.indexOf("if (loading && !data)"));
   assert.match(page, /Preparing generation…/);
-  assert.match(page, /Estimating time remaining…/);
+  assert.match(page, /Calibrating estimate from completed runs…/);
 });

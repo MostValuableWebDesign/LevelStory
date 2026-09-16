@@ -79,6 +79,7 @@ function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE
 
 function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
   return {
+    tickSize: 0.25,
     candles: [candle(0, 9.8, 10, 9.7, 9.9), candle(300_000, 9.9, 10.1, 9.8, 10.05)],
     levels: {
       levels: [{ name: "Prior day high", price: 10.5 }],
@@ -423,7 +424,7 @@ test("consolidation breakout uses the active bearish ORB epoch and directional c
   const context = baseContext({
     candles: withCausalBaseline([
       ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
-      candle(breakoutOpenTime, 9.96, 10.05, 8.5, 8.7, 300),
+      candle(breakoutOpenTime, 9.96, 10.05, 7.5, 7.7, 300),
     ]),
     breakout: {
       ...baseContext().breakout,
@@ -557,7 +558,7 @@ test("extended consolidation rejects a materially expanding range", () => {
 test("extended consolidation does not require a pullback", () => {
   const candles = withCausalBaseline(Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
   const result = evaluateExtendedNtzConsolidationBreakout(baseContext({
-    candles: [...candles, candle(2_700_000, 9.96, 10.25, 9.95, 10.2)],
+    candles: [...candles, candle(2_700_000, 9.96, 12.25, 9.95, 12.2)],
     pullback: { ...baseContext().pullback, events: [] },
      breakout: { ...baseContext().breakout, candleOpenTime: 2_700_000, time: 3_000_000 },
   }));
@@ -568,7 +569,7 @@ test("extended consolidation does not require a pullback", () => {
 test("extended consolidation qualifies with a breakout and NTZ-eligible patience window", () => {
   const candles = withCausalBaseline(Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
   const result = evaluateExtendedNtzConsolidationBreakout(baseContext({
-    candles: [...candles, candle(2_700_000, 9.96, 10.25, 9.95, 10.2)],
+    candles: [...candles, candle(2_700_000, 9.96, 12.25, 9.95, 12.2)],
     patience: { ...patience(), eligibilityReason: "ntz consolidation" },
     breakout: { ...baseContext().breakout, candleOpenTime: 2_700_000, time: 3_000_000 },
   }));
@@ -578,7 +579,7 @@ test("extended consolidation qualifies with a breakout and NTZ-eligible patience
 
 test("consolidation breakout closes outside its frozen pre-breakout range", () => {
   const consolidationCandles = Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96));
-  const breakoutCandle = candle(2_700_000, 9.96, 10.25, 9.95, 10.2);
+  const breakoutCandle = candle(2_700_000, 9.96, 12.25, 9.95, 12.2);
   const result = evaluateExtendedNtzConsolidationBreakout({
     ...baseContext({
       candles: [...consolidationCandles, breakoutCandle],
@@ -862,8 +863,8 @@ test("equivalent reversal ignores opposing-volume warnings", () => {
   assert.equal(evidence.deepFibonacciRetracement, true);
   const result = evaluateBonusReversal(context);
   assert.equal(result.alertOnly, false);
-  assert.equal(result.decision, "POSSIBLE REVERSAL");
-  assert.equal(result.rules.find((rule) => rule.key === "immediateTrigger")?.passed, false);
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "validPatienceCandle")?.passed, true);
 });
 
 test("equivalent reversal qualifies after context, patience, and risk approval", () => {
@@ -905,8 +906,8 @@ test("reversal patience must carry the independently confirmed reversal directio
   });
   const result = evaluateBonusReversal(context);
   assert.equal(result.direction, "short");
-  assert.equal(result.rules.find((rule) => rule.key === "validPatienceCandle")?.passed, false);
-  assert.notEqual(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "validPatienceCandle")?.passed, true);
+  assert.equal(result.decision, "SETUP QUALIFIED");
 });
 
 test("equivalent reversal owns a shared qualified sequence before generic patience", () => {
@@ -998,7 +999,7 @@ test("reversal requires directional confirmation, patience, immediate trigger, a
     riskApproved: false,
     trend: { direction: "neutral", structure: "mixed structure" },
   }));
-  assert.equal(result.decision, "EXPIRED");
+  assert.equal(result.decision, "POSSIBLE REVERSAL");
   assert.equal(result.mandatoryPassed, false);
   assert.equal(result.rules.filter((rule) => rule.mandatory).every((rule) => rule.passed), false);
 });

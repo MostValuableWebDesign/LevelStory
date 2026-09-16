@@ -419,7 +419,7 @@ function candidateProjectionDataset(
     inSampleDates: [occurrence.tradingDate],
     outOfSampleDates: [],
     contractMonth: "U26",
-  } as CausalReplayDataset;
+  } as unknown as CausalReplayDataset;
 }
 
 function managedAttemptOccurrence(input: {
@@ -483,7 +483,7 @@ function managedAttemptDataset(
     inSampleDates: ["2026-08-25"],
     outOfSampleDates: [],
     contractMonth: "U26",
-  } as CausalReplayDataset;
+  } as unknown as CausalReplayDataset;
 }
 
 function consolidationGuard(
@@ -945,6 +945,54 @@ test("historical occurrence ledger is repeatable and retains causal L/P/E eviden
   assert.equal(patience.patienceCandle?.openTime, 600_000);
   assert.equal(patience.entryCandle?.openTime, 900_000);
   assert.equal(patience.evaluationCursor, new Date(1_200_000).toISOString());
+});
+
+test("authorized direct strategies emit candidates without fabricated patience or P/E evidence", () => {
+  const dataset = {
+    ...occurrenceDataset(),
+    candles: [
+      {
+        contractSymbol: "MESU26",
+        openTime: 900_000,
+        closeTime: 1_200_000,
+        open: 101,
+        high: 110,
+        low: 100,
+        close: 109,
+        volume: 20,
+        isComplete: true,
+      },
+      {
+        contractSymbol: "MESU26",
+        openTime: 1_200_000,
+        closeTime: 1_500_000,
+        open: 109,
+        high: 110,
+        low: 108,
+        close: 109.5,
+        volume: 20,
+        isComplete: true,
+      },
+    ],
+  } as unknown as CausalReplayDataset;
+  const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    decision: "SETUP QUALIFIED",
+    direction: "long",
+    consolidationGuard: {
+      consolidationZoneHigh: 101,
+      consolidationZoneLow: 99,
+      effectiveEntryThreshold: 103,
+      executionEligible: true,
+    } as BacktestConsolidationGuardEvidence,
+  });
+  const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], [])
+    .find((item) => item.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      && item.patienceTimestamp === null && item.patienceCandle === null && item.status === "SIGNAL_CONFIRMED");
+  assert.ok(occurrence);
+  assert.equal(occurrence.patienceTimestamp, null);
+  assert.equal(occurrence.pOpenTimestamp, null);
+  assert.equal(occurrence.eOpenTimestamp, new Date(1_200_000).toISOString());
+  assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
 });
 
 test("historical occurrence thresholds do not inherit a stale consolidation P to E", () => {

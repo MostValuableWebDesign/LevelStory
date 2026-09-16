@@ -202,6 +202,8 @@ export type Phase6Context = {
   config: StrategyConfig;
   dynamiteLevels?: readonly DynamiteLevel[];
   orbTrend?: OrbTrendAnalysis;
+  /** Contract tick size supplied by the market-data contract specification. */
+  tickSize?: number;
 };
 
 function dynamiteInteractionMatchesSignal(
@@ -292,7 +294,9 @@ export function phase6Analysis(context: Phase6Context): Phase6Analysis {
       evaluation.setupType === setupType
       && evaluation.decision === "SETUP QUALIFIED"
       && !evaluation.alertOnly
-      && hasConfirmedPatienceEntry(patienceForSetup(setupType)),
+      && (setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        || setupType === "EQUIVALENT_CANDLE_REVERSAL"
+        || hasConfirmedPatienceEntry(patienceForSetup(setupType))),
     ))
     .find((evaluation) => evaluation !== undefined);
   const possibleReversal = evaluations.find((evaluation) => evaluation.decision === "POSSIBLE REVERSAL");
@@ -418,17 +422,21 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     : context.breakout.closeLocationRatio ?? 0.5;
   const postBreakoutContext = hasQualifyingPullback(context.pullback)
     || (consolidation.detected && context.patience.eligibilityReason === "ntz consolidation");
-  const patienceNearLevel = context.patience.patienceCandle !== null
-    && context.patience.eligible
-    && postBreakoutContext;
+  const strongBreakoutThreshold = context.tickSize && context.tickSize > 0 && direction === "long" && typeof consolidation.frozenHigh === "number"
+    ? consolidation.frozenHigh + 8 * context.tickSize
+    : context.tickSize && context.tickSize > 0 && direction === "short" && typeof consolidation.frozenLow === "number"
+      ? consolidation.frozenLow - 8 * context.tickSize
+      : null;
+  const strongBreakoutReached = breakoutCandle !== undefined && strongBreakoutThreshold !== null
+    && (direction === "long" ? breakoutCandle.high >= strongBreakoutThreshold : breakoutCandle.low <= strongBreakoutThreshold);
   const rules: SetupRuleEvidence[] = [
     rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
-    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio, "Strong breakout evidence must close outside the frozen consolidation range."),
+    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && strongBreakoutReached && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio, strongBreakoutReached ? `Completed breakout reached the frozen-range eight-tick threshold at ${strongBreakoutThreshold}.` : "Strong breakout evidence must reach eight ticks beyond the frozen consolidation range."),
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
-    rule("validPatienceNearLevel", "Valid trend-aligned patience candle formed", patienceNearLevel && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), patienceNearLevel ? context.patience.detail : "Patience must be eligible from the post-breakout context."),
-    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
-    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, context.patience, direction), strictNtzEntry(context, context.patience, direction) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
+    rule("validPatienceNearLevel", "Strong breakout has no separate patience requirement", true, "This authorized strategy enters from the completed qualifying breakout; no patience candle is required."),
+    rule("immediateTrigger", "Completed breakout is the authorized trigger", strongBreakoutReached, strongBreakoutReached ? "The completed breakout candle is the authorized trigger." : "The completed breakout candle did not reach the authorized threshold."),
+    rule("entryOutsideFinalizedNtz", "Breakout closed outside frozen range", breakoutConfirmed, breakoutConfirmed ? "Completed breakout closed outside the frozen consolidation range." : "The completed breakout close is not confirmed outside the frozen range."),
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
   ];
   return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
@@ -441,22 +449,17 @@ export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupE
   const latest = completed.at(-1);
   const evidence = detectReversalEvidence(context, completed, latest);
   const reversalDirection = evidence.reversalDirection ?? null;
-  const patience = context.reversalPatience ?? context.patience;
   const rules: SetupRuleEvidence[] = [
     rule("equivalentContext", "Equivalent opposing candles at a qualifying level", evidence.equivalentOpposingCandles, evidence.equivalentOpposingCandles ? "Equivalent opposing full-body candles meet the configured level and wick tolerances." : "Equivalent opposing candles at a qualifying level are required."),
     rule("directionalConfirmation", "Directional reversal confirmation", evidence.directionalConfirmation === true, evidence.directionalConfirmation ? "A completed opposing candle structure confirms the reversal direction." : "A reversed direction label is not sufficient; completed opposing-candle evidence must confirm it."),
-    rule("validPatienceCandle", "Valid trend-aligned patience candle formed", patience.patienceCandle !== null && patienceDirectionMatches(patience, reversalDirection) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(patience.state), patience.detail),
-    rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", patience.state === "ENTRY_TRIGGERED", patience.state === "ENTRY_TRIGGERED" ? patience.detail : `Patience state is ${patience.state}; only ENTRY_TRIGGERED qualifies.`),
-    rule("entryOutsideFinalizedNtz", "Entry candle confirmed strictly outside finalized NTZ", strictNtzEntry(context, patience, reversalDirection), strictNtzEntry(context, patience, reversalDirection) ? "Completed E is strictly outside the finalized NTZ/ORB." : "ENTRY_NOT_OUTSIDE_FINALIZED_NTZ."),
+    rule("validPatienceCandle", "No separate patience candle required", true, "Equivalent-candle reversal is authorized directly from its two-candle pattern."),
+    rule("immediateTrigger", "Immediately following candle is the only authorized trigger", evidence.equivalentOpposingCandles, evidence.equivalentOpposingCandles ? "The next candle is the only eligible trigger window." : "No eligible two-candle pattern is available."),
+    rule("entryOutsideFinalizedNtz", "Pattern threshold and stop are strategy-owned", evidence.equivalentOpposingCandles, "Entry threshold is the second pattern extreme plus or minus eight instrument ticks."),
   ];
   const mandatoryPassed = rules.every((item) => item.passed);
   const decision = !evidence.alert
     ? "NO TRADE"
-    : patience.state === "AMBIGUOUS_EVENT_ORDER"
-      ? "AMBIGUOUS"
-      : patience.state === "PATIENCE_CANDLE_EXPIRED"
-        ? "EXPIRED"
-        : mandatoryPassed ? "SETUP QUALIFIED" : "POSSIBLE REVERSAL";
+    : mandatoryPassed ? "SETUP QUALIFIED" : "POSSIBLE REVERSAL";
   return {
     setupType: "EQUIVALENT_CANDLE_REVERSAL",
     direction: reversalDirection,
@@ -506,12 +509,15 @@ export function detectReversalEvidence(
   latest = completed.at(-1),
 ): ReversalEvidence {
   const dojiAtMajorLevel = latest !== undefined && isDoji(latest, context.config.dojiBodyRatio) && nearMajorLevel(latest, context.levels.majorLevels, context.config);
-  const equivalentOpposingCandles = hasEquivalentOpposingCandles(completed, context.levels.majorLevels, context.config);
+  const patternDirection = equivalentPatternDirection(completed, context.trend.direction, context.tickSize);
+  const equivalentOpposingCandles = patternDirection !== null
+    && hasEquivalentOpposingCandles(completed, context.levels.majorLevels, context.config);
   const failedBreakout = context.levels.ntzEvents.some((event) => event.type === "Failed breakout");
   const deepFibonacciRetracement = ["deep", "elevated failure risk", "fully retraced"].includes(context.fibonacci.classification);
   const majorLevelRejection = latest !== undefined && hasMajorLevelRejection(latest, context.levels.majorLevels, context.config);
   const structureBreak = hasStructureBreak(completed, context.trend.direction);
-  const reversalDirection = confirmedReversalDirection(context, completed, equivalentOpposingCandles, failedBreakout, structureBreak, majorLevelRejection);
+  const reversalDirection = patternDirection
+    ?? confirmedReversalDirection(context, completed, equivalentOpposingCandles, failedBreakout, structureBreak, majorLevelRejection);
   const directionalConfirmation = reversalDirection !== null && (
     equivalentOpposingCandles
     || failedBreakout
@@ -945,6 +951,23 @@ export function hasEquivalentOpposingCandles(candles: readonly Candle[], majorLe
     if (Math.abs(firstBody - secondBody) / Math.max(firstBody, secondBody) > 0.15) return false;
     return trendFacingWick(first) / firstRange <= 0.15 && trendFacingWick(second) / secondRange <= 0.15;
   });
+}
+
+function equivalentPatternDirection(
+  candles: readonly Candle[],
+  trend: TrendDirection,
+  tickSize: number | undefined,
+): Direction | null {
+  if (!tickSize || tickSize <= 0) return null;
+  const second = candles.at(-1);
+  const first = candles.at(-2);
+  if (!first || !second) return null;
+  const tick = (price: number) => Math.round(price / tickSize);
+  const equalHighs = tick(first.high) === tick(second.high);
+  const equalLows = tick(first.low) === tick(second.low);
+  if (trend === "bullish" && equalHighs) return "short";
+  if (trend === "bearish" && equalLows) return "long";
+  return null;
 }
 
 function buildEvaluation(

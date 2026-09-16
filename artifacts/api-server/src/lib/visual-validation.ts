@@ -1625,6 +1625,16 @@ function occurrenceCandleOpenTime(candle: HistoricalOccurrence["patienceCandle"]
 
 function hasConfirmedPatienceOccurrence(occurrence: HistoricalOccurrence): boolean {
   if (occurrence.kind !== "patience" || occurrence.status !== "SIGNAL_CONFIRMED") return false;
+  const direct = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  if (direct) {
+    return occurrence.patienceTimestamp === null
+      && occurrence.pOpenTimestamp === null
+      && occurrence.eOpenTimestamp !== null
+      && occurrence.entryTimestamp === occurrence.eOpenTimestamp;
+  }
   const patienceTimestamp = Date.parse(occurrence.patienceTimestamp ?? "");
   const expectedEntryTimestamp = Date.parse(occurrence.expectedEntryTimestamp ?? "");
   const entryTimestamp = Date.parse(occurrence.entryTimestamp ?? "");
@@ -1826,18 +1836,46 @@ function buildAnnotations(
   const entryPrice = occurrence
     ? evidenceNumber(occurrence.entryCandle, "close")
     : evidenceNumber(audit.triggerCandle, "close");
+  const directStrategy = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence?.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence?.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  const directEntryDetail = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    ? "The next completed candle is the authorized threshold observation above or below the frozen consolidation range."
+    : "The next completed candle is the only authorized trigger after the two completed equivalent pattern candles.";
   const patienceLabel = occurrence && occurrence.status !== "CONFIRMED"
     ? "Expired patience candidate"
     : "Patience candle";
-  lines.push(annotation("patience-candle", patienceLabel, "candle", patiencePrice, occurrence && occurrence.status !== "CONFIRMED" ? "muted" : "positive", occurrence?.reasonCode ?? snapshot.patience.detail, patienceOpen, patienceClose));
-  lines.push(annotation("entry-candle", "Entry candle (E)", "candle", entryPrice, "accent", occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.", entryOpen, entryClose));
+  if (!directStrategy) {
+    lines.push(annotation("patience-candle", patienceLabel, "candle", patiencePrice, occurrence && occurrence.status !== "CONFIRMED" ? "muted" : "positive", occurrence?.reasonCode ?? snapshot.patience.detail, patienceOpen, patienceClose));
+  }
+  lines.push(annotation(
+    "entry-candle",
+    directStrategy ? "Authorized trigger candle" : "Entry candle (E)",
+    "candle",
+    entryPrice,
+    "accent",
+    directStrategy
+      ? directEntryDetail
+      : occurrence?.entryTimestamp ? "The completed immediate-next candle after P reached the confirmation buffer." : occurrence?.nextObservedCandle ? "The immediate-next candle was observed but did not qualify as E; no later candle may replace it." : "No completed immediate-next E confirmation was recorded.",
+    entryOpen,
+    entryClose,
+  ));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
   lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
   const entryBuffer = occurrence
     ? audit.entryTriggerPrice ?? occurrence.confirmationThreshold ?? entryPrice
     : snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
-  const entryBufferTicks = audit.confirmationBufferTicks ?? snapshot.patience.entryBufferTicks;
-  addLevel("entry-buffer", "Entry buffer", entryBuffer, `${entryBufferTicks}-tick confirmation buffer at the causal P→E occurrence.`, "accent");
+  const entryBufferTicks = directStrategy ? 8 : audit.confirmationBufferTicks ?? snapshot.patience.entryBufferTicks;
+  addLevel(
+    "entry-buffer",
+    directStrategy ? "Authorized entry threshold" : "Entry buffer",
+    entryBuffer,
+    directStrategy
+      ? `${entryBufferTicks}-tick strategy-owned threshold; no patience-derived buffer is applied.`
+      : `${entryBufferTicks}-tick confirmation buffer at the causal P→E occurrence.`,
+    "accent",
+  );
   const candidateStrategyStopPrice = trade?.candidateId
     ? trade.audit?.strategyStopPrice ?? null
     : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;

@@ -651,13 +651,13 @@ const EDGE_PREDICATE_NAMES: Record<Phase3Edge, string[]> = {
     "governed_consolidation_stability",
     "directional_breakout_closed_outside_range",
     "continuation_evidence",
-    "valid_p_immediate_e_confirmation",
+    "authorized_breakout_threshold",
     "e_completed_before_cutoff",
   ],
   EQUIVALENT_CANDLE_REVERSAL: [
     "equivalent_candle_reversal_evidence",
     "reversal_direction_confirmed",
-    "valid_p_immediate_e_confirmation",
+    "authorized_next_candle_trigger",
     "e_completed_before_cutoff",
   ],
 };
@@ -790,11 +790,10 @@ function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<P
       map.equivalent_candle_reversal_evidence = edgeEvidence("equivalent_candle_reversal_evidence", "equivalentContext");
       map.reversal_direction_confirmed = edgeEvidence("reversal_direction_confirmed", "directionalConfirmation");
     }
-    if (edge === "CONSOLIDATION_BREAKOUT_CONTINUATION" || edge === "EQUIVALENT_CANDLE_REVERSAL") {
-      map.valid_p_immediate_e_confirmation = combinedConfirmation(
-        map.valid_p_candle!,
-        map.immediate_e_confirmation_buffer!,
-      );
+    if (edge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+      map.authorized_breakout_threshold = edgeEvidence("authorized_breakout_threshold", "strongBreakout");
+    } else if (edge === "EQUIVALENT_CANDLE_REVERSAL") {
+      map.authorized_next_candle_trigger = edgeEvidence("authorized_next_candle_trigger", "immediateTrigger");
     }
     return EDGE_PREDICATE_NAMES[edge].map((name) => map[name] ?? storedPredicate(occurrence, name, exactRule(name)));
   };

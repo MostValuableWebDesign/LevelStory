@@ -2190,7 +2190,7 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
        </div>
      </div>
     {invalidIndices.length > 0 && <div className="mb-4 flex items-start gap-2 border border-destructive/35 bg-destructive/8 p-3 text-[11px] leading-4 text-destructive" role="alert" data-testid="invalid-candle-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Raw OHLC integrity issue in {invalidIndices.length} candle{invalidIndices.length === 1 ? "" : "s"}; values are shown without correction.</span></div>}
-      <CategoryAnchorBanner anchor={snapshot.categoryAnchor} />
+       <CategoryAnchorBanner anchor={snapshot.categoryAnchor} strategyKey={snapshot.strategyKey} />
       {showPremarket && <PremarketMiniChart candles={premarketCandles} snapshot={snapshot} />}
         <CausalSvg snapshot={snapshot} candles={chartCandles} regularCandles={selection.regularCandles} premarketCandles={[]} sessionView={sessionView} focusOpenTime={snapshot.categoryAnchor.openTime} lockedEntryCandle={lockedEntryCandle} teaching={teaching} zoom={zoom} pan={pan} onLockCandle={onLockCandle} />
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
@@ -2203,8 +2203,8 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
         <span className="inline-flex items-center gap-1.5"><i className="h-2 w-4 border-t-2 border-slate-900" />support / resistance</span>
          <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-consolidation"><i className="h-3 w-4 border border-red-400 bg-red-200/70" />consolidation zone (when present)</span>
         <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-anchor"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))] ring-2 ring-[hsl(var(--positive)/.2)]" />FOUND · category anchor</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>
-       <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />entry candle (E)</span>
+        {snapshot.strategyKey !== "CONSOLIDATION_BREAKOUT_CONTINUATION" && snapshot.strategyKey !== "EQUIVALENT_CANDLE_REVERSAL" && <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-patience"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />patience comparison</span>}
+        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-entry"><i className="h-2 w-2 rounded-full bg-accent" />{snapshot.strategyKey === "CONSOLIDATION_BREAKOUT_CONTINUATION" || snapshot.strategyKey === "EQUIVALENT_CANDLE_REVERSAL" ? "authorized trigger candle" : "entry candle (E)"}</span>
        <span className="inline-flex items-center gap-1.5" data-testid="marker-legend-invalidation"><i className="h-px w-4 bg-[hsl(var(--negative))]" />invalidation / stop</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 border border-foreground/20 bg-foreground/5" />shaded candles · human-only outcome context</span>
        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 border border-foreground bg-card" />numbered markers · exact event occurrence</span>
@@ -2213,13 +2213,17 @@ function CausalChart({ snapshot, expanded, lockedEntryCandle, teaching, onToggle
   </div>;
 }
 
-function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnchor }) {
+function CategoryAnchorBanner({ anchor, strategyKey }: { anchor: VisualValidationCategoryAnchor; strategyKey: StrategyId }) {
   const patience = anchor.relatedCandles.find((candle) => candle.role === "patience");
   const entry = anchor.relatedCandles.find((candle) => candle.role === "entry");
+  const direct = strategyKey === "CONSOLIDATION_BREAKOUT_CONTINUATION" || strategyKey === "EQUIVALENT_CANDLE_REVERSAL";
+  const directLabel = strategyKey === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    ? "Strong breakout threshold"
+    : "Equivalent-candle reversal trigger";
   return <div className="category-anchor-banner mb-4 border border-[hsl(var(--positive)/.4)] bg-[hsl(var(--positive)/.08)] p-3" data-testid="category-anchor-banner">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><ShieldCheck size={16} aria-hidden="true" />Confirmed setup</div>
+        <div className="eyebrow flex items-center gap-1.5 text-[hsl(var(--positive))]"><ShieldCheck size={16} aria-hidden="true" />{direct ? "Authorized direct setup" : "Confirmed setup"}</div>
         <details className="category-anchor-explanation mt-1">
           <summary className="text-sm font-bold">{anchor.label} · {anchor.direction ?? "direction unavailable"}</summary>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{anchor.detail || "The selected category resolves to an observed MES candle."}</p>
@@ -2231,8 +2235,9 @@ function CategoryAnchorBanner({ anchor }: { anchor: VisualValidationCategoryAnch
       </div>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[hsl(var(--positive)/.2)] pt-3 text-[10px]">
-      {patience && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Patience · {formatInterval(patience.openTime, patience.closeTime)} · {patience.price == null ? "—" : formatPriceAxisValue(patience.price)}</span>}
-      {entry && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />Entry (E) · {formatInterval(entry.openTime, entry.closeTime)} · {entry.price == null ? "—" : formatPriceAxisValue(entry.price)}</span>}
+       {direct && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />{directLabel} · no patience candle or four-tick P→E buffer</span>}
+       {!direct && patience && <span className="inline-flex items-center gap-1.5 border border-[hsl(var(--positive)/.3)] bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-[hsl(var(--positive))]" />Patience · {formatInterval(patience.openTime, patience.closeTime)} · {patience.price == null ? "—" : formatPriceAxisValue(patience.price)}</span>}
+       {entry && <span className="inline-flex items-center gap-1.5 border border-accent/35 bg-card/60 px-2 py-1"><i className="h-2 w-2 rounded-full bg-accent" />{direct ? "Authorized trigger" : "Entry (E)"} · {formatInterval(entry.openTime, entry.closeTime)} · {entry.price == null ? "—" : formatPriceAxisValue(entry.price)}</span>}
       <details className="ml-auto">
         <summary className="cursor-pointer text-[10px] font-bold text-muted-foreground">Technical details</summary>
         <span className="mono mt-2 block text-muted-foreground">audit {anchor.auditId}{anchor.tradeId ? ` · trade ${anchor.tradeId}` : ""} · {anchor.contractSymbol}</span>

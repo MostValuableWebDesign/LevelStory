@@ -825,7 +825,7 @@ test("Phase 3 uses the patience eligibility rule for continuation P evidence", (
   assert.equal(predicate?.result, "PASS");
 });
 
-test("Phase 3 uses consolidation-specific P evidence for the combined confirmation", () => {
+test("Phase 3 uses the authorized breakout threshold for consolidation confirmation", () => {
   const complete = reconcileSyntheticFixture({
     occurrence: confirmedSignal({
       causalEvidence: orbEvidence({
@@ -843,7 +843,7 @@ test("Phase 3 uses consolidation-specific P evidence for the combined confirmati
     candidates: [candidate()],
   });
   const completePredicate = complete.reconciliation.signals[0]!.edgePredicates.CONSOLIDATION_BREAKOUT_CONTINUATION
-    .find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
+    .find((item) => item.predicateName === "authorized_breakout_threshold");
   assert.equal(completePredicate?.result, "PASS");
 
   const unrelated = reconcileSyntheticFixture({
@@ -864,8 +864,8 @@ test("Phase 3 uses consolidation-specific P evidence for the combined confirmati
     candidates: [candidate()],
   });
   const unrelatedPredicate = unrelated.reconciliation.signals[0]!.edgePredicates.CONSOLIDATION_BREAKOUT_CONTINUATION
-    .find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
-  assert.equal(unrelatedPredicate?.result, "FAIL");
+    .find((item) => item.predicateName === "authorized_breakout_threshold");
+  assert.equal(unrelatedPredicate?.result, "PASS");
 });
 
 test("Phase 3 selects merged edge evidence by exact source edge in either audit order", () => {
@@ -909,7 +909,7 @@ test("Phase 3 does not reuse an ORB audit for unrelated edge confirmation", () =
     candidates: [candidate()],
   });
   const reversal = result.reconciliation.signals[0]!.edgePredicates.EQUIVALENT_CANDLE_REVERSAL;
-  const confirmation = reversal.find((item) => item.predicateName === "valid_p_immediate_e_confirmation");
+  const confirmation = reversal.find((item) => item.predicateName === "authorized_next_candle_trigger");
   assert.equal(confirmation?.result, "EVIDENCE_UNAVAILABLE");
   assert.equal(confirmation?.sourceAuditId, null);
 });
